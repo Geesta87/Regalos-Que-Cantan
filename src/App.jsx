@@ -12,6 +12,7 @@ import DetailsStep from './pages/DetailsStep';
 import EmailStep from './pages/EmailStep';
 import GeneratingPage from './pages/GeneratingPage';
 import PreviewPage from './pages/PreviewPage';
+import ComparisonPage from './pages/ComparisonPage';  // ← ADDED
 import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
@@ -20,7 +21,7 @@ import AdminDashboard from './pages/AdminDashboard';
 export const AppContext = React.createContext();
 
 // App version
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -51,7 +52,8 @@ const isDirectRoute = () => {
          path.startsWith('/create/') || 
          path === '/admin' || 
          path === '/admin/dashboard' ||
-         path === '/success';
+         path === '/success' ||
+         path === '/comparison';  // ← ADDED
 };
 
 // Map URL to page name
@@ -65,6 +67,9 @@ const getPageFromUrl = () => {
   // Preview route with songId
   if (path.startsWith('/preview/')) return 'preview';
   if (path === '/preview') return 'preview';
+  
+  // Comparison page
+  if (path === '/comparison') return 'comparison';  // ← ADDED
   
   // Success page
   if (path === '/success') return 'success';
@@ -230,6 +235,7 @@ export default function App() {
       email: '/create/email',
       generating: '/create/generating',
       preview: '/preview',
+      comparison: '/comparison',  // ← ADDED
       success: '/success',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard'
@@ -279,6 +285,7 @@ export default function App() {
         {currentPage === 'email' && <EmailStep />}
         {currentPage === 'generating' && <GeneratingPage />}
         {currentPage === 'preview' && <PreviewPage />}
+        {currentPage === 'comparison' && <ComparisonPage />}  {/* ← ADDED */}
         {currentPage === 'success' && <SuccessPage />}
         {currentPage === 'adminLogin' && <AdminLogin />}
         {currentPage === 'adminDashboard' && <AdminDashboard />}
