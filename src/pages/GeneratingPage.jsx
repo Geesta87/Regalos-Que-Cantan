@@ -1,8 +1,42 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
-import Header from '../components/Header';
 import { generateSong, checkSongStatus } from '../services/api';
+import genres from '../config/genres';
 
+// Personalized step messages based on what's actually happening
+const getPersonalizedSteps = (recipientName, genre, occasion) => {
+  const genreName = genres[genre]?.name || genre;
+  
+  return [
+    { 
+      icon: 'edit_note', 
+      label: `Escribiendo la historia de ${recipientName}...`,
+      detail: 'Nuestra IA está creando letras únicas'
+    },
+    { 
+      icon: 'music_note', 
+      label: `Componiendo melodía en estilo ${genreName}...`,
+      detail: 'Seleccionando los instrumentos perfectos'
+    },
+    { 
+      icon: 'mic', 
+      label: `Grabando las voces para ${recipientName}...`,
+      detail: 'Interpretando con emoción cada palabra'
+    },
+    { 
+      icon: 'graphic_eq', 
+      label: 'Mezclando y masterizando...',
+      detail: 'Puliendo cada detalle del sonido'
+    },
+    { 
+      icon: 'check_circle', 
+      label: '¡Tu canción está casi lista!',
+      detail: 'Preparando tu experiencia musical'
+    }
+  ];
+};
+
+// Fun facts that rotate
 const funFacts = [
   "🎸 Los corridos tumbados nacieron en 2020 y revolucionaron la música regional mexicana",
   "🎺 La banda sinaloense usa más de 15 instrumentos diferentes",
@@ -18,195 +52,278 @@ const funFacts = [
 
 export default function GeneratingPage() {
   const { navigateTo, formData, songData, setSongData } = useContext(AppContext);
+  
+  // Progress & UI state
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [factIndex, setFactIndex] = useState(0);
   const [error, setError] = useState(null);
-  const [songId, setSongId] = useState(null);
-  const [isPolling, setIsPolling] = useState(false);
+  
+  // Song generation state
+  const [song1Id, setSong1Id] = useState(null);
+  const [song2Id, setSong2Id] = useState(null);
+  const [song1Status, setSong1Status] = useState('pending'); // pending, generating, completed, failed
+  const [song2Status, setSong2Status] = useState('pending');
+  const [song1Data, setSong1Data] = useState(null);
+  const [song2Data, setSong2Data] = useState(null);
+  
+  // Lyrics preview state
+  const [lyricsPreview, setLyricsPreview] = useState('');
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [lyricsLines, setLyricsLines] = useState([]);
+  const [visibleLines, setVisibleLines] = useState(0);
+  
+  // Refs
   const hasStarted = useRef(false);
-  const pollIntervalRef = useRef(null);
+  const pollInterval1Ref = useRef(null);
+  const pollInterval2Ref = useRef(null);
 
-  // Check if this is a regeneration (version 2 already started)
-  const isRegeneration = songData?.version === 2 && songData?.status === 'processing';
-
-  const steps = isRegeneration ? [
-    { icon: 'refresh', label: 'Creando nueva versión...' },
-    { icon: 'edit_note', label: 'Escribiendo nueva letra...' },
-    { icon: 'music_note', label: 'Componiendo melodía...' },
-    { icon: 'check_circle', label: '¡Segunda versión casi lista!' }
-  ] : [
-    { icon: 'edit_note', label: 'Escribiendo la letra...' },
-    { icon: 'music_note', label: 'Componiendo la melodía...' },
-    { icon: 'graphic_eq', label: 'Produciendo la canción...' },
-    { icon: 'check_circle', label: '¡Casi listo!' }
-  ];
+  // Get personalized steps
+  const steps = getPersonalizedSteps(formData.recipientName, formData.genre, formData.occasion);
+  
+  // Get genre info for display
+  const genreConfig = genres[formData.genre];
+  const genreName = genreConfig?.name || formData.genre;
+  const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Rotate fun facts
   useEffect(() => {
     const factTimer = setInterval(() => {
       setFactIndex(prev => (prev + 1) % funFacts.length);
-    }, 5000);
+    }, 6000);
     return () => clearInterval(factTimer);
   }, []);
 
-  // Progress animation
+  // Progress animation - smoother and more realistic
   useEffect(() => {
     const progressTimer = setInterval(() => {
       setProgress(prev => {
+        // Progress based on actual song status
+        if (song1Status === 'completed' && song2Status === 'completed') return 100;
+        if (song1Status === 'completed') return Math.min(prev + 0.5, 85);
+        if (song1Status === 'generating') return Math.min(prev + 0.3, 50);
         if (prev >= 95) return prev;
-        return prev + Math.random() * 2;
+        return prev + Math.random() * 1.5;
       });
-    }, 1000);
+    }, 800);
     return () => clearInterval(progressTimer);
-  }, []);
+  }, [song1Status, song2Status]);
 
   // Update step based on progress
   useEffect(() => {
-    if (progress < 25) setCurrentStep(0);
-    else if (progress < 50) setCurrentStep(1);
-    else if (progress < 75) setCurrentStep(2);
-    else setCurrentStep(3);
+    if (progress < 15) setCurrentStep(0);
+    else if (progress < 35) setCurrentStep(1);
+    else if (progress < 55) setCurrentStep(2);
+    else if (progress < 80) setCurrentStep(3);
+    else setCurrentStep(4);
   }, [progress]);
 
-  // Start generation or poll for regeneration
+  // Animate lyrics appearing line by line
+  useEffect(() => {
+    if (lyricsLines.length > 0 && visibleLines < lyricsLines.length) {
+      const timer = setTimeout(() => {
+        setVisibleLines(prev => Math.min(prev + 1, lyricsLines.length));
+      }, 400); // Reveal one line every 400ms
+      return () => clearTimeout(timer);
+    }
+  }, [lyricsLines, visibleLines]);
+
+  // Start two-song generation
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
-    async function startGeneration() {
+    async function startDualGeneration() {
       try {
-        // If this is a regeneration, we already have the songId from PreviewPage
-        if (isRegeneration && songData?.id) {
-          console.log('Regeneration mode - polling for:', songData.id);
-          setSongId(songData.id);
-          setIsPolling(true);
-          return;
-        }
-
-        // Start new generation
-        console.log('Starting song generation...');
-        const result = await generateSong(formData);
+        console.log('🎵 Starting dual song generation...');
         
-        console.log('Generate result:', result);
+        // Generate Song 1
+        setSong1Status('generating');
+        const result1 = await generateSong({
+          ...formData,
+          version: 1
+        });
         
-        const id = result?.song?.id;
-        
-        if (result.success && id) {
-          console.log('Song creation started, ID:', id);
-          setSongId(id);
-          setIsPolling(true);
+        if (result1.success && result1.song?.id) {
+          console.log('✅ Song 1 started:', result1.song.id);
+          setSong1Id(result1.song.id);
           
-          // Save sessionId for future regenerations
-          if (result.sessionId) {
-            setSongData(prev => ({
-              ...prev,
-              sessionId: result.sessionId
-            }));
+          // If we got lyrics back immediately, show them
+          if (result1.song.lyrics) {
+            const lines = result1.song.lyrics.split('\n').filter(l => l.trim());
+            setLyricsLines(lines);
+            setShowLyrics(true);
+          }
+          
+          // Start Song 2 generation immediately (parallel)
+          setSong2Status('generating');
+          const result2 = await generateSong({
+            ...formData,
+            version: 2,
+            sessionId: result1.sessionId // Link to same session
+          });
+          
+          if (result2.success && result2.song?.id) {
+            console.log('✅ Song 2 started:', result2.song.id);
+            setSong2Id(result2.song.id);
+          } else {
+            console.warn('⚠️ Song 2 failed to start, continuing with single song');
+            setSong2Status('failed');
           }
         } else {
-          throw new Error(result.error || 'No song ID returned');
+          throw new Error(result1.error || 'Failed to start song generation');
         }
       } catch (err) {
-        console.error('Generation error:', err);
+        console.error('❌ Generation error:', err);
         setError(err.message);
       }
     }
 
-    startGeneration();
+    startDualGeneration();
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
+      if (pollInterval2Ref.current) clearInterval(pollInterval2Ref.current);
     };
-  }, [formData, songData, isRegeneration]);
+  }, [formData]);
 
-  // Poll for status
+  // Poll for Song 1 status
   useEffect(() => {
-    if (!isPolling || !songId) return;
+    if (!song1Id || song1Status === 'completed' || song1Status === 'failed') return;
 
-    async function pollStatus() {
+    async function pollSong1() {
       try {
-        console.log('Polling status for:', songId);
-        const result = await checkSongStatus(songId);
-        
-        console.log('Status result:', result);
+        const result = await checkSongStatus(song1Id);
         
         if (result.success && result.song) {
-          console.log('Song status:', result.song.status);
+          // Update lyrics preview if available
+          if (result.song.lyrics && !showLyrics) {
+            const lines = result.song.lyrics.split('\n').filter(l => l.trim());
+            setLyricsLines(lines);
+            setShowLyrics(true);
+          }
           
           if (result.song.status === 'completed') {
-            setProgress(100);
-            clearInterval(pollIntervalRef.current);
-            
-            // Build completed song data
-            const completedSong = {
+            console.log('✅ Song 1 completed!');
+            setSong1Status('completed');
+            setSong1Data({
               id: result.song.id,
-              sessionId: result.song.sessionId,
-              version: result.song.version || 1,
-              previewUrl: result.song.previewUrl,
+              version: 1,
               audioUrl: result.song.audioUrl,
+              previewUrl: result.song.previewUrl,
               imageUrl: result.song.imageUrl,
-              title: `Canción para ${result.song.recipientName}`,
-              genre: result.song.genre,
-              genreName: result.song.genreName,
-              subGenreName: result.song.subGenreName,
               lyrics: result.song.lyrics,
-              paid: result.song.paid,
-              canRegenerate: result.canRegenerate
-            };
-
-            // If this is version 2, keep reference to version 1
-            if (isRegeneration && songData?.firstSong) {
-              completedSong.firstSong = songData.firstSong;
-            }
-
-            setSongData(completedSong);
-            
-            // Navigate based on whether we have 2 songs now
-            // For v2, go to comparison page to show both options
-            if (isRegeneration || result.totalVersions >= 2) {
-              setTimeout(() => navigateTo('comparison'), 1000);
-            } else {
-              setTimeout(() => navigateTo('preview'), 1000);
-            }
-            
+              title: `Versión 1 para ${formData.recipientName}`
+            });
+            clearInterval(pollInterval1Ref.current);
           } else if (result.song.status === 'failed') {
-            throw new Error('La generación de la canción falló. Por favor intenta de nuevo.');
+            setSong1Status('failed');
+            clearInterval(pollInterval1Ref.current);
           }
         }
       } catch (err) {
-        console.error('Polling error:', err);
+        console.error('Poll error:', err);
       }
     }
 
-    pollIntervalRef.current = setInterval(pollStatus, 3000);
-    pollStatus(); // Initial poll
+    pollInterval1Ref.current = setInterval(pollSong1, 3000);
+    pollSong1();
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
+      if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
     };
-  }, [isPolling, songId, navigateTo, setSongData, isRegeneration, songData]);
+  }, [song1Id, song1Status, formData.recipientName, showLyrics]);
 
+  // Poll for Song 2 status
+  useEffect(() => {
+    if (!song2Id || song2Status === 'completed' || song2Status === 'failed') return;
+
+    async function pollSong2() {
+      try {
+        const result = await checkSongStatus(song2Id);
+        
+        if (result.success && result.song) {
+          if (result.song.status === 'completed') {
+            console.log('✅ Song 2 completed!');
+            setSong2Status('completed');
+            setSong2Data({
+              id: result.song.id,
+              version: 2,
+              audioUrl: result.song.audioUrl,
+              previewUrl: result.song.previewUrl,
+              imageUrl: result.song.imageUrl,
+              lyrics: result.song.lyrics,
+              title: `Versión 2 para ${formData.recipientName}`
+            });
+            clearInterval(pollInterval2Ref.current);
+          } else if (result.song.status === 'failed') {
+            setSong2Status('failed');
+            clearInterval(pollInterval2Ref.current);
+          }
+        }
+      } catch (err) {
+        console.error('Poll error:', err);
+      }
+    }
+
+    pollInterval2Ref.current = setInterval(pollSong2, 3000);
+    pollSong2();
+
+    return () => {
+      if (pollInterval2Ref.current) clearInterval(pollInterval2Ref.current);
+    };
+  }, [song2Id, song2Status, formData.recipientName]);
+
+  // Navigate when songs are ready
+  useEffect(() => {
+    const song1Ready = song1Status === 'completed';
+    const song2Ready = song2Status === 'completed' || song2Status === 'failed';
+    
+    if (song1Ready && song2Ready) {
+      setProgress(100);
+      
+      // Build song data for next page
+      const songsArray = [song1Data];
+      if (song2Data) songsArray.push(song2Data);
+      
+      setSongData({
+        songs: songsArray,
+        song1: song1Data,
+        song2: song2Data,
+        hasTwoSongs: !!song2Data,
+        // Keep first song as primary for backwards compatibility
+        ...song1Data
+      });
+      
+      // Navigate after brief celebration moment
+      setTimeout(() => {
+        if (song2Data) {
+          navigateTo('comparison');
+        } else {
+          navigateTo('preview');
+        }
+      }, 1500);
+    }
+  }, [song1Status, song2Status, song1Data, song2Data, setSongData, navigateTo]);
+
+  // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-background-light dark:bg-background-dark flex flex-col">
-        <Header />
+      <div className="min-h-screen bg-forest flex flex-col">
+        <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
+          <h2 className="font-display text-white text-xl font-medium tracking-tight">RegalosQueCantan</h2>
+        </header>
+        
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-md">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-4xl text-red-500">error</span>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/20 flex items-center justify-center">
+              <span className="material-symbols-outlined text-4xl text-red-400">error</span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              Oops, algo salió mal
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+            <h2 className="text-2xl font-bold text-white mb-4">Oops, algo salió mal</h2>
+            <p className="text-white/60 mb-6">{error}</p>
             <button
               onClick={() => navigateTo('details')}
-              className="px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary-dark transition-colors"
+              className="px-8 py-4 bg-bougainvillea text-white rounded-full font-bold hover:scale-105 transition-transform"
             >
               Intentar de nuevo
             </button>
@@ -217,74 +334,191 @@ export default function GeneratingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background-light dark:bg-background-dark flex flex-col">
-      <Header />
-      
-      <main className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-lg text-center">
-          {/* Animated Icon */}
-          <div className="relative w-32 h-32 mx-auto mb-8">
-            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-primary to-accent opacity-20 animate-ping" />
-            <div className="absolute inset-2 rounded-full bg-gradient-to-r from-primary to-accent opacity-40 animate-pulse" />
-            <div className="absolute inset-4 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-xl">
-              <span className="material-symbols-outlined text-5xl text-primary animate-bounce">
-                {steps[currentStep].icon}
-              </span>
+    <div className="min-h-screen bg-forest text-white overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-br from-forest via-forest to-background-dark"></div>
+        {/* Floating music notes animation */}
+        <div className="absolute inset-0 overflow-hidden opacity-10">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute text-gold animate-float"
+              style={{
+                left: `${15 + i * 15}%`,
+                animationDelay: `${i * 0.5}s`,
+                animationDuration: `${3 + i * 0.5}s`
+              }}
+            >
+              <span className="material-symbols-outlined text-4xl">music_note</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-24 py-6">
+        <h2 className="font-display text-white text-xl font-medium tracking-tight">RegalosQueCantan</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-gold/80 text-xs font-bold uppercase tracking-widest">Creando magia</span>
+          <span className="material-symbols-outlined text-gold animate-pulse">auto_awesome</span>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="relative pt-24 pb-12 flex flex-col items-center justify-center min-h-screen px-6">
+        <div className="w-full max-w-2xl">
+          
+          {/* Hero Section */}
+          <div className="text-center mb-8">
+            {/* Animated Album Art Placeholder */}
+            <div className="relative w-40 h-40 mx-auto mb-6">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-gold/30 to-bougainvillea/30 animate-pulse"></div>
+              <div className="absolute inset-2 rounded-xl bg-forest flex items-center justify-center">
+                <div className="relative">
+                  <span className="material-symbols-outlined text-6xl text-gold animate-bounce">
+                    {steps[currentStep].icon}
+                  </span>
+                  {/* Ripple effect */}
+                  <div className="absolute inset-0 rounded-full bg-gold/20 animate-ping"></div>
+                </div>
+              </div>
+              {/* Song version indicators */}
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
+                <div className={`w-3 h-3 rounded-full transition-all ${song1Status === 'completed' ? 'bg-green-400' : song1Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
+                <div className={`w-3 h-3 rounded-full transition-all ${song2Status === 'completed' ? 'bg-green-400' : song2Status === 'generating' ? 'bg-gold animate-pulse' : 'bg-white/20'}`}></div>
+              </div>
+            </div>
+
+            {/* Title */}
+            <h1 className="font-display text-3xl md:text-4xl font-bold text-white mb-2">
+              Creando 2 versiones para <span className="text-gold">{formData.recipientName}</span>
+            </h1>
+            <p className="text-white/60 text-lg">
+              {genreName}{subGenreName ? ` • ${subGenreName}` : ''}
+            </p>
+          </div>
+
+          {/* Progress Section */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 mb-6">
+            {/* Current Step */}
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center">
+                <span className="material-symbols-outlined text-gold text-2xl">{steps[currentStep].icon}</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-white font-medium">{steps[currentStep].label}</p>
+                <p className="text-white/50 text-sm">{steps[currentStep].detail}</p>
+              </div>
+              <span className="text-gold font-bold">{Math.round(progress)}%</span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
+              <div 
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-gold to-bougainvillea rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+            </div>
+
+            {/* Step Indicators */}
+            <div className="flex justify-between mt-4">
+              {steps.map((step, idx) => (
+                <div key={idx} className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                    idx < currentStep ? 'bg-green-500 text-white' :
+                    idx === currentStep ? 'bg-gold text-forest scale-110' :
+                    'bg-white/10 text-white/30'
+                  }`}>
+                    {idx < currentStep ? (
+                      <span className="material-symbols-outlined text-sm">check</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-sm">{step.icon}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Version Status */}
+            <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-white/10">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${song1Status === 'completed' ? 'bg-green-400' : 'bg-gold animate-pulse'}`}></div>
+                <span className="text-sm text-white/60">Versión 1: {song1Status === 'completed' ? '✓ Lista' : 'Creando...'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${song2Status === 'completed' ? 'bg-green-400' : song2Status === 'failed' ? 'bg-red-400' : 'bg-gold animate-pulse'}`}></div>
+                <span className="text-sm text-white/60">Versión 2: {song2Status === 'completed' ? '✓ Lista' : song2Status === 'failed' ? '✗ Error' : 'Creando...'}</span>
+              </div>
             </div>
           </div>
 
-          {/* Title */}
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            {isRegeneration ? 'Creando versión 2...' : 'Creando tu canción...'}
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mb-8">
-            Para: <span className="font-semibold text-primary">{formData.recipientName}</span>
-            {isRegeneration && <span className="text-gold ml-2">• Nueva versión</span>}
-          </p>
-
-          {/* Progress Bar */}
-          <div className="relative h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-4">
-            <div 
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          {/* Progress Text */}
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-8">
-            {steps[currentStep].label}
-          </p>
-
-          {/* Steps */}
-          <div className="flex justify-center gap-2 mb-10">
-            {steps.map((step, idx) => (
-              <div
-                key={idx}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                  idx <= currentStep
-                    ? 'bg-primary text-white scale-110'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">{step.icon}</span>
+          {/* Lyrics Preview Section */}
+          {showLyrics && lyricsLines.length > 0 && (
+            <div className="bg-gradient-to-br from-gold/10 to-bougainvillea/10 backdrop-blur-sm border border-gold/20 rounded-2xl p-6 mb-6 overflow-hidden">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-gold">lyrics</span>
+                <h3 className="text-gold font-bold uppercase tracking-widest text-sm">Preview de la Letra</h3>
               </div>
-            ))}
-          </div>
+              
+              <div className="space-y-2 max-h-48 overflow-hidden relative">
+                {lyricsLines.slice(0, 8).map((line, idx) => (
+                  <p 
+                    key={idx}
+                    className={`text-white/90 italic transition-all duration-500 ${
+                      idx < visibleLines ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                    }`}
+                    style={{ transitionDelay: `${idx * 100}ms` }}
+                  >
+                    {line}
+                  </p>
+                ))}
+                {/* Fade out at bottom */}
+                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-forest/90 to-transparent pointer-events-none"></div>
+              </div>
+              
+              <p className="text-gold/60 text-xs mt-4 text-center">
+                ✨ Tu letra personalizada se está convirtiendo en música...
+              </p>
+            </div>
+          )}
 
           {/* Fun Fact */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">¿Sabías que?</p>
-            <p className="text-gray-700 dark:text-gray-300 font-medium">
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
+            <p className="text-gold/70 text-xs uppercase tracking-widest mb-2">¿Sabías que?</p>
+            <p className="text-white/80 font-medium transition-all duration-500">
               {funFacts[factIndex]}
             </p>
           </div>
 
           {/* Time Estimate */}
-          <p className="text-xs text-gray-400 mt-6">
-            ⏱️ Tiempo estimado: 1-3 minutos
+          <p className="text-center text-white/40 text-sm mt-6">
+            ⏱️ Tiempo estimado: 2-4 minutos para ambas versiones
           </p>
         </div>
       </main>
+
+      {/* Custom Animations */}
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-float {
+          animation: float 8s ease-in-out infinite;
+        }
+        .animate-shimmer {
+          animation: shimmer 2s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }
