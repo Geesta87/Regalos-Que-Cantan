@@ -141,11 +141,24 @@ export default function PreviewPage() {
     }
   };
 
+  // FIXED: Handle coupon application with GRATIS100 support
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     
     setIsLoadingCoupon(true);
     setCouponError('');
+    
+    // Check for GRATIS100 locally first (100% off = free)
+    if (couponCode.trim().toUpperCase() === 'GRATIS100') {
+      setCouponApplied({ 
+        code: 'GRATIS100', 
+        discount: 100,
+        free: true 
+      });
+      setCouponError('');
+      setIsLoadingCoupon(false);
+      return;
+    }
     
     try {
       const result = await validateCoupon(couponCode);
@@ -159,17 +172,33 @@ export default function PreviewPage() {
     }
   };
 
+  // FIXED: Handle checkout with GRATIS100 bypass
   const handleCheckout = async () => {
     setIsCheckingOut(true);
     try {
+      // Pass the coupon code (either from validation or directly typed)
+      const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
+      
       const result = await createCheckout(
         songData.id, 
         formData.email,
-        couponApplied?.code || null
+        codeToSend
       );
       
-      if (result.url) {
+      // Check if it's a FREE coupon (like GRATIS100)
+      if (result.free && result.success) {
+        // Update song data to reflect it's now paid
+        setSongData(prev => ({
+          ...prev,
+          paid: true
+        }));
+        // Navigate to success page directly (no Stripe needed)
+        navigateTo('success');
+      } else if (result.url) {
+        // Normal Stripe checkout - redirect to payment
         window.location.href = result.url;
+      } else {
+        throw new Error('No checkout URL returned');
       }
     } catch (error) {
       console.error('Checkout error:', error);
@@ -392,16 +421,25 @@ export default function PreviewPage() {
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
               <div className="text-center md:text-left">
                 <div className="flex items-center gap-3 justify-center md:justify-start">
-                  <span className="text-white/40 line-through text-xl">${originalPrice}</span>
-                  <span className="text-white text-4xl font-bold tracking-tight">
-                    ${couponApplied ? finalPrice : basePrice.toFixed(2)}
-                  </span>
-                  <span className="bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
-                    {couponApplied ? `${discount + 33}% OFF` : '33% OFF'}
-                  </span>
+                  {couponApplied?.free ? (
+                    <>
+                      <span className="text-white/40 line-through text-xl">${basePrice}</span>
+                      <span className="text-green-400 text-4xl font-bold tracking-tight">¡GRATIS!</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-white/40 line-through text-xl">${originalPrice}</span>
+                      <span className="text-white text-4xl font-bold tracking-tight">
+                        ${couponApplied ? finalPrice : basePrice.toFixed(2)}
+                      </span>
+                      <span className="bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
+                        {couponApplied ? `${discount + 33}% OFF` : '33% OFF'}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <p className="text-white/40 text-xs mt-1 uppercase tracking-widest">
-                  Pago único • Acceso de por vida
+                  {couponApplied?.free ? 'Cupón 100% de descuento aplicado' : 'Pago único • Acceso de por vida'}
                 </p>
               </div>
 
@@ -433,7 +471,7 @@ export default function PreviewPage() {
                 )}
                 {couponApplied && (
                   <p className="text-green-400 text-xs mt-2 text-center md:text-left">
-                    ¡Cupón aplicado! -{couponApplied.discount}% adicional
+                    {couponApplied.free ? '¡Cupón GRATIS aplicado!' : `¡Cupón aplicado! -${couponApplied.discount}% adicional`}
                   </p>
                 )}
               </div>
@@ -451,6 +489,11 @@ export default function PreviewPage() {
                     <>
                       <span className="material-symbols-outlined animate-spin">progress_activity</span>
                       Procesando...
+                    </>
+                  ) : couponApplied?.free ? (
+                    <>
+                      <span className="material-symbols-outlined">download</span>
+                      Descargar Canción Gratis
                     </>
                   ) : (
                     <>
