@@ -1,5 +1,6 @@
 // Genre Configuration for RegalosQueCantan
-// Display info only - Claude generates all prompts dynamically
+// Updated to match DNA Library v2.0 - 18 genres, 54 subgenres
+// Display info only - Claude generates all prompts dynamically using DNA
 
 const genres = {
   // ==========================================
@@ -11,10 +12,10 @@ const genres = {
     emoji: "🎺",
     description: "Historias épicas con acordeón y bajo sexto",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      tumbado: { name: "Tumbado" },
-      alterado: { name: "Alterado" },
-      romantico: { name: "Romántico" }
+      tradicional: { name: "Tradicional", description: "Corrido clásico estilo Los Tigres del Norte" },
+      tumbados: { name: "Tumbados", description: "Moderno con 808 y AutoTune estilo Peso Pluma" },
+      belico: { name: "Bélico", description: "Agresivo y pesado estilo Luis R Conriquez" },
+      alterados: { name: "Alterados", description: "Rápido y intenso estilo El Komander" }
     }
   },
 
@@ -23,56 +24,55 @@ const genres = {
     emoji: "🪗",
     description: "Acordeón y bajo sexto tradicional",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      moderno: { name: "Moderno" },
-      sax: { name: "Norteño-Sax" },
-      progresivo: { name: "Progresivo" }
+      tradicional: { name: "Tradicional", description: "Polka norteña clásica estilo Ramón Ayala" },
+      con_sax: { name: "Con Saxofón", description: "Norteño romántico con sax estilo Pesado" },
+      nortena_banda: { name: "Norteña-Banda", description: "Fusión con metales estilo Calibre 50" },
+      romantico: { name: "Romántico", description: "Balada norteña suave estilo Intocable" }
     }
   },
 
   banda: {
     name: "Banda Sinaloense",
     emoji: "🎺",
-    description: "Música de viento poderosa",
+    description: "Música de viento poderosa de Sinaloa",
     subGenres: {
-      romantica: { name: "Romántica" },
-      quebradita: { name: "Quebradita" },
-      ranchera: { name: "Banda Ranchera" },
-      popular: { name: "Popular/Fiesta" }
+      romantica: { name: "Romántica", description: "Balada de banda emotiva estilo Banda MS" },
+      quebradita: { name: "Quebradita", description: "Rápida y bailable estilo Banda Machos" },
+      tecnobanda: { name: "Tecnobanda", description: "Fusión con electrónico estilo Banda Cuisillos" },
+      sinaloense_clasica: { name: "Sinaloense Clásica", description: "Tradicional estilo Banda El Recodo" }
     }
   },
 
   ranchera: {
     name: "Ranchera",
     emoji: "🎻",
-    description: "Mariachi clásico mexicano",
+    description: "El alma de México con mariachi",
     subGenres: {
-      brava: { name: "Brava/Alegre" },
-      romantica: { name: "Romántica" },
-      huapango: { name: "Huapango" },
-      lenta: { name: "Lenta/Triste" }
+      lenta: { name: "Lenta", description: "Balada ranchera emotiva estilo Vicente Fernández" },
+      brava: { name: "Brava", description: "Ranchera alegre y poderosa con gritos" },
+      moderna: { name: "Moderna", description: "Contemporánea estilo Christian Nodal" }
     }
   },
 
   sierreno: {
     name: "Sierreño",
     emoji: "🏔️",
-    description: "Acústico de la sierra",
+    description: "Sonido acústico de la sierra",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      moderno: { name: "Moderno" },
-      romantico: { name: "Romántico" }
+      tradicional: { name: "Tradicional", description: "Sierreño crudo y auténtico estilo El Fantasma" },
+      moderno_sad: { name: "Moderno Sad", description: "Melancólico y emotivo estilo Grupo Firme triste" }
     }
   },
 
   mariachi: {
     name: "Mariachi",
     emoji: "🎺",
-    description: "Mariachi tradicional instrumental",
+    description: "Mariachi tradicional mexicano",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      moderno: { name: "Moderno" },
-      son: { name: "Son Jalisciense" }
+      tradicional: { name: "Tradicional", description: "Mariachi clásico estilo Mariachi Vargas" },
+      ranchero: { name: "Ranchero", description: "Mariachi con estilo ranchero emotivo" },
+      romantico: { name: "Romántico", description: "Mariachi suave y romántico estilo Luis Miguel" },
+      moderno: { name: "Moderno", description: "Mariachi contemporáneo estilo Ángela Aguilar" }
     }
   },
 
@@ -85,11 +85,12 @@ const genres = {
     emoji: "💃",
     description: "Ritmo tropical bailable",
     subGenres: {
-      sonidera: { name: "Sonidera (Mexicana)" },
-      nortena: { name: "Norteña" },
-      colombiana: { name: "Colombiana" },
-      romantica: { name: "Romántica" },
-      tejana: { name: "Tejana" }
+      sonidera: { name: "Sonidera", description: "Cumbia mexicana con teclados estilo Los Ángeles Azules" },
+      nortena: { name: "Norteña", description: "Cumbia con acordeón estilo Intocable" },
+      texana: { name: "Texana", description: "Tex-Mex cumbia estilo Selena" },
+      grupera: { name: "Grupera", description: "Cumbia romántica estilo Los Bukis" },
+      romantica: { name: "Romántica", description: "Cumbia lenta y emotiva" },
+      colombiana: { name: "Colombiana", description: "Cumbia auténtica colombiana estilo Carlos Vives" }
     }
   },
 
@@ -98,9 +99,9 @@ const genres = {
     emoji: "🎹",
     description: "Ritmo caribeño con sabor",
     subGenres: {
-      dura: { name: "Salsa Dura" },
-      romantica: { name: "Romántica" },
-      cubana: { name: "Cubana/Timba" }
+      clasica_dura: { name: "Clásica Dura", description: "Salsa brava estilo Héctor Lavoe" },
+      romantica: { name: "Romántica", description: "Salsa suave estilo Marc Anthony" },
+      urbana: { name: "Urbana", description: "Salsa moderna y comercial" }
     }
   },
 
@@ -109,9 +110,9 @@ const genres = {
     emoji: "🌴",
     description: "Romántico dominicano",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      moderna: { name: "Moderna" },
-      sensual: { name: "Sensual" }
+      tradicional: { name: "Tradicional", description: "Bachata auténtica dominicana" },
+      urbana_sensual: { name: "Urbana Sensual", description: "Moderna estilo Romeo Santos" },
+      romantica: { name: "Romántica", description: "Bachata emotiva estilo Frank Reyes" }
     }
   },
 
@@ -120,9 +121,9 @@ const genres = {
     emoji: "🥁",
     description: "Fiesta dominicana",
     subGenres: {
-      tipico: { name: "Típico" },
-      urbano: { name: "Urbano" },
-      romantico: { name: "Romántico" }
+      clasico: { name: "Clásico", description: "Merengue tradicional estilo Juan Luis Guerra" },
+      mambo_merengue: { name: "Mambo Merengue", description: "Con metales estilo Los Hermanos Rosario" },
+      urbano: { name: "Urbano", description: "Merengue moderno estilo Elvis Crespo" }
     }
   },
 
@@ -131,9 +132,9 @@ const genres = {
     emoji: "🪗",
     description: "Folclor colombiano",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      romantico: { name: "Romántico" },
-      nueva_ola: { name: "Nueva Ola" }
+      tradicional: { name: "Tradicional", description: "Vallenato auténtico estilo Diomedes Díaz" },
+      romantico: { name: "Romántico", description: "Vallenato emotivo estilo Jorge Celedón" },
+      moderno: { name: "Moderno", description: "Vallenato contemporáneo estilo Carlos Vives" }
     }
   },
 
@@ -146,10 +147,9 @@ const genres = {
     emoji: "🔥",
     description: "Urbano latino con dembow",
     subGenres: {
-      clasico: { name: "Clásico" },
-      romantico: { name: "Romántico" },
-      perreo: { name: "Perreo Intenso" },
-      chill: { name: "Chill/Sad" }
+      clasico_perreo: { name: "Clásico Perreo", description: "Reggaeton de calle estilo Daddy Yankee" },
+      romantico: { name: "Romántico", description: "Reggaeton suave estilo Ozuna" },
+      comercial_pop: { name: "Comercial Pop", description: "Radio-friendly estilo J Balvin" }
     }
   },
 
@@ -158,8 +158,9 @@ const genres = {
     emoji: "💀",
     description: "Trap en español",
     subGenres: {
-      duro: { name: "Duro/Calle" },
-      melodico: { name: "Melódico" }
+      trap_pesado: { name: "Trap Pesado", description: "Trap agresivo estilo Anuel AA" },
+      trap_melodico: { name: "Trap Melódico", description: "Trap emotivo estilo Bad Bunny" },
+      trap_latino: { name: "Trap Latino", description: "Fusión latina bilingüe" }
     }
   },
 
@@ -168,9 +169,9 @@ const genres = {
     emoji: "⭐",
     description: "Pop moderno en español",
     subGenres: {
-      bailable: { name: "Bailable" },
-      balada: { name: "Balada Pop" },
-      urbano: { name: "Pop Urbano" }
+      pop_balada: { name: "Pop Balada", description: "Balada pop emotiva estilo Luis Miguel" },
+      pop_bailable: { name: "Pop Bailable", description: "Pop dance estilo Shakira" },
+      pop_urbano: { name: "Pop Urbano", description: "Pop con influencia urbana estilo Sebastián Yatra" }
     }
   },
 
@@ -180,12 +181,12 @@ const genres = {
 
   balada: {
     name: "Balada",
-    emoji: "💝",
+    emoji: "💐",
     description: "Balada romántica clásica",
     subGenres: {
-      clasica: { name: "Clásica" },
-      pop: { name: "Pop Ballad" },
-      ranchera: { name: "Balada Ranchera" }
+      balada_clasica: { name: "Clásica", description: "Balada atemporal estilo José José" },
+      balada_pop: { name: "Pop", description: "Balada pop moderna estilo Luis Fonsi" },
+      balada_romantica: { name: "Romántica", description: "Balada íntima estilo Ricardo Montaner" }
     }
   },
 
@@ -194,8 +195,9 @@ const genres = {
     emoji: "🌙",
     description: "Romántico clásico cubano",
     subGenres: {
-      tradicional: { name: "Tradicional" },
-      moderno: { name: "Moderno" }
+      bolero_clasico: { name: "Clásico", description: "Bolero tradicional estilo Los Panchos" },
+      bolero_ranchero: { name: "Ranchero", description: "Bolero mexicano estilo Vicente Fernández" },
+      bolero_moderno: { name: "Moderno", description: "Bolero contemporáneo estilo Luis Miguel" }
     }
   },
 
@@ -208,8 +210,9 @@ const genres = {
     emoji: "🎤",
     description: "Pop mexicano de los 80s-90s",
     subGenres: {
-      romantica: { name: "Romántica" },
-      bailable: { name: "Bailable" }
+      grupera_clasica: { name: "Clásica", description: "Grupera nostálgica estilo Los Bukis" },
+      grupera_romantica: { name: "Romántica", description: "Balada grupera estilo Los Temerarios" },
+      grupera_bailable: { name: "Bailable", description: "Grupera para fiesta estilo Bronco" }
     }
   },
 
@@ -218,9 +221,9 @@ const genres = {
     emoji: "⛰️",
     description: "Tex-Mex de Texas",
     subGenres: {
-      cumbia: { name: "Cumbia Tejana" },
-      country: { name: "Tejano Country" },
-      ranchera: { name: "Ranchera Tejana" }
+      tejano_clasico: { name: "Clásico", description: "Tejano tradicional estilo Little Joe" },
+      tejano_romantico: { name: "Romántico", description: "Balada tejana estilo La Mafia" },
+      tejano_cumbia: { name: "Cumbia Tejana", description: "Cumbia Tex-Mex estilo Selena" }
     }
   }
 };
