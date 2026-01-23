@@ -205,8 +205,8 @@ export default function GeneratingPage() {
           
           if (result.song.status === 'completed') {
             console.log('✅ Song 1 completed!');
-            setSong1Status('completed');
-            setSong1Data({
+            // Set data first, then status (so the navigation effect has the data)
+            const completedSong1 = {
               id: result.song.id,
               version: 1,
               audioUrl: result.song.audioUrl,
@@ -214,7 +214,9 @@ export default function GeneratingPage() {
               imageUrl: result.song.imageUrl,
               lyrics: result.song.lyrics,
               title: `Versión 1 para ${formData.recipientName}`
-            });
+            };
+            setSong1Data(completedSong1);
+            setSong1Status('completed');
             clearInterval(pollInterval1Ref.current);
           } else if (result.song.status === 'failed') {
             setSong1Status('failed');
@@ -245,8 +247,8 @@ export default function GeneratingPage() {
         if (result.success && result.song) {
           if (result.song.status === 'completed') {
             console.log('✅ Song 2 completed!');
-            setSong2Status('completed');
-            setSong2Data({
+            // Set data first, then status (so the navigation effect has the data)
+            const completedSong2 = {
               id: result.song.id,
               version: 2,
               audioUrl: result.song.audioUrl,
@@ -254,7 +256,9 @@ export default function GeneratingPage() {
               imageUrl: result.song.imageUrl,
               lyrics: result.song.lyrics,
               title: `Versión 2 para ${formData.recipientName}`
-            });
+            };
+            setSong2Data(completedSong2);
+            setSong2Status('completed');
             clearInterval(pollInterval2Ref.current);
           } else if (result.song.status === 'failed') {
             setSong2Status('failed');
@@ -275,33 +279,43 @@ export default function GeneratingPage() {
   }, [song2Id, song2Status, formData.recipientName]);
 
   // Navigate when songs are ready
+  const hasNavigated = useRef(false);
+  
   useEffect(() => {
-    const song1Ready = song1Status === 'completed';
+    // Prevent multiple navigations
+    if (hasNavigated.current) return;
+    
+    const song1Ready = song1Status === 'completed' && song1Data;
     const song2Ready = song2Status === 'completed' || song2Status === 'failed';
     
     if (song1Ready && song2Ready) {
+      hasNavigated.current = true; // Mark as navigated immediately
       setProgress(100);
       
       // Build song data for next page
       const songsArray = [song1Data];
       if (song2Data) songsArray.push(song2Data);
       
-      setSongData({
+      const newSongData = {
         songs: songsArray,
         song1: song1Data,
         song2: song2Data,
         hasTwoSongs: !!song2Data,
         // Keep first song as primary for backwards compatibility
         ...song1Data
-      });
+      };
+      
+      console.log('🎉 Both songs ready, preparing navigation...', newSongData);
+      
+      // Update state and navigate
+      setSongData(newSongData);
       
       // Navigate after brief celebration moment
+      const targetPage = song2Data ? 'comparison' : 'preview';
+      console.log('🚀 Navigating to:', targetPage);
+      
       setTimeout(() => {
-        if (song2Data) {
-          navigateTo('comparison');
-        } else {
-          navigateTo('preview');
-        }
+        navigateTo(targetPage);
       }, 1500);
     }
   }, [song1Status, song2Status, song1Data, song2Data, setSongData, navigateTo]);
