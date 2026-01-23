@@ -53,30 +53,40 @@ export default function ComparisonPage() {
   useEffect(() => {
     async function loadSongs() {
       try {
+        console.log('📦 ComparisonPage received songData:', songData);
+        
         const loadedSongs = [];
         
         // Check if we have songs array (new format)
-        if (songData?.songs && Array.isArray(songData.songs)) {
+        if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
+          console.log('✅ Found songs array:', songData.songs);
           loadedSongs.push(...songData.songs);
-        } else {
-          // Fallback to old format
-          if (songData?.song1) {
-            loadedSongs.push({ ...songData.song1, version: 1 });
-          }
+        } 
+        // Check for song1/song2 format
+        else if (songData?.song1) {
+          console.log('✅ Found song1/song2 format');
+          loadedSongs.push({ ...songData.song1, version: 1 });
           if (songData?.song2) {
             loadedSongs.push({ ...songData.song2, version: 2 });
           }
-          // If still nothing, use current songData as single song
-          if (loadedSongs.length === 0 && songData?.id) {
-            loadedSongs.push({
-              id: songData.id,
-              version: 1,
-              audioUrl: songData.audioUrl,
-              previewUrl: songData.previewUrl,
-              imageUrl: songData.imageUrl,
-              lyrics: songData.lyrics
-            });
-          }
+        }
+        // Fallback - use songData itself as a single song
+        else if (songData?.id) {
+          console.log('✅ Using songData as single song');
+          loadedSongs.push({
+            id: songData.id,
+            version: 1,
+            audioUrl: songData.audioUrl,
+            previewUrl: songData.previewUrl,
+            imageUrl: songData.imageUrl,
+            lyrics: songData.lyrics
+          });
+        }
+
+        console.log('📋 Loaded songs:', loadedSongs);
+        
+        if (loadedSongs.length === 0) {
+          console.error('❌ No songs found in songData!');
         }
 
         setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
@@ -87,7 +97,12 @@ export default function ComparisonPage() {
       }
     }
 
-    loadSongs();
+    if (songData) {
+      loadSongs();
+    } else {
+      console.warn('⚠️ No songData available');
+      setLoading(false);
+    }
   }, [songData]);
 
   // Audio playback handlers
@@ -230,6 +245,25 @@ export default function ComparisonPage() {
         <div className="text-center">
           <span className="material-symbols-outlined text-5xl text-gold animate-spin">progress_activity</span>
           <p className="mt-4 text-white/60">Cargando tus canciones...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback if no songs loaded
+  if (!songs || songs.length === 0) {
+    return (
+      <div className="bg-forest text-white min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <span className="material-symbols-outlined text-5xl text-red-400 mb-4">error</span>
+          <h2 className="text-2xl font-bold mb-4">No se encontraron canciones</h2>
+          <p className="text-white/60 mb-6">Hubo un problema al cargar tus canciones. Por favor intenta de nuevo.</p>
+          <button
+            onClick={() => navigateTo('details')}
+            className="px-8 py-4 bg-bougainvillea text-white rounded-full font-bold hover:scale-105 transition-transform"
+          >
+            Volver a intentar
+          </button>
         </div>
       </div>
     );
