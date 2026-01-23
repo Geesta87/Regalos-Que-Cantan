@@ -1,0 +1,7 @@
+# SPA routes that need to go to index.html
+/admin    /index.html   200
+/admin/*  /index.html   200
+/preview/*  /index.html   200
+
+# Catch-all for SPA - Netlify serves static files BEFORE applying this
+/*    /index.html   200
