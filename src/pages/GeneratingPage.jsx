@@ -155,7 +155,13 @@ export default function GeneratingPage() {
             setShowLyrics(true);
           }
           
-          // Start Song 2 generation immediately (parallel)
+          // ========================================
+          // DELAY before Song 2 to avoid rate limit
+          // ========================================
+          console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Start Song 2 generation after delay
           setSong2Status('generating');
           const result2 = await generateSong({
             ...formData,
@@ -191,164 +197,116 @@ export default function GeneratingPage() {
   useEffect(() => {
     if (!song1Id || song1Status === 'completed' || song1Status === 'failed') return;
 
-    async function pollSong1() {
+    const pollStatus = async () => {
       try {
         const result = await checkSongStatus(song1Id);
+        console.log('📊 Song 1 status:', result.status);
         
-        if (result.success && result.song) {
-          // Update lyrics preview if available
-          if (result.song.lyrics && !showLyrics) {
+        if (result.status === 'completed') {
+          setSong1Status('completed');
+          setSong1Data(result.song);
+          
+          // Update lyrics if we have them
+          if (result.song.lyrics) {
             const lines = result.song.lyrics.split('\n').filter(l => l.trim());
             setLyricsLines(lines);
             setShowLyrics(true);
           }
-          
-          if (result.song.status === 'completed') {
-            console.log('✅ Song 1 completed!');
-            // Set data first, then status (so the navigation effect has the data)
-            const completedSong1 = {
-              id: result.song.id,
-              version: 1,
-              audioUrl: result.song.audioUrl,
-              previewUrl: result.song.previewUrl,
-              imageUrl: result.song.imageUrl,
-              lyrics: result.song.lyrics,
-              title: `Versión 1 para ${formData.recipientName}`
-            };
-            setSong1Data(completedSong1);
-            setSong1Status('completed');
-            clearInterval(pollInterval1Ref.current);
-          } else if (result.song.status === 'failed') {
-            setSong1Status('failed');
-            clearInterval(pollInterval1Ref.current);
-          }
+        } else if (result.status === 'failed') {
+          setSong1Status('failed');
         }
       } catch (err) {
-        console.error('Poll error:', err);
+        console.error('Poll error (song 1):', err);
       }
-    }
+    };
 
-    pollInterval1Ref.current = setInterval(pollSong1, 3000);
-    pollSong1();
+    // Poll every 3 seconds
+    pollStatus();
+    pollInterval1Ref.current = setInterval(pollStatus, 3000);
 
     return () => {
       if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
     };
-  }, [song1Id, song1Status, formData.recipientName, showLyrics]);
+  }, [song1Id, song1Status]);
 
   // Poll for Song 2 status
   useEffect(() => {
     if (!song2Id || song2Status === 'completed' || song2Status === 'failed') return;
 
-    async function pollSong2() {
+    const pollStatus = async () => {
       try {
         const result = await checkSongStatus(song2Id);
+        console.log('📊 Song 2 status:', result.status);
         
-        if (result.success && result.song) {
-          if (result.song.status === 'completed') {
-            console.log('✅ Song 2 completed!');
-            // Set data first, then status (so the navigation effect has the data)
-            const completedSong2 = {
-              id: result.song.id,
-              version: 2,
-              audioUrl: result.song.audioUrl,
-              previewUrl: result.song.previewUrl,
-              imageUrl: result.song.imageUrl,
-              lyrics: result.song.lyrics,
-              title: `Versión 2 para ${formData.recipientName}`
-            };
-            setSong2Data(completedSong2);
-            setSong2Status('completed');
-            clearInterval(pollInterval2Ref.current);
-          } else if (result.song.status === 'failed') {
-            setSong2Status('failed');
-            clearInterval(pollInterval2Ref.current);
-          }
+        if (result.status === 'completed') {
+          setSong2Status('completed');
+          setSong2Data(result.song);
+        } else if (result.status === 'failed') {
+          setSong2Status('failed');
         }
       } catch (err) {
-        console.error('Poll error:', err);
+        console.error('Poll error (song 2):', err);
       }
-    }
+    };
 
-    pollInterval2Ref.current = setInterval(pollSong2, 3000);
-    pollSong2();
+    // Poll every 3 seconds
+    pollStatus();
+    pollInterval2Ref.current = setInterval(pollStatus, 3000);
 
     return () => {
       if (pollInterval2Ref.current) clearInterval(pollInterval2Ref.current);
     };
-  }, [song2Id, song2Status, formData.recipientName]);
+  }, [song2Id, song2Status]);
 
-  // Navigate when songs are ready
-  const hasNavigated = useRef(false);
-  
+  // Navigate when both songs are ready (or one if the other failed)
   useEffect(() => {
-    // Prevent multiple navigations
-    if (hasNavigated.current) return;
-    
-    const song1Ready = song1Status === 'completed' && song1Data;
-    const song2Ready = song2Status === 'completed' || song2Status === 'failed';
-    
-    if (song1Ready && song2Ready) {
-      hasNavigated.current = true; // Mark as navigated immediately
-      setProgress(100);
-      
-      // Build song data for next page
-      const songsArray = [song1Data];
-      if (song2Data) songsArray.push(song2Data);
-      
-      const newSongData = {
-        songs: songsArray,
+    // Both completed - go to comparison
+    if (song1Status === 'completed' && song2Status === 'completed') {
+      console.log('🎉 Both songs ready! Navigating to comparison...');
+      setSongData({
         song1: song1Data,
         song2: song2Data,
-        hasTwoSongs: !!song2Data,
-        // Keep first song as primary for backwards compatibility
-        ...song1Data
-      };
-      
-      console.log('🎉 Both songs ready, preparing navigation...', newSongData);
-      
-      // Update state and navigate
-      setSongData(newSongData);
-      
-      // Navigate after brief celebration moment
-      const targetPage = song2Data ? 'comparison' : 'preview';
-      console.log('🚀 Navigating to:', targetPage);
-      
-      setTimeout(() => {
-        navigateTo(targetPage);
-      }, 1500);
+        sessionId: formData.sessionId
+      });
+      setTimeout(() => navigateTo('comparison'), 1500);
     }
-  }, [song1Status, song2Status, song1Data, song2Data, setSongData, navigateTo]);
+    // Song 1 completed, Song 2 failed - go to single preview
+    else if (song1Status === 'completed' && song2Status === 'failed') {
+      console.log('⚠️ Only Song 1 ready, Song 2 failed. Going to preview...');
+      setSongData({
+        song1: song1Data,
+        song2: null,
+        sessionId: formData.sessionId
+      });
+      setTimeout(() => navigateTo('comparison'), 1500);
+    }
+    // Both failed - show error
+    else if (song1Status === 'failed' && song2Status === 'failed') {
+      setError('No pudimos generar tu canción. Por favor intenta de nuevo.');
+    }
+  }, [song1Status, song2Status, song1Data, song2Data, navigateTo, setSongData, formData.sessionId]);
 
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-forest flex flex-col">
-        <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">RegalosQueCantan</h2>
-        </header>
-        
-        <main className="flex-1 flex items-center justify-center p-6">
-          <div className="text-center max-w-md">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/20 flex items-center justify-center">
-              <span className="material-symbols-outlined text-4xl text-red-400">error</span>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-4">Oops, algo salió mal</h2>
-            <p className="text-white/60 mb-6">{error}</p>
-            <button
-              onClick={() => navigateTo('details')}
-              className="px-8 py-4 bg-bougainvillea text-white rounded-full font-bold hover:scale-105 transition-transform"
-            >
-              Intentar de nuevo
-            </button>
-          </div>
-        </main>
+      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+        <div className="bg-white/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
+          <span className="material-symbols-outlined text-red-400 text-5xl mb-4">error</span>
+          <h2 className="text-white text-2xl font-bold mb-4">Algo salió mal</h2>
+          <p className="text-white/70 mb-6">{error}</p>
+          <button
+            onClick={() => navigateTo('details')}
+            className="px-8 py-3 bg-gold text-forest font-bold rounded-full hover:bg-gold/90 transition"
+          >
+            Intentar de nuevo
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-forest text-white overflow-hidden">
+    <div className="bg-forest min-h-screen text-white">
       {/* Animated Background */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-forest via-forest to-background-dark"></div>
