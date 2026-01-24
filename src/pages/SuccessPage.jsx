@@ -61,12 +61,59 @@ export default function SuccessPage() {
   const [showConfetti, setShowConfetti] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const audioRef = useRef(null);
 
+  // =====================================================
+  // FIX: Handle multiple song structures
+  // =====================================================
+  const getSongsArray = () => {
+    // If we have a songs array (from ComparisonPage)
+    if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
+      // Filter to only selected songs if selectedSongIds exists
+      if (songData.selectedSongIds && songData.selectedSongIds.length > 0) {
+        return songData.songs.filter(s => songData.selectedSongIds.includes(s.id));
+      }
+      return songData.songs;
+    }
+    
+    // If we have song1/song2 format
+    if (songData?.song1) {
+      const songs = [songData.song1];
+      if (songData.song2) songs.push(songData.song2);
+      // Filter to selected if applicable
+      if (songData.selectedSongIds && songData.selectedSongIds.length > 0) {
+        return songs.filter(s => songData.selectedSongIds.includes(s.id));
+      }
+      return songs;
+    }
+    
+    // Single song format (old format)
+    if (songData?.id) {
+      return [{
+        id: songData.id,
+        audioUrl: songData.audioUrl,
+        previewUrl: songData.previewUrl,
+        imageUrl: songData.imageUrl,
+        lyrics: songData.lyrics
+      }];
+    }
+    
+    return [];
+  };
+
+  const songs = getSongsArray();
+  const currentSong = songs[currentSongIndex] || {};
+  const hasMultipleSongs = songs.length > 1;
+
+  console.log('🎵 SuccessPage - songData:', songData);
+  console.log('🎵 SuccessPage - songs array:', songs);
+  console.log('🎵 SuccessPage - currentSong:', currentSong);
+
   // Get genre display name
-  const genreConfig = genres[formData.genre];
-  const genreName = genreConfig?.name || formData.genre;
-  const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
+  const genreConfig = genres?.[formData?.genre];
+  const genreName = genreConfig?.name || formData?.genre || 'Género';
+  const subGenreName = formData?.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Hide confetti after animation
   useEffect(() => {
@@ -95,7 +142,7 @@ export default function SuccessPage() {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [songData?.audioUrl]);
+  }, [currentSong?.audioUrl]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -125,18 +172,41 @@ export default function SuccessPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Switch between songs (for multi-song purchases)
+  const switchSong = (index) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setCurrentSongIndex(index);
+  };
+
   // Force download via edge function
-  const handleDownload = async () => {
+  const handleDownload = async (songIdToDownload = null) => {
+    const downloadSongId = songIdToDownload || currentSong?.id;
+    
+    if (!downloadSongId) {
+      console.error('No song ID available for download');
+      setDownloadError('No se encontró la canción para descargar.');
+      return;
+    }
+
     setIsDownloading(true);
     setDownloadError('');
 
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
-      const downloadUrl = `${SUPABASE_URL}/functions/v1/download-song?songId=${songData.id}`;
+      const downloadUrl = `${SUPABASE_URL}/functions/v1/download-song?songId=${downloadSongId}`;
+      
+      console.log('📥 Downloading from:', downloadUrl);
       
       const response = await fetch(downloadUrl);
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Download response error:', errorText);
         throw new Error('Download failed');
       }
 
@@ -144,7 +214,7 @@ export default function SuccessPage() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       
-      const cleanName = (formData.recipientName || 'cancion')
+      const cleanName = (formData?.recipientName || 'cancion')
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -152,9 +222,11 @@ export default function SuccessPage() {
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 
+      const versionSuffix = hasMultipleSongs ? `-v${currentSongIndex + 1}` : '';
+
       const link = document.createElement('a');
       link.href = url;
-      link.download = `cancion-para-${cleanName}.mp3`;
+      link.download = `cancion-para-${cleanName}${versionSuffix}.mp3`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -165,192 +237,205 @@ export default function SuccessPage() {
       setDownloadError('Error al descargar. Intenta de nuevo.');
       
       // Fallback: try direct download
-      if (songData?.audioUrl) {
-        window.open(songData.audioUrl, '_blank');
+      const audioUrl = currentSong?.audioUrl || currentSong?.previewUrl;
+      if (audioUrl) {
+        window.open(audioUrl, '_blank');
       }
     } finally {
       setIsDownloading(false);
     }
   };
 
-  // Share functions
+  // Download all songs (for bundle purchases)
+  const handleDownloadAll = async () => {
+    for (let i = 0; i < songs.length; i++) {
+      setCurrentSongIndex(i);
+      await handleDownload(songs[i].id);
+      // Small delay between downloads
+      if (i < songs.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  };
+
   const handleShareWhatsApp = () => {
-    const text = `🎵 ¡Escucha esta canción personalizada que hice para ${formData.recipientName}! Creada con RegalosQueCantan.com`;
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    const shareUrl = `${window.location.origin}/preview?song_id=${currentSong?.id}`;
+    const text = `🎵 ¡Escucha esta canción especial para ${formData?.recipientName}! ${shareUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleShareFacebook = () => {
-    const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent('https://regalosquecantan.com')}`;
-    window.open(url, '_blank');
+    const shareUrl = `${window.location.origin}/preview?song_id=${currentSong?.id}`;
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
   };
 
   const handleCopyLink = async () => {
+    const shareUrl = `${window.location.origin}/preview?song_id=${currentSong?.id}`;
     try {
-      await navigator.clipboard.writeText(songData?.audioUrl || 'https://regalosquecantan.com');
-      alert('¡Enlace copiado!');
-    } catch {
-      alert('No se pudo copiar el enlace');
+      await navigator.clipboard.writeText(shareUrl);
+      alert('¡Link copiado!');
+    } catch (err) {
+      console.error('Copy failed:', err);
     }
   };
 
   const handleCreateAnother = () => {
-    clearSession();
+    if (clearSession) clearSession();
     navigateTo('landing');
   };
 
+  // Get the audio URL for current song
+  const audioUrl = currentSong?.audioUrl || currentSong?.previewUrl;
+  const imageUrl = currentSong?.imageUrl;
+
+  // Error state if no songs
+  if (songs.length === 0) {
+    return (
+      <div className="min-h-screen bg-forest flex items-center justify-center">
+        <div className="text-center text-white p-8">
+          <span className="material-symbols-outlined text-6xl text-red-400 mb-4">error</span>
+          <h2 className="text-2xl font-bold mb-4">No se encontró la canción</h2>
+          <p className="text-white/60 mb-6">Hubo un problema al cargar tu canción.</p>
+          <button
+            onClick={() => navigateTo('landing')}
+            className="px-8 py-4 bg-bougainvillea text-white rounded-full font-bold"
+          >
+            Volver al inicio
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
-      {/* Confetti Animation */}
+    <div className="min-h-screen bg-forest text-white flex flex-col">
+      {/* Confetti */}
       {showConfetti && <Confetti />}
 
       {/* Hidden Audio Element */}
-      {songData?.audioUrl && (
-        <audio ref={audioRef} src={songData.audioUrl} preload="metadata" />
-      )}
-
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-sm">
-        <div 
-          className="flex items-center gap-2 cursor-pointer"
-          onClick={() => navigateTo('landing')}
-        >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
-            RegalosQueCantan
-          </h2>
-        </div>
-        <div className="hidden md:block">
-          <span className="text-[10px] uppercase tracking-widest text-green-400 font-bold bg-green-500/10 px-4 py-2 rounded-full border border-green-500/30 flex items-center gap-2">
-            <span className="material-symbols-outlined text-sm">check_circle</span>
-            Pago Confirmado
-          </span>
-        </div>
-      </header>
+      <audio 
+        ref={audioRef} 
+        src={audioUrl}
+        preload="metadata"
+      />
 
       {/* Main Content */}
-      <main className="relative pt-28 pb-20 flex flex-col items-center justify-center overflow-hidden min-h-screen">
-        {/* Background */}
-        <div className="absolute inset-0 w-full h-full -z-10">
-          <div className="absolute inset-0 bg-gradient-to-b from-forest via-forest to-background-dark"></div>
-          <div className="absolute inset-0 opacity-5" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 0 L100 50 L50 100 L0 50 Z M50 20 L80 50 L50 80 L20 50 Z' fill='%23fff' fill-rule='evenodd'/%3E%3C/svg%3E")`,
-            backgroundSize: '80px 80px'
-          }}></div>
-        </div>
-
-        <div className="relative z-20 container mx-auto px-6 max-w-3xl">
-          {/* Success Message */}
+      <main className="flex-1 flex items-center justify-center relative px-8 py-12">
+        <div className="w-full max-w-lg">
+          
+          {/* Success Header */}
           <div className="text-center mb-10">
-            <div className="text-7xl mb-6 animate-bounce">🎉</div>
-            <h1 className="font-display text-white text-4xl md:text-5xl font-bold mb-4 tracking-tight">
+            <div className="text-6xl mb-4">🎉</div>
+            <h1 className="text-4xl font-bold text-white mb-3">
               ¡Tu canción está lista!
             </h1>
-            <p className="text-gold/90 text-lg font-light max-w-md mx-auto">
-              Ya la enviamos a{' '}
-              <span className="font-medium text-white underline underline-offset-4 decoration-gold/40">
-                {formData.email}
-              </span>
+            <p className="text-white/60">
+              Ya la enviamos a <span className="text-gold">{formData?.email}</span>
             </p>
           </div>
 
-          {/* Audio Player Card */}
-          <div className="relative group mb-10">
-            <div className="absolute -inset-1 bg-gradient-to-r from-gold/30 via-bougainvillea/20 to-gold/30 rounded-[2.5rem] blur-xl opacity-50"></div>
-            <div className="relative bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl p-6 md:p-8">
+          {/* Song Tabs (for multiple songs) */}
+          {hasMultipleSongs && (
+            <div className="flex justify-center gap-2 mb-6">
+              {songs.map((song, index) => (
+                <button
+                  key={song.id}
+                  onClick={() => switchSong(index)}
+                  className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                    currentSongIndex === index
+                      ? 'bg-gold text-forest'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Versión {index + 1}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Player Card */}
+          <div className="bg-white/[0.03] backdrop-blur-sm rounded-2xl p-6 mb-8 border border-white/10">
+            <div className="flex flex-col md:flex-row items-center gap-6">
               
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                {/* Album Art */}
-                <div className="w-48 h-48 md:w-56 md:h-56 shrink-0 relative group">
-                  {songData?.imageUrl ? (
-                    <img 
-                      src={songData.imageUrl} 
-                      alt="Album Art"
-                      className="w-full h-full object-cover rounded-xl shadow-lg border-2 border-white/10"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <div 
-                    className={`w-full h-full bg-gradient-to-br from-gold/30 to-bougainvillea/30 rounded-xl items-center justify-center border-2 border-white/10 ${songData?.imageUrl ? 'hidden' : 'flex'}`}
-                  >
-                    <span className="material-symbols-outlined text-7xl text-white/40">music_note</span>
+              {/* Album Art */}
+              <div className="relative w-40 h-40 rounded-xl overflow-hidden flex-shrink-0 group cursor-pointer" onClick={togglePlay}>
+                {imageUrl ? (
+                  <img src={imageUrl} alt="Album art" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-gold/20 to-bougainvillea/20 flex items-center justify-center">
+                    <span className="text-6xl">🎵</span>
                   </div>
-                  
-                  {/* Play overlay on hover */}
-                  <button 
-                    onClick={togglePlay}
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center"
-                  >
-                    <span className="material-symbols-outlined text-5xl text-white" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      {isPlaying ? 'pause_circle' : 'play_circle'}
-                    </span>
-                  </button>
+                )}
+                <button 
+                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined text-5xl text-white" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {isPlaying ? 'pause_circle' : 'play_circle'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Player Info & Controls */}
+              <div className="flex-1 w-full text-center md:text-left">
+                <div className="mb-4">
+                  <h3 className="text-2xl font-bold text-white mb-1">
+                    Canción para {formData?.recipientName}
+                  </h3>
+                  <p className="text-gold uppercase tracking-[0.2em] text-xs font-bold">
+                    {genreName}{subGenreName ? ` • ${subGenreName}` : ''} 
+                  </p>
+                  <p className="text-white/40 text-xs mt-1">
+                    De: {formData?.senderName}
+                  </p>
                 </div>
 
-                {/* Player Info & Controls */}
-                <div className="flex-1 w-full text-center md:text-left">
-                  <div className="mb-4">
-                    <h3 className="text-2xl font-bold text-white mb-1">
-                      Canción para {formData.recipientName}
-                    </h3>
-                    <p className="text-gold uppercase tracking-[0.2em] text-xs font-bold">
-                      {genreName}{subGenreName ? ` • ${subGenreName}` : ''} 
-                    </p>
-                    <p className="text-white/40 text-xs mt-1">
-                      De: {formData.senderName}
-                    </p>
+                {/* Progress Bar */}
+                <div 
+                  className="flex items-center gap-3 h-12 mb-4 cursor-pointer group"
+                  onClick={handleSeek}
+                >
+                  <span className="text-xs text-white/60 font-mono w-10">{formatTime(currentTime)}</span>
+                  <div className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden">
+                    <div 
+                      className="absolute left-0 top-0 h-full bg-gradient-to-r from-gold to-bougainvillea rounded-full transition-all"
+                      style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                    ></div>
+                    <div 
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ left: `calc(${duration ? (currentTime / duration) * 100 : 0}% - 8px)` }}
+                    ></div>
                   </div>
+                  <span className="text-xs text-white/60 font-mono w-10">{formatTime(duration)}</span>
+                </div>
 
-                  {/* Progress Bar */}
-                  <div 
-                    className="flex items-center gap-3 h-12 mb-4 cursor-pointer group"
-                    onClick={handleSeek}
+                {/* Controls */}
+                <div className="flex items-center justify-center md:justify-start gap-4">
+                  <button 
+                    onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; }}
+                    className="material-symbols-outlined text-white/40 hover:text-white text-2xl transition-colors"
                   >
-                    <span className="text-xs text-white/60 font-mono w-10">{formatTime(currentTime)}</span>
-                    <div className="flex-1 h-2 bg-white/10 rounded-full relative overflow-hidden">
-                      <div 
-                        className="absolute left-0 top-0 h-full bg-gradient-to-r from-gold to-bougainvillea rounded-full transition-all"
-                        style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                      ></div>
-                      <div 
-                        className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ left: `calc(${duration ? (currentTime / duration) * 100 : 0}% - 8px)` }}
-                      ></div>
-                    </div>
-                    <span className="text-xs text-white/60 font-mono w-10">{formatTime(duration)}</span>
-                  </div>
-
-                  {/* Controls */}
-                  <div className="flex items-center justify-center md:justify-start gap-4">
-                    <button 
-                      onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; }}
-                      className="material-symbols-outlined text-white/40 hover:text-white text-2xl transition-colors"
-                    >
-                      replay
-                    </button>
-                    <button 
-                      onClick={togglePlay}
-                      className="w-14 h-14 bg-white text-forest rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
-                    >
-                      <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        {isPlaying ? 'pause' : 'play_arrow'}
-                      </span>
-                    </button>
-                    <button className="material-symbols-outlined text-white/40 hover:text-white text-2xl transition-colors">
-                      volume_up
-                    </button>
-                  </div>
+                    replay
+                  </button>
+                  <button 
+                    onClick={togglePlay}
+                    className="w-14 h-14 bg-white text-forest rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+                  >
+                    <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {isPlaying ? 'pause' : 'play_arrow'}
+                    </span>
+                  </button>
+                  <button className="material-symbols-outlined text-white/40 hover:text-white text-2xl transition-colors">
+                    volume_up
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Download Button */}
+          {/* Download Button(s) */}
           <div className="text-center mb-8">
             <button
-              onClick={handleDownload}
+              onClick={() => handleDownload()}
               disabled={isDownloading}
               className="group relative inline-flex items-center justify-center overflow-hidden rounded-full h-20 px-16 bg-bougainvillea text-white text-xl font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_30px_rgba(225,29,116,0.5)] disabled:opacity-70"
             >
@@ -363,12 +448,23 @@ export default function SuccessPage() {
                 ) : (
                   <>
                     <span className="material-symbols-outlined">download</span>
-                    Descargar MP3
+                    Descargar MP3 {hasMultipleSongs ? `(V${currentSongIndex + 1})` : ''}
                   </>
                 )}
               </span>
               <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
             </button>
+
+            {/* Download All Button (for bundle) */}
+            {hasMultipleSongs && (
+              <button
+                onClick={handleDownloadAll}
+                disabled={isDownloading}
+                className="mt-4 text-gold hover:text-white transition-colors text-sm font-bold"
+              >
+                📥 Descargar todas las versiones
+              </button>
+            )}
             
             {downloadError && (
               <p className="text-red-400 text-sm mt-3">{downloadError}</p>
@@ -447,7 +543,7 @@ export default function SuccessPage() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2024 • Hecho con alma en México.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2025 • Hecho con alma en México.</p>
         </div>
       </footer>
     </div>
