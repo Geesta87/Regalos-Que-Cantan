@@ -7,18 +7,6 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 // Create Supabase client
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Genre style mappings for Suno/Kie.ai
-export const genreStyles = {
-  corrido: "Mexican corrido, accordion, bajo sexto, brass, epic storytelling, norteño",
-  norteno: "Norteño music, accordion, polka rhythm, traditional Mexican, bajo sexto",
-  banda: "Mexican brass band, tubas, trumpets, tambora, powerful vocals, sinaloense",
-  cumbia: "tropical cumbia, accordion, congas, danceable Latin beat, Colombian rhythm",
-  ranchera: "mariachi, violins, trumpets, passionate vocals, traditional Mexican ranchera",
-  balada: "romantic Spanish ballad, piano, strings, emotional vocals, Latin pop",
-  reggaeton: "urban Latin, dembow beat, modern production, reggaetón perreo",
-  salsa: "Caribbean salsa, piano montuno, congas, timbales, Cuban rhythm"
-};
-
 // Occasion prompts for Claude lyrics generation
 export const occasionPrompts = {
   cumpleanos: "una canción de cumpleaños alegre y emotiva",
@@ -35,6 +23,26 @@ export const occasionPrompts = {
   otro: "una canción personalizada y emotiva"
 };
 
+// Relationship context descriptions
+export const relationshipContexts = {
+  pareja: "mi pareja romántica, el amor de mi vida",
+  esposo: "mi esposo, mi compañero de vida",
+  esposa: "mi esposa, mi compañera de vida",
+  novio: "mi novio, mi amor",
+  novia: "mi novia, mi amor",
+  madre: "mi madre, quien me dio la vida",
+  padre: "mi padre, mi héroe",
+  hijo: "mi hijo, mi orgullo",
+  hija: "mi hija, mi princesa",
+  hermano: "mi hermano, mi mejor amigo",
+  hermana: "mi hermana, mi confidente",
+  abuelo: "mi abuelo, mi sabiduría",
+  abuela: "mi abuela, mi ternura",
+  amigo: "mi amigo, mi hermano del alma",
+  amiga: "mi amiga, mi hermana del alma",
+  otro: "alguien muy especial para mí"
+};
+
 /**
  * Generate a personalized song
  * @param {Object} formData - The form data with all song details
@@ -44,29 +52,54 @@ export async function generateSong(formData) {
   const url = `${SUPABASE_URL}/functions/v1/generate-song`;
   
   console.log('=== generateSong API CALL ===');
-  console.log('URL:', url);
-  console.log('SUPABASE_URL:', SUPABASE_URL);
-  console.log('Has ANON_KEY:', !!SUPABASE_ANON_KEY);
+  console.log('FormData received:', formData);
   
-  // Use subGenrePrompt if available, otherwise fall back to genreStyle
-  const stylePrompt = formData.subGenrePrompt || genreStyles[formData.genre];
-  
+  // Build the complete payload with all required fields
   const payload = {
-    genre: formData.genre,
-    genreStyle: stylePrompt,
+    // Genre info (CRITICAL for DNA system)
+    genre: formData.genre || '',
+    genreName: formData.genreName || '',
     subGenre: formData.subGenre || '',
-    occasion: formData.occasion,
-    occasionPrompt: occasionPrompts[formData.occasion],
-    recipientName: formData.recipientName,
-    senderName: formData.senderName,
-    relationship: formData.relationship,
-    details: formData.details,
-    email: formData.email,
+    subGenreName: formData.subGenreName || '',
+    
+    // Artist inspiration
+    artistInspiration: formData.artistInspiration || '',
+    
+    // Occasion
+    occasion: formData.occasion || '',
+    occasionPrompt: formData.occasionPrompt || occasionPrompts[formData.occasion] || '',
+    customOccasion: formData.customOccasion || '',
+    
+    // Emotional tone (optional)
+    emotionalTone: formData.emotionalTone || '',
+    
+    // Names
+    recipientName: formData.recipientName || '',
+    senderName: formData.senderName || '',
+    
+    // Relationship
+    relationship: formData.relationship || '',
+    relationshipContext: formData.relationshipContext || relationshipContexts[formData.relationship] || '',
+    customRelationship: formData.customRelationship || '',
+    
+    // Details
+    details: formData.details || '',
+    
+    // Contact
+    email: formData.email || '',
+    
+    // Voice
     voiceType: formData.voiceType || 'male',
-    artistInspiration: formData.artistInspiration || ''
+    
+    // Session (for dual song generation)
+    sessionId: formData.sessionId || null,
+    version: formData.version || 1
   };
   
-  console.log('Payload:', payload);
+  console.log('Payload being sent:', payload);
+  console.log('Genre:', payload.genre);
+  console.log('SubGenre:', payload.subGenre);
+  console.log('Artist:', payload.artistInspiration);
   
   const response = await fetch(url, {
     method: 'POST',
@@ -78,7 +111,6 @@ export async function generateSong(formData) {
   });
 
   console.log('Response status:', response.status);
-  console.log('Response ok:', response.ok);
 
   if (!response.ok) {
     const errorText = await response.text();
