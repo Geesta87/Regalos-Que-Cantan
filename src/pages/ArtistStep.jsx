@@ -509,7 +509,7 @@ export default function ArtistStep() {
   };
 
   const handleBack = () => {
-    navigateTo('subgenre');
+    navigateTo('genre');
   };
 
   return (

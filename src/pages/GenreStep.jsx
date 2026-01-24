@@ -32,7 +32,10 @@ const genreIcons = {
   bolero: 'nights_stay',
   grupera: 'groups',
   tejano: 'music_note',
-  vallenato: 'library_music'
+  vallenato: 'library_music',
+  duranguense: 'queue_music',
+  merengue: 'sports_handball',
+  rock_espanol: 'electric_bolt'
 };
 
 // Primary genres to show first
@@ -64,10 +67,30 @@ export default function GenreStep() {
 
   const handleContinue = () => {
     if (selectedGenre) {
+      // Get the genre config to extract display names
+      const genreConfig = genres[selectedGenre];
+      
+      // Save genre ID and NAME
       updateFormData('genre', selectedGenre);
-      if (selectedSubGenre) {
+      updateFormData('genreName', genreConfig?.name || selectedGenre);
+      
+      // Save subGenre ID and NAME if selected
+      if (selectedSubGenre && genreConfig?.subGenres?.[selectedSubGenre]) {
         updateFormData('subGenre', selectedSubGenre);
+        updateFormData('subGenreName', genreConfig.subGenres[selectedSubGenre].name || selectedSubGenre);
+      } else {
+        // Clear subGenre if not selected
+        updateFormData('subGenre', '');
+        updateFormData('subGenreName', '');
       }
+      
+      console.log('GenreStep - Saving:', {
+        genre: selectedGenre,
+        genreName: genreConfig?.name,
+        subGenre: selectedSubGenre,
+        subGenreName: genreConfig?.subGenres?.[selectedSubGenre]?.name
+      });
+      
       // Navigate to artist inspiration step
       navigateTo('artist');
     }
@@ -224,7 +247,7 @@ export default function GenreStep() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-tighter">© 2024 Hecho en México.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-tighter">© 2025 Hecho en México.</p>
         </div>
       </footer>
     </div>

@@ -12,7 +12,7 @@ import DetailsStep from './pages/DetailsStep';
 import EmailStep from './pages/EmailStep';
 import GeneratingPage from './pages/GeneratingPage';
 import PreviewPage from './pages/PreviewPage';
-import ComparisonPage from './pages/ComparisonPage';  // ← ADDED
+import ComparisonPage from './pages/ComparisonPage';
 import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
@@ -20,8 +20,8 @@ import AdminDashboard from './pages/AdminDashboard';
 // App State Context
 export const AppContext = React.createContext();
 
-// App version
-const APP_VERSION = '1.7.0';
+// App version - INCREMENT THIS TO FORCE CACHE CLEAR
+const APP_VERSION = '2.0.0';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -30,6 +30,21 @@ const STORAGE_KEYS = {
   FORM_DATA: 'rqc_formData',
   SONG_DATA: 'rqc_songData'
 };
+
+// Check version and clear old data if needed
+const checkVersion = () => {
+  const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
+  if (storedVersion !== APP_VERSION) {
+    // Clear all session data on version change
+    sessionStorage.clear();
+    localStorage.setItem(STORAGE_KEYS.VERSION, APP_VERSION);
+    console.log(`App updated from ${storedVersion} to ${APP_VERSION} - cleared cache`);
+    return true;
+  }
+  return false;
+};
+
+const versionChanged = checkVersion();
 
 // Detect if this is a fresh navigation (new tab/window) vs a refresh
 const isPageRefresh = () => {
@@ -53,7 +68,7 @@ const isDirectRoute = () => {
          path === '/admin' || 
          path === '/admin/dashboard' ||
          path === '/success' ||
-         path === '/comparison';  // ← ADDED
+         path === '/comparison';
 };
 
 // Map URL to page name
@@ -69,7 +84,7 @@ const getPageFromUrl = () => {
   if (path === '/preview') return 'preview';
   
   // Comparison page
-  if (path === '/comparison') return 'comparison';  // ← ADDED
+  if (path === '/comparison') return 'comparison';
   
   // Success page
   if (path === '/success') return 'success';
@@ -90,6 +105,8 @@ const getPageFromUrl = () => {
 
 // Clear old session data on fresh visits
 const initializeSession = () => {
+  if (versionChanged) return true;
+  
   const refresh = isPageRefresh();
   const directRoute = isDirectRoute();
   
@@ -134,11 +151,13 @@ const getInitialPage = () => {
 
 const initialSongId = getSongIdFromUrl();
 
-// Default form data structure with all fields
+// Default form data structure with ALL fields needed by generate-song
 const defaultFormData = {
-  // Genre selection
+  // Genre selection - BOTH ID and NAME are required!
   genre: '',
+  genreName: '',        // ← CRITICAL: Display name for generate-song
   subGenre: '',
+  subGenreName: '',     // ← CRITICAL: Display name for generate-song
   
   // Artist inspiration
   artistInspiration: '',
@@ -158,7 +177,7 @@ const defaultFormData = {
   details: '',
   
   // Voice
-  voiceType: '',
+  voiceType: 'male',
   
   // Contact
   email: ''
@@ -167,9 +186,11 @@ const defaultFormData = {
 export default function App() {
   const [currentPage, setCurrentPage] = useState(getInitialPage);
   const [directSongId, setDirectSongId] = useState(initialSongId);
-  const [formData, setFormData] = useState(() => 
-    loadFromStorage(STORAGE_KEYS.FORM_DATA, defaultFormData)
-  );
+  const [formData, setFormData] = useState(() => {
+    const stored = loadFromStorage(STORAGE_KEYS.FORM_DATA, null);
+    // Merge with defaults to ensure all fields exist
+    return { ...defaultFormData, ...stored };
+  });
   const [songData, setSongData] = useState(() => 
     loadFromStorage(STORAGE_KEYS.SONG_DATA, null)
   );
@@ -235,7 +256,7 @@ export default function App() {
       email: '/create/email',
       generating: '/create/generating',
       preview: '/preview',
-      comparison: '/comparison',  // ← ADDED
+      comparison: '/comparison',
       success: '/success',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard'
@@ -285,7 +306,7 @@ export default function App() {
         {currentPage === 'email' && <EmailStep />}
         {currentPage === 'generating' && <GeneratingPage />}
         {currentPage === 'preview' && <PreviewPage />}
-        {currentPage === 'comparison' && <ComparisonPage />}  {/* ← ADDED */}
+        {currentPage === 'comparison' && <ComparisonPage />}
         {currentPage === 'success' && <SuccessPage />}
         {currentPage === 'adminLogin' && <AdminLogin />}
         {currentPage === 'adminDashboard' && <AdminDashboard />}
