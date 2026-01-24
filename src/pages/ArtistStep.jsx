@@ -214,6 +214,60 @@ const artistsByGenre = {
     ranchera: [
       { id: 'emilio_navaira', name: 'Emilio Navaira' }
     ]
+  },
+  // ==========================================
+  // NEW: DURANGUENSE
+  // ==========================================
+  duranguense: {
+    pasito: [
+      { id: 'montez', name: 'Montéz de Durango' },
+      { id: 'patrulla_81', name: 'Patrulla 81' },
+      { id: 'horoscopos', name: 'Horóscopos de Durango' }
+    ],
+    romantico: [
+      { id: 'alacranes', name: 'Alacranes Musical' },
+      { id: 'kpaz', name: 'K-Paz de la Sierra' },
+      { id: 'chicago_five', name: 'Chicago Five' }
+    ],
+    norteno_duranguense: [
+      { id: 'kpaz', name: 'K-Paz de la Sierra' },
+      { id: 'montez', name: 'Montéz de Durango' },
+      { id: 'alacranes', name: 'Alacranes Musical' }
+    ]
+  },
+  // ==========================================
+  // NEW: ROCK EN ESPAÑOL
+  // ==========================================
+  rock_espanol: {
+    clasico: [
+      { id: 'mana', name: 'Maná' },
+      { id: 'caifanes', name: 'Caifanes' },
+      { id: 'soda_stereo', name: 'Soda Stereo' },
+      { id: 'heroes', name: 'Héroes del Silencio' }
+    ],
+    balada_rock: [
+      { id: 'mana', name: 'Maná' },
+      { id: 'bunbury', name: 'Enrique Bunbury' },
+      { id: 'alejandro_sanz', name: 'Alejandro Sanz' }
+    ],
+    alternativo: [
+      { id: 'zoe', name: 'Zoé' },
+      { id: 'cafe_tacvba', name: 'Café Tacvba' },
+      { id: 'molotov', name: 'Molotov' },
+      { id: 'panteon', name: 'Panteón Rococó' }
+    ],
+    pop_rock: [
+      { id: 'juanes', name: 'Juanes' },
+      { id: 'la_oreja', name: 'La Oreja de Van Gogh' },
+      { id: 'sin_bandera', name: 'Sin Bandera' },
+      { id: 'jesse_joy', name: 'Jesse & Joy' }
+    ],
+    romantico: [
+      { id: 'mana', name: 'Maná' },
+      { id: 'alejandro_sanz', name: 'Alejandro Sanz' },
+      { id: 'sin_bandera', name: 'Sin Bandera' },
+      { id: 'reik', name: 'Reik' }
+    ]
   }
 };
 
