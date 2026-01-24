@@ -1,51 +1,66 @@
 import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../App';
 
-// Artists organized by genre
+// Artists organized by genre AND subgenre
+// Keys MUST match genres.js exactly for filtering to work
 const artistsByGenre = {
+  // ==========================================
+  // CORRIDO - 4 subgenres
+  // ==========================================
   corrido: {
     tradicional: [
       { id: 'los_tigres', name: 'Los Tigres del Norte' },
       { id: 'los_tucanes', name: 'Los Tucanes de Tijuana' },
       { id: 'chalino', name: 'Chalino Sánchez' }
     ],
-    tumbado: [
+    tumbados: [
       { id: 'peso_pluma', name: 'Peso Pluma' },
       { id: 'junior_h', name: 'Junior H' },
       { id: 'natanael', name: 'Natanael Cano' },
       { id: 'fuerza_regida', name: 'Fuerza Regida' },
       { id: 'dannylux', name: 'DannyLux' }
     ],
-    alterado: [
-      { id: 'el_komander', name: 'El Komander' },
-      { id: 'gerardo_ortiz', name: 'Gerardo Ortiz' }
+    belico: [
+      { id: 'luis_r', name: 'Luis R Conriquez' },
+      { id: 'fuerza_regida', name: 'Fuerza Regida' },
+      { id: 'peso_pluma', name: 'Peso Pluma' }
     ],
-    romantico: [
-      { id: 'calibre_50', name: 'Calibre 50' },
-      { id: 'los_tucanes', name: 'Los Tucanes de Tijuana' }
+    alterados: [
+      { id: 'el_komander', name: 'El Komander' },
+      { id: 'gerardo_ortiz', name: 'Gerardo Ortiz' },
+      { id: 'roberto_tapia', name: 'Roberto Tapia' }
     ]
   },
+
+  // ==========================================
+  // NORTEÑO - 4 subgenres
+  // ==========================================
   norteno: {
     tradicional: [
       { id: 'ramon_ayala', name: 'Ramón Ayala' },
       { id: 'cadetes', name: 'Los Cadetes de Linares' },
       { id: 'lalo_mora', name: 'Lalo Mora' }
     ],
-    moderno: [
+    con_sax: [
+      { id: 'pesado', name: 'Pesado' },
+      { id: 'duelo', name: 'Duelo' },
+      { id: 'la_adictiva', name: 'La Adictiva' }
+    ],
+    nortena_banda: [
+      { id: 'calibre_50', name: 'Calibre 50' },
+      { id: 'grupo_firme', name: 'Grupo Firme' },
+      { id: 'la_adictiva', name: 'La Adictiva' }
+    ],
+    romantico: [
       { id: 'intocable', name: 'Intocable' },
       { id: 'duelo', name: 'Duelo' },
       { id: 'pesado', name: 'Pesado' }
-    ],
-    sax: [
-      { id: 'grupo_firme', name: 'Grupo Firme' },
-      { id: 'la_adictiva', name: 'La Adictiva' },
-      { id: 'cuisillos', name: 'Banda Cuisillos' }
-    ],
-    progresivo: [
-      { id: 'los_tigres', name: 'Los Tigres del Norte' },
-      { id: 'huracanes', name: 'Los Huracanes del Norte' }
     ]
   },
+
+  // ==========================================
+  // BANDA - 4 subgenres
+  // ==========================================
   banda: {
     romantica: [
       { id: 'banda_ms', name: 'Banda MS' },
@@ -56,167 +71,76 @@ const artistsByGenre = {
       { id: 'el_recodo', name: 'Banda El Recodo' },
       { id: 'banda_machos', name: 'Banda Machos' }
     ],
-    ranchera: [
-      { id: 'el_recodo', name: 'Banda El Recodo' },
-      { id: 'arrolladora', name: 'La Arrolladora' }
-    ],
-    popular: [
+    tecnobanda: [
       { id: 'cuisillos', name: 'Banda Cuisillos' },
+      { id: 'banda_machos', name: 'Banda Machos' }
+    ],
+    sinaloense_clasica: [
+      { id: 'el_recodo', name: 'Banda El Recodo' },
       { id: 'arrolladora', name: 'La Arrolladora' }
     ]
   },
+
+  // ==========================================
+  // RANCHERA - 3 subgenres
+  // ==========================================
   ranchera: {
-    brava: [
+    lenta: [
       { id: 'vicente', name: 'Vicente Fernández' },
-      { id: 'antonio_aguilar', name: 'Antonio Aguilar' }
-    ],
-    romantica: [
       { id: 'pedro_infante', name: 'Pedro Infante' },
       { id: 'javier_solis', name: 'Javier Solís' }
     ],
-    lenta: [
-      { id: 'jose_alfredo', name: 'José Alfredo Jiménez' }
+    brava: [
+      { id: 'vicente', name: 'Vicente Fernández' },
+      { id: 'antonio_aguilar', name: 'Antonio Aguilar' },
+      { id: 'pepe_aguilar', name: 'Pepe Aguilar' }
+    ],
+    moderna: [
+      { id: 'christian_nodal', name: 'Christian Nodal' },
+      { id: 'carin_leon', name: 'Carin León' },
+      { id: 'angela_aguilar', name: 'Ángela Aguilar' }
     ]
   },
+
+  // ==========================================
+  // SIERREÑO - 2 subgenres
+  // ==========================================
   sierreno: {
     tradicional: [
       { id: 'el_fantasma', name: 'El Fantasma' },
-      { id: 'lenin_ramirez', name: 'Lenin Ramírez' }
+      { id: 'lenin_ramirez', name: 'Lenin Ramírez' },
+      { id: 'alfredo_olivas', name: 'Alfredo Olivas' }
     ],
-    moderno: [
+    moderno_sad: [
       { id: 'carin_leon', name: 'Carin León' },
-      { id: 'christian_nodal', name: 'Christian Nodal' }
-    ],
-    romantico: [
       { id: 'christian_nodal', name: 'Christian Nodal' },
-      { id: 'carin_leon', name: 'Carin León' }
+      { id: 'junior_h', name: 'Junior H' }
     ]
   },
+
+  // ==========================================
+  // MARIACHI - 4 subgenres
+  // ==========================================
   mariachi: {
     tradicional: [
       { id: 'vargas', name: 'Mariachi Vargas de Tecalitlán' }
     ],
-    moderno: [
-      { id: 'aida', name: 'Aida Cuevas' },
-      { id: 'alejandro', name: 'Alejandro Fernández' }
-    ]
-  },
-  cumbia: {
-    sonidera: [
-      { id: 'angeles_azules', name: 'Los Ángeles Azules' },
-      { id: 'sonido_la_changa', name: 'Sonido La Changa' }
-    ],
-    nortena: [
-      { id: 'cañaveral', name: 'Grupo Cañaveral' }
-    ],
-    romantica: [
-      { id: 'cañaveral', name: 'Grupo Cañaveral' },
-      { id: 'bryndis', name: 'Grupo Bryndis' }
-    ],
-    tejana: [
-      { id: 'selena', name: 'Selena' },
-      { id: 'mazz', name: 'Mazz' }
-    ]
-  },
-  salsa: {
-    dura: [
-      { id: 'hector_lavoe', name: 'Héctor Lavoe' },
-      { id: 'ruben_blades', name: 'Rubén Blades' }
-    ],
-    romantica: [
-      { id: 'marc_anthony', name: 'Marc Anthony' },
-      { id: 'gilberto_santa_rosa', name: 'Gilberto Santa Rosa' }
-    ]
-  },
-  bachata: {
-    tradicional: [
-      { id: 'aventura', name: 'Aventura' }
-    ],
-    moderna: [
-      { id: 'romeo_santos', name: 'Romeo Santos' },
-      { id: 'prince_royce', name: 'Prince Royce' }
-    ]
-  },
-  reggaeton: {
-    clasico: [
-      { id: 'daddy_yankee', name: 'Daddy Yankee' },
-      { id: 'don_omar', name: 'Don Omar' }
+    ranchero: [
+      { id: 'vicente', name: 'Vicente Fernández' },
+      { id: 'pedro_infante', name: 'Pedro Infante' }
     ],
     romantico: [
-      { id: 'romeo_santos', name: 'Romeo Santos' }
-    ],
-    perreo: [
-      { id: 'daddy_yankee', name: 'Daddy Yankee' },
-      { id: 'j_balvin', name: 'J Balvin' }
-    ],
-    chill: [
-      { id: 'bad_bunny', name: 'Bad Bunny' },
-      { id: 'rauw_alejandro', name: 'Rauw Alejandro' }
-    ]
-  },
-  latin_trap: {
-    duro: [
-      { id: 'anuel_aa', name: 'Anuel AA' }
-    ],
-    melodico: [
-      { id: 'rauw_alejandro', name: 'Rauw Alejandro' },
-      { id: 'bad_bunny', name: 'Bad Bunny' }
-    ]
-  },
-  pop_latino: {
-    bailable: [
-      { id: 'shakira', name: 'Shakira' },
-      { id: 'j_balvin', name: 'J Balvin' }
-    ],
-    balada: [
-      { id: 'luis_fonsi', name: 'Luis Fonsi' },
-      { id: 'juanes', name: 'Juanes' }
-    ]
-  },
-  balada: {
-    clasica: [
-      { id: 'jose_jose', name: 'José José' },
-      { id: 'luis_miguel', name: 'Luis Miguel' }
-    ],
-    pop: [
-      { id: 'luis_fonsi', name: 'Luis Fonsi' },
-      { id: 'reik', name: 'Reik' }
-    ],
-    ranchera: [
-      { id: 'juan_gabriel', name: 'Juan Gabriel' },
-      { id: 'rocio_durcal', name: 'Rocío Dúrcal' }
-    ]
-  },
-  bolero: {
-    tradicional: [
-      { id: 'los_panchos', name: 'Los Panchos' },
-      { id: 'armando_manzanero', name: 'Armando Manzanero' }
+      { id: 'luis_miguel', name: 'Luis Miguel' },
+      { id: 'alejandro_fernandez', name: 'Alejandro Fernández' }
     ],
     moderno: [
-      { id: 'luis_miguel', name: 'Luis Miguel' }
+      { id: 'angela_aguilar', name: 'Ángela Aguilar' },
+      { id: 'christian_nodal', name: 'Christian Nodal' }
     ]
   },
-  grupera: {
-    romantica: [
-      { id: 'los_bukis', name: 'Los Bukis' },
-      { id: 'los_temerarios', name: 'Los Temerarios' }
-    ],
-    bailable: [
-      { id: 'bronco', name: 'Bronco' },
-      { id: 'limite', name: 'Límite' }
-    ]
-  },
-  tejano: {
-    cumbia: [
-      { id: 'selena', name: 'Selena' },
-      { id: 'kumbia_kings', name: 'Kumbia Kings' }
-    ],
-    ranchera: [
-      { id: 'emilio_navaira', name: 'Emilio Navaira' }
-    ]
-  },
+
   // ==========================================
-  // NEW: DURANGUENSE
+  // DURANGUENSE - 3 subgenres
   // ==========================================
   duranguense: {
     pasito: [
@@ -235,8 +159,205 @@ const artistsByGenre = {
       { id: 'alacranes', name: 'Alacranes Musical' }
     ]
   },
+
   // ==========================================
-  // NEW: ROCK EN ESPAÑOL
+  // CUMBIA - 6 subgenres
+  // ==========================================
+  cumbia: {
+    sonidera: [
+      { id: 'angeles_azules', name: 'Los Ángeles Azules' },
+      { id: 'sonido_la_changa', name: 'Sonido La Changa' }
+    ],
+    nortena: [
+      { id: 'canaveral', name: 'Grupo Cañaveral' },
+      { id: 'intocable', name: 'Intocable' }
+    ],
+    texana: [
+      { id: 'selena', name: 'Selena' },
+      { id: 'mazz', name: 'Mazz' },
+      { id: 'kumbia_kings', name: 'Kumbia Kings' }
+    ],
+    grupera: [
+      { id: 'los_bukis', name: 'Los Bukis' },
+      { id: 'canaveral', name: 'Grupo Cañaveral' }
+    ],
+    romantica: [
+      { id: 'bryndis', name: 'Grupo Bryndis' },
+      { id: 'canaveral', name: 'Grupo Cañaveral' }
+    ],
+    colombiana: [
+      { id: 'carlos_vives', name: 'Carlos Vives' },
+      { id: 'grupo_niche', name: 'Grupo Niche' }
+    ]
+  },
+
+  // ==========================================
+  // SALSA - 3 subgenres
+  // ==========================================
+  salsa: {
+    clasica_dura: [
+      { id: 'hector_lavoe', name: 'Héctor Lavoe' },
+      { id: 'ruben_blades', name: 'Rubén Blades' },
+      { id: 'willie_colon', name: 'Willie Colón' }
+    ],
+    romantica: [
+      { id: 'marc_anthony', name: 'Marc Anthony' },
+      { id: 'gilberto_santa_rosa', name: 'Gilberto Santa Rosa' }
+    ],
+    urbana: [
+      { id: 'marc_anthony', name: 'Marc Anthony' },
+      { id: 'victor_manuelle', name: 'Víctor Manuelle' }
+    ]
+  },
+
+  // ==========================================
+  // BACHATA - 3 subgenres
+  // ==========================================
+  bachata: {
+    tradicional: [
+      { id: 'aventura', name: 'Aventura' },
+      { id: 'frank_reyes', name: 'Frank Reyes' }
+    ],
+    urbana_sensual: [
+      { id: 'romeo_santos', name: 'Romeo Santos' },
+      { id: 'prince_royce', name: 'Prince Royce' }
+    ],
+    romantica: [
+      { id: 'frank_reyes', name: 'Frank Reyes' },
+      { id: 'aventura', name: 'Aventura' }
+    ]
+  },
+
+  // ==========================================
+  // MERENGUE - 3 subgenres
+  // ==========================================
+  merengue: {
+    clasico: [
+      { id: 'juan_luis_guerra', name: 'Juan Luis Guerra' },
+      { id: 'wilfrido_vargas', name: 'Wilfrido Vargas' }
+    ],
+    mambo_merengue: [
+      { id: 'hermanos_rosario', name: 'Los Hermanos Rosario' },
+      { id: 'sergio_vargas', name: 'Sergio Vargas' }
+    ],
+    urbano: [
+      { id: 'elvis_crespo', name: 'Elvis Crespo' },
+      { id: 'olga_tanon', name: 'Olga Tañón' }
+    ]
+  },
+
+  // ==========================================
+  // VALLENATO - 3 subgenres
+  // ==========================================
+  vallenato: {
+    tradicional: [
+      { id: 'diomedes', name: 'Diomedes Díaz' },
+      { id: 'rafael_orozco', name: 'Rafael Orozco' }
+    ],
+    romantico: [
+      { id: 'jorge_celedon', name: 'Jorge Celedón' },
+      { id: 'silvestre', name: 'Silvestre Dangond' }
+    ],
+    moderno: [
+      { id: 'carlos_vives', name: 'Carlos Vives' },
+      { id: 'silvestre', name: 'Silvestre Dangond' }
+    ]
+  },
+
+  // ==========================================
+  // REGGAETON - 3 subgenres
+  // ==========================================
+  reggaeton: {
+    clasico_perreo: [
+      { id: 'daddy_yankee', name: 'Daddy Yankee' },
+      { id: 'don_omar', name: 'Don Omar' },
+      { id: 'wisin_yandel', name: 'Wisin & Yandel' }
+    ],
+    romantico: [
+      { id: 'ozuna', name: 'Ozuna' },
+      { id: 'romeo_santos', name: 'Romeo Santos' }
+    ],
+    comercial_pop: [
+      { id: 'j_balvin', name: 'J Balvin' },
+      { id: 'maluma', name: 'Maluma' },
+      { id: 'bad_bunny', name: 'Bad Bunny' }
+    ]
+  },
+
+  // ==========================================
+  // LATIN TRAP - 3 subgenres
+  // ==========================================
+  latin_trap: {
+    trap_pesado: [
+      { id: 'anuel_aa', name: 'Anuel AA' },
+      { id: 'bad_bunny', name: 'Bad Bunny' }
+    ],
+    trap_melodico: [
+      { id: 'bad_bunny', name: 'Bad Bunny' },
+      { id: 'rauw_alejandro', name: 'Rauw Alejandro' }
+    ],
+    trap_latino: [
+      { id: 'bad_bunny', name: 'Bad Bunny' },
+      { id: 'ozuna', name: 'Ozuna' }
+    ]
+  },
+
+  // ==========================================
+  // POP LATINO - 3 subgenres
+  // ==========================================
+  pop_latino: {
+    pop_balada: [
+      { id: 'luis_miguel', name: 'Luis Miguel' },
+      { id: 'luis_fonsi', name: 'Luis Fonsi' }
+    ],
+    pop_bailable: [
+      { id: 'shakira', name: 'Shakira' },
+      { id: 'j_balvin', name: 'J Balvin' }
+    ],
+    pop_urbano: [
+      { id: 'sebastian_yatra', name: 'Sebastián Yatra' },
+      { id: 'camilo', name: 'Camilo' }
+    ]
+  },
+
+  // ==========================================
+  // BALADA - 3 subgenres
+  // ==========================================
+  balada: {
+    balada_clasica: [
+      { id: 'jose_jose', name: 'José José' },
+      { id: 'luis_miguel', name: 'Luis Miguel' },
+      { id: 'rocio_durcal', name: 'Rocío Dúrcal' }
+    ],
+    balada_pop: [
+      { id: 'luis_fonsi', name: 'Luis Fonsi' },
+      { id: 'reik', name: 'Reik' }
+    ],
+    balada_romantica: [
+      { id: 'ricardo_montaner', name: 'Ricardo Montaner' },
+      { id: 'juan_gabriel', name: 'Juan Gabriel' }
+    ]
+  },
+
+  // ==========================================
+  // BOLERO - 3 subgenres
+  // ==========================================
+  bolero: {
+    bolero_clasico: [
+      { id: 'los_panchos', name: 'Los Panchos' },
+      { id: 'armando_manzanero', name: 'Armando Manzanero' }
+    ],
+    bolero_ranchero: [
+      { id: 'vicente', name: 'Vicente Fernández' },
+      { id: 'pedro_infante', name: 'Pedro Infante' }
+    ],
+    bolero_moderno: [
+      { id: 'luis_miguel', name: 'Luis Miguel' }
+    ]
+  },
+
+  // ==========================================
+  // ROCK EN ESPAÑOL - 5 subgenres
   // ==========================================
   rock_espanol: {
     clasico: [
@@ -253,13 +374,11 @@ const artistsByGenre = {
     alternativo: [
       { id: 'zoe', name: 'Zoé' },
       { id: 'cafe_tacvba', name: 'Café Tacvba' },
-      { id: 'molotov', name: 'Molotov' },
-      { id: 'panteon', name: 'Panteón Rococó' }
+      { id: 'molotov', name: 'Molotov' }
     ],
     pop_rock: [
       { id: 'juanes', name: 'Juanes' },
       { id: 'la_oreja', name: 'La Oreja de Van Gogh' },
-      { id: 'sin_bandera', name: 'Sin Bandera' },
       { id: 'jesse_joy', name: 'Jesse & Joy' }
     ],
     romantico: [
@@ -268,10 +387,46 @@ const artistsByGenre = {
       { id: 'sin_bandera', name: 'Sin Bandera' },
       { id: 'reik', name: 'Reik' }
     ]
+  },
+
+  // ==========================================
+  // GRUPERA - 3 subgenres
+  // ==========================================
+  grupera: {
+    grupera_clasica: [
+      { id: 'los_bukis', name: 'Los Bukis' },
+      { id: 'bronco', name: 'Bronco' }
+    ],
+    grupera_romantica: [
+      { id: 'los_temerarios', name: 'Los Temerarios' },
+      { id: 'los_bukis', name: 'Los Bukis' }
+    ],
+    grupera_bailable: [
+      { id: 'bronco', name: 'Bronco' },
+      { id: 'limite', name: 'Límite' }
+    ]
+  },
+
+  // ==========================================
+  // TEJANO - 3 subgenres
+  // ==========================================
+  tejano: {
+    tejano_clasico: [
+      { id: 'little_joe', name: 'Little Joe' },
+      { id: 'emilio_navaira', name: 'Emilio Navaira' }
+    ],
+    tejano_romantico: [
+      { id: 'la_mafia', name: 'La Mafia' },
+      { id: 'emilio_navaira', name: 'Emilio Navaira' }
+    ],
+    tejano_cumbia: [
+      { id: 'selena', name: 'Selena' },
+      { id: 'kumbia_kings', name: 'Kumbia Kings' }
+    ]
   }
 };
 
-// Flatten for search
+// Flatten for search (not used in filtering, but useful for search feature)
 const allArtists = Object.values(artistsByGenre)
   .flatMap(subGenres => Object.values(subGenres))
   .flat()
@@ -290,16 +445,25 @@ export default function ArtistStep() {
     const genre = formData.genre;
     const subGenre = formData.subGenre;
     
+    console.log('ArtistStep - Genre:', genre, 'SubGenre:', subGenre);
+    
     if (!genre || !artistsByGenre[genre]) {
+      console.log('No genre or genre not found in artistsByGenre');
       return [];
     }
     
-    // If subgenre exists and has artists, use those
+    // If subgenre exists and has artists, use ONLY those (strict filtering)
     if (subGenre && artistsByGenre[genre][subGenre]) {
+      console.log('Found artists for subgenre:', artistsByGenre[genre][subGenre]);
       return artistsByGenre[genre][subGenre];
     }
     
-    // Otherwise, combine all artists from this genre
+    // If subgenre not found, log warning and show all for genre
+    if (subGenre) {
+      console.warn(`SubGenre "${subGenre}" not found in artistsByGenre.${genre}. Available keys:`, Object.keys(artistsByGenre[genre]));
+    }
+    
+    // Fallback: combine all artists from this genre (only if no subgenre selected)
     const genreArtists = artistsByGenre[genre];
     const combined = Object.values(genreArtists).flat();
     
@@ -330,7 +494,7 @@ export default function ArtistStep() {
   };
 
   const handleContinue = () => {
-    // Just send the artist name - Claude generates the style dynamically
+    // Just send the artist name - the backend generates the style dynamically
     if (selectedArtist) {
       updateFormData('artistInspiration', selectedArtist);
     } else {
@@ -345,7 +509,7 @@ export default function ArtistStep() {
   };
 
   const handleBack = () => {
-    navigateTo('genre');
+    navigateTo('subgenre');
   };
 
   return (
@@ -401,7 +565,7 @@ export default function ArtistStep() {
             <div className="mb-8">
               <h3 className="text-gold text-xs uppercase tracking-widest font-bold mb-4 flex items-center gap-2">
                 <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                Artistas sugeridos para {formData.genre}
+                Artistas sugeridos para {formData.subGenreName || formData.genreName || formData.genre}
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {suggestedArtists.map((artist) => (
