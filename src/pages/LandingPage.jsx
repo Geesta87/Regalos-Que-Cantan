@@ -2,8 +2,21 @@ import React, { useContext, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
 
-// All images combined and will be randomized
-const allImages = [
+// Real people photos (reactions/testimonials)
+const realPeopleImages = [
+  '/images/reactions/reaction1.jpg',
+  '/images/reactions/reaction2.jpg',
+  '/images/reactions/reaction3.jpg',
+  '/images/reactions/reaction4.jpg',
+  '/images/reactions/reaction5.png',
+  '/images/reactions/reaction6.jpg',
+  '/images/reactions/reaction7.jpg',
+  '/images/reactions/reaction8.jpg',
+  '/images/reactions/reaction9.jpg',
+];
+
+// Genre/occasion artwork images
+const genreImages = [
   '/images/genres/corrido.png',
   '/images/genres/nortena.png',
   '/images/genres/banda.png',
@@ -14,15 +27,6 @@ const allImages = [
   '/images/occasions/aniversario.png',
   '/images/occasions/quinceanera.png',
   '/images/occasions/graduacion.png',
-  '/images/reactions/reaction1.jpg',
-  '/images/reactions/reaction2.jpg',
-  '/images/reactions/reaction3.jpg',
-  '/images/reactions/reaction4.jpg',
-  '/images/reactions/reaction5.png',
-  '/images/reactions/reaction6.jpg',
-  '/images/reactions/reaction7.jpg',
-  '/images/reactions/reaction8.jpg',
-  '/images/reactions/reaction9.jpg',
 ];
 
 // Shuffle array function
@@ -35,15 +39,37 @@ const shuffleArray = (array) => {
   return shuffled;
 };
 
+// Create alternating pattern: Real Person → Genre → Real Person → Genre
+const createAlternatingImages = () => {
+  const shuffledPeople = shuffleArray(realPeopleImages);
+  const shuffledGenres = shuffleArray(genreImages);
+  
+  const alternating = [];
+  const maxLength = Math.max(shuffledPeople.length, shuffledGenres.length);
+  
+  for (let i = 0; i < maxLength; i++) {
+    // Add real person photo
+    if (i < shuffledPeople.length) {
+      alternating.push({ src: shuffledPeople[i], type: 'person' });
+    }
+    // Add genre artwork
+    if (i < shuffledGenres.length) {
+      alternating.push({ src: shuffledGenres[i], type: 'genre' });
+    }
+  }
+  
+  return alternating;
+};
+
 export default function LandingPage() {
   const { navigateTo } = useContext(AppContext);
   const scrollRef = useRef(null);
   
-  // Randomize images once on mount
-  const [randomizedImages] = React.useState(() => shuffleArray(allImages));
+  // Create alternating images once on mount
+  const [alternatingImages] = React.useState(() => createAlternatingImages());
   
   // Duplicate for seamless loop
-  const carouselImages = [...randomizedImages, ...randomizedImages];
+  const carouselImages = [...alternatingImages, ...alternatingImages];
 
   useEffect(() => {
     const scrollContainer = scrollRef.current;
@@ -128,7 +154,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Auto-scrolling Carousel */}
+      {/* Auto-scrolling Carousel - Alternating Real People & Genre Art */}
       <section className="py-8 overflow-hidden bg-background-dark/50">
         <div 
           ref={scrollRef}
@@ -139,11 +165,15 @@ export default function LandingPage() {
             <div
               key={index}
               onClick={() => navigateTo('genre')}
-              className="flex-shrink-0 w-48 h-48 md:w-64 md:h-64 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-primary/20 transition-all hover:scale-105 cursor-pointer group"
+              className={`flex-shrink-0 w-48 h-48 md:w-64 md:h-64 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all hover:scale-105 cursor-pointer group ${
+                image.type === 'person' 
+                  ? 'hover:shadow-gold/30 ring-2 ring-gold/20' 
+                  : 'hover:shadow-primary/20'
+              }`}
             >
               <div className="relative w-full h-full">
                 <img 
-                  src={image} 
+                  src={image.src} 
                   alt=""
                   className="w-full h-full object-cover"
                 />
@@ -153,6 +183,12 @@ export default function LandingPage() {
                     <span className="material-symbols-outlined text-forest text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
                   </div>
                 </div>
+                {/* Type indicator badge */}
+                {image.type === 'person' && (
+                  <div className="absolute bottom-2 left-2 bg-gold/90 text-forest text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                    ⭐ Cliente Real
+                  </div>
+                )}
               </div>
             </div>
           ))}

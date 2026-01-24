@@ -1,5 +1,5 @@
 // Genre Configuration for RegalosQueCantan
-// Updated to match DNA Library v2.0 - 18 genres, 54 subgenres
+// Updated to match DNA Library v2.1 - 20 genres, 62 subgenres
 // Display info only - Claude generates all prompts dynamically using DNA
 
 const genres = {
@@ -15,7 +15,7 @@ const genres = {
       tradicional: { name: "Tradicional", description: "Corrido clásico estilo Los Tigres del Norte" },
       tumbados: { name: "Tumbados", description: "Moderno con 808 y AutoTune estilo Peso Pluma" },
       belico: { name: "Bélico", description: "Agresivo y pesado estilo Luis R Conriquez" },
-      alterados: { name: "Alterados", description: "Rápido y intenso estilo El Komander" }
+      alterados: { name: "Alterados", description: "Rápido e intenso estilo El Komander" }
     }
   },
 
@@ -73,6 +73,17 @@ const genres = {
       ranchero: { name: "Ranchero", description: "Mariachi con estilo ranchero emotivo" },
       romantico: { name: "Romántico", description: "Mariachi suave y romántico estilo Luis Miguel" },
       moderno: { name: "Moderno", description: "Mariachi contemporáneo estilo Ángela Aguilar" }
+    }
+  },
+
+  duranguense: {
+    name: "Duranguense",
+    emoji: "🎹",
+    description: "Techno-banda bailable de Durango",
+    subGenres: {
+      pasito: { name: "Pasito Duranguense", description: "Rápido y bailable estilo Montéz de Durango" },
+      romantico: { name: "Romántico", description: "Balada duranguense emotiva estilo Alacranes Musical" },
+      norteno_duranguense: { name: "Norteño-Duranguense", description: "Fusión con acordeón estilo K-Paz de la Sierra" }
     }
   },
 
@@ -198,6 +209,23 @@ const genres = {
       bolero_clasico: { name: "Clásico", description: "Bolero tradicional estilo Los Panchos" },
       bolero_ranchero: { name: "Ranchero", description: "Bolero mexicano estilo Vicente Fernández" },
       bolero_moderno: { name: "Moderno", description: "Bolero contemporáneo estilo Luis Miguel" }
+    }
+  },
+
+  // ==========================================
+  // ROCK
+  // ==========================================
+
+  rock_espanol: {
+    name: "Rock en Español",
+    emoji: "🎸",
+    description: "Rock latino con guitarras poderosas",
+    subGenres: {
+      clasico: { name: "Clásico", description: "Rock de los 80s-90s estilo Maná, Caifanes" },
+      balada_rock: { name: "Balada de Rock", description: "Power ballad emotiva estilo Enrique Bunbury" },
+      alternativo: { name: "Alternativo", description: "Rock indie estilo Zoé, Café Tacvba" },
+      pop_rock: { name: "Pop Rock", description: "Rock radio-friendly estilo Juanes, La Oreja de Van Gogh" },
+      romantico: { name: "Romántico", description: "Rock suave y romántico para dedicar" }
     }
   },
 
