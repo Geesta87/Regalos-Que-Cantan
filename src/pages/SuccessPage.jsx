@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { checkSongStatus } from '../services/api';
-import genres from '../config/genres';
 
 export default function SuccessPage() {
   const [song, setSong] = useState(null);
@@ -13,7 +12,6 @@ export default function SuccessPage() {
   
   const audioRef = useRef(null);
 
-  // Get song_id from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const songId = params.get('song_id');
@@ -37,7 +35,7 @@ export default function SuccessPage() {
       const result = await checkSongStatus(songId);
       console.log('Song result:', result);
       
-      if (result.success && result.song) {
+      if (result.song) {
         setSong(result.song);
         console.log('Audio URL:', result.song.audioUrl);
       } else {
@@ -51,7 +49,6 @@ export default function SuccessPage() {
     }
   };
 
-  // Audio controls
   const togglePlay = () => {
     if (!audioRef.current) return;
     
@@ -74,7 +71,6 @@ export default function SuccessPage() {
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
-      console.log('Audio loaded, duration:', audioRef.current.duration);
     }
   };
 
@@ -93,7 +89,6 @@ export default function SuccessPage() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Download handler
   const handleDownload = async () => {
     const audioUrl = song?.audioUrl || song?.audio_url;
     
@@ -106,9 +101,7 @@ export default function SuccessPage() {
     setError(null);
 
     try {
-      console.log('Downloading:', audioUrl);
       const response = await fetch(audioUrl);
-      
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
@@ -121,17 +114,14 @@ export default function SuccessPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
     } catch (err) {
       console.error('Download error:', err);
-      // Fallback: open in new tab
       window.open(audioUrl, '_blank');
     } finally {
       setDownloading(false);
     }
   };
 
-  // Share handler
   const handleShare = async () => {
     const shareText = `¡Escucha la canción personalizada para ${song?.recipientName}! 🎵`;
     const shareUrl = window.location.href;
@@ -139,16 +129,13 @@ export default function SuccessPage() {
     if (navigator.share) {
       try {
         await navigator.share({ title: 'RegalosQueCantan', text: shareText, url: shareUrl });
-      } catch (err) {
-        console.log('Share cancelled');
-      }
+      } catch (err) {}
     } else {
       navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
       alert('¡Enlace copiado!');
     }
   };
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
@@ -160,7 +147,6 @@ export default function SuccessPage() {
     );
   }
 
-  // Error state
   if (error && !song) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4">
@@ -181,7 +167,6 @@ export default function SuccessPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black py-8 px-4">
       <div className="max-w-2xl mx-auto">
         
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">🎉</div>
           <h1 className="text-3xl font-bold text-white mb-2">¡Felicidades!</h1>
@@ -190,26 +175,18 @@ export default function SuccessPage() {
           </p>
         </div>
 
-        {/* Error Alert */}
         {error && (
           <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
             <p className="text-red-400 text-center">{error}</p>
           </div>
         )}
 
-        {/* Main Card */}
         <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 mb-6 border border-gray-700/50">
           
-          {/* Album Art */}
           {imageUrl && (
-            <img 
-              src={imageUrl} 
-              alt="Album Art"
-              className="w-48 h-48 mx-auto rounded-xl shadow-lg mb-6 object-cover"
-            />
+            <img src={imageUrl} alt="Album Art" className="w-48 h-48 mx-auto rounded-xl shadow-lg mb-6 object-cover" />
           )}
 
-          {/* Audio Player */}
           {audioUrl ? (
             <div className="mb-6">
               <audio
@@ -220,14 +197,12 @@ export default function SuccessPage() {
                 onEnded={() => setIsPlaying(false)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                onError={(e) => console.error('Audio error:', e)}
                 preload="metadata"
               />
               
-              {/* Play Button */}
               <button
                 onClick={togglePlay}
-                className="w-20 h-20 mx-auto mb-4 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-lg shadow-yellow-500/25"
+                className="w-20 h-20 mx-auto mb-4 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full flex items-center justify-center hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-lg"
               >
                 {isPlaying ? (
                   <svg className="w-8 h-8 text-black" fill="currentColor" viewBox="0 0 24 24">
@@ -241,18 +216,13 @@ export default function SuccessPage() {
                 )}
               </button>
 
-              {/* Progress Bar */}
-              <div 
-                className="h-2 bg-gray-700 rounded-full cursor-pointer mb-2 overflow-hidden"
-                onClick={handleSeek}
-              >
+              <div className="h-2 bg-gray-700 rounded-full cursor-pointer mb-2" onClick={handleSeek}>
                 <div 
-                  className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full transition-all"
+                  className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400 rounded-full"
                   style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
                 />
               </div>
 
-              {/* Time */}
               <div className="flex justify-between text-sm text-gray-400">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
@@ -261,19 +231,13 @@ export default function SuccessPage() {
           ) : (
             <div className="text-center py-8 mb-6">
               <p className="text-yellow-500">⚠️ Audio no disponible</p>
-              <p className="text-gray-400 text-sm mt-2">Status: {song?.status}</p>
             </div>
           )}
 
-          {/* Song Details */}
           <div className="border-t border-gray-700 pt-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Género</span>
               <span className="text-white">{song?.genre}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Ocasión</span>
-              <span className="text-white">{song?.occasion}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Para</span>
@@ -281,24 +245,17 @@ export default function SuccessPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Estado</span>
-              <span className={song?.paid ? 'text-green-400' : 'text-yellow-400'}>
-                {song?.paid ? '✓ Pagado' : 'Pendiente'}
-              </span>
+              <span className="text-green-400">✓ {song?.status}</span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="space-y-4">
-          
-          {/* Download Button */}
           <button
             onClick={handleDownload}
             disabled={downloading || !audioUrl}
-            className={`w-full py-4 rounded-full font-bold text-lg flex items-center justify-center gap-2 transition-all ${
-              audioUrl
-                ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-400 hover:to-yellow-500 shadow-lg'
-                : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            className={`w-full py-4 rounded-full font-bold text-lg flex items-center justify-center gap-2 ${
+              audioUrl ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-400 hover:to-yellow-500' : 'bg-gray-700 text-gray-400'
             }`}
           >
             {downloading ? (
@@ -316,7 +273,6 @@ export default function SuccessPage() {
             )}
           </button>
 
-          {/* Share Button */}
           <button
             onClick={handleShare}
             className="w-full py-4 rounded-full font-bold text-lg border-2 border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all flex items-center justify-center gap-2"
@@ -327,33 +283,15 @@ export default function SuccessPage() {
             Compartir
           </button>
 
-          {/* Direct Link */}
           {audioUrl && (
-            <a
-              href={audioUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full py-3 text-center text-gray-400 hover:text-yellow-500 transition-colors text-sm"
-            >
+            <a href={audioUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-3 text-center text-gray-400 hover:text-yellow-500 text-sm">
               Abrir audio en nueva pestaña →
             </a>
           )}
 
-          {/* Create Another */}
-          <a
-            href="/"
-            className="block w-full py-3 text-center text-gray-400 hover:text-white transition-colors"
-          >
+          <a href="/" className="block w-full py-3 text-center text-gray-400 hover:text-white">
             Crear otra canción →
           </a>
-        </div>
-
-        {/* Debug Info */}
-        <div className="mt-8 p-4 bg-gray-800/30 rounded-lg text-xs text-gray-500 font-mono">
-          <p>ID: {song?.id}</p>
-          <p>Status: {song?.status}</p>
-          <p>Paid: {song?.paid ? 'Yes' : 'No'}</p>
-          <p>Audio: {audioUrl ? 'Yes ✓' : 'No ✗'}</p>
         </div>
       </div>
     </div>
