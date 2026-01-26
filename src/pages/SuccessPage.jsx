@@ -1,38 +1,66 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
-import { AppContext } from '../App';
+import React, { useState, useRef, useEffect } from 'react';
+import { checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 
 export default function SuccessPage() {
-  const { formData, songData, setSongData, navigateTo } = useContext(AppContext);
-  
+  const [song, setSong] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [downloading, setDownloading] = useState(false);
-  const [error, setError] = useState(null);
   
   const audioRef = useRef(null);
 
-  // Get genre display name
-  const genreConfig = genres[formData?.genre];
-  const genreName = genreConfig?.name || formData?.genre || 'Latino';
+  // Get song_id from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const songId = params.get('song_id');
+    
+    console.log('SuccessPage - URL params:', window.location.search);
+    console.log('SuccessPage - song_id:', songId);
+    
+    if (songId) {
+      fetchSong(songId);
+    } else {
+      setError('No se encontró el ID de la canción en la URL');
+      setLoading(false);
+    }
+  }, []);
 
-  // Get song info
-  const recipientName = songData?.recipientName || formData?.recipientName || 'tu ser querido';
-  const audioUrl = songData?.audioUrl || songData?.audio_url;
-  const imageUrl = songData?.imageUrl || songData?.image_url;
-  const occasion = formData?.occasionCustom || formData?.occasion || '';
+  const fetchSong = async (songId) => {
+    try {
+      setLoading(true);
+      console.log('Fetching song:', songId);
+      
+      const result = await checkSongStatus(songId);
+      console.log('Song result:', result);
+      
+      if (result.success && result.song) {
+        setSong(result.song);
+        console.log('Audio URL:', result.song.audioUrl);
+      } else {
+        setError('No se pudo cargar la canción');
+      }
+    } catch (err) {
+      console.error('Fetch error:', err);
+      setError('Error al cargar la canción: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Audio controls
   const togglePlay = () => {
-    if (!audioRef.current || !audioUrl) return;
+    if (!audioRef.current) return;
     
     if (isPlaying) {
       audioRef.current.pause();
     } else {
       audioRef.current.play().catch(err => {
         console.error('Play error:', err);
-        setError('Error al reproducir. Intenta descargar el archivo.');
+        setError('Error al reproducir audio');
       });
     }
   };
@@ -46,6 +74,7 @@ export default function SuccessPage() {
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
+      console.log('Audio loaded, duration:', audioRef.current.duration);
     }
   };
 
@@ -66,8 +95,10 @@ export default function SuccessPage() {
 
   // Download handler
   const handleDownload = async () => {
+    const audioUrl = song?.audioUrl || song?.audio_url;
+    
     if (!audioUrl) {
-      setError('No hay audio disponible para descargar');
+      setError('No hay audio disponible');
       return;
     }
 
@@ -75,7 +106,9 @@ export default function SuccessPage() {
     setError(null);
 
     try {
+      console.log('Downloading:', audioUrl);
       const response = await fetch(audioUrl);
+      
       if (!response.ok) throw new Error('Download failed');
       
       const blob = await response.blob();
@@ -83,7 +116,7 @@ export default function SuccessPage() {
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cancion-para-${recipientName.replace(/\s+/g, '-')}.mp3`;
+      a.download = `cancion-para-${song?.recipientName || 'regalo'}.mp3`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -100,24 +133,49 @@ export default function SuccessPage() {
 
   // Share handler
   const handleShare = async () => {
-    const shareText = `¡Escucha la canción personalizada que creé para ${recipientName}! 🎵`;
+    const shareText = `¡Escucha la canción personalizada para ${song?.recipientName}! 🎵`;
     const shareUrl = window.location.href;
 
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: 'RegalosQueCantan',
-          text: shareText,
-          url: shareUrl
-        });
+        await navigator.share({ title: 'RegalosQueCantan', text: shareText, url: shareUrl });
       } catch (err) {
         console.log('Share cancelled');
       }
     } else {
       navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-      alert('¡Enlace copiado al portapapeles!');
+      alert('¡Enlace copiado!');
     }
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-yellow-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-white">Cargando tu canción...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && !song) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center p-4">
+        <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 max-w-md text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <a href="/" className="bg-yellow-500 text-black px-6 py-2 rounded-full font-semibold inline-block">
+            Volver al Inicio
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const audioUrl = song?.audioUrl || song?.audio_url;
+  const imageUrl = song?.imageUrl || song?.image_url;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black py-8 px-4">
@@ -128,7 +186,7 @@ export default function SuccessPage() {
           <div className="text-6xl mb-4">🎉</div>
           <h1 className="text-3xl font-bold text-white mb-2">¡Felicidades!</h1>
           <p className="text-gray-400">
-            Tu canción para <span className="text-yellow-500 font-semibold">{recipientName}</span> está lista
+            Tu canción para <span className="text-yellow-500 font-semibold">{song?.recipientName}</span> está lista
           </p>
         </div>
 
@@ -202,8 +260,8 @@ export default function SuccessPage() {
             </div>
           ) : (
             <div className="text-center py-8 mb-6">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-yellow-500 border-t-transparent mx-auto mb-4"></div>
-              <p className="text-yellow-500">Preparando audio...</p>
+              <p className="text-yellow-500">⚠️ Audio no disponible</p>
+              <p className="text-gray-400 text-sm mt-2">Status: {song?.status}</p>
             </div>
           )}
 
@@ -211,17 +269,21 @@ export default function SuccessPage() {
           <div className="border-t border-gray-700 pt-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Género</span>
-              <span className="text-white">{genreName}</span>
+              <span className="text-white">{song?.genre}</span>
             </div>
-            {occasion && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Ocasión</span>
-                <span className="text-white">{occasion}</span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span className="text-gray-500">Ocasión</span>
+              <span className="text-white">{song?.occasion}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Para</span>
-              <span className="text-yellow-500 font-semibold">{recipientName}</span>
+              <span className="text-yellow-500 font-semibold">{song?.recipientName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Estado</span>
+              <span className={song?.paid ? 'text-green-400' : 'text-yellow-400'}>
+                {song?.paid ? '✓ Pagado' : 'Pendiente'}
+              </span>
             </div>
           </div>
         </div>
@@ -235,7 +297,7 @@ export default function SuccessPage() {
             disabled={downloading || !audioUrl}
             className={`w-full py-4 rounded-full font-bold text-lg flex items-center justify-center gap-2 transition-all ${
               audioUrl
-                ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-400 hover:to-yellow-500 shadow-lg shadow-yellow-500/25'
+                ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-400 hover:to-yellow-500 shadow-lg'
                 : 'bg-gray-700 text-gray-400 cursor-not-allowed'
             }`}
           >
@@ -265,7 +327,7 @@ export default function SuccessPage() {
             Compartir
           </button>
 
-          {/* Direct Link Fallback */}
+          {/* Direct Link */}
           {audioUrl && (
             <a
               href={audioUrl}
@@ -278,14 +340,21 @@ export default function SuccessPage() {
           )}
 
           {/* Create Another */}
-          <button
-            onClick={() => navigateTo('landing')}
-            className="w-full py-3 text-gray-400 hover:text-white transition-colors"
+          <a
+            href="/"
+            className="block w-full py-3 text-center text-gray-400 hover:text-white transition-colors"
           >
             Crear otra canción →
-          </button>
+          </a>
         </div>
 
+        {/* Debug Info */}
+        <div className="mt-8 p-4 bg-gray-800/30 rounded-lg text-xs text-gray-500 font-mono">
+          <p>ID: {song?.id}</p>
+          <p>Status: {song?.status}</p>
+          <p>Paid: {song?.paid ? 'Yes' : 'No'}</p>
+          <p>Audio: {audioUrl ? 'Yes ✓' : 'No ✗'}</p>
+        </div>
       </div>
     </div>
   );
