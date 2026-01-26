@@ -55,11 +55,9 @@ export default function PreviewPage() {
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
-      // Calculate time within preview window
       const previewTime = Math.max(0, time - PREVIEW_START);
       setCurrentTime(Math.min(previewTime, PREVIEW_DURATION));
       
-      // Stop at end of preview window
       if (time >= PREVIEW_END) {
         audioRef.current.pause();
         setIsPlaying(false);
@@ -71,7 +69,6 @@ export default function PreviewPage() {
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
-      // Jump to preview start point (skip intro)
       audioRef.current.currentTime = PREVIEW_START;
       setDuration(PREVIEW_DURATION);
     }
@@ -90,7 +87,6 @@ export default function PreviewPage() {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
-        // Reset if preview ended or outside preview window
         if (previewEnded || audioRef.current.currentTime < PREVIEW_START || audioRef.current.currentTime >= PREVIEW_END) {
           audioRef.current.currentTime = PREVIEW_START;
           setPreviewEnded(false);
@@ -108,7 +104,6 @@ export default function PreviewPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle regeneration
   const handleRegenerate = async () => {
     if (!canRegenerate) return;
     
@@ -117,18 +112,15 @@ export default function PreviewPage() {
       const result = await regenerateSong(songData.id);
       
       if (result.success) {
-        // Store first song data for comparison later
         const firstSong = { ...songData, version: 1 };
         
-        // Update songData with new song info
         setSongData({
           ...result.song,
-          firstSong,  // Keep reference to first song
+          firstSong,
           canRegenerate: false,
           version: 2
         });
         
-        // Navigate to generating page for the new song
         navigateTo('generating');
       } else {
         alert(result.error || 'Error al regenerar. Intenta de nuevo.');
@@ -141,14 +133,12 @@ export default function PreviewPage() {
     }
   };
 
-  // FIXED: Handle coupon application with GRATIS100 support
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     
     setIsLoadingCoupon(true);
     setCouponError('');
     
-    // Check for GRATIS100 locally first (100% off = free)
     if (couponCode.trim().toUpperCase() === 'GRATIS100') {
       setCouponApplied({ 
         code: 'GRATIS100', 
@@ -172,11 +162,10 @@ export default function PreviewPage() {
     }
   };
 
-  // FIXED: Handle checkout with GRATIS100 bypass
+  // FIXED: Handle checkout - always use result.url for redirect
   const handleCheckout = async () => {
     setIsCheckingOut(true);
     try {
-      // Pass the coupon code (either from validation or directly typed)
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
       
       const result = await createCheckout(
@@ -185,17 +174,8 @@ export default function PreviewPage() {
         codeToSend
       );
       
-      // Check if it's a FREE coupon (like GRATIS100)
-      if (result.free && result.success) {
-        // Update song data to reflect it's now paid
-        setSongData(prev => ({
-          ...prev,
-          paid: true
-        }));
-        // Navigate to success page directly (no Stripe needed)
-        navigateTo('success');
-      } else if (result.url) {
-        // Normal Stripe checkout - redirect to payment
+      // Always redirect using result.url (includes song_id)
+      if (result.url) {
         window.location.href = result.url;
       } else {
         throw new Error('No checkout URL returned');
@@ -212,7 +192,6 @@ export default function PreviewPage() {
     navigateTo('details');
   };
 
-  // Parse lyrics into sections for display
   const formatLyrics = (lyrics) => {
     if (!lyrics) return [];
     return lyrics.split('\n\n').filter(section => section.trim());
@@ -222,12 +201,10 @@ export default function PreviewPage() {
 
   return (
     <div className="bg-forest text-white antialiased min-h-screen">
-      {/* Hidden audio element */}
       {songData?.previewUrl && (
         <audio ref={audioRef} src={songData.previewUrl} preload="metadata" />
       )}
 
-      {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
         <div 
           className="flex items-center gap-2 cursor-pointer"
@@ -244,9 +221,7 @@ export default function PreviewPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="relative pt-24 pb-20 flex flex-col items-center justify-center overflow-hidden min-h-screen">
-        {/* Background */}
         <div className="absolute inset-0 w-full h-full -z-10">
           <div className="absolute inset-0 bg-gradient-to-br from-forest to-background-dark"></div>
           <div className="absolute inset-0 opacity-5" style={{
@@ -256,7 +231,6 @@ export default function PreviewPage() {
         </div>
 
         <div className="relative z-20 container mx-auto px-6 max-w-3xl">
-          {/* Title */}
           <div className="text-center mb-10">
             <h1 className="font-display text-white text-4xl md:text-5xl font-bold mb-4 tracking-tight">
               Escucha tu creación
@@ -266,12 +240,10 @@ export default function PreviewPage() {
             </p>
           </div>
 
-          {/* Audio Player Card */}
           <div className="relative group mb-8">
             <div className="absolute -inset-1 bg-gradient-to-r from-gold/20 via-white/5 to-gold/20 rounded-[2.5rem] blur-xl opacity-40"></div>
             <div className="relative bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl p-6 md:p-8">
               
-              {/* Preview Badge */}
               <div className="absolute top-6 right-6">
                 <span className={`text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1.5 shadow-lg ${previewEnded ? 'bg-white/20' : 'bg-bougainvillea'}`}>
                   <span className="material-symbols-outlined text-xs">
@@ -282,7 +254,6 @@ export default function PreviewPage() {
               </div>
 
               <div className="flex flex-col md:flex-row items-center gap-8">
-                {/* Album Art */}
                 <div className="w-40 h-40 md:w-48 md:h-48 shrink-0 relative">
                   {songData?.imageUrl ? (
                     <img 
@@ -302,7 +273,6 @@ export default function PreviewPage() {
                   </div>
                 </div>
 
-                {/* Player Info & Controls */}
                 <div className="flex-1 w-full text-center md:text-left">
                   <div className="mb-6">
                     <h3 className="text-2xl font-bold text-white mb-1">
@@ -313,7 +283,6 @@ export default function PreviewPage() {
                     </p>
                   </div>
 
-                  {/* Progress Bar */}
                   <div className="flex items-center gap-1 h-10 mb-6 bg-white/5 rounded-lg px-4 border border-white/5">
                     <div className="flex-1 h-1 bg-white/10 rounded-full relative overflow-hidden">
                       <div 
@@ -326,7 +295,6 @@ export default function PreviewPage() {
                     </span>
                   </div>
 
-                  {/* Controls */}
                   <div className="flex items-center justify-center md:justify-start gap-6">
                     <button 
                       onClick={togglePlay}
@@ -350,7 +318,6 @@ export default function PreviewPage() {
             </div>
           </div>
 
-          {/* Regenerate Button */}
           {canRegenerate && (
             <div className="text-center mb-8">
               <button
@@ -376,7 +343,6 @@ export default function PreviewPage() {
             </div>
           )}
 
-          {/* Lyrics Card */}
           <div className="relative bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[2rem] overflow-hidden shadow-xl mb-12 p-8 md:p-10 text-center">
             <h3 className="font-display text-gold text-2xl mb-8 tracking-wide">
               Letra de tu canción
@@ -384,7 +350,6 @@ export default function PreviewPage() {
             
             <div className="relative max-h-64 overflow-hidden">
               <div className="space-y-6 italic font-display text-lg md:text-xl text-white/90 leading-relaxed">
-                {/* Show first 2 sections clearly */}
                 {lyricsSections.slice(0, 2).map((section, index) => (
                   <p key={index} className={index === 1 ? 'text-gold/80' : ''}>
                     {section.split('\n').map((line, i) => (
@@ -396,7 +361,6 @@ export default function PreviewPage() {
                   </p>
                 ))}
                 
-                {/* Blurred preview of remaining lyrics */}
                 {lyricsSections.length > 2 && (
                   <div className="pt-4 blur-sm opacity-30 select-none">
                     {lyricsSections[2]?.split('\n').slice(0, 2).join('\n')}
@@ -404,7 +368,6 @@ export default function PreviewPage() {
                 )}
               </div>
               
-              {/* Gradient fade overlay */}
               <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-forest/95 to-transparent pointer-events-none"></div>
             </div>
             
@@ -415,9 +378,7 @@ export default function PreviewPage() {
             </div>
           </div>
 
-          {/* Pricing & Checkout Card */}
           <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-8">
-            {/* Price & Coupon Row */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
               <div className="text-center md:text-left">
                 <div className="flex items-center gap-3 justify-center md:justify-start">
@@ -443,7 +404,6 @@ export default function PreviewPage() {
                 </p>
               </div>
 
-              {/* Coupon Input */}
               <div className="w-full md:w-auto">
                 <div className="relative flex items-center">
                   <input
@@ -477,7 +437,6 @@ export default function PreviewPage() {
               </div>
             </div>
 
-            {/* Checkout Button */}
             <div className="text-center">
               <button
                 onClick={handleCheckout}
@@ -506,9 +465,7 @@ export default function PreviewPage() {
               </button>
             </div>
 
-            {/* Trust Badges */}
             <div className="mt-8 flex flex-col items-center gap-6">
-              {/* Payment Methods */}
               <div className="flex items-center gap-6 opacity-60">
                 <svg className="h-5" viewBox="0 0 124 33" fill="currentColor">
                   <path d="M46.211 6.749h-6.839a.95.95 0 0 0-.939.802l-2.766 17.537a.57.57 0 0 0 .564.658h3.265a.95.95 0 0 0 .939-.803l.746-4.73a.95.95 0 0 1 .938-.803h2.165c4.505 0 7.105-2.18 7.784-6.5.306-1.89.013-3.375-.872-4.415-.972-1.142-2.696-1.746-4.985-1.746zM47 13.154c-.374 2.454-2.249 2.454-4.062 2.454h-1.032l.724-4.583a.57.57 0 0 1 .563-.481h.473c1.235 0 2.4 0 3.002.704.359.42.469 1.044.332 1.906zM66.654 13.075h-3.275a.57.57 0 0 0-.563.481l-.145.916-.229-.332c-.709-1.029-2.29-1.373-3.868-1.373-3.619 0-6.71 2.741-7.312 6.586-.313 1.918.132 3.752 1.22 5.031.998 1.176 2.426 1.666 4.125 1.666 2.916 0 4.533-1.875 4.533-1.875l-.146.91a.57.57 0 0 0 .562.66h2.95a.95.95 0 0 0 .939-.803l1.77-11.209a.568.568 0 0 0-.561-.658zm-4.565 6.374c-.316 1.871-1.801 3.127-3.695 3.127-.951 0-1.711-.305-2.199-.883-.484-.574-.668-1.391-.514-2.301.295-1.855 1.805-3.152 3.67-3.152.93 0 1.686.309 2.184.892.499.589.697 1.411.554 2.317zM84.096 13.075h-3.291a.954.954 0 0 0-.787.417l-4.539 6.686-1.924-6.425a.953.953 0 0 0-.912-.678h-3.234a.57.57 0 0 0-.541.754l3.625 10.638-3.408 4.811a.57.57 0 0 0 .465.9h3.287a.949.949 0 0 0 .781-.408l10.946-15.8a.57.57 0 0 0-.468-.895z"/>
@@ -521,7 +478,6 @@ export default function PreviewPage() {
                 <span className="text-white/60 text-xl font-bold">Mastercard</span>
               </div>
 
-              {/* Guarantee Badge */}
               <div className="flex items-center gap-2 px-4 py-2 border border-gold/20 rounded-lg bg-gold/5">
                 <span className="material-symbols-outlined text-gold text-sm">verified_user</span>
                 <span className="text-gold text-[11px] font-bold uppercase tracking-widest">
@@ -531,7 +487,6 @@ export default function PreviewPage() {
             </div>
           </div>
 
-          {/* Back Link */}
           <div className="mt-12 text-center">
             <button
               onClick={handleBack}
@@ -543,12 +498,10 @@ export default function PreviewPage() {
           </div>
         </div>
 
-        {/* Decorative corners */}
         <div className="absolute top-40 left-10 w-24 h-24 border-l border-t border-gold/10 hidden lg:block"></div>
         <div className="absolute bottom-40 right-10 w-24 h-24 border-r border-b border-gold/10 hidden lg:block"></div>
       </main>
 
-      {/* Footer */}
       <footer className="bg-background-dark py-10 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="font-display text-white/30 text-lg tracking-wider uppercase">RegalosQueCantan</div>
