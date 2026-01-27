@@ -7,6 +7,18 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 // Create Supabase client
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Genre style mappings for Suno/Kie.ai
+export const genreStyles = {
+  corrido: "Mexican corrido, accordion, bajo sexto, brass, epic storytelling, norteño",
+  norteno: "Norteño music, accordion, polka rhythm, traditional Mexican, bajo sexto",
+  banda: "Mexican brass band, tubas, trumpets, tambora, powerful vocals, sinaloense",
+  cumbia: "tropical cumbia, accordion, congas, danceable Latin beat, Colombian rhythm",
+  ranchera: "mariachi, violins, trumpets, passionate vocals, traditional Mexican ranchera",
+  balada: "romantic Spanish ballad, piano, strings, emotional vocals, Latin pop",
+  reggaeton: "urban Latin, dembow beat, modern production, reggaetón perreo",
+  salsa: "Caribbean salsa, piano montuno, congas, timbales, Cuban rhythm"
+};
+
 // Occasion prompts for Claude lyrics generation
 export const occasionPrompts = {
   cumpleanos: "una canción de cumpleaños alegre y emotiva",
@@ -23,83 +35,28 @@ export const occasionPrompts = {
   otro: "una canción personalizada y emotiva"
 };
 
-// Relationship context descriptions
-export const relationshipContexts = {
-  pareja: "mi pareja romántica, el amor de mi vida",
-  esposo: "mi esposo, mi compañero de vida",
-  esposa: "mi esposa, mi compañera de vida",
-  novio: "mi novio, mi amor",
-  novia: "mi novia, mi amor",
-  madre: "mi madre, quien me dio la vida",
-  padre: "mi padre, mi héroe",
-  hijo: "mi hijo, mi orgullo",
-  hija: "mi hija, mi princesa",
-  hermano: "mi hermano, mi mejor amigo",
-  hermana: "mi hermana, mi confidente",
-  abuelo: "mi abuelo, mi sabiduría",
-  abuela: "mi abuela, mi ternura",
-  amigo: "mi amigo, mi hermano del alma",
-  amiga: "mi amiga, mi hermana del alma",
-  otro: "alguien muy especial para mí"
-};
-
 /**
  * Generate a personalized song
- * @param {Object} formData - The form data with all song details
- * @returns {Promise<Object>} - The generated song data
  */
 export async function generateSong(formData) {
   const url = `${SUPABASE_URL}/functions/v1/generate-song`;
   
-  console.log('=== generateSong API CALL ===');
-  console.log('FormData received:', formData);
+  const stylePrompt = formData.subGenrePrompt || genreStyles[formData.genre];
   
-  // Build the complete payload with all required fields
   const payload = {
-    // Genre info (CRITICAL for DNA system)
-    genre: formData.genre || '',
-    genreName: formData.genreName || '',
+    genre: formData.genre,
+    genreStyle: stylePrompt,
     subGenre: formData.subGenre || '',
-    subGenreName: formData.subGenreName || '',
-    
-    // Artist inspiration
-    artistInspiration: formData.artistInspiration || '',
-    
-    // Occasion
-    occasion: formData.occasion || '',
-    occasionPrompt: formData.occasionPrompt || occasionPrompts[formData.occasion] || '',
-    customOccasion: formData.customOccasion || '',
-    
-    // Emotional tone (optional)
-    emotionalTone: formData.emotionalTone || '',
-    
-    // Names
-    recipientName: formData.recipientName || '',
-    senderName: formData.senderName || '',
-    
-    // Relationship
-    relationship: formData.relationship || '',
-    relationshipContext: formData.relationshipContext || relationshipContexts[formData.relationship] || '',
-    customRelationship: formData.customRelationship || '',
-    
-    // Details
-    details: formData.details || '',
-    
-    // Contact
-    email: formData.email || '',
-    
-    // Voice
+    occasion: formData.occasion,
+    occasionPrompt: occasionPrompts[formData.occasion],
+    recipientName: formData.recipientName,
+    senderName: formData.senderName,
+    relationship: formData.relationship,
+    details: formData.details,
+    email: formData.email,
     voiceType: formData.voiceType || 'male',
-    
-    // Session (for dual song generation)
-    sessionId: formData.sessionId || null,
-    version: formData.version || 1
+    artistInspiration: formData.artistInspiration || ''
   };
-  
-  console.log('Payload being sent:', payload);
-  console.log('Genre:', payload.genre);
-  console.log('SubGenre:', payload.subGenre);
-  console.log('Artist:', payload.artistInspiration);
   
   const response = await fetch(url, {
     method: 'POST',
@@ -110,17 +67,12 @@ export async function generateSong(formData) {
     body: JSON.stringify(payload)
   });
 
-  console.log('Response status:', response.status);
-
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Error response:', errorText);
     throw new Error(`Failed to generate song: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
-  console.log('Response data:', data);
-  return data;
+  return response.json();
 }
 
 /**
@@ -128,10 +80,11 @@ export async function generateSong(formData) {
  * @param {string|string[]} songIds - Single song ID or array of song IDs
  * @param {string} email - Customer email
  * @param {string} couponCode - Optional coupon code
- * @param {boolean} purchaseBoth - Whether to use bundle pricing
- * @returns {Promise<Object>} - Checkout session with URL
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false) {
+export async function createCheckout(songIds, email, couponCode = null) {
+  // Normalize to array
+  const idsArray = Array.isArray(songIds) ? songIds : [songIds];
+  
   const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
     method: 'POST',
     headers: {
@@ -139,10 +92,9 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
     },
     body: JSON.stringify({
-      songIds: Array.isArray(songIds) ? songIds : [songIds],
+      songIds: idsArray,
       email,
-      couponCode,
-      purchaseBoth
+      couponCode
     })
   });
 
@@ -155,8 +107,6 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
 
 /**
  * Get song status/details
- * @param {string} songId - The song ID
- * @returns {Promise<Object>} - Song details
  */
 export async function getSong(songId) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/get-song?id=${songId}`, {
@@ -174,13 +124,9 @@ export async function getSong(songId) {
 
 /**
  * Check song status - polls database for song completion
- * @param {string} songId - The song ID
- * @returns {Promise<Object>} - Song status and data
  */
 export async function checkSongStatus(songId) {
   const url = `${SUPABASE_URL}/functions/v1/check-song-status?songId=${songId}`;
-  
-  console.log('Checking song status:', songId);
   
   const response = await fetch(url, {
     method: 'GET',
@@ -200,14 +146,9 @@ export async function checkSongStatus(songId) {
 
 /**
  * Regenerate a song with the same details but new music
- * @param {string} songId - The original song ID to regenerate
- * @returns {Promise<Object>} - The new generated song data
  */
 export async function regenerateSong(songId) {
   const url = `${SUPABASE_URL}/functions/v1/regenerate-song`;
-  
-  console.log('=== regenerateSong API CALL ===');
-  console.log('Song ID:', songId);
   
   const response = await fetch(url, {
     method: 'POST',
@@ -220,7 +161,6 @@ export async function regenerateSong(songId) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Regenerate error:', errorText);
     throw new Error(`Failed to regenerate song: ${response.status}`);
   }
 
@@ -229,8 +169,6 @@ export async function regenerateSong(songId) {
 
 /**
  * Validate a coupon code
- * @param {string} code - The coupon code to validate
- * @returns {Promise<Object>} - Coupon details if valid
  */
 export async function validateCoupon(code) {
   const url = `${SUPABASE_URL}/functions/v1/validate-coupon`;

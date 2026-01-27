@@ -178,10 +178,20 @@ export default function ComparisonPage() {
 
     setIsCheckingOut(true);
     try {
-      const songIds = purchaseBoth ? songs.map(s => s.id) : [selectedSongId];
+      // Get the correct song IDs based on selection
+      const songIdsToCheckout = purchaseBoth 
+        ? songs.map(s => s.id)  // All song IDs for "both" option
+        : [selectedSongId];     // Just the selected song ID
+      
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
-      const result = await createCheckout(songIds[0], formData?.email, codeToSend);
+      console.log('Checkout - songIds:', songIdsToCheckout);
+      console.log('Checkout - coupon:', codeToSend);
+
+      // Pass the array of song IDs
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
+      
+      console.log('Checkout result:', result);
 
       if (result.url) {
         window.location.href = result.url;

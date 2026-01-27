@@ -2,100 +2,79 @@ import React, { useState, useRef, useEffect } from 'react';
 import { checkSongStatus } from '../services/api';
 
 export default function SuccessPage() {
-  const [songs, setSongs] = useState([]);  // Array for multiple songs
-  const [currentSong, setCurrentSong] = useState(null);  // Currently playing song
+  const [songs, setSongs] = useState([]);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [downloading, setDownloading] = useState(null);  // Track which song is downloading
+  const [downloading, setDownloading] = useState(null);
   
   const audioRef = useRef(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const songId = params.get('song_id');
-    const sessionId = params.get('session_id');
     
-    console.log('SuccessPage - song_id:', songId);
-    console.log('SuccessPage - session_id:', sessionId);
+    // Support both song_ids (comma-separated) and song_id (single)
+    const songIdsParam = params.get('song_ids');
+    const singleSongId = params.get('song_id');
     
-    if (songId) {
-      fetchSongs(songId);
+    let songIds = [];
+    
+    if (songIdsParam) {
+      songIds = songIdsParam.split(',').filter(id => id.trim());
+    } else if (singleSongId) {
+      songIds = [singleSongId];
+    }
+    
+    console.log('SuccessPage - song IDs:', songIds);
+    
+    if (songIds.length > 0) {
+      fetchSongs(songIds);
     } else {
       setError('No se encontró el ID de la canción en la URL');
       setLoading(false);
     }
   }, []);
 
-  const fetchSongs = async (songId) => {
+  const fetchSongs = async (songIds) => {
     try {
       setLoading(true);
       
-      // Fetch the main song
-      const result = await checkSongStatus(songId);
-      console.log('Song result:', result);
+      // Fetch all songs
+      const fetchedSongs = [];
       
-      if (result.song) {
-        const mainSong = result.song;
-        const allSongs = [mainSong];
-        
-        // If there are multiple versions, fetch them too
-        if (result.totalVersions > 1 && mainSong.sessionId) {
-          try {
-            // Try to get session songs from API
-            const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co'}/functions/v1/get-session-songs?sessionId=${mainSong.sessionId}`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4'}`
-                }
-              }
-            );
-            
-            if (response.ok) {
-              const sessionData = await response.json();
-              if (sessionData.songs && sessionData.songs.length > 1) {
-                // Replace with all session songs
-                allSongs.length = 0;
-                sessionData.songs.forEach(s => allSongs.push({
-                  ...s,
-                  audioUrl: s.audioUrl || s.audio_url,
-                  imageUrl: s.imageUrl || s.image_url
-                }));
-              }
-            }
-          } catch (e) {
-            console.log('Could not fetch session songs:', e);
+      for (const songId of songIds) {
+        try {
+          const result = await checkSongStatus(songId);
+          console.log('Fetched song:', result);
+          
+          if (result.song) {
+            fetchedSongs.push(result.song);
           }
+        } catch (err) {
+          console.error('Error fetching song:', songId, err);
         }
-        
-        setSongs(allSongs);
-        setCurrentSong(allSongs[0]);
+      }
+      
+      if (fetchedSongs.length > 0) {
+        // Sort by version if available
+        fetchedSongs.sort((a, b) => (a.version || 1) - (b.version || 1));
+        setSongs(fetchedSongs);
       } else {
-        setError('No se pudo cargar la canción');
+        setError('No se pudieron cargar las canciones');
       }
     } catch (err) {
       console.error('Fetch error:', err);
-      setError('Error al cargar la canción: ' + err.message);
+      setError('Error al cargar las canciones: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Switch between songs
-  const selectSong = (song) => {
-    setCurrentSong(song);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-  };
+  const currentSong = songs[currentSongIndex];
 
-  // Audio controls
   const togglePlay = () => {
     if (!audioRef.current) return;
     
@@ -104,7 +83,6 @@ export default function SuccessPage() {
     } else {
       audioRef.current.play().catch(err => {
         console.error('Play error:', err);
-        setError('Error al reproducir audio');
       });
     }
   };
@@ -136,17 +114,24 @@ export default function SuccessPage() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // Download handler for a specific song
+  const switchSong = (index) => {
+    setCurrentSongIndex(index);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
+
   const handleDownload = async (song) => {
     const audioUrl = song?.audioUrl || song?.audio_url;
     
     if (!audioUrl) {
-      setError('No hay audio disponible');
+      alert('No hay audio disponible');
       return;
     }
 
     setDownloading(song.id);
-    setError(null);
 
     try {
       const response = await fetch(audioUrl);
@@ -155,7 +140,7 @@ export default function SuccessPage() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       
-      const versionLabel = song.version ? `-v${song.version}` : '';
+      const versionLabel = songs.length > 1 ? `-v${song.version || 1}` : '';
       const a = document.createElement('a');
       a.href = url;
       a.download = `cancion-para-${song?.recipientName || 'regalo'}${versionLabel}.mp3`;
@@ -171,16 +156,13 @@ export default function SuccessPage() {
     }
   };
 
-  // Download all songs
   const handleDownloadAll = async () => {
     for (const song of songs) {
       await handleDownload(song);
-      // Small delay between downloads
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(r => setTimeout(r, 500)); // Small delay between downloads
     }
   };
 
-  // Share handler
   const handleShare = async () => {
     const shareText = `¡Escucha la canción personalizada para ${currentSong?.recipientName}! 🎵`;
     const shareUrl = window.location.href;
@@ -221,6 +203,7 @@ export default function SuccessPage() {
 
   const audioUrl = currentSong?.audioUrl || currentSong?.audio_url;
   const imageUrl = currentSong?.imageUrl || currentSong?.image_url;
+  const isMultipleSongs = songs.length > 1;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black py-8 px-4">
@@ -231,7 +214,7 @@ export default function SuccessPage() {
           <div className="text-6xl mb-4">🎉</div>
           <h1 className="text-3xl font-bold text-white mb-2">¡Felicidades!</h1>
           <p className="text-gray-400">
-            {songs.length > 1 ? (
+            {isMultipleSongs ? (
               <>Tus <span className="text-yellow-500 font-semibold">{songs.length} canciones</span> para <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span> están listas</>
             ) : (
               <>Tu canción para <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span> está lista</>
@@ -239,22 +222,15 @@ export default function SuccessPage() {
           </p>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
-            <p className="text-red-400 text-center">{error}</p>
-          </div>
-        )}
-
-        {/* Version Tabs (if multiple songs) */}
-        {songs.length > 1 && (
-          <div className="flex justify-center gap-2 mb-6">
+        {/* Version Tabs (only if multiple songs) */}
+        {isMultipleSongs && (
+          <div className="flex justify-center gap-3 mb-6">
             {songs.map((song, index) => (
               <button
                 key={song.id}
-                onClick={() => selectSong(song)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-                  currentSong?.id === song.id
+                onClick={() => switchSong(index)}
+                className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
+                  currentSongIndex === index
                     ? 'bg-yellow-500 text-black'
                     : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 }`}
@@ -331,15 +307,15 @@ export default function SuccessPage() {
               <span className="text-gray-500">Para</span>
               <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span>
             </div>
-            {songs.length > 1 && (
+            {isMultipleSongs && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Versión</span>
-                <span className="text-white">{currentSong?.version || 1} de {songs.length}</span>
+                <span className="text-white">{currentSong?.version || currentSongIndex + 1} de {songs.length}</span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-gray-500">Estado</span>
-              <span className="text-green-400">✓ {currentSong?.status}</span>
+              <span className="text-green-400">✓ Pagado</span>
             </div>
           </div>
         </div>
@@ -365,13 +341,13 @@ export default function SuccessPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                {songs.length > 1 ? `Descargar Versión ${currentSong?.version || 1}` : 'Descargar Canción'}
+                {isMultipleSongs ? `Descargar Versión ${currentSong?.version || currentSongIndex + 1}` : 'Descargar Canción'}
               </>
             )}
           </button>
 
-          {/* Download All Songs Button (if multiple) */}
-          {songs.length > 1 && (
+          {/* Download All Button (only if multiple songs) */}
+          {isMultipleSongs && (
             <button
               onClick={handleDownloadAll}
               disabled={downloading !== null}
@@ -395,7 +371,7 @@ export default function SuccessPage() {
             Compartir
           </button>
 
-          {/* Direct Links */}
+          {/* Direct Link */}
           {audioUrl && (
             <a href={audioUrl} target="_blank" rel="noopener noreferrer" className="block w-full py-3 text-center text-gray-400 hover:text-yellow-500 text-sm">
               Abrir audio en nueva pestaña →
