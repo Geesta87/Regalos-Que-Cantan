@@ -98,9 +98,18 @@ export default function ComparisonPage() {
       console.log('📋 Final loaded songs:', loadedSongs);
       
       setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
-      setLoading(false);
+      
+      if (loadedSongs.length > 0) {
+        setLoading(false);
+        if (loadedSongs.length === 1) {
+          setSelectedSongId(loadedSongs[0].id);
+        }
+      } else {
+        setError('No songs available');
+        setLoading(false);
+      }
     } catch (err) {
-      console.error('❌ Error loading songs:', err);
+      console.error('Error loading songs:', err);
       setError(err.message);
       setLoading(false);
     }
@@ -108,12 +117,6 @@ export default function ComparisonPage() {
 
   const handlePlay = (songId) => {
     try {
-      Object.keys(audioRefs.current).forEach(id => {
-        if (id !== songId && audioRefs.current[id]) {
-          audioRefs.current[id].pause();
-        }
-      });
-
       const audio = audioRefs.current[songId];
       if (!audio) return;
 
@@ -121,19 +124,24 @@ export default function ComparisonPage() {
         audio.pause();
         setPlayingId(null);
       } else {
-        if (audio.currentTime < PREVIEW_START || audio.currentTime >= PREVIEW_END) {
+        Object.values(audioRefs.current).forEach(a => { if (a) a.pause(); });
+        
+        if (previewEnded[songId] || audio.currentTime < PREVIEW_START || audio.currentTime >= PREVIEW_END) {
           audio.currentTime = PREVIEW_START;
           setPreviewEnded(prev => ({ ...prev, [songId]: false }));
+          setCurrentTimes(prev => ({ ...prev, [songId]: 0 }));
         }
-        audio.play();
+        
+        audio.play().catch(err => console.error('Play error:', err));
         setPlayingId(songId);
       }
     } catch (err) {
-      console.error('Play error:', err);
+      console.error('Play toggle error:', err);
     }
   };
 
   const handleTimeUpdate = (songId, audio) => {
+    if (!audio) return;
     try {
       const time = audio.currentTime;
       const previewTime = Math.max(0, time - PREVIEW_START);
@@ -182,6 +190,7 @@ export default function ComparisonPage() {
     }
   };
 
+  // FIXED: Always use result.url which includes song_id
   const handleCheckout = async () => {
     if (!selectedSongId && !purchaseBoth) {
       alert('Selecciona una canción o elige ambas');
@@ -193,13 +202,18 @@ export default function ComparisonPage() {
       const songIds = purchaseBoth ? songs.map(s => s.id) : [selectedSongId];
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
-      const result = await createCheckout(songIds, formData?.email, codeToSend, purchaseBoth);
+      console.log('Checkout - songIds:', songIds);
+      console.log('Checkout - coupon:', codeToSend);
+
+      const result = await createCheckout(songIds[0], formData?.email, codeToSend);
       
-      if (result.free && result.success) {
-        setSongData(prev => ({ ...prev, paid: true, selectedSongIds: songIds }));
-        navigateTo('success');
-      } else if (result.url) {
+      console.log('Checkout result:', result);
+
+      // FIXED: Always use result.url (includes song_id parameter)
+      if (result.url) {
         window.location.href = result.url;
+      } else {
+        throw new Error('No checkout URL returned');
       }
     } catch (err) {
       console.error('Checkout error:', err);
@@ -378,7 +392,7 @@ export default function ComparisonPage() {
                 {purchaseBoth ? '2 Canciones' : selectedSongId ? '1 Canción' : 'Selecciona'}
               </p>
               <p style={{fontSize: '32px', fontWeight: 'bold'}}>
-                ${purchaseBoth ? bundlePrice : singlePrice.toFixed(2)}
+                {isFree ? '¡GRATIS!' : `$${purchaseBoth ? bundlePrice : singlePrice.toFixed(2)}`}
               </p>
             </div>
 
@@ -415,7 +429,7 @@ export default function ComparisonPage() {
               cursor: (selectedSongId || purchaseBoth) ? 'pointer' : 'not-allowed'
             }}
           >
-            {isCheckingOut ? '⏳ Procesando...' : purchaseBoth ? 'Comprar Ambas' : selectedSongId ? 'Comprar Seleccionada' : 'Selecciona una opción'}
+            {isCheckingOut ? '⏳ Procesando...' : isFree ? 'Descargar Gratis' : purchaseBoth ? 'Comprar Ambas' : selectedSongId ? 'Comprar Seleccionada' : 'Selecciona una opción'}
           </button>
         </div>
 
