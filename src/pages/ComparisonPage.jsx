@@ -9,22 +9,14 @@ const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 export default function ComparisonPage() {
-  // Debug: Log that component is mounting
-  console.log('🎵 ComparisonPage MOUNTING');
-  
   const context = useContext(AppContext);
-  console.log('📦 Context received:', context);
   
-  // Safely destructure with defaults
   const { 
     formData = {}, 
     songData = {}, 
     setSongData = () => {}, 
     navigateTo = () => {} 
   } = context || {};
-  
-  console.log('📋 formData:', formData);
-  console.log('🎵 songData:', songData);
   
   // Songs state
   const [songs, setSongs] = useState([]);
@@ -54,37 +46,31 @@ export default function ComparisonPage() {
   // Safely get genre display name
   const genreConfig = genres?.[formData?.genre];
   const genreName = genreConfig?.name || formData?.genre || 'Género';
-  const subGenreName = formData?.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Pricing
   const singlePrice = 19.99;
   const bundlePrice = 29.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
-  const discount = couponApplied?.discount || 0;
   const isFree = couponApplied?.free || false;
-  const finalSinglePrice = isFree ? 0 : (singlePrice * (1 - discount / 100)).toFixed(2);
-  const finalBundlePrice = isFree ? 0 : (bundlePrice * (1 - discount / 100)).toFixed(2);
+
+  // Check if something is selected
+  const hasSelection = selectedSongId || purchaseBoth;
 
   // Load songs from songData
   useEffect(() => {
-    console.log('🔄 useEffect running, songData:', songData);
-    
     try {
       const loadedSongs = [];
       
       if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
-        console.log('✅ Found songs array:', songData.songs);
         loadedSongs.push(...songData.songs);
       } 
       else if (songData?.song1) {
-        console.log('✅ Found song1/song2 format');
         loadedSongs.push({ ...songData.song1, version: 1 });
         if (songData?.song2) {
           loadedSongs.push({ ...songData.song2, version: 2 });
         }
       }
       else if (songData?.id) {
-        console.log('✅ Using songData as single song');
         loadedSongs.push({
           id: songData.id,
           version: 1,
@@ -94,22 +80,16 @@ export default function ComparisonPage() {
           lyrics: songData.lyrics
         });
       }
-
-      console.log('📋 Final loaded songs:', loadedSongs);
       
       setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
       
       if (loadedSongs.length > 0) {
         setLoading(false);
-        if (loadedSongs.length === 1) {
-          setSelectedSongId(loadedSongs[0].id);
-        }
       } else {
         setError('No songs available');
         setLoading(false);
       }
     } catch (err) {
-      console.error('Error loading songs:', err);
       setError(err.message);
       setLoading(false);
     }
@@ -190,7 +170,6 @@ export default function ComparisonPage() {
     }
   };
 
-  // FIXED: Always use result.url which includes song_id
   const handleCheckout = async () => {
     if (!selectedSongId && !purchaseBoth) {
       alert('Selecciona una canción o elige ambas');
@@ -202,14 +181,8 @@ export default function ComparisonPage() {
       const songIds = purchaseBoth ? songs.map(s => s.id) : [selectedSongId];
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
-      console.log('Checkout - songIds:', songIds);
-      console.log('Checkout - coupon:', codeToSend);
-
       const result = await createCheckout(songIds[0], formData?.email, codeToSend);
-      
-      console.log('Checkout result:', result);
 
-      // FIXED: Always use result.url (includes song_id parameter)
       if (result.url) {
         window.location.href = result.url;
       } else {
@@ -233,23 +206,32 @@ export default function ComparisonPage() {
     setSelectedSongId(null);
   };
 
+  // Get selection label for summary
+  const getSelectionLabel = () => {
+    if (purchaseBoth) return '2 Canciones (Ambas versiones)';
+    if (selectedSongId) {
+      const song = songs.find(s => s.id === selectedSongId);
+      return `1 Canción (Versión ${song?.version || 1})`;
+    }
+    return null;
+  };
+
   if (loading) {
-    console.log('🔄 Rendering loading state');
     return (
       <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         <div style={{textAlign: 'center'}}>
-          <p style={{fontSize: '24px'}}>⏳ Cargando tus canciones...</p>
+          <div style={{fontSize: '48px', marginBottom: '20px'}}>⏳</div>
+          <p style={{fontSize: '20px'}}>Cargando tus canciones...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
-    console.log('❌ Rendering error state:', error);
+  if (error || !songs || songs.length === 0) {
     return (
       <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
         <div style={{textAlign: 'center'}}>
-          <p style={{fontSize: '24px'}}>❌ Error: {error}</p>
+          <p style={{fontSize: '24px'}}>❌ {error || 'No se encontraron canciones'}</p>
           <button onClick={() => navigateTo('details')} style={{padding: '12px 24px', background: '#e11d74', color: 'white', border: 'none', borderRadius: '8px', marginTop: '20px', cursor: 'pointer'}}>
             Volver a intentar
           </button>
@@ -257,22 +239,6 @@ export default function ComparisonPage() {
       </div>
     );
   }
-
-  if (!songs || songs.length === 0) {
-    console.log('⚠️ Rendering no songs state');
-    return (
-      <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-        <div style={{textAlign: 'center'}}>
-          <p style={{fontSize: '24px'}}>⚠️ No se encontraron canciones</p>
-          <button onClick={() => navigateTo('details')} style={{padding: '12px 24px', background: '#e11d74', color: 'white', border: 'none', borderRadius: '8px', marginTop: '20px', cursor: 'pointer'}}>
-            Volver a intentar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  console.log('✅ Rendering main content with', songs.length, 'songs');
   
   return (
     <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', padding: '20px'}}>
@@ -289,148 +255,414 @@ export default function ComparisonPage() {
         />
       ))}
 
-      <div style={{maxWidth: '900px', margin: '0 auto', paddingTop: '60px'}}>
-        <h1 style={{fontSize: '32px', textAlign: 'center', marginBottom: '10px'}}>¡Elige tu favorita!</h1>
-        <p style={{textAlign: 'center', color: '#d4af37', marginBottom: '40px'}}>
-          {songs.length} versiones para {formData?.recipientName || 'ti'}
-        </p>
-
-        {/* Song Cards */}
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px'}}>
-          {songs.map((song, index) => (
-            <div
-              key={song.id}
-              onClick={() => selectSong(song.id)}
-              style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: selectedSongId === song.id ? '3px solid #d4af37' : '2px solid rgba(255,255,255,0.1)',
-                borderRadius: '16px',
-                padding: '20px',
-                cursor: 'pointer',
-                transition: 'all 0.3s'
-              }}
-            >
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
-                <span style={{background: index === 0 ? '#3b82f6' : '#8b5cf6', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold'}}>
-                  Versión {song.version || index + 1}
-                </span>
-                {selectedSongId === song.id && <span style={{color: '#d4af37', fontSize: '24px'}}>✓</span>}
-              </div>
-
-              <div style={{height: '150px', background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.2))', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '15px'}}>
-                {song.imageUrl ? (
-                  <img src={song.imageUrl} alt="" style={{width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px'}} />
-                ) : (
-                  <span style={{fontSize: '48px'}}>🎵</span>
-                )}
-              </div>
-
-              <h3 style={{fontSize: '18px', marginBottom: '5px'}}>Para {formData?.recipientName || 'ti'}</h3>
-              <p style={{color: '#d4af37', fontSize: '12px', marginBottom: '15px'}}>{genreName}</p>
-
-              <button
-                onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: playingId === song.id ? '#d4af37' : 'rgba(255,255,255,0.1)',
-                  color: playingId === song.id ? '#1a3a2f' : 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                {playingId === song.id ? '⏸ Pausar' : '▶ Escuchar Preview'}
-              </button>
-
-              <div style={{marginTop: '10px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px'}}>
-                <div style={{height: '100%', background: '#d4af37', borderRadius: '2px', width: `${((currentTimes[song.id] || 0) / PREVIEW_DURATION) * 100}%`, transition: 'width 0.1s'}} />
-              </div>
-              <p style={{fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '5px', textAlign: 'right'}}>
-                {formatTime(currentTimes[song.id] || 0)} / 0:20
-              </p>
-            </div>
-          ))}
+      <div style={{maxWidth: '900px', margin: '0 auto', paddingTop: '40px'}}>
+        
+        {/* Header with clear instruction */}
+        <div style={{textAlign: 'center', marginBottom: '40px'}}>
+          <div style={{fontSize: '48px', marginBottom: '15px'}}>🎵</div>
+          <h1 style={{fontSize: '28px', marginBottom: '10px', fontWeight: 'bold'}}>
+            Paso Final: Elige tu canción
+          </h1>
+          <p style={{color: '#d4af37', fontSize: '18px', marginBottom: '20px'}}>
+            {songs.length} versiones creadas para <strong>{formData?.recipientName || 'ti'}</strong>
+          </p>
+          
+          {/* Instruction box */}
+          <div style={{
+            background: 'rgba(212, 175, 55, 0.1)',
+            border: '2px dashed #d4af37',
+            borderRadius: '12px',
+            padding: '15px 25px',
+            display: 'inline-block'
+          }}>
+            <p style={{margin: 0, fontSize: '16px'}}>
+              👇 <strong>Selecciona UNA versión</strong> o elige <strong>ambas</strong> con descuento
+            </p>
+          </div>
         </div>
 
-        {/* Bundle Option */}
+        {/* Song Cards */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '20px'}}>
+          {songs.map((song, index) => {
+            const isSelected = selectedSongId === song.id;
+            const isOtherSelected = (selectedSongId && !isSelected) || purchaseBoth;
+            
+            return (
+              <div
+                key={song.id}
+                onClick={() => selectSong(song.id)}
+                style={{
+                  background: isSelected 
+                    ? 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(212,175,55,0.1))' 
+                    : 'rgba(255,255,255,0.03)',
+                  border: isSelected 
+                    ? '3px solid #d4af37' 
+                    : '2px solid rgba(255,255,255,0.1)',
+                  borderRadius: '20px',
+                  padding: '24px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s',
+                  opacity: isOtherSelected ? 0.5 : 1,
+                  transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                  boxShadow: isSelected ? '0 0 30px rgba(212,175,55,0.3)' : 'none',
+                  position: 'relative'
+                }}
+              >
+                {/* Radio button indicator */}
+                <div style={{
+                  position: 'absolute',
+                  top: '15px',
+                  right: '15px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  border: isSelected ? '3px solid #d4af37' : '3px solid rgba(255,255,255,0.3)',
+                  background: isSelected ? '#d4af37' : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}>
+                  {isSelected && <span style={{color: '#1a3a2f', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
+                </div>
+
+                {/* Version badge */}
+                <div style={{marginBottom: '15px'}}>
+                  <span style={{
+                    background: index === 0 ? '#3b82f6' : '#8b5cf6', 
+                    padding: '6px 14px', 
+                    borderRadius: '20px', 
+                    fontSize: '13px', 
+                    fontWeight: 'bold'
+                  }}>
+                    Versión {song.version || index + 1}
+                  </span>
+                </div>
+
+                {/* Album art */}
+                <div style={{
+                  height: '160px', 
+                  background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.2))', 
+                  borderRadius: '12px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  marginBottom: '15px',
+                  overflow: 'hidden'
+                }}>
+                  {song.imageUrl ? (
+                    <img src={song.imageUrl} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                  ) : (
+                    <span style={{fontSize: '56px'}}>🎵</span>
+                  )}
+                </div>
+
+                {/* Song info */}
+                <h3 style={{fontSize: '18px', marginBottom: '5px', fontWeight: 'bold'}}>
+                  Para {formData?.recipientName || 'ti'}
+                </h3>
+                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '15px'}}>{genreName}</p>
+
+                {/* Play button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: playingId === song.id ? '#d4af37' : 'rgba(255,255,255,0.1)',
+                    color: playingId === song.id ? '#1a3a2f' : 'white',
+                    border: 'none',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '15px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <span style={{fontSize: '18px'}}>{playingId === song.id ? '⏸' : '▶'}</span>
+                  {playingId === song.id ? 'Pausar' : 'Escuchar Preview'}
+                </button>
+
+                {/* Progress bar */}
+                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px'}}>
+                  <div style={{
+                    height: '100%', 
+                    background: '#d4af37', 
+                    borderRadius: '3px', 
+                    width: `${((currentTimes[song.id] || 0) / PREVIEW_DURATION) * 100}%`, 
+                    transition: 'width 0.1s'
+                  }} />
+                </div>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
+                  {formatTime(currentTimes[song.id] || 0)} / 0:20
+                </p>
+
+                {/* Price */}
+                <div style={{
+                  marginTop: '15px',
+                  paddingTop: '15px',
+                  borderTop: '1px solid rgba(255,255,255,0.1)',
+                  textAlign: 'center'
+                }}>
+                  <span style={{fontSize: '24px', fontWeight: 'bold', color: isSelected ? '#d4af37' : 'white'}}>
+                    ${singlePrice}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* OR Divider */}
+        {songs.length >= 2 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            margin: '30px 0',
+            gap: '20px'
+          }}>
+            <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
+            <span style={{
+              color: '#d4af37',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              padding: '8px 20px',
+              background: 'rgba(212,175,55,0.1)',
+              borderRadius: '20px',
+              border: '1px solid rgba(212,175,55,0.3)'
+            }}>
+              O MEJOR AÚN
+            </span>
+            <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
+          </div>
+        )}
+
+        {/* Bundle Option - More prominent */}
         {songs.length >= 2 && (
           <div
             onClick={selectBoth}
             style={{
-              background: 'linear-gradient(90deg, rgba(212,175,55,0.1), rgba(225,29,116,0.1))',
-              border: purchaseBoth ? '3px solid #d4af37' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: '16px',
-              padding: '20px',
+              background: purchaseBoth 
+                ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(212,175,55,0.2))' 
+                : 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
+              border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
+              borderRadius: '20px',
+              padding: '25px',
               cursor: 'pointer',
               marginBottom: '30px',
+              position: 'relative',
+              transition: 'all 0.3s',
+              transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
+              boxShadow: purchaseBoth ? '0 0 30px rgba(34,197,94,0.2)' : 'none',
+              opacity: selectedSongId ? 0.6 : 1
+            }}
+          >
+            {/* Best value badge */}
+            <div style={{
+              position: 'absolute',
+              top: '-12px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+              color: 'white',
+              padding: '6px 20px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              boxShadow: '0 4px 15px rgba(34,197,94,0.4)'
+            }}>
+              ⭐ MEJOR VALOR - AHORRA ${bundleSavings.toFixed(2)}
+            </div>
+
+            {/* Radio button indicator */}
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
+              background: purchaseBoth ? '#22c55e' : 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s'
+            }}>
+              {purchaseBoth && <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
+            </div>
+
+            <div style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               flexWrap: 'wrap',
-              gap: '15px'
-            }}
-          >
-            <div>
-              <h3 style={{fontSize: '20px', marginBottom: '5px'}}>🎁 ¡Llévate ambas versiones!</h3>
-              <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '14px'}}>Perfecto para compartir</p>
-            </div>
-            <div style={{textAlign: 'right'}}>
-              <p style={{color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through'}}>${(singlePrice * 2).toFixed(2)}</p>
-              <p style={{color: '#d4af37', fontSize: '28px', fontWeight: 'bold'}}>${bundlePrice}</p>
-              <p style={{color: '#22c55e', fontSize: '12px', fontWeight: 'bold'}}>¡AHORRA ${bundleSavings.toFixed(2)}!</p>
+              gap: '20px',
+              marginTop: '10px'
+            }}>
+              <div>
+                <h3 style={{fontSize: '22px', marginBottom: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                  🎁 ¡Llévate AMBAS versiones!
+                </h3>
+                <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
+                  Perfecto para compartir o elegir después • Incluye Versión 1 + Versión 2
+                </p>
+              </div>
+              <div style={{textAlign: 'right'}}>
+                <p style={{color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
+                  ${(singlePrice * 2).toFixed(2)}
+                </p>
+                <p style={{color: purchaseBoth ? '#22c55e' : '#d4af37', fontSize: '36px', fontWeight: 'bold', margin: 0}}>
+                  ${bundlePrice}
+                </p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Checkout */}
-        <div style={{background: 'rgba(255,255,255,0.03)', borderRadius: '16px', padding: '24px'}}>
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', marginBottom: '20px'}}>
-            <div>
-              <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '14px', marginBottom: '5px'}}>
-                {purchaseBoth ? '2 Canciones' : selectedSongId ? '1 Canción' : 'Selecciona'}
-              </p>
-              <p style={{fontSize: '32px', fontWeight: 'bold'}}>
+        {/* Selection Summary */}
+        {hasSelection && (
+          <div style={{
+            background: 'rgba(212,175,55,0.1)',
+            border: '2px solid #d4af37',
+            borderRadius: '12px',
+            padding: '15px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+              <span style={{fontSize: '24px'}}>✓</span>
+              <div>
+                <p style={{margin: 0, fontWeight: 'bold', color: '#d4af37'}}>Seleccionado:</p>
+                <p style={{margin: 0, fontSize: '14px'}}>{getSelectionLabel()}</p>
+              </div>
+            </div>
+            <div style={{textAlign: 'right'}}>
+              <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
                 {isFree ? '¡GRATIS!' : `$${purchaseBoth ? bundlePrice : singlePrice.toFixed(2)}`}
               </p>
             </div>
-
-            <div>
-              <input
-                type="text"
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="Código de Cupón"
-                disabled={!!couponApplied}
-                style={{padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', marginRight: '10px'}}
-              />
-              {!couponApplied && (
-                <button onClick={handleApplyCoupon} style={{padding: '12px 16px', background: '#d4af37', color: '#1a3a2f', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'}}>
-                  Aplicar
-                </button>
-              )}
-              {couponApplied && <span style={{color: '#22c55e'}}>✓ Aplicado</span>}
-            </div>
           </div>
+        )}
 
+        {/* Checkout Section */}
+        <div style={{background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '25px'}}>
+          
+          {/* Coupon Input */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '20px',
+            flexWrap: 'wrap'
+          }}>
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder="¿Tienes un código de cupón?"
+              disabled={!!couponApplied}
+              style={{
+                flex: 1,
+                minWidth: '200px',
+                padding: '14px 18px', 
+                background: 'rgba(255,255,255,0.05)', 
+                border: '2px solid rgba(255,255,255,0.1)', 
+                borderRadius: '10px', 
+                color: 'white',
+                fontSize: '15px'
+              }}
+            />
+            {!couponApplied ? (
+              <button 
+                onClick={handleApplyCoupon}
+                disabled={isLoadingCoupon || !couponCode.trim()}
+                style={{
+                  padding: '14px 24px', 
+                  background: couponCode.trim() ? '#d4af37' : 'rgba(255,255,255,0.1)', 
+                  color: couponCode.trim() ? '#1a3a2f' : 'rgba(255,255,255,0.3)', 
+                  border: 'none', 
+                  borderRadius: '10px', 
+                  cursor: couponCode.trim() ? 'pointer' : 'not-allowed', 
+                  fontWeight: 'bold',
+                  fontSize: '15px'
+                }}
+              >
+                {isLoadingCoupon ? '...' : 'Aplicar'}
+              </button>
+            ) : (
+              <span style={{
+                color: '#22c55e', 
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '14px 20px',
+                background: 'rgba(34,197,94,0.1)',
+                borderRadius: '10px'
+              }}>
+                ✓ {couponApplied.code} aplicado
+              </span>
+            )}
+          </div>
+          {couponError && (
+            <p style={{color: '#ef4444', fontSize: '14px', marginTop: '-10px', marginBottom: '15px'}}>{couponError}</p>
+          )}
+
+          {/* Checkout Button */}
           <button
             onClick={handleCheckout}
-            disabled={isCheckingOut || (!selectedSongId && !purchaseBoth)}
+            disabled={isCheckingOut || !hasSelection}
             style={{
               width: '100%',
-              padding: '20px',
-              background: (selectedSongId || purchaseBoth) ? '#e11d74' : 'rgba(255,255,255,0.1)',
-              color: (selectedSongId || purchaseBoth) ? 'white' : 'rgba(255,255,255,0.3)',
+              padding: '22px',
+              background: hasSelection 
+                ? 'linear-gradient(90deg, #e11d74, #be185d)' 
+                : 'rgba(255,255,255,0.1)',
+              color: hasSelection ? 'white' : 'rgba(255,255,255,0.3)',
               border: 'none',
-              borderRadius: '12px',
-              fontSize: '18px',
+              borderRadius: '14px',
+              fontSize: '20px',
               fontWeight: 'bold',
-              cursor: (selectedSongId || purchaseBoth) ? 'pointer' : 'not-allowed'
+              cursor: hasSelection ? 'pointer' : 'not-allowed',
+              transition: 'all 0.3s',
+              boxShadow: hasSelection ? '0 4px 20px rgba(225,29,116,0.4)' : 'none'
             }}
           >
-            {isCheckingOut ? '⏳ Procesando...' : isFree ? 'Descargar Gratis' : purchaseBoth ? 'Comprar Ambas' : selectedSongId ? 'Comprar Seleccionada' : 'Selecciona una opción'}
+            {isCheckingOut ? (
+              <span>⏳ Procesando...</span>
+            ) : !hasSelection ? (
+              <span>👆 Primero selecciona una opción arriba</span>
+            ) : isFree ? (
+              <span>🎉 Descargar Gratis</span>
+            ) : (
+              <span>💳 {purchaseBoth ? 'Comprar Ambas Canciones' : 'Comprar Canción Seleccionada'}</span>
+            )}
           </button>
+
+          {/* Trust badges */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '20px',
+            marginTop: '20px',
+            flexWrap: 'wrap'
+          }}>
+            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+              🔒 Pago Seguro
+            </span>
+            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+              ⚡ Descarga Instantánea
+            </span>
+            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+              ✨ Calidad Premium
+            </span>
+          </div>
         </div>
 
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
