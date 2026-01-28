@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
-import { createCheckout, validateCoupon } from '../services/api';
+import { createCheckout, validateCoupon, supabase } from '../services/api';
 import genres from '../config/genres';
 
 // Preview settings
@@ -56,11 +56,46 @@ export default function ComparisonPage() {
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
 
-  // Load songs from songData
+  // ✅ FIX: Helper function to fetch songs from database by IDs
+  const fetchSongsFromIds = async (songIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('songs')
+        .select('*')
+        .in('id', songIds);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const loadedSongs = data.map((song, index) => ({
+          id: song.id,
+          version: song.version || index + 1,
+          audioUrl: song.audio_url,
+          previewUrl: song.preview_url || song.audio_url,
+          imageUrl: song.image_url,
+          lyrics: song.lyrics
+        }));
+        setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
+        setLoading(false);
+      } else {
+        setError('No se encontraron las canciones');
+        setLoading(false);
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error('Error fetching songs from URL params:', err);
+      }
+      setError('Error al cargar las canciones');
+      setLoading(false);
+    }
+  };
+
+  // Load songs from songData OR URL parameters (for page refresh support)
   useEffect(() => {
     try {
       const loadedSongs = [];
       
+      // First, try to load from context
       if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
         loadedSongs.push(...songData.songs);
       } 
@@ -81,14 +116,34 @@ export default function ComparisonPage() {
         });
       }
       
-      setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
-      
+      // If we have songs from context, use them
       if (loadedSongs.length > 0) {
+        setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
         setLoading(false);
-      } else {
-        setError('No songs available');
-        setLoading(false);
+        return;
       }
+      
+      // ✅ FIX: Fallback to URL parameters if no context data (supports page refresh)
+      const params = new URLSearchParams(window.location.search);
+      const songIdsParam = params.get('song_ids');
+      const singleSongId = params.get('song_id');
+      
+      if (songIdsParam) {
+        // Multiple song IDs (comma-separated)
+        const songIds = songIdsParam.split(',').filter(id => id.trim());
+        if (songIds.length > 0) {
+          fetchSongsFromIds(songIds);
+          return;
+        }
+      } else if (singleSongId) {
+        // Single song ID
+        fetchSongsFromIds([singleSongId]);
+        return;
+      }
+      
+      // No songs available
+      setError('No songs available');
+      setLoading(false);
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -112,11 +167,13 @@ export default function ComparisonPage() {
           setCurrentTimes(prev => ({ ...prev, [songId]: 0 }));
         }
         
-        audio.play().catch(err => console.error('Play error:', err));
+        audio.play().catch(err => {
+          if (import.meta.env.DEV) console.error('Play error:', err);
+        });
         setPlayingId(songId);
       }
     } catch (err) {
-      console.error('Play toggle error:', err);
+      if (import.meta.env.DEV) console.error('Play toggle error:', err);
     }
   };
 
@@ -138,7 +195,7 @@ export default function ComparisonPage() {
         setPreviewEnded(prev => ({ ...prev, [songId]: true }));
       }
     } catch (err) {
-      console.error('Time update error:', err);
+      if (import.meta.env.DEV) console.error('Time update error:', err);
     }
   };
 
@@ -148,17 +205,13 @@ export default function ComparisonPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // ✅ FIX: REMOVED GRATIS100 hardcoded bypass - ALL coupons now validate via server
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     setIsLoadingCoupon(true);
     setCouponError('');
     
-    if (couponCode.trim().toUpperCase() === 'GRATIS100') {
-      setCouponApplied({ code: 'GRATIS100', discount: 100, free: true });
-      setIsLoadingCoupon(false);
-      return;
-    }
-    
+    // All coupon validation now goes through the server
     try {
       const result = await validateCoupon(couponCode);
       setCouponApplied(result);
@@ -185,13 +238,18 @@ export default function ComparisonPage() {
       
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
-      console.log('Checkout - songIds:', songIdsToCheckout);
-      console.log('Checkout - coupon:', codeToSend);
+      // ✅ FIX: Wrapped in DEV check
+      if (import.meta.env.DEV) {
+        console.log('Checkout - songIds:', songIdsToCheckout);
+        console.log('Checkout - coupon:', codeToSend);
+      }
 
       // Pass the array of song IDs
       const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
       
-      console.log('Checkout result:', result);
+      if (import.meta.env.DEV) {
+        console.log('Checkout result:', result);
+      }
 
       if (result.url) {
         window.location.href = result.url;
@@ -199,7 +257,7 @@ export default function ComparisonPage() {
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
+      if (import.meta.env.DEV) console.error('Checkout error:', err);
       alert('Error al procesar el pago. Intenta de nuevo.');
     } finally {
       setIsCheckingOut(false);
@@ -675,8 +733,9 @@ export default function ComparisonPage() {
           </div>
         </div>
 
+        {/* ✅ FIX: Dynamic year */}
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
-          RegalosQueCantan © 2025
+          RegalosQueCantan © {new Date().getFullYear()}
         </p>
       </div>
     </div>

@@ -13,6 +13,11 @@ export default function SuccessPage() {
   
   const audioRef = useRef(null);
 
+  // ✅ FIX: Helper function to safely get field with camelCase/snake_case fallback
+  const getField = (obj, camelCase, snakeCase, fallback = '') => {
+    return obj?.[camelCase] || obj?.[snakeCase] || fallback;
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     
@@ -28,7 +33,10 @@ export default function SuccessPage() {
       songIds = [singleSongId];
     }
     
-    console.log('SuccessPage - song IDs:', songIds);
+    // ✅ FIX: Wrapped in DEV check
+    if (import.meta.env.DEV) {
+      console.log('SuccessPage - song IDs:', songIds);
+    }
     
     if (songIds.length > 0) {
       fetchSongs(songIds);
@@ -48,13 +56,17 @@ export default function SuccessPage() {
       for (const songId of songIds) {
         try {
           const result = await checkSongStatus(songId);
-          console.log('Fetched song:', result);
+          if (import.meta.env.DEV) {
+            console.log('Fetched song:', result);
+          }
           
           if (result.song) {
             fetchedSongs.push(result.song);
           }
         } catch (err) {
-          console.error('Error fetching song:', songId, err);
+          if (import.meta.env.DEV) {
+            console.error('Error fetching song:', songId, err);
+          }
         }
       }
       
@@ -66,7 +78,9 @@ export default function SuccessPage() {
         setError('No se pudieron cargar las canciones');
       }
     } catch (err) {
-      console.error('Fetch error:', err);
+      if (import.meta.env.DEV) {
+        console.error('Fetch error:', err);
+      }
       setError('Error al cargar las canciones: ' + err.message);
     } finally {
       setLoading(false);
@@ -82,7 +96,9 @@ export default function SuccessPage() {
       audioRef.current.pause();
     } else {
       audioRef.current.play().catch(err => {
-        console.error('Play error:', err);
+        if (import.meta.env.DEV) {
+          console.error('Play error:', err);
+        }
       });
     }
   };
@@ -118,13 +134,15 @@ export default function SuccessPage() {
     setCurrentSongIndex(index);
     setIsPlaying(false);
     setCurrentTime(0);
+    setDuration(0);  // ✅ FIX: Reset duration when switching songs
     if (audioRef.current) {
       audioRef.current.pause();
     }
   };
 
   const handleDownload = async (song) => {
-    const audioUrl = song?.audioUrl || song?.audio_url;
+    // ✅ FIX: Support both camelCase and snake_case field names
+    const audioUrl = getField(song, 'audioUrl', 'audio_url');
     
     if (!audioUrl) {
       alert('No hay audio disponible');
@@ -140,16 +158,20 @@ export default function SuccessPage() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       
+      // ✅ FIX: Support both camelCase and snake_case for recipientName
+      const recipientName = getField(song, 'recipientName', 'recipient_name', 'regalo');
       const versionLabel = songs.length > 1 ? `-v${song.version || 1}` : '';
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cancion-para-${song?.recipientName || 'regalo'}${versionLabel}.mp3`;
+      a.download = `cancion-para-${recipientName}${versionLabel}.mp3`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download error:', err);
+      if (import.meta.env.DEV) {
+        console.error('Download error:', err);
+      }
       window.open(audioUrl, '_blank');
     } finally {
       setDownloading(null);
@@ -164,7 +186,9 @@ export default function SuccessPage() {
   };
 
   const handleShare = async () => {
-    const shareText = `¡Escucha la canción personalizada para ${currentSong?.recipientName}! 🎵`;
+    // ✅ FIX: Support both camelCase and snake_case
+    const recipientName = getField(currentSong, 'recipientName', 'recipient_name', 'alguien especial');
+    const shareText = `¡Escucha la canción personalizada para ${recipientName}! 🎵`;
     const shareUrl = window.location.href;
 
     if (navigator.share) {
@@ -201,8 +225,11 @@ export default function SuccessPage() {
     );
   }
 
-  const audioUrl = currentSong?.audioUrl || currentSong?.audio_url;
-  const imageUrl = currentSong?.imageUrl || currentSong?.image_url;
+  // ✅ FIX: Support both camelCase and snake_case throughout
+  const audioUrl = getField(currentSong, 'audioUrl', 'audio_url');
+  const imageUrl = getField(currentSong, 'imageUrl', 'image_url');
+  const recipientName = getField(currentSong, 'recipientName', 'recipient_name', 'tu persona especial');
+  const genre = getField(currentSong, 'genre', 'genre', 'Personalizado');
   const isMultipleSongs = songs.length > 1;
 
   return (
@@ -215,9 +242,9 @@ export default function SuccessPage() {
           <h1 className="text-3xl font-bold text-white mb-2">¡Felicidades!</h1>
           <p className="text-gray-400">
             {isMultipleSongs ? (
-              <>Tus <span className="text-yellow-500 font-semibold">{songs.length} canciones</span> para <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span> están listas</>
+              <>Tus <span className="text-yellow-500 font-semibold">{songs.length} canciones</span> para <span className="text-yellow-500 font-semibold">{recipientName}</span> están listas</>
             ) : (
-              <>Tu canción para <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span> está lista</>
+              <>Tu canción para <span className="text-yellow-500 font-semibold">{recipientName}</span> está lista</>
             )}
           </p>
         </div>
@@ -301,11 +328,11 @@ export default function SuccessPage() {
           <div className="border-t border-gray-700 pt-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Género</span>
-              <span className="text-white">{currentSong?.genre}</span>
+              <span className="text-white">{genre}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Para</span>
-              <span className="text-yellow-500 font-semibold">{currentSong?.recipientName}</span>
+              <span className="text-yellow-500 font-semibold">{recipientName}</span>
             </div>
             {isMultipleSongs && (
               <div className="flex justify-between">

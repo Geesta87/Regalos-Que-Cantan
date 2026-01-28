@@ -3,6 +3,9 @@ import { AppContext } from '../App';
 import { generateSong, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 
+// ✅ FIX: Added timeout constant (10 minutes)
+const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
+
 // Personalized step messages based on what's actually happening
 const getPersonalizedSteps = (recipientName, genre, occasion) => {
   const genreName = genres[genre]?.name || genre;
@@ -77,6 +80,7 @@ export default function GeneratingPage() {
   const hasStarted = useRef(false);
   const pollInterval1Ref = useRef(null);
   const pollInterval2Ref = useRef(null);
+  const generationStartTime = useRef(null);
 
   // Get personalized steps
   const steps = getPersonalizedSteps(formData.recipientName, formData.genre, formData.occasion);
@@ -128,14 +132,40 @@ export default function GeneratingPage() {
     }
   }, [lyricsLines, visibleLines]);
 
+  // ✅ FIX: Added timeout check for stuck generation
+  useEffect(() => {
+    if (!generationStartTime.current) return;
+    
+    const timeoutCheck = setInterval(() => {
+      const elapsed = Date.now() - generationStartTime.current;
+      
+      if (elapsed >= GENERATION_TIMEOUT_MS) {
+        // Only show timeout error if still generating
+        if (song1Status === 'generating' || song2Status === 'generating') {
+          setError('La generación está tardando más de lo esperado. Por favor intenta de nuevo.');
+          // Cleanup polling intervals
+          if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
+          if (pollInterval2Ref.current) clearInterval(pollInterval2Ref.current);
+        }
+        clearInterval(timeoutCheck);
+      }
+    }, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(timeoutCheck);
+  }, [song1Status, song2Status]);
+
   // Start two-song generation
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
+    generationStartTime.current = Date.now(); // ✅ FIX: Track start time
 
     async function startDualGeneration() {
       try {
-        console.log('🎵 Starting dual song generation...');
+        // ✅ FIX: Wrapped in DEV check
+        if (import.meta.env.DEV) {
+          console.log('🎵 Starting dual song generation...');
+        }
         
         // Generate Song 1
         setSong1Status('generating');
@@ -145,7 +175,9 @@ export default function GeneratingPage() {
         });
         
         if (result1.success && result1.song?.id) {
-          console.log('✅ Song 1 started:', result1.song.id);
+          if (import.meta.env.DEV) {
+            console.log('✅ Song 1 started:', result1.song.id);
+          }
           setSong1Id(result1.song.id);
           
           // If we got lyrics back immediately, show them
@@ -158,7 +190,9 @@ export default function GeneratingPage() {
           // ========================================
           // DELAY before Song 2 to avoid rate limit
           // ========================================
-          console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
+          if (import.meta.env.DEV) {
+            console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
+          }
           await new Promise(resolve => setTimeout(resolve, 3000));
           
           // Start Song 2 generation after delay
@@ -170,17 +204,23 @@ export default function GeneratingPage() {
           });
           
           if (result2.success && result2.song?.id) {
-            console.log('✅ Song 2 started:', result2.song.id);
+            if (import.meta.env.DEV) {
+              console.log('✅ Song 2 started:', result2.song.id);
+            }
             setSong2Id(result2.song.id);
           } else {
-            console.warn('⚠️ Song 2 failed to start, continuing with single song');
+            if (import.meta.env.DEV) {
+              console.warn('⚠️ Song 2 failed to start, continuing with single song');
+            }
             setSong2Status('failed');
           }
         } else {
           throw new Error(result1.error || 'Failed to start song generation');
         }
       } catch (err) {
-        console.error('❌ Generation error:', err);
+        if (import.meta.env.DEV) {
+          console.error('❌ Generation error:', err);
+        }
         setError(err.message);
       }
     }
@@ -200,7 +240,9 @@ export default function GeneratingPage() {
     const pollStatus = async () => {
       try {
         const result = await checkSongStatus(song1Id);
-        console.log('📊 Song 1 status:', result.status);
+        if (import.meta.env.DEV) {
+          console.log('📊 Song 1 status:', result.status);
+        }
         
         if (result.status === 'completed') {
           setSong1Status('completed');
@@ -216,7 +258,9 @@ export default function GeneratingPage() {
           setSong1Status('failed');
         }
       } catch (err) {
-        console.error('Poll error (song 1):', err);
+        if (import.meta.env.DEV) {
+          console.error('Poll error (song 1):', err);
+        }
       }
     };
 
@@ -236,7 +280,9 @@ export default function GeneratingPage() {
     const pollStatus = async () => {
       try {
         const result = await checkSongStatus(song2Id);
-        console.log('📊 Song 2 status:', result.status);
+        if (import.meta.env.DEV) {
+          console.log('📊 Song 2 status:', result.status);
+        }
         
         if (result.status === 'completed') {
           setSong2Status('completed');
@@ -245,7 +291,9 @@ export default function GeneratingPage() {
           setSong2Status('failed');
         }
       } catch (err) {
-        console.error('Poll error (song 2):', err);
+        if (import.meta.env.DEV) {
+          console.error('Poll error (song 2):', err);
+        }
       }
     };
 
@@ -262,7 +310,9 @@ export default function GeneratingPage() {
   useEffect(() => {
     // Both completed - go to comparison
     if (song1Status === 'completed' && song2Status === 'completed') {
-      console.log('🎉 Both songs ready! Navigating to comparison...');
+      if (import.meta.env.DEV) {
+        console.log('🎉 Both songs ready! Navigating to comparison...');
+      }
       setSongData({
         song1: song1Data,
         song2: song2Data,
@@ -272,7 +322,9 @@ export default function GeneratingPage() {
     }
     // Song 1 completed, Song 2 failed - go to single preview
     else if (song1Status === 'completed' && song2Status === 'failed') {
-      console.log('⚠️ Only Song 1 ready, Song 2 failed. Going to preview...');
+      if (import.meta.env.DEV) {
+        console.log('⚠️ Only Song 1 ready, Song 2 failed. Going to preview...');
+      }
       setSongData({
         song1: song1Data,
         song2: null,

@@ -126,30 +126,24 @@ export default function PreviewPage() {
         alert(result.error || 'Error al regenerar. Intenta de nuevo.');
       }
     } catch (error) {
-      console.error('Regenerate error:', error);
+      // FIX: Only log in development
+      if (import.meta.env.DEV) {
+        console.error('Regenerate error:', error);
+      }
       alert('Error al regenerar. Intenta de nuevo.');
     } finally {
       setIsRegenerating(false);
     }
   };
 
+  // ✅ FIX: REMOVED GRATIS100 hardcoded bypass - ALL coupons now validate via server
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     
     setIsLoadingCoupon(true);
     setCouponError('');
     
-    if (couponCode.trim().toUpperCase() === 'GRATIS100') {
-      setCouponApplied({ 
-        code: 'GRATIS100', 
-        discount: 100,
-        free: true 
-      });
-      setCouponError('');
-      setIsLoadingCoupon(false);
-      return;
-    }
-    
+    // All coupon validation now goes through the server
     try {
       const result = await validateCoupon(couponCode);
       setCouponApplied(result);
@@ -162,14 +156,15 @@ export default function PreviewPage() {
     }
   };
 
-  // FIXED: Handle checkout - always use result.url for redirect
+  // ✅ FIX: Handle checkout - wrap songData.id in array for consistency
   const handleCheckout = async () => {
     setIsCheckingOut(true);
     try {
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
       
+      // ✅ FIX: Always pass array of song IDs for consistency with API
       const result = await createCheckout(
-        songData.id, 
+        [songData.id],  // ✅ FIXED: Wrapped in array
         formData.email,
         codeToSend
       );
@@ -181,7 +176,10 @@ export default function PreviewPage() {
         throw new Error('No checkout URL returned');
       }
     } catch (error) {
-      console.error('Checkout error:', error);
+      // FIX: Only log in development
+      if (import.meta.env.DEV) {
+        console.error('Checkout error:', error);
+      }
       alert('Error al procesar el pago. Intenta de nuevo.');
     } finally {
       setIsCheckingOut(false);
@@ -510,7 +508,8 @@ export default function PreviewPage() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2024 • Hecho con alma en México.</p>
+          {/* ✅ FIX: Dynamic year */}
+          <p className="text-white/20 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} • Hecho con alma en México.</p>
         </div>
       </footer>
     </div>
