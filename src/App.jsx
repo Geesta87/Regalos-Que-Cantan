@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { HelmetProvider } from 'react-helmet-async';
 
-// Import all pages
+// Import all existing pages
 import LandingPage from './pages/LandingPage';
 import GenreStep from './pages/GenreStep';
 import ArtistStep from './pages/ArtistStep';
@@ -17,11 +18,20 @@ import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 
+// Import SEO landing pages
+import GenerosHub from './pages/seo/GenerosHub';
+import OcasionesHub from './pages/seo/OcasionesHub';
+import GenreLanding from './pages/seo/GenreLanding';
+import OccasionLanding from './pages/seo/OccasionLanding';
+
+// Import SEO data for route validation
+import { getGenreBySlug, getOccasionBySlug } from './data/seoData';
+
 // App State Context
 export const AppContext = React.createContext();
 
 // App version - INCREMENT THIS TO FORCE CACHE CLEAR
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0'; // Updated for SEO implementation
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -35,7 +45,6 @@ const STORAGE_KEYS = {
 const checkVersion = () => {
   const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
   if (storedVersion !== APP_VERSION) {
-    // Clear all session data on version change
     sessionStorage.clear();
     localStorage.setItem(STORAGE_KEYS.VERSION, APP_VERSION);
     console.log(`App updated from ${storedVersion} to ${APP_VERSION} - cleared cache`);
@@ -65,15 +74,49 @@ const isDirectRoute = () => {
   const path = window.location.pathname;
   return path.startsWith('/preview/') || 
          path.startsWith('/create/') || 
+         path.startsWith('/generos/') ||
+         path.startsWith('/ocasiones/') ||
+         path === '/generos' ||
+         path === '/ocasiones' ||
          path === '/admin' || 
          path === '/admin/dashboard' ||
          path === '/success' ||
-         path === '/comparison';
+         path === '/comparison' ||
+         path === '/como-funciona' ||
+         path === '/precios' ||
+         path === '/ejemplos';
 };
 
-// Map URL to page name
+// Map URL to page name - UPDATED with SEO routes
 const getPageFromUrl = () => {
   const path = window.location.pathname;
+  
+  // SEO Hub pages
+  if (path === '/generos') return 'generos';
+  if (path === '/ocasiones') return 'ocasiones';
+  
+  // SEO Landing pages - genres
+  if (path.startsWith('/generos/')) {
+    const slug = path.replace('/generos/', '').replace('/', '');
+    if (getGenreBySlug(slug)) {
+      return `generos/${slug}`;
+    }
+    return 'generos'; // Fallback to hub if invalid slug
+  }
+  
+  // SEO Landing pages - occasions
+  if (path.startsWith('/ocasiones/')) {
+    const slug = path.replace('/ocasiones/', '').replace('/', '');
+    if (getOccasionBySlug(slug)) {
+      return `ocasiones/${slug}`;
+    }
+    return 'ocasiones'; // Fallback to hub if invalid slug
+  }
+  
+  // Static info pages
+  if (path === '/como-funciona') return 'comoFunciona';
+  if (path === '/precios') return 'precios';
+  if (path === '/ejemplos') return 'ejemplos';
   
   // Admin routes
   if (path === '/admin') return 'adminLogin';
@@ -153,33 +196,21 @@ const initialSongId = getSongIdFromUrl();
 
 // Default form data structure with ALL fields needed by generate-song
 const defaultFormData = {
-  // Genre selection - BOTH ID and NAME are required!
   genre: '',
-  genreName: '',        // ← CRITICAL: Display name for generate-song
+  genreName: '',
   subGenre: '',
-  subGenreName: '',     // ← CRITICAL: Display name for generate-song
-  
-  // Artist inspiration
+  subGenreName: '',
   artistInspiration: '',
-  
-  // Occasion
   occasion: '',
+  occasionName: '',
   customOccasion: '',
   emotionalTone: '',
-  
-  // Names & Relationship
   recipientName: '',
   senderName: '',
   relationship: '',
   customRelationship: '',
-  
-  // Details
   details: '',
-  
-  // Voice
   voiceType: 'male',
-  
-  // Contact
   email: ''
 };
 
@@ -188,7 +219,6 @@ export default function App() {
   const [directSongId, setDirectSongId] = useState(initialSongId);
   const [formData, setFormData] = useState(() => {
     const stored = loadFromStorage(STORAGE_KEYS.FORM_DATA, null);
-    // Merge with defaults to ensure all fields exist
     return { ...defaultFormData, ...stored };
   });
   const [songData, setSongData] = useState(() => 
@@ -197,7 +227,8 @@ export default function App() {
 
   // Save to sessionStorage when state changes
   useEffect(() => {
-    if (!currentPage.startsWith('admin')) {
+    // Don't save admin or SEO pages to storage
+    if (!currentPage.startsWith('admin') && !currentPage.startsWith('generos') && !currentPage.startsWith('ocasiones')) {
       sessionStorage.setItem(STORAGE_KEYS.PAGE, JSON.stringify(currentPage));
     }
   }, [currentPage]);
@@ -243,9 +274,17 @@ export default function App() {
   const navigateTo = (page) => {
     setCurrentPage(page);
     
-    // Map pages to URLs
+    // Map pages to URLs - UPDATED with SEO routes
     const pageUrls = {
       landing: '/',
+      // SEO Hub pages
+      generos: '/generos',
+      ocasiones: '/ocasiones',
+      // Static info pages (future)
+      comoFunciona: '/como-funciona',
+      precios: '/precios',
+      ejemplos: '/ejemplos',
+      // Create flow
       genre: '/create/genre',
       artist: '/create/artist',
       subgenre: '/create/subgenre',
@@ -258,13 +297,25 @@ export default function App() {
       preview: '/preview',
       comparison: '/comparison',
       success: '/success',
+      // Admin
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard'
     };
     
-    const url = pageUrls[page] || '/';
-    window.history.pushState({ page }, '', url);
+    // Handle dynamic SEO routes
+    let url = pageUrls[page];
+    if (!url) {
+      // Check if it's a dynamic genre/occasion route
+      if (page.startsWith('generos/')) {
+        url = `/${page}`;
+      } else if (page.startsWith('ocasiones/')) {
+        url = `/${page}`;
+      } else {
+        url = '/';
+      }
+    }
     
+    window.history.pushState({ page }, '', url);
     window.scrollTo(0, 0);
   };
 
@@ -292,25 +343,50 @@ export default function App() {
     setDirectSongId
   };
 
+  // Extract genre/occasion slug for dynamic pages
+  const getSlugFromPage = (page, prefix) => {
+    if (page.startsWith(prefix)) {
+      return page.replace(prefix, '');
+    }
+    return null;
+  };
+
   return (
-    <AppContext.Provider value={contextValue}>
-      <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors duration-300">
-        {currentPage === 'landing' && <LandingPage />}
-        {currentPage === 'genre' && <GenreStep />}
-        {currentPage === 'artist' && <ArtistStep />}
-        {currentPage === 'subgenre' && <SubGenreStep />}
-        {currentPage === 'occasion' && <OccasionStep />}
-        {currentPage === 'names' && <NamesStep />}
-        {currentPage === 'voice' && <VoiceStep />}
-        {currentPage === 'details' && <DetailsStep />}
-        {currentPage === 'email' && <EmailStep />}
-        {currentPage === 'generating' && <GeneratingPage />}
-        {currentPage === 'preview' && <PreviewPage />}
-        {currentPage === 'comparison' && <ComparisonPage />}
-        {currentPage === 'success' && <SuccessPage />}
-        {currentPage === 'adminLogin' && <AdminLogin />}
-        {currentPage === 'adminDashboard' && <AdminDashboard />}
-      </div>
-    </AppContext.Provider>
+    <HelmetProvider>
+      <AppContext.Provider value={contextValue}>
+        <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors duration-300">
+          {/* Original pages */}
+          {currentPage === 'landing' && <LandingPage />}
+          {currentPage === 'genre' && <GenreStep />}
+          {currentPage === 'artist' && <ArtistStep />}
+          {currentPage === 'subgenre' && <SubGenreStep />}
+          {currentPage === 'occasion' && <OccasionStep />}
+          {currentPage === 'names' && <NamesStep />}
+          {currentPage === 'voice' && <VoiceStep />}
+          {currentPage === 'details' && <DetailsStep />}
+          {currentPage === 'email' && <EmailStep />}
+          {currentPage === 'generating' && <GeneratingPage />}
+          {currentPage === 'preview' && <PreviewPage />}
+          {currentPage === 'comparison' && <ComparisonPage />}
+          {currentPage === 'success' && <SuccessPage />}
+          {currentPage === 'adminLogin' && <AdminLogin />}
+          {currentPage === 'adminDashboard' && <AdminDashboard />}
+          
+          {/* SEO Hub pages */}
+          {currentPage === 'generos' && <GenerosHub />}
+          {currentPage === 'ocasiones' && <OcasionesHub />}
+          
+          {/* SEO Dynamic Genre pages */}
+          {currentPage.startsWith('generos/') && (
+            <GenreLanding genreSlug={getSlugFromPage(currentPage, 'generos/')} />
+          )}
+          
+          {/* SEO Dynamic Occasion pages */}
+          {currentPage.startsWith('ocasiones/') && (
+            <OccasionLanding occasionSlug={getSlugFromPage(currentPage, 'ocasiones/')} />
+          )}
+        </div>
+      </AppContext.Provider>
+    </HelmetProvider>
   );
 }
