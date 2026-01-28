@@ -31,7 +31,7 @@ import { getGenreBySlug, getOccasionBySlug } from './data/seoData';
 export const AppContext = React.createContext();
 
 // App version - INCREMENT THIS TO FORCE CACHE CLEAR
-const APP_VERSION = '2.1.0'; // Updated for SEO implementation
+const APP_VERSION = '2.1.0';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -101,7 +101,7 @@ const getPageFromUrl = () => {
     if (getGenreBySlug(slug)) {
       return `generos/${slug}`;
     }
-    return 'generos'; // Fallback to hub if invalid slug
+    return 'generos';
   }
   
   // SEO Landing pages - occasions
@@ -110,7 +110,7 @@ const getPageFromUrl = () => {
     if (getOccasionBySlug(slug)) {
       return `ocasiones/${slug}`;
     }
-    return 'ocasiones'; // Fallback to hub if invalid slug
+    return 'ocasiones';
   }
   
   // Static info pages
@@ -227,7 +227,6 @@ export default function App() {
 
   // Save to sessionStorage when state changes
   useEffect(() => {
-    // Don't save admin or SEO pages to storage
     if (!currentPage.startsWith('admin') && !currentPage.startsWith('generos') && !currentPage.startsWith('ocasiones')) {
       sessionStorage.setItem(STORAGE_KEYS.PAGE, JSON.stringify(currentPage));
     }
@@ -274,17 +273,13 @@ export default function App() {
   const navigateTo = (page) => {
     setCurrentPage(page);
     
-    // Map pages to URLs - UPDATED with SEO routes
     const pageUrls = {
       landing: '/',
-      // SEO Hub pages
       generos: '/generos',
       ocasiones: '/ocasiones',
-      // Static info pages (future)
       comoFunciona: '/como-funciona',
       precios: '/precios',
       ejemplos: '/ejemplos',
-      // Create flow
       genre: '/create/genre',
       artist: '/create/artist',
       subgenre: '/create/subgenre',
@@ -297,15 +292,12 @@ export default function App() {
       preview: '/preview',
       comparison: '/comparison',
       success: '/success',
-      // Admin
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard'
     };
     
-    // Handle dynamic SEO routes
     let url = pageUrls[page];
     if (!url) {
-      // Check if it's a dynamic genre/occasion route
       if (page.startsWith('generos/')) {
         url = `/${page}`;
       } else if (page.startsWith('ocasiones/')) {
@@ -343,7 +335,6 @@ export default function App() {
     setDirectSongId
   };
 
-  // Extract genre/occasion slug for dynamic pages
   const getSlugFromPage = (page, prefix) => {
     if (page.startsWith(prefix)) {
       return page.replace(prefix, '');
