@@ -5,34 +5,13 @@ import { getAllOccasions, getFeaturedOccasions, getCurrentSeasonalOccasions } fr
 
 /**
  * OcasionesHub - SEO Hub page for all occasions
- * 
- * This page ranks for searches like:
- * - "regalo original para cumpleaños"
- * - "regalo día de las madres único"
- * - "ideas regalo aniversario"
+ * Talavera UI Design
  */
 export default function OcasionesHub() {
   const { navigateTo } = useContext(AppContext);
   const allOccasions = getAllOccasions();
   const featuredOccasions = getFeaturedOccasions();
   const seasonalOccasions = getCurrentSeasonalOccasions();
-  
-  // Group occasions
-  const celebrationOccasions = allOccasions.filter(o => 
-    ['cumpleanos', 'quinceanera', 'graduacion', 'boda'].includes(o.slug)
-  );
-  
-  const familyOccasions = allOccasions.filter(o => 
-    ['dia-de-las-madres', 'dia-del-padre', 'agradecimiento'].includes(o.slug)
-  );
-  
-  const romanticOccasions = allOccasions.filter(o => 
-    ['aniversario', 'san-valentin', 'declaracion-amor'].includes(o.slug)
-  );
-  
-  const otherOccasions = allOccasions.filter(o => 
-    ['navidad', 'despedida'].includes(o.slug)
-  );
 
   const structuredData = {
     "@context": "https://schema.org",
@@ -48,6 +27,26 @@ export default function OcasionesHub() {
     }))
   };
 
+  // Occasion images mapping
+  const occasionImages = {
+    'cumpleanos': 'https://images.unsplash.com/photo-1464349153735-7db50ed83c84?w=400&h=300&fit=crop',
+    'dia-de-las-madres': 'https://images.unsplash.com/photo-1462275646964-a0e3571f4f9f?w=400&h=300&fit=crop',
+    'dia-del-padre': 'https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?w=400&h=300&fit=crop',
+    'aniversario': 'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=400&h=300&fit=crop',
+    'boda': 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=300&fit=crop',
+    'quinceanera': 'https://images.unsplash.com/photo-1519340241574-2cec6aef0c01?w=400&h=300&fit=crop',
+    'graduacion': 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&h=300&fit=crop',
+    'san-valentin': 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400&h=300&fit=crop',
+    'navidad': 'https://images.unsplash.com/photo-1512389142860-9c449e58a814?w=400&h=300&fit=crop',
+    'declaracion-amor': 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&h=300&fit=crop',
+    'despedida': 'https://images.unsplash.com/photo-1436891620584-47fd0e565afb?w=400&h=300&fit=crop',
+    'agradecimiento': 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?w=400&h=300&fit=crop',
+  };
+
+  const getOccasionImage = (slug) => {
+    return occasionImages[slug] || 'https://images.unsplash.com/photo-1464349153735-7db50ed83c84?w=400&h=300&fit=crop';
+  };
+
   return (
     <>
       <SEOHead
@@ -57,24 +56,62 @@ export default function OcasionesHub() {
         keywords="regalo cumpleaños, regalo día de las madres, regalo aniversario, regalo boda, regalo quinceañera, canción personalizada, regalo único, regalo original"
         structuredData={structuredData}
       />
-      
-      <div className="min-h-screen bg-[#F9F6F2]">
-        {/* Hero Section */}
-        <section className="py-20 px-6 bg-gradient-to-b from-[#1A4338] to-[#2D5A4A] text-white">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Una Canción para Cada Ocasión
-            </h1>
-            <p className="text-xl text-white/80 max-w-2xl mx-auto">
-              El regalo más único y emotivo para los momentos más importantes
-            </p>
+
+      {/* Talavera Pattern Styles */}
+      <style>{`
+        .talavera-pattern-bg {
+          background-color: #ffffff;
+          background-image: linear-gradient(30deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
+                            linear-gradient(150deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
+                            linear-gradient(30deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
+                            linear-gradient(150deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
+                            linear-gradient(60deg, #1A433877 25%, transparent 25.5%, transparent 75%, #1A433877 75%, #1A433877), 
+                            linear-gradient(60deg, #1A433877 25%, transparent 25.5%, transparent 75%, #1A433877 75%, #1A433877);
+          background-size: 20px 35px;
+          background-position: 0 0, 0 0, 10px 18px, 10px 18px, 0 0, 10px 18px;
+        }
+      `}</style>
+
+      <div className="min-h-screen bg-[#F9F6F2] font-['Inter',sans-serif] text-[#111318]">
+        {/* Top Navigation Bar */}
+        <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f1f5] px-6 md:px-10 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50">
+          <button 
+            onClick={() => navigateTo('landing')}
+            className="flex items-center gap-3 text-[#1A4338] hover:opacity-80 transition-opacity"
+          >
+            <div className="w-8 h-8 bg-[#1A4338] rounded-lg flex items-center justify-center">
+              <span className="text-white text-lg">🎵</span>
+            </div>
+            <h2 className="text-[#111318] text-xl font-bold leading-tight tracking-[-0.015em]">RegalosQueCantan</h2>
+          </button>
+          <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
+            <nav className="hidden md:flex items-center gap-9">
+              <button 
+                onClick={() => navigateTo('generos')}
+                className="text-[#111318] text-sm font-medium hover:text-[#1A4338] transition-colors"
+              >
+                Géneros
+              </button>
+              <button 
+                onClick={() => navigateTo('ocasiones')}
+                className="text-[#1A4338] text-sm font-medium hover:text-[#D4AF37] transition-colors"
+              >
+                Ocasiones
+              </button>
+            </nav>
+            <button 
+              onClick={() => navigateTo('landing')}
+              className="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-10 px-5 bg-[#1A4338]/10 text-[#1A4338] hover:bg-[#1A4338] hover:text-white transition-all text-sm font-bold border border-[#1A4338]/20"
+            >
+              <span className="truncate">Inicio</span>
+            </button>
           </div>
-        </section>
-        
+        </header>
+
         {/* Seasonal Banner (if applicable) */}
         {seasonalOccasions.length > 0 && (
-          <section className="py-8 px-6 bg-gradient-to-r from-[#D4AF37] to-[#E5C349]">
-            <div className="max-w-4xl mx-auto text-center">
+          <div className="py-4 px-6 bg-gradient-to-r from-[#D4AF37] to-[#E5C349]">
+            <div className="max-w-[1000px] mx-auto text-center">
               <p className="text-[#1A4338] font-bold text-lg">
                 🎉 ¡{seasonalOccasions[0].name} se acerca! Crea tu canción ahora
               </p>
@@ -85,201 +122,165 @@ export default function OcasionesHub() {
                 Ver canciones para {seasonalOccasions[0].name} →
               </button>
             </div>
-          </section>
+          </div>
         )}
-        
-        {/* Featured Occasions */}
-        <section className="py-16 px-6">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
-              ⭐ Ocasiones Más Populares
-            </h2>
-            
-            <div className="grid md:grid-cols-3 gap-6">
-              {featuredOccasions.slice(0, 6).map(occasion => (
+
+        <main className="flex flex-1 justify-center py-10 px-4 md:px-6">
+          <div className="flex flex-col max-w-[1000px] flex-1">
+            {/* Page Heading */}
+            <div className="flex flex-wrap justify-between gap-3 p-4 mb-6">
+              <div className="flex min-w-72 flex-col gap-3">
+                <h1 className="text-[#1A4338] text-4xl md:text-5xl font-black leading-tight tracking-[-0.033em]">
+                  Una Canción para<br/>Cada Ocasión
+                </h1>
+                <p className="text-[#606e8a] text-lg font-normal max-w-xl">
+                  El regalo más único y emotivo para los momentos más importantes de la vida.
+                </p>
+              </div>
+            </div>
+
+            {/* Featured Occasions Section */}
+            <div className="px-4 mb-4">
+              <div className="flex items-center gap-2 mb-6">
+                <span className="text-[#D4AF37] text-xl">⭐</span>
+                <h2 className="text-[#1A4338] text-xs font-bold uppercase tracking-widest">Ocasiones Más Populares</h2>
+              </div>
+            </div>
+
+            {/* Occasion Grid with Talavera Accents */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-4">
+              {allOccasions.map((occasion) => (
                 <button
                   key={occasion.slug}
                   onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
-                  className="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all text-left"
+                  className="group relative flex flex-col p-[2px] rounded-xl overflow-hidden bg-white border border-[#1A4338]/10 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left"
                 >
-                  <div className="flex items-start gap-4">
+                  {/* Talavera Pattern Background */}
+                  <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity talavera-pattern-bg"></div>
+                  
+                  <div className="relative bg-white m-1 rounded-lg flex flex-col h-full overflow-hidden">
+                    {/* Occasion Image */}
                     <div 
-                      className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                      style={{ backgroundColor: `${occasion.color}20` }}
+                      className="h-48 bg-cover bg-center relative"
+                      style={{
+                        backgroundImage: `linear-gradient(0deg, rgba(26, 67, 56, 0.6) 0%, transparent 100%), url("${getOccasionImage(occasion.slug)}")`
+                      }}
                     >
-                      {occasion.icon}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-[#1A4338] text-lg group-hover:text-opacity-80">
-                        {occasion.name}
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                        {occasion.description}
-                      </p>
-                      <div className="flex items-center gap-1 mt-2 text-xs text-gray-400">
-                        <span>⭐ 4.9</span>
-                        <span>•</span>
-                        <span>{occasion.reviewCount}+ canciones</span>
+                      {/* Icon overlay */}
+                      <div className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/90 flex items-center justify-center text-xl">
+                        {occasion.icon}
                       </div>
                     </div>
+                    
+                    {/* Occasion Info */}
+                    <div className="p-5 flex flex-col gap-2">
+                      <h3 className="text-[#1A4338] text-xl font-bold">{occasion.name}</h3>
+                      <p className="text-xs text-slate-500 uppercase font-bold tracking-wide line-clamp-1">
+                        {occasion.description?.split('.')[0] || 'Ocasión especial'}
+                      </p>
+                      {occasion.featured && (
+                        <span className="inline-flex items-center gap-1 text-[#D4AF37] text-xs font-medium mt-1">
+                          <span>⭐</span> Popular
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))}
             </div>
-          </div>
-        </section>
-        
-        {/* Celebration Occasions */}
-        <section className="py-12 px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-xl font-bold text-[#1A4338] mb-6">
-              🎉 Celebraciones
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {celebrationOccasions.map(occasion => (
-                <button
-                  key={occasion.slug}
-                  onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
-                  className="group p-4 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 transition-all text-center"
-                >
-                  <div className="text-2xl mb-2">{occasion.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm group-hover:text-opacity-80">
-                    {occasion.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-        
-        {/* Family Occasions */}
-        <section className="py-12 px-6">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-xl font-bold text-[#1A4338] mb-6">
-              👨‍👩‍👧 Para la Familia
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {familyOccasions.map(occasion => (
-                <button
-                  key={occasion.slug}
-                  onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
-                  className="group p-4 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 transition-all text-center"
-                >
-                  <div className="text-2xl mb-2">{occasion.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm group-hover:text-opacity-80">
-                    {occasion.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-        
-        {/* Romantic Occasions */}
-        <section className="py-12 px-6 bg-white">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-xl font-bold text-[#1A4338] mb-6">
-              ❤️ Románticas
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {romanticOccasions.map(occasion => (
-                <button
-                  key={occasion.slug}
-                  onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
-                  className="group p-4 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 transition-all text-center"
-                >
-                  <div className="text-2xl mb-2">{occasion.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm group-hover:text-opacity-80">
-                    {occasion.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-        
-        {/* Other Occasions */}
-        <section className="py-12 px-6">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-xl font-bold text-[#1A4338] mb-6">
-              ✨ Otras Ocasiones
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {otherOccasions.map(occasion => (
-                <button
-                  key={occasion.slug}
-                  onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
-                  className="group p-4 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 transition-all text-center"
-                >
-                  <div className="text-2xl mb-2">{occasion.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm group-hover:text-opacity-80">
-                    {occasion.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-        
-        {/* Why a Song Gift */}
-        <section className="py-16 px-6 bg-white">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
-              ¿Por Qué Regalar una Canción?
-            </h2>
-            
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="text-center p-6">
-                <div className="text-4xl mb-4">💎</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Único e Irrepetible</h3>
-                <p className="text-gray-600 text-sm">
-                  No existe otra canción igual en el mundo. Es un regalo 100% exclusivo.
-                </p>
-              </div>
+
+            {/* Why a Song Gift Section */}
+            <div className="mt-16 p-8 bg-white rounded-2xl border border-[#1A4338]/10">
+              <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+                ¿Por Qué Regalar una Canción?
+              </h2>
               
-              <div className="text-center p-6">
-                <div className="text-4xl mb-4">😭</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Emotivo</h3>
-                <p className="text-gray-600 text-sm">
-                  Escuchar su nombre en una canción provoca emociones que no olvidarán.
-                </p>
+              <div className="grid md:grid-cols-3 gap-8">
+                <div className="text-center p-6">
+                  <div className="text-4xl mb-4">💎</div>
+                  <h3 className="font-bold text-[#1A4338] mb-2">Único e Irrepetible</h3>
+                  <p className="text-slate-500 text-sm">
+                    No existe otra canción igual en el mundo. Es un regalo 100% exclusivo.
+                  </p>
+                </div>
+                
+                <div className="text-center p-6">
+                  <div className="text-4xl mb-4">😭</div>
+                  <h3 className="font-bold text-[#1A4338] mb-2">Emotivo</h3>
+                  <p className="text-slate-500 text-sm">
+                    Escuchar su nombre en una canción provoca emociones que no olvidarán.
+                  </p>
+                </div>
+                
+                <div className="text-center p-6">
+                  <div className="text-4xl mb-4">♾️</div>
+                  <h3 className="font-bold text-[#1A4338] mb-2">Para Siempre</h3>
+                  <p className="text-slate-500 text-sm">
+                    A diferencia de flores o chocolates, la canción la pueden escuchar siempre.
+                  </p>
+                </div>
               </div>
-              
-              <div className="text-center p-6">
-                <div className="text-4xl mb-4">♾️</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Para Siempre</h3>
-                <p className="text-gray-600 text-sm">
-                  A diferencia de flores o chocolates, la canción la pueden escuchar siempre.
-                </p>
+            </div>
+
+            {/* Action Footer */}
+            <div className="mt-12 mb-20 p-4 flex flex-col items-center gap-6">
+              <p className="text-[#606e8a] text-sm italic text-center">
+                La estética Talavera honra nuestra herencia compartida con un toque de lujo moderno.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+                <button 
+                  onClick={() => navigateTo('generos')}
+                  className="flex min-w-[200px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-white border-2 border-[#1A4338] text-[#1A4338] hover:bg-[#1A4338]/5 transition-all text-base font-bold"
+                >
+                  <span>🎵</span>
+                  Ver Géneros
+                </button>
+                <button 
+                  onClick={() => navigateTo('genre')}
+                  className="flex min-w-[240px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-[#1A4338] text-white hover:bg-[#1A4338]/90 transition-all text-base font-bold shadow-lg shadow-[#1A4338]/30"
+                >
+                  Crear Mi Canción
+                  <span>→</span>
+                </button>
               </div>
             </div>
           </div>
-        </section>
-        
-        {/* CTA Section */}
-        <section className="py-20 px-6 bg-[#1A4338] text-white">
-          <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl font-bold mb-4">
-              ¿Listo para sorprender?
-            </h2>
-            <p className="text-white/70 mb-8">
-              Crea una canción personalizada en solo 5 minutos
-            </p>
-            <button
-              onClick={() => navigateTo('genre')}
-              className="px-8 py-4 bg-[#D4AF37] text-[#1A4338] rounded-full text-lg font-bold hover:bg-[#E5C349] transition-colors"
-            >
-              🎵 Crear Mi Canción
-            </button>
-            <p className="mt-4 text-white/50 text-sm">
-              Desde $19.99 • Listo en minutos
-            </p>
+        </main>
+
+        {/* Minimalist Patterned Footer */}
+        <footer className="w-full bg-white border-t border-[#1A4338]/10 py-12 px-6 md:px-10">
+          <div className="max-w-[1000px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 text-[#1A4338]">
+                <span className="text-3xl">🎵</span>
+                <span className="font-bold text-lg">RegalosQueCantan</span>
+              </div>
+              <p className="text-sm text-slate-500">Fusionando la belleza atemporal de la cerámica Talavera con el poder emocional de la canción.</p>
+            </div>
+            <div className="flex flex-col gap-4">
+              <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Navegación</h4>
+              <div className="flex flex-col gap-2 text-sm text-[#111318]">
+                <button onClick={() => navigateTo('landing')} className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</button>
+                <button onClick={() => navigateTo('generos')} className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</button>
+                <button onClick={() => navigateTo('ocasiones')} className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-4">
+              <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Soporte</h4>
+              <div className="flex flex-col gap-2 text-sm text-[#111318]">
+                <a href="#" className="hover:text-[#1A4338] transition-colors">Términos de Servicio</a>
+                <a href="#" className="hover:text-[#1A4338] transition-colors">Política de Privacidad</a>
+                <a href="#" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
+              </div>
+            </div>
           </div>
-        </section>
-        
-        {/* Footer */}
-        <footer className="py-8 px-6 bg-[#0F2922] text-white/50 text-center text-sm">
-          <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <div className="max-w-[1000px] mx-auto mt-12 pt-8 border-t border-[#1A4338]/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-400">
+            <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+            <div className="flex gap-4">
+              <span className="cursor-pointer hover:text-[#1A4338] transition-colors">🌐</span>
+              <span className="cursor-pointer hover:text-[#1A4338] transition-colors">🛡️</span>
+            </div>
+          </div>
         </footer>
       </div>
     </>
