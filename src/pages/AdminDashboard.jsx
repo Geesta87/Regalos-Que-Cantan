@@ -1121,6 +1121,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         ) : null}
+      </main>
 
       {/* Email Preview Modal */}
       {previewingCampaign && (
