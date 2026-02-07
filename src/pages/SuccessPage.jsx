@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { checkSongStatus } from '../services/api';
+import { checkSongStatus, supabase } from '../services/api';
 
 export default function SuccessPage() {
   const [songs, setSongs] = useState([]);
@@ -32,6 +32,10 @@ export default function SuccessPage() {
     } else if (singleSongId) {
       songIds = [singleSongId];
     }
+    
+    // ✅ Clear localStorage after successful purchase (no longer needed)
+    localStorage.removeItem('rqc_comparison_songs');
+    localStorage.removeItem('rqc_checkout_selection');
     
     // ✅ FIX: Wrapped in DEV check
     if (import.meta.env.DEV) {
