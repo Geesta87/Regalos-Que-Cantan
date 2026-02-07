@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
+import { trackStep } from '../services/tracking';
 
 // Real people photos (reactions/testimonials)
 const realPeopleImages = [
@@ -65,6 +66,11 @@ const createAlternatingImages = () => {
 export default function LandingPage() {
   const { navigateTo } = useContext(AppContext);
   const scrollRef = useRef(null);
+  
+  // Track page view
+  useEffect(() => {
+    trackStep('landing');
+  }, []);
   
   // Create alternating images once on mount
   const [alternatingImages] = React.useState(() => createAlternatingImages());

@@ -1,5 +1,6 @@
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../App';
+import { trackStep } from '../services/tracking';
 
 // Artists organized by genre AND subgenre
 // Keys MUST match genres.js exactly for filtering to work
@@ -475,6 +476,11 @@ export default function ArtistStep() {
   const [selectedArtist, setSelectedArtist] = useState(formData.artistInspiration || '');
   const [customArtist, setCustomArtist] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+
+  // Track page view
+  useEffect(() => {
+    trackStep('artist');
+  }, []);
 
   // Get suggested artists based on selected genre and subgenre
   const suggestedArtists = useMemo(() => {

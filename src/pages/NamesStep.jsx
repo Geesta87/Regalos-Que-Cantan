@@ -1,5 +1,6 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
+import { trackStep } from '../services/tracking';
 
 const relationships = [
   { id: 'pareja', name: 'Pareja / Esposo(a)', icon: 'favorite' },
@@ -21,6 +22,11 @@ export default function NamesStep() {
   const [customRelationship, setCustomRelationship] = useState(formData.customRelationship || '');
   const [showOtroModal, setShowOtroModal] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Track page view
+  useEffect(() => {
+    trackStep('names');
+  }, []);
 
   const handleRelationshipSelect = (relationshipId) => {
     setRelationship(relationshipId);

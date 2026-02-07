@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { checkSongStatus } from '../services/api';
+import { trackStep } from '../services/tracking';
 
 export default function SuccessPage() {
   const [songs, setSongs] = useState([]);
@@ -40,6 +41,12 @@ export default function SuccessPage() {
     
     if (songIds.length > 0) {
       fetchSongs(songIds);
+      
+      // Track purchase event
+      trackStep('purchase', {
+        song_ids: songIds,
+        num_songs: songIds.length
+      });
     } else {
       setError('No se encontró el ID de la canción en la URL');
       setLoading(false);

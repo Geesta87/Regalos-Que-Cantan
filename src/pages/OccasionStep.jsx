@@ -1,5 +1,6 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
+import { trackStep } from '../services/tracking';
 
 const occasions = [
   { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
@@ -33,6 +34,11 @@ export default function OccasionStep() {
   const [showOtroModal, setShowOtroModal] = useState(false);
   const [customOccasion, setCustomOccasion] = useState(formData.customOccasion || '');
   const [emotionalTone, setEmotionalTone] = useState(formData.emotionalTone || '');
+
+  // Track page view
+  useEffect(() => {
+    trackStep('occasion');
+  }, []);
 
   const handleOccasionSelect = (occasionId) => {
     setSelectedOccasion(occasionId);

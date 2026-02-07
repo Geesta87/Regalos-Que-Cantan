@@ -1,6 +1,7 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import genres from '../config/genres';
+import { trackStep } from '../services/tracking';
 
 // Convert genres config to array for rendering
 const genreList = Object.entries(genres).map(([id, data]) => ({
@@ -47,6 +48,11 @@ export default function GenreStep() {
   const [selectedGenre, setSelectedGenre] = useState(formData.genre || '');
   const [selectedSubGenre, setSelectedSubGenre] = useState(formData.subGenre || '');
   const [showMoreGenres, setShowMoreGenres] = useState(false);
+
+  // Track page view
+  useEffect(() => {
+    trackStep('genre');
+  }, []);
 
   // Split genres
   const primaryGenres = genreList.filter(g => primaryGenreIds.includes(g.id));

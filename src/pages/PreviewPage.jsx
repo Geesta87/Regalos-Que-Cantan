@@ -2,6 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import { createCheckout, validateCoupon, regenerateSong } from '../services/api';
 import genres from '../config/genres';
+import { trackStep } from '../services/tracking';
 
 // Preview settings - skip intro, play 20 seconds of vocals
 const PREVIEW_START = 15;  // Skip 15s intro
@@ -35,6 +36,11 @@ export default function PreviewPage() {
   const originalPrice = 29.99;
   const discount = couponApplied?.discount || 0;
   const finalPrice = (basePrice * (1 - discount / 100)).toFixed(2);
+
+  // Track page view
+  useEffect(() => {
+    trackStep('preview');
+  }, []);
 
   useEffect(() => {
     if (audioRef.current) {

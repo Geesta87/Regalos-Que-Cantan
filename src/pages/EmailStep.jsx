@@ -1,6 +1,7 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
 import genres from '../config/genres';
+import { trackStep } from '../services/tracking';
 
 const occasionNames = {
   cumpleanos: 'Cumpleaños',
@@ -34,6 +35,11 @@ export default function EmailStep() {
   const [email, setEmail] = useState(formData.email || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState('');
+
+  // Track page view
+  useEffect(() => {
+    trackStep('email');
+  }, []);
 
   // Get display names
   const genreConfig = genres[formData.genre];

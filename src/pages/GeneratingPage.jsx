@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
 import { generateSong, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
+import { trackStep } from '../services/tracking';
 
 // ✅ FIX: Added timeout constant (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -89,6 +90,11 @@ export default function GeneratingPage() {
   const genreConfig = genres[formData.genre];
   const genreName = genreConfig?.name || formData.genre;
   const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
+
+  // Track page view
+  useEffect(() => {
+    trackStep('generating');
+  }, []);
 
   // Rotate fun facts
   useEffect(() => {

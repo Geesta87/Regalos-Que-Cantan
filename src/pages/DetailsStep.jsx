@@ -1,5 +1,6 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../App';
+import { trackStep } from '../services/tracking';
 
 const inspirationPrompts = [
   { id: 'memories', label: 'Recuerdos Especiales', prompt: '¿Qué momentos han compartido que nunca olvidarán?' },
@@ -15,6 +16,11 @@ export default function DetailsStep() {
   const [details, setDetails] = useState(formData.details || '');
   const [activePrompt, setActivePrompt] = useState(null);
   const [showQualityWarning, setShowQualityWarning] = useState(false);
+
+  // Track page view
+  useEffect(() => {
+    trackStep('details');
+  }, []);
 
   const handleContinue = () => {
     // If details are short, show quality warning
