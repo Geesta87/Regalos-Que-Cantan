@@ -13,7 +13,7 @@ const sampleSongs = [
     genre: 'Romántica',
     emoji: '💕',
     audioUrl: '/samples/sample-romantica-1.mp3',
-    imageUrl: null,
+    imageUrl: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400&h=400&fit=crop',
     duration: '2:00'
   },
   {
@@ -22,7 +22,7 @@ const sampleSongs = [
     genre: 'Romántica',
     emoji: '💖',
     audioUrl: '/samples/sample-romantica-2.mp3',
-    imageUrl: null,
+    imageUrl: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&h=400&fit=crop',
     duration: '1:30'
   },
   {
@@ -31,7 +31,7 @@ const sampleSongs = [
     genre: 'Balada',
     emoji: '🎵',
     audioUrl: '/samples/sample-3.mp3',
-    imageUrl: null,
+    imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&h=400&fit=crop',
     duration: '2:00'
   }
 ];
@@ -54,7 +54,7 @@ const testimonials = [
   },
   {
     id: 3,
-    text: "Pensé que iba a sonar como robot pero suena REAL. Increíble calidad. Ya ordené otra para mi hermana.",
+    text: "La calidad del sonido es increíble. Suena como canción profesional. Ya ordené otra para mi hermana.",
     name: "Carlos H.",
     location: "Houston, TX",
     rating: 5
@@ -327,7 +327,7 @@ export default function LandingPageV2() {
               Canciones Creadas Por Clientes
             </h2>
             <p className="text-white/60 max-w-xl mx-auto">
-              Escucha cómo suenan las canciones personalizadas. 100% creadas con IA, 100% únicas.
+              Escucha cómo suenan las canciones personalizadas. 100% únicas, hechas para ti.
             </p>
           </div>
 
