@@ -65,6 +65,38 @@ export const trackStep = async (step, metadata = {}) => {
     const sessionId = getSessionId();
     const utmParams = getStoredUtmParams();
     
+    // ========== META PIXEL TRACKING ==========
+    if (window.fbq) {
+      // Map steps to Meta Pixel events
+      const pixelEventMap = {
+        'landing': { event: 'ViewContent', params: { content_name: 'Landing Page', content_category: 'funnel' }},
+        'landing_v2': { event: 'ViewContent', params: { content_name: 'Landing Page V2', content_category: 'funnel' }},
+        'genre': { event: 'ViewContent', params: { content_name: 'Genre Selection', content_category: 'funnel' }},
+        'artist': { event: 'ViewContent', params: { content_name: 'Artist Selection', content_category: 'funnel' }},
+        'occasion': { event: 'ViewContent', params: { content_name: 'Occasion Selection', content_category: 'funnel' }},
+        'names': { event: 'ViewContent', params: { content_name: 'Names Input', content_category: 'funnel' }},
+        'details': { event: 'ViewContent', params: { content_name: 'Details Input', content_category: 'funnel' }},
+        'email': { event: 'Lead', params: { content_name: 'Email Captured', content_category: 'funnel' }},
+        'generating': { event: 'InitiateCheckout', params: { content_name: 'Song Generating', currency: 'USD', value: 19.99 }},
+        'preview': { event: 'ViewContent', params: { content_name: 'Song Preview', content_category: 'product', content_type: 'product' }},
+        'comparison': { event: 'AddToCart', params: { content_name: 'Song Comparison', currency: 'USD', value: 19.99 }},
+        'purchase': { event: 'Purchase', params: { content_name: 'Song Purchase', currency: 'USD', value: metadata.amount || 19.99 }}
+      };
+      
+      const pixelData = pixelEventMap[step];
+      if (pixelData) {
+        window.fbq('track', pixelData.event, {
+          ...pixelData.params,
+          ...metadata
+        });
+        console.log(`[Meta Pixel] ${pixelData.event}:`, step);
+      } else {
+        // Custom event for unmapped steps
+        window.fbq('trackCustom', 'FunnelStep', { step: step, ...metadata });
+      }
+    }
+    // ========== END META PIXEL ==========
+    
     const eventData = {
       session_id: sessionId,
       step: step,
@@ -106,6 +138,7 @@ export const trackPurchase = async (songId, amount, couponCode = null) => {
 // Funnel step order for proper visualization
 export const FUNNEL_STEPS = [
   { key: 'landing', label: 'Landing', icon: '🏠' },
+  { key: 'landing_v2', label: 'Landing V2', icon: '🏠' },
   { key: 'genre', label: 'Género', icon: '🎵' },
   { key: 'artist', label: 'Artista', icon: '🎤' },
   { key: 'occasion', label: 'Ocasión', icon: '🎁' },
