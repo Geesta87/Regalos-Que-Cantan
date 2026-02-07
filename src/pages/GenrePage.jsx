@@ -17,6 +17,7 @@ const genreList = Object.entries(genres).map(([id, data]) => ({
 
 // Map genre IDs to Material Symbols icon names
 const genreIcons = {
+  romantica: 'favorite',
   corrido: 'music_note',
   norteno: 'library_music',
   banda: 'vibration',
@@ -37,8 +38,8 @@ const genreIcons = {
   vallenato: 'library_music'
 };
 
-// Primary genres to show first (before "show more")
-const primaryGenreIds = ['balada', 'bachata', 'bolero', 'corrido', 'ranchera', 'reggaeton', 'banda', 'norteno'];
+// Primary genres to show first - Romántica first for Valentine's
+const primaryGenreIds = ['romantica', 'balada', 'bachata', 'bolero', 'corrido', 'ranchera', 'reggaeton', 'banda'];
 
 export default function GenrePage() {
   const { state, dispatch, navigateTo } = useContext(AppContext);
@@ -144,7 +145,7 @@ export default function GenrePage() {
                   relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-4 
                   group cursor-pointer transition-all duration-300
                   bg-white/[0.03] backdrop-blur-xl border
-                  ${(genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero')
+                  ${(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero')
                     ? selectedGenre === genre.id
                       ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
                       : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
@@ -153,11 +154,11 @@ export default function GenrePage() {
                       : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
-                {(genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
+                {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
                   <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">💘 Romántico</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl transition-transform ${
-                  (genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
+                  (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
                     ? 'text-red-400' 
                     : 'text-gold'
                 } ${selectedGenre === genre.id ? 'scale-110' : 'group-hover:scale-110'}`}>

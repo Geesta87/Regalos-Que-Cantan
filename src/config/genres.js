@@ -190,6 +190,19 @@ const genres = {
   // BALADAS / ROMANTIC
   // ==========================================
 
+  romantica: {
+    name: "Romántica",
+    emoji: "💕",
+    description: "Canciones de amor para enamorados",
+    subGenres: {
+      romantica_suave: { name: "Suave y Tierna", description: "Romántica delicada y emotiva para momentos íntimos" },
+      romantica_apasionada: { name: "Apasionada", description: "Romántica intensa y dramática estilo power ballad" },
+      romantica_alegre: { name: "Alegre y Bailable", description: "Romántica con ritmo para celebrar el amor" },
+      romantica_nostalgica: { name: "Nostálgica", description: "Romántica melancólica de recuerdos y añoranza" },
+      romantica_serenata: { name: "Serenata", description: "Estilo serenata tradicional para dedicar" }
+    }
+  },
+
   balada: {
     name: "Balada",
     emoji: "💐",
