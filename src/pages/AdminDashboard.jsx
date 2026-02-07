@@ -295,25 +295,19 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Get a paid song for test data
-      const testSong = songs.find(s => isPaid(s));
-      if (!testSong) {
-        alert('Necesitas al menos una orden pagada para probar');
-        setSendingTestEmail(false);
-        return;
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-purchase-email`, {
+      // Get a song for test data (prefer paid, but any completed song works)
+      const testSong = songs.find(s => isPaid(s)) || songs.find(s => s.audio_url);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-test-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
-          songIds: [testSong.id],
           email: testEmail,
-          isTest: true,
-          campaignId: campaignId
+          campaignId: campaignId,
+          songId: testSong?.id || null
         })
       });
 
