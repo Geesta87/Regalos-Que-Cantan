@@ -29,7 +29,7 @@ import OccasionLanding from './pages/seo/OccasionLanding';
 export const AppContext = React.createContext();
 
 // Version for cache busting
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.0.2';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -39,13 +39,63 @@ const STORAGE_KEYS = {
   VERSION: 'rqc_version'
 };
 
+// Map URL paths to pages - MOVED OUTSIDE for immediate access
+const pathToPage = {
+  '/': 'landing',
+  '/v2': 'landing_v2',
+  '/create/genre': 'genre',
+  '/create/artist': 'artist',
+  '/create/subgenre': 'subgenre',
+  '/create/occasion': 'occasion',
+  '/create/names': 'names',
+  '/create/voice': 'voice',
+  '/create/details': 'details',
+  '/create/email': 'email',
+  '/create/generating': 'generating',
+  '/preview': 'preview',
+  '/comparison': 'comparison',
+  '/success': 'success',
+  '/admin': 'adminLogin',
+  '/admin/dashboard': 'adminDashboard',
+  '/generos': 'generos',
+  '/ocasiones': 'ocasiones'
+};
+
+// Helper to get initial page from URL - runs BEFORE first render
+function getInitialPage() {
+  const path = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  
+  // Handle direct song links
+  if (urlParams.get('song')) {
+    return 'preview';
+  }
+  
+  // Check for dynamic SEO routes
+  if (path.startsWith('/generos/') && path !== '/generos/') {
+    return path.substring(1);
+  }
+  if (path.startsWith('/ocasiones/') && path !== '/ocasiones/') {
+    return path.substring(1);
+  }
+  
+  // Check pathToPage mapping
+  if (pathToPage[path]) {
+    return pathToPage[path];
+  }
+  
+  // Default to landing
+  return 'landing';
+}
+
 // Helper to extract slug from page path
 const getSlugFromPage = (page, prefix) => {
   return page.replace(prefix, '');
 };
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('landing');
+  // ✅ FIX: Initialize currentPage from URL IMMEDIATELY (not in useEffect)
+  const [currentPage, setCurrentPage] = useState(getInitialPage);
   const [formData, setFormData] = useState({
     genre: '',
     genreName: '',
@@ -68,7 +118,7 @@ export default function App() {
   const [songData, setSongData] = useState(null);
   const [directSongId, setDirectSongId] = useState(null);
 
-  // Initialize from URL or localStorage
+  // Initialize additional data from localStorage
   useEffect(() => {
     // Check version and clear if updated
     const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
@@ -80,73 +130,29 @@ export default function App() {
       localStorage.setItem(STORAGE_KEYS.VERSION, APP_VERSION);
     }
 
-    // Check URL for direct navigation
-    const path = window.location.pathname;
+    // Set directSongId if present
     const urlParams = new URLSearchParams(window.location.search);
-    
-    // Handle direct song links
     const songId = urlParams.get('song');
     if (songId) {
       setDirectSongId(songId);
-      setCurrentPage('preview');
-      return;
     }
 
-    // Map URL paths to pages
-    const pathToPage = {
-      '/': 'landing',
-      '/v2': 'landing_v2',
-      '/create/genre': 'genre',
-      '/create/artist': 'artist',
-      '/create/subgenre': 'subgenre',
-      '/create/occasion': 'occasion',
-      '/create/names': 'names',
-      '/create/voice': 'voice',
-      '/create/details': 'details',
-      '/create/email': 'email',
-      '/create/generating': 'generating',
-      '/preview': 'preview',
-      '/comparison': 'comparison',
-      '/success': 'success',
-      '/admin': 'adminLogin',
-      '/admin/dashboard': 'adminDashboard',
-      '/generos': 'generos',
-      '/ocasiones': 'ocasiones'
-    };
+    // Load form data from localStorage if not a direct URL navigation
+    const savedFormData = localStorage.getItem(STORAGE_KEYS.FORM_DATA);
+    const savedSongData = localStorage.getItem(STORAGE_KEYS.SONG_DATA);
 
-    // Check for dynamic SEO routes
-    if (path.startsWith('/generos/') && path !== '/generos/') {
-      setCurrentPage(path.substring(1)); // Remove leading slash
-      return;
-    }
-    if (path.startsWith('/ocasiones/') && path !== '/ocasiones/') {
-      setCurrentPage(path.substring(1)); // Remove leading slash
-      return;
-    }
-
-    const pageFromUrl = pathToPage[path];
-    if (pageFromUrl) {
-      setCurrentPage(pageFromUrl);
-    } else {
-      // Try localStorage
-      const savedPage = localStorage.getItem(STORAGE_KEYS.PAGE);
-      const savedFormData = localStorage.getItem(STORAGE_KEYS.FORM_DATA);
-      const savedSongData = localStorage.getItem(STORAGE_KEYS.SONG_DATA);
-
-      if (savedPage) setCurrentPage(savedPage);
-      if (savedFormData) {
-        try {
-          setFormData(JSON.parse(savedFormData));
-        } catch (e) {
-          console.error('Error parsing saved form data:', e);
-        }
+    if (savedFormData) {
+      try {
+        setFormData(JSON.parse(savedFormData));
+      } catch (e) {
+        console.error('Error parsing saved form data:', e);
       }
-      if (savedSongData) {
-        try {
-          setSongData(JSON.parse(savedSongData));
-        } catch (e) {
-          console.error('Error parsing saved song data:', e);
-        }
+    }
+    if (savedSongData) {
+      try {
+        setSongData(JSON.parse(savedSongData));
+      } catch (e) {
+        console.error('Error parsing saved song data:', e);
       }
     }
   }, []);
@@ -245,6 +251,9 @@ export default function App() {
     directSongId,
     setDirectSongId
   };
+
+  // Debug log
+  console.log('🔄 App rendering, currentPage:', currentPage);
 
   return (
     <HelmetProvider>
