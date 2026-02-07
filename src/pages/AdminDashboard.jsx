@@ -80,32 +80,31 @@ export default function AdminDashboard() {
     };
   }, [dateRange]);
 
-  // ✅ ROBUST: Check if song is paid using multiple possible fields/formats
+  // ✅ STRICT: Check if song is actually paid
   const isPaid = (song) => {
-    // Check boolean paid field
+    // Primary check: the paid boolean field
     if (song.paid === true) return true;
     if (song.paid === 'true') return true;
     if (song.paid === 1) return true;
     
     // Check is_paid field
     if (song.is_paid === true) return true;
-    if (song.is_paid === 'true') return true;
     
     // Check payment_status field
     if (song.payment_status === 'paid') return true;
     if (song.payment_status === 'completed') return true;
     if (song.payment_status === 'succeeded') return true;
     
-    // Check status field
-    if (song.status === 'paid') return true;
-    if (song.status === 'completed') return true;
-    
-    // Check if has stripe_payment_id (indicates successful payment)
+    // Check if has stripe_payment_id (indicates successful payment capture)
     if (song.stripe_payment_id) return true;
-    if (song.stripe_session_id && song.audio_url) return true;
     
-    // Check amount_paid > 0
+    // Check if paid_at timestamp exists (set only after successful payment)
+    if (song.paid_at) return true;
+    
+    // Check amount_paid > 0 (should only be set after real payment)
     if (song.amount_paid && parseFloat(song.amount_paid) > 0) return true;
+    
+    // NOTE: stripe_session_id alone does NOT mean paid - it's created when checkout starts
     
     return false;
   };
