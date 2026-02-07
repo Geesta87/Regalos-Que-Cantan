@@ -14,6 +14,9 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('orders');
   const [dateRange, setDateRange] = useState('7days');
   const [funnelData, setFunnelData] = useState([]);
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [emailPreview, setEmailPreview] = useState(null);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [stats, setStats] = useState({
     totalSongs: 0,
     totalRevenue: 0,
@@ -46,6 +49,19 @@ export default function AdminDashboard() {
 
     fetchSongs();
     fetchFunnelData();
+    fetchEmailLogs();
+    
+    // Set up real-time subscription for emails
+    const emailSubscription = supabase
+      .channel('email_logs_changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_logs' }, (payload) => {
+        setEmailLogs(prev => [payload.new, ...prev]);
+      })
+      .subscribe();
+    
+    return () => {
+      emailSubscription.unsubscribe();
+    };
   }, [dateRange]);
 
   // ✅ ROBUST: Check if song is paid using multiple possible fields/formats
@@ -176,6 +192,194 @@ export default function AdminDashboard() {
       console.error('Error fetching funnel data:', err);
     }
   };
+
+  const fetchEmailLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      setEmailLogs(data || []);
+    } catch (err) {
+      console.error('Error fetching email logs:', err);
+    }
+  };
+
+  const sendTestEmail = async (emailType, songId) => {
+    setSendingTestEmail(true);
+    try {
+      const song = songs.find(s => s.id === songId);
+      if (!song) throw new Error('Song not found');
+
+      // Use your own email for testing
+      const testEmail = prompt('Enter email address for test:', song.email);
+      if (!testEmail) return;
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-purchase-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          songIds: [songId],
+          email: testEmail,
+          isTest: true
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert(`✅ Test email sent to ${testEmail}`);
+        fetchEmailLogs(); // Refresh logs
+      } else {
+        alert(`❌ Failed: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+  const getEmailTypeLabel = (type) => {
+    const labels = {
+      'abandoned_1hr': '⏰ 1hr Recordatorio',
+      'abandoned_24hr': '⚠️ 24hr Última oportunidad',
+      'purchase_confirmation': '✅ Confirmación de Compra',
+      'test': '🧪 Test'
+    };
+    return labels[type] || type;
+  };
+
+  const getEmailTypeColor = (type) => {
+    const colors = {
+      'abandoned_1hr': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      'abandoned_24hr': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      'purchase_confirmation': 'bg-green-500/20 text-green-400 border-green-500/30',
+      'test': 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+    };
+    return colors[type] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  };
+
+  // Email Preview Templates
+  const get1hrEmailPreview = () => `
+    <!DOCTYPE html>
+    <html>
+    <body style="margin: 0; padding: 0; background-color: #1a3a2f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: linear-gradient(135deg, #2d5a4a 0%, #1a3a2f 100%); border-radius: 20px; padding: 40px; text-align: center;">
+          <h1 style="color: #d4af37; font-size: 28px; margin: 0 0 20px 0;">🎵 ¡Tu canción está lista!</h1>
+          <p style="color: #ffffff; font-size: 18px; margin: 0 0 30px 0;">
+            La canción personalizada para <strong style="color: #d4af37;">María</strong> está esperándote.
+          </p>
+          <a href="#" style="display: inline-block; background: #d4af37; color: #1a3a2f; text-decoration: none; padding: 16px 40px; border-radius: 30px; font-weight: bold; font-size: 16px;">
+            Escuchar y Descargar
+          </a>
+          <p style="color: #ffffff80; font-size: 14px; margin: 30px 0 0 0;">
+            ¿No solicitaste esta canción? Ignora este correo.
+          </p>
+        </div>
+        <p style="color: #ffffff40; font-size: 12px; text-align: center; margin-top: 20px;">
+          RegalosQueCantan © 2026
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const get24hrEmailPreview = () => `
+    <!DOCTYPE html>
+    <html>
+    <body style="margin: 0; padding: 0; background-color: #1a3a2f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: linear-gradient(135deg, #2d5a4a 0%, #1a3a2f 100%); border-radius: 20px; padding: 40px; text-align: center;">
+          <h1 style="color: #e11d74; font-size: 28px; margin: 0 0 20px 0;">⏰ Última oportunidad</h1>
+          <p style="color: #ffffff; font-size: 18px; margin: 0 0 20px 0;">
+            Tu canción personalizada para <strong style="color: #d4af37;">María</strong> sigue esperando.
+          </p>
+          <p style="color: #ffffff80; font-size: 14px; margin: 0 0 30px 0;">
+            No dejes pasar este regalo único. La canción se eliminará pronto si no se completa la compra.
+          </p>
+          <a href="#" style="display: inline-block; background: #e11d74; color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 30px; font-weight: bold; font-size: 16px;">
+            Completar mi Compra
+          </a>
+          <p style="color: #ffffff80; font-size: 14px; margin: 30px 0 0 0;">
+            ¿Tienes preguntas? Responde a este correo.
+          </p>
+        </div>
+        <p style="color: #ffffff40; font-size: 12px; text-align: center; margin-top: 20px;">
+          RegalosQueCantan © 2026
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const getPurchaseEmailPreview = () => `
+    <!DOCTYPE html>
+    <html>
+    <body style="margin: 0; padding: 0; background-color: #0f1419; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #d4af37; font-size: 32px; margin: 0;">🎵 RegalosQueCantan</h1>
+        </div>
+        <div style="background: linear-gradient(135deg, #1a3a2f 0%, #0d2620 100%); border-radius: 20px; padding: 40px; text-align: center; border: 1px solid #d4af3730;">
+          <div style="font-size: 60px; margin-bottom: 20px;">🎉</div>
+          <h2 style="color: #ffffff; font-size: 24px; margin: 0 0 10px 0;">¡Gracias por tu compra!</h2>
+          <p style="color: #d4af37; font-size: 20px; margin: 0 0 30px 0;">
+            Tu canción para <strong>María</strong> está lista
+          </p>
+          <div style="background: #ffffff10; border-radius: 12px; padding: 20px; margin-bottom: 30px; text-align: left;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Para:</td>
+                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;"><strong>María</strong></td>
+              </tr>
+              <tr>
+                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">De:</td>
+                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;">Carlos</td>
+              </tr>
+              <tr>
+                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Género:</td>
+                <td style="color: #d4af37; padding: 8px 0; font-size: 14px; text-align: right;">Balada Romántica</td>
+              </tr>
+              <tr>
+                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Ocasión:</td>
+                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;">San Valentín</td>
+              </tr>
+            </table>
+          </div>
+          <a href="#" style="display: inline-block; background: linear-gradient(135deg, #d4af37 0%, #b8962e 100%); color: #0f1419; text-decoration: none; padding: 18px 50px; border-radius: 30px; font-weight: bold; font-size: 18px; box-shadow: 0 4px 15px #d4af3750;">
+            🎧 Escuchar y Descargar
+          </a>
+          <p style="color: #ffffff60; font-size: 14px; margin: 30px 0 0 0;">
+            Este enlace es permanente. Puedes descargar tu canción cuando quieras.
+          </p>
+        </div>
+        <div style="background: #1a1f26; border-radius: 16px; padding: 25px; margin-top: 20px; border: 1px solid #ffffff10;">
+          <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 15px 0;">💡 ¿Cómo compartir tu canción?</h3>
+          <ul style="color: #ffffff80; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>Descarga el MP3 y envíalo por WhatsApp</li>
+            <li>Comparte el enlace directamente</li>
+            <li>Ponla en una bocina durante una celebración</li>
+          </ul>
+        </div>
+        <div style="text-align: center; margin-top: 30px;">
+          <p style="color: #ffffff40; font-size: 12px; margin: 0;">
+            ¿Preguntas? Responde a este correo o escríbenos a hola@regalosquecantan.com
+          </p>
+          <p style="color: #ffffff30; font-size: 11px; margin: 15px 0 0 0;">
+            RegalosQueCantan © 2026 | El regalo que nunca olvidarán
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 
   const handleLogout = () => {
     localStorage.removeItem('rqc_admin_auth');
@@ -357,6 +561,16 @@ export default function AdminDashboard() {
             }`}
           >
             📊 Funnel Analytics
+          </button>
+          <button
+            onClick={() => { setActiveTab('emails'); fetchEmailLogs(); }}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'emails' 
+                ? 'bg-amber-400 text-black' 
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            📧 Emails ({emailLogs.length})
           </button>
         </div>
 
@@ -642,7 +856,187 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
-        )}
+        ) : activeTab === 'emails' ? (
+          /* Emails Tab */
+          <div className="space-y-6">
+            {/* Email Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
+                <p className="text-gray-400 text-sm mb-1">Total Enviados</p>
+                <p className="text-3xl font-bold">{emailLogs.length}</p>
+              </div>
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-green-500/20">
+                <p className="text-gray-400 text-sm mb-1">✅ Confirmaciones</p>
+                <p className="text-3xl font-bold text-green-400">
+                  {emailLogs.filter(e => e.email_type === 'purchase_confirmation').length}
+                </p>
+              </div>
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-yellow-500/20">
+                <p className="text-gray-400 text-sm mb-1">⏰ 1hr Reminders</p>
+                <p className="text-3xl font-bold text-yellow-400">
+                  {emailLogs.filter(e => e.email_type === 'abandoned_1hr').length}
+                </p>
+              </div>
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-orange-500/20">
+                <p className="text-gray-400 text-sm mb-1">⚠️ 24hr Reminders</p>
+                <p className="text-3xl font-bold text-orange-400">
+                  {emailLogs.filter(e => e.email_type === 'abandoned_24hr').length}
+                </p>
+              </div>
+            </div>
+
+            {/* Email Templates Preview */}
+            <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">📧 Plantillas de Email</h3>
+                <button
+                  onClick={() => setEmailPreview(emailPreview ? null : '1hr')}
+                  className="px-4 py-2 rounded-lg bg-white/5 text-sm hover:bg-white/10 transition"
+                >
+                  {emailPreview ? 'Ocultar Preview' : 'Ver Plantillas'}
+                </button>
+              </div>
+              
+              {emailPreview && (
+                <div className="space-y-4">
+                  {/* Template selector */}
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { key: '1hr', label: '⏰ 1hr Reminder' },
+                      { key: '24hr', label: '⚠️ 24hr Reminder' },
+                      { key: 'purchase', label: '✅ Confirmación' }
+                    ].map(tmpl => (
+                      <button
+                        key={tmpl.key}
+                        onClick={() => setEmailPreview(tmpl.key)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                          emailPreview === tmpl.key 
+                            ? 'bg-amber-400 text-black'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                        }`}
+                      >
+                        {tmpl.label}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Email Preview */}
+                  <div className="bg-white rounded-xl overflow-hidden">
+                    <div className="bg-gray-100 px-4 py-2 border-b">
+                      <p className="text-gray-600 text-sm">
+                        <strong>Subject:</strong> {
+                          emailPreview === '1hr' ? '🎵 ¡Tu canción para [Nombre] está lista!' :
+                          emailPreview === '24hr' ? '⏰ Última oportunidad: Tu canción para [Nombre]' :
+                          '🎉 ¡Tu canción para [Nombre] está lista para descargar!'
+                        }
+                      </p>
+                    </div>
+                    <iframe
+                      srcDoc={
+                        emailPreview === '1hr' ? get1hrEmailPreview() :
+                        emailPreview === '24hr' ? get24hrEmailPreview() :
+                        getPurchaseEmailPreview()
+                      }
+                      className="w-full h-96 border-0"
+                      title="Email Preview"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Recent Email Logs */}
+            <div className="bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
+              <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+                <h3 className="font-semibold">📨 Emails Enviados (Tiempo Real)</h3>
+                <button
+                  onClick={fetchEmailLogs}
+                  className="px-3 py-1 rounded-lg bg-white/5 text-sm hover:bg-white/10 transition"
+                >
+                  🔄 Actualizar
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-white/5 text-left">
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Fecha</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Tipo</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Destinatario</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Asunto</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {emailLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="px-4 py-12 text-center text-gray-500">
+                          No hay emails enviados todavía
+                        </td>
+                      </tr>
+                    ) : (
+                      emailLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-white/5 transition">
+                          <td className="px-4 py-3">
+                            <span className="text-sm text-gray-300">{formatDate(log.created_at)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getEmailTypeColor(log.email_type)}`}>
+                              {getEmailTypeLabel(log.email_type)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="text-white font-medium">{log.recipient_name || 'N/A'}</p>
+                              <p className="text-xs text-gray-500">{log.email}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-300 truncate max-w-[250px]">{log.subject}</p>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {log.status === 'sent' ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">
+                                ✓ Enviado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-400">
+                                ✗ Fallido
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Send Test Email */}
+            <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
+              <h3 className="font-semibold mb-4">🧪 Enviar Email de Prueba</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Selecciona una orden pagada para enviar un email de prueba y ver cómo se ve.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {songs.filter(s => isPaid(s)).slice(0, 5).map(song => (
+                  <button
+                    key={song.id}
+                    onClick={() => sendTestEmail('purchase', song.id)}
+                    disabled={sendingTestEmail}
+                    className="px-4 py-2 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 text-sm hover:bg-purple-500/30 transition disabled:opacity-50"
+                  >
+                    {sendingTestEmail ? '⏳ Enviando...' : `📧 Test: ${song.recipient_name}`}
+                  </button>
+                ))}
+                {songs.filter(s => isPaid(s)).length === 0 && (
+                  <p className="text-gray-500 text-sm">No hay órdenes pagadas para probar</p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
 
       {/* Song Detail Modal */}
