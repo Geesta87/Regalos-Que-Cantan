@@ -1,42 +1,35 @@
-// Dogfathers Plus Service Worker
-const CACHE_NAME = 'dogfathers-plus-v1';
-const DYNAMIC_CACHE = 'dogfathers-dynamic-v1';
+// RegalosQueCantan Service Worker
+// ✅ IMPORTANT: Bump this version string on every deploy to bust old caches
+const CACHE_VERSION = 'rqc-v2.0.3';
+const CACHE_NAME = `rqc-static-${CACHE_VERSION}`;
 
-// Assets to cache on install
+// Only cache fonts and the shell - NOT JS bundles (Vite hashes those already)
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
   'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap'
 ];
 
-// Install event - cache static assets
+// Install - cache fonts only, skip waiting immediately
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Installing...');
+  console.log('[SW] Installing', CACHE_VERSION);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[ServiceWorker] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
-      })
+      .then((cache) => cache.addAll(STATIC_ASSETS))
       .then(() => self.skipWaiting())
-      .catch((error) => {
-        console.log('[ServiceWorker] Cache failed:', error);
-      })
+      .catch((err) => console.log('[SW] Install cache error:', err))
   );
 });
 
-// Activate event - clean up old caches
+// Activate - delete ALL old caches, claim clients immediately
 self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activating...');
+  console.log('[SW] Activating', CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then((names) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== DYNAMIC_CACHE)
+        names
+          .filter((name) => name !== CACHE_NAME)
           .map((name) => {
-            console.log('[ServiceWorker] Deleting old cache:', name);
+            console.log('[SW] Deleting old cache:', name);
             return caches.delete(name);
           })
       );
@@ -44,130 +37,71 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - network first, fallback to cache
+// Fetch - NETWORK FIRST for everything
+// This ensures new deploys are always served immediately
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
+
   // Skip non-GET requests
   if (request.method !== 'GET') return;
-  
-  // Skip Supabase API requests (always need fresh data)
+
+  // Skip API calls, Supabase, Stripe, SendGrid, analytics
   if (url.hostname.includes('supabase')) return;
-  
-  // Skip chrome-extension and other non-http(s) requests
+  if (url.hostname.includes('stripe')) return;
+  if (url.hostname.includes('sendgrid')) return;
+  if (url.hostname.includes('facebook')) return;
+  if (url.hostname.includes('clarity')) return;
+  if (url.hostname.includes('google-analytics')) return;
   if (!url.protocol.startsWith('http')) return;
-  
-  // For HTML pages - network first
-  if (request.headers.get('accept')?.includes('text/html')) {
+
+  // For HTML navigation requests - ALWAYS network first
+  // This is critical: ensures /comparison, /success etc. always get fresh index.html
+  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone and cache the response
-          const responseClone = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone);
-          });
+          // Cache a copy for offline fallback
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
         .catch(() => {
-          // Fallback to cache
-          return caches.match(request).then((cachedResponse) => {
-            return cachedResponse || caches.match('/');
-          });
+          // Offline: try cache, then fall back to cached root
+          return caches.match(request)
+            .then((cached) => cached || caches.match('/'));
         })
     );
     return;
   }
-  
-  // For other assets - cache first, then network
+
+  // For fonts (Google Fonts) - cache first (they never change)
+  if (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        return cached || fetch(request).then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // For JS/CSS bundles (Vite adds hashes, so new deploys = new URLs automatically)
+  // Network first with cache fallback
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Return cache and update in background
-        fetch(request).then((response) => {
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, response);
-          });
-        }).catch(() => {});
-        return cachedResponse;
-      }
-      
-      // Not in cache, fetch from network
-      return fetch(request).then((response) => {
-        // Cache the response for future
+    fetch(request)
+      .then((response) => {
         if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone);
-          });
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
-      }).catch(() => {
-        // Return offline fallback for images
-        if (request.destination === 'image') {
-          return new Response(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="#e5e7eb" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="#9ca3af" font-size="14">Offline</text></svg>',
-            { headers: { 'Content-Type': 'image/svg+xml' } }
-          );
-        }
-      });
-    })
+      })
+      .catch(() => caches.match(request))
   );
 });
 
-// Background sync for offline actions
-self.addEventListener('sync', (event) => {
-  console.log('[ServiceWorker] Sync event:', event.tag);
-  if (event.tag === 'sync-appointments') {
-    event.waitUntil(syncAppointments());
-  }
-});
-
-// Push notifications (for future use)
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
-  
-  const data = event.data.json();
-  const options = {
-    body: data.body || 'You have a new notification',
-    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"%3E%3Crect fill="%2313a4ec" width="192" height="192" rx="40"/%3E%3Ctext x="96" y="130" font-size="100" text-anchor="middle" fill="white"%3E🐕%3C/text%3E%3C/svg%3E',
-    badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"%3E%3Crect fill="%2313a4ec" width="96" height="96" rx="20"/%3E%3Ctext x="48" y="65" font-size="50" text-anchor="middle" fill="white"%3E🐕%3C/text%3E%3C/svg%3E',
-    vibrate: [100, 50, 100],
-    data: data.data || {},
-    actions: data.actions || []
-  };
-  
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Dogfathers Plus', options)
-  );
-});
-
-// Handle notification click
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      // Focus existing window if available
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      // Otherwise open new window
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
-  );
-});
-
-// Helper function for syncing (placeholder for future use)
-async function syncAppointments() {
-  console.log('[ServiceWorker] Syncing appointments...');
-  // This would sync any offline-queued appointments
-  // Implementation depends on your offline strategy
-}
-
-console.log('[ServiceWorker] Service worker loaded');
+console.log('[SW] RegalosQueCantan service worker loaded');
