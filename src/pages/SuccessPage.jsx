@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { checkSongStatus } from '../services/api';
-import { trackStep } from '../services/tracking';
 
 export default function SuccessPage() {
   const [songs, setSongs] = useState([]);
@@ -41,12 +40,6 @@ export default function SuccessPage() {
     
     if (songIds.length > 0) {
       fetchSongs(songIds);
-      
-      // Track purchase event
-      trackStep('purchase', {
-        song_ids: songIds,
-        num_songs: songIds.length
-      });
     } else {
       setError('No se encontró el ID de la canción en la URL');
       setLoading(false);
@@ -157,6 +150,20 @@ export default function SuccessPage() {
     }
 
     setDownloading(song.id);
+
+    // Track download in Supabase
+    try {
+      await supabase
+        .from('songs')
+        .update({ 
+          downloaded: true,
+          download_count: (song.download_count || 0) + 1,
+          last_downloaded_at: new Date().toISOString()
+        })
+        .eq('id', song.id);
+    } catch (err) {
+      console.warn('Failed to track download:', err);
+    }
 
     try {
       const response = await fetch(audioUrl);
