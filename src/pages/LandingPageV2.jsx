@@ -100,16 +100,19 @@ function SamplePlayer({ sample, isPlaying, onPlay, onPause, currentTime, duratio
             onError={(e) => e.target.style.display = 'none'}
           />
         )}
-        {/* Play/Pause Button Overlay - Shows on hover */}
+        {/* Play/Pause Button Overlay - Always visible with "Escuchar" text */}
         <button
           onClick={() => isPlaying ? onPause() : onPlay(sample)}
-          className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${isPlaying ? 'bg-black/40' : 'bg-black/0 group-hover:bg-black/40'}`}
+          className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-300 ${isPlaying ? 'bg-black/50' : 'bg-black/30 hover:bg-black/50'}`}
         >
-          <div className={`w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl transform transition-all duration-300 ${isPlaying ? 'scale-100 opacity-100' : 'scale-75 opacity-0 group-hover:scale-100 group-hover:opacity-100'}`}>
-            <span className="material-symbols-outlined text-forest text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+          <div className={`w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-2xl transform transition-all duration-300 ${isPlaying ? 'scale-110' : 'hover:scale-110'}`}>
+            <span className="material-symbols-outlined text-forest text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
               {isPlaying ? 'pause' : 'play_arrow'}
             </span>
           </div>
+          <span className={`mt-2 text-white font-bold text-sm tracking-wide transition-all duration-300 ${isPlaying ? 'opacity-0' : 'opacity-100'}`}>
+            Escuchar
+          </span>
         </button>
         {/* Playing indicator */}
         {isPlaying && (
