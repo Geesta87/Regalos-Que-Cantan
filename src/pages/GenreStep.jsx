@@ -39,7 +39,7 @@ const genreIcons = {
 };
 
 // Primary genres to show first
-const primaryGenreIds = ['balada', 'bachata', 'corrido', 'ranchera', 'reggaeton', 'banda', 'norteno', 'cumbia'];
+const primaryGenreIds = ['balada', 'bachata', 'bolero', 'corrido', 'ranchera', 'reggaeton', 'banda', 'norteno'];
 
 export default function GenreStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
@@ -145,8 +145,13 @@ export default function GenreStep() {
               Elige el <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-gold via-white/90 to-gold">Ritmo</span>
             </h1>
             <p className="text-white/60 text-lg font-light max-w-xl mx-auto">
-              ¿Qué género musical representa mejor tu historia?
+              ¿Qué ritmo quieres para tu canción de San Valentín? 💕
             </p>
+          </div>
+
+          {/* Valentine's Banner */}
+          <div className="bg-red-500/20 border border-red-400/50 rounded-xl px-4 py-3 mb-8 max-w-xl mx-auto">
+            <p className="text-red-300 text-sm text-center font-medium">💘 Elige un género romántico para sorprender a tu pareja 💘</p>
           </div>
 
           {/* Genre Grid */}
@@ -159,12 +164,23 @@ export default function GenreStep() {
                   relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-4 
                   group cursor-pointer transition-all duration-300
                   bg-white/[0.03] backdrop-blur-xl border
-                  ${selectedGenre === genre.id
-                    ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(212,175,55,0.3)] -translate-y-1'
-                    : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
+                  ${(genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero')
+                    ? selectedGenre === genre.id
+                      ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
+                      : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
+                    : selectedGenre === genre.id
+                      ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(212,175,55,0.3)] -translate-y-1'
+                      : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
-                <span className={`material-symbols-outlined text-gold text-4xl transition-transform ${selectedGenre === genre.id ? 'scale-110' : 'group-hover:scale-110'}`}>
+                {(genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
+                  <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">💘 Romántico</span>
+                )}
+                <span className={`material-symbols-outlined text-4xl transition-transform ${
+                  (genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
+                    ? 'text-red-400' 
+                    : 'text-gold'
+                } ${selectedGenre === genre.id ? 'scale-110' : 'group-hover:scale-110'}`}>
                   {genreIcons[genre.id] || 'music_note'}
                 </span>
                 <span className="font-display text-xl md:text-2xl font-semibold tracking-wide">{genre.name}</span>
@@ -237,6 +253,15 @@ export default function GenreStep() {
           </div>
         </div>
       </main>
+
+      {/* Sticky Valentine's Urgency Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 z-50 shadow-lg shadow-red-500/30">
+        <p className="text-sm font-bold flex items-center justify-center gap-2">
+          <span>⏰</span>
+          <span>Ordena antes del 12 de Feb para San Valentín</span>
+          <span>💘</span>
+        </p>
+      </div>
 
       {/* Footer */}
       <footer className="bg-background-dark/50 backdrop-blur-md py-6 px-8 border-t border-white/5 relative z-30">
