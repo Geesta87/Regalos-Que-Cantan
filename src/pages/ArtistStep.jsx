@@ -321,6 +321,42 @@ const artistsByGenre = {
   },
 
   // ==========================================
+  // ROMÁNTICA - 5 subgenres (Catch-all romantic)
+  // ==========================================
+  romantica: {
+    romantica_suave: [
+      { id: 'luis_miguel', name: 'Luis Miguel' },
+      { id: 'ricardo_montaner', name: 'Ricardo Montaner' },
+      { id: 'alejandro_fernandez', name: 'Alejandro Fernández' },
+      { id: 'reik', name: 'Reik' }
+    ],
+    romantica_apasionada: [
+      { id: 'jose_jose', name: 'José José' },
+      { id: 'juan_gabriel', name: 'Juan Gabriel' },
+      { id: 'marc_anthony', name: 'Marc Anthony' },
+      { id: 'sin_bandera', name: 'Sin Bandera' }
+    ],
+    romantica_alegre: [
+      { id: 'carlos_vives', name: 'Carlos Vives' },
+      { id: 'shakira', name: 'Shakira' },
+      { id: 'camilo', name: 'Camilo' },
+      { id: 'sebastian_yatra', name: 'Sebastián Yatra' }
+    ],
+    romantica_nostalgica: [
+      { id: 'jose_jose', name: 'José José' },
+      { id: 'rocio_durcal', name: 'Rocío Dúrcal' },
+      { id: 'armando_manzanero', name: 'Armando Manzanero' },
+      { id: 'los_panchos', name: 'Los Panchos' }
+    ],
+    romantica_serenata: [
+      { id: 'vicente', name: 'Vicente Fernández' },
+      { id: 'luis_miguel', name: 'Luis Miguel' },
+      { id: 'pedro_infante', name: 'Pedro Infante' },
+      { id: 'alejandro_fernandez', name: 'Alejandro Fernández' }
+    ]
+  },
+
+  // ==========================================
   // BALADA - 3 subgenres
   // ==========================================
   balada: {
