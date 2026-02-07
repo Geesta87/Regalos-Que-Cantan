@@ -439,122 +439,6 @@ export default function AdminDashboard() {
     return colors[type] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
-  // Email Preview Templates
-  const get1hrEmailPreview = () => `
-    <!DOCTYPE html>
-    <html>
-    <body style="margin: 0; padding: 0; background-color: #1a3a2f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <div style="background: linear-gradient(135deg, #2d5a4a 0%, #1a3a2f 100%); border-radius: 20px; padding: 40px; text-align: center;">
-          <h1 style="color: #d4af37; font-size: 28px; margin: 0 0 20px 0;">🎵 ¡Tu canción está lista!</h1>
-          <p style="color: #ffffff; font-size: 18px; margin: 0 0 30px 0;">
-            La canción personalizada para <strong style="color: #d4af37;">María</strong> está esperándote.
-          </p>
-          <a href="#" style="display: inline-block; background: #d4af37; color: #1a3a2f; text-decoration: none; padding: 16px 40px; border-radius: 30px; font-weight: bold; font-size: 16px;">
-            Escuchar y Descargar
-          </a>
-          <p style="color: #ffffff80; font-size: 14px; margin: 30px 0 0 0;">
-            ¿No solicitaste esta canción? Ignora este correo.
-          </p>
-        </div>
-        <p style="color: #ffffff40; font-size: 12px; text-align: center; margin-top: 20px;">
-          RegalosQueCantan © 2026
-        </p>
-      </div>
-    </body>
-    </html>
-  `;
-
-  const get24hrEmailPreview = () => `
-    <!DOCTYPE html>
-    <html>
-    <body style="margin: 0; padding: 0; background-color: #1a3a2f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <div style="background: linear-gradient(135deg, #2d5a4a 0%, #1a3a2f 100%); border-radius: 20px; padding: 40px; text-align: center;">
-          <h1 style="color: #e11d74; font-size: 28px; margin: 0 0 20px 0;">⏰ Última oportunidad</h1>
-          <p style="color: #ffffff; font-size: 18px; margin: 0 0 20px 0;">
-            Tu canción personalizada para <strong style="color: #d4af37;">María</strong> sigue esperando.
-          </p>
-          <p style="color: #ffffff80; font-size: 14px; margin: 0 0 30px 0;">
-            No dejes pasar este regalo único. La canción se eliminará pronto si no se completa la compra.
-          </p>
-          <a href="#" style="display: inline-block; background: #e11d74; color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 30px; font-weight: bold; font-size: 16px;">
-            Completar mi Compra
-          </a>
-          <p style="color: #ffffff80; font-size: 14px; margin: 30px 0 0 0;">
-            ¿Tienes preguntas? Responde a este correo.
-          </p>
-        </div>
-        <p style="color: #ffffff40; font-size: 12px; text-align: center; margin-top: 20px;">
-          RegalosQueCantan © 2026
-        </p>
-      </div>
-    </body>
-    </html>
-  `;
-
-  const getPurchaseEmailPreview = () => `
-    <!DOCTYPE html>
-    <html>
-    <body style="margin: 0; padding: 0; background-color: #0f1419; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #d4af37; font-size: 32px; margin: 0;">🎵 RegalosQueCantan</h1>
-        </div>
-        <div style="background: linear-gradient(135deg, #1a3a2f 0%, #0d2620 100%); border-radius: 20px; padding: 40px; text-align: center; border: 1px solid #d4af3730;">
-          <div style="font-size: 60px; margin-bottom: 20px;">🎉</div>
-          <h2 style="color: #ffffff; font-size: 24px; margin: 0 0 10px 0;">¡Gracias por tu compra!</h2>
-          <p style="color: #d4af37; font-size: 20px; margin: 0 0 30px 0;">
-            Tu canción para <strong>María</strong> está lista
-          </p>
-          <div style="background: #ffffff10; border-radius: 12px; padding: 20px; margin-bottom: 30px; text-align: left;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Para:</td>
-                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;"><strong>María</strong></td>
-              </tr>
-              <tr>
-                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">De:</td>
-                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;">Carlos</td>
-              </tr>
-              <tr>
-                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Género:</td>
-                <td style="color: #d4af37; padding: 8px 0; font-size: 14px; text-align: right;">Balada Romántica</td>
-              </tr>
-              <tr>
-                <td style="color: #ffffff80; padding: 8px 0; font-size: 14px;">Ocasión:</td>
-                <td style="color: #ffffff; padding: 8px 0; font-size: 14px; text-align: right;">San Valentín</td>
-              </tr>
-            </table>
-          </div>
-          <a href="#" style="display: inline-block; background: linear-gradient(135deg, #d4af37 0%, #b8962e 100%); color: #0f1419; text-decoration: none; padding: 18px 50px; border-radius: 30px; font-weight: bold; font-size: 18px; box-shadow: 0 4px 15px #d4af3750;">
-            🎧 Escuchar y Descargar
-          </a>
-          <p style="color: #ffffff60; font-size: 14px; margin: 30px 0 0 0;">
-            Este enlace es permanente. Puedes descargar tu canción cuando quieras.
-          </p>
-        </div>
-        <div style="background: #1a1f26; border-radius: 16px; padding: 25px; margin-top: 20px; border: 1px solid #ffffff10;">
-          <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 15px 0;">💡 ¿Cómo compartir tu canción?</h3>
-          <ul style="color: #ffffff80; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
-            <li>Descarga el MP3 y envíalo por WhatsApp</li>
-            <li>Comparte el enlace directamente</li>
-            <li>Ponla en una bocina durante una celebración</li>
-          </ul>
-        </div>
-        <div style="text-align: center; margin-top: 30px;">
-          <p style="color: #ffffff40; font-size: 12px; margin: 0;">
-            ¿Preguntas? Responde a este correo o escríbenos a hola@regalosquecantan.com
-          </p>
-          <p style="color: #ffffff30; font-size: 11px; margin: 15px 0 0 0;">
-            RegalosQueCantan © 2026 | El regalo que nunca olvidarán
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
   const handleLogout = () => {
     localStorage.removeItem('rqc_admin_auth');
     window.location.href = '/';
@@ -1031,7 +915,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         ) : activeTab === 'emails' ? (
-          /* Emails Tab - Clean & Simple */
+          /* Emails Tab - Clean & Simple with Enhanced Features */
           <div className="space-y-8">
             
             {/* Section 1: Email Campaigns */}
@@ -1052,85 +936,124 @@ export default function AdminDashboard() {
                     <p className="text-gray-500">Cargando campañas...</p>
                   </div>
                 ) : (
-                  emailCampaigns.map((campaign) => (
-                    <div 
-                      key={campaign.id} 
-                      className={`bg-[#1a1f26] rounded-2xl p-6 border transition ${
-                        campaign.enabled ? 'border-green-500/30' : 'border-white/5 opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        {/* Campaign Info */}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-2xl">
-                              {campaign.id === 'purchase_confirmation' ? '✅' : 
-                               campaign.id === 'abandoned_1hr' ? '⏰' : '⚠️'}
-                            </span>
-                            <div>
-                              <h3 className="font-semibold text-white">{campaign.name}</h3>
-                              <p className="text-xs text-gray-500">{campaign.description}</p>
+                  emailCampaigns.map((campaign) => {
+                    const conversions = getCampaignConversions(campaign.id);
+                    return (
+                      <div 
+                        key={campaign.id} 
+                        className={`bg-[#1a1f26] rounded-2xl p-6 border transition ${
+                          campaign.enabled ? 'border-green-500/30' : 'border-white/5 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          {/* Campaign Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-2xl">
+                                {campaign.id === 'purchase_confirmation' ? '✅' : 
+                                 campaign.id === 'abandoned_1hr' ? '⏰' : '⚠️'}
+                              </span>
+                              <div>
+                                <h3 className="font-semibold text-white">{campaign.name}</h3>
+                                <p className="text-xs text-gray-500">{campaign.description}</p>
+                              </div>
+                            </div>
+                            
+                            {/* Subject Preview */}
+                            <div className="bg-white/5 rounded-lg p-3 mt-3">
+                              <p className="text-xs text-gray-500 mb-1">Asunto:</p>
+                              <p className="text-sm text-amber-400">{campaign.subject}</p>
+                            </div>
+                            
+                            {/* Stats with Conversion Rate */}
+                            <div className="flex items-center gap-4 mt-3 text-xs">
+                              <span className="text-gray-500">📧 {conversions.sent} enviados</span>
+                              {campaign.id !== 'purchase_confirmation' && (
+                                <span className={`${conversions.rate > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                  💰 {conversions.converted} convertidos ({conversions.rate}%)
+                                </span>
+                              )}
+                              {campaign.delay_hours > 0 && (
+                                <span className="text-gray-500">⏱️ Se envía a las {campaign.delay_hours}h</span>
+                              )}
                             </div>
                           </div>
                           
-                          {/* Subject Preview */}
-                          <div className="bg-white/5 rounded-lg p-3 mt-3">
-                            <p className="text-xs text-gray-500 mb-1">Asunto:</p>
-                            <p className="text-sm text-amber-400">{campaign.subject}</p>
+                          {/* Actions */}
+                          <div className="flex flex-col gap-2">
+                            {/* On/Off Toggle */}
+                            <button
+                              onClick={() => toggleCampaign(campaign.id, campaign.enabled)}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                                campaign.enabled 
+                                  ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                                  : 'bg-white/5 text-gray-500 border border-white/10'
+                              }`}
+                            >
+                              {campaign.enabled ? '✓ Activa' : '○ Pausada'}
+                            </button>
+                            
+                            {/* Preview Button */}
+                            <button
+                              onClick={() => setPreviewingCampaign(campaign)}
+                              className="px-4 py-2 rounded-lg text-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition"
+                            >
+                              👁️ Preview
+                            </button>
+                            
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => setEditingCampaign({...campaign})}
+                              className="px-4 py-2 rounded-lg text-sm bg-white/5 text-gray-400 hover:bg-white/10 transition"
+                            >
+                              ✏️ Editar
+                            </button>
+                            
+                            {/* Test Button */}
+                            <button
+                              onClick={() => sendTestEmail(campaign.id)}
+                              disabled={sendingTestEmail === campaign.id}
+                              className="px-4 py-2 rounded-lg text-sm bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition disabled:opacity-50"
+                            >
+                              {sendingTestEmail === campaign.id ? '⏳...' : '🧪 Test'}
+                            </button>
                           </div>
-                          
-                          {/* Stats */}
-                          <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                            <span>📧 {emailLogs.filter(e => e.email_type === campaign.id).length} enviados</span>
-                            {campaign.delay_hours > 0 && (
-                              <span>⏱️ Se envía a las {campaign.delay_hours}h</span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* Actions */}
-                        <div className="flex flex-col gap-2">
-                          {/* On/Off Toggle */}
-                          <button
-                            onClick={() => toggleCampaign(campaign.id, campaign.enabled)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                              campaign.enabled 
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                                : 'bg-white/5 text-gray-500 border border-white/10'
-                            }`}
-                          >
-                            {campaign.enabled ? '✓ Activa' : '○ Pausada'}
-                          </button>
-                          
-                          {/* Edit Button */}
-                          <button
-                            onClick={() => setEditingCampaign({...campaign})}
-                            className="px-4 py-2 rounded-lg text-sm bg-white/5 text-gray-400 hover:bg-white/10 transition"
-                          >
-                            ✏️ Editar
-                          </button>
-                          
-                          {/* Test Button */}
-                          <button
-                            onClick={() => sendTestEmail(campaign.id)}
-                            disabled={sendingTestEmail === campaign.id}
-                            className="px-4 py-2 rounded-lg text-sm bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition disabled:opacity-50"
-                          >
-                            {sendingTestEmail === campaign.id ? '⏳...' : '🧪 Test'}
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
             
-            {/* Section 2: Email History */}
+            {/* Section 2: Email History with Filters */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">📨 Historial de Emails</h2>
-                <span className="text-sm text-gray-500">{emailLogs.length} emails enviados</span>
+                <span className="text-sm text-gray-500">{filteredEmailLogs.length} de {emailLogs.length} emails</span>
+              </div>
+              
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  { key: 'all', label: 'Todos', count: emailLogs.length },
+                  { key: 'purchase_confirmation', label: '✅ Confirmaciones', count: emailLogs.filter(e => e.email_type === 'purchase_confirmation').length },
+                  { key: 'abandoned_1hr', label: '⏰ 1hr', count: emailLogs.filter(e => e.email_type === 'abandoned_1hr').length },
+                  { key: 'abandoned_24hr', label: '⚠️ 24hr', count: emailLogs.filter(e => e.email_type === 'abandoned_24hr').length },
+                  { key: 'failed', label: '❌ Fallidos', count: emailLogs.filter(e => e.status === 'failed').length }
+                ].map((filter) => (
+                  <button
+                    key={filter.key}
+                    onClick={() => setEmailFilter(filter.key)}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition ${
+                      emailFilter === filter.key
+                        ? 'bg-amber-400 text-black font-medium'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {filter.label} ({filter.count})
+                  </button>
+                ))}
               </div>
               
               <div className="bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
@@ -1141,17 +1064,18 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3">Tipo</th>
                       <th className="px-4 py-3">Para</th>
                       <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3 text-center">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {emailLogs.length === 0 ? (
+                    {filteredEmailLogs.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
-                          No hay emails enviados todavía
+                        <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                          No hay emails {emailFilter !== 'all' ? 'con este filtro' : 'enviados todavía'}
                         </td>
                       </tr>
                     ) : (
-                      emailLogs.slice(0, 20).map((log) => (
+                      filteredEmailLogs.slice(0, 30).map((log) => (
                         <tr key={log.id} className="hover:bg-white/5">
                           <td className="px-4 py-3 text-sm text-gray-400">
                             {formatDate(log.created_at)}
@@ -1172,14 +1096,25 @@ export default function AdminDashboard() {
                               <span className="text-red-400 text-sm">✗ Error</span>
                             )}
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            {log.status === 'failed' && log.song_id && (
+                              <button
+                                onClick={() => resendEmail(log)}
+                                disabled={resendingEmail === log.id}
+                                className="px-3 py-1 rounded-lg text-xs bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition disabled:opacity-50"
+                              >
+                                {resendingEmail === log.id ? '⏳' : '🔄 Reenviar'}
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
-                {emailLogs.length > 20 && (
+                {filteredEmailLogs.length > 30 && (
                   <div className="px-4 py-3 bg-white/5 text-center">
-                    <span className="text-sm text-gray-500">Mostrando últimos 20 de {emailLogs.length}</span>
+                    <span className="text-sm text-gray-500">Mostrando últimos 30 de {filteredEmailLogs.length}</span>
                   </div>
                 )}
               </div>
@@ -1187,10 +1122,46 @@ export default function AdminDashboard() {
           </div>
         ) : null}
 
+      {/* Email Preview Modal */}
+      {previewingCampaign && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setPreviewingCampaign(null)}
+        >
+          <div 
+            className="bg-[#1a1f26] rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div>
+                <h3 className="font-bold text-white">👁️ Vista Previa del Email</h3>
+                <p className="text-xs text-gray-500">{previewingCampaign.name}</p>
+              </div>
+              <button 
+                onClick={() => setPreviewingCampaign(null)}
+                className="text-gray-400 hover:text-white text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="bg-gray-100 px-4 py-2">
+              <p className="text-gray-600 text-sm">
+                <strong>Subject:</strong> {previewingCampaign.subject.replace('{{recipient_name}}', 'María')}
+              </p>
+            </div>
+            <iframe
+              srcDoc={generateEmailPreview(previewingCampaign)}
+              className="w-full h-[500px] border-0"
+              title="Email Preview"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Edit Campaign Modal */}
       {editingCampaign && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#1a1f26] rounded-2xl max-w-lg w-full p-6 border border-white/10">
+          <div className="bg-[#1a1f26] rounded-2xl max-w-lg w-full p-6 border border-white/10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold">✏️ Editar Campaña</h3>
               <button 
@@ -1202,6 +1173,27 @@ export default function AdminDashboard() {
             </div>
             
             <div className="space-y-4">
+              {/* Timing (for abandoned cart emails) */}
+              {editingCampaign.id !== 'purchase_confirmation' && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">⏱️ Enviar después de (horas)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="72"
+                      value={editingCampaign.delay_hours}
+                      onChange={(e) => setEditingCampaign({...editingCampaign, delay_hours: parseInt(e.target.value) || 1})}
+                      className="w-24 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-amber-400 text-center"
+                    />
+                    <span className="text-gray-500 text-sm">horas después de crear la canción</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {editingCampaign.id === 'abandoned_1hr' ? 'Recomendado: 1-2 horas' : 'Recomendado: 12-24 horas'}
+                  </p>
+                </div>
+              )}
+              
               {/* Subject */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Asunto del Email</label>
