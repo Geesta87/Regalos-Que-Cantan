@@ -158,7 +158,7 @@ export default function OccasionStep() {
                 <span className={`text-sm font-medium tracking-wide ${occasion.id === 'san_valentin' ? 'text-red-200' : ''}`}>{occasion.name}</span>
                 {occasion.id === 'otro' && selectedOccasion === 'otro' && customOccasion.length >= 20 && emotionalTone && (
                   <span className="absolute top-2 right-2 material-symbols-outlined text-gold text-sm">check_circle</span>
-                )}}
+                )}
               </button>
             ))}
           </div>

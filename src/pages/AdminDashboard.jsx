@@ -744,7 +744,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'funnel' ? (
           /* Funnel Analytics Tab */
           <div className="space-y-6">
             {/* Date Range Selector */}
