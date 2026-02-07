@@ -23,6 +23,7 @@ const genreImages = [
   '/images/genres/cumbia.png',
   '/images/genres/mariachi.png',
   '/images/genres/tamborazo.png',
+  '/images/occasions/san_valentin.png',
   '/images/occasions/cumpleanos.png',
   '/images/occasions/aniversario.png',
   '/images/occasions/quinceanera.png',
@@ -124,10 +125,29 @@ export default function LandingPage() {
           />
           <div className="hero-gradient absolute inset-0 z-10" />
           <div className="papel-picado-overlay absolute inset-0 z-10 text-white" />
+          
+          {/* Floating Hearts for Valentine's */}
+          <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none">
+            <div className="absolute top-20 left-[10%] text-4xl animate-bounce opacity-30" style={{ animationDelay: '0s', animationDuration: '3s' }}>💕</div>
+            <div className="absolute top-32 right-[15%] text-3xl animate-bounce opacity-25" style={{ animationDelay: '0.5s', animationDuration: '4s' }}>💖</div>
+            <div className="absolute top-48 left-[25%] text-2xl animate-bounce opacity-20" style={{ animationDelay: '1s', animationDuration: '3.5s' }}>💗</div>
+            <div className="absolute top-24 right-[30%] text-3xl animate-bounce opacity-30" style={{ animationDelay: '1.5s', animationDuration: '4.5s' }}>💘</div>
+            <div className="absolute bottom-40 left-[20%] text-2xl animate-bounce opacity-25" style={{ animationDelay: '2s', animationDuration: '3s' }}>❤️</div>
+            <div className="absolute bottom-32 right-[25%] text-4xl animate-bounce opacity-20" style={{ animationDelay: '0.7s', animationDuration: '4s' }}>💕</div>
+          </div>
         </div>
 
         {/* Content */}
         <div className="relative z-20 container mx-auto px-6 text-center flex flex-col items-center gap-6 max-w-5xl">
+          {/* Valentine's Day Promo Banner */}
+          <div className="bg-gradient-to-r from-pink-500/20 via-red-500/20 to-pink-500/20 border border-pink-400/30 rounded-2xl px-6 py-3 mb-4 backdrop-blur-sm animate-pulse">
+            <span className="text-pink-300 text-sm font-medium flex items-center justify-center gap-2">
+              <span>💘</span>
+              <span>¡San Valentín está aquí! Regala una canción única</span>
+              <span>💘</span>
+            </span>
+          </div>
+          
           <span className="text-gold uppercase tracking-[0.3em] text-xs font-bold bg-gold/10 px-4 py-2 rounded-full border border-gold/20">
             Canciones Personalizadas con IA
           </span>
@@ -150,7 +170,11 @@ export default function LandingPage() {
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
           
-          <p className="text-white/40 text-sm">Preview gratis • Paga solo si te encanta</p>
+          <p className="text-pink-300/80 text-sm flex items-center gap-2">
+            <span>💝</span>
+            Preview gratis • ¡Ordena antes del 14 de Feb!
+            <span>💝</span>
+          </p>
         </div>
       </section>
 

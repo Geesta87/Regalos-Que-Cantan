@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 const occasions = [
   { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
   { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
+  { id: 'san_valentin', name: 'San Valentín 💘', icon: 'favorite_border' },
   { id: 'boda', name: 'Boda', icon: 'celebration' },
   { id: 'nacimiento', name: 'Nacimiento', icon: 'child_care' },
   { id: 'dia_madre', name: 'Día de la Madre', icon: 'home' },
