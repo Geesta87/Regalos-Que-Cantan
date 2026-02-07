@@ -67,16 +67,16 @@ export default function LandingPage() {
   const { navigateTo } = useContext(AppContext);
   const scrollRef = useRef(null);
   
-  // Track page view
-  useEffect(() => {
-    trackStep('landing');
-  }, []);
-  
   // Create alternating images once on mount
   const [alternatingImages] = React.useState(() => createAlternatingImages());
   
   // Duplicate for seamless loop
   const carouselImages = [...alternatingImages, ...alternatingImages];
+
+  // Track page view
+  useEffect(() => {
+    trackStep('landing');
+  }, []);
 
   useEffect(() => {
     const scrollContainer = scrollRef.current;
@@ -84,12 +84,12 @@ export default function LandingPage() {
 
     let animationId;
     let scrollPos = 0;
-    const scrollSpeed = 0.5; // pixels per frame
+    const speed = 0.5;
 
     const animate = () => {
-      scrollPos += scrollSpeed;
+      scrollPos += speed;
       
-      // Reset position when we've scrolled through the first set of images
+      // Reset when we've scrolled half (since we duplicated the images)
       const halfWidth = scrollContainer.scrollWidth / 2;
       if (scrollPos >= halfWidth) {
         scrollPos = 0;
@@ -119,6 +119,11 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background-dark flex flex-col">
+      {/* 💘 Valentine's Sticky Urgency Bar */}
+      <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
+      </div>
+
       <Header variant="landing" />
       
       {/* Hero Section */}
@@ -180,7 +185,7 @@ export default function LandingPage() {
           
           <p className="text-red-400 text-base font-semibold flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
             <span>💝</span>
-            Preview gratis • ¡Ordena antes del 14 de Feb!
+            Preview gratis • ¡Ordena antes del 12 de Feb!
             <span>💝</span>
           </p>
         </div>

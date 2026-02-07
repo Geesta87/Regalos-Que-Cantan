@@ -132,7 +132,6 @@ export default function PreviewPage() {
         alert(result.error || 'Error al regenerar. Intenta de nuevo.');
       }
     } catch (error) {
-      // FIX: Only log in development
       if (import.meta.env.DEV) {
         console.error('Regenerate error:', error);
       }
@@ -142,14 +141,12 @@ export default function PreviewPage() {
     }
   };
 
-  // ✅ FIX: REMOVED GRATIS100 hardcoded bypass - ALL coupons now validate via server
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     
     setIsLoadingCoupon(true);
     setCouponError('');
     
-    // All coupon validation now goes through the server
     try {
       const result = await validateCoupon(couponCode);
       setCouponApplied(result);
@@ -162,27 +159,23 @@ export default function PreviewPage() {
     }
   };
 
-  // ✅ FIX: Handle checkout - wrap songData.id in array for consistency
   const handleCheckout = async () => {
     setIsCheckingOut(true);
     try {
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
       
-      // ✅ FIX: Always pass array of song IDs for consistency with API
       const result = await createCheckout(
-        [songData.id],  // ✅ FIXED: Wrapped in array
+        [songData.id],
         formData.email,
         codeToSend
       );
       
-      // Always redirect using result.url (includes song_id)
       if (result.url) {
         window.location.href = result.url;
       } else {
         throw new Error('No checkout URL returned');
       }
     } catch (error) {
-      // FIX: Only log in development
       if (import.meta.env.DEV) {
         console.error('Checkout error:', error);
       }
@@ -205,11 +198,16 @@ export default function PreviewPage() {
 
   return (
     <div className="bg-forest text-white antialiased min-h-screen">
+      {/* 💘 Valentine's Sticky Urgency Bar */}
+      <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-[60] shadow-lg">
+        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
+      </div>
+
       {songData?.previewUrl && (
         <audio ref={audioRef} src={songData.previewUrl} preload="metadata" />
       )}
 
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
+      <header className="fixed top-12 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
         <div 
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigateTo('landing')}
@@ -219,13 +217,13 @@ export default function PreviewPage() {
           </h2>
         </div>
         <div className="hidden md:block">
-          <span className="text-[10px] uppercase tracking-widest text-gold font-bold bg-white/5 px-4 py-2 rounded-full border border-gold/20">
-            Edición Especial
+          <span className="text-[10px] uppercase tracking-widest text-red-400 font-bold bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
+            💘 San Valentín
           </span>
         </div>
       </header>
 
-      <main className="relative pt-24 pb-20 flex flex-col items-center justify-center overflow-hidden min-h-screen">
+      <main className="relative pt-32 pb-20 flex flex-col items-center justify-center overflow-hidden min-h-screen">
         <div className="absolute inset-0 w-full h-full -z-10">
           <div className="absolute inset-0 bg-gradient-to-br from-forest to-background-dark"></div>
           <div className="absolute inset-0 opacity-5" style={{
@@ -383,6 +381,13 @@ export default function PreviewPage() {
           </div>
 
           <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-8">
+            {/* Valentine's Promo Banner */}
+            <div className="bg-gradient-to-r from-red-600/20 to-pink-600/20 border border-red-400/30 rounded-2xl p-4 mb-6 text-center">
+              <p className="text-red-400 font-bold text-sm">
+                💘 Regalo perfecto para San Valentín • ¡Entrega digital instantánea!
+              </p>
+            </div>
+
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
               <div className="text-center md:text-left">
                 <div className="flex items-center gap-3 justify-center md:justify-start">
@@ -445,7 +450,7 @@ export default function PreviewPage() {
               <button
                 onClick={handleCheckout}
                 disabled={isCheckingOut}
-                className="group relative w-full inline-flex items-center justify-center overflow-hidden rounded-full h-20 px-16 bg-bougainvillea text-white text-xl font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_25px_rgba(225,29,116,0.4)] disabled:opacity-70 disabled:cursor-not-allowed"
+                className="group relative w-full inline-flex items-center justify-center overflow-hidden rounded-full h-20 px-16 bg-gradient-to-r from-bougainvillea to-red-600 text-white text-xl font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-[0_0_25px_rgba(225,29,116,0.4)] disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 <span className="relative z-10 flex items-center gap-3">
                   {isCheckingOut ? (
@@ -460,8 +465,8 @@ export default function PreviewPage() {
                     </>
                   ) : (
                     <>
-                      <span className="material-symbols-outlined">credit_card</span>
-                      Comprar Canción Completa
+                      <span>💘</span>
+                      Comprar Regalo de San Valentín
                     </>
                   )}
                 </span>
@@ -514,7 +519,6 @@ export default function PreviewPage() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          {/* ✅ FIX: Dynamic year */}
           <p className="text-white/20 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} • Hecho con alma en México.</p>
         </div>
       </footer>
