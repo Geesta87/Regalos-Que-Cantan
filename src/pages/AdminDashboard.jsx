@@ -420,6 +420,7 @@ export default function AdminDashboard() {
 
   const getEmailTypeLabel = (type) => {
     const labels = {
+      'abandoned_15min': '⚡ 15min Recuperación',
       'abandoned_1hr': '⏰ 1hr Recordatorio',
       'abandoned_24hr': '⚠️ 24hr Última oportunidad',
       'purchase_confirmation': '✅ Confirmación de Compra',
@@ -430,6 +431,7 @@ export default function AdminDashboard() {
 
   const getEmailTypeColor = (type) => {
     const colors = {
+      'abandoned_15min': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
       'abandoned_1hr': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
       'abandoned_24hr': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
       'purchase_confirmation': 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -950,6 +952,7 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-3 mb-2">
                               <span className="text-2xl">
                                 {campaign.id === 'purchase_confirmation' ? '✅' : 
+                                 campaign.id === 'abandoned_15min' ? '⚡' :
                                  campaign.id === 'abandoned_1hr' ? '⏰' : '⚠️'}
                               </span>
                               <div>
@@ -1037,6 +1040,7 @@ export default function AdminDashboard() {
                 {[
                   { key: 'all', label: 'Todos', count: emailLogs.length },
                   { key: 'purchase_confirmation', label: '✅ Confirmaciones', count: emailLogs.filter(e => e.email_type === 'purchase_confirmation').length },
+                  { key: 'abandoned_15min', label: '⚡ 15min', count: emailLogs.filter(e => e.email_type === 'abandoned_15min').length },
                   { key: 'abandoned_1hr', label: '⏰ 1hr', count: emailLogs.filter(e => e.email_type === 'abandoned_1hr').length },
                   { key: 'abandoned_24hr', label: '⚠️ 24hr', count: emailLogs.filter(e => e.email_type === 'abandoned_24hr').length },
                   { key: 'failed', label: '❌ Fallidos', count: emailLogs.filter(e => e.status === 'failed').length }
