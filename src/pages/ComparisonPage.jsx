@@ -42,11 +42,19 @@ export default function ComparisonPage() {
   // Checkout state
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
+  // ✅ FIX: Store email & recipient recovered from DB (for email link visitors)
+  const [emailFromDb, setEmailFromDb] = useState('');
+  const [recipientFromDb, setRecipientFromDb] = useState('');
+  const [genreFromDb, setGenreFromDb] = useState('');
+  
   const audioRefs = useRef({});
 
-  // Safely get genre display name
-  const genreConfig = genres?.[formData?.genre];
-  const genreName = genreConfig?.name || formData?.genre || 'Género';
+  // Safely get genre display name — use DB fallback for email link visitors
+  const genreConfig = genres?.[formData?.genre] || genres?.[genreFromDb];
+  const genreName = genreConfig?.name || formData?.genre || genreFromDb || 'Género';
+  
+  // ✅ FIX: Get recipient name with DB fallback
+  const displayRecipientName = formData?.recipientName || recipientFromDb || 'ti';
 
   // Pricing
   const singlePrice = 19.99;
@@ -63,7 +71,8 @@ export default function ComparisonPage() {
   }, []);
 
   // ✅ FIX: Helper function to fetch songs from database by IDs
-  const fetchSongsFromIds = async (songIds) => {
+  // Also hydrates email/recipient/genre from DB for email link visitors
+  const fetchSongsFromIds = async (songIds, hydrateFromDb = false) => {
     try {
       const { data, error } = await supabase
         .from('songs')
@@ -82,6 +91,23 @@ export default function ComparisonPage() {
           lyrics: song.lyrics
         }));
         setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
+        
+        // ✅ FIX: Hydrate email/recipient/genre from DB when arriving from email link
+        if (hydrateFromDb) {
+          const primary = data[0];
+          if (primary.email) setEmailFromDb(primary.email);
+          if (primary.recipient_name) setRecipientFromDb(primary.recipient_name);
+          if (primary.genre) setGenreFromDb(primary.genre);
+          
+          if (import.meta.env.DEV) {
+            console.log('Hydrated from DB:', { 
+              email: primary.email, 
+              recipient: primary.recipient_name, 
+              genre: primary.genre 
+            });
+          }
+        }
+        
         setLoading(false);
       } else {
         setError('No se encontraron las canciones');
@@ -99,9 +125,37 @@ export default function ComparisonPage() {
   // Load songs from songData OR URL parameters (for page refresh support)
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const fromEmail = params.get('from') === 'email';
+      const songIdsParam = params.get('song_ids');
+      const singleSongId = params.get('song_id');
+      
+      // ✅ FIX: When arriving from email link, ALWAYS prioritize URL params
+      // This prevents stale localStorage/context from overriding the email link
+      if (fromEmail && (songIdsParam || singleSongId)) {
+        if (import.meta.env.DEV) {
+          console.log('Arriving from email link — prioritizing URL params');
+        }
+        
+        // Clear stale localStorage to prevent conflicts
+        localStorage.removeItem('rqc_comparison_songs');
+        localStorage.removeItem('rqc_checkout_selection');
+        
+        if (songIdsParam) {
+          const songIds = songIdsParam.split(',').filter(id => id.trim());
+          if (songIds.length > 0) {
+            fetchSongsFromIds(songIds, true); // hydrateFromDb = true
+            return;
+          }
+        } else if (singleSongId) {
+          fetchSongsFromIds([singleSongId], true); // hydrateFromDb = true
+          return;
+        }
+      }
+      
       const loadedSongs = [];
       
-      // First, try to load from context
+      // Try to load from context
       if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
         loadedSongs.push(...songData.songs);
       } 
@@ -134,25 +188,19 @@ export default function ComparisonPage() {
         return;
       }
       
-      // ✅ FIX: Fallback to URL parameters if no context data (supports page refresh)
-      const params = new URLSearchParams(window.location.search);
-      const songIdsParam = params.get('song_ids');
-      const singleSongId = params.get('song_id');
-      
+      // Fallback to URL parameters if no context data (supports page refresh)
       if (songIdsParam) {
-        // Multiple song IDs (comma-separated)
         const songIds = songIdsParam.split(',').filter(id => id.trim());
         if (songIds.length > 0) {
-          fetchSongsFromIds(songIds);
+          fetchSongsFromIds(songIds, true);
           return;
         }
       } else if (singleSongId) {
-        // Single song ID
-        fetchSongsFromIds([singleSongId]);
+        fetchSongsFromIds([singleSongId], true);
         return;
       }
       
-      // ✅ NEW: Fallback to localStorage (for Stripe cancel/back button)
+      // ✅ Fallback to localStorage (for Stripe cancel/back button)
       const savedSongIds = localStorage.getItem('rqc_comparison_songs');
       if (savedSongIds) {
         try {
@@ -300,7 +348,16 @@ export default function ComparisonPage() {
       }
 
       // Pass the array of song IDs
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
+      // ✅ FIX: Use emailFromDb as fallback when formData.email is empty (email link visitors)
+      const checkoutEmail = formData?.email || emailFromDb;
+      
+      if (!checkoutEmail) {
+        alert('No se encontró tu email. Por favor ingresa tu email.');
+        setIsCheckingOut(false);
+        return;
+      }
+      
+      const result = await createCheckout(songIdsToCheckout, checkoutEmail, codeToSend);
       
       if (import.meta.env.DEV) {
         console.log('Checkout result:', result);
@@ -387,7 +444,7 @@ export default function ComparisonPage() {
             Paso Final: Elige tu canción
           </h1>
           <p style={{color: '#d4af37', fontSize: '18px', marginBottom: '20px'}}>
-            {songs.length} versiones creadas para <strong>{formData?.recipientName || 'ti'}</strong>
+            {songs.length} versiones creadas para <strong>{displayRecipientName}</strong>
           </p>
           
           {/* Instruction box */}
@@ -482,7 +539,7 @@ export default function ComparisonPage() {
 
                 {/* Song info */}
                 <h3 style={{fontSize: '18px', marginBottom: '5px', fontWeight: 'bold'}}>
-                  Para {formData?.recipientName || 'ti'}
+                  Para {displayRecipientName}
                 </h3>
                 <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '15px'}}>{genreName}</p>
 
