@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 import { supabase } from '../services/api';
+import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 
 export default function AdminDashboard() {
   const { navigateTo } = useContext(AppContext);
@@ -10,13 +11,17 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedSong, setSelectedSong] = useState(null);
+  const [activeTab, setActiveTab] = useState('orders');
+  const [dateRange, setDateRange] = useState('7days');
+  const [funnelData, setFunnelData] = useState([]);
   const [stats, setStats] = useState({
     totalSongs: 0,
     totalRevenue: 0,
     paidOrders: 0,
     pendingOrders: 0,
     freeOrders: 0,
-    bundleOrders: 0
+    todayRevenue: 0,
+    todayOrders: 0
   });
 
   // Check auth on mount
@@ -40,7 +45,38 @@ export default function AdminDashboard() {
     }
 
     fetchSongs();
-  }, []);
+    fetchFunnelData();
+  }, [dateRange]);
+
+  // ✅ ROBUST: Check if song is paid using multiple possible fields/formats
+  const isPaid = (song) => {
+    // Check boolean paid field
+    if (song.paid === true) return true;
+    if (song.paid === 'true') return true;
+    if (song.paid === 1) return true;
+    
+    // Check is_paid field
+    if (song.is_paid === true) return true;
+    if (song.is_paid === 'true') return true;
+    
+    // Check payment_status field
+    if (song.payment_status === 'paid') return true;
+    if (song.payment_status === 'completed') return true;
+    if (song.payment_status === 'succeeded') return true;
+    
+    // Check status field
+    if (song.status === 'paid') return true;
+    if (song.status === 'completed') return true;
+    
+    // Check if has stripe_payment_id (indicates successful payment)
+    if (song.stripe_payment_id) return true;
+    if (song.stripe_session_id && song.audio_url) return true;
+    
+    // Check amount_paid > 0
+    if (song.amount_paid && parseFloat(song.amount_paid) > 0) return true;
+    
+    return false;
+  };
 
   const fetchSongs = async () => {
     setIsLoading(true);
@@ -54,50 +90,90 @@ export default function AdminDashboard() {
 
       setSongs(data || []);
       
-      // ✅ FIX: Calculate stats properly using actual amount_paid
+      // Calculate stats using robust isPaid check
       const totalSongs = data?.length || 0;
-      const paidSongs = data?.filter(s => s.paid) || [];
+      const paidSongs = data?.filter(s => isPaid(s)) || [];
       const paidOrders = paidSongs.length;
       const pendingOrders = totalSongs - paidOrders;
       
       let totalRevenue = 0;
       let freeOrders = 0;
-      let bundleOrders = 0;
       
-      const sessionGroups = {};
+      // Today's stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let todayRevenue = 0;
+      let todayOrders = 0;
+      
       paidSongs.forEach(song => {
-        if (song.amount_paid !== undefined && song.amount_paid !== null) {
-          totalRevenue += parseFloat(song.amount_paid) || 0;
-          if (parseFloat(song.amount_paid) === 0) freeOrders++;
-        } else {
-          const sessionId = song.session_id || song.id;
-          if (!sessionGroups[sessionId]) {
-            sessionGroups[sessionId] = [];
-          }
-          sessionGroups[sessionId].push(song);
-        }
-      });
-      
-      Object.values(sessionGroups).forEach(group => {
-        if (group.length >= 2) {
-          totalRevenue += 29.99;
-          bundleOrders++;
-        } else if (group.length === 1) {
-          const song = group[0];
-          if (song.coupon_code === 'GRATIS100' || song.is_free) {
-            freeOrders++;
-          } else {
-            totalRevenue += 19.99;
-          }
+        const price = getSongPrice(song);
+        totalRevenue += price;
+        if (price === 0) freeOrders++;
+        
+        // Check if order is from today
+        const songDate = new Date(song.created_at);
+        if (songDate >= today) {
+          todayRevenue += price;
+          todayOrders++;
         }
       });
 
-      setStats({ totalSongs, totalRevenue, paidOrders, pendingOrders, freeOrders, bundleOrders });
+      setStats({ 
+        totalSongs, 
+        totalRevenue, 
+        paidOrders, 
+        pendingOrders, 
+        freeOrders,
+        todayRevenue,
+        todayOrders
+      });
     } catch (err) {
-      if (import.meta.env.DEV) console.error('Error fetching songs:', err);
+      console.error('Error fetching songs:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchFunnelData = async () => {
+    try {
+      // Calculate date range
+      let startDate = new Date();
+      if (dateRange === 'today') {
+        startDate.setHours(0, 0, 0, 0);
+      } else if (dateRange === '7days') {
+        startDate.setDate(startDate.getDate() - 7);
+      } else if (dateRange === '14days') {
+        startDate.setDate(startDate.getDate() - 14);
+      } else if (dateRange === '30days') {
+        startDate.setDate(startDate.getDate() - 30);
+      }
+
+      const { data, error } = await supabase
+        .from('funnel_events')
+        .select('step, session_id')
+        .gte('created_at', startDate.toISOString());
+
+      if (error) throw error;
+
+      // Count unique sessions per step
+      const stepCounts = {};
+      const sessionsByStep = {};
+      
+      (data || []).forEach(event => {
+        if (!sessionsByStep[event.step]) {
+          sessionsByStep[event.step] = new Set();
+        }
+        sessionsByStep[event.step].add(event.session_id);
+      });
+
+      Object.keys(sessionsByStep).forEach(step => {
+        stepCounts[step] = sessionsByStep[step].size;
+      });
+
+      setFunnelData(stepCounts);
+    } catch (err) {
+      console.error('Error fetching funnel data:', err);
     }
   };
 
@@ -113,311 +189,588 @@ export default function AdminDashboard() {
       song.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = 
       filterStatus === 'all' ||
-      (filterStatus === 'paid' && song.paid) ||
-      (filterStatus === 'pending' && !song.paid);
+      (filterStatus === 'paid' && isPaid(song)) ||
+      (filterStatus === 'pending' && !isPaid(song));
     return matchesSearch && matchesFilter;
   });
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleString('es-MX', {
-      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'USD' }).format(amount);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
 
   const getSongPrice = (song) => {
-    if (song.amount_paid !== undefined && song.amount_paid !== null) return parseFloat(song.amount_paid);
+    if (song.amount_paid !== undefined && song.amount_paid !== null) {
+      return parseFloat(song.amount_paid) || 0;
+    }
     if (song.coupon_code === 'GRATIS100' || song.is_free) return 0;
     if (song.is_bundle) return 29.99;
     return 19.99;
   };
 
+  const getVoiceLabel = (song) => {
+    const voice = song.voice_type || song.voiceType || 'male';
+    return voice === 'female' ? '♀️' : '♂️';
+  };
+
+  const formatOccasion = (occasion) => {
+    if (!occasion) return '-';
+    const map = {
+      'san_valentin': '❤️ San Valentín',
+      'cumpleanos': '🎂 Cumpleaños',
+      'aniversario': '💍 Aniversario',
+      'madre': '👩 Día Madre',
+      'padre': '👨 Día Padre',
+      'boda': '💒 Boda',
+      'graduacion': '🎓 Graduación',
+      'otro': '🎁 Otro'
+    };
+    return map[occasion] || occasion.replace(/_/g, ' ');
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-[#1a1d21] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Cargando datos...</p>
+          <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Cargando datos...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-[#1a1d21]">
-      <header className="bg-white dark:bg-[#2c3136] shadow-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#0f1419] text-white">
+      {/* Header */}
+      <header className="bg-[#1a1f26] border-b border-white/10 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-gold/20 to-gold/10 rounded-full flex items-center justify-center">
-              <span className="material-symbols-outlined text-gold">admin_panel_settings</span>
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-xl">
+              🎵
             </div>
             <div>
-              <h1 className="font-bold text-[#171612] dark:text-white">Admin Dashboard</h1>
-              <p className="text-xs text-gray-500">RegalosQueCantan</p>
+              <h1 className="font-bold text-lg">Admin Dashboard</h1>
+              <p className="text-xs text-gray-400">RegalosQueCantan</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={fetchSongs} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5" title="Refrescar">
-              <span className="material-symbols-outlined text-gray-500">refresh</span>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={fetchSongs}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
+              title="Refrescar"
+            >
+              <span className="material-symbols-outlined text-gray-400">refresh</span>
             </button>
-            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm font-medium">
-              <span className="material-symbols-outlined text-lg">logout</span>Salir
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition"
+            >
+              <span className="material-symbols-outlined text-sm">logout</span>
+              Salir
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white dark:bg-[#2c3136] rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Total Canciones</p>
-                <p className="text-3xl font-bold text-[#171612] dark:text-white mt-1">{stats.totalSongs}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-blue-600">music_note</span>
-              </div>
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-2xl p-5 border border-blue-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-blue-400 text-2xl">🎵</span>
+              <span className="text-xs text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">Total</span>
             </div>
+            <p className="text-3xl font-bold">{stats.totalSongs}</p>
+            <p className="text-sm text-gray-400">Canciones</p>
           </div>
-          <div className="bg-white dark:bg-[#2c3136] rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Ingresos Totales</p>
-                <p className="text-3xl font-bold text-[#171612] dark:text-white mt-1">{formatCurrency(stats.totalRevenue)}</p>
-                {stats.freeOrders > 0 && <p className="text-xs text-gray-400 mt-1">{stats.freeOrders} gratis</p>}
-              </div>
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-green-600">payments</span>
-              </div>
+          
+          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-green-400 text-2xl">💰</span>
+              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
             </div>
+            <p className="text-3xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
+            <p className="text-sm text-gray-400">{stats.freeOrders > 0 && `${stats.freeOrders} gratis`}</p>
           </div>
-          <div className="bg-white dark:bg-[#2c3136] rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Órdenes Pagadas</p>
-                <p className="text-3xl font-bold text-[#171612] dark:text-white mt-1">{stats.paidOrders}</p>
-              </div>
-              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-emerald-600">check_circle</span>
-              </div>
+          
+          <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-2xl p-5 border border-emerald-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-emerald-400 text-2xl">✅</span>
+              <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-full">Pagadas</span>
             </div>
+            <p className="text-3xl font-bold">{stats.paidOrders}</p>
+            <p className="text-sm text-gray-400">Órdenes completadas</p>
           </div>
-          <div className="bg-white dark:bg-[#2c3136] rounded-xl p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Pendientes</p>
-                <p className="text-3xl font-bold text-[#171612] dark:text-white mt-1">{stats.pendingOrders}</p>
-              </div>
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-amber-600">pending</span>
-              </div>
+          
+          <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-2xl p-5 border border-amber-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-amber-400 text-2xl">⏳</span>
+              <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded-full">Pendientes</span>
             </div>
+            <p className="text-3xl font-bold">{stats.pendingOrders}</p>
+            <p className="text-sm text-gray-400">Sin pagar</p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#2c3136] rounded-xl p-4 shadow-sm mb-6 flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-gray-400">search</span>
-              <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 text-[#171612] dark:text-white" />
+        {/* Today's Stats Banner */}
+        {stats.todayOrders > 0 && (
+          <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-4 mb-6 border border-purple-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🔥</span>
+                <div>
+                  <p className="font-semibold">Hoy</p>
+                  <p className="text-sm text-gray-400">{stats.todayOrders} órdenes</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-green-400">{formatCurrency(stats.todayRevenue)}</p>
+              </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            {['all', 'paid', 'pending'].map((status) => (
-              <button key={status} onClick={() => setFilterStatus(status)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium ${filterStatus === status ? 'bg-gold text-forest' : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300'}`}>
-                {status === 'all' ? 'Todos' : status === 'paid' ? 'Pagados' : 'Pendientes'}
-              </button>
-            ))}
-          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'orders' 
+                ? 'bg-amber-400 text-black' 
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            📦 Órdenes
+          </button>
+          <button
+            onClick={() => setActiveTab('funnel')}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'funnel' 
+                ? 'bg-amber-400 text-black' 
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            📊 Funnel Analytics
+          </button>
         </div>
 
-        <div className="bg-white dark:bg-[#2c3136] rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-white/5">
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Fecha</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Para / De</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Email</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Género</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Ocasión</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Voz</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Monto</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Estado</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Descargado</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                {filteredSongs.length === 0 ? (
-                  <tr><td colSpan="10" className="px-6 py-12 text-center text-gray-500">No se encontraron canciones</td></tr>
-                ) : (
-                  filteredSongs.map((song) => (
-                    <tr key={song.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                      <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">{formatDate(song.created_at)}</td>
-                      <td className="px-4 py-4">
-                        <div className="text-sm font-medium text-[#171612] dark:text-white">{song.recipient_name}</div>
-                        <div className="text-xs text-gray-500">de {song.sender_name}</div>
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">{song.email}</td>
-                      <td className="px-4 py-4">
-                        <div className="text-sm text-gray-600 dark:text-gray-300 capitalize">{song.genre}</div>
-                        {song.sub_genre && <div className="text-xs text-gray-400">{song.sub_genre}</div>}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300 capitalize">{song.occasion || '-'}</td>
-                      <td className="px-4 py-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${song.voice_type === 'female' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {song.voice_type === 'female' ? '♀ Fem' : '♂ Masc'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-sm font-medium text-gray-600 dark:text-gray-300">
-                        {song.paid ? formatCurrency(getSongPrice(song)) : '-'}
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${song.paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {song.paid ? '✓ Pagado' : '⏳ Pendiente'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        {song.paid ? (
-                          song.downloaded ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                              ✓ Sí {song.download_count > 1 ? `(${song.download_count}x)` : ''}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                              ✗ No
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => setSelectedSong(song)} className="p-2 rounded-lg hover:bg-gray-100" title="Ver detalles">
-                            <span className="material-symbols-outlined text-gray-500">visibility</span>
-                          </button>
-                          {song.audio_url && (
-                            <>
-                              <a href={song.audio_url} target="_blank" rel="noopener noreferrer" className="p-2 rounded-lg hover:bg-gray-100" title="Reproducir">
-                                <span className="material-symbols-outlined text-gold">play_circle</span>
-                              </a>
-                              <a href={song.audio_url} download className="p-2 rounded-lg hover:bg-gray-100" title="Descargar">
-                                <span className="material-symbols-outlined text-blue-500">download</span>
-                              </a>
-                            </>
-                          )}
-                          <button 
-                            onClick={() => {
-                              const link = `${window.location.origin}/preview?song=${song.id}`;
-                              navigator.clipboard.writeText(link);
-                              alert('Link copiado!');
-                            }} 
-                            className="p-2 rounded-lg hover:bg-gray-100" 
-                            title="Copiar link"
-                          >
-                            <span className="material-symbols-outlined text-gray-400">link</span>
-                          </button>
-                        </div>
-                      </td>
+        {activeTab === 'orders' ? (
+          <>
+            {/* Filters */}
+            <div className="bg-[#1a1f26] rounded-2xl p-4 mb-6 flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+                  <input 
+                    type="text" 
+                    placeholder="Buscar por nombre o email..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400/50"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { key: 'all', label: 'Todos', count: songs.length },
+                  { key: 'paid', label: '✅ Pagados', count: stats.paidOrders },
+                  { key: 'pending', label: '⏳ Pendientes', count: stats.pendingOrders }
+                ].map((filter) => (
+                  <button 
+                    key={filter.key}
+                    onClick={() => setFilterStatus(filter.key)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                      filterStatus === filter.key 
+                        ? 'bg-amber-400 text-black' 
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {filter.label} ({filter.count})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Orders Table */}
+            <div className="bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-white/5 text-left">
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Fecha</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Cliente</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Canción</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ocasión</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voz</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Descarga</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Acciones</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredSongs.length === 0 ? (
+                      <tr>
+                        <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
+                          No se encontraron órdenes
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSongs.map((song) => (
+                        <tr key={song.id} className="hover:bg-white/5 transition">
+                          <td className="px-4 py-3">
+                            <span className="text-sm text-gray-300">{formatDate(song.created_at)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="font-medium text-white">{song.recipient_name || '—'}</p>
+                              <p className="text-xs text-gray-500">de {song.sender_name || '—'}</p>
+                              <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="font-medium text-amber-400 capitalize">{song.genre || '—'}</p>
+                              {song.sub_genre && (
+                                <p className="text-xs text-gray-500">{song.sub_genre}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm">{formatOccasion(song.occasion)}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="text-lg" title={song.voice_type === 'female' ? 'Femenina' : 'Masculina'}>
+                              {getVoiceLabel(song)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {isPaid(song) ? (
+                              <span className="font-semibold text-green-400">
+                                {formatCurrency(getSongPrice(song))}
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {isPaid(song) ? (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                                ✓ Pagado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                ⏳ Pendiente
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {isPaid(song) ? (
+                              song.downloaded ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">
+                                  ✓ {song.download_count > 1 ? `${song.download_count}x` : 'Sí'}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-400">
+                                  ✗ No
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-gray-600">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <button 
+                                onClick={() => setSelectedSong(song)} 
+                                className="p-2 rounded-lg hover:bg-white/10 transition"
+                                title="Ver detalles"
+                              >
+                                <span className="material-symbols-outlined text-gray-400 text-xl">visibility</span>
+                              </button>
+                              {song.audio_url && (
+                                <>
+                                  <a 
+                                    href={song.audio_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="p-2 rounded-lg hover:bg-white/10 transition"
+                                    title="Reproducir"
+                                  >
+                                    <span className="material-symbols-outlined text-amber-400 text-xl">play_circle</span>
+                                  </a>
+                                  <a 
+                                    href={song.audio_url} 
+                                    download 
+                                    className="p-2 rounded-lg hover:bg-white/10 transition"
+                                    title="Descargar"
+                                  >
+                                    <span className="material-symbols-outlined text-blue-400 text-xl">download</span>
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-3 bg-white/5 text-center">
+                <span className="text-sm text-gray-500">
+                  Mostrando {filteredSongs.length} de {songs.length} órdenes
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Funnel Analytics Tab */
+          <div className="space-y-6">
+            {/* Date Range Selector */}
+            <div className="flex gap-2">
+              {[
+                { key: 'today', label: 'Hoy' },
+                { key: '7days', label: '7 días' },
+                { key: '14days', label: '14 días' },
+                { key: '30days', label: '30 días' }
+              ].map((range) => (
+                <button
+                  key={range.key}
+                  onClick={() => setDateRange(range.key)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                    dateRange === range.key 
+                      ? 'bg-amber-400 text-black' 
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                  }`}
+                >
+                  {range.label}
+                </button>
+              ))}
+              <button
+                onClick={fetchFunnelData}
+                className="ml-auto px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 transition flex items-center gap-2"
+              >
+                🔄 Actualizar
+              </button>
+            </div>
+
+            {/* Funnel Visualization */}
+            <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
+              <h3 className="text-lg font-semibold mb-6">Funnel de Conversión</h3>
+              <div className="space-y-3">
+                {FUNNEL_STEPS.map((step, index) => {
+                  const count = funnelData[step.key] || 0;
+                  const maxCount = Math.max(...Object.values(funnelData), 1);
+                  const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                  const landingCount = funnelData['landing'] || funnelData['landing_v2'] || 1;
+                  const conversionRate = landingCount > 0 ? ((count / landingCount) * 100).toFixed(1) : 0;
+                  
+                  // Calculate drop-off from previous step
+                  const prevStep = FUNNEL_STEPS[index - 1];
+                  const prevCount = prevStep ? (funnelData[prevStep.key] || 0) : count;
+                  const dropOff = prevCount > 0 ? (((prevCount - count) / prevCount) * 100).toFixed(0) : 0;
+
+                  return (
+                    <div key={step.key} className="flex items-center gap-4">
+                      <div className="w-28 text-sm text-gray-400 flex items-center gap-2">
+                        <span>{step.icon}</span>
+                        <span>{step.label}</span>
+                      </div>
+                      <div className="flex-1 h-10 bg-white/5 rounded-lg overflow-hidden relative">
+                        <div 
+                          className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg transition-all duration-500 flex items-center justify-end pr-3"
+                          style={{ width: `${Math.max(percentage, 5)}%` }}
+                        >
+                          <span className="text-sm font-semibold text-white">
+                            {count}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-20 text-right">
+                        <span className="text-sm text-gray-400">{conversionRate}%</span>
+                      </div>
+                      {index > 0 && dropOff > 0 && (
+                        <div className="w-16 text-right">
+                          <span className="text-xs text-red-400">-{dropOff}%</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Key Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
+                <p className="text-gray-400 text-sm mb-1">Sesiones Únicas</p>
+                <p className="text-3xl font-bold">{funnelData['landing'] || funnelData['landing_v2'] || 0}</p>
+              </div>
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
+                <p className="text-gray-400 text-sm mb-1">Tasa de Conversión</p>
+                <p className="text-3xl font-bold text-green-400">
+                  {((funnelData['purchase'] || 0) / Math.max(funnelData['landing'] || funnelData['landing_v2'] || 1, 1) * 100).toFixed(1)}%
+                </p>
+              </div>
+              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
+                <p className="text-gray-400 text-sm mb-1">Mayor Drop-off</p>
+                <p className="text-xl font-bold text-red-400">
+                  {(() => {
+                    let maxDrop = 0;
+                    let maxDropStep = '';
+                    FUNNEL_STEPS.forEach((step, i) => {
+                      if (i === 0) return;
+                      const prev = FUNNEL_STEPS[i - 1];
+                      const prevCount = funnelData[prev.key] || 0;
+                      const currCount = funnelData[step.key] || 0;
+                      const drop = prevCount > 0 ? ((prevCount - currCount) / prevCount) * 100 : 0;
+                      if (drop > maxDrop) {
+                        maxDrop = drop;
+                        maxDropStep = `${prev.label} → ${step.label}`;
+                      }
+                    });
+                    return maxDropStep || 'N/A';
+                  })()}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="mt-4 text-sm text-gray-500 text-center">Mostrando {filteredSongs.length} de {songs.length} canciones</div>
+        )}
       </main>
 
+      {/* Song Detail Modal */}
       {selectedSong && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6" onClick={() => setSelectedSong(null)}>
-          <div className="bg-white dark:bg-[#2c3136] rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white dark:bg-[#2c3136] border-b px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold">Detalles de la Canción</h2>
-              <button onClick={() => setSelectedSong(null)} className="p-2 rounded-lg hover:bg-gray-100">
-                <span className="material-symbols-outlined text-gray-500">close</span>
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" 
+          onClick={() => setSelectedSong(null)}
+        >
+          <div 
+            className="bg-[#1a1f26] rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-white/10" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-[#1a1f26] border-b border-white/10 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Detalles de la Orden</h2>
+              <button 
+                onClick={() => setSelectedSong(null)} 
+                className="p-2 rounded-lg hover:bg-white/10 transition"
+              >
+                <span className="material-symbols-outlined text-gray-400">close</span>
               </button>
             </div>
+            
+            {/* Modal Content */}
             <div className="p-6 space-y-6">
+              {/* Status & Price */}
               <div className="flex items-center justify-between">
-                <span className={`px-4 py-2 rounded-full font-medium ${selectedSong.paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {selectedSong.paid ? `✓ Pagado - ${formatCurrency(getSongPrice(selectedSong))}` : '⏳ Pendiente'}
-                </span>
+                {isPaid(selectedSong) ? (
+                  <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                    ✓ Pagado — {formatCurrency(getSongPrice(selectedSong))}
+                  </span>
+                ) : (
+                  <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    ⏳ Pendiente
+                  </span>
+                )}
                 <span className="text-sm text-gray-500">{formatDate(selectedSong.created_at)}</span>
               </div>
               
               {/* Download Status */}
-              {selectedSong.paid && (
-                <div className={`rounded-xl p-4 ${selectedSong.downloaded ? 'bg-green-50' : 'bg-amber-50'}`}>
+              {isPaid(selectedSong) && (
+                <div className={`rounded-xl p-4 ${selectedSong.downloaded ? 'bg-green-500/10 border border-green-500/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-xl" style={{ color: selectedSong.downloaded ? '#16a34a' : '#d97706' }}>
-                        {selectedSong.downloaded ? 'download_done' : 'pending'}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{selectedSong.downloaded ? '✅' : '⚠️'}</span>
                       <div>
-                        <p className="font-medium" style={{ color: selectedSong.downloaded ? '#16a34a' : '#d97706' }}>
-                          {selectedSong.downloaded ? 'Descargado' : 'No descargado aún'}
-                        </p>
+                        <p className="font-medium">{selectedSong.downloaded ? 'Descargado' : 'No descargado'}</p>
                         {selectedSong.downloaded && (
-                          <p className="text-xs text-gray-500">
-                            {selectedSong.download_count || 1} {selectedSong.download_count === 1 ? 'vez' : 'veces'}
-                            {selectedSong.last_downloaded_at && ` • Última: ${formatDate(selectedSong.last_downloaded_at)}`}
+                          <p className="text-xs text-gray-400">
+                            {selectedSong.download_count || 1}x
+                            {selectedSong.last_downloaded_at && ` • ${formatDate(selectedSong.last_downloaded_at)}`}
                           </p>
                         )}
                       </div>
                     </div>
-                    {!selectedSong.downloaded && selectedSong.audio_url && (
-                      <span className="text-xs text-amber-600">⚠️ Cliente no ha descargado</span>
-                    )}
                   </div>
                 </div>
               )}
-              
+
+              {/* Coupon Badge */}
               {selectedSong.coupon_code && (
-                <div className="bg-purple-100 rounded-xl p-4">
-                  <p className="text-xs text-purple-600">Cupón: <strong>{selectedSong.coupon_code}</strong></p>
+                <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-4 py-3">
+                  <span className="text-purple-400 text-sm">🎟️ Cupón: <strong>{selectedSong.coupon_code}</strong></span>
                 </div>
               )}
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">Para</p><p className="font-semibold">{selectedSong.recipient_name}</p></div>
-                <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">De</p><p className="font-semibold">{selectedSong.sender_name}</p></div>
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs text-gray-500">Género</p>
-                  <p className="font-semibold capitalize">{selectedSong.genre}</p>
-                  {selectedSong.sub_genre && <p className="text-xs text-gray-400 mt-1">{selectedSong.sub_genre}</p>}
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">Para</p>
+                  <p className="font-semibold">{selectedSong.recipient_name || '—'}</p>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">Ocasión</p><p className="font-semibold capitalize">{selectedSong.occasion || 'No especificada'}</p></div>
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs text-gray-500">Voz</p>
-                  <p className="font-semibold">
-                    {selectedSong.voice_type === 'female' ? '♀ Femenina' : '♂ Masculina'}
-                  </p>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">De</p>
+                  <p className="font-semibold">{selectedSong.sender_name || '—'}</p>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">Relación</p><p className="font-semibold capitalize">{selectedSong.relationship || 'No especificada'}</p></div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">Género</p>
+                  <p className="font-semibold capitalize text-amber-400">{selectedSong.genre || '—'}</p>
+                  {selectedSong.sub_genre && <p className="text-xs text-gray-500">{selectedSong.sub_genre}</p>}
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">Ocasión</p>
+                  <p className="font-semibold">{formatOccasion(selectedSong.occasion)}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">Voz</p>
+                  <p className="font-semibold">{selectedSong.voice_type === 'female' ? '♀️ Femenina' : '♂️ Masculina'}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-1">Relación</p>
+                  <p className="font-semibold capitalize">{selectedSong.relationship || '—'}</p>
+                </div>
               </div>
               
-              <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">Email</p><p className="font-semibold">{selectedSong.email}</p></div>
+              {/* Email */}
+              <div className="bg-white/5 rounded-xl p-4">
+                <p className="text-xs text-gray-500 mb-1">Email</p>
+                <p className="font-semibold">{selectedSong.email}</p>
+              </div>
               
-              {selectedSong.details && <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500">Detalles</p><p className="text-sm whitespace-pre-wrap">{selectedSong.details}</p></div>}
+              {/* Details */}
+              {selectedSong.details && (
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-2">Detalles</p>
+                  <p className="text-sm whitespace-pre-wrap">{selectedSong.details}</p>
+                </div>
+              )}
               
-              {selectedSong.lyrics && <div className="bg-gray-50 rounded-xl p-4"><p className="text-xs text-gray-500 mb-2">Letra</p><p className="text-sm whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">{selectedSong.lyrics}</p></div>}
+              {/* Lyrics */}
+              {selectedSong.lyrics && (
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-2">Letra</p>
+                  <p className="text-sm whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300">{selectedSong.lyrics}</p>
+                </div>
+              )}
               
+              {/* Audio Player */}
               {selectedSong.audio_url && (
-                <div className="bg-forest/10 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Audio</p>
-                  <audio controls className="w-full" src={selectedSong.audio_url} />
-                  <div className="flex gap-2 mt-3">
-                    <a href={selectedSong.audio_url} download className="flex-1 py-2 px-4 bg-gold text-forest rounded-lg font-medium text-center text-sm hover:brightness-110">
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
+                  <p className="text-xs text-gray-400 mb-3">🎵 Audio</p>
+                  <audio controls className="w-full mb-3" src={selectedSong.audio_url} />
+                  <div className="flex gap-2">
+                    <a 
+                      href={selectedSong.audio_url} 
+                      download 
+                      className="flex-1 py-2 px-4 bg-amber-400 text-black rounded-lg font-medium text-center text-sm hover:bg-amber-300 transition"
+                    >
                       ⬇️ Descargar MP3
                     </a>
                     <button 
@@ -425,7 +778,7 @@ export default function AdminDashboard() {
                         navigator.clipboard.writeText(selectedSong.audio_url);
                         alert('URL copiada!');
                       }}
-                      className="py-2 px-4 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300"
+                      className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
                     >
                       📋 Copiar URL
                     </button>
@@ -434,28 +787,29 @@ export default function AdminDashboard() {
               )}
               
               {/* Customer Link */}
-              <div className="bg-blue-50 rounded-xl p-4">
-                <p className="text-xs text-blue-600 mb-2">Link del cliente</p>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                <p className="text-xs text-blue-400 mb-2">🔗 Link del cliente</p>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
                     readOnly 
-                    value={`${window.location.origin}/preview?song=${selectedSong.id}`}
-                    className="flex-1 px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm"
+                    value={`${window.location.origin}/success?song_id=${selectedSong.id}`}
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
                   />
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/preview?song=${selectedSong.id}`);
+                      navigator.clipboard.writeText(`${window.location.origin}/success?song_id=${selectedSong.id}`);
                       alert('Link copiado!');
                     }}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600"
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-400 transition"
                   >
                     Copiar
                   </button>
                 </div>
               </div>
               
-              <p className="text-center text-xs text-gray-400 font-mono">ID: {selectedSong.id}</p>
+              {/* Song ID */}
+              <p className="text-center text-xs text-gray-600 font-mono">ID: {selectedSong.id}</p>
             </div>
           </div>
         </div>
