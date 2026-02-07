@@ -39,7 +39,7 @@ const genreIcons = {
 };
 
 // Primary genres to show first
-const primaryGenreIds = ['corrido', 'norteno', 'banda', 'cumbia', 'ranchera', 'balada', 'reggaeton', 'sierreno'];
+const primaryGenreIds = ['balada', 'bachata', 'corrido', 'ranchera', 'reggaeton', 'banda', 'norteno', 'cumbia'];
 
 export default function GenreStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
