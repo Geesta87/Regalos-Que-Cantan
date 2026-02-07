@@ -309,7 +309,31 @@ export default function ComparisonPage() {
   }
   
   return (
-    <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', padding: '20px'}}>
+    <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', paddingBottom: '20px'}}>
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scaleY(1); }
+          50% { opacity: 0.7; transform: scaleY(0.7); }
+        }
+      `}</style>
+
+      {/* Valentine's Urgency Bar */}
+      <div style={{
+        background: 'linear-gradient(90deg, #dc2626, #ef4444, #dc2626)',
+        color: 'white',
+        textAlign: 'center',
+        padding: '12px 20px',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        boxShadow: '0 4px 15px rgba(220,38,38,0.4)'
+      }}>
+        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Entrega garantizada
+      </div>
+
       {/* Audio elements */}
       {songs.map(song => (
         <audio
@@ -323,28 +347,28 @@ export default function ComparisonPage() {
         />
       ))}
 
-      <div style={{maxWidth: '900px', margin: '0 auto', paddingTop: '40px'}}>
+      <div style={{maxWidth: '900px', margin: '0 auto', padding: '20px'}}>
         
         {/* Header with clear instruction */}
-        <div style={{textAlign: 'center', marginBottom: '40px'}}>
-          <div style={{fontSize: '48px', marginBottom: '15px'}}>🎵</div>
-          <h1 style={{fontSize: '28px', marginBottom: '10px', fontWeight: 'bold'}}>
+        <div style={{textAlign: 'center', marginBottom: '35px'}}>
+          <div style={{fontSize: '56px', marginBottom: '15px'}}>🎵</div>
+          <h1 style={{fontSize: '32px', marginBottom: '12px', fontWeight: 'bold'}}>
             Paso Final: Elige tu canción
           </h1>
           <p style={{color: '#d4af37', fontSize: '18px', marginBottom: '20px'}}>
             {songs.length} versiones creadas para <strong>{formData?.recipientName || 'ti'}</strong>
           </p>
           
-          {/* Instruction box */}
+          {/* Instruction box - Valentine themed */}
           <div style={{
-            background: 'rgba(212, 175, 55, 0.1)',
-            border: '2px dashed #d4af37',
-            borderRadius: '12px',
-            padding: '15px 25px',
+            background: 'linear-gradient(90deg, rgba(220,38,38,0.1), rgba(212,175,55,0.1))',
+            border: '2px solid rgba(220,38,38,0.3)',
+            borderRadius: '16px',
+            padding: '18px 30px',
             display: 'inline-block'
           }}>
             <p style={{margin: 0, fontSize: '16px'}}>
-              👇 <strong>Selecciona UNA versión</strong> o elige <strong>ambas</strong> con descuento
+              👇 <strong>Selecciona UNA versión</strong> o elige <strong style={{color: '#22c55e'}}>ambas</strong> con descuento
             </p>
           </div>
         </div>
@@ -395,7 +419,7 @@ export default function ComparisonPage() {
                 </div>
 
                 {/* Version badge */}
-                <div style={{marginBottom: '15px'}}>
+                <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}}>
                   <span style={{
                     background: index === 0 ? '#3b82f6' : '#8b5cf6', 
                     padding: '6px 14px', 
@@ -405,54 +429,153 @@ export default function ComparisonPage() {
                   }}>
                     Versión {song.version || index + 1}
                   </span>
+                  {index === 0 && (
+                    <span style={{
+                      background: 'linear-gradient(90deg, #f59e0b, #d97706)',
+                      padding: '6px 12px',
+                      borderRadius: '20px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      ⭐ Más popular
+                    </span>
+                  )}
                 </div>
 
-                {/* Album art */}
+                {/* Album art with fallback */}
                 <div style={{
-                  height: '160px', 
-                  background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.2))', 
-                  borderRadius: '12px', 
+                  height: '180px', 
+                  background: index === 0 
+                    ? 'linear-gradient(135deg, #1e40af, #3b82f6, #60a5fa)' 
+                    : 'linear-gradient(135deg, #6b21a8, #8b5cf6, #a78bfa)', 
+                  borderRadius: '16px', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
                   marginBottom: '15px',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  position: 'relative'
                 }}>
-                  {song.imageUrl ? (
-                    <img src={song.imageUrl} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
-                  ) : (
-                    <span style={{fontSize: '56px'}}>🎵</span>
+                  {song.imageUrl && (
+                    <img 
+                      src={song.imageUrl} 
+                      alt="" 
+                      style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
                   )}
+                  {/* Fallback content - always render behind image */}
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 0
+                  }}>
+                    <span style={{fontSize: '48px', marginBottom: '8px'}}>🎵</span>
+                    <span style={{fontSize: '14px', opacity: 0.8, fontWeight: 'bold'}}>Versión {song.version || index + 1}</span>
+                  </div>
+                  {/* Large centered play overlay */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
+                    style={{
+                      position: 'absolute',
+                      width: '70px',
+                      height: '70px',
+                      borderRadius: '50%',
+                      background: playingId === song.id ? '#d4af37' : 'rgba(255,255,255,0.95)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                      transition: 'all 0.2s',
+                      zIndex: 10
+                    }}
+                  >
+                    <span style={{
+                      fontSize: '32px', 
+                      color: playingId === song.id ? '#1a3a2f' : '#1a3a2f',
+                      marginLeft: playingId === song.id ? '0' : '4px'
+                    }}>
+                      {playingId === song.id ? '⏸' : '▶'}
+                    </span>
+                  </button>
                 </div>
 
                 {/* Song info */}
                 <h3 style={{fontSize: '18px', marginBottom: '5px', fontWeight: 'bold'}}>
                   Para {formData?.recipientName || 'ti'}
                 </h3>
-                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '15px'}}>{genreName}</p>
+                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '12px'}}>{genreName}</p>
 
-                {/* Play button */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
+                {/* Lyrics preview snippet */}
+                {song.lyrics && (
+                  <div style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    marginBottom: '15px',
+                    borderLeft: '3px solid #d4af37'
+                  }}>
+                    <p style={{
+                      fontSize: '12px',
+                      fontStyle: 'italic',
+                      color: 'rgba(255,255,255,0.7)',
+                      margin: 0,
+                      lineHeight: 1.5,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}>
+                      "{song.lyrics.split('\n').filter(line => line.trim())[0] || 'Preview de la letra...'}"
+                    </p>
+                    <p style={{fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '6px 0 0 0'}}>
+                      🎤 Preview de la letra
+                    </p>
+                  </div>
+                )}
+
+                {/* Play status indicator */}
+                <div
                   style={{
                     width: '100%',
-                    padding: '14px',
-                    background: playingId === song.id ? '#d4af37' : 'rgba(255,255,255,0.1)',
-                    color: playingId === song.id ? '#1a3a2f' : 'white',
-                    border: 'none',
+                    padding: '12px',
+                    background: playingId === song.id ? 'rgba(212,175,55,0.2)' : 'rgba(255,255,255,0.05)',
                     borderRadius: '10px',
-                    cursor: 'pointer',
                     fontWeight: 'bold',
-                    fontSize: '15px',
+                    fontSize: '14px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '8px'
+                    gap: '8px',
+                    border: playingId === song.id ? '2px solid #d4af37' : '2px solid transparent'
                   }}
                 >
-                  <span style={{fontSize: '18px'}}>{playingId === song.id ? '⏸' : '▶'}</span>
-                  {playingId === song.id ? 'Pausar' : 'Escuchar Preview'}
-                </button>
+                  {playingId === song.id ? (
+                    <>
+                      <span style={{display: 'flex', alignItems: 'center', gap: '3px'}}>
+                        <span style={{width: '4px', height: '16px', background: '#d4af37', borderRadius: '2px', animation: 'pulse 0.5s infinite'}}></span>
+                        <span style={{width: '4px', height: '12px', background: '#d4af37', borderRadius: '2px', animation: 'pulse 0.5s infinite 0.1s'}}></span>
+                        <span style={{width: '4px', height: '18px', background: '#d4af37', borderRadius: '2px', animation: 'pulse 0.5s infinite 0.2s'}}></span>
+                      </span>
+                      <span style={{color: '#d4af37'}}>Reproduciendo...</span>
+                    </>
+                  ) : previewEnded[song.id] ? (
+                    <span style={{color: 'rgba(255,255,255,0.6)'}}>🔄 Clic en ▶ para escuchar de nuevo</span>
+                  ) : (
+                    <span style={{color: 'rgba(255,255,255,0.6)'}}>👆 Clic en ▶ para escuchar preview</span>
+                  )}
+                </div>
 
                 {/* Progress bar */}
                 <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px'}}>
@@ -494,55 +617,57 @@ export default function ComparisonPage() {
           }}>
             <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
             <span style={{
-              color: '#d4af37',
+              color: '#22c55e',
               fontSize: '16px',
               fontWeight: 'bold',
-              padding: '8px 20px',
-              background: 'rgba(212,175,55,0.1)',
-              borderRadius: '20px',
-              border: '1px solid rgba(212,175,55,0.3)'
+              padding: '10px 24px',
+              background: 'rgba(34,197,94,0.15)',
+              borderRadius: '25px',
+              border: '2px solid rgba(34,197,94,0.4)',
+              animation: 'pulse 2s infinite'
             }}>
-              O MEJOR AÚN
+              💝 OFERTA SAN VALENTÍN
             </span>
             <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
           </div>
         )}
 
-        {/* Bundle Option - More prominent */}
+        {/* Bundle Option - Valentine's themed */}
         {songs.length >= 2 && (
           <div
             onClick={selectBoth}
             style={{
               background: purchaseBoth 
-                ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(212,175,55,0.2))' 
-                : 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
-              border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
-              borderRadius: '20px',
-              padding: '25px',
+                ? 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(220,38,38,0.15))' 
+                : 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(220,38,38,0.05))',
+              border: purchaseBoth ? '3px solid #22c55e' : '2px dashed rgba(34,197,94,0.5)',
+              borderRadius: '24px',
+              padding: '30px',
               cursor: 'pointer',
               marginBottom: '30px',
               position: 'relative',
               transition: 'all 0.3s',
               transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
-              boxShadow: purchaseBoth ? '0 0 30px rgba(34,197,94,0.2)' : 'none',
+              boxShadow: purchaseBoth ? '0 0 40px rgba(34,197,94,0.25)' : 'none',
               opacity: selectedSongId ? 0.6 : 1
             }}
           >
-            {/* Best value badge */}
+            {/* Best value badge - Valentine themed */}
             <div style={{
               position: 'absolute',
-              top: '-12px',
+              top: '-14px',
               left: '50%',
               transform: 'translateX(-50%)',
-              background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+              background: 'linear-gradient(90deg, #dc2626, #22c55e)',
               color: 'white',
-              padding: '6px 20px',
-              borderRadius: '20px',
-              fontSize: '12px',
+              padding: '8px 24px',
+              borderRadius: '25px',
+              fontSize: '13px',
               fontWeight: 'bold',
-              boxShadow: '0 4px 15px rgba(34,197,94,0.4)'
+              boxShadow: '0 4px 20px rgba(34,197,94,0.4)',
+              whiteSpace: 'nowrap'
             }}>
-              ⭐ MEJOR VALOR - AHORRA ${bundleSavings.toFixed(2)}
+              💘 REGALO PERFECTO - AHORRA ${bundleSavings.toFixed(2)}
             </div>
 
             {/* Radio button indicator */}
@@ -569,21 +694,24 @@ export default function ComparisonPage() {
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: '20px',
-              marginTop: '10px'
+              marginTop: '15px'
             }}>
               <div>
                 <h3 style={{fontSize: '22px', marginBottom: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px'}}>
-                  🎁 ¡Llévate AMBAS versiones!
+                  🎁 ¡Regala AMBAS versiones!
                 </h3>
                 <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
-                  Perfecto para compartir o elegir después • Incluye Versión 1 + Versión 2
+                  💕 El regalo perfecto para San Valentín • Versión 1 + Versión 2
+                </p>
+                <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '8px'}}>
+                  ✓ Dos estilos únicos &nbsp; ✓ Descarga instantánea &nbsp; ✓ Acceso de por vida
                 </p>
               </div>
               <div style={{textAlign: 'right'}}>
                 <p style={{color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
                   ${(singlePrice * 2).toFixed(2)}
                 </p>
-                <p style={{color: purchaseBoth ? '#22c55e' : '#d4af37', fontSize: '36px', fontWeight: 'bold', margin: 0}}>
+                <p style={{color: purchaseBoth ? '#22c55e' : '#22c55e', fontSize: '40px', fontWeight: 'bold', margin: 0}}>
                   ${bundlePrice}
                 </p>
               </div>
