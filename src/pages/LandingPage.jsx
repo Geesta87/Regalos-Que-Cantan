@@ -151,7 +151,7 @@ export default function LandingPage() {
           </div>
           
           <span className="text-gold uppercase tracking-[0.3em] text-xs font-bold bg-gold/10 px-4 py-2 rounded-full border border-gold/20">
-            Canciones Personalizadas con IA
+            Canciones Personalizadas
           </span>
           <h1 className="text-white text-5xl md:text-7xl lg:text-8xl font-black leading-none tracking-tighter font-display">
             Tu Historia, <br />
