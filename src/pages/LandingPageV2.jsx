@@ -4,35 +4,35 @@ import Header from '../components/Header';
 import { trackStep } from '../services/tracking';
 
 // ============================================
-// SAMPLE SONGS - REPLACE THESE URLs WITH YOUR ACTUAL SAMPLES
+// SAMPLE SONGS - Your actual customer samples
 // ============================================
 const sampleSongs = [
   {
     id: 1,
-    title: 'Para Mi Esposa',
-    genre: 'Bachata Romántica',
+    title: 'Para Mi Amor',
+    genre: 'Romántica',
     emoji: '💕',
-    audioUrl: '/samples/sample-bachata.mp3', // REPLACE WITH YOUR URL
-    imageUrl: '/images/samples/bachata-cover.jpg', // REPLACE WITH YOUR URL
-    duration: '0:30'
+    audioUrl: '/samples/sample-romantica-1.mp3',
+    imageUrl: null,
+    duration: '2:00'
   },
   {
     id: 2,
-    title: 'Cumpleaños Mamá',
-    genre: 'Banda Sinaloense',
-    emoji: '🎺',
-    audioUrl: '/samples/sample-banda.mp3', // REPLACE WITH YOUR URL
-    imageUrl: '/images/samples/banda-cover.jpg', // REPLACE WITH YOUR URL
-    duration: '0:30'
+    title: 'María, Mi Morenita',
+    genre: 'Romántica',
+    emoji: '💖',
+    audioUrl: '/samples/sample-romantica-2.mp3',
+    imageUrl: null,
+    duration: '1:30'
   },
   {
     id: 3,
-    title: 'Nuestro Aniversario',
-    genre: 'Bolero Romántico',
-    emoji: '🎻',
-    audioUrl: '/samples/sample-bolero.mp3', // REPLACE WITH YOUR URL
-    imageUrl: '/images/samples/bolero-cover.jpg', // REPLACE WITH YOUR URL
-    duration: '0:30'
+    title: 'Mi Regalo Especial',
+    genre: 'Balada',
+    emoji: '🎵',
+    audioUrl: '/samples/sample-3.mp3',
+    imageUrl: null,
+    duration: '2:00'
   }
 ];
 
