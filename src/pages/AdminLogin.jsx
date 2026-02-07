@@ -4,7 +4,7 @@ import { AppContext } from '../App';
 // Simple admin credentials (in production, use proper auth)
 const ADMIN_CREDENTIALS = {
   username: 'admin',
-  password: 'RQC2024!'
+  password: 'Hello2026!1'
 };
 
 export default function AdminLogin() {
