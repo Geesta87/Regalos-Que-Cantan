@@ -130,18 +130,29 @@ export default function OccasionStep() {
                   relative overflow-hidden transition-all duration-300 
                   flex flex-col items-center justify-center p-6 rounded-2xl 
                   backdrop-blur-sm cursor-pointer
-                  ${selectedOccasion === occasion.id
-                    ? 'border-gold bg-white/20 ring-1 ring-gold border'
-                    : 'border border-white/10 hover:border-gold/50 hover:bg-white/10 bg-white/5'}
+                  ${occasion.id === 'san_valentin' 
+                    ? selectedOccasion === occasion.id
+                      ? 'border-2 border-red-500 bg-red-500/30 ring-2 ring-red-400 shadow-lg shadow-red-500/40'
+                      : 'border-2 border-red-500/70 bg-red-500/20 hover:bg-red-500/30 hover:border-red-400 shadow-md shadow-red-500/30'
+                    : selectedOccasion === occasion.id
+                      ? 'border-gold bg-white/20 ring-1 ring-gold border'
+                      : 'border border-white/10 hover:border-gold/50 hover:bg-white/10 bg-white/5'}
                 `}
               >
-                <span className={`material-symbols-outlined text-gold text-4xl mb-3 transition-transform ${selectedOccasion === occasion.id ? 'scale-110' : 'group-hover:scale-110'}`}>
+                {occasion.id === 'san_valentin' && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">¡14 FEB!</span>
+                )}
+                <span className={`material-symbols-outlined text-4xl mb-3 transition-transform ${
+                  occasion.id === 'san_valentin' 
+                    ? 'text-red-400' 
+                    : 'text-gold'
+                } ${selectedOccasion === occasion.id ? 'scale-110' : 'group-hover:scale-110'}`}>
                   {occasion.icon}
                 </span>
-                <span className="text-sm font-medium tracking-wide">{occasion.name}</span>
+                <span className={`text-sm font-medium tracking-wide ${occasion.id === 'san_valentin' ? 'text-red-200' : ''}`}>{occasion.name}</span>
                 {occasion.id === 'otro' && selectedOccasion === 'otro' && customOccasion.length >= 20 && emotionalTone && (
                   <span className="absolute top-2 right-2 material-symbols-outlined text-gold text-sm">check_circle</span>
-                )}
+                )}}
               </button>
             ))}
           </div>
