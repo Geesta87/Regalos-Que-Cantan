@@ -6,6 +6,17 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+// ✅ Safe Meta Pixel helper - won't crash if pixel is blocked by ad blocker
+const trackFB = (event, data = {}) => {
+  try {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', event, data);
+    }
+  } catch (e) {
+    // Pixel blocked or unavailable
+  }
+};
+
 export default function SuccessPage() {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +28,7 @@ export default function SuccessPage() {
   const [downloading, setDownloading] = useState(false);
   
   const audioRef = useRef(null);
+  const purchaseTracked = useRef(false); // ✅ Prevent duplicate fires
 
   // Get song IDs from URL - supports both song_id and song_ids
   const urlParams = new URLSearchParams(window.location.search);
@@ -30,6 +42,33 @@ export default function SuccessPage() {
       setLoading(false);
     }
   }, [songIdsParam]);
+
+  // ✅ META PIXEL: Fire Purchase event ONCE after songs load
+  useEffect(() => {
+    if (songs.length > 0 && !purchaseTracked.current) {
+      // Deduplicate: check if we already fired for these song IDs
+      const purchaseKey = `rqc_purchase_tracked_${songIdsParam}`;
+      if (sessionStorage.getItem(purchaseKey)) return;
+      
+      purchaseTracked.current = true;
+      sessionStorage.setItem(purchaseKey, 'true');
+
+      const value = songs.length > 1 ? 29.99 : 19.99;
+      const contentIds = songs.map(s => s.id);
+      
+      trackFB('Purchase', {
+        value: value,
+        currency: 'USD',
+        content_ids: contentIds,
+        content_type: 'product',
+        content_name: `Canción para ${songs[0]?.recipient_name || 'regalo'}`,
+        content_category: songs[0]?.genre || 'song',
+        num_items: songs.length
+      });
+
+      console.log('✅ Meta Pixel: Purchase tracked', { value, songs: songs.length });
+    }
+  }, [songs, songIdsParam]);
 
   const loadSongs = async () => {
     try {

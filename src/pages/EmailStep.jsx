@@ -3,6 +3,15 @@ import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
+// ✅ Safe Meta Pixel helper
+const trackFB = (event, data = {}) => {
+  try {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', event, data);
+    }
+  } catch (e) { /* Pixel blocked */ }
+};
+
 const occasionNames = {
   cumpleanos: 'Cumpleaños',
   aniversario: 'Aniversario',
@@ -72,6 +81,14 @@ export default function EmailStep() {
     setIsSubmitting(true);
     updateFormData('email', email);
     
+    // ✅ META PIXEL: Track Lead when email is captured
+    trackFB('Lead', {
+      content_name: `${genreName} - ${occasionName}`,
+      content_category: formData.genre || 'song',
+      value: 19.99,
+      currency: 'USD'
+    });
+
     // Navigate to generating page
     navigateTo('generating');
   };
