@@ -296,8 +296,8 @@ export default function App() {
             <OccasionLanding occasionSlug={getSlugFromPage(currentPage, 'ocasiones/')} />
           )}
 
-          {/* WhatsApp floating button - hidden on admin pages */}
-          {currentPage !== 'adminLogin' && currentPage !== 'adminDashboard' && (
+          {/* WhatsApp floating button - only on landing, comparison, and success pages */}
+          {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'comparison' || currentPage === 'success') && (
             <WhatsAppButton />
           )}
         </div>
