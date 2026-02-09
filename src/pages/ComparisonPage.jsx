@@ -4,15 +4,6 @@ import { createCheckout, validateCoupon, supabase } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
-// ✅ Safe Meta Pixel helper - won't crash if pixel is blocked
-const trackFB = (event, data = {}) => {
-  try {
-    if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', event, data);
-    }
-  } catch (e) { /* Pixel blocked */ }
-};
-
 // Preview settings
 const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
@@ -70,22 +61,6 @@ export default function ComparisonPage() {
   useEffect(() => {
     trackStep('comparison');
   }, []);
-
-  // ✅ META PIXEL: Track ViewContent when songs load (user sees their songs)
-  useEffect(() => {
-    if (songs.length > 0 && !loading) {
-      const value = songs.length > 1 ? bundlePrice : singlePrice;
-      trackFB('ViewContent', {
-        content_ids: songs.map(s => s.id),
-        content_type: 'product',
-        content_name: `Canciones para ${songs[0]?.recipient_name || 'regalo'}`,
-        content_category: songs[0]?.genre || 'song',
-        value: value,
-        currency: 'USD',
-        num_items: songs.length
-      });
-    }
-  }, [songs, loading]);
 
   // ✅ FIX: Helper function to fetch songs from database by IDs
   const fetchSongsFromIds = async (songIds) => {
@@ -332,16 +307,6 @@ export default function ComparisonPage() {
       }
 
       if (result.url) {
-        // ✅ META PIXEL: Track InitiateCheckout before leaving to Stripe
-        const checkoutValue = purchaseBoth ? bundlePrice : singlePrice;
-        trackFB('InitiateCheckout', {
-          value: checkoutValue,
-          currency: 'USD',
-          content_ids: songIdsToCheckout,
-          content_type: 'product',
-          num_items: songIdsToCheckout.length
-        });
-
         window.location.href = result.url;
       } else {
         throw new Error('No checkout URL returned');
@@ -497,7 +462,7 @@ export default function ComparisonPage() {
                   </span>
                 </div>
 
-                {/* Album art */}
+                {/* Album art with error fallback */}
                 <div style={{
                   height: '160px', 
                   background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.2))', 
@@ -509,7 +474,15 @@ export default function ComparisonPage() {
                   overflow: 'hidden'
                 }}>
                   {song.imageUrl ? (
-                    <img src={song.imageUrl} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                    <img 
+                      src={song.imageUrl} 
+                      alt="" 
+                      style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.innerHTML = '<span style="font-size:56px">🎵</span>';
+                      }}
+                    />
                   ) : (
                     <span style={{fontSize: '56px'}}>🎵</span>
                   )}
