@@ -18,6 +18,8 @@ import ComparisonPage from './pages/ComparisonPage';
 import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminLookup from './pages/AdminLookup';
+import ShareablePreviewPage from './pages/ShareablePreviewPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 // SEO Hub pages
@@ -56,8 +58,10 @@ const pathToPage = {
   '/preview': 'preview',
   '/comparison': 'comparison',
   '/success': 'success',
+  '/listen': 'listen',
   '/admin': 'adminLogin',
   '/admin/dashboard': 'adminDashboard',
+  '/admin/lookup': 'adminLookup',
   '/generos': 'generos',
   '/ocasiones': 'ocasiones'
 };
@@ -199,8 +203,10 @@ export default function App() {
       preview: '/preview',
       comparison: '/comparison',
       success: '/success',
+      listen: '/listen',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard',
+      adminLookup: '/admin/lookup',
       generos: '/generos',
       ocasiones: '/ocasiones'
     };
@@ -277,10 +283,12 @@ export default function App() {
           {currentPage === 'preview' && <PreviewPage />}
           {currentPage === 'comparison' && <ComparisonPage />}
           {currentPage === 'success' && <SuccessPage />}
+          {currentPage === 'listen' && <ShareablePreviewPage />}
           
           {/* Admin pages */}
           {currentPage === 'adminLogin' && <AdminLogin />}
           {currentPage === 'adminDashboard' && <AdminDashboard />}
+          {currentPage === 'adminLookup' && <AdminLookup />}
           
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}
