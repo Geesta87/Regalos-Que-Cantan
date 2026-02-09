@@ -9,6 +9,15 @@ const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
+// ✅ NEW: Auto-play teaser duration (seconds)
+const AUTO_TEASER_DURATION = 5;
+
+// ✅ NEW: Version personality labels per index
+const VERSION_VIBES = [
+  { label: 'Emotiva', emoji: '💫', color: '#3b82f6', gradient: 'linear-gradient(135deg, #1e3a5f, #2563eb)' },
+  { label: 'Enérgica', emoji: '🔥', color: '#8b5cf6', gradient: 'linear-gradient(135deg, #4c1d95, #7c3aed)' }
+];
+
 export default function ComparisonPage() {
   const context = useContext(AppContext);
   
@@ -28,6 +37,17 @@ export default function ComparisonPage() {
   const [playingId, setPlayingId] = useState(null);
   const [currentTimes, setCurrentTimes] = useState({});
   const [previewEnded, setPreviewEnded] = useState({});
+  
+  // ✅ NEW: Auto-play state
+  const [autoPlayed, setAutoPlayed] = useState(false);
+  const [autoTeasing, setAutoTeasing] = useState(false);
+  const autoTeaserTimeout = useRef(null);
+  
+  // ✅ NEW: Entrance animation state
+  const [isVisible, setIsVisible] = useState(false);
+  
+  // ✅ NEW: Lyrics expand state
+  const [expandedLyrics, setExpandedLyrics] = useState({});
   
   // Selection state
   const [selectedSongId, setSelectedSongId] = useState(null);
@@ -60,6 +80,12 @@ export default function ComparisonPage() {
   // Track page view
   useEffect(() => {
     trackStep('comparison');
+  }, []);
+
+  // ✅ NEW: Entrance animation trigger
+  useEffect(() => {
+    const timer = setTimeout(() => setIsVisible(true), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   // ✅ FIX: Helper function to fetch songs from database by IDs
@@ -101,7 +127,6 @@ export default function ComparisonPage() {
     try {
       const loadedSongs = [];
       
-      // First, try to load from context
       if (songData?.songs && Array.isArray(songData.songs) && songData.songs.length > 0) {
         loadedSongs.push(...songData.songs);
       } 
@@ -122,37 +147,31 @@ export default function ComparisonPage() {
         });
       }
       
-      // If we have songs from context, use them
       if (loadedSongs.length > 0) {
         setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
         setLoading(false);
         
-        // ✅ Save to localStorage in case user goes to Stripe and comes back
         const songIds = loadedSongs.map(s => s.id);
         localStorage.setItem('rqc_comparison_songs', JSON.stringify(songIds));
         
         return;
       }
       
-      // ✅ FIX: Fallback to URL parameters if no context data (supports page refresh)
       const params = new URLSearchParams(window.location.search);
       const songIdsParam = params.get('song_ids');
       const singleSongId = params.get('song_id');
       
       if (songIdsParam) {
-        // Multiple song IDs (comma-separated)
         const songIds = songIdsParam.split(',').filter(id => id.trim());
         if (songIds.length > 0) {
           fetchSongsFromIds(songIds);
           return;
         }
       } else if (singleSongId) {
-        // Single song ID
         fetchSongsFromIds([singleSongId]);
         return;
       }
       
-      // ✅ NEW: Fallback to localStorage (for Stripe cancel/back button)
       const savedSongIds = localStorage.getItem('rqc_comparison_songs');
       if (savedSongIds) {
         try {
@@ -162,7 +181,6 @@ export default function ComparisonPage() {
               console.log('Recovering songs from localStorage:', songIds);
             }
             
-            // Restore selection state if available
             const savedSelection = localStorage.getItem('rqc_checkout_selection');
             if (savedSelection) {
               try {
@@ -170,9 +188,7 @@ export default function ComparisonPage() {
                 if (selection.selectedSongId) setSelectedSongId(selection.selectedSongId);
                 if (selection.purchaseBoth) setPurchaseBoth(selection.purchaseBoth);
                 if (selection.couponCode) setCouponCode(selection.couponCode);
-              } catch (e) {
-                // Ignore selection restore errors
-              }
+              } catch (e) {}
             }
             
             fetchSongsFromIds(songIds);
@@ -185,7 +201,6 @@ export default function ComparisonPage() {
         }
       }
       
-      // No songs available
       setError('No songs available');
       setLoading(false);
     } catch (err) {
@@ -194,8 +209,55 @@ export default function ComparisonPage() {
     }
   }, [songData]);
 
+  // ✅ NEW: Auto-play 5-second teaser of Version 1 on load
+  useEffect(() => {
+    if (autoPlayed || songs.length === 0 || loading) return;
+    
+    const firstSong = songs[0];
+    const audio = audioRefs.current[firstSong?.id];
+    if (!audio) return;
+
+    const startTimer = setTimeout(() => {
+      try {
+        audio.currentTime = PREVIEW_START;
+        audio.volume = 0.6;
+        const playPromise = audio.play();
+        
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            setPlayingId(firstSong.id);
+            setAutoTeasing(true);
+            
+            autoTeaserTimeout.current = setTimeout(() => {
+              audio.pause();
+              audio.volume = 1.0;
+              setPlayingId(null);
+              setAutoTeasing(false);
+              setAutoPlayed(true);
+            }, AUTO_TEASER_DURATION * 1000);
+          }).catch(() => {
+            setAutoPlayed(true);
+          });
+        }
+      } catch (e) {
+        setAutoPlayed(true);
+      }
+    }, 1500);
+
+    return () => {
+      clearTimeout(startTimer);
+      if (autoTeaserTimeout.current) clearTimeout(autoTeaserTimeout.current);
+    };
+  }, [songs, loading, autoPlayed]);
+
   const handlePlay = (songId) => {
     try {
+      if (autoTeasing) {
+        if (autoTeaserTimeout.current) clearTimeout(autoTeaserTimeout.current);
+        setAutoTeasing(false);
+        setAutoPlayed(true);
+      }
+
       const audio = audioRefs.current[songId];
       if (!audio) return;
 
@@ -203,7 +265,9 @@ export default function ComparisonPage() {
         audio.pause();
         setPlayingId(null);
       } else {
-        Object.values(audioRefs.current).forEach(a => { if (a) a.pause(); });
+        Object.values(audioRefs.current).forEach(a => { 
+          if (a) { a.pause(); a.volume = 1.0; } 
+        });
         
         if (previewEnded[songId] || audio.currentTime < PREVIEW_START || audio.currentTime >= PREVIEW_END) {
           audio.currentTime = PREVIEW_START;
@@ -211,6 +275,7 @@ export default function ComparisonPage() {
           setCurrentTimes(prev => ({ ...prev, [songId]: 0 }));
         }
         
+        audio.volume = 1.0;
         audio.play().catch(err => {
           if (import.meta.env.DEV) console.error('Play error:', err);
         });
@@ -249,13 +314,21 @@ export default function ComparisonPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ✅ FIX: REMOVED GRATIS100 hardcoded bypass - ALL coupons now validate via server
+  // ✅ NEW: Extract lyrics preview (first meaningful lines)
+  const getLyricsPreview = (lyrics) => {
+    if (!lyrics) return [];
+    return lyrics
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('['))
+      .slice(0, 4);
+  };
+
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return;
     setIsLoadingCoupon(true);
     setCouponError('');
     
-    // All coupon validation now goes through the server
     try {
       const result = await validateCoupon(couponCode);
       setCouponApplied(result);
@@ -275,15 +348,12 @@ export default function ComparisonPage() {
 
     setIsCheckingOut(true);
     try {
-      // Get the correct song IDs based on selection
       const songIdsToCheckout = purchaseBoth 
-        ? songs.map(s => s.id)  // All song IDs for "both" option
-        : [selectedSongId];     // Just the selected song ID
+        ? songs.map(s => s.id)
+        : [selectedSongId];
       
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
-      // ✅ Save song data to localStorage before going to Stripe
-      // This allows recovery if user clicks back
       const allSongIds = songs.map(s => s.id);
       localStorage.setItem('rqc_comparison_songs', JSON.stringify(allSongIds));
       localStorage.setItem('rqc_checkout_selection', JSON.stringify({
@@ -292,20 +362,13 @@ export default function ComparisonPage() {
         couponCode: codeToSend
       }));
 
-      // ✅ FIX: Wrapped in DEV check
       if (import.meta.env.DEV) {
         console.log('Checkout - songIds:', songIdsToCheckout);
         console.log('Checkout - coupon:', codeToSend);
-        console.log('Saved to localStorage for recovery');
       }
 
-      // Pass the array of song IDs
       const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
       
-      if (import.meta.env.DEV) {
-        console.log('Checkout result:', result);
-      }
-
       if (result.url) {
         window.location.href = result.url;
       } else {
@@ -329,7 +392,6 @@ export default function ComparisonPage() {
     setSelectedSongId(null);
   };
 
-  // Get selection label for summary
   const getSelectionLabel = () => {
     if (purchaseBoth) return '2 Canciones (Ambas versiones)';
     if (selectedSongId) {
@@ -339,11 +401,14 @@ export default function ComparisonPage() {
     return null;
   };
 
+  // ==================== RENDER ====================
+
   if (loading) {
     return (
       <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+        <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }`}</style>
         <div style={{textAlign: 'center'}}>
-          <div style={{fontSize: '48px', marginBottom: '20px'}}>⏳</div>
+          <div style={{fontSize: '48px', marginBottom: '20px', animation: 'pulse 1.5s ease-in-out infinite'}}>🎵</div>
           <p style={{fontSize: '20px'}}>Cargando tus canciones...</p>
         </div>
       </div>
@@ -362,9 +427,39 @@ export default function ComparisonPage() {
       </div>
     );
   }
+
+  const recipientName = formData?.recipientName || 'ti';
   
   return (
-    <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', padding: '20px'}}>
+    <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', padding: '20px', overflow: 'hidden'}}>
+      
+      {/* ✅ CSS Animations */}
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.08); }
+        }
+        @keyframes glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(212,175,55,0.3), 0 0 40px rgba(212,175,55,0.1); }
+          50% { box-shadow: 0 0 30px rgba(212,175,55,0.5), 0 0 60px rgba(212,175,55,0.2); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        @keyframes eq1 { 0%, 100% { height: 8px; } 50% { height: 22px; } }
+        @keyframes eq2 { 0%, 100% { height: 16px; } 50% { height: 8px; } }
+        @keyframes eq3 { 0%, 100% { height: 12px; } 50% { height: 24px; } }
+        @keyframes ribbonFloat {
+          0%, 100% { transform: translateX(-50%) rotate(-1deg); }
+          50% { transform: translateX(-50%) rotate(1deg); }
+        }
+      `}</style>
+
       {/* Audio elements */}
       {songs.map(song => (
         <audio
@@ -378,37 +473,127 @@ export default function ComparisonPage() {
         />
       ))}
 
-      <div style={{maxWidth: '900px', margin: '0 auto', paddingTop: '40px'}}>
+      <div style={{
+        maxWidth: '900px', 
+        margin: '0 auto', 
+        paddingTop: '30px',
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+        transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
+      }}>
         
-        {/* Header with clear instruction */}
-        <div style={{textAlign: 'center', marginBottom: '40px'}}>
-          <div style={{fontSize: '48px', marginBottom: '15px'}}>🎵</div>
-          <h1 style={{fontSize: '28px', marginBottom: '10px', fontWeight: 'bold'}}>
-            Paso Final: Elige tu canción
-          </h1>
-          <p style={{color: '#d4af37', fontSize: '18px', marginBottom: '20px'}}>
-            {songs.length} versiones creadas para <strong>{formData?.recipientName || 'ti'}</strong>
-          </p>
-          
-          {/* Instruction box */}
+        {/* ===== REC 3: Personalized emotional banner ===== */}
+        <div style={{textAlign: 'center', marginBottom: '30px'}}>
           <div style={{
-            background: 'rgba(212, 175, 55, 0.1)',
-            border: '2px dashed #d4af37',
-            borderRadius: '12px',
-            padding: '15px 25px',
-            display: 'inline-block'
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.12), rgba(225,29,116,0.08))',
+            borderRadius: '16px',
+            padding: '22px 28px',
+            marginBottom: '20px',
+            border: '1px solid rgba(212,175,55,0.15)'
           }}>
-            <p style={{margin: 0, fontSize: '16px'}}>
-              👇 <strong>Selecciona UNA versión</strong> o elige <strong>ambas</strong> con descuento
+            <p style={{
+              fontSize: '13px',
+              color: 'rgba(255,255,255,0.5)',
+              margin: '0 0 6px 0',
+              letterSpacing: '2px',
+              textTransform: 'uppercase'
+            }}>
+              Hecho con ❤️ exclusivamente para
+            </p>
+            <h2 style={{
+              fontSize: '32px',
+              fontWeight: 'bold',
+              margin: '0 0 8px 0',
+              background: 'linear-gradient(90deg, #d4af37, #f5d77a, #d4af37)',
+              backgroundSize: '200% auto',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              animation: 'shimmer 3s linear infinite'
+            }}>
+              {recipientName}
+            </h2>
+            <p style={{
+              fontSize: '14px',
+              color: 'rgba(255,255,255,0.45)',
+              margin: 0,
+              fontStyle: 'italic'
+            }}>
+              Una canción que nunca antes ha existido — creada solo para {recipientName}
             </p>
           </div>
+
+          <h1 style={{fontSize: '22px', marginBottom: '6px', fontWeight: 'bold'}}>
+            🎵 Elige tu versión favorita
+          </h1>
+          <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '14px', margin: 0}}>
+            {songs.length} versiones • <span style={{color: '#d4af37'}}>{genreName}</span>
+          </p>
+          
+          {/* Auto-play indicator */}
+          {autoTeasing && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(212,175,55,0.12)',
+              padding: '8px 18px',
+              borderRadius: '20px',
+              fontSize: '13px',
+              color: '#d4af37',
+              marginTop: '12px',
+              animation: 'fadeInUp 0.5s ease-out'
+            }}>
+              <div style={{display: 'flex', alignItems: 'flex-end', gap: '2px', height: '16px'}}>
+                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq1 0.6s ease-in-out infinite'}} />
+                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq2 0.5s ease-in-out infinite'}} />
+                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq3 0.7s ease-in-out infinite'}} />
+              </div>
+              Escuchando Versión 1...
+            </div>
+          )}
         </div>
 
-        {/* Song Cards */}
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '20px'}}>
+        {/* ===== REC 6: Social proof strip ===== */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '16px',
+          marginBottom: '28px',
+          flexWrap: 'wrap',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.2s both' : 'none'
+        }}>
+          {[
+            { icon: '🔥', text: '147 canciones', sub: 'creadas hoy' },
+            { icon: '⭐', text: '4.9/5', sub: 'satisfacción' },
+            { icon: '💝', text: 'Ideal para', sub: 'San Valentín' }
+          ].map((item, i) => (
+            <span key={i} style={{
+              fontSize: '12px',
+              color: 'rgba(255,255,255,0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              {item.icon} <span style={{color: '#d4af37'}}>{item.text}</span> {item.sub}
+            </span>
+          ))}
+        </div>
+
+        {/* ===== REC 2, 4, 5: Song Cards ===== */}
+        <div style={{
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
+          gap: '20px', 
+          marginBottom: '20px',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.3s both' : 'none'
+        }}>
           {songs.map((song, index) => {
             const isSelected = selectedSongId === song.id;
             const isOtherSelected = (selectedSongId && !isSelected) || purchaseBoth;
+            const isPlaying = playingId === song.id;
+            const vibe = VERSION_VIBES[index] || VERSION_VIBES[0];
+            const lyricsPreview = getLyricsPreview(song.lyrics);
+            const isExpanded = expandedLyrics[song.id];
             
             return (
               <div
@@ -416,7 +601,7 @@ export default function ComparisonPage() {
                 onClick={() => selectSong(song.id)}
                 style={{
                   background: isSelected 
-                    ? 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(212,175,55,0.1))' 
+                    ? 'linear-gradient(135deg, rgba(212,175,55,0.15), rgba(212,175,55,0.05))' 
                     : 'rgba(255,255,255,0.03)',
                   border: isSelected 
                     ? '3px solid #d4af37' 
@@ -431,114 +616,171 @@ export default function ComparisonPage() {
                   position: 'relative'
                 }}
               >
-                {/* Radio button indicator */}
+                {/* Radio indicator */}
                 <div style={{
-                  position: 'absolute',
-                  top: '15px',
-                  right: '15px',
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
+                  position: 'absolute', top: '15px', right: '15px',
+                  width: '28px', height: '28px', borderRadius: '50%',
                   border: isSelected ? '3px solid #d4af37' : '3px solid rgba(255,255,255,0.3)',
                   background: isSelected ? '#d4af37' : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s'
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s', zIndex: 2
                 }}>
                   {isSelected && <span style={{color: '#1a3a2f', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
                 </div>
 
-                {/* Version badge */}
-                <div style={{marginBottom: '15px'}}>
+                {/* REC 5: Version badge with personality */}
+                <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px'}}>
                   <span style={{
-                    background: index === 0 ? '#3b82f6' : '#8b5cf6', 
+                    background: vibe.gradient, 
                     padding: '6px 14px', 
                     borderRadius: '20px', 
                     fontSize: '13px', 
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    boxShadow: `0 2px 10px ${vibe.color}40`
                   }}>
-                    Versión {song.version || index + 1}
+                    {vibe.emoji} Versión {song.version || index + 1}
+                  </span>
+                  <span style={{fontSize: '12px', color: vibe.color, fontWeight: '600'}}>
+                    {vibe.label}
                   </span>
                 </div>
 
-                {/* Album art with error fallback */}
+                {/* REC 2: Bigger album art with glow */}
                 <div style={{
-                  height: '160px', 
-                  background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.2))', 
-                  borderRadius: '12px', 
+                  height: '220px',
+                  borderRadius: '14px', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
-                  marginBottom: '15px',
-                  overflow: 'hidden'
+                  marginBottom: '18px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
+                  background: `linear-gradient(135deg, ${vibe.color}30, rgba(225,29,116,0.15))`
                 }}>
                   {song.imageUrl ? (
                     <img 
                       src={song.imageUrl} 
                       alt="" 
-                      style={{width: '100%', height: '100%', objectFit: 'cover'}} 
+                      style={{
+                        width: '100%', height: '100%', objectFit: 'cover',
+                        transition: 'transform 0.5s',
+                        transform: isPlaying ? 'scale(1.05)' : 'scale(1)'
+                      }} 
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = '<span style="font-size:56px">🎵</span>';
+                        e.target.parentElement.innerHTML = '<span style="font-size:72px">🎵</span>';
                       }}
                     />
                   ) : (
-                    <span style={{fontSize: '56px'}}>🎵</span>
+                    <span style={{fontSize: '72px'}}>🎵</span>
+                  )}
+                  
+                  {/* Playing overlay with equalizer */}
+                  {isPlaying && (
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      padding: '12px',
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                      gap: '3px', height: '50px'
+                    }}>
+                      {[0.6, 0.5, 0.7, 0.8, 0.4].map((dur, i) => (
+                        <div key={i} style={{
+                          width: '4px', background: '#d4af37', borderRadius: '2px',
+                          animation: `eq${(i % 3) + 1} ${dur}s ease-in-out infinite`
+                        }} />
+                      ))}
+                    </div>
                   )}
                 </div>
 
                 {/* Song info */}
-                <h3 style={{fontSize: '18px', marginBottom: '5px', fontWeight: 'bold'}}>
-                  Para {formData?.recipientName || 'ti'}
+                <h3 style={{fontSize: '18px', marginBottom: '4px', fontWeight: 'bold'}}>
+                  Para {recipientName}
                 </h3>
-                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '15px'}}>{genreName}</p>
+                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '12px'}}>{genreName}</p>
+
+                {/* REC 4: Lyrics preview snippet */}
+                {lyricsPreview.length > 0 && (
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedLyrics(prev => ({...prev, [song.id]: !prev[song.id]}));
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      marginBottom: '15px',
+                      borderLeft: `3px solid ${vibe.color}50`,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <p style={{
+                      fontSize: '11px', color: 'rgba(255,255,255,0.4)',
+                      margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '1px'
+                    }}>
+                      📝 Vista previa de la letra
+                    </p>
+                    {lyricsPreview.slice(0, isExpanded ? 4 : 2).map((line, i) => (
+                      <p key={i} style={{
+                        fontSize: '13px', color: 'rgba(255,255,255,0.6)',
+                        margin: i < (isExpanded ? 3 : 1) ? '0 0 3px 0' : 0,
+                        fontStyle: 'italic', lineHeight: '1.4'
+                      }}>
+                        "{line}"
+                      </p>
+                    ))}
+                    {lyricsPreview.length > 2 && (
+                      <p style={{fontSize: '11px', color: vibe.color, margin: '6px 0 0 0'}}>
+                        {isExpanded ? '▲ Ver menos' : '▼ Ver más letra...'}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Play button */}
                 <button
                   onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
                   style={{
-                    width: '100%',
-                    padding: '14px',
-                    background: playingId === song.id ? '#d4af37' : 'rgba(255,255,255,0.1)',
-                    color: playingId === song.id ? '#1a3a2f' : 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '15px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px'
+                    width: '100%', padding: '16px',
+                    background: isPlaying 
+                      ? 'linear-gradient(90deg, #d4af37, #f5d77a)' 
+                      : `linear-gradient(90deg, ${vibe.color}90, ${vibe.color})`,
+                    color: isPlaying ? '#1a3a2f' : 'white',
+                    border: 'none', borderRadius: '12px',
+                    cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    transition: 'all 0.3s',
+                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.4)' : `0 4px 15px ${vibe.color}30`
                   }}
                 >
-                  <span style={{fontSize: '18px'}}>{playingId === song.id ? '⏸' : '▶'}</span>
-                  {playingId === song.id ? 'Pausar' : 'Escuchar Preview'}
+                  <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
+                  {isPlaying ? 'Pausar' : 'Escuchar Preview'}
                 </button>
 
                 {/* Progress bar */}
-                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px'}}>
+                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden'}}>
                   <div style={{
                     height: '100%', 
-                    background: '#d4af37', 
+                    background: isPlaying ? 'linear-gradient(90deg, #d4af37, #f5d77a)' : vibe.color, 
                     borderRadius: '3px', 
                     width: `${((currentTimes[song.id] || 0) / PREVIEW_DURATION) * 100}%`, 
                     transition: 'width 0.1s'
                   }} />
                 </div>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '6px', textAlign: 'right'}}>
                   {formatTime(currentTimes[song.id] || 0)} / 0:20
                 </p>
 
                 {/* Price */}
                 <div style={{
-                  marginTop: '15px',
-                  paddingTop: '15px',
-                  borderTop: '1px solid rgba(255,255,255,0.1)',
+                  marginTop: '12px', paddingTop: '15px',
+                  borderTop: '1px solid rgba(255,255,255,0.08)',
                   textAlign: 'center'
                 }}>
-                  <span style={{fontSize: '24px', fontWeight: 'bold', color: isSelected ? '#d4af37' : 'white'}}>
+                  <span style={{fontSize: '26px', fontWeight: 'bold', color: isSelected ? '#d4af37' : 'white'}}>
                     ${singlePrice}
                   </span>
                 </div>
@@ -547,124 +789,137 @@ export default function ComparisonPage() {
           })}
         </div>
 
-        {/* OR Divider */}
+        {/* ===== REC 7: Upgraded bundle deal ===== */}
         {songs.length >= 2 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            margin: '30px 0',
-            gap: '20px'
-          }}>
-            <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
-            <span style={{
-              color: '#d4af37',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              padding: '8px 20px',
-              background: 'rgba(212,175,55,0.1)',
-              borderRadius: '20px',
-              border: '1px solid rgba(212,175,55,0.3)'
-            }}>
-              O MEJOR AÚN
-            </span>
-            <div style={{flex: 1, height: '2px', background: 'rgba(255,255,255,0.1)'}}></div>
-          </div>
-        )}
-
-        {/* Bundle Option - More prominent */}
-        {songs.length >= 2 && (
-          <div
-            onClick={selectBoth}
-            style={{
-              background: purchaseBoth 
-                ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(212,175,55,0.2))' 
-                : 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
-              border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.15)',
-              borderRadius: '20px',
-              padding: '25px',
-              cursor: 'pointer',
-              marginBottom: '30px',
-              position: 'relative',
-              transition: 'all 0.3s',
-              transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
-              boxShadow: purchaseBoth ? '0 0 30px rgba(34,197,94,0.2)' : 'none',
-              opacity: selectedSongId ? 0.6 : 1
-            }}
-          >
-            {/* Best value badge */}
+          <>
+            {/* OR Divider */}
             <div style={{
-              position: 'absolute',
-              top: '-12px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-              color: 'white',
-              padding: '6px 20px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              boxShadow: '0 4px 15px rgba(34,197,94,0.4)'
+              display: 'flex', alignItems: 'center', margin: '30px 0', gap: '20px',
+              animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
             }}>
-              ⭐ MEJOR VALOR - AHORRA ${bundleSavings.toFixed(2)}
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.3))'}} />
+              <span style={{
+                color: '#d4af37', fontSize: '16px', fontWeight: 'bold',
+                padding: '8px 20px', background: 'rgba(212,175,55,0.1)',
+                borderRadius: '20px', border: '1px solid rgba(212,175,55,0.3)'
+              }}>
+                O MEJOR AÚN
+              </span>
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(212,175,55,0.3), transparent)'}} />
             </div>
 
-            {/* Radio button indicator */}
-            <div style={{
-              position: 'absolute',
-              top: '20px',
-              right: '20px',
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
-              background: purchaseBoth ? '#22c55e' : 'transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s'
-            }}>
-              {purchaseBoth && <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
-            </div>
-
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '20px',
-              marginTop: '10px'
-            }}>
-              <div>
-                <h3 style={{fontSize: '22px', marginBottom: '8px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px'}}>
-                  🎁 ¡Llévate AMBAS versiones!
-                </h3>
-                <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
-                  Perfecto para compartir o elegir después • Incluye Versión 1 + Versión 2
-                </p>
+            {/* Bundle card */}
+            <div
+              onClick={selectBoth}
+              style={{
+                background: purchaseBoth 
+                  ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(212,175,55,0.1))' 
+                  : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
+                border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.12)',
+                borderRadius: '20px', padding: '30px 25px',
+                cursor: 'pointer', marginBottom: '30px',
+                position: 'relative', transition: 'all 0.3s',
+                transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
+                boxShadow: purchaseBoth ? '0 0 30px rgba(34,197,94,0.2)' : 'none',
+                opacity: selectedSongId ? 0.6 : 1,
+                animation: isVisible ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
+              }}
+            >
+              {/* Ribbon badge */}
+              <div style={{
+                position: 'absolute', top: '-14px', left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                color: 'white', padding: '8px 24px', borderRadius: '20px',
+                fontSize: '13px', fontWeight: 'bold',
+                boxShadow: '0 4px 15px rgba(34,197,94,0.4)',
+                animation: 'ribbonFloat 3s ease-in-out infinite',
+                whiteSpace: 'nowrap'
+              }}>
+                🎁 MEJOR REGALO — AHORRA ${bundleSavings.toFixed(2)}
               </div>
-              <div style={{textAlign: 'right'}}>
-                <p style={{color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
-                  ${(singlePrice * 2).toFixed(2)}
-                </p>
-                <p style={{color: purchaseBoth ? '#22c55e' : '#d4af37', fontSize: '36px', fontWeight: 'bold', margin: 0}}>
-                  ${bundlePrice}
-                </p>
+
+              {/* Radio indicator */}
+              <div style={{
+                position: 'absolute', top: '20px', right: '20px',
+                width: '28px', height: '28px', borderRadius: '50%',
+                border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
+                background: purchaseBoth ? '#22c55e' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}>
+                {purchaseBoth && <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
+              </div>
+
+              {/* Bundle content with overlapping album arts */}
+              <div style={{marginTop: '10px'}}>
+                <div style={{
+                  display: 'flex', justifyContent: 'center', gap: '0px', marginBottom: '18px'
+                }}>
+                  {songs.slice(0, 2).map((song, i) => (
+                    <div key={song.id} style={{
+                      width: '80px', height: '80px', borderRadius: '12px',
+                      overflow: 'hidden', border: '3px solid #1a3a2f',
+                      marginLeft: i > 0 ? '-15px' : 0,
+                      position: 'relative', zIndex: songs.length - i,
+                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`
+                    }}>
+                      {song.imageUrl ? (
+                        <img 
+                          src={song.imageUrl} alt=""
+                          style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.innerHTML = '<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
+                          }}
+                        />
+                      ) : (
+                        <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', flexWrap: 'wrap', gap: '20px'
+                }}>
+                  <div>
+                    <h3 style={{fontSize: '20px', marginBottom: '8px', fontWeight: 'bold'}}>
+                      🎁 ¡Llévate AMBAS versiones!
+                    </h3>
+                    <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '14px', margin: '0 0 4px 0'}}>
+                      Regala 2 versiones — deja que {recipientName} elija su favorita
+                    </p>
+                    <p style={{color: 'rgba(255,255,255,0.4)', fontSize: '13px', margin: 0}}>
+                      💫 Emotiva + 🔥 Enérgica • Descarga instantánea
+                    </p>
+                  </div>
+                  <div style={{textAlign: 'right'}}>
+                    <p style={{color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
+                      ${(singlePrice * 2).toFixed(2)}
+                    </p>
+                    <p style={{
+                      color: purchaseBoth ? '#22c55e' : '#d4af37', 
+                      fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
+                    }}>
+                      ${bundlePrice}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Selection Summary */}
         {hasSelection && (
           <div style={{
             background: 'rgba(212,175,55,0.1)',
-            border: '2px solid #d4af37',
-            borderRadius: '12px',
-            padding: '15px 20px',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
+            border: '2px solid #d4af37', borderRadius: '12px',
+            padding: '15px 20px', marginBottom: '20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            animation: 'fadeInUp 0.4s ease-out'
           }}>
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
               <span style={{fontSize: '24px'}}>✓</span>
@@ -682,16 +937,12 @@ export default function ComparisonPage() {
         )}
 
         {/* Checkout Section */}
-        <div style={{background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '25px'}}>
-          
+        <div style={{
+          background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '25px',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
+        }}>
           {/* Coupon Input */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            marginBottom: '20px',
-            flexWrap: 'wrap'
-          }}>
+          <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap'}}>
             <input
               type="text"
               value={couponCode}
@@ -699,14 +950,10 @@ export default function ComparisonPage() {
               placeholder="¿Tienes un código de cupón?"
               disabled={!!couponApplied}
               style={{
-                flex: 1,
-                minWidth: '200px',
-                padding: '14px 18px', 
+                flex: 1, minWidth: '200px', padding: '14px 18px', 
                 background: 'rgba(255,255,255,0.05)', 
                 border: '2px solid rgba(255,255,255,0.1)', 
-                borderRadius: '10px', 
-                color: 'white',
-                fontSize: '15px'
+                borderRadius: '10px', color: 'white', fontSize: '15px'
               }}
             />
             {!couponApplied ? (
@@ -717,25 +964,18 @@ export default function ComparisonPage() {
                   padding: '14px 24px', 
                   background: couponCode.trim() ? '#d4af37' : 'rgba(255,255,255,0.1)', 
                   color: couponCode.trim() ? '#1a3a2f' : 'rgba(255,255,255,0.3)', 
-                  border: 'none', 
-                  borderRadius: '10px', 
+                  border: 'none', borderRadius: '10px', 
                   cursor: couponCode.trim() ? 'pointer' : 'not-allowed', 
-                  fontWeight: 'bold',
-                  fontSize: '15px'
+                  fontWeight: 'bold', fontSize: '15px'
                 }}
               >
                 {isLoadingCoupon ? '...' : 'Aplicar'}
               </button>
             ) : (
               <span style={{
-                color: '#22c55e', 
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '14px 20px',
-                background: 'rgba(34,197,94,0.1)',
-                borderRadius: '10px'
+                color: '#22c55e', fontWeight: 'bold',
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '14px 20px', background: 'rgba(34,197,94,0.1)', borderRadius: '10px'
               }}>
                 ✓ {couponApplied.code} aplicado
               </span>
@@ -750,16 +990,13 @@ export default function ComparisonPage() {
             onClick={handleCheckout}
             disabled={isCheckingOut || !hasSelection}
             style={{
-              width: '100%',
-              padding: '22px',
+              width: '100%', padding: '22px',
               background: hasSelection 
                 ? 'linear-gradient(90deg, #e11d74, #be185d)' 
                 : 'rgba(255,255,255,0.1)',
               color: hasSelection ? 'white' : 'rgba(255,255,255,0.3)',
-              border: 'none',
-              borderRadius: '14px',
-              fontSize: '20px',
-              fontWeight: 'bold',
+              border: 'none', borderRadius: '14px',
+              fontSize: '20px', fontWeight: 'bold',
               cursor: hasSelection ? 'pointer' : 'not-allowed',
               transition: 'all 0.3s',
               boxShadow: hasSelection ? '0 4px 20px rgba(225,29,116,0.4)' : 'none'
@@ -777,13 +1014,7 @@ export default function ComparisonPage() {
           </button>
 
           {/* Trust badges */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '20px',
-            marginTop: '20px',
-            flexWrap: 'wrap'
-          }}>
+          <div style={{display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', flexWrap: 'wrap'}}>
             <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
               🔒 Pago Seguro
             </span>
@@ -796,7 +1027,6 @@ export default function ComparisonPage() {
           </div>
         </div>
 
-        {/* ✅ FIX: Dynamic year */}
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
           RegalosQueCantan © {new Date().getFullYear()}
         </p>
