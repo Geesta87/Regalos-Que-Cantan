@@ -9,9 +9,6 @@ const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
-// ✅ NEW: Auto-play teaser duration (seconds)
-const AUTO_TEASER_DURATION = 5;
-
 // ✅ NEW: Version personality labels per index
 const VERSION_VIBES = [
   { label: 'Emotiva', emoji: '💫', color: '#3b82f6', gradient: 'linear-gradient(135deg, #1e3a5f, #2563eb)' },
@@ -38,10 +35,9 @@ export default function ComparisonPage() {
   const [currentTimes, setCurrentTimes] = useState({});
   const [previewEnded, setPreviewEnded] = useState({});
   
-  // ✅ NEW: Auto-play state
+  // ✅ NEW: Auto-play state (full sequential preview)
   const [autoPlayed, setAutoPlayed] = useState(false);
-  const [autoTeasing, setAutoTeasing] = useState(false);
-  const autoTeaserTimeout = useRef(null);
+  const [autoPlayingIndex, setAutoPlayingIndex] = useState(-1); // -1 = not auto-playing, 0 = song 1, 1 = song 2
   
   // ✅ NEW: Entrance animation state
   const [isVisible, setIsVisible] = useState(false);
@@ -209,7 +205,7 @@ export default function ComparisonPage() {
     }
   }, [songData]);
 
-  // ✅ NEW: Auto-play 5-second teaser of Version 1 on load
+  // ✅ NEW: Auto-play full sequential preview (Song 1 → Song 2)
   useEffect(() => {
     if (autoPlayed || songs.length === 0 || loading) return;
     
@@ -220,22 +216,15 @@ export default function ComparisonPage() {
     const startTimer = setTimeout(() => {
       try {
         audio.currentTime = PREVIEW_START;
-        audio.volume = 0.6;
+        audio.volume = 0.7;
         const playPromise = audio.play();
         
         if (playPromise !== undefined) {
           playPromise.then(() => {
             setPlayingId(firstSong.id);
-            setAutoTeasing(true);
-            
-            autoTeaserTimeout.current = setTimeout(() => {
-              audio.pause();
-              audio.volume = 1.0;
-              setPlayingId(null);
-              setAutoTeasing(false);
-              setAutoPlayed(true);
-            }, AUTO_TEASER_DURATION * 1000);
+            setAutoPlayingIndex(0);
           }).catch(() => {
+            // Autoplay blocked by browser — that's fine
             setAutoPlayed(true);
           });
         }
@@ -244,17 +233,14 @@ export default function ComparisonPage() {
       }
     }, 1500);
 
-    return () => {
-      clearTimeout(startTimer);
-      if (autoTeaserTimeout.current) clearTimeout(autoTeaserTimeout.current);
-    };
+    return () => clearTimeout(startTimer);
   }, [songs, loading, autoPlayed]);
 
   const handlePlay = (songId) => {
     try {
-      if (autoTeasing) {
-        if (autoTeaserTimeout.current) clearTimeout(autoTeaserTimeout.current);
-        setAutoTeasing(false);
+      // If auto-playing, cancel it on manual interaction
+      if (autoPlayingIndex >= 0) {
+        setAutoPlayingIndex(-1);
         setAutoPlayed(true);
       }
 
@@ -302,6 +288,37 @@ export default function ComparisonPage() {
         audio.currentTime = PREVIEW_START;
         setPlayingId(null);
         setPreviewEnded(prev => ({ ...prev, [songId]: true }));
+        
+        // ✅ Auto-play chain: Song 1 ended → start Song 2
+        if (autoPlayingIndex === 0 && songs.length >= 2) {
+          const nextSong = songs[1];
+          const nextAudio = audioRefs.current[nextSong?.id];
+          if (nextAudio) {
+            setTimeout(() => {
+              try {
+                nextAudio.currentTime = PREVIEW_START;
+                nextAudio.volume = 0.7;
+                nextAudio.play().then(() => {
+                  setPlayingId(nextSong.id);
+                  setAutoPlayingIndex(1);
+                  setCurrentTimes(prev => ({ ...prev, [nextSong.id]: 0 }));
+                  setPreviewEnded(prev => ({ ...prev, [nextSong.id]: false }));
+                }).catch(() => {
+                  setAutoPlayingIndex(-1);
+                  setAutoPlayed(true);
+                });
+              } catch (e) {
+                setAutoPlayingIndex(-1);
+                setAutoPlayed(true);
+              }
+            }, 800); // Brief pause between songs
+          }
+        }
+        // Song 2 auto-play ended → done
+        else if (autoPlayingIndex === 1) {
+          setAutoPlayingIndex(-1);
+          setAutoPlayed(true);
+        }
       }
     } catch (err) {
       if (import.meta.env.DEV) console.error('Time update error:', err);
@@ -530,25 +547,25 @@ export default function ComparisonPage() {
           </p>
           
           {/* Auto-play indicator */}
-          {autoTeasing && (
+          {autoPlayingIndex >= 0 && (
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '8px',
-              background: 'rgba(212,175,55,0.12)',
+              background: `rgba(${autoPlayingIndex === 0 ? '59,130,246' : '139,92,246'},0.15)`,
               padding: '8px 18px',
               borderRadius: '20px',
               fontSize: '13px',
-              color: '#d4af37',
+              color: autoPlayingIndex === 0 ? '#60a5fa' : '#a78bfa',
               marginTop: '12px',
               animation: 'fadeInUp 0.5s ease-out'
             }}>
               <div style={{display: 'flex', alignItems: 'flex-end', gap: '2px', height: '16px'}}>
-                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq1 0.6s ease-in-out infinite'}} />
-                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq2 0.5s ease-in-out infinite'}} />
-                <div style={{width: '3px', background: '#d4af37', borderRadius: '2px', animation: 'eq3 0.7s ease-in-out infinite'}} />
+                <div style={{width: '3px', background: 'currentColor', borderRadius: '2px', animation: 'eq1 0.6s ease-in-out infinite'}} />
+                <div style={{width: '3px', background: 'currentColor', borderRadius: '2px', animation: 'eq2 0.5s ease-in-out infinite'}} />
+                <div style={{width: '3px', background: 'currentColor', borderRadius: '2px', animation: 'eq3 0.7s ease-in-out infinite'}} />
               </div>
-              Escuchando Versión 1...
+              {autoPlayingIndex === 0 ? '💫 Escuchando Versión 1 — Emotiva...' : '🔥 Escuchando Versión 2 — Enérgica...'}
             </div>
           )}
         </div>
@@ -591,6 +608,7 @@ export default function ComparisonPage() {
             const isSelected = selectedSongId === song.id;
             const isOtherSelected = (selectedSongId && !isSelected) || purchaseBoth;
             const isPlaying = playingId === song.id;
+            const isAutoHighlight = autoPlayingIndex === index; // ✅ Card being auto-played
             const vibe = VERSION_VIBES[index] || VERSION_VIBES[0];
             const lyricsPreview = getLyricsPreview(song.lyrics);
             const isExpanded = expandedLyrics[song.id];
@@ -600,19 +618,23 @@ export default function ComparisonPage() {
                 key={song.id}
                 onClick={() => selectSong(song.id)}
                 style={{
-                  background: isSelected 
-                    ? 'linear-gradient(135deg, rgba(212,175,55,0.15), rgba(212,175,55,0.05))' 
+                  background: (isSelected || isAutoHighlight)
+                    ? `linear-gradient(135deg, ${isAutoHighlight ? vibe.color + '20' : 'rgba(212,175,55,0.15)'}, ${isAutoHighlight ? vibe.color + '08' : 'rgba(212,175,55,0.05)'})` 
                     : 'rgba(255,255,255,0.03)',
-                  border: isSelected 
-                    ? '3px solid #d4af37' 
+                  border: (isSelected || isAutoHighlight)
+                    ? `3px solid ${isSelected ? '#d4af37' : vibe.color + '80'}` 
                     : '2px solid rgba(255,255,255,0.1)',
                   borderRadius: '20px',
                   padding: '24px',
                   cursor: 'pointer',
-                  transition: 'all 0.3s',
+                  transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
                   opacity: isOtherSelected ? 0.5 : 1,
-                  transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-                  boxShadow: isSelected ? '0 0 30px rgba(212,175,55,0.3)' : 'none',
+                  transform: (isSelected || isAutoHighlight) ? 'scale(1.02)' : 'scale(1)',
+                  boxShadow: isSelected 
+                    ? '0 0 30px rgba(212,175,55,0.3)' 
+                    : isAutoHighlight 
+                      ? `0 0 25px ${vibe.color}30` 
+                      : 'none',
                   position: 'relative'
                 }}
               >
@@ -836,7 +858,7 @@ export default function ComparisonPage() {
                 animation: 'ribbonFloat 3s ease-in-out infinite',
                 whiteSpace: 'nowrap'
               }}>
-                🎁 MEJOR REGALO — AHORRA ${bundleSavings.toFixed(2)}
+                🎁 2 CANCIONES POR SOLO ${bundlePrice}
               </div>
 
               {/* Radio indicator */}
