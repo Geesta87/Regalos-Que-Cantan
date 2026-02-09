@@ -304,7 +304,7 @@ export default function DetailsStep() {
             <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-xs">© 2024 Hecho en México.</p>
+          <p className="text-white/20 text-xs">© 2024 RegalosQueCantan.</p>
         </div>
       </footer>
     </div>

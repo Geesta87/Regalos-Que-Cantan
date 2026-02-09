@@ -192,10 +192,10 @@ export default function DetailsPage() {
               <div className="glass-box p-6 rounded-2xl">
                 <div className="flex items-center gap-3 mb-4">
                   <span className="material-symbols-outlined text-gold">auto_awesome</span>
-                  <h3 className="font-bold text-sm tracking-widest uppercase">IA Compositora</h3>
+                  <h3 className="font-bold text-sm tracking-widest uppercase">Compositora Musical</h3>
                 </div>
                 <p className="text-white/50 text-xs leading-relaxed">
-                  Nuestra inteligencia artificial seleccionará las partes más emotivas de tu relato para crear una pieza inolvidable.
+                  Seleccionaremos las partes más emotivas de tu relato para crear una pieza inolvidable.
                 </p>
               </div>
             </aside>
@@ -242,7 +242,7 @@ export default function DetailsPage() {
             <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-xs">© 2025 Hecho en México.</p>
+          <p className="text-white/20 text-xs">© 2025 RegalosQueCantan.</p>
         </div>
       </footer>
     </div>

@@ -15,7 +15,7 @@ const getPersonalizedSteps = (recipientName, genre, occasion) => {
     { 
       icon: 'edit_note', 
       label: `Escribiendo la historia de ${recipientName}...`,
-      detail: 'Nuestra IA está creando letras únicas'
+      detail: 'Creando letras únicas para ti'
     },
     { 
       icon: 'music_note', 
