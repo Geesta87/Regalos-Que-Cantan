@@ -23,6 +23,9 @@ export default function AdminDashboard() {
   const [emailFilter, setEmailFilter] = useState('all'); // all, purchase_confirmation, abandoned_1hr, abandoned_24hr, failed
   const [previewingCampaign, setPreviewingCampaign] = useState(null);
   const [resendingEmail, setResendingEmail] = useState(null);
+  const [lookupSearch, setLookupSearch] = useState('');
+  const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name'
+  const [copiedLinkId, setCopiedLinkId] = useState(null);
   const [stats, setStats] = useState({
     totalSongs: 0,
     totalRevenue: 0,
@@ -625,6 +628,16 @@ export default function AdminDashboard() {
           >
             📧 Emails ({emailLogs.length})
           </button>
+          <button
+            onClick={() => setActiveTab('lookup')}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'lookup' 
+                ? 'bg-amber-400 text-black' 
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            🔍 Lookup
+          </button>
         </div>
 
         {activeTab === 'orders' ? (
@@ -1117,6 +1130,188 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+        ) : activeTab === 'lookup' ? (
+          /* Customer Lookup Tab */
+          <div className="space-y-4">
+            {/* Search/Filter Bar */}
+            <div className="bg-[#1a1f26] rounded-2xl p-4 flex flex-col md:flex-row gap-3">
+              <div className="flex gap-2">
+                {[
+                  { value: 'all', label: 'Todos' },
+                  { value: 'email', label: '📧 Email' },
+                  { value: 'name', label: '👤 Nombre' }
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setLookupSearchType(opt.value)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      lookupSearchType === opt.value
+                        ? 'bg-amber-400 text-black'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+                <input
+                  type="text"
+                  value={lookupSearch}
+                  onChange={(e) => setLookupSearch(e.target.value)}
+                  placeholder="Buscar por email, nombre, o ID..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                />
+                {lookupSearch && (
+                  <button
+                    onClick={() => setLookupSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Results count */}
+            {(() => {
+              const lookupFiltered = songs.filter(song => {
+                if (!lookupSearch.trim()) return true;
+                const q = lookupSearch.toLowerCase().trim();
+                if (lookupSearchType === 'email') return (song.email || '').toLowerCase().includes(q);
+                if (lookupSearchType === 'name') return (song.recipient_name || '').toLowerCase().includes(q) || (song.sender_name || '').toLowerCase().includes(q);
+                // 'all' — search everything
+                return (
+                  (song.email || '').toLowerCase().includes(q) ||
+                  (song.recipient_name || '').toLowerCase().includes(q) ||
+                  (song.sender_name || '').toLowerCase().includes(q) ||
+                  (song.id || '').toLowerCase().includes(q) ||
+                  (song.genre || '').toLowerCase().includes(q)
+                );
+              });
+
+              return (
+                <>
+                  <p className="text-sm text-gray-500">
+                    {lookupSearch
+                      ? `${lookupFiltered.length} resultado${lookupFiltered.length !== 1 ? 's' : ''} para "${lookupSearch}"`
+                      : `${lookupFiltered.length} canciones totales`
+                    }
+                  </p>
+
+                  {/* Song List */}
+                  <div className="space-y-3">
+                    {lookupFiltered.slice(0, 50).map(song => {
+                      const paid = isPaid(song);
+                      const hasAudio = !!song.audio_url;
+                      const previewLink = `${window.location.origin}/listen?song_id=${song.id}`;
+                      const successLink = `${window.location.origin}/success?song_id=${song.id}`;
+
+                      return (
+                        <div
+                          key={song.id}
+                          className="bg-[#1a1f26] rounded-2xl p-4 border border-white/5 hover:border-white/15 transition"
+                        >
+                          {/* Top row */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h3 className="font-bold text-base">
+                                🎵 {song.recipient_name || 'Sin nombre'}
+                                {song.sender_name && (
+                                  <span className="text-gray-500 font-normal text-sm"> ← {song.sender_name}</span>
+                                )}
+                              </h3>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {song.email || 'Sin email'} • {(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {formatDate(song.created_at)}
+                              </p>
+                            </div>
+                            <span className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${
+                              paid
+                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                : hasAudio
+                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                  : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                            }`}>
+                              {paid ? '✓ Pagada' : hasAudio ? '⏳ Sin pago' : '🔄 Generando'}
+                            </span>
+                          </div>
+
+                          {/* Song ID */}
+                          <div className="flex items-center gap-2 mb-3 bg-black/20 rounded-lg px-3 py-2">
+                            <code className="text-xs text-gray-500 flex-1 overflow-hidden text-ellipsis">{song.id}</code>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(song.id); setCopiedLinkId(`id-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                              className="text-xs text-gray-500 hover:text-white transition"
+                            >
+                              {copiedLinkId === `id-${song.id}` ? '✅' : '📋'}
+                            </button>
+                          </div>
+
+                          {/* Link buttons */}
+                          {hasAudio && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(previewLink); setCopiedLinkId(`preview-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                                className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold transition ${
+                                  copiedLinkId === `preview-${song.id}`
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
+                                }`}
+                              >
+                                {copiedLinkId === `preview-${song.id}` ? '✅ ¡Copiado!' : '🎧 Preview Link'}
+                              </button>
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(successLink); setCopiedLinkId(`success-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                                className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold transition ${
+                                  copiedLinkId === `success-${song.id}`
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
+                                }`}
+                              >
+                                {copiedLinkId === `success-${song.id}` ? '✅ ¡Copiado!' : '📥 Download Link'}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Quick open + detail */}
+                          <div className="flex items-center justify-between mt-2">
+                            {hasAudio && (
+                              <div className="flex gap-3">
+                                <a href={previewLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-amber-400 underline">
+                                  Abrir preview ↗
+                                </a>
+                                <a href={successLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-blue-400 underline">
+                                  Abrir success ↗
+                                </a>
+                              </div>
+                            )}
+                            <button
+                              onClick={() => setSelectedSong(song)}
+                              className="text-xs text-gray-500 hover:text-white underline ml-auto"
+                            >
+                              Ver detalles
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {lookupFiltered.length > 50 && (
+                      <p className="text-center text-sm text-gray-500 py-3">
+                        Mostrando 50 de {lookupFiltered.length} — usa el buscador para filtrar más
+                      </p>
+                    )}
+                    {lookupFiltered.length === 0 && (
+                      <div className="text-center py-12 bg-[#1a1f26] rounded-2xl">
+                        <p className="text-3xl mb-3">🔍</p>
+                        <p className="text-gray-500">No se encontraron canciones{lookupSearch ? ` para "${lookupSearch}"` : ''}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         ) : null}
       </main>
 
@@ -1403,25 +1598,52 @@ export default function AdminDashboard() {
                 </div>
               )}
               
-              {/* Customer Link */}
+              {/* Customer Links */}
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                <p className="text-xs text-blue-400 mb-2">🔗 Link del cliente</p>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`${window.location.origin}/success?song_id=${selectedSong.id}`}
-                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
-                  />
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/success?song_id=${selectedSong.id}`);
-                      alert('Link copiado!');
-                    }}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-400 transition"
-                  >
-                    Copiar
-                  </button>
+                <p className="text-xs text-blue-400 mb-2">🔗 Links del cliente</p>
+                
+                {/* Preview Link */}
+                <div className="mb-3">
+                  <p className="text-xs text-gray-500 mb-1">🎧 Preview (20s + compra):</p>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={`${window.location.origin}/listen?song_id=${selectedSong.id}`}
+                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
+                    />
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/listen?song_id=${selectedSong.id}`);
+                        alert('Preview link copiado!');
+                      }}
+                      className="px-4 py-2 bg-amber-500 text-black rounded-lg text-sm font-medium hover:bg-amber-400 transition"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Success Link */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">📥 Download (canción completa):</p>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={`${window.location.origin}/success?song_id=${selectedSong.id}`}
+                      className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
+                    />
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/success?song_id=${selectedSong.id}`);
+                        alert('Download link copiado!');
+                      }}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-400 transition"
+                    >
+                      Copiar
+                    </button>
+                  </div>
                 </div>
               </div>
               
