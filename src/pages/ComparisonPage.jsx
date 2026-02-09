@@ -9,10 +9,10 @@ const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
-// ✅ NEW: Version personality labels per index
+// ✅ NEW: Version personality - VIBRANT colors
 const VERSION_VIBES = [
-  { label: 'Emotiva', emoji: '💫', color: '#3b82f6', gradient: 'linear-gradient(135deg, #1e3a5f, #2563eb)' },
-  { label: 'Enérgica', emoji: '🔥', color: '#8b5cf6', gradient: 'linear-gradient(135deg, #4c1d95, #7c3aed)' }
+  { label: 'Emotiva', emoji: '💫', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)', bgTint: 'rgba(59,130,246,0.12)' },
+  { label: 'Enérgica', emoji: '🔥', color: '#a855f7', gradient: 'linear-gradient(135deg, #7c3aed, #9333ea)', bgTint: 'rgba(168,85,247,0.12)' }
 ];
 
 export default function ComparisonPage() {
@@ -448,7 +448,7 @@ export default function ComparisonPage() {
   const recipientName = formData?.recipientName || 'ti';
   
   return (
-    <div style={{backgroundColor: '#1a3a2f', color: 'white', minHeight: '100vh', padding: '20px', overflow: 'hidden'}}>
+    <div style={{background: 'linear-gradient(160deg, #0f2027 0%, #1a3a2f 40%, #1e3a24 70%, #162832 100%)', color: 'white', minHeight: '100vh', padding: '20px', overflow: 'hidden'}}>
       
       {/* ✅ CSS Animations */}
       <style>{`
@@ -461,8 +461,8 @@ export default function ComparisonPage() {
           50% { transform: scale(1.08); }
         }
         @keyframes glow {
-          0%, 100% { box-shadow: 0 0 20px rgba(212,175,55,0.3), 0 0 40px rgba(212,175,55,0.1); }
-          50% { box-shadow: 0 0 30px rgba(212,175,55,0.5), 0 0 60px rgba(212,175,55,0.2); }
+          0%, 100% { box-shadow: 0 0 25px rgba(212,175,55,0.4), 0 0 50px rgba(212,175,55,0.15); }
+          50% { box-shadow: 0 0 40px rgba(212,175,55,0.6), 0 0 80px rgba(212,175,55,0.25); }
         }
         @keyframes shimmer {
           0% { background-position: -200% 0; }
@@ -502,17 +502,18 @@ export default function ComparisonPage() {
         {/* ===== REC 3: Personalized emotional banner ===== */}
         <div style={{textAlign: 'center', marginBottom: '30px'}}>
           <div style={{
-            background: 'linear-gradient(135deg, rgba(212,175,55,0.12), rgba(225,29,116,0.08))',
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.15), rgba(139,92,246,0.1))',
             borderRadius: '16px',
-            padding: '22px 28px',
+            padding: '24px 28px',
             marginBottom: '20px',
-            border: '1px solid rgba(212,175,55,0.15)'
+            border: '1px solid rgba(212,175,55,0.3)',
+            boxShadow: '0 4px 30px rgba(212,175,55,0.1), inset 0 1px 0 rgba(255,255,255,0.05)'
           }}>
             <p style={{
               fontSize: '13px',
-              color: 'rgba(255,255,255,0.5)',
+              color: 'rgba(255,255,255,0.7)',
               margin: '0 0 6px 0',
-              letterSpacing: '2px',
+              letterSpacing: '2.5px',
               textTransform: 'uppercase'
             }}>
               Hecho con ❤️ exclusivamente para
@@ -531,7 +532,7 @@ export default function ComparisonPage() {
             </h2>
             <p style={{
               fontSize: '14px',
-              color: 'rgba(255,255,255,0.45)',
+              color: 'rgba(255,255,255,0.6)',
               margin: 0,
               fontStyle: 'italic'
             }}>
@@ -539,11 +540,11 @@ export default function ComparisonPage() {
             </p>
           </div>
 
-          <h1 style={{fontSize: '22px', marginBottom: '6px', fontWeight: 'bold'}}>
+          <h1 style={{fontSize: '24px', marginBottom: '6px', fontWeight: 'bold'}}>
             🎵 Elige tu versión favorita
           </h1>
-          <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '14px', margin: 0}}>
-            {songs.length} versiones • <span style={{color: '#d4af37'}}>{genreName}</span>
+          <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
+            {songs.length} versiones • <span style={{color: '#f5d77a', fontWeight: '600'}}>{genreName}</span>
           </p>
           
           {/* Auto-play indicator */}
@@ -585,13 +586,13 @@ export default function ComparisonPage() {
             { icon: '💝', text: 'Ideal para', sub: 'San Valentín' }
           ].map((item, i) => (
             <span key={i} style={{
-              fontSize: '12px',
-              color: 'rgba(255,255,255,0.45)',
+              fontSize: '13px',
+              color: 'rgba(255,255,255,0.6)',
               display: 'flex',
               alignItems: 'center',
               gap: '4px'
             }}>
-              {item.icon} <span style={{color: '#d4af37'}}>{item.text}</span> {item.sub}
+              {item.icon} <span style={{color: '#f5d77a', fontWeight: '600'}}>{item.text}</span> {item.sub}
             </span>
           ))}
         </div>
@@ -619,23 +620,24 @@ export default function ComparisonPage() {
                 onClick={() => selectSong(song.id)}
                 style={{
                   background: (isSelected || isAutoHighlight)
-                    ? `linear-gradient(135deg, ${isAutoHighlight ? vibe.color + '20' : 'rgba(212,175,55,0.15)'}, ${isAutoHighlight ? vibe.color + '08' : 'rgba(212,175,55,0.05)'})` 
-                    : 'rgba(255,255,255,0.03)',
+                    ? `linear-gradient(135deg, ${vibe.color}30, ${vibe.color}15)` 
+                    : 'linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
                   border: (isSelected || isAutoHighlight)
-                    ? `3px solid ${isSelected ? '#d4af37' : vibe.color + '80'}` 
-                    : '2px solid rgba(255,255,255,0.1)',
+                    ? `3px solid ${isSelected ? '#f5d77a' : vibe.color}` 
+                    : '2px solid rgba(255,255,255,0.18)',
                   borderRadius: '20px',
                   padding: '24px',
                   cursor: 'pointer',
                   transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
-                  opacity: isOtherSelected ? 0.5 : 1,
+                  opacity: isOtherSelected ? 0.55 : 1,
                   transform: (isSelected || isAutoHighlight) ? 'scale(1.02)' : 'scale(1)',
                   boxShadow: isSelected 
-                    ? '0 0 30px rgba(212,175,55,0.3)' 
+                    ? '0 0 35px rgba(212,175,55,0.4), 0 8px 32px rgba(0,0,0,0.4)' 
                     : isAutoHighlight 
-                      ? `0 0 25px ${vibe.color}30` 
-                      : 'none',
-                  position: 'relative'
+                      ? `0 0 30px ${vibe.color}50, 0 8px 32px rgba(0,0,0,0.4)` 
+                      : '0 4px 24px rgba(0,0,0,0.3)',
+                  position: 'relative',
+                  backdropFilter: 'blur(10px)'
                 }}
               >
                 {/* Radio indicator */}
@@ -654,15 +656,16 @@ export default function ComparisonPage() {
                 <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px'}}>
                   <span style={{
                     background: vibe.gradient, 
-                    padding: '6px 14px', 
+                    padding: '7px 16px', 
                     borderRadius: '20px', 
                     fontSize: '13px', 
                     fontWeight: 'bold',
-                    boxShadow: `0 2px 10px ${vibe.color}40`
+                    boxShadow: `0 3px 12px ${vibe.color}50`,
+                    letterSpacing: '0.3px'
                   }}>
-                    {vibe.emoji} Versión {song.version || index + 1}
+                    {vibe.emoji} Versión {index + 1}
                   </span>
-                  <span style={{fontSize: '12px', color: vibe.color, fontWeight: '600'}}>
+                  <span style={{fontSize: '13px', color: vibe.color, fontWeight: '700', letterSpacing: '0.5px'}}>
                     {vibe.label}
                   </span>
                 </div>
@@ -678,7 +681,7 @@ export default function ComparisonPage() {
                   overflow: 'hidden',
                   position: 'relative',
                   animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
-                  background: `linear-gradient(135deg, ${vibe.color}30, rgba(225,29,116,0.15))`
+                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`
                 }}>
                   {song.imageUrl ? (
                     <img 
@@ -721,7 +724,7 @@ export default function ComparisonPage() {
                 <h3 style={{fontSize: '18px', marginBottom: '4px', fontWeight: 'bold'}}>
                   Para {recipientName}
                 </h3>
-                <p style={{color: '#d4af37', fontSize: '13px', marginBottom: '12px'}}>{genreName}</p>
+                <p style={{color: '#f5d77a', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>{genreName}</p>
 
                 {/* REC 4: Lyrics preview snippet */}
                 {lyricsPreview.length > 0 && (
@@ -731,23 +734,23 @@ export default function ComparisonPage() {
                       setExpandedLyrics(prev => ({...prev, [song.id]: !prev[song.id]}));
                     }}
                     style={{
-                      background: 'rgba(255,255,255,0.04)',
+                      background: 'rgba(255,255,255,0.06)',
                       borderRadius: '10px',
                       padding: '12px 14px',
                       marginBottom: '15px',
-                      borderLeft: `3px solid ${vibe.color}50`,
+                      borderLeft: `3px solid ${vibe.color}70`,
                       cursor: 'pointer'
                     }}
                   >
                     <p style={{
-                      fontSize: '11px', color: 'rgba(255,255,255,0.4)',
+                      fontSize: '11px', color: 'rgba(255,255,255,0.55)',
                       margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '1px'
                     }}>
                       📝 Vista previa de la letra
                     </p>
                     {lyricsPreview.slice(0, isExpanded ? 4 : 2).map((line, i) => (
                       <p key={i} style={{
-                        fontSize: '13px', color: 'rgba(255,255,255,0.6)',
+                        fontSize: '13px', color: 'rgba(255,255,255,0.75)',
                         margin: i < (isExpanded ? 3 : 1) ? '0 0 3px 0' : 0,
                         fontStyle: 'italic', lineHeight: '1.4'
                       }}>
@@ -768,14 +771,14 @@ export default function ComparisonPage() {
                   style={{
                     width: '100%', padding: '16px',
                     background: isPlaying 
-                      ? 'linear-gradient(90deg, #d4af37, #f5d77a)' 
-                      : `linear-gradient(90deg, ${vibe.color}90, ${vibe.color})`,
+                      ? 'linear-gradient(90deg, #f5d77a, #d4af37)' 
+                      : vibe.gradient,
                     color: isPlaying ? '#1a3a2f' : 'white',
                     border: 'none', borderRadius: '12px',
                     cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'all 0.3s',
-                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.4)' : `0 4px 15px ${vibe.color}30`
+                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.5)' : `0 4px 18px ${vibe.color}40`
                   }}
                 >
                   <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
@@ -783,7 +786,7 @@ export default function ComparisonPage() {
                 </button>
 
                 {/* Progress bar */}
-                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden'}}>
+                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.12)', borderRadius: '3px', overflow: 'hidden'}}>
                   <div style={{
                     height: '100%', 
                     background: isPlaying ? 'linear-gradient(90deg, #d4af37, #f5d77a)' : vibe.color, 
@@ -792,17 +795,17 @@ export default function ComparisonPage() {
                     transition: 'width 0.1s'
                   }} />
                 </div>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '6px', textAlign: 'right'}}>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
                   {formatTime(currentTimes[song.id] || 0)} / 0:20
                 </p>
 
                 {/* Price */}
                 <div style={{
                   marginTop: '12px', paddingTop: '15px',
-                  borderTop: '1px solid rgba(255,255,255,0.08)',
+                  borderTop: '1px solid rgba(255,255,255,0.12)',
                   textAlign: 'center'
                 }}>
-                  <span style={{fontSize: '26px', fontWeight: 'bold', color: isSelected ? '#d4af37' : 'white'}}>
+                  <span style={{fontSize: '28px', fontWeight: 'bold', color: isSelected ? '#f5d77a' : 'white'}}>
                     ${singlePrice}
                   </span>
                 </div>
@@ -819,15 +822,15 @@ export default function ComparisonPage() {
               display: 'flex', alignItems: 'center', margin: '30px 0', gap: '20px',
               animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
             }}>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.3))'}} />
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.5))'}} />
               <span style={{
-                color: '#d4af37', fontSize: '16px', fontWeight: 'bold',
-                padding: '8px 20px', background: 'rgba(212,175,55,0.1)',
-                borderRadius: '20px', border: '1px solid rgba(212,175,55,0.3)'
+                color: '#f5d77a', fontSize: '16px', fontWeight: 'bold',
+                padding: '8px 20px', background: 'rgba(212,175,55,0.15)',
+                borderRadius: '20px', border: '1px solid rgba(212,175,55,0.4)'
               }}>
                 O MEJOR AÚN
               </span>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(212,175,55,0.3), transparent)'}} />
+              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(212,175,55,0.5), transparent)'}} />
             </div>
 
             {/* Bundle card */}
@@ -835,9 +838,9 @@ export default function ComparisonPage() {
               onClick={selectBoth}
               style={{
                 background: purchaseBoth 
-                  ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(212,175,55,0.1))' 
-                  : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))',
-                border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.12)',
+                  ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(212,175,55,0.15))' 
+                  : 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
+                border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.18)',
                 borderRadius: '20px', padding: '30px 25px',
                 cursor: 'pointer', marginBottom: '30px',
                 position: 'relative', transition: 'all 0.3s',
@@ -910,19 +913,19 @@ export default function ComparisonPage() {
                     <h3 style={{fontSize: '20px', marginBottom: '8px', fontWeight: 'bold'}}>
                       🎁 ¡Llévate AMBAS versiones!
                     </h3>
-                    <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '14px', margin: '0 0 4px 0'}}>
+                    <p style={{color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 4px 0'}}>
                       Regala 2 versiones — deja que {recipientName} elija su favorita
                     </p>
-                    <p style={{color: 'rgba(255,255,255,0.4)', fontSize: '13px', margin: 0}}>
+                    <p style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', margin: 0}}>
                       💫 Emotiva + 🔥 Enérgica • Descarga instantánea
                     </p>
                   </div>
                   <div style={{textAlign: 'right'}}>
-                    <p style={{color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
+                    <p style={{color: 'rgba(255,255,255,0.45)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
                       ${(singlePrice * 2).toFixed(2)}
                     </p>
                     <p style={{
-                      color: purchaseBoth ? '#22c55e' : '#d4af37', 
+                      color: purchaseBoth ? '#22c55e' : '#f5d77a', 
                       fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
                     }}>
                       ${bundlePrice}
@@ -937,8 +940,8 @@ export default function ComparisonPage() {
         {/* Selection Summary */}
         {hasSelection && (
           <div style={{
-            background: 'rgba(212,175,55,0.1)',
-            border: '2px solid #d4af37', borderRadius: '12px',
+            background: 'rgba(212,175,55,0.15)',
+            border: '2px solid #f5d77a', borderRadius: '12px',
             padding: '15px 20px', marginBottom: '20px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             animation: 'fadeInUp 0.4s ease-out'
@@ -946,7 +949,7 @@ export default function ComparisonPage() {
             <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
               <span style={{fontSize: '24px'}}>✓</span>
               <div>
-                <p style={{margin: 0, fontWeight: 'bold', color: '#d4af37'}}>Seleccionado:</p>
+                <p style={{margin: 0, fontWeight: 'bold', color: '#f5d77a'}}>Seleccionado:</p>
                 <p style={{margin: 0, fontSize: '14px'}}>{getSelectionLabel()}</p>
               </div>
             </div>
@@ -960,7 +963,7 @@ export default function ComparisonPage() {
 
         {/* Checkout Section */}
         <div style={{
-          background: 'rgba(255,255,255,0.03)', borderRadius: '20px', padding: '25px',
+          background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
         }}>
           {/* Coupon Input */}
@@ -973,8 +976,8 @@ export default function ComparisonPage() {
               disabled={!!couponApplied}
               style={{
                 flex: 1, minWidth: '200px', padding: '14px 18px', 
-                background: 'rgba(255,255,255,0.05)', 
-                border: '2px solid rgba(255,255,255,0.1)', 
+                background: 'rgba(255,255,255,0.07)', 
+                border: '2px solid rgba(255,255,255,0.15)', 
                 borderRadius: '10px', color: 'white', fontSize: '15px'
               }}
             />
@@ -984,7 +987,7 @@ export default function ComparisonPage() {
                 disabled={isLoadingCoupon || !couponCode.trim()}
                 style={{
                   padding: '14px 24px', 
-                  background: couponCode.trim() ? '#d4af37' : 'rgba(255,255,255,0.1)', 
+                  background: couponCode.trim() ? '#f5d77a' : 'rgba(255,255,255,0.1)', 
                   color: couponCode.trim() ? '#1a3a2f' : 'rgba(255,255,255,0.3)', 
                   border: 'none', borderRadius: '10px', 
                   cursor: couponCode.trim() ? 'pointer' : 'not-allowed', 
@@ -1014,14 +1017,14 @@ export default function ComparisonPage() {
             style={{
               width: '100%', padding: '22px',
               background: hasSelection 
-                ? 'linear-gradient(90deg, #e11d74, #be185d)' 
-                : 'rgba(255,255,255,0.1)',
+                ? 'linear-gradient(90deg, #e11d74, #c026d3)' 
+                : 'rgba(255,255,255,0.08)',
               color: hasSelection ? 'white' : 'rgba(255,255,255,0.3)',
               border: 'none', borderRadius: '14px',
               fontSize: '20px', fontWeight: 'bold',
               cursor: hasSelection ? 'pointer' : 'not-allowed',
               transition: 'all 0.3s',
-              boxShadow: hasSelection ? '0 4px 20px rgba(225,29,116,0.4)' : 'none'
+              boxShadow: hasSelection ? '0 4px 25px rgba(225,29,116,0.5)' : 'none'
             }}
           >
             {isCheckingOut ? (
@@ -1037,13 +1040,13 @@ export default function ComparisonPage() {
 
           {/* Trust badges */}
           <div style={{display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', flexWrap: 'wrap'}}>
-            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
               🔒 Pago Seguro
             </span>
-            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
               ⚡ Descarga Instantánea
             </span>
-            <span style={{color: 'rgba(255,255,255,0.4)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'}}>
+            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
               ✨ Calidad Premium
             </span>
           </div>
