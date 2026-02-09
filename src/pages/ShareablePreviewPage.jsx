@@ -58,8 +58,17 @@ export default function ShareablePreviewPage() {
 
       setSong(data);
 
-      // Check if already paid — if song has a paid status, redirect to success
-      if (data.status === 'paid' || data.status === 'completed') {
+      // Check if already paid — use robust payment check (status field is for generation, NOT payment)
+      const songIsPaid = (
+        data.paid === true || data.paid === 'true' || data.paid === 1 ||
+        data.is_paid === true ||
+        data.payment_status === 'paid' || data.payment_status === 'completed' || data.payment_status === 'succeeded' ||
+        !!data.stripe_payment_id ||
+        !!data.paid_at ||
+        (data.amount_paid && parseFloat(data.amount_paid) > 0)
+      );
+      
+      if (songIsPaid) {
         setAlreadyPaid(true);
       }
 
