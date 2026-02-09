@@ -18,6 +18,7 @@ import ComparisonPage from './pages/ComparisonPage';
 import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import WhatsAppButton from './components/WhatsAppButton';
 
 // SEO Hub pages
 import GenerosHub from './pages/seo/GenerosHub';
@@ -293,6 +294,11 @@ export default function App() {
           {/* SEO Dynamic Occasion pages */}
           {currentPage.startsWith('ocasiones/') && (
             <OccasionLanding occasionSlug={getSlugFromPage(currentPage, 'ocasiones/')} />
+          )}
+
+          {/* WhatsApp floating button - hidden on admin pages */}
+          {currentPage !== 'adminLogin' && currentPage !== 'adminDashboard' && (
+            <WhatsAppButton />
           )}
         </div>
       </AppContext.Provider>
