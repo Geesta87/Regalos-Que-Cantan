@@ -216,14 +216,15 @@ export default function ComparisonPage() {
 
   // ✅ NEW: Background Song 2 generation
   useEffect(() => {
-    // Only run if Song 2 is pending and we have Song 1 loaded
-    if (!songData?.song2Pending || song2Started.current || songs.length === 0) return;
+    // Only run if Song 2 is pending, Song 1 is loaded (not loading), and we haven't started yet
+    if (!songData?.song2Pending || song2Started.current || loading) return;
+    if (songs.length === 0) return; // songs loaded but empty = error state, don't generate
     song2Started.current = true;
     setSong2Loading(true);
 
     const formDataForSong2 = songData.formDataForSong2;
     if (!formDataForSong2) {
-      if (import.meta.env.DEV) console.warn('No formData for Song 2 generation');
+      if (import.meta.env.DEV) console.warn('❌ No formData for Song 2 generation');
       setSong2Loading(false);
       return;
     }
@@ -231,12 +232,15 @@ export default function ComparisonPage() {
     async function generateSong2() {
       try {
         if (import.meta.env.DEV) console.log('🎵 Starting background Song 2 generation...');
+        if (import.meta.env.DEV) console.log('📋 formDataForSong2:', JSON.stringify(formDataForSong2).substring(0, 200));
 
         const result = await generateSong({
           ...formDataForSong2,
           version: 2,
-          sessionId: songData.sessionId
+          sessionId: songData.sessionId || null
         });
+
+        if (import.meta.env.DEV) console.log('📡 Song 2 API response:', JSON.stringify(result).substring(0, 200));
 
         if (result.success && result.song?.id) {
           if (import.meta.env.DEV) console.log('✅ Song 2 started:', result.song.id);
@@ -245,7 +249,7 @@ export default function ComparisonPage() {
           const pollForSong2 = async () => {
             try {
               const status = await checkSongStatus(result.song.id);
-              if (import.meta.env.DEV) console.log('📊 Song 2 status:', status.status);
+              if (import.meta.env.DEV) console.log('📊 Song 2 poll:', status.status);
 
               if (status.status === 'completed' && status.song) {
                 clearInterval(song2PollRef.current);
@@ -257,16 +261,14 @@ export default function ComparisonPage() {
                   imageUrl: status.song.image_url,
                   lyrics: status.song.lyrics
                 };
-                setSongs(prev => [...prev, newSong].sort((a, b) => (a.version || 1) - (b.version || 1)));
+                setSongs(prev => {
+                  const updated = [...prev, newSong].sort((a, b) => (a.version || 1) - (b.version || 1));
+                  // Save updated IDs to localStorage
+                  localStorage.setItem('rqc_comparison_songs', JSON.stringify(updated.map(s => s.id)));
+                  return updated;
+                });
                 setSong2Loading(false);
                 setSong2Ready(true);
-                
-                // Save updated song IDs to localStorage
-                setSongs(prev => {
-                  const allIds = prev.map(s => s.id);
-                  localStorage.setItem('rqc_comparison_songs', JSON.stringify(allIds));
-                  return prev;
-                });
 
                 if (import.meta.env.DEV) console.log('🎉 Song 2 ready!');
               } else if (status.status === 'failed') {
@@ -284,21 +286,22 @@ export default function ComparisonPage() {
           song2PollRef.current = setInterval(pollForSong2, 3000);
         } else {
           setSong2Loading(false);
-          if (import.meta.env.DEV) console.warn('⚠️ Song 2 failed to start');
+          if (import.meta.env.DEV) console.warn('⚠️ Song 2 failed to start:', result.error || 'unknown');
         }
       } catch (err) {
         setSong2Loading(false);
-        if (import.meta.env.DEV) console.error('Song 2 generation error:', err);
+        if (import.meta.env.DEV) console.error('❌ Song 2 generation error:', err);
       }
     }
 
     // Small delay to not compete with Song 1 audio loading
+    if (import.meta.env.DEV) console.log('⏳ Song 2: waiting 2s before starting...');
     const timer = setTimeout(generateSong2, 2000);
     return () => {
       clearTimeout(timer);
       if (song2PollRef.current) clearInterval(song2PollRef.current);
     };
-  }, [songData, songs.length]);
+  }, [songData, songs.length, loading]);
 
   // ✅ NEW: Auto-play full sequential preview (Song 1 → Song 2)
   useEffect(() => {

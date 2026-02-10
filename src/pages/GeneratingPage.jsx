@@ -73,6 +73,7 @@ export default function GeneratingPage() {
   const [song2Status, setSong2Status] = useState('pending');
   const [song1Data, setSong1Data] = useState(null);
   const [song2Data, setSong2Data] = useState(null);
+  const [apiSessionId, setApiSessionId] = useState(null);
   
   // Lyrics preview state
   const [lyricsPreview, setLyricsPreview] = useState('');
@@ -197,6 +198,11 @@ export default function GeneratingPage() {
             console.log('✅ Song 1 started:', result1.song.id);
           }
           setSong1Id(result1.song.id);
+          
+          // Capture sessionId from API for Song 2 linking
+          if (result1.sessionId) {
+            setApiSessionId(result1.sessionId);
+          }
           
           // If we got lyrics back immediately, show them
           if (result1.song.lyrics) {
@@ -343,7 +349,7 @@ export default function GeneratingPage() {
         song2: null,
         song2Pending: true,
         formDataForSong2: { ...formData, version: 2 },
-        sessionId: formData.sessionId
+        sessionId: apiSessionId
       });
       setTimeout(() => navigateTo('comparison'), 1500);
     }
@@ -357,7 +363,7 @@ export default function GeneratingPage() {
         setSongData({
           song1: song1Data,
           song2: song2Data,
-          sessionId: formData.sessionId
+          sessionId: apiSessionId
         });
         setTimeout(() => navigateTo('comparison'), 1500);
       }
@@ -369,7 +375,7 @@ export default function GeneratingPage() {
         setSongData({
           song1: song1Data,
           song2: null,
-          sessionId: formData.sessionId
+          sessionId: apiSessionId
         });
         setTimeout(() => navigateTo('comparison'), 1500);
       }
@@ -382,7 +388,7 @@ export default function GeneratingPage() {
     else if (song1Status === 'failed') {
       setError('No pudimos generar tu canción. Por favor intenta de nuevo.');
     }
-  }, [song1Status, song2Status, song1Data, song2Data, navigateTo, setSongData, formData.sessionId, isFastFunnel]);
+  }, [song1Status, song2Status, song1Data, song2Data, navigateTo, setSongData, apiSessionId, isFastFunnel]);
 
   // Error state
   if (error) {
