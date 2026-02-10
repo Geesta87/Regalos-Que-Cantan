@@ -7,83 +7,72 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// ─── DEDICATION GENERATOR ───
-// Builds a beautiful personalized message from song context (no raw buyer details)
+// ═══════════════════════════════════════
+// DEDICATION GENERATOR
+// ═══════════════════════════════════════
 const generateDedication = (song) => {
-  const recipient = song.recipient_name || 'alguien especial';
-  const sender = song.sender_name || '';
+  const r = song.recipient_name || 'alguien especial';
   const occasion = song.occasion || '';
   const relationship = song.relationship || '';
-
-  const occasionMessages = {
+  const msgs = {
     cumpleanos: [
-      `Esta canción fue creada para celebrar tu día, ${recipient}. Que la música te acompañe siempre. 🎂`,
-      `Feliz cumpleaños, ${recipient}. Alguien quiso regalarte algo único — una canción solo para ti.`,
-      `${recipient}, hoy es tu día y esta canción es tuya. Cada nota fue pensada para ti. 🎁`,
+      `Esta canción fue creada para celebrar tu día, ${r}. Que la música te acompañe siempre. 🎂`,
+      `Feliz cumpleaños, ${r}. Alguien quiso regalarte algo único — una canción solo para ti.`,
+      `${r}, hoy es tu día y esta canción es tuya. Cada nota fue pensada para ti. 🎁`,
     ],
     aniversario: [
-      `${recipient}, esta canción celebra el amor que han construido juntos. Cada nota cuenta su historia. 💕`,
-      `Para ${recipient} — porque hay amores que merecen su propia canción.`,
-      `Esta melodía fue creada para celebrar un amor que sigue creciendo, ${recipient}. 💍`,
+      `${r}, esta canción celebra el amor que han construido juntos. Cada nota cuenta su historia. 💕`,
+      `Para ${r} — porque hay amores que merecen su propia canción.`,
+      `Esta melodía fue creada para celebrar un amor que sigue creciendo, ${r}. 💍`,
     ],
     declaracion: [
-      `${recipient}, alguien quiso decirte algo especial — y eligió hacerlo con una canción. 💌`,
-      `Esta canción lleva un mensaje que las palabras solas no podían expresar, ${recipient}.`,
-      `Para ${recipient} — porque hay sentimientos que solo se pueden cantar. 🌹`,
+      `${r}, alguien quiso decirte algo especial — y eligió hacerlo con una canción. 💌`,
+      `Esta canción lleva un mensaje que las palabras solas no podían expresar, ${r}.`,
     ],
     san_valentin: [
-      `${recipient}, esta canción es una carta de amor hecha música. Feliz San Valentín. ❤️`,
-      `Para ${recipient} — porque el amor merece su propia melodía. Feliz día del amor. 💝`,
-      `${recipient}, alguien te ama tanto que te escribió una canción. Feliz San Valentín. 🌹`,
+      `${r}, esta canción es una carta de amor hecha música. Feliz San Valentín. ❤️`,
+      `Para ${r} — porque el amor merece su propia melodía. Feliz día del amor. 💝`,
     ],
     boda: [
-      `${recipient}, esta canción celebra el inicio de una nueva historia juntos. 💒`,
-      `Para ${recipient} — que esta melodía sea parte del soundtrack de su amor. 🥂`,
+      `${r}, esta canción celebra el inicio de una nueva historia juntos. 💒`,
+      `Para ${r} — que esta melodía sea parte del soundtrack de su amor. 🥂`,
     ],
     graduacion: [
-      `Felicidades, ${recipient}. Esta canción celebra todo lo que has logrado. 🎓`,
-      `${recipient}, lo lograste. Esta canción es para ti y todo tu esfuerzo. 🌟`,
+      `Felicidades, ${r}. Esta canción celebra todo lo que has logrado. 🎓`,
+      `${r}, lo lograste. Esta canción es para ti y todo tu esfuerzo. 🌟`,
     ],
     dia_madres: [
-      `Para ${recipient} — la mujer que lo da todo. Esta canción es un abrazo hecho música. 🌷`,
-      `${recipient}, gracias por todo. Esta canción lleva todo el amor que mereces. 💐`,
-      `Feliz día, ${recipient}. Alguien quiso recordarte lo especial que eres. 🤍`,
+      `Para ${r} — la mujer que lo da todo. Esta canción es un abrazo hecho música. 🌷`,
+      `${r}, gracias por todo. Esta canción lleva todo el amor que mereces. 💐`,
     ],
     dia_padres: [
-      `Para ${recipient} — gracias por ser ese pilar inquebrantable. Esta canción es para ti. 💙`,
-      `${recipient}, esta canción celebra todo lo que haces por los tuyos. Feliz día. 🫂`,
+      `Para ${r} — gracias por ser ese pilar inquebrantable. Esta canción es para ti. 💙`,
+      `${r}, esta canción celebra todo lo que haces por los tuyos. 🫂`,
     ],
     amistad: [
-      `${recipient}, esta canción celebra una amistad que vale oro. 🤝`,
-      `Para ${recipient} — porque los mejores amigos merecen su propia canción. ✨`,
-    ],
-    otro: [
-      `${recipient}, alguien quiso darte algo único — una canción creada solo para ti. 🎵`,
-      `Esta canción fue hecha con mucho cariño para ti, ${recipient}. Disfrútala. 💫`,
+      `${r}, esta canción celebra una amistad que vale oro. 🤝`,
+      `Para ${r} — porque los mejores amigos merecen su propia canción. ✨`,
     ],
   };
-
-  const relationshipFlavor = {
-    pareja: `Con todo el amor del mundo para ${recipient}. 💕`,
-    esposo: `Para ${recipient} — el amor de mi vida. Esta canción es nuestra. ❤️`,
-    esposa: `Para ${recipient} — el amor de mi vida. Esta canción es nuestra. ❤️`,
-    mama: `Para la mejor mamá del mundo, ${recipient}. Te quiero con toda el alma. 🌷`,
-    papa: `Para el mejor papá del mundo, ${recipient}. Gracias por todo. 💙`,
-    hijo: `Para ${recipient} — mi mayor orgullo. Esta canción es para ti. ⭐`,
-    hija: `Para ${recipient} — mi mayor orgullo. Esta canción es para ti. ⭐`,
-    amigo: `${recipient}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
-    amiga: `${recipient}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
-    abuela: `Para ${recipient} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
-    abuelo: `Para ${recipient} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
+  const relMsgs = {
+    pareja: `Con todo el amor del mundo para ${r}. 💕`,
+    esposo: `Para ${r} — el amor de mi vida. Esta canción es nuestra. ❤️`,
+    esposa: `Para ${r} — el amor de mi vida. Esta canción es nuestra. ❤️`,
+    mama: `Para la mejor mamá del mundo, ${r}. Te quiero con toda el alma. 🌷`,
+    papa: `Para el mejor papá del mundo, ${r}. Gracias por todo. 💙`,
+    hijo: `Para ${r} — mi mayor orgullo. Esta canción es para ti. ⭐`,
+    hija: `Para ${r} — mi mayor orgullo. Esta canción es para ti. ⭐`,
+    amigo: `${r}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
+    amiga: `${r}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
+    abuela: `Para ${r} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
+    abuelo: `Para ${r} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
   };
-
-  const pool = occasionMessages[occasion] || occasionMessages['otro'];
+  const pool = msgs[occasion] || [
+    `${r}, alguien quiso darte algo único — una canción creada solo para ti. 🎵`,
+    `Esta canción fue hecha con mucho cariño para ti, ${r}. Disfrútala. 💫`,
+  ];
   const seed = (song.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  
-  if (relationship && relationshipFlavor[relationship] && seed % 5 < 2) {
-    return relationshipFlavor[relationship];
-  }
-  
+  if (relationship && relMsgs[relationship] && seed % 5 < 2) return relMsgs[relationship];
   return pool[seed % pool.length];
 };
 
@@ -92,9 +81,50 @@ const fmt = (s) => {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-// ─── MAIN COMPONENT ───
+// ═══════════════════════════════════════
+// SONG SELECTOR (combo with 2 songs)
+// ═══════════════════════════════════════
+function SongSelector({ songs, activeIndex, onSelect, template }) {
+  if (songs.length <= 1) return null;
+  const themes = {
+    golden_hour: { active: '#f4c025', activeBg: 'rgba(244,192,37,0.15)', border: 'rgba(244,192,37,0.25)', bg: 'rgba(255,255,255,0.07)', textActive: 'rgba(255,255,255,0.9)', textInactive: 'rgba(255,255,255,0.4)', labelInactive: 'rgba(255,255,255,0.35)', font: "'Plus Jakarta Sans', sans-serif" },
+    lavender_dream: { active: '#9947eb', activeBg: 'rgba(153,71,235,0.08)', border: 'rgba(153,71,235,0.15)', bg: 'white', textActive: '#0f172a', textInactive: '#94a3b8', labelInactive: '#94a3b8', font: "'Newsreader', serif" },
+    electric_magenta: { active: '#f20d59', activeBg: 'rgba(242,13,89,0.15)', border: 'rgba(242,13,89,0.25)', bg: 'rgba(255,255,255,0.05)', textActive: 'rgba(255,255,255,0.9)', textInactive: 'rgba(255,255,255,0.4)', labelInactive: 'rgba(255,255,255,0.35)', font: "'Space Grotesk', sans-serif" },
+  };
+  const c = themes[template] || themes.golden_hour;
+
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', width: '100%', maxWidth: 420 }}>
+      {songs.map((s, i) => {
+        const isActive = i === activeIndex;
+        const genre = (s.genre_name || s.genre || '').replace(/_/g, ' ');
+        return (
+          <button key={s.id} onClick={() => onSelect(i)} style={{
+            flex: 1, padding: '12px 10px', borderRadius: 14, textAlign: 'center', cursor: 'pointer',
+            border: `1.5px solid ${isActive ? c.active : c.border}`,
+            background: isActive ? c.activeBg : c.bg,
+            transition: 'all 0.25s', transform: isActive ? 'scale(1.02)' : 'scale(1)',
+            fontFamily: c.font, color: 'inherit',
+          }}>
+            <span style={{ display: 'block', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isActive ? c.active : c.labelInactive, marginBottom: 2 }}>
+              Canción {i + 1}
+            </span>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: isActive ? c.textActive : c.textInactive, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {genre || `#${i + 1}`}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════
 export default function SongPage({ songId: propSongId }) {
-  const [song, setSong] = useState(null);
+  const [allSongs, setAllSongs] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [phase, setPhase] = useState('loading');
@@ -105,50 +135,78 @@ export default function SongPage({ songId: propSongId }) {
   const audioRef = useRef(null);
   const vizRef = useRef(null);
 
-  const songId = propSongId || (() => {
+  // Parse song IDs — supports /song/id1,id2 for combos
+  const songIds = useMemo(() => {
+    if (propSongId) return propSongId.split(',').filter(Boolean);
     const m = window.location.pathname.match(/\/song\/(.+)/);
-    if (m) return m[1];
+    if (m) return m[1].split(',').filter(Boolean);
     const p = new URLSearchParams(window.location.search);
-    return p.get('id') || p.get('song_id');
-  })();
+    const raw = p.get('id') || p.get('song_id') || p.get('song_ids') || '';
+    return raw.split(',').filter(Boolean);
+  }, [propSongId]);
 
+  // Fetch songs
   useEffect(() => {
-    if (!songId) { setError('No se encontró la canción'); setLoading(false); return; }
+    if (!songIds.length) { setError('No se encontró la canción'); setLoading(false); return; }
     (async () => {
       try {
-        const { data, error: e } = await supabase.from('songs').select('*').eq('id', songId).single();
+        const { data, error: e } = await supabase.from('songs').select('*').in('id', songIds);
         if (e) throw e;
-        if (!data) throw new Error('Canción no encontrada');
-        if (!data.audio_url) throw new Error('Esta canción aún no está lista');
-        setSong(data);
+        if (!data || data.length === 0) throw new Error('Canción no encontrada');
+        const ordered = songIds.map(id => data.find(s => s.id === id)).filter(Boolean);
+        if (ordered.length === 0) throw new Error('Canción no encontrada');
+        if (!ordered[0].audio_url) throw new Error('Esta canción aún no está lista');
+        setAllSongs(ordered);
         setLoading(false);
         setTimeout(() => setPhase('reveal'), 100);
         setTimeout(() => setPhase('ready'), 1200);
-      } catch (err) {
-        setError(err.message); setLoading(false);
-      }
+      } catch (err) { setError(err.message); setLoading(false); }
     })();
-  }, [songId]);
+  }, [songIds]);
 
+  const song = allSongs[activeIndex] || null;
+  const isCombo = allSongs.length > 1;
+
+  // Switch songs
+  const switchSong = (idx) => {
+    if (idx === activeIndex) return;
+    const a = audioRef.current;
+    if (a) { a.pause(); a.currentTime = 0; }
+    setIsPlaying(false); setTime(0); setDur(0); setShowLyrics(false);
+    setActiveIndex(idx);
+  };
+
+  // Audio events
   useEffect(() => {
     const a = audioRef.current;
-    if (!a) return;
+    if (!a || !song) return;
+    a.src = song.audio_url;
+    a.load();
     const h = {
       loadedmetadata: () => setDur(a.duration),
       timeupdate: () => setTime(a.currentTime),
-      ended: () => setIsPlaying(false),
+      ended: () => {
+        setIsPlaying(false);
+        if (isCombo && activeIndex < allSongs.length - 1) {
+          setTimeout(() => {
+            switchSong(activeIndex + 1);
+            setTimeout(() => { audioRef.current?.play().catch(() => {}); setIsPlaying(true); }, 300);
+          }, 1500);
+        }
+      },
     };
     Object.entries(h).forEach(([e, fn]) => a.addEventListener(e, fn));
     return () => Object.entries(h).forEach(([e, fn]) => a.removeEventListener(e, fn));
-  }, [song]);
+  }, [song, activeIndex]);
 
+  // Visualizer
   useEffect(() => {
     if (!isPlaying) return;
     let raf;
     const tick = () => {
-      vizRef.current?.querySelectorAll('.vbar').forEach((bar, i) => {
-        const h = 8 + Math.sin(Date.now() / (180 + i * 30) + i * 0.7) * 18 + Math.random() * 6;
-        bar.style.height = `${h}px`;
+      vizRef.current?.querySelectorAll('.sp-vbar').forEach((bar, i) => {
+        bar.style.height = (6 + Math.sin(Date.now() / (150 + i * 25) + i * 0.8) * 14 + Math.random() * 8) + 'px';
+        bar.style.opacity = '0.85';
       });
       raf = requestAnimationFrame(tick);
     };
@@ -170,571 +228,407 @@ export default function SongPage({ songId: propSongId }) {
     a.currentTime = ((e.clientX - r.left) / r.width) * dur;
   };
 
-  const share = () => {
-    const url = `https://regalosquecantan.com/song/${songId}`;
-    const text = `🎵 ¡Escucha esta canción que hicieron para ${song?.recipient_name || 'ti'}! 🎁\n\n${url}`;
+  const shareUrl = useMemo(() => {
+    const ids = allSongs.map(s => s.id).join(',');
+    return `https://regalosquecantan.com/song/${ids}`;
+  }, [allSongs]);
+
+  const share = (name) => {
+    const text = `🎵 ¡Escucha ${isCombo ? 'estas canciones' : 'esta canción'} que hicieron para ${name || 'ti'}! 🎁\n\n${shareUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const nativeShare = (name) => {
+    if (navigator.share) {
+      navigator.share({ title: `🎵 ${isCombo ? '2 canciones' : 'Canción'} para ${name}`, url: shareUrl }).catch(() => {});
+    } else { navigator.clipboard.writeText(shareUrl); alert('¡Link copiado!'); }
   };
 
   const download = () => {
     if (!song?.audio_url) return;
     const a = document.createElement('a');
     a.href = song.audio_url;
-    a.download = `cancion-para-${song.recipient_name || 'ti'}.mp3`;
+    a.download = `cancion-para-${song.recipient_name || 'ti'}${isCombo ? `-${activeIndex + 1}` : ''}.mp3`;
     a.click();
   };
 
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
   const progress = dur > 0 ? (time / dur) * 100 : 0;
+  const template = allSongs[0]?.template || 'golden_hour';
 
+  // ─── LOADING ───
   if (loading) {
     return (
-      <div className="sp-loading-wrap">
-        <style>{CSS}</style>
-        <div className="sp-loading-icon">🎵</div>
-        <div className="sp-loading-bar"><div className="sp-loading-fill" /></div>
-        <p className="sp-loading-text">Preparando tu canción...</p>
+      <div style={{ minHeight: '100vh', background: '#1a1408', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <style>{SHARED_CSS}</style>
+        <div style={{ fontSize: 40, animation: 'spPulse 2s ease-in-out infinite' }}>🎵</div>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>Preparando tu canción...</p>
       </div>
     );
   }
 
+  // ─── ERROR ───
   if (error || !song) {
     return (
-      <div className="sp-error-wrap">
-        <style>{CSS}</style>
-        <div style={{ fontSize: 56, marginBottom: 12 }}>🎵</div>
-        <h2 className="sp-error-title">{error || 'Canción no encontrada'}</h2>
-        <p className="sp-error-sub">Es posible que este link haya expirado.</p>
-        <button onClick={() => window.location.href = 'https://regalosquecantan.com'} className="sp-cta-btn">
-          Crear una canción →
-        </button>
+      <div style={{ minHeight: '100vh', background: '#1a1408', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', gap: 12, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white' }}>
+        <style>{SHARED_CSS}</style>
+        <div style={{ fontSize: 56 }}>🎵</div>
+        <h2 style={{ fontSize: 22, fontWeight: 700 }}>{error || 'Canción no encontrada'}</h2>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>Es posible que este link haya expirado.</p>
       </div>
     );
   }
 
+  // ─── SHARED DATA ───
   const recipient = song.recipient_name || 'Alguien Especial';
   const sender = song.sender_name || '';
   const genre = (song.genre_name || song.genre || '').replace(/_/g, ' ');
-  const photoUrl = song.photo_url || null;
-  const isRevealed = phase === 'reveal' || phase === 'ready';
-  const isReady = phase === 'ready';
+  const photoUrl = song.photo_url || allSongs[0]?.photo_url || null;
 
-  return (
-    <>
-      <Helmet>
-        <title>🎵 Canción para {recipient} | RegalosQueCantan</title>
-        <meta property="og:title" content={`🎵 Una canción para ${recipient}`} />
-        <meta property="og:description" content={`${sender ? `${sender} te dedicó` : 'Te dedicaron'} una canción personalizada. ¡Escúchala ahora!`} />
-        <meta property="og:image" content="https://regalosquecantan.com/images/og-song-share.jpg" />
-        <meta property="og:url" content={`https://regalosquecantan.com/song/${songId}`} />
-        <meta property="og:type" content="music.song" />
-        <meta name="robots" content="noindex, nofollow" />
-      </Helmet>
+  const head = (
+    <Helmet>
+      <title>🎵 {isCombo ? '2 canciones' : 'Canción'} para {recipient} | RegalosQueCantan</title>
+      <meta property="og:title" content={`🎵 ${isCombo ? '2 canciones' : 'Una canción'} para ${recipient}`} />
+      <meta property="og:description" content={`${sender ? `${sender} te dedicó` : 'Te dedicaron'} ${isCombo ? '2 canciones personalizadas' : 'una canción personalizada'}. ¡Escúchala${isCombo ? 's' : ''} ahora!`} />
+      <meta property="og:url" content={shareUrl} />
+      <meta property="og:type" content="music.song" />
+      <meta name="robots" content="noindex, nofollow" />
+    </Helmet>
+  );
 
-      {song.audio_url && <audio ref={audioRef} src={song.audio_url} preload="metadata" />}
+  const audioEl = <audio ref={audioRef} preload="metadata" />;
 
-      <div className="sp-page">
-        <style>{CSS}</style>
-
-        {/* Ambient particles */}
-        <div className="sp-particles">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="sp-particle" style={{
-              left: `${10 + i * 15}%`,
-              animationDelay: `${i * 1.8}s`,
-              animationDuration: `${8 + i * 2}s`,
-              fontSize: [14, 10, 16, 11, 13, 9][i],
-            }}>
-              {['♪', '♫', '✦', '♬', '·', '♩'][i]}
-            </div>
+  // Lyrics block builder
+  const lyricsBlock = (textColor, bgStyle, sectionColor) => {
+    if (!song.lyrics) return null;
+    return (
+      <div className={`sp-lyrics-slide ${showLyrics ? 'open' : ''}`} style={{ width: '100%' }}>
+        <div className="sp-lyrics-scroll" style={{ ...bgStyle, borderRadius: 16, padding: '20px 24px', maxHeight: '40vh', overflowY: 'auto', marginTop: 8 }}>
+          {song.lyrics.split('\n').map((line, i) => (
+            <p key={i} style={{
+              fontSize: line.startsWith('[') ? 10 : 14,
+              letterSpacing: line.startsWith('[') ? '0.2em' : 0,
+              textTransform: line.startsWith('[') ? 'uppercase' : 'none',
+              fontWeight: line.startsWith('[') ? 600 : 400,
+              color: line.startsWith('[') ? sectionColor : textColor,
+              lineHeight: '1.8', margin: line.startsWith('[') ? '14px 0 4px' : '1px 0',
+              textAlign: 'center',
+            }}>{line || '\u00A0'}</p>
           ))}
         </div>
+      </div>
+    );
+  };
 
-        <div className="sp-container">
+  // Brand footer (no CTA)
+  const brandFooter = (color, textColor) => (
+    <div style={{ padding: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+      <div style={{ width: 5, height: 5, borderRadius: '50%', background: color, opacity: 0.3 }} />
+      <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.2em', color: textColor, fontWeight: 500, margin: 0 }}>RegalosQueCantan.com</p>
+      <div style={{ width: 5, height: 5, borderRadius: '50%', background: color, opacity: 0.3 }} />
+    </div>
+  );
 
-          {/* Header badge */}
-          <div className={`sp-badge ${isRevealed ? 'sp-fadeUp' : ''}`}>
-            <span className="sp-badge-icon">🎵</span>
-            <span className="sp-badge-text">Alguien te dedicó una canción</span>
+  // ═══════════════════════════════════════
+  // TEMPLATE 1: GOLDEN HOUR
+  // ═══════════════════════════════════════
+  if (template === 'golden_hour') {
+    return (
+      <>{head}{audioEl}
+        <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #1a1408 0%, #2a1f10 25%, #1e1508 50%, #0f0c04 100%)', position: 'relative', overflow: 'hidden', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white' }}>
+          <style>{SHARED_CSS}{T1_CSS}</style>
+          <div style={{ position: 'fixed', top: '-15%', right: '-15%', width: '60vw', height: '60vh', background: 'rgba(244,192,37,0.06)', filter: 'blur(140px)', borderRadius: '50%' }} />
+          <div style={{ position: 'fixed', bottom: '-15%', left: '-15%', width: '50vw', height: '50vh', background: 'rgba(200,150,50,0.04)', filter: 'blur(120px)', borderRadius: '50%' }} />
+          <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at 50% 20%, rgba(244,192,37,0.05) 0%, transparent 60%)' }} />
+          <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
+            {['♪','♫','♬','♩','✦'].map((n, i) => (
+              <span key={i} className="t1-particle" style={{ left: `${8 + i * 17}%`, fontSize: 10 + i * 2, animationDuration: `${10 + i * 2}s`, animationDelay: `${i * 1.5}s` }}>{n}</span>
+            ))}
           </div>
-
-          {/* POLAROID */}
-          <div className={`sp-polaroid ${isRevealed ? 'sp-dropIn' : ''}`}>
-            <div className="sp-tape" />
-
-            {/* Art area */}
-            <div className="sp-art" onClick={toggle}>
-              {photoUrl ? (
-                <img src={photoUrl} alt="" className="sp-photo" />
-              ) : (
-                <div className="sp-art-gradient">
-                  <div className="sp-art-pattern" />
-                  <span className="sp-genre-tag">{genre}</span>
-                  
-                  <div ref={vizRef} className="sp-viz">
-                    {[...Array(12)].map((_, i) => (
-                      <div key={i} className="vbar" style={{
-                        height: isPlaying ? 14 : 4,
-                        opacity: isPlaying ? 0.9 : 0.35,
-                      }} />
-                    ))}
+          <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <header className="t1-anim1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, background: '#f4c025', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(244,192,37,0.2)' }}>
+                  <span style={{ fontSize: 16 }}>🎵</span>
+                </div>
+                <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>RegalosQueCantan</span>
+              </div>
+              <button onClick={() => nativeShare(recipient)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, cursor: 'pointer', color: 'white', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(16px)' }}>
+                <span style={{ color: '#f4c025', fontSize: 14 }}>📤</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>Compartir</span>
+              </button>
+            </header>
+            <div style={{ flex: 1, minHeight: 40 }} />
+            {/* Center */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '0 24px 16px' }}>
+              <div className="t1-anim1" style={{ marginBottom: 24 }}>
+                <div className="t1-glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 999 }}>
+                  <span style={{ fontSize: 12 }}>🎵</span>
+                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
+                    {isCombo ? 'Alguien te dedicó 2 canciones' : 'Alguien te dedicó una canción'}
+                  </span>
+                </div>
+              </div>
+              <h1 className="t1-anim2" style={{ fontSize: 'clamp(36px, 8vw, 64px)', fontWeight: 800, lineHeight: 0.95, marginBottom: 8, textShadow: '0 4px 30px rgba(0,0,0,0.3)' }}>
+                Para <span style={{ color: '#f4c025' }}>{recipient}</span>
+              </h1>
+              <p className="t1-anim2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginBottom: isCombo ? 20 : 32, fontWeight: 300 }}>
+                {sender && <><em>con amor,</em> <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong></>}
+                {sender && genre && <span style={{ color: 'rgba(255,255,255,0.25)', margin: '0 8px' }}>·</span>}
+                {genre && <span style={{ color: 'rgba(244,192,37,0.7)', fontSize: 13, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{genre}</span>}
+              </p>
+              {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" /></div>}
+              {/* Glass player */}
+              <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, padding: 28, borderRadius: 20, boxShadow: '0 25px 50px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24 }}>
+                <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 32, marginBottom: 24 }}>
+                  {Array.from({ length: 20 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: isPlaying ? 14 : 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: isPlaying ? 0.85 : 0.3, transition: 'height 0.1s, opacity 0.3s' }} />))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginBottom: 24 }}>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+                  <button onClick={toggle} style={{ width: 72, height: 72, borderRadius: '50%', background: '#f4c025', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px rgba(244,192,37,0.3)', fontSize: 32, color: '#1a1408', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+                </div>
+                <div>
+                  <div onClick={seek} style={{ position: 'relative', width: '100%', height: 4, background: 'rgba(255,255,255,0.12)', borderRadius: 99, cursor: 'pointer' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg, #f4c025, #fde68a)', borderRadius: 99, transition: 'width 0.15s' }} />
+                    <div style={{ position: 'absolute', top: '50%', transform: 'translate(-50%,-50%)', width: 12, height: 12, borderRadius: '50%', background: '#f4c025', boxShadow: '0 0 8px rgba(244,192,37,0.4)', left: `${progress}%`, transition: 'left 0.15s' }} />
                   </div>
-
-                  <div className="sp-play-btn" style={{
-                    opacity: isPlaying ? 0 : 1,
-                    transform: isPlaying ? 'scale(0.8)' : 'scale(1)',
-                  }}>
-                    ▶
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)' }}>{fmt(time)}</span>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)' }}>{fmt(dur)}</span>
                   </div>
                 </div>
-              )}
-
-              {/* Progress */}
-              <div className="sp-progress-track" onClick={(e) => { e.stopPropagation(); seek(e); }}>
-                <div className="sp-progress-fill" style={{ width: `${progress}%` }} />
-                {progress > 0 && <div className="sp-progress-dot" style={{ left: `${progress}%` }} />}
+              </div>
+              {/* Buttons */}
+              <div className="t1-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
+                {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
+                <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>⬇️ Descargar</button>
+                <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'rgba(37,211,102,0.9)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
               </div>
             </div>
-
-            {/* Caption */}
-            <div className="sp-caption">
-              <h1 className="sp-recipient">Para {recipient}</h1>
-              {sender && <p className="sp-sender">con amor, {sender}</p>}
+            {/* Lyrics */}
+            <div style={{ padding: '0 24px', display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: '100%', maxWidth: 420 }}>
+                {lyricsBlock('rgba(255,255,255,0.75)', { background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)' }, 'rgba(244,192,37,0.5)')}
+              </div>
             </div>
-          </div>
-
-          {/* Time controls */}
-          {dur > 0 && (
-            <div className={`sp-time-row ${isReady ? 'sp-fadeUp' : ''}`}>
-              <span className="sp-time">{fmt(time)}</span>
-              <button onClick={toggle} className="sp-mini-play">
-                {isPlaying ? '⏸' : '▶️'}
-              </button>
-              <span className="sp-time">{fmt(dur)}</span>
+            {/* Dedication */}
+            <div className="t1-anim5" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'center' }}>
+              <div className="t1-glass" style={{ width: '100%', maxWidth: 420, borderRadius: 20, padding: 20, position: 'relative' }}>
+                <span style={{ position: 'absolute', top: 16, left: 20, fontSize: 20, color: 'rgba(244,192,37,0.5)' }}>❝</span>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32 }}>{dedication}</p>
+              </div>
             </div>
-          )}
+            {brandFooter('rgba(244,192,37,0.3)', 'rgba(255,255,255,0.15)')}
+          </main>
+        </div>
+      </>
+    );
+  }
 
-          {/* Dedication */}
-          <div className={`sp-dedication ${isReady ? 'sp-fadeUp sp-delay-1' : ''}`}>
-            <p className="sp-dedication-text">{dedication}</p>
-          </div>
-
-          {/* Lyrics */}
-          {song.lyrics && (
-            <div className={`sp-lyrics-section ${isReady ? 'sp-fadeUp sp-delay-2' : ''}`}>
-              <button onClick={() => setShowLyrics(!showLyrics)} className="sp-lyrics-toggle">
-                {showLyrics ? '✕ Cerrar letra' : '♫ Leer la letra'}
-              </button>
-              {showLyrics && (
-                <div className="sp-lyrics-card">
-                  {song.lyrics.split('\n').map((line, i) => (
-                    <p key={i} className={line.startsWith('[') ? 'sp-lyric-section' : 'sp-lyric-line'}>
-                      {line || '\u00A0'}
-                    </p>
-                  ))}
+  // ═══════════════════════════════════════
+  // TEMPLATE 2: LAVENDER DREAM
+  // ═══════════════════════════════════════
+  if (template === 'lavender_dream') {
+    return (
+      <>{head}{audioEl}
+        <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top right, #fdfbf7 0%, #f0e9f7 100%)', fontFamily: "'Newsreader', serif", color: '#334155', position: 'relative' }}>
+          <style>{SHARED_CSS}{T2_CSS}</style>
+          <div style={{ position: 'fixed', top: 20, left: 20, width: 256, height: 256, background: 'rgba(153,71,235,0.05)', borderRadius: '50%', filter: 'blur(100px)', pointerEvents: 'none' }} />
+          <div style={{ position: 'fixed', bottom: 20, right: 20, width: 384, height: 384, background: 'rgba(153,71,235,0.1)', borderRadius: '50%', filter: 'blur(120px)', pointerEvents: 'none' }} />
+          <main style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', padding: '32px 24px 48px' }}>
+            <header className="t2-anim1" style={{ textAlign: 'center', marginBottom: 32, maxWidth: 600 }}>
+              <span style={{ color: '#9947eb', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', fontSize: 11, display: 'block', marginBottom: 12 }}>RegalosQueCantan Presenta</span>
+              <h1 style={{ fontSize: 'clamp(28px, 5.5vw, 48px)', color: '#0f172a', fontWeight: 300, fontStyle: 'italic', marginBottom: 12, lineHeight: 1.15 }}>
+                {isCombo ? '2 canciones especiales' : 'Una canción especial'} para {recipient}
+              </h1>
+            </header>
+            {isCombo && <div className="t2-anim1" style={{ marginBottom: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="lavender_dream" /></div>}
+            <div className="t2-anim2 t2-brushed" style={{ width: '100%', maxWidth: 500, borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(153,71,235,0.1)' }}>
+              {photoUrl && (
+                <div style={{ padding: '20px 20px 0' }}>
+                  <div style={{ aspectRatio: '16/10', width: '100%', borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.12)', position: 'relative' }}>
+                    <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(153,71,235,0.08)', mixBlendMode: 'multiply' }} />
+                  </div>
                 </div>
               )}
+              <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <div>
+                  <h2 style={{ fontSize: 20, color: '#0f172a', fontWeight: 600 }}>Para {recipient}</h2>
+                  <p style={{ color: 'rgba(153,71,235,0.7)', fontWeight: 500, fontSize: 14 }}>{genre}{song.occasion ? ` · ${song.occasion.replace(/_/g, ' ')}` : ''}</p>
+                </div>
+                {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 2 }}>Duración</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
+              </div>
+              <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(153,71,235,0.06)', paddingTop: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <div style={{ height: 1, width: 32, background: 'rgba(153,71,235,0.25)' }} />
+                  <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(153,71,235,0.5)', fontWeight: 700 }}>Dedicatoria</span>
+                </div>
+                <p style={{ fontSize: 17, lineHeight: 1.7, color: '#475569', fontWeight: 300, fontStyle: 'italic' }}>{dedication}</p>
+                {sender && <p style={{ textAlign: 'right', color: '#9947eb', fontWeight: 500, marginTop: 8, fontSize: 15 }}>— Con amor, {sender}</p>}
+              </div>
+              {/* Player */}
+              <div style={{ padding: '0 24px 24px' }}>
+                <div onClick={seek} style={{ height: 6, width: '100%', background: 'rgba(153,71,235,0.08)', borderRadius: 999, position: 'relative', cursor: 'pointer', marginBottom: 8 }}>
+                  <div style={{ height: '100%', width: `${progress}%`, background: '#9947eb', borderRadius: 999, position: 'relative', transition: 'width 0.15s' }}>
+                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translate(50%, -50%)', width: 16, height: 16, background: 'white', border: '2px solid #9947eb', borderRadius: '50%', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#94a3b8' }}>{fmt(time)}</span>
+                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#94a3b8' }}>{fmt(dur)}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 32, marginTop: 16 }}>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+                  <button onClick={toggle} style={{ width: 64, height: 64, borderRadius: '50%', background: '#9947eb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(153,71,235,0.35)', fontSize: 28, color: 'white', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+                </div>
+              </div>
             </div>
-          )}
-
-          {/* Actions */}
-          <div className={`sp-actions ${isReady ? 'sp-fadeUp sp-delay-3' : ''}`}>
-            <button onClick={share} className="sp-share-btn">
-              <span style={{ fontSize: 18 }}>💬</span>
-              Compartir por WhatsApp
-            </button>
-            <button onClick={download} className="sp-download-btn">
-              ⬇️ Descargar canción
-            </button>
-          </div>
-
-          {/* CTA */}
-          <div className={`sp-cta-section ${isReady ? 'sp-fadeUp sp-delay-4' : ''}`}>
-            <div className="sp-divider">
-              <div className="sp-divider-line" />
-              <span className="sp-divider-star">✦</span>
-              <div className="sp-divider-line" />
+            {/* Actions */}
+            <div className="t2-anim3" style={{ marginTop: 28, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
+              {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
+              <button onClick={download} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>⬇️ Descargar</button>
+              <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: '#25D366', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'Newsreader', serif", boxShadow: '0 4px 12px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
             </div>
-            <p className="sp-cta-label">¿Quieres regalar una canción así?</p>
-            <button onClick={() => window.location.href = 'https://regalosquecantan.com'} className="sp-cta-btn">
-              🎵 Crear mi canción — desde $19.99
-            </button>
-            <p className="sp-cta-sub">Lista en minutos · Corridos, Cumbia, Banda, Bachata y más</p>
-          </div>
-
-          <p className="sp-footer">RegalosQueCantan.com</p>
+            <div style={{ width: '100%', maxWidth: 500, marginTop: 8, display: 'flex', justifyContent: 'center' }}>
+              {lyricsBlock('#475569', { background: 'linear-gradient(135deg, #fff 0%, #fdfbf7 50%, #f7f2fb 100%)', border: '1px solid rgba(153,71,235,0.08)' }, 'rgba(153,71,235,0.5)')}
+            </div>
+            <footer className="t2-anim4" style={{ marginTop: 36, textAlign: 'center' }}>
+              <p style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Regalos<span style={{ color: '#9947eb', fontWeight: 300, fontStyle: 'italic' }}>QueCantan</span></p>
+            </footer>
+          </main>
         </div>
+      </>
+    );
+  }
 
-        {/* Floating pause */}
-        {isPlaying && (
-          <button onClick={toggle} className="sp-floating-pause">⏸</button>
-        )}
+  // ═══════════════════════════════════════
+  // TEMPLATE 3: ELECTRIC MAGENTA (default fallback)
+  // ═══════════════════════════════════════
+  return (
+    <>{head}{audioEl}
+      <div style={{ minHeight: '100vh', background: '#0a0507', fontFamily: "'Space Grotesk', sans-serif", color: 'white', overflow: 'hidden' }}>
+        <style>{SHARED_CSS}{T3_CSS}</style>
+        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0.15, zIndex: 60, mixBlendMode: 'overlay', background: 'radial-gradient(circle at center, transparent 0%, #000 100%)' }} />
+        <main style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          {/* Header */}
+          <header className="t3-anim1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', zIndex: 50 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 32, height: 32, background: '#f20d59', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: 14 }}>🎵</span></div>
+              <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 16, letterSpacing: '-0.03em' }}>RegalosQueCantan</span>
+            </div>
+            <button onClick={() => nativeShare(recipient)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12 }}>📤</span>
+              <span style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em' }}>Share</span>
+            </button>
+          </header>
+          {/* Photo hero */}
+          <section style={{ position: 'relative', height: photoUrl ? '45vh' : '25vh', width: '100%', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #0a0507 0%, transparent 40%)', zIndex: 10 }} />
+            {photoUrl ? (
+              <><div style={{ position: 'absolute', inset: 0, background: 'rgba(242,13,89,0.08)', mixBlendMode: 'overlay', zIndex: 10 }} />
+              <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1) brightness(0.7)' }} /></>
+            ) : (
+              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(180deg, #1a0a10 0%, #0a0507 100%)' }} />
+            )}
+            <div className="t3-anim2" style={{ position: 'absolute', bottom: 32, left: 24, zIndex: 20, maxWidth: '85%' }}>
+              <p style={{ fontSize: 'clamp(20px, 4.5vw, 36px)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '-0.05em', lineHeight: 1.05 }}>
+                {dedication.replace(/[💕❤️🎵💫🎂🎁💌🌹💒🥂🎓🌟🌷💐🤍💙⭐🎉✨🤝🫂💝]/g, '').trim()}
+              </p>
+            </div>
+          </section>
+          {/* Player section */}
+          <section style={{ flex: 1, width: '100%', background: '#0a0507', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 24px 80px', borderTop: '1px solid rgba(242,13,89,0.15)' }}>
+            <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 4, height: 64, marginBottom: 24, opacity: 0.7 }}>
+              {Array.from({ length: 15 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 4, height: isPlaying ? 14 : 6, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'height 0.1s, opacity 0.3s', opacity: isPlaying ? 0.85 : 0.3 }} />))}
+            </div>
+            <div className="t3-anim3" style={{ textAlign: 'center', width: '100%', maxWidth: 500 }}>
+              <h1 style={{ fontSize: 'clamp(24px, 5.5vw, 42px)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em', marginBottom: 4 }}>Para {recipient}</h1>
+              <p style={{ color: '#f20d59', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 500 }}>De {sender || 'Alguien especial'} · {genre}</p>
+            </div>
+            {isCombo && <div className="t3-anim3" style={{ marginTop: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="electric_magenta" /></div>}
+            {/* Progress */}
+            <div className="t3-anim3" style={{ width: '100%', maxWidth: 500, marginTop: 24 }}>
+              <div onClick={seek} style={{ position: 'relative', width: '100%', height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden', cursor: 'pointer' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${progress}%`, background: '#f20d59', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'width 0.15s' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>{fmt(time)}</span>
+                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>{fmt(dur)}</span>
+              </div>
+            </div>
+            {/* Controls */}
+            <div className="t3-anim4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, marginTop: 24 }}>
+              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+              <button onClick={toggle} style={{ width: 72, height: 72, borderRadius: '50%', background: '#f20d59', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(242,13,89,0.3)', fontSize: 32, color: 'white', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
+              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+            </div>
+            {/* Action buttons */}
+            <div className="t3-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 24 }}>
+              {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ padding: '10px 24px', border: '1px solid rgba(242,13,89,0.3)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>{showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
+              <button onClick={download} style={{ padding: '10px 24px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>Descargar</button>
+              <button onClick={() => share(recipient)} style={{ padding: '10px 24px', border: 'none', background: '#25D366', color: 'white', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>💬 WhatsApp</button>
+            </div>
+            {/* Lyrics */}
+            <div style={{ width: '100%', maxWidth: 500, marginTop: 8 }}>
+              {lyricsBlock('rgba(255,255,255,0.7)', { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(242,13,89,0.1)', borderRadius: 4 }, 'rgba(242,13,89,0.5)')}
+            </div>
+            {/* Brand */}
+            <div style={{ position: 'absolute', bottom: 20, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.3em', color: 'rgba(255,255,255,0.2)', fontWeight: 700 }}>RegalosQueCantan.com</p>
+            </div>
+          </section>
+        </main>
       </div>
     </>
   );
 }
 
-// ─── ALL STYLES VIA CSS ───
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+// ═══════════════════════════════════════
+// CSS
+// ═══════════════════════════════════════
+const SHARED_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button:active{transform:scale(0.97)}
+@keyframes spPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:0.7}}
+.sp-lyrics-slide{max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease}
+.sp-lyrics-slide.open{max-height:50vh;opacity:1}
+.sp-lyrics-scroll::-webkit-scrollbar{width:3px}
+.sp-lyrics-scroll::-webkit-scrollbar-track{background:transparent}
+.sp-lyrics-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:10px}
+`;
 
-*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+const T1_CSS = `
+@keyframes t1Float{0%{opacity:0;transform:translateY(30px)}15%{opacity:0.15}85%{opacity:0.15}100%{opacity:0;transform:translateY(-100vh) rotate(15deg)}}
+@keyframes t1FadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes t1Scale{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+.t1-particle{position:absolute;color:rgba(244,192,37,0.15);animation:t1Float linear infinite}
+.t1-glass{background:rgba(255,255,255,0.07);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.12)}
+.t1-anim1{animation:t1FadeUp 0.8s ease-out 0.2s both}
+.t1-anim2{animation:t1FadeUp 0.8s ease-out 0.4s both}
+.t1-anim3{animation:t1Scale 0.8s ease-out 0.6s both}
+.t1-anim4{animation:t1FadeUp 0.6s ease-out 0.9s both}
+.t1-anim5{animation:t1FadeUp 0.6s ease-out 1.1s both}
+`;
 
-/* ── Page ── */
-.sp-page {
-  min-height: 100vh;
-  background: #faf6f1;
-  background-image: 
-    radial-gradient(ellipse at 20% 0%, rgba(201,168,124,0.06) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 100%, rgba(180,140,100,0.05) 0%, transparent 60%);
-  position: relative;
-  overflow: hidden;
-}
+const T2_CSS = `
+@keyframes t2FadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.t2-brushed{background:linear-gradient(135deg,#fff 0%,#fdfbf7 50%,#f7f2fb 100%);box-shadow:inset 0 1px 1px rgba(255,255,255,0.8),0 10px 40px -10px rgba(153,71,235,0.15)}
+.t2-anim1{animation:t2FadeUp 0.7s ease-out 0.2s both}
+.t2-anim2{animation:t2FadeUp 0.7s ease-out 0.4s both}
+.t2-anim3{animation:t2FadeUp 0.7s ease-out 0.6s both}
+.t2-anim4{animation:t2FadeUp 0.7s ease-out 0.9s both}
+`;
 
-.sp-container {
-  max-width: 400px;
-  margin: 0 auto;
-  padding: 40px 24px 48px;
-  position: relative;
-  z-index: 1;
-}
-
-/* ── Particles ── */
-.sp-particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-.sp-particle {
-  position: absolute;
-  color: #c9a87c;
-  opacity: 0;
-  animation: spFloat linear infinite;
-}
-
-/* ── Badge ── */
-.sp-badge {
-  display: flex; align-items: center; justify-content: center;
-  gap: 8px; margin-bottom: 28px;
-  opacity: 0;
-}
-.sp-badge-icon { font-size: 14px; }
-.sp-badge-text {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 13px; color: #a09080; letter-spacing: 0.5px;
-  font-style: italic;
-}
-
-/* ── Polaroid ── */
-.sp-polaroid {
-  background: #fff;
-  padding: 12px;
-  border-radius: 3px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 40px rgba(0,0,0,0.1);
-  margin-bottom: 20px;
-  position: relative;
-  opacity: 0;
-}
-
-.sp-tape {
-  position: absolute; top: -10px; left: 50%; transform: translateX(-50%) rotate(-2deg);
-  width: 80px; height: 22px;
-  background: linear-gradient(135deg, rgba(200,180,160,0.45), rgba(220,200,180,0.35));
-  border-radius: 1px; z-index: 10;
-}
-
-/* ── Art ── */
-.sp-art {
-  width: 100%; aspect-ratio: 1;
-  border-radius: 2px; overflow: hidden;
-  position: relative; cursor: pointer;
-}
-.sp-photo { width: 100%; height: 100%; object-fit: cover; }
-.sp-art-gradient {
-  width: 100%; height: 100%;
-  background: linear-gradient(160deg, #1a1210 0%, #2a1f18 30%, #1e1612 60%, #140e0a 100%);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  position: relative;
-}
-.sp-art-pattern {
-  position: absolute; inset: 0; opacity: 0.04;
-  background-image:
-    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.15) 1px, transparent 1px),
-    radial-gradient(circle at 80% 70%, rgba(255,255,255,0.1) 1px, transparent 1px);
-  background-size: 60px 60px, 80px 80px;
-}
-.sp-genre-tag {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 13px; color: rgba(232,213,196,0.4);
-  letter-spacing: 3px; text-transform: uppercase;
-  margin-bottom: 24px; position: relative;
-}
-
-/* ── Visualizer ── */
-.sp-viz {
-  display: flex; align-items: flex-end; gap: 3.5px;
-  height: 40px; margin-bottom: 20px; position: relative;
-}
-.vbar {
-  width: 4px; border-radius: 2px;
-  background: linear-gradient(to top, #c9a87c, #e8d5c4);
-  transition: height 0.1s ease, opacity 0.3s;
-}
-
-.sp-play-btn {
-  width: 64px; height: 64px; border-radius: 50%;
-  background: rgba(250,246,241,0.92);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; color: #2a1f18; padding-left: 3px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
-  transition: opacity 0.3s, transform 0.3s;
-  position: absolute;
-}
-
-/* ── Progress ── */
-.sp-progress-track {
-  position: absolute; bottom: 0; left: 0; right: 0;
-  height: 4px; background: rgba(0,0,0,0.25);
-  cursor: pointer; z-index: 5;
-}
-.sp-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #c9a87c, #e8d5c4);
-  transition: width 0.15s linear;
-}
-.sp-progress-dot {
-  position: absolute; top: -3px;
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #faf6f1; border: 2px solid #c9a87c;
-  transform: translateX(-50%);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
-
-/* ── Caption ── */
-.sp-caption { padding: 16px 8px 10px; text-align: center; }
-.sp-recipient {
-  font-family: 'Playfair Display', 'Georgia', serif;
-  font-size: 28px; font-weight: 700; color: #2a1f18;
-  margin: 0 0 4px; line-height: 1.2; letter-spacing: -0.3px;
-}
-.sp-sender {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 15px; color: #a09080;
-  font-style: italic; margin: 0;
-}
-
-/* ── Time ── */
-.sp-time-row {
-  display: flex; align-items: center; justify-content: center;
-  gap: 16px; margin-bottom: 20px; opacity: 0;
-}
-.sp-time {
-  font-family: 'DM Mono', 'Courier New', monospace;
-  font-size: 12px; color: #b0a090; letter-spacing: 1px;
-}
-.sp-mini-play {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: #2a1f18; border: none;
-  color: #faf6f1; font-size: 13px;
-  cursor: pointer; display: flex;
-  align-items: center; justify-content: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-  transition: transform 0.15s;
-}
-.sp-mini-play:active { transform: scale(0.92); }
-
-/* ── Dedication ── */
-.sp-dedication {
-  background: linear-gradient(135deg, rgba(201,168,124,0.08), rgba(201,168,124,0.03));
-  border: 1px solid rgba(201,168,124,0.15);
-  border-radius: 16px; padding: 22px 24px;
-  margin-bottom: 18px; text-align: center; opacity: 0;
-}
-.sp-dedication-text {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 16px; line-height: 1.65; color: #5a4a3a;
-  margin: 0; font-style: italic;
-}
-
-/* ── Lyrics ── */
-.sp-lyrics-section { opacity: 0; margin-bottom: 18px; }
-.sp-lyrics-toggle {
-  width: 100%; padding: 14px;
-  background: transparent;
-  border: 1px solid rgba(160,144,128,0.2);
-  border-radius: 12px; cursor: pointer;
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 14px; color: #a09080;
-  transition: all 0.2s;
-}
-.sp-lyrics-toggle:hover { background: rgba(201,168,124,0.05); }
-.sp-lyrics-card {
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 0 0 12px 12px;
-  border: 1px solid rgba(160,144,128,0.12);
-  border-top: none;
-  max-height: 360px; overflow-y: auto;
-}
-.sp-lyric-section {
-  font-family: 'DM Mono', 'Courier New', monospace;
-  font-size: 10px; color: #c0a882;
-  letter-spacing: 2px; text-transform: uppercase;
-  margin: 16px 0 4px; text-align: center;
-}
-.sp-lyric-line {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 15px; color: #4a3a2a; line-height: 1.8;
-  margin: 1px 0; text-align: center;
-}
-
-/* ── Actions ── */
-.sp-actions {
-  display: flex; flex-direction: column; gap: 10px;
-  margin-top: 18px; opacity: 0;
-}
-.sp-share-btn {
-  padding: 16px; border: none; border-radius: 14px;
-  background: #25D366; color: #fff;
-  font-size: 15px; font-weight: 600; cursor: pointer;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  box-shadow: 0 4px 16px rgba(37,211,102,0.25);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.sp-share-btn:hover { box-shadow: 0 6px 24px rgba(37,211,102,0.35); }
-.sp-share-btn:active { transform: scale(0.97); }
-
-.sp-download-btn {
-  padding: 14px; border: 1.5px solid rgba(42,31,24,0.12);
-  border-radius: 14px; background: transparent;
-  color: #5a4a3a; font-size: 14px; font-weight: 500;
-  cursor: pointer;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  transition: background 0.2s;
-}
-.sp-download-btn:hover { background: rgba(42,31,24,0.04); }
-
-/* ── CTA ── */
-.sp-cta-section { margin-top: 32px; text-align: center; opacity: 0; }
-.sp-divider { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.sp-divider-line { flex: 1; height: 1px; background: rgba(160,144,128,0.2); }
-.sp-divider-star { color: #c9a87c; font-size: 12px; }
-.sp-cta-label {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 16px; color: #5a4a3a; margin-bottom: 14px;
-  font-style: italic;
-}
-.sp-cta-btn {
-  width: 100%; padding: 17px 24px;
-  background: linear-gradient(135deg, #2a1f18, #3d2b1f);
-  border: none; border-radius: 14px;
-  color: #faf6f1; font-size: 15px; font-weight: 600;
-  cursor: pointer;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  box-shadow: 0 4px 20px rgba(42,31,24,0.2);
-  letter-spacing: 0.3px;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.sp-cta-btn:hover { box-shadow: 0 6px 28px rgba(42,31,24,0.3); }
-.sp-cta-btn:active { transform: scale(0.97); }
-.sp-cta-sub {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 12px; color: #b0a090; margin-top: 10px;
-  font-style: italic;
-}
-
-/* ── Footer ── */
-.sp-footer {
-  text-align: center; font-size: 11px; color: #c0b0a0;
-  margin-top: 32px; letter-spacing: 1.5px;
-  font-family: 'DM Mono', 'Courier New', monospace;
-}
-
-/* ── Floating Pause ── */
-.sp-floating-pause {
-  position: fixed; bottom: 24px; right: 24px; z-index: 100;
-  width: 48px; height: 48px; border-radius: 50%;
-  background: #2a1f18; border: none;
-  color: #faf6f1; font-size: 18px; cursor: pointer;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-  display: flex; align-items: center; justify-content: center;
-  transition: transform 0.15s;
-}
-.sp-floating-pause:active { transform: scale(0.9); }
-
-/* ── Loading ── */
-.sp-loading-wrap {
-  min-height: 100vh; background: #faf6f1;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 20px;
-}
-.sp-loading-icon { font-size: 40px; animation: spPulse 2s ease-in-out infinite; }
-.sp-loading-bar {
-  width: 120px; height: 2px; background: rgba(160,144,128,0.15);
-  border-radius: 1px; overflow: hidden;
-}
-.sp-loading-fill {
-  width: 40%; height: 100%; background: #c9a87c;
-  border-radius: 1px; animation: spSlide 1.5s ease-in-out infinite;
-}
-.sp-loading-text {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 13px; color: #a09080; font-style: italic;
-}
-
-/* ── Error ── */
-.sp-error-wrap {
-  min-height: 100vh; background: #faf6f1;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 24px; text-align: center; gap: 8px;
-}
-.sp-error-title {
-  font-family: 'Playfair Display', 'Georgia', serif;
-  font-size: 22px; color: #2a1f18; margin: 0;
-}
-.sp-error-sub {
-  font-family: 'Lora', 'Georgia', serif;
-  font-size: 14px; color: #a09080; margin: 0; font-style: italic;
-}
-
-/* ── Animations ── */
-@keyframes spFloat {
-  0% { opacity: 0; transform: translateY(30px) rotate(0deg); }
-  15% { opacity: 0.15; }
-  85% { opacity: 0.15; }
-  100% { opacity: 0; transform: translateY(-100vh) rotate(25deg); }
-}
-
-@keyframes spDropIn {
-  0% { opacity: 0; transform: rotate(-4deg) translateY(-30px) scale(0.96); }
-  60% { opacity: 1; transform: rotate(-0.5deg) translateY(4px) scale(1.01); }
-  100% { opacity: 1; transform: rotate(-1.2deg) translateY(0) scale(1); }
-}
-
-@keyframes spFadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes spPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.7; }
-}
-
-@keyframes spSlide {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(200%); }
-  100% { transform: translateX(-100%); }
-}
-
-.sp-dropIn { animation: spDropIn 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-.sp-fadeUp { animation: spFadeUp 0.6s ease-out forwards; }
-.sp-delay-1 { animation-delay: 0.15s; }
-.sp-delay-2 { animation-delay: 0.25s; }
-.sp-delay-3 { animation-delay: 0.35s; }
-.sp-delay-4 { animation-delay: 0.5s; }
-
-/* Scrollbar */
-.sp-lyrics-card::-webkit-scrollbar { width: 4px; }
-.sp-lyrics-card::-webkit-scrollbar-track { background: transparent; }
-.sp-lyrics-card::-webkit-scrollbar-thumb { background: rgba(160,144,128,0.2); border-radius: 2px; }
+const T3_CSS = `
+@keyframes t3FadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes t3SlideDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+.t3-anim1{animation:t3SlideDown 0.7s ease-out 0.2s both}
+.t3-anim2{animation:t3FadeUp 0.8s ease-out 0.4s both}
+.t3-anim3{animation:t3FadeUp 0.8s ease-out 0.7s both}
+.t3-anim4{animation:t3FadeUp 0.6s ease-out 1.0s both}
 `;

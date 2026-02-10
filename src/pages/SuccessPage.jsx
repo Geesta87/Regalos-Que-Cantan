@@ -240,6 +240,14 @@ export default function SuccessPage() {
   const [downloading, setDownloading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Template picker + photo upload states
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSaved, setTemplateSaved] = useState(false);
+
   // Countdown + reveal states
   const [showCountdown, setShowCountdown] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -277,6 +285,7 @@ export default function SuccessPage() {
 
       setSongs(data);
       setCurrentSong(data[0]);
+      setSelectedTemplate(data[0]?.template || 'golden_hour');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -407,16 +416,83 @@ export default function SuccessPage() {
   };
 
   // ------ Share ------
+  // ------ TEMPLATE & PHOTO HANDLERS ------
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('La foto debe ser menor a 5MB'); return; }
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!songs.length || !selectedTemplate) return;
+    setSavingTemplate(true);
+    try {
+      let photoUrl = currentSong?.photo_url || null;
+
+      // Upload photo if selected
+      if (photoFile) {
+        setUploadingPhoto(true);
+        const ext = photoFile.name.split('.').pop();
+        const filePath = `${songs[0].id}.${ext}`;
+        
+        const { error: uploadErr } = await supabase.storage
+          .from('song-photos')
+          .upload(filePath, photoFile, { cacheControl: '31536000', upsert: true });
+        
+        if (uploadErr) throw uploadErr;
+        
+        const { data: urlData } = supabase.storage.from('song-photos').getPublicUrl(filePath);
+        photoUrl = urlData.publicUrl;
+        setUploadingPhoto(false);
+      }
+
+      // Update ALL songs with same template + photo
+      const songIds = songs.map(s => s.id);
+      const { error: updateErr } = await supabase
+        .from('songs')
+        .update({ 
+          template: selectedTemplate,
+          ...(photoUrl ? { photo_url: photoUrl } : {})
+        })
+        .in('id', songIds);
+
+      if (updateErr) throw updateErr;
+
+      // Update local state for all songs
+      setSongs(prev => prev.map(s => ({ ...s, template: selectedTemplate, ...(photoUrl ? { photo_url: photoUrl } : {}) })));
+      setCurrentSong(prev => prev ? { ...prev, template: selectedTemplate, ...(photoUrl ? { photo_url: photoUrl } : {}) } : prev);
+      setTemplateSaved(true);
+      setTimeout(() => setTemplateSaved(false), 3000);
+    } catch (err) {
+      console.error('Error saving template:', err);
+      alert('Error al guardar. Intenta de nuevo.');
+    } finally {
+      setSavingTemplate(false);
+      setUploadingPhoto(false);
+    }
+  };
+
+  // Build share URL — includes ALL song IDs for combos
+  const allSongIds = songs.map(s => s.id).filter(Boolean).join(',');
+  const songUrl = allSongIds ? `${window.location.origin}/song/${allSongIds}` : '';
+  const isCombo = songs.length > 1;
+
   const handleShareWhatsApp = () => {
     const name = currentSong?.recipient_name || '';
-    const songUrl = `${window.location.origin}/song/${currentSong?.id}`;
-    const text = `🎵 ¡${name}, te crearon una canción especial! 🎁\n\nEscúchala aquí:\n${songUrl}`;
+    const url = songUrl || window.location.href;
+    const text = isCombo
+      ? `🎵 ¡Escucha estas 2 canciones que hice especialmente para ${name}! 🎁\n\n${url}`
+      : `🎵 ¡Escucha esta canción que hice especialmente para ${name}! 🎁\n\n${url}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleCopyLink = () => {
-    const songUrl = `${window.location.origin}/song/${currentSong?.id}`;
-    navigator.clipboard.writeText(songUrl);
+    const url = songUrl || window.location.href;
+    navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
@@ -855,6 +931,11 @@ export default function SuccessPage() {
               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
                 Creada especialmente — hecha con ❤️
               </p>
+              {songUrl && (
+                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.25)', margin: '8px 0 0', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                  {songUrl}
+                </p>
+              )}
             </div>
 
             {/* Share buttons */}
@@ -897,6 +978,140 @@ export default function SuccessPage() {
                 {linkCopied ? '✓ ¡Copiado!' : '🔗 Copiar Link'}
               </button>
             </div>
+          </div>
+
+          {/* ===== TEMPLATE PICKER ===== */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.1), rgba(153,71,235,0.06))',
+            borderRadius: '24px', padding: '24px',
+            border: '1px solid rgba(212,175,55,0.2)',
+            marginBottom: '24px',
+            animation: 'fadeInUp 0.7s ease-out 0.6s both'
+          }}>
+            <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '6px', textAlign: 'center' }}>
+              🎨 Personaliza la página de la canción
+            </h3>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: '18px' }}>
+              Elige un diseño para cuando {recipientName} abra el link
+            </p>
+
+            {/* Template cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+              {[
+                { id: 'golden_hour', name: 'Golden Hour', emoji: '🌅', desc: 'Elegante y cálido — no necesita foto', color: '#f4c025', needsPhoto: false },
+                { id: 'lavender_dream', name: 'Lavender Dream', emoji: '💜', desc: 'Clásico y romántico — con foto', color: '#9947eb', needsPhoto: true },
+                { id: 'electric_magenta', name: 'Electric Magenta', emoji: '⚡', desc: 'Moderno y bold — con foto', color: '#f20d59', needsPhoto: true },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTemplate(t.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '14px',
+                    padding: '14px 16px',
+                    background: selectedTemplate === t.id ? `rgba(${t.color === '#f4c025' ? '244,192,37' : t.color === '#9947eb' ? '153,71,235' : '242,13,89'},0.12)` : 'rgba(255,255,255,0.04)',
+                    border: `2px solid ${selectedTemplate === t.id ? t.color : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: '16px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.2s',
+                    fontFamily: "'Montserrat', sans-serif",
+                    color: 'white',
+                  }}
+                >
+                  <span style={{ fontSize: '28px', minWidth: '36px', textAlign: 'center' }}>{t.emoji}</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: '15px', fontWeight: '700', display: 'block', color: selectedTemplate === t.id ? t.color : 'white' }}>
+                      {t.name}
+                    </span>
+                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
+                      {t.desc}
+                    </span>
+                  </div>
+                  {selectedTemplate === t.id && (
+                    <span style={{ fontSize: '18px', color: t.color }}>✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Photo upload — only for photo templates */}
+            {(selectedTemplate === 'lavender_dream' || selectedTemplate === 'electric_magenta') && (
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1.5px dashed rgba(255,255,255,0.15)',
+                borderRadius: '16px', padding: '18px',
+                textAlign: 'center', marginBottom: '16px',
+              }}>
+                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                  📸 Agrega una foto (opcional)
+                </p>
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginBottom: '14px' }}>
+                  Se mostrará en la página cuando {recipientName} abra el link
+                </p>
+
+                {photoPreview ? (
+                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: '12px' }}>
+                    <img src={photoPreview} alt="" style={{
+                      width: '120px', height: '120px', objectFit: 'cover',
+                      borderRadius: '12px', border: '2px solid rgba(255,255,255,0.15)'
+                    }} />
+                    <button onClick={() => { setPhotoFile(null); setPhotoPreview(null); }} style={{
+                      position: 'absolute', top: '-8px', right: '-8px',
+                      width: '24px', height: '24px', borderRadius: '50%',
+                      background: '#e11d48', border: 'none', color: 'white',
+                      fontSize: '12px', cursor: 'pointer', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>✕</button>
+                  </div>
+                ) : (
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                    padding: '10px 20px', borderRadius: '12px',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    cursor: 'pointer', fontSize: '14px', fontWeight: '600',
+                    color: 'rgba(255,255,255,0.7)', fontFamily: "'Montserrat', sans-serif",
+                  }}>
+                    📷 Elegir foto
+                    <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            <button
+              onClick={handleSaveTemplate}
+              disabled={savingTemplate}
+              style={{
+                width: '100%', padding: '14px',
+                background: templateSaved ? 'rgba(34,197,94,0.2)' : 'linear-gradient(135deg, #d4af37, #f5d77a)',
+                border: templateSaved ? '1.5px solid #22c55e' : 'none',
+                borderRadius: '14px',
+                color: templateSaved ? '#4ade80' : '#1a1408',
+                fontSize: '15px', fontWeight: '700',
+                cursor: savingTemplate ? 'wait' : 'pointer',
+                opacity: savingTemplate ? 0.7 : 1,
+                transition: 'all 0.3s',
+                fontFamily: "'Montserrat', sans-serif",
+              }}
+            >
+              {savingTemplate ? (uploadingPhoto ? '📤 Subiendo foto...' : '💾 Guardando...') : templateSaved ? '✅ ¡Guardado!' : '💾 Guardar diseño'}
+            </button>
+
+            {/* Preview link */}
+            {templateSaved && songUrl && (
+              <div style={{ marginTop: '12px', textAlign: 'center' }}>
+                <a
+                  href={songUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#f5d77a', fontSize: '13px', fontWeight: '600', textDecoration: 'underline' }}
+                >
+                  👁️ Ver cómo se ve →
+                </a>
+              </div>
+            )}
           </div>
 
           {/* ===== HOW TO GIFT ===== */}

@@ -74,9 +74,9 @@ function getInitialPage() {
   if (urlParams.get('song')) {
     return 'preview';
   }
-  
-  // Handle shareable song page /song/:id
-  if (path.startsWith('/song/') && path !== '/song/') {
+
+  // Handle /song/:id shareable pages
+  if (path.startsWith('/song/')) {
     return 'songPage';
   }
   
@@ -208,7 +208,6 @@ export default function App() {
       comparison: '/comparison',
       success: '/success',
       listen: '/listen',
-      songPage: '/song',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard',
       generos: '/generos',
@@ -288,8 +287,6 @@ export default function App() {
           {currentPage === 'comparison' && <ComparisonPage />}
           {currentPage === 'success' && <SuccessPage />}
           {currentPage === 'listen' && <ShareablePreviewPage />}
-          
-          {/* Shareable Song Page */}
           {currentPage === 'songPage' && <SongPage />}
           
           {/* Admin pages */}
