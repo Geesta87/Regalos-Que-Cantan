@@ -462,7 +462,7 @@ export default function ComparisonPage() {
         console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
       
       if (result.url) {
         window.location.href = result.url;
