@@ -103,8 +103,7 @@ export default function ShareablePreviewPage() {
   const [allPaid, setAllPaid] = useState(false);
 
   // Social proof
-  const [socialProofCount] = useState(Math.floor(Math.random() * 18) + 38);
-  const [viewingNow] = useState(Math.floor(Math.random() * 4) + 2); // 38-55
+  const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120); // 120-200 // 38-55
 
   const audioRefs = useRef({});
 
@@ -691,11 +690,8 @@ export default function ShareablePreviewPage() {
 
               {/* Trust + urgency under button */}
               <div style={{textAlign: 'center', marginTop: '12px'}}>
-                <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.45)', margin: '0 0 6px 0'}}>
+                <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.45)', margin: 0}}>
                   💳 Pago seguro con Stripe • Descarga inmediata
-                </p>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.35)', margin: 0}}>
-                  🔥 {viewingNow} personas están viendo esta canción ahora
                 </p>
               </div>
             </>
