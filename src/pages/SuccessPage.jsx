@@ -983,55 +983,119 @@ export default function SuccessPage() {
           {/* ===== TEMPLATE PICKER ===== */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(212,175,55,0.1), rgba(153,71,235,0.06))',
-            borderRadius: '24px', padding: '24px',
+            borderRadius: '24px', padding: '20px',
             border: '1px solid rgba(212,175,55,0.2)',
             marginBottom: '24px',
             animation: 'fadeInUp 0.7s ease-out 0.6s both'
           }}>
-            <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '6px', textAlign: 'center' }}>
-              🎨 Personaliza la página de la canción
-            </h3>
-            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: '18px' }}>
-              Elige un diseño para cuando {recipientName} abra el link
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginBottom: '14px' }}>
+              🎨 Así se verá cuando {recipientName} abra el link
             </p>
 
-            {/* Template cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-              {[
-                { id: 'golden_hour', name: 'Golden Hour', emoji: '🌅', desc: 'Elegante y cálido — no necesita foto', color: '#f4c025', needsPhoto: false },
-                { id: 'lavender_dream', name: 'Lavender Dream', emoji: '💜', desc: 'Clásico y romántico — con foto', color: '#9947eb', needsPhoto: true },
-                { id: 'electric_magenta', name: 'Electric Magenta', emoji: '⚡', desc: 'Moderno y bold — con foto', color: '#f20d59', needsPhoto: true },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTemplate(t.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '14px',
-                    padding: '14px 16px',
-                    background: selectedTemplate === t.id ? `rgba(${t.color === '#f4c025' ? '244,192,37' : t.color === '#9947eb' ? '153,71,235' : '242,13,89'},0.12)` : 'rgba(255,255,255,0.04)',
-                    border: `2px solid ${selectedTemplate === t.id ? t.color : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: '16px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.2s',
-                    fontFamily: "'Montserrat', sans-serif",
-                    color: 'white',
-                  }}
-                >
-                  <span style={{ fontSize: '28px', minWidth: '36px', textAlign: 'center' }}>{t.emoji}</span>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '15px', fontWeight: '700', display: 'block', color: selectedTemplate === t.id ? t.color : 'white' }}>
-                      {t.name}
-                    </span>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
-                      {t.desc}
-                    </span>
+            {/* Main layout: big preview + small options */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+
+              {/* LEFT: Large preview of selected template */}
+              <div style={{ flex: 1, borderRadius: '14px', overflow: 'hidden', border: `2px solid ${selectedTemplate === 'golden_hour' ? '#f4c025' : selectedTemplate === 'lavender_dream' ? '#9947eb' : '#f20d59'}`, transition: 'border-color 0.3s' }}>
+
+                {/* Golden Hour preview */}
+                {selectedTemplate === 'golden_hour' && (
+                  <div style={{ background: 'linear-gradient(160deg, #1a1408, #2a1f10, #0f0c04)', padding: '20px 16px', position: 'relative', overflow: 'hidden', minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'absolute', top: '-20%', right: '-20%', width: '80%', height: '80%', background: 'rgba(244,192,37,0.08)', filter: 'blur(40px)', borderRadius: '50%' }} />
+                    <span style={{ position: 'absolute', top: 14, left: 16, fontSize: 10, color: 'rgba(244,192,37,0.2)' }}>♪</span>
+                    <span style={{ position: 'absolute', top: 30, right: 20, fontSize: 8, color: 'rgba(244,192,37,0.15)' }}>♫</span>
+                    <span style={{ position: 'absolute', bottom: 40, left: 22, fontSize: 7, color: 'rgba(244,192,37,0.12)' }}>✦</span>
+                    <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 8 }}>🎵 Alguien te dedicó una canción</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'white', textAlign: 'center', lineHeight: 1.05, marginBottom: 4 }}>Para <span style={{ color: '#f4c025' }}>{recipientName}</span></div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 14, fontStyle: 'italic' }}>con amor</div>
+                    <div style={{ width: '85%', padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 16, marginBottom: 8 }}>
+                        {[5,9,7,12,6,10,8,13,7,9,5,11,8,10,6].map((h,i) => (
+                          <div key={i} style={{ width: 2, height: h, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: 0.6 }} />
+                        ))}
+                      </div>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f4c025', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 10px rgba(244,192,37,0.3)' }}>
+                        <span style={{ fontSize: 11, color: '#1a1408', marginLeft: 2 }}>▶</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                      <div style={{ padding: '3px 8px', borderRadius: 99, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 7, color: 'rgba(255,255,255,0.4)' }}>📝 Ver Letra</div>
+                      <div style={{ padding: '3px 8px', borderRadius: 99, background: 'rgba(37,211,102,0.7)', fontSize: 7, color: 'white' }}>💬 WhatsApp</div>
+                    </div>
                   </div>
-                  {selectedTemplate === t.id && (
-                    <span style={{ fontSize: '18px', color: t.color }}>✓</span>
-                  )}
-                </button>
-              ))}
+                )}
+
+                {/* Lavender Dream preview */}
+                {selectedTemplate === 'lavender_dream' && (
+                  <div style={{ background: 'radial-gradient(circle at top right, #fdfbf7, #f0e9f7)', padding: '20px 16px', position: 'relative', minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: '60%', height: '60%', background: 'rgba(153,71,235,0.06)', filter: 'blur(30px)', borderRadius: '50%' }} />
+                    <div style={{ fontSize: 8, color: '#9947eb', letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 600, marginBottom: 8 }}>RegalosQueCantan Presenta</div>
+                    <div style={{ fontSize: 15, fontWeight: 300, fontStyle: 'italic', color: '#0f172a', textAlign: 'center', lineHeight: 1.15, marginBottom: 12, fontFamily: 'Georgia, serif' }}>Una canción especial para {recipientName}</div>
+                    <div style={{ width: '90%', borderRadius: 10, background: 'linear-gradient(135deg, #fff, #f7f2fb)', boxShadow: '0 6px 16px rgba(153,71,235,0.1)', padding: '12px', border: '1px solid rgba(153,71,235,0.08)' }}>
+                      <div style={{ width: '100%', height: 40, borderRadius: 6, background: 'linear-gradient(135deg, rgba(153,71,235,0.08), rgba(153,71,235,0.15))', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 9, color: 'rgba(153,71,235,0.35)' }}>📷 tu foto aquí</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#0f172a', fontWeight: 600, textAlign: 'center', marginBottom: 4 }}>Para {recipientName}</div>
+                      <div style={{ fontSize: 7, color: 'rgba(153,71,235,0.5)', textAlign: 'center', fontStyle: 'italic', marginBottom: 8 }}>Dedicatoria...</div>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#9947eb', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(153,71,235,0.3)' }}>
+                        <span style={{ fontSize: 11, color: 'white', marginLeft: 2 }}>▶</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Electric Magenta preview */}
+                {selectedTemplate === 'electric_magenta' && (
+                  <div style={{ background: '#0a0507', padding: '0', position: 'relative', minHeight: '200px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ height: '45%', minHeight: 80, background: 'linear-gradient(180deg, #1a0a10, #0a0507)', position: 'relative', borderBottom: '1px solid rgba(242,13,89,0.15)' }}>
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(242,13,89,0.05)' }} />
+                      <span style={{ position: 'absolute', bottom: 8, left: 12, fontSize: 9, color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>📷 tu foto aquí</span>
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '14px 12px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2.5, height: 20, marginBottom: 8 }}>
+                        {[4,8,6,11,5,9,7,12,5,8].map((h,i) => (
+                          <div key={i} style={{ width: 2.5, height: h, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', opacity: 0.6, filter: 'drop-shadow(0 0 3px rgba(242,13,89,0.4))' }} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: 'white', textTransform: 'uppercase', letterSpacing: '-0.03em', textAlign: 'center', marginBottom: 2 }}>Para {recipientName}</div>
+                      <div style={{ fontSize: 8, color: '#f20d59', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 10 }}>De alguien especial</div>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f20d59', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(242,13,89,0.3)' }}>
+                        <span style={{ fontSize: 11, color: 'white', marginLeft: 2 }}>▶</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT: Small template thumbnails to switch */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '72px', flexShrink: 0 }}>
+                {[
+                  { id: 'golden_hour', label: 'Gold', color: '#f4c025', bg: 'linear-gradient(160deg, #1a1408, #2a1f10)', glow: 'rgba(244,192,37,0.15)', icon: '🌅' },
+                  { id: 'lavender_dream', label: 'Lavender', color: '#9947eb', bg: 'radial-gradient(circle at top right, #fdfbf7, #f0e9f7)', glow: 'rgba(153,71,235,0.15)', icon: '💜' },
+                  { id: 'electric_magenta', label: 'Magenta', color: '#f20d59', bg: '#0a0507', glow: 'rgba(242,13,89,0.15)', icon: '⚡' },
+                ].map((t) => {
+                  const isActive = selectedTemplate === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setSelectedTemplate(t.id)}
+                      style={{
+                        flex: 1, minHeight: '58px', padding: '6px 4px',
+                        borderRadius: '10px', cursor: 'pointer',
+                        border: `2px solid ${isActive ? t.color : 'rgba(255,255,255,0.08)'}`,
+                        background: t.bg, overflow: 'hidden',
+                        transition: 'all 0.25s', position: 'relative',
+                        opacity: isActive ? 1 : 0.6,
+                        transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                      }}
+                    >
+                      <div style={{ fontSize: 16, textAlign: 'center', marginBottom: 2 }}>{t.icon}</div>
+                      <div style={{ fontSize: 7, fontWeight: 700, textAlign: 'center', color: isActive ? t.color : 'rgba(255,255,255,0.5)', fontFamily: "'Montserrat', sans-serif", letterSpacing: '-0.01em' }}>{t.label}</div>
+                      {isActive && <div style={{ position: 'absolute', top: 3, right: 3, width: 12, height: 12, borderRadius: '50%', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, color: 'white' }}>✓</div>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Photo upload — only for photo templates */}
