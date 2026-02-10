@@ -212,38 +212,33 @@ export default function GeneratingPage() {
           }
           
           // ============================================
-          // FAST FUNNEL: Skip Song 2 — will generate on ComparisonPage
-          // CONTROL FUNNEL: Generate Song 2 here
+          // BOTH FUNNELS: Kick off Song 2 in parallel
+          // FAST: Fire and forget (ComparisonPage polls)
+          // CONTROL: Wait for both before navigating
           // ============================================
-          if (isFastFunnel) {
+          if (import.meta.env.DEV) {
+            console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
+          }
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Start Song 2 generation
+          setSong2Status('generating');
+          const result2 = await generateSong({
+            ...formData,
+            version: 2,
+            sessionId: result1.sessionId
+          });
+          
+          if (result2.success && result2.song?.id) {
             if (import.meta.env.DEV) {
-              console.log('⚡ Fast funnel: Skipping Song 2 — will generate on ComparisonPage');
+              console.log('✅ Song 2 started:', result2.song.id);
             }
+            setSong2Id(result2.song.id);
           } else {
             if (import.meta.env.DEV) {
-              console.log('⏳ Control funnel: Waiting 3 seconds before Song 2...');
+              console.warn('⚠️ Song 2 failed to start, continuing with single song');
             }
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            // Start Song 2 generation after delay
-            setSong2Status('generating');
-            const result2 = await generateSong({
-              ...formData,
-              version: 2,
-              sessionId: result1.sessionId // Link to same session
-            });
-            
-            if (result2.success && result2.song?.id) {
-              if (import.meta.env.DEV) {
-                console.log('✅ Song 2 started:', result2.song.id);
-              }
-              setSong2Id(result2.song.id);
-            } else {
-              if (import.meta.env.DEV) {
-                console.warn('⚠️ Song 2 failed to start, continuing with single song');
-              }
-              setSong2Status('failed');
-            }
+            setSong2Status('failed');
           }
         } else {
           throw new Error(result1.error || 'Failed to start song generation');
@@ -339,16 +334,16 @@ export default function GeneratingPage() {
 
   // Navigate when songs are ready
   useEffect(() => {
-    // FAST FUNNEL: Navigate as soon as Song 1 is ready
+    // FAST FUNNEL: Navigate as soon as Song 1 is ready, pass Song 2 ID for background polling
     if (isFastFunnel && song1Status === 'completed') {
       if (import.meta.env.DEV) {
         console.log('⚡ Fast funnel: Song 1 ready! Navigating to comparison...');
+        console.log('📋 Song 2 status:', song2Status, '| Song 2 ID:', song2Id);
       }
       setSongData({
         song1: song1Data,
         song2: null,
-        song2Pending: true,
-        formDataForSong2: { ...formData, version: 2 },
+        song2PendingId: song2Id || null, // Pass the ID so ComparisonPage can poll
         sessionId: apiSessionId
       });
       setTimeout(() => navigateTo('comparison'), 1500);
@@ -388,7 +383,7 @@ export default function GeneratingPage() {
     else if (song1Status === 'failed') {
       setError('No pudimos generar tu canción. Por favor intenta de nuevo.');
     }
-  }, [song1Status, song2Status, song1Data, song2Data, navigateTo, setSongData, apiSessionId, isFastFunnel]);
+  }, [song1Status, song2Status, song1Data, song2Data, song2Id, navigateTo, setSongData, apiSessionId, isFastFunnel]);
 
   // Error state
   if (error) {

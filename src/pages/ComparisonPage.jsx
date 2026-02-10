@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
-import { createCheckout, validateCoupon, supabase, generateSong, checkSongStatus } from '../services/api';
+import { createCheckout, validateCoupon, supabase, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
@@ -214,91 +214,54 @@ export default function ComparisonPage() {
     }
   }, [songData]);
 
-  // ✅ NEW: Background Song 2 generation
+  // ✅ NEW: Background Song 2 polling (Song 2 already generating, we just poll for completion)
   useEffect(() => {
-    // Only run if Song 2 is pending, Song 1 is loaded (not loading), and we haven't started yet
-    if (!songData?.song2Pending || song2Started.current || loading) return;
-    if (songs.length === 0) return; // songs loaded but empty = error state, don't generate
+    const pendingId = songData?.song2PendingId;
+    if (!pendingId || song2Started.current || loading) return;
+    if (songs.length === 0) return;
     song2Started.current = true;
     setSong2Loading(true);
 
-    const formDataForSong2 = songData.formDataForSong2;
-    if (!formDataForSong2) {
-      if (import.meta.env.DEV) console.warn('❌ No formData for Song 2 generation');
-      setSong2Loading(false);
-      return;
-    }
+    if (import.meta.env.DEV) console.log('🎵 Polling for Song 2 (already generating):', pendingId);
 
-    async function generateSong2() {
+    const pollForSong2 = async () => {
       try {
-        if (import.meta.env.DEV) console.log('🎵 Starting background Song 2 generation...');
-        if (import.meta.env.DEV) console.log('📋 formDataForSong2:', JSON.stringify(formDataForSong2).substring(0, 200));
+        const status = await checkSongStatus(pendingId);
+        if (import.meta.env.DEV) console.log('📊 Song 2 poll:', status.status);
 
-        const result = await generateSong({
-          ...formDataForSong2,
-          version: 2,
-          sessionId: songData.sessionId || null
-        });
-
-        if (import.meta.env.DEV) console.log('📡 Song 2 API response:', JSON.stringify(result).substring(0, 200));
-
-        if (result.success && result.song?.id) {
-          if (import.meta.env.DEV) console.log('✅ Song 2 started:', result.song.id);
-          
-          // Poll for Song 2 completion
-          const pollForSong2 = async () => {
-            try {
-              const status = await checkSongStatus(result.song.id);
-              if (import.meta.env.DEV) console.log('📊 Song 2 poll:', status.status);
-
-              if (status.status === 'completed' && status.song) {
-                clearInterval(song2PollRef.current);
-                const newSong = {
-                  id: status.song.id,
-                  version: 2,
-                  audioUrl: status.song.audio_url,
-                  previewUrl: status.song.preview_url || status.song.audio_url,
-                  imageUrl: status.song.image_url,
-                  lyrics: status.song.lyrics
-                };
-                setSongs(prev => {
-                  const updated = [...prev, newSong].sort((a, b) => (a.version || 1) - (b.version || 1));
-                  // Save updated IDs to localStorage
-                  localStorage.setItem('rqc_comparison_songs', JSON.stringify(updated.map(s => s.id)));
-                  return updated;
-                });
-                setSong2Loading(false);
-                setSong2Ready(true);
-
-                if (import.meta.env.DEV) console.log('🎉 Song 2 ready!');
-              } else if (status.status === 'failed') {
-                clearInterval(song2PollRef.current);
-                setSong2Loading(false);
-                if (import.meta.env.DEV) console.warn('⚠️ Song 2 generation failed');
-              }
-            } catch (err) {
-              if (import.meta.env.DEV) console.error('Song 2 poll error:', err);
-            }
+        if (status.status === 'completed' && status.song) {
+          clearInterval(song2PollRef.current);
+          const newSong = {
+            id: status.song.id,
+            version: 2,
+            audioUrl: status.song.audio_url,
+            previewUrl: status.song.preview_url || status.song.audio_url,
+            imageUrl: status.song.image_url,
+            lyrics: status.song.lyrics
           };
-
-          // Start polling every 3 seconds
-          pollForSong2();
-          song2PollRef.current = setInterval(pollForSong2, 3000);
-        } else {
+          setSongs(prev => {
+            const updated = [...prev, newSong].sort((a, b) => (a.version || 1) - (b.version || 1));
+            localStorage.setItem('rqc_comparison_songs', JSON.stringify(updated.map(s => s.id)));
+            return updated;
+          });
           setSong2Loading(false);
-          if (import.meta.env.DEV) console.warn('⚠️ Song 2 failed to start:', result.error || 'unknown');
+          setSong2Ready(true);
+          if (import.meta.env.DEV) console.log('🎉 Song 2 ready!');
+        } else if (status.status === 'failed') {
+          clearInterval(song2PollRef.current);
+          setSong2Loading(false);
+          if (import.meta.env.DEV) console.warn('⚠️ Song 2 generation failed');
         }
       } catch (err) {
-        setSong2Loading(false);
-        if (import.meta.env.DEV) console.error('❌ Song 2 generation error:', err);
+        if (import.meta.env.DEV) console.error('Song 2 poll error:', err);
       }
-    }
+    };
 
-    // Small delay to not compete with Song 1 audio loading
-    if (import.meta.env.DEV) console.log('⏳ Song 2: waiting 2s before starting...');
-    const timer = setTimeout(generateSong2, 2000);
+    // Start polling immediately, then every 3 seconds
+    pollForSong2();
+    song2PollRef.current = setInterval(pollForSong2, 3000);
+
     return () => {
-      clearTimeout(timer);
       if (song2PollRef.current) clearInterval(song2PollRef.current);
     };
   }, [songData, songs.length, loading]);
