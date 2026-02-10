@@ -16,7 +16,20 @@ export const genreStyles = {
   ranchera: "mariachi, violins, trumpets, passionate vocals, traditional Mexican ranchera",
   balada: "romantic Spanish ballad, piano, strings, emotional vocals, Latin pop",
   reggaeton: "urban Latin, dembow beat, modern production, reggaetón perreo",
-  salsa: "Caribbean salsa, piano montuno, congas, timbales, Cuban rhythm"
+  salsa: "Caribbean salsa, piano montuno, congas, timbales, Cuban rhythm",
+  romantica: "slow romantic Latin ballad, piano, acoustic guitar, strings, emotional vocals, tender love song, Latin pop ballad",
+  bachata: "Dominican bachata, romantic guitar, bongos, smooth vocals, Latin rhythm",
+  merengue: "Dominican merengue, accordion, tambora, güira, fast danceable rhythm",
+  bolero: "classic bolero, romantic guitar, soft percussion, intimate vocals, timeless Latin romance",
+  pop_latino: "modern Latin pop, polished production, catchy melody, Spanish pop vocals",
+  latin_trap: "Latin trap, dark beats, autotune vocals, urban Latin, 808 bass",
+  sierreno: "sierreño, guitarra, tololoche, Mexican mountain music, acoustic regional",
+  mariachi: "mariachi ensemble, violins, trumpets, guitarrón, vihuela, Mexican serenade",
+  duranguense: "duranguense, synthesizer, techno-banda, fast danceable beat",
+  vallenato: "Colombian vallenato, accordion, caja vallenata, guacharaca, romantic storytelling",
+  grupera: "grupera, keyboards, romantic group vocals, Mexican pop ballad",
+  tejano: "Tejano music, accordion, bajo sexto, polka influence, Tex-Mex",
+  rock_espanol: "Spanish rock, electric guitar, drums, powerful vocals, Latin rock"
 };
 
 // Occasion prompts for Claude lyrics generation
