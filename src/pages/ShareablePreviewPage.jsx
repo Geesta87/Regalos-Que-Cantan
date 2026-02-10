@@ -529,26 +529,62 @@ export default function ShareablePreviewPage() {
             <button
               onClick={handleSelectBoth}
               style={{
-                width: '100%', padding: '16px',
+                width: '100%', padding: '20px 24px',
                 background: purchaseMode === 'bundle'
-                  ? 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.12))'
-                  : 'rgba(255,255,255,0.05)',
-                border: `2px solid ${purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.12)'}`,
-                borderRadius: '14px',
-                color: purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.7)',
-                fontSize: '15px', fontWeight: '700',
-                cursor: 'pointer', transition: 'all 0.2s',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                  ? 'linear-gradient(145deg, rgba(212,175,55,0.15), rgba(212,175,55,0.05))'
+                  : 'linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
+                border: `2px solid ${purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '20px',
+                cursor: 'pointer', transition: 'all 0.3s',
+                display: 'flex', alignItems: 'center', gap: '16px',
+                color: 'white', textAlign: 'left',
+                boxShadow: purchaseMode === 'bundle' ? '0 8px 30px rgba(212,175,55,0.15)' : 'none'
               }}
             >
-              {purchaseMode === 'bundle' ? '✓ ' : ''}📦 Llevarme las dos — $29.99
-              <span style={{
-                fontSize: '12px', fontWeight: '600',
-                background: 'rgba(34,197,94,0.2)', color: '#4ade80',
-                padding: '2px 8px', borderRadius: '50px'
+              {/* Overlapping thumbnails */}
+              <div style={{position: 'relative', width: '70px', height: '50px', minWidth: '70px'}}>
+                {songs.slice(0, 2).map((s, i) => (
+                  <div key={s.id} style={{
+                    position: 'absolute',
+                    left: i * 24, top: 0,
+                    width: '46px', height: '46px',
+                    borderRadius: '10px', overflow: 'hidden',
+                    border: `2px solid ${purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.2)'}`,
+                    background: 'linear-gradient(135deg, #1e3a5f, #4c1d95)',
+                    zIndex: 2 - i,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    transition: 'border-color 0.3s'
+                  }}>
+                    {s.image_url ? (
+                      <img src={s.image_url} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}} onError={(e) => { e.target.style.display = 'none'; }} />
+                    ) : (
+                      <span style={{fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Text */}
+              <div style={{flex: 1}}>
+                <p style={{
+                  fontSize: '16px', fontWeight: '800', margin: '0 0 4px 0',
+                  color: purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.85)'
+                }}>
+                  {purchaseMode === 'bundle' ? '✓ ' : ''}Llevarme las dos
+                </p>
+                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.45)', margin: 0}}>
+                  Incluye ambas versiones completas
+                </p>
+              </div>
+
+              {/* Price */}
+              <div style={{
+                fontSize: '20px', fontWeight: '900',
+                color: purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.8)',
+                whiteSpace: 'nowrap'
               }}>
-                Ahorra ${(SINGLE_PRICE * 2 - BUNDLE_PRICE).toFixed(2)}
-              </span>
+                $29.99
+              </div>
             </button>
           </div>
         )}
