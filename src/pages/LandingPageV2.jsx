@@ -580,7 +580,7 @@ export default function LandingPageV2() {
             <a className="text-white/30 hover:text-gold transition-colors text-sm" href="#">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-sm" href="#">Contacto</a>
           </div>
-          <p className="text-white/20 text-sm">© 2025 • Hecho con ❤️ en México</p>
+          <p className="text-white/20 text-sm">© 2026 • Hecho con ❤️ en México</p>
         </div>
       </footer>
     </div>

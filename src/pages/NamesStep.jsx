@@ -260,7 +260,7 @@ export default function NamesStep() {
       <footer className="bg-background-dark py-8 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest font-bold">© 2024 Inspiración y Tradición.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-widest font-bold">© 2026 Inspiración y Tradición.</p>
         </div>
       </footer>
 

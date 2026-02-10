@@ -342,7 +342,7 @@ export default function EmailStep() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2024 • Hecho con alma en México.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2026 • Hecho con alma en México.</p>
         </div>
       </footer>
     </div>

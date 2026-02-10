@@ -253,7 +253,7 @@ export default function GenrePage() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-widest" href="#">FAQ</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-tighter">© 2024 RegalosQueCantan.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-tighter">© 2026 RegalosQueCantan.</p>
         </div>
       </footer>
     </div>

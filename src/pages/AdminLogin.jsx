@@ -1,10 +1,10 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 
-// Simple admin credentials (in production, use proper auth)
+// Admin credentials from environment variables
 const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'Hello2026!1'
+  username: import.meta.env.VITE_ADMIN_USERNAME || '',
+  password: import.meta.env.VITE_ADMIN_PASSWORD || ''
 };
 
 export default function AdminLogin() {

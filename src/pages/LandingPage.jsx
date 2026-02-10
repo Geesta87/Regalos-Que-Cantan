@@ -234,7 +234,7 @@ export default function LandingPage() {
 
       {/* Simple Footer */}
       <footer className="py-6 px-6 text-center bg-background-dark">
-        <p className="text-white/20 text-xs">© 2025 RegalosQueCantan • Hecho con ❤️</p>
+        <p className="text-white/20 text-xs">© 2026 RegalosQueCantan • Hecho con ❤️</p>
       </footer>
     </div>
   );
