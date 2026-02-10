@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Helmet } from 'react-helmet-async';
 
@@ -7,129 +7,176 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
-// Occasion display names
-const occasionNames = {
-  cumpleanos: 'Cumpleaños',
-  aniversario: 'Aniversario',
-  declaracion: 'Declaración de Amor',
-  san_valentin: 'San Valentín',
-  boda: 'Boda',
-  graduacion: 'Graduación',
-  dia_madres: 'Día de las Madres',
-  dia_padres: 'Día del Padre',
-  amistad: 'Amistad',
-  navidad: 'Navidad',
-  otro: 'Especial'
+// ─── DEDICATION GENERATOR ───
+// Builds a beautiful personalized message from song context (no raw buyer details)
+const generateDedication = (song) => {
+  const recipient = song.recipient_name || 'alguien especial';
+  const sender = song.sender_name || '';
+  const occasion = song.occasion || '';
+  const relationship = song.relationship || '';
+
+  const occasionMessages = {
+    cumpleanos: [
+      `Esta canción fue creada para celebrar tu día, ${recipient}. Que la música te acompañe siempre. 🎂`,
+      `Feliz cumpleaños, ${recipient}. Alguien quiso regalarte algo único — una canción solo para ti.`,
+      `${recipient}, hoy es tu día y esta canción es tuya. Cada nota fue pensada para ti. 🎁`,
+    ],
+    aniversario: [
+      `${recipient}, esta canción celebra el amor que han construido juntos. Cada nota cuenta su historia. 💕`,
+      `Para ${recipient} — porque hay amores que merecen su propia canción.`,
+      `Esta melodía fue creada para celebrar un amor que sigue creciendo, ${recipient}. 💍`,
+    ],
+    declaracion: [
+      `${recipient}, alguien quiso decirte algo especial — y eligió hacerlo con una canción. 💌`,
+      `Esta canción lleva un mensaje que las palabras solas no podían expresar, ${recipient}.`,
+      `Para ${recipient} — porque hay sentimientos que solo se pueden cantar. 🌹`,
+    ],
+    san_valentin: [
+      `${recipient}, esta canción es una carta de amor hecha música. Feliz San Valentín. ❤️`,
+      `Para ${recipient} — porque el amor merece su propia melodía. Feliz día del amor. 💝`,
+      `${recipient}, alguien te ama tanto que te escribió una canción. Feliz San Valentín. 🌹`,
+    ],
+    boda: [
+      `${recipient}, esta canción celebra el inicio de una nueva historia juntos. 💒`,
+      `Para ${recipient} — que esta melodía sea parte del soundtrack de su amor. 🥂`,
+    ],
+    graduacion: [
+      `Felicidades, ${recipient}. Esta canción celebra todo lo que has logrado. 🎓`,
+      `${recipient}, lo lograste. Esta canción es para ti y todo tu esfuerzo. 🌟`,
+    ],
+    dia_madres: [
+      `Para ${recipient} — la mujer que lo da todo. Esta canción es un abrazo hecho música. 🌷`,
+      `${recipient}, gracias por todo. Esta canción lleva todo el amor que mereces. 💐`,
+      `Feliz día, ${recipient}. Alguien quiso recordarte lo especial que eres. 🤍`,
+    ],
+    dia_padres: [
+      `Para ${recipient} — gracias por ser ese pilar inquebrantable. Esta canción es para ti. 💙`,
+      `${recipient}, esta canción celebra todo lo que haces por los tuyos. Feliz día. 🫂`,
+    ],
+    amistad: [
+      `${recipient}, esta canción celebra una amistad que vale oro. 🤝`,
+      `Para ${recipient} — porque los mejores amigos merecen su propia canción. ✨`,
+    ],
+    otro: [
+      `${recipient}, alguien quiso darte algo único — una canción creada solo para ti. 🎵`,
+      `Esta canción fue hecha con mucho cariño para ti, ${recipient}. Disfrútala. 💫`,
+    ],
+  };
+
+  const relationshipFlavor = {
+    pareja: `Con todo el amor del mundo para ${recipient}. 💕`,
+    esposo: `Para ${recipient} — el amor de mi vida. Esta canción es nuestra. ❤️`,
+    esposa: `Para ${recipient} — el amor de mi vida. Esta canción es nuestra. ❤️`,
+    mama: `Para la mejor mamá del mundo, ${recipient}. Te quiero con toda el alma. 🌷`,
+    papa: `Para el mejor papá del mundo, ${recipient}. Gracias por todo. 💙`,
+    hijo: `Para ${recipient} — mi mayor orgullo. Esta canción es para ti. ⭐`,
+    hija: `Para ${recipient} — mi mayor orgullo. Esta canción es para ti. ⭐`,
+    amigo: `${recipient}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
+    amiga: `${recipient}, esta canción celebra nuestra amistad. ¡Va por ti! 🎉`,
+    abuela: `Para ${recipient} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
+    abuelo: `Para ${recipient} — gracias por tanto amor. Esta canción es un abrazo para ti. 🤍`,
+  };
+
+  const pool = occasionMessages[occasion] || occasionMessages['otro'];
+  const seed = (song.id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  
+  if (relationship && relationshipFlavor[relationship] && seed % 5 < 2) {
+    return relationshipFlavor[relationship];
+  }
+  
+  return pool[seed % pool.length];
 };
 
-// Format seconds to mm:ss
-const formatTime = (sec) => {
-  if (!sec || isNaN(sec)) return '0:00';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+const fmt = (s) => {
+  if (!s || isNaN(s)) return '0:00';
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
+// ─── MAIN COMPONENT ───
 export default function SongPage({ songId: propSongId }) {
   const [song, setSong] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [phase, setPhase] = useState('loading');
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [time, setTime] = useState(0);
+  const [dur, setDur] = useState(0);
   const [showLyrics, setShowLyrics] = useState(false);
-  const [showDedication, setShowDedication] = useState(false);
-  const [audioLoaded, setAudioLoaded] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const audioRef = useRef(null);
+  const vizRef = useRef(null);
 
-  // Get song ID from prop or URL
   const songId = propSongId || (() => {
-    const path = window.location.pathname;
-    const match = path.match(/\/song\/(.+)/);
-    if (match) return match[1];
-    const params = new URLSearchParams(window.location.search);
-    return params.get('id') || params.get('song_id');
+    const m = window.location.pathname.match(/\/song\/(.+)/);
+    if (m) return m[1];
+    const p = new URLSearchParams(window.location.search);
+    return p.get('id') || p.get('song_id');
   })();
 
-  // Fetch song data
   useEffect(() => {
-    if (!songId) {
-      setError('No se encontró la canción');
-      setLoading(false);
-      return;
-    }
-
-    const fetchSong = async () => {
+    if (!songId) { setError('No se encontró la canción'); setLoading(false); return; }
+    (async () => {
       try {
-        const { data, error: fetchError } = await supabase
-          .from('songs')
-          .select('*')
-          .eq('id', songId)
-          .single();
-
-        if (fetchError) throw fetchError;
+        const { data, error: e } = await supabase.from('songs').select('*').eq('id', songId).single();
+        if (e) throw e;
         if (!data) throw new Error('Canción no encontrada');
         if (!data.audio_url) throw new Error('Esta canción aún no está lista');
-
         setSong(data);
-        setTimeout(() => setRevealed(true), 300);
-      } catch (err) {
-        console.error('Error fetching song:', err);
-        setError(err.message || 'Error al cargar la canción');
-      } finally {
         setLoading(false);
+        setTimeout(() => setPhase('reveal'), 100);
+        setTimeout(() => setPhase('ready'), 1200);
+      } catch (err) {
+        setError(err.message); setLoading(false);
       }
-    };
-
-    fetchSong();
+    })();
   }, [songId]);
 
-  // Audio event handlers
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onLoadedMetadata = () => { setDuration(audio.duration); setAudioLoaded(true); };
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onEnded = () => setIsPlaying(false);
-    const onCanPlay = () => setAudioLoaded(true);
-
-    audio.addEventListener('loadedmetadata', onLoadedMetadata);
-    audio.addEventListener('timeupdate', onTimeUpdate);
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('canplay', onCanPlay);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-      audio.removeEventListener('timeupdate', onTimeUpdate);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('canplay', onCanPlay);
+    const a = audioRef.current;
+    if (!a) return;
+    const h = {
+      loadedmetadata: () => setDur(a.duration),
+      timeupdate: () => setTime(a.currentTime),
+      ended: () => setIsPlaying(false),
     };
+    Object.entries(h).forEach(([e, fn]) => a.addEventListener(e, fn));
+    return () => Object.entries(h).forEach(([e, fn]) => a.removeEventListener(e, fn));
   }, [song]);
 
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) { audio.pause(); } else { audio.play().catch(() => {}); }
+  useEffect(() => {
+    if (!isPlaying) return;
+    let raf;
+    const tick = () => {
+      vizRef.current?.querySelectorAll('.vbar').forEach((bar, i) => {
+        const h = 8 + Math.sin(Date.now() / (180 + i * 30) + i * 0.7) * 18 + Math.random() * 6;
+        bar.style.height = `${h}px`;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isPlaying]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (isPlaying) a.pause(); else a.play().catch(() => {});
     setIsPlaying(!isPlaying);
   };
 
-  const seekTo = (e) => {
-    const audio = audioRef.current;
-    if (!audio || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = pct * duration;
+  const seek = (e) => {
+    const a = audioRef.current;
+    if (!a || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = ((e.clientX - r.left) / r.width) * dur;
   };
 
-  const handleShare = () => {
+  const share = () => {
     const url = `https://regalosquecantan.com/song/${songId}`;
-    const text = `🎵 ¡Escucha esta canción que hicieron especialmente para ${song?.recipient_name || 'mí'}! 🎁\n\n${url}`;
+    const text = `🎵 ¡Escucha esta canción que hicieron para ${song?.recipient_name || 'ti'}! 🎁\n\n${url}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const handleDownload = () => {
+  const download = () => {
     if (!song?.audio_url) return;
     const a = document.createElement('a');
     a.href = song.audio_url;
@@ -137,386 +184,151 @@ export default function SongPage({ songId: propSongId }) {
     a.click();
   };
 
-  const handleCreateOwn = () => {
-    window.location.href = 'https://regalosquecantan.com';
-  };
+  const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
+  const progress = dur > 0 ? (time / dur) * 100 : 0;
 
-  // Format date
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch { return ''; }
-  };
-
-  // Loading state
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh', background: '#e8d5c4',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 16,
-      }}>
-        <div style={{ fontSize: 48, animation: 'pulse 1.5s ease-in-out infinite' }}>🎵</div>
-        <p style={{ fontFamily: "'Karla', sans-serif", color: '#6b5744', fontSize: 14 }}>
-          Cargando tu canción...
-        </p>
-        <style>{`@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }`}</style>
+      <div className="sp-loading-wrap">
+        <style>{CSS}</style>
+        <div className="sp-loading-icon">🎵</div>
+        <div className="sp-loading-bar"><div className="sp-loading-fill" /></div>
+        <p className="sp-loading-text">Preparando tu canción...</p>
       </div>
     );
   }
 
-  // Error state
   if (error || !song) {
     return (
-      <div style={{
-        minHeight: '100vh', background: '#e8d5c4',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 16, padding: 24, textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 48 }}>😔</div>
-        <h2 style={{ fontFamily: "'Karla', sans-serif", color: '#3d2b1f', fontSize: 20, margin: 0 }}>
-          {error || 'Canción no encontrada'}
-        </h2>
-        <p style={{ fontFamily: "'Karla', sans-serif", color: '#8a7456', fontSize: 14, margin: 0 }}>
-          Es posible que este link haya expirado o no sea válido.
-        </p>
-        <button onClick={handleCreateOwn} style={{
-          marginTop: 8, padding: '14px 32px', background: '#c0392b',
-          border: 'none', borderRadius: 10, color: '#fff', fontSize: 15,
-          fontWeight: 600, cursor: 'pointer',
-        }}>
-          🎵 Crea tu propia canción
+      <div className="sp-error-wrap">
+        <style>{CSS}</style>
+        <div style={{ fontSize: 56, marginBottom: 12 }}>🎵</div>
+        <h2 className="sp-error-title">{error || 'Canción no encontrada'}</h2>
+        <p className="sp-error-sub">Es posible que este link haya expirado.</p>
+        <button onClick={() => window.location.href = 'https://regalosquecantan.com'} className="sp-cta-btn">
+          Crear una canción →
         </button>
       </div>
     );
   }
 
-  const recipientName = song.recipient_name || 'Alguien Especial';
-  const senderName = song.sender_name || '';
-  const genreName = song.genre_name || song.genre || '';
-  const subGenreName = song.sub_genre || '';
-  const occasionLabel = occasionNames[song.occasion] || song.occasion || '';
-  const dedication = song.details || '';
-  const lyrics = song.lyrics || '';
-  const dateLabel = formatDate(song.created_at);
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const recipient = song.recipient_name || 'Alguien Especial';
+  const sender = song.sender_name || '';
+  const genre = (song.genre_name || song.genre || '').replace(/_/g, ' ');
+  const photoUrl = song.photo_url || null;
+  const isRevealed = phase === 'reveal' || phase === 'ready';
+  const isReady = phase === 'ready';
 
   return (
     <>
-      {/* Dynamic OG Meta Tags */}
       <Helmet>
-        <title>🎵 Canción para {recipientName} | RegalosQueCantan</title>
-        <meta name="description" content={`Una canción personalizada creada especialmente para ${recipientName}. ${occasionLabel ? `Para ${occasionLabel}.` : ''} Escúchala ahora.`} />
-        <meta property="og:type" content="music.song" />
-        <meta property="og:url" content={`https://regalosquecantan.com/song/${songId}`} />
-        <meta property="og:title" content={`🎵 Una canción para ${recipientName}`} />
-        <meta property="og:description" content={`${senderName ? `${senderName} te dedicó` : 'Te dedicaron'} una canción personalizada. ¡Escúchala ahora!`} />
+        <title>🎵 Canción para {recipient} | RegalosQueCantan</title>
+        <meta property="og:title" content={`🎵 Una canción para ${recipient}`} />
+        <meta property="og:description" content={`${sender ? `${sender} te dedicó` : 'Te dedicaron'} una canción personalizada. ¡Escúchala ahora!`} />
         <meta property="og:image" content="https://regalosquecantan.com/images/og-song-share.jpg" />
-        <meta property="og:site_name" content="RegalosQueCantan" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={`🎵 Una canción para ${recipientName}`} />
-        <meta name="twitter:description" content={`${senderName ? `${senderName} te dedicó` : 'Te dedicaron'} una canción personalizada. ¡Escúchala ahora!`} />
+        <meta property="og:url" content={`https://regalosquecantan.com/song/${songId}`} />
+        <meta property="og:type" content="music.song" />
         <meta name="robots" content="noindex, nofollow" />
       </Helmet>
 
-      {/* Hidden audio element */}
-      {song.audio_url && (
-        <audio ref={audioRef} src={song.audio_url} preload="metadata" />
-      )}
+      {song.audio_url && <audio ref={audioRef} src={song.audio_url} preload="metadata" />}
 
-      <div style={{
-        minHeight: '100vh',
-        background: '#e8d5c4',
-        fontFamily: "system-ui, sans-serif",
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Karla:wght@300;400;500;600&display=swap');
-          @keyframes dropIn { from{opacity:0;transform:translateY(-40px) rotate(-5deg)} to{opacity:1;transform:translateY(0) rotate(0deg)} }
-          @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-          @keyframes noteFloat { 0%{opacity:0;transform:translateY(0) rotate(0)} 20%{opacity:0.3} 100%{opacity:0;transform:translateY(-100px) rotate(20deg)} }
-        `}</style>
+      <div className="sp-page">
+        <style>{CSS}</style>
 
-        {/* Craft paper grid texture */}
-        <div style={{
-          position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0.3,
-          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(0,0,0,0.02) 24px, rgba(0,0,0,0.02) 25px),
-            repeating-linear-gradient(90deg, transparent, transparent 24px, rgba(0,0,0,0.02) 24px, rgba(0,0,0,0.02) 25px)`,
-        }} />
-
-        {/* Washi tape decoration */}
-        <div style={{
-          position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%) rotate(-3deg)',
-          width: 120, height: 26, background: 'rgba(255,182,193,0.5)',
-          borderRadius: 2, zIndex: 10,
-          backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 10px)',
-          opacity: revealed ? 1 : 0, transition: 'opacity 0.5s',
-        }} />
-
-        <div style={{
-          maxWidth: 420, margin: '0 auto', padding: '56px 20px 36px',
-          position: 'relative',
-        }}>
-
-          {/* ===== POLAROID CARD ===== */}
-          <div style={{
-            background: '#fff',
-            padding: '14px 14px 0',
-            borderRadius: 2,
-            boxShadow: '0 4px 30px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
-            transform: revealed ? 'rotate(-1.5deg)' : 'translateY(-40px)',
-            opacity: revealed ? 1 : 0,
-            transition: 'all 0.6s ease-out',
-            marginBottom: 20,
-          }}>
-            {/* Photo area — album art / visualizer */}
-            <div style={{
-              width: '100%', aspectRatio: '1',
-              background: 'linear-gradient(135deg, #2c1810, #3d2317, #1a0e08)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexDirection: 'column', position: 'relative',
-              overflow: 'hidden', borderRadius: 1,
+        {/* Ambient particles */}
+        <div className="sp-particles">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="sp-particle" style={{
+              left: `${10 + i * 15}%`,
+              animationDelay: `${i * 1.8}s`,
+              animationDuration: `${8 + i * 2}s`,
+              fontSize: [14, 10, 16, 11, 13, 9][i],
             }}>
-              {/* Floating notes when playing */}
-              {isPlaying && (
-                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-                  {['♪','♫','♬','🎵','♩'].map((n, i) => (
-                    <span key={`${Math.floor(currentTime)}-${i}`} style={{
-                      position: 'absolute',
-                      left: `${15 + i * 16}%`, bottom: '20%',
-                      fontSize: 14 + i * 3, color: 'rgba(232,213,196,0.25)',
-                      animation: `noteFloat ${2.5 + i * 0.4}s ease-out forwards`,
-                    }}>{n}</span>
-                  ))}
+              {['♪', '♫', '✦', '♬', '·', '♩'][i]}
+            </div>
+          ))}
+        </div>
+
+        <div className="sp-container">
+
+          {/* Header badge */}
+          <div className={`sp-badge ${isRevealed ? 'sp-fadeUp' : ''}`}>
+            <span className="sp-badge-icon">🎵</span>
+            <span className="sp-badge-text">Alguien te dedicó una canción</span>
+          </div>
+
+          {/* POLAROID */}
+          <div className={`sp-polaroid ${isRevealed ? 'sp-dropIn' : ''}`}>
+            <div className="sp-tape" />
+
+            {/* Art area */}
+            <div className="sp-art" onClick={toggle}>
+              {photoUrl ? (
+                <img src={photoUrl} alt="" className="sp-photo" />
+              ) : (
+                <div className="sp-art-gradient">
+                  <div className="sp-art-pattern" />
+                  <span className="sp-genre-tag">{genre}</span>
+                  
+                  <div ref={vizRef} className="sp-viz">
+                    {[...Array(12)].map((_, i) => (
+                      <div key={i} className="vbar" style={{
+                        height: isPlaying ? 14 : 4,
+                        opacity: isPlaying ? 0.9 : 0.35,
+                      }} />
+                    ))}
+                  </div>
+
+                  <div className="sp-play-btn" style={{
+                    opacity: isPlaying ? 0 : 1,
+                    transform: isPlaying ? 'scale(0.8)' : 'scale(1)',
+                  }}>
+                    ▶
+                  </div>
                 </div>
               )}
 
-              {/* Visualizer bars */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 3, marginBottom: 16, height: 32,
-              }}>
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div key={i} style={{
-                    width: 5, borderRadius: 3,
-                    height: isPlaying ? `${14 + Math.sin(Date.now() / 200 + i) * 10 + Math.random() * 8}px` : 6,
-                    background: '#e8d5c4',
-                    transition: 'height 0.12s',
-                  }} />
-                ))}
-              </div>
-
-              <div style={{ fontSize: 52, marginBottom: 6, lineHeight: 1 }}>🎶</div>
-              <p style={{
-                fontFamily: "'Caveat', cursive", fontSize: 20,
-                color: '#e8d5c4', margin: '0 0 2px',
-              }}>
-                {genreName.replace(/_/g, ' ')}
-              </p>
-              {subGenreName && (
-                <p style={{
-                  fontFamily: "'Karla', sans-serif", fontSize: 11,
-                  color: 'rgba(232,213,196,0.5)', margin: 0, letterSpacing: 1,
-                }}>
-                  {subGenreName}
-                </p>
-              )}
-
-              {/* Play button overlay */}
-              <button onClick={togglePlay} style={{
-                position: 'absolute', inset: 0, background: 'transparent',
-                border: 'none', cursor: 'pointer', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                {!isPlaying && audioLoaded && (
-                  <div style={{
-                    width: 68, height: 68, borderRadius: '50%',
-                    background: 'rgba(232,213,196,0.9)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 26, color: '#2c1810', paddingLeft: 4,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                  }}>▶</div>
-                )}
-                {!audioLoaded && (
-                  <div style={{
-                    width: 68, height: 68, borderRadius: '50%',
-                    background: 'rgba(232,213,196,0.6)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, color: '#2c1810',
-                    fontFamily: "'Karla', sans-serif",
-                  }}>Cargando...</div>
-                )}
-              </button>
-
-              {/* Progress bar at bottom of photo */}
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0,
-                height: 3, background: 'rgba(0,0,0,0.3)',
-                cursor: 'pointer',
-              }} onClick={seekTo}>
-                <div style={{
-                  height: '100%', width: `${progress}%`,
-                  background: '#e8d5c4', transition: 'width 0.1s',
-                }} />
+              {/* Progress */}
+              <div className="sp-progress-track" onClick={(e) => { e.stopPropagation(); seek(e); }}>
+                <div className="sp-progress-fill" style={{ width: `${progress}%` }} />
+                {progress > 0 && <div className="sp-progress-dot" style={{ left: `${progress}%` }} />}
               </div>
             </div>
 
-            {/* Time display */}
-            {duration > 0 && (
-              <div style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '6px 4px 0', fontSize: 11,
-                fontFamily: "'Karla', sans-serif", color: '#999',
-              }}>
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            )}
-
-            {/* Polaroid bottom — handwritten name */}
-            <div style={{ padding: '14px 6px 18px', textAlign: 'center' }}>
-              <p style={{
-                fontFamily: "'Caveat', cursive",
-                fontSize: 34, color: '#333', margin: '0 0 2px',
-                lineHeight: 1.1,
-              }}>
-                Para {recipientName} ❤️
-              </p>
-              <p style={{
-                fontFamily: "'Caveat', cursive",
-                fontSize: 16, color: '#999', margin: 0,
-              }}>
-                {senderName ? `de ${senderName}` : ''}
-                {senderName && dateLabel ? ' · ' : ''}
-                {dateLabel}
-              </p>
-              {occasionLabel && (
-                <span style={{
-                  display: 'inline-block', marginTop: 6,
-                  padding: '3px 12px', borderRadius: 12,
-                  background: 'rgba(192,57,43,0.08)',
-                  fontSize: 12, color: '#c0392b',
-                  fontFamily: "'Karla', sans-serif", fontWeight: 500,
-                }}>
-                  💕 {occasionLabel}
-                </span>
-              )}
+            {/* Caption */}
+            <div className="sp-caption">
+              <h1 className="sp-recipient">Para {recipient}</h1>
+              {sender && <p className="sp-sender">con amor, {sender}</p>}
             </div>
           </div>
 
-          {/* ===== PAUSE/PLAY MINI CONTROL (visible when scrolled past polaroid) ===== */}
-          {isPlaying && (
-            <button onClick={togglePlay} style={{
-              position: 'fixed', bottom: 20, right: 20, zIndex: 100,
-              width: 52, height: 52, borderRadius: '50%',
-              background: '#c0392b', border: 'none', cursor: 'pointer',
-              color: '#fff', fontSize: 20,
-              boxShadow: '0 4px 20px rgba(192,57,43,0.4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              ⏸
-            </button>
-          )}
-
-          {/* ===== STICKY NOTE — DEDICATION ===== */}
-          {dedication && (
-            <div style={{
-              opacity: revealed ? 1 : 0,
-              transform: revealed ? 'rotate(1.5deg)' : 'translateY(20px)',
-              transition: 'all 0.6s ease-out 0.2s',
-            }}>
-              <button onClick={() => setShowDedication(!showDedication)} style={{
-                width: '100%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-              }}>
-                <div style={{
-                  background: '#fff9b1',
-                  padding: '18px 20px',
-                  borderRadius: 2,
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-                  position: 'relative',
-                  marginBottom: 16,
-                }}>
-                  {/* Pin */}
-                  <div style={{
-                    position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)',
-                    width: 14, height: 14, borderRadius: '50%',
-                    background: 'radial-gradient(circle at 40% 40%, #e74c3c, #c0392b)',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                  }} />
-                  <p style={{
-                    fontFamily: "'Karla', sans-serif", fontSize: 12,
-                    color: '#999', margin: '0 0 6px', textTransform: 'uppercase',
-                    letterSpacing: 1.5, fontWeight: 600,
-                  }}>
-                    💌 Dedicatoria {showDedication ? '▲' : '▼'}
-                  </p>
-                  {showDedication && (
-                    <p style={{
-                      fontFamily: "'Caveat', cursive",
-                      fontSize: 19, color: '#555', lineHeight: 1.5,
-                      margin: 0, textAlign: 'center',
-                    }}>
-                      "{dedication}"
-                    </p>
-                  )}
-                  {!showDedication && (
-                    <p style={{
-                      fontFamily: "'Caveat', cursive",
-                      fontSize: 16, color: '#888', margin: 0,
-                      overflow: 'hidden', textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      "{dedication.slice(0, 60)}{dedication.length > 60 ? '...' : ''}"
-                    </p>
-                  )}
-                </div>
+          {/* Time controls */}
+          {dur > 0 && (
+            <div className={`sp-time-row ${isReady ? 'sp-fadeUp' : ''}`}>
+              <span className="sp-time">{fmt(time)}</span>
+              <button onClick={toggle} className="sp-mini-play">
+                {isPlaying ? '⏸' : '▶️'}
               </button>
+              <span className="sp-time">{fmt(dur)}</span>
             </div>
           )}
 
-          {/* ===== LYRICS ON LINED PAPER ===== */}
-          {lyrics && (
-            <div style={{
-              opacity: revealed ? 1 : 0,
-              transform: revealed ? 'rotate(-0.5deg)' : 'translateY(20px)',
-              transition: 'all 0.6s ease-out 0.3s',
-              marginBottom: 20,
-            }}>
-              <button onClick={() => setShowLyrics(!showLyrics)} style={{
-                width: '100%', padding: '12px 16px',
-                background: '#fff', border: 'none',
-                borderRadius: showLyrics ? '2px 2px 0 0' : 2,
-                cursor: 'pointer',
-                fontFamily: "'Caveat', cursive", fontSize: 18,
-                color: '#888', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                textAlign: 'center',
-              }}>
-                {showLyrics ? 'Cerrar letra ✕' : '📝 Ver la letra de tu canción'}
+          {/* Dedication */}
+          <div className={`sp-dedication ${isReady ? 'sp-fadeUp sp-delay-1' : ''}`}>
+            <p className="sp-dedication-text">{dedication}</p>
+          </div>
+
+          {/* Lyrics */}
+          {song.lyrics && (
+            <div className={`sp-lyrics-section ${isReady ? 'sp-fadeUp sp-delay-2' : ''}`}>
+              <button onClick={() => setShowLyrics(!showLyrics)} className="sp-lyrics-toggle">
+                {showLyrics ? '✕ Cerrar letra' : '♫ Leer la letra'}
               </button>
               {showLyrics && (
-                <div style={{
-                  background: '#fff',
-                  padding: '14px 22px 18px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  maxHeight: 340, overflowY: 'auto',
-                  backgroundImage: 'repeating-linear-gradient(transparent, transparent 27px, #e8e8e8 27px, #e8e8e8 28px)',
-                  backgroundPositionY: 8,
-                  borderRadius: '0 0 2px 2px',
-                }}>
-                  {lyrics.split('\n').map((line, i) => (
-                    <p key={i} style={{
-                      fontFamily: line.startsWith('[') ? "'Karla', sans-serif" : "'Caveat', cursive",
-                      fontSize: line.startsWith('[') ? 11 : 18,
-                      color: line.startsWith('[') ? '#c0a882' : '#444',
-                      letterSpacing: line.startsWith('[') ? 2 : 0,
-                      textTransform: line.startsWith('[') ? 'uppercase' : 'none',
-                      fontWeight: line.startsWith('[') ? 600 : 400,
-                      margin: line.startsWith('[') ? '14px 0 4px' : '2px 0',
-                      lineHeight: '28px',
-                      textAlign: 'center',
-                    }}>
+                <div className="sp-lyrics-card">
+                  {song.lyrics.split('\n').map((line, i) => (
+                    <p key={i} className={line.startsWith('[') ? 'sp-lyric-section' : 'sp-lyric-line'}>
                       {line || '\u00A0'}
                     </p>
                   ))}
@@ -525,62 +337,404 @@ export default function SongPage({ songId: propSongId }) {
             </div>
           )}
 
-          {/* ===== ACTION BUTTONS ===== */}
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 10,
-            opacity: revealed ? 1 : 0,
-            transition: 'opacity 0.6s ease-out 0.4s',
-          }}>
-            {/* WhatsApp share */}
-            <button onClick={handleShare} style={{
-              padding: '15px', background: '#25D366', border: 'none',
-              borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600,
-              cursor: 'pointer', fontFamily: "'Karla', sans-serif",
-              boxShadow: '0 3px 15px rgba(37,211,102,0.3)',
-            }}>
-              💬 Compartir por WhatsApp
+          {/* Actions */}
+          <div className={`sp-actions ${isReady ? 'sp-fadeUp sp-delay-3' : ''}`}>
+            <button onClick={share} className="sp-share-btn">
+              <span style={{ fontSize: 18 }}>💬</span>
+              Compartir por WhatsApp
             </button>
-
-            {/* Download */}
-            <button onClick={handleDownload} style={{
-              padding: '14px', background: 'rgba(61,43,31,0.08)',
-              border: '1px solid rgba(61,43,31,0.15)', borderRadius: 10,
-              color: '#3d2b1f', fontSize: 14, fontWeight: 600,
-              cursor: 'pointer', fontFamily: "'Karla', sans-serif",
-            }}>
+            <button onClick={download} className="sp-download-btn">
               ⬇️ Descargar canción
             </button>
-
-            {/* CTA — Create your own */}
-            <button onClick={handleCreateOwn} style={{
-              padding: '16px',
-              background: 'linear-gradient(135deg, #c0392b, #e74c3c)',
-              border: 'none', borderRadius: 10,
-              color: '#fff', fontSize: 16, fontWeight: 700,
-              cursor: 'pointer', fontFamily: "'Karla', sans-serif",
-              boxShadow: '0 4px 20px rgba(192,57,43,0.3)',
-              marginTop: 4,
-            }}>
-              🎵 ¡Crea una canción para alguien especial!
-            </button>
-            <p style={{
-              textAlign: 'center', fontSize: 12,
-              color: '#a89278', fontFamily: "'Karla', sans-serif",
-              margin: '2px 0 0',
-            }}>
-              Canciones personalizadas desde $19.99 — Listas en minutos
-            </p>
           </div>
 
-          {/* ===== FOOTER ===== */}
-          <p style={{
-            textAlign: 'center', fontSize: 11, color: '#a89278',
-            marginTop: 28, fontFamily: "'Karla', sans-serif",
-          }}>
-            RegalosQueCantan.com · Canciones únicas hechas con IA + amor
-          </p>
+          {/* CTA */}
+          <div className={`sp-cta-section ${isReady ? 'sp-fadeUp sp-delay-4' : ''}`}>
+            <div className="sp-divider">
+              <div className="sp-divider-line" />
+              <span className="sp-divider-star">✦</span>
+              <div className="sp-divider-line" />
+            </div>
+            <p className="sp-cta-label">¿Quieres regalar una canción así?</p>
+            <button onClick={() => window.location.href = 'https://regalosquecantan.com'} className="sp-cta-btn">
+              🎵 Crear mi canción — desde $19.99
+            </button>
+            <p className="sp-cta-sub">Lista en minutos · Corridos, Cumbia, Banda, Bachata y más</p>
+          </div>
+
+          <p className="sp-footer">RegalosQueCantan.com</p>
         </div>
+
+        {/* Floating pause */}
+        {isPlaying && (
+          <button onClick={toggle} className="sp-floating-pause">⏸</button>
+        )}
       </div>
     </>
   );
 }
+
+// ─── ALL STYLES VIA CSS ───
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+/* ── Page ── */
+.sp-page {
+  min-height: 100vh;
+  background: #faf6f1;
+  background-image: 
+    radial-gradient(ellipse at 20% 0%, rgba(201,168,124,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(180,140,100,0.05) 0%, transparent 60%);
+  position: relative;
+  overflow: hidden;
+}
+
+.sp-container {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 40px 24px 48px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Particles ── */
+.sp-particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+.sp-particle {
+  position: absolute;
+  color: #c9a87c;
+  opacity: 0;
+  animation: spFloat linear infinite;
+}
+
+/* ── Badge ── */
+.sp-badge {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; margin-bottom: 28px;
+  opacity: 0;
+}
+.sp-badge-icon { font-size: 14px; }
+.sp-badge-text {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 13px; color: #a09080; letter-spacing: 0.5px;
+  font-style: italic;
+}
+
+/* ── Polaroid ── */
+.sp-polaroid {
+  background: #fff;
+  padding: 12px;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 12px 40px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  position: relative;
+  opacity: 0;
+}
+
+.sp-tape {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+  width: 80px; height: 22px;
+  background: linear-gradient(135deg, rgba(200,180,160,0.45), rgba(220,200,180,0.35));
+  border-radius: 1px; z-index: 10;
+}
+
+/* ── Art ── */
+.sp-art {
+  width: 100%; aspect-ratio: 1;
+  border-radius: 2px; overflow: hidden;
+  position: relative; cursor: pointer;
+}
+.sp-photo { width: 100%; height: 100%; object-fit: cover; }
+.sp-art-gradient {
+  width: 100%; height: 100%;
+  background: linear-gradient(160deg, #1a1210 0%, #2a1f18 30%, #1e1612 60%, #140e0a 100%);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  position: relative;
+}
+.sp-art-pattern {
+  position: absolute; inset: 0; opacity: 0.04;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.15) 1px, transparent 1px),
+    radial-gradient(circle at 80% 70%, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 60px 60px, 80px 80px;
+}
+.sp-genre-tag {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 13px; color: rgba(232,213,196,0.4);
+  letter-spacing: 3px; text-transform: uppercase;
+  margin-bottom: 24px; position: relative;
+}
+
+/* ── Visualizer ── */
+.sp-viz {
+  display: flex; align-items: flex-end; gap: 3.5px;
+  height: 40px; margin-bottom: 20px; position: relative;
+}
+.vbar {
+  width: 4px; border-radius: 2px;
+  background: linear-gradient(to top, #c9a87c, #e8d5c4);
+  transition: height 0.1s ease, opacity 0.3s;
+}
+
+.sp-play-btn {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(250,246,241,0.92);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: #2a1f18; padding-left: 3px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  transition: opacity 0.3s, transform 0.3s;
+  position: absolute;
+}
+
+/* ── Progress ── */
+.sp-progress-track {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 4px; background: rgba(0,0,0,0.25);
+  cursor: pointer; z-index: 5;
+}
+.sp-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c9a87c, #e8d5c4);
+  transition: width 0.15s linear;
+}
+.sp-progress-dot {
+  position: absolute; top: -3px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #faf6f1; border: 2px solid #c9a87c;
+  transform: translateX(-50%);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+/* ── Caption ── */
+.sp-caption { padding: 16px 8px 10px; text-align: center; }
+.sp-recipient {
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-size: 28px; font-weight: 700; color: #2a1f18;
+  margin: 0 0 4px; line-height: 1.2; letter-spacing: -0.3px;
+}
+.sp-sender {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 15px; color: #a09080;
+  font-style: italic; margin: 0;
+}
+
+/* ── Time ── */
+.sp-time-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin-bottom: 20px; opacity: 0;
+}
+.sp-time {
+  font-family: 'DM Mono', 'Courier New', monospace;
+  font-size: 12px; color: #b0a090; letter-spacing: 1px;
+}
+.sp-mini-play {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: #2a1f18; border: none;
+  color: #faf6f1; font-size: 13px;
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  transition: transform 0.15s;
+}
+.sp-mini-play:active { transform: scale(0.92); }
+
+/* ── Dedication ── */
+.sp-dedication {
+  background: linear-gradient(135deg, rgba(201,168,124,0.08), rgba(201,168,124,0.03));
+  border: 1px solid rgba(201,168,124,0.15);
+  border-radius: 16px; padding: 22px 24px;
+  margin-bottom: 18px; text-align: center; opacity: 0;
+}
+.sp-dedication-text {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 16px; line-height: 1.65; color: #5a4a3a;
+  margin: 0; font-style: italic;
+}
+
+/* ── Lyrics ── */
+.sp-lyrics-section { opacity: 0; margin-bottom: 18px; }
+.sp-lyrics-toggle {
+  width: 100%; padding: 14px;
+  background: transparent;
+  border: 1px solid rgba(160,144,128,0.2);
+  border-radius: 12px; cursor: pointer;
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 14px; color: #a09080;
+  transition: all 0.2s;
+}
+.sp-lyrics-toggle:hover { background: rgba(201,168,124,0.05); }
+.sp-lyrics-card {
+  background: #fff;
+  padding: 20px 24px;
+  border-radius: 0 0 12px 12px;
+  border: 1px solid rgba(160,144,128,0.12);
+  border-top: none;
+  max-height: 360px; overflow-y: auto;
+}
+.sp-lyric-section {
+  font-family: 'DM Mono', 'Courier New', monospace;
+  font-size: 10px; color: #c0a882;
+  letter-spacing: 2px; text-transform: uppercase;
+  margin: 16px 0 4px; text-align: center;
+}
+.sp-lyric-line {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 15px; color: #4a3a2a; line-height: 1.8;
+  margin: 1px 0; text-align: center;
+}
+
+/* ── Actions ── */
+.sp-actions {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-top: 18px; opacity: 0;
+}
+.sp-share-btn {
+  padding: 16px; border: none; border-radius: 14px;
+  background: #25D366; color: #fff;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(37,211,102,0.25);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.sp-share-btn:hover { box-shadow: 0 6px 24px rgba(37,211,102,0.35); }
+.sp-share-btn:active { transform: scale(0.97); }
+
+.sp-download-btn {
+  padding: 14px; border: 1.5px solid rgba(42,31,24,0.12);
+  border-radius: 14px; background: transparent;
+  color: #5a4a3a; font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: background 0.2s;
+}
+.sp-download-btn:hover { background: rgba(42,31,24,0.04); }
+
+/* ── CTA ── */
+.sp-cta-section { margin-top: 32px; text-align: center; opacity: 0; }
+.sp-divider { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.sp-divider-line { flex: 1; height: 1px; background: rgba(160,144,128,0.2); }
+.sp-divider-star { color: #c9a87c; font-size: 12px; }
+.sp-cta-label {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 16px; color: #5a4a3a; margin-bottom: 14px;
+  font-style: italic;
+}
+.sp-cta-btn {
+  width: 100%; padding: 17px 24px;
+  background: linear-gradient(135deg, #2a1f18, #3d2b1f);
+  border: none; border-radius: 14px;
+  color: #faf6f1; font-size: 15px; font-weight: 600;
+  cursor: pointer;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  box-shadow: 0 4px 20px rgba(42,31,24,0.2);
+  letter-spacing: 0.3px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.sp-cta-btn:hover { box-shadow: 0 6px 28px rgba(42,31,24,0.3); }
+.sp-cta-btn:active { transform: scale(0.97); }
+.sp-cta-sub {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 12px; color: #b0a090; margin-top: 10px;
+  font-style: italic;
+}
+
+/* ── Footer ── */
+.sp-footer {
+  text-align: center; font-size: 11px; color: #c0b0a0;
+  margin-top: 32px; letter-spacing: 1.5px;
+  font-family: 'DM Mono', 'Courier New', monospace;
+}
+
+/* ── Floating Pause ── */
+.sp-floating-pause {
+  position: fixed; bottom: 24px; right: 24px; z-index: 100;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: #2a1f18; border: none;
+  color: #faf6f1; font-size: 18px; cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s;
+}
+.sp-floating-pause:active { transform: scale(0.9); }
+
+/* ── Loading ── */
+.sp-loading-wrap {
+  min-height: 100vh; background: #faf6f1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px;
+}
+.sp-loading-icon { font-size: 40px; animation: spPulse 2s ease-in-out infinite; }
+.sp-loading-bar {
+  width: 120px; height: 2px; background: rgba(160,144,128,0.15);
+  border-radius: 1px; overflow: hidden;
+}
+.sp-loading-fill {
+  width: 40%; height: 100%; background: #c9a87c;
+  border-radius: 1px; animation: spSlide 1.5s ease-in-out infinite;
+}
+.sp-loading-text {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 13px; color: #a09080; font-style: italic;
+}
+
+/* ── Error ── */
+.sp-error-wrap {
+  min-height: 100vh; background: #faf6f1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px; text-align: center; gap: 8px;
+}
+.sp-error-title {
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-size: 22px; color: #2a1f18; margin: 0;
+}
+.sp-error-sub {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 14px; color: #a09080; margin: 0; font-style: italic;
+}
+
+/* ── Animations ── */
+@keyframes spFloat {
+  0% { opacity: 0; transform: translateY(30px) rotate(0deg); }
+  15% { opacity: 0.15; }
+  85% { opacity: 0.15; }
+  100% { opacity: 0; transform: translateY(-100vh) rotate(25deg); }
+}
+
+@keyframes spDropIn {
+  0% { opacity: 0; transform: rotate(-4deg) translateY(-30px) scale(0.96); }
+  60% { opacity: 1; transform: rotate(-0.5deg) translateY(4px) scale(1.01); }
+  100% { opacity: 1; transform: rotate(-1.2deg) translateY(0) scale(1); }
+}
+
+@keyframes spFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.7; }
+}
+
+@keyframes spSlide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
+}
+
+.sp-dropIn { animation: spDropIn 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.sp-fadeUp { animation: spFadeUp 0.6s ease-out forwards; }
+.sp-delay-1 { animation-delay: 0.15s; }
+.sp-delay-2 { animation-delay: 0.25s; }
+.sp-delay-3 { animation-delay: 0.35s; }
+.sp-delay-4 { animation-delay: 0.5s; }
+
+/* Scrollbar */
+.sp-lyrics-card::-webkit-scrollbar { width: 4px; }
+.sp-lyrics-card::-webkit-scrollbar-track { background: transparent; }
+.sp-lyrics-card::-webkit-scrollbar-thumb { background: rgba(160,144,128,0.2); border-radius: 2px; }
+`;
