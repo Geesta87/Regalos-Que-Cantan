@@ -1257,6 +1257,7 @@ export default function AdminDashboard() {
                       const hasAudio = !!song.audio_url;
                       const previewLink = `${window.location.origin}/listen?song_id=${song.id}`;
                       const successLink = `${window.location.origin}/success?song_id=${song.id}`;
+                      const polaroidLink = `${window.location.origin}/song/${song.id}`;
 
                       return (
                         <div
@@ -1327,6 +1328,29 @@ export default function AdminDashboard() {
                               </button>
                             </div>
                           )}
+                          {/* Polaroid shareable link */}
+                          {hasAudio && (
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(polaroidLink); setCopiedLinkId(`polaroid-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                                className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold transition ${
+                                  copiedLinkId === `polaroid-${song.id}`
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                    : 'bg-pink-500/10 text-pink-400 border border-pink-500/30 hover:bg-pink-500/20'
+                                }`}
+                              >
+                                {copiedLinkId === `polaroid-${song.id}` ? '✅ ¡Copiado!' : '🎨 Polaroid Page'}
+                              </button>
+                              <a
+                                href={polaroidLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="py-2.5 px-4 rounded-xl text-sm font-semibold bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 transition text-center"
+                              >
+                                👁️
+                              </a>
+                            </div>
+                          )}
 
                           {/* Combined link for song pairs (same email + recipient) */}
                           {hasAudio && (() => {
@@ -1375,6 +1399,9 @@ export default function AdminDashboard() {
                                 </a>
                                 <a href={successLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-blue-400 underline">
                                   Abrir success ↗
+                                </a>
+                                <a href={polaroidLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-pink-400 underline">
+                                  Abrir polaroid ↗
                                 </a>
                               </div>
                             )}
@@ -1767,6 +1794,37 @@ export default function AdminDashboard() {
                       Copiar
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Polaroid Shareable Page Link */}
+              <div className="bg-pink-500/10 border border-pink-500/20 rounded-xl p-4">
+                <p className="text-xs text-pink-400 mb-2">🎨 Página Compartible (Polaroid)</p>
+                <p className="text-xs text-gray-500 mb-2">Este link muestra la canción en una página bonita para compartir por WhatsApp</p>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    readOnly 
+                    value={`${window.location.origin}/song/${selectedSong.id}`}
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
+                  />
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/song/${selectedSong.id}`);
+                      alert('Polaroid link copiado!');
+                    }}
+                    className="px-4 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-400 transition"
+                  >
+                    Copiar
+                  </button>
+                  <a
+                    href={`${window.location.origin}/song/${selectedSong.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
+                  >
+                    👁️ Ver
+                  </a>
                 </div>
               </div>
               
