@@ -1274,11 +1274,16 @@ export default function AdminDashboard() {
                             </div>
                           )}
 
-                          {/* Combined link for session pairs */}
-                          {hasAudio && song.session_id && (() => {
-                            const sessionSongs = songs.filter(s => s.session_id === song.session_id && s.id !== song.id && s.audio_url);
-                            if (sessionSongs.length === 0) return null;
-                            const combinedIds = [song.id, ...sessionSongs.map(s => s.id)].join(',');
+                          {/* Combined link for song pairs (same email + recipient) */}
+                          {hasAudio && (() => {
+                            const pairSongs = songs.filter(s => 
+                              s.id !== song.id && 
+                              s.audio_url && 
+                              s.email === song.email && 
+                              s.recipient_name === song.recipient_name
+                            );
+                            if (pairSongs.length === 0) return null;
+                            const combinedIds = [song.id, ...pairSongs.map(s => s.id)].join(',');
                             const combinedPreviewLink = `${window.location.origin}/listen?song_ids=${combinedIds}`;
                             const combinedSuccessLink = `${window.location.origin}/success?song_ids=${combinedIds}`;
                             return (
@@ -1291,7 +1296,7 @@ export default function AdminDashboard() {
                                       : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
                                   }`}
                                 >
-                                  {copiedLinkId === `combo-preview-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Preview (${sessionSongs.length + 1})`}
+                                  {copiedLinkId === `combo-preview-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Preview (${pairSongs.length + 1})`}
                                 </button>
                                 <button
                                   onClick={() => { navigator.clipboard.writeText(combinedSuccessLink); setCopiedLinkId(`combo-success-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
@@ -1301,7 +1306,7 @@ export default function AdminDashboard() {
                                       : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
                                   }`}
                                 >
-                                  {copiedLinkId === `combo-success-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Download (${sessionSongs.length + 1})`}
+                                  {copiedLinkId === `combo-success-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Download (${pairSongs.length + 1})`}
                                 </button>
                               </div>
                             );
