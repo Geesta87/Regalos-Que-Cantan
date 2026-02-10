@@ -284,6 +284,35 @@ export default function SuccessPage() {
     }
   };
 
+  // ------ 🔥 META PIXEL: Track Purchase after Stripe payment ------
+  const hasFiredPurchase = useRef(false);
+  useEffect(() => {
+    if (hasFiredPurchase.current) return;
+    if (!songs.length) return;
+
+    // Only fire if coming from Stripe (session_id present)
+    const sessionId = urlParams.get('session_id');
+    if (!sessionId) return;
+
+    hasFiredPurchase.current = true;
+
+    // Determine purchase value based on number of songs
+    const purchaseValue = songs.length > 1 ? 24.99 : 19.99;
+
+    // Fire Meta Pixel Purchase event
+    if (typeof window.fbq === 'function') {
+      window.fbq('track', 'Purchase', {
+        value: purchaseValue,
+        currency: 'USD',
+        content_type: 'product',
+        content_name: `Canción para ${songs[0]?.recipient_name || 'regalo'}`,
+        content_ids: songs.map(s => s.id),
+        num_items: songs.length
+      });
+      console.log('[Meta Pixel] Purchase event fired:', purchaseValue, 'USD');
+    }
+  }, [songs]);
+
   // ------ Start countdown once song + audio are ready ------
   useEffect(() => {
     if (!currentSong?.audio_url || hasTriggeredCountdown.current) return;
