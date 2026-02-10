@@ -716,11 +716,7 @@ export default function SuccessPage() {
             }}>
               Para{' '}
               <span style={{
-                background: `linear-gradient(90deg, ${ts.accent}, ${selectedTemplate === 'golden_hour' ? '#fde68a' : selectedTemplate === 'lavender_dream' ? '#c084fc' : '#ff5c93'}, ${ts.accent})`,
-                backgroundSize: '200% auto',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                animation: 'shimmerAccent 3s linear infinite'
+                color: ts.accent,
               }}>
                 {recipientName}
               </span>
