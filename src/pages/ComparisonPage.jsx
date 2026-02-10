@@ -55,6 +55,9 @@ export default function ComparisonPage() {
   const [couponError, setCouponError] = useState('');
   const [isLoadingCoupon, setIsLoadingCoupon] = useState(false);
   
+  // WhatsApp phone state
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  
   // Checkout state
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
@@ -379,9 +382,27 @@ export default function ComparisonPage() {
         couponCode: codeToSend
       }));
 
+      // Save WhatsApp phone if provided
+      const cleanPhone = whatsappPhone.replace(/\D/g, '');
+      if (cleanPhone) {
+        localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
+        // Save to Supabase songs table
+        try {
+          for (const songId of songIdsToCheckout) {
+            await supabase
+              .from('songs')
+              .update({ whatsapp_phone: cleanPhone })
+              .eq('id', songId);
+          }
+        } catch (phoneErr) {
+          if (import.meta.env.DEV) console.warn('Could not save WhatsApp phone:', phoneErr);
+        }
+      }
+
       if (import.meta.env.DEV) {
         console.log('Checkout - songIds:', songIdsToCheckout);
         console.log('Checkout - coupon:', codeToSend);
+        console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
       const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend);
@@ -1009,6 +1030,60 @@ export default function ComparisonPage() {
           {couponError && (
             <p style={{color: '#ef4444', fontSize: '14px', marginTop: '-10px', marginBottom: '15px'}}>{couponError}</p>
           )}
+
+          {/* WhatsApp Phone - Optional */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(37,211,102,0.08), rgba(37,211,102,0.03))',
+            border: '1px solid rgba(37,211,102,0.25)',
+            borderRadius: '14px',
+            padding: '16px 18px',
+            marginBottom: '20px'
+          }}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px'}}>
+              <span style={{fontSize: '20px'}}>📱</span>
+              <p style={{margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: '600'}}>
+                ¿Quieres recibir tu canción por WhatsApp?
+              </p>
+              <span style={{
+                color: 'rgba(255,255,255,0.4)', fontSize: '11px', 
+                border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px',
+                padding: '2px 8px', whiteSpace: 'nowrap'
+              }}>
+                Opcional
+              </span>
+            </div>
+            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: 'rgba(255,255,255,0.07)', borderRadius: '10px',
+                padding: '0 12px', border: '2px solid rgba(37,211,102,0.2)',
+                flex: 1
+              }}>
+                <span style={{color: 'rgba(255,255,255,0.5)', fontSize: '14px', userSelect: 'none'}}>+</span>
+                <input
+                  type="tel"
+                  value={whatsappPhone}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^\d\s\-\+\(\)]/g, '');
+                    setWhatsappPhone(val);
+                  }}
+                  placeholder="1 (818) 555-1234"
+                  maxLength={20}
+                  style={{
+                    width: '100%', padding: '12px 0',
+                    background: 'transparent', border: 'none',
+                    color: 'white', fontSize: '15px', outline: 'none'
+                  }}
+                />
+              </div>
+              {whatsappPhone.replace(/\D/g, '').length >= 10 && (
+                <span style={{color: '#25D366', fontSize: '20px'}}>✓</span>
+              )}
+            </div>
+            <p style={{margin: '8px 0 0 0', color: 'rgba(255,255,255,0.4)', fontSize: '12px'}}>
+              Te enviaremos el link de descarga directo a tu WhatsApp 💬
+            </p>
+          </div>
 
           {/* Checkout Button */}
           <button
