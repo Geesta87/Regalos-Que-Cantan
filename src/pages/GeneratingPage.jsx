@@ -86,6 +86,7 @@ export default function GeneratingPage() {
   const pollInterval1Ref = useRef(null);
   const pollInterval2Ref = useRef(null);
   const generationStartTime = useRef(null);
+  const hasNavigated = useRef(false);
 
   // Get personalized steps
   const steps = getPersonalizedSteps(formData.recipientName, formData.genre, formData.occasion);
@@ -299,8 +300,9 @@ export default function GeneratingPage() {
     };
   }, [song1Id, song1Status]);
 
-  // Poll for Song 2 status
+  // Poll for Song 2 status (CONTROL funnel only — fast funnel lets ComparisonPage poll)
   useEffect(() => {
+    if (isFastFunnel) return; // ComparisonPage handles Song 2 polling
     if (!song2Id || song2Status === 'completed' || song2Status === 'failed') return;
 
     const pollStatus = async () => {
@@ -334,8 +336,11 @@ export default function GeneratingPage() {
 
   // Navigate when songs are ready
   useEffect(() => {
+    if (hasNavigated.current) return;
+    
     // FAST FUNNEL: Navigate as soon as Song 1 is ready, pass Song 2 ID for background polling
     if (isFastFunnel && song1Status === 'completed') {
+      hasNavigated.current = true;
       if (import.meta.env.DEV) {
         console.log('⚡ Fast funnel: Song 1 ready! Navigating to comparison...');
         console.log('📋 Song 2 status:', song2Status, '| Song 2 ID:', song2Id);
@@ -352,6 +357,7 @@ export default function GeneratingPage() {
     else if (!isFastFunnel) {
       // Both completed - go to comparison
       if (song1Status === 'completed' && song2Status === 'completed') {
+        hasNavigated.current = true;
         if (import.meta.env.DEV) {
           console.log('🎉 Both songs ready! Navigating to comparison...');
         }
@@ -364,6 +370,7 @@ export default function GeneratingPage() {
       }
       // Song 1 completed, Song 2 failed - go with single song
       else if (song1Status === 'completed' && song2Status === 'failed') {
+        hasNavigated.current = true;
         if (import.meta.env.DEV) {
           console.log('⚠️ Only Song 1 ready, Song 2 failed. Going to preview...');
         }
