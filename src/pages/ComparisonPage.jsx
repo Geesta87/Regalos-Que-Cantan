@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
-import { createCheckout, validateCoupon, supabase } from '../services/api';
+import { createCheckout, validateCoupon, supabase, generateSong, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
@@ -38,6 +38,12 @@ export default function ComparisonPage() {
   // ✅ NEW: Auto-play state (full sequential preview)
   const [autoPlayed, setAutoPlayed] = useState(false);
   const [autoPlayingIndex, setAutoPlayingIndex] = useState(-1); // -1 = not auto-playing, 0 = song 1, 1 = song 2
+  
+  // ✅ NEW: Song 2 background generation state
+  const [song2Loading, setSong2Loading] = useState(false);
+  const [song2Ready, setSong2Ready] = useState(false);
+  const song2PollRef = useRef(null);
+  const song2Started = useRef(false);
   
   // ✅ NEW: Entrance animation state
   const [isVisible, setIsVisible] = useState(false);
@@ -207,6 +213,92 @@ export default function ComparisonPage() {
       setLoading(false);
     }
   }, [songData]);
+
+  // ✅ NEW: Background Song 2 generation
+  useEffect(() => {
+    // Only run if Song 2 is pending and we have Song 1 loaded
+    if (!songData?.song2Pending || song2Started.current || songs.length === 0) return;
+    song2Started.current = true;
+    setSong2Loading(true);
+
+    const formDataForSong2 = songData.formDataForSong2;
+    if (!formDataForSong2) {
+      if (import.meta.env.DEV) console.warn('No formData for Song 2 generation');
+      setSong2Loading(false);
+      return;
+    }
+
+    async function generateSong2() {
+      try {
+        if (import.meta.env.DEV) console.log('🎵 Starting background Song 2 generation...');
+
+        const result = await generateSong({
+          ...formDataForSong2,
+          version: 2,
+          sessionId: songData.sessionId
+        });
+
+        if (result.success && result.song?.id) {
+          if (import.meta.env.DEV) console.log('✅ Song 2 started:', result.song.id);
+          
+          // Poll for Song 2 completion
+          const pollForSong2 = async () => {
+            try {
+              const status = await checkSongStatus(result.song.id);
+              if (import.meta.env.DEV) console.log('📊 Song 2 status:', status.status);
+
+              if (status.status === 'completed' && status.song) {
+                clearInterval(song2PollRef.current);
+                const newSong = {
+                  id: status.song.id,
+                  version: 2,
+                  audioUrl: status.song.audio_url,
+                  previewUrl: status.song.preview_url || status.song.audio_url,
+                  imageUrl: status.song.image_url,
+                  lyrics: status.song.lyrics
+                };
+                setSongs(prev => [...prev, newSong].sort((a, b) => (a.version || 1) - (b.version || 1)));
+                setSong2Loading(false);
+                setSong2Ready(true);
+                
+                // Save updated song IDs to localStorage
+                setSongs(prev => {
+                  const allIds = prev.map(s => s.id);
+                  localStorage.setItem('rqc_comparison_songs', JSON.stringify(allIds));
+                  return prev;
+                });
+
+                if (import.meta.env.DEV) console.log('🎉 Song 2 ready!');
+              } else if (status.status === 'failed') {
+                clearInterval(song2PollRef.current);
+                setSong2Loading(false);
+                if (import.meta.env.DEV) console.warn('⚠️ Song 2 generation failed');
+              }
+            } catch (err) {
+              if (import.meta.env.DEV) console.error('Song 2 poll error:', err);
+            }
+          };
+
+          // Start polling every 3 seconds
+          pollForSong2();
+          song2PollRef.current = setInterval(pollForSong2, 3000);
+        } else {
+          setSong2Loading(false);
+          if (import.meta.env.DEV) console.warn('⚠️ Song 2 failed to start');
+        }
+      } catch (err) {
+        setSong2Loading(false);
+        if (import.meta.env.DEV) console.error('Song 2 generation error:', err);
+      }
+    }
+
+    // Small delay to not compete with Song 1 audio loading
+    const timer = setTimeout(generateSong2, 2000);
+    return () => {
+      clearTimeout(timer);
+      if (song2PollRef.current) clearInterval(song2PollRef.current);
+    };
+  }, [songData, songs.length]);
 
   // ✅ NEW: Auto-play full sequential preview (Song 1 → Song 2)
   useEffect(() => {
@@ -386,7 +478,6 @@ export default function ComparisonPage() {
       const cleanPhone = whatsappPhone.replace(/\D/g, '');
       if (cleanPhone) {
         localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
-        // Save to Supabase songs table
         try {
           for (const songId of songIdsToCheckout) {
             await supabase
@@ -496,6 +587,17 @@ export default function ComparisonPage() {
           0%, 100% { transform: translateX(-50%) rotate(-1deg); }
           50% { transform: translateX(-50%) rotate(1deg); }
         }
+        @keyframes song2Reveal {
+          0% { opacity: 0; transform: scale(0.9) translateY(15px); }
+          50% { opacity: 1; transform: scale(1.03) translateY(-3px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes toastIn {
+          0% { opacity: 0; transform: translate(-50%, 20px); }
+          15% { opacity: 1; transform: translate(-50%, 0); }
+          85% { opacity: 1; transform: translate(-50%, 0); }
+          100% { opacity: 0; transform: translate(-50%, -10px); }
+        }
       `}</style>
 
       {/* Audio elements */}
@@ -565,7 +667,9 @@ export default function ComparisonPage() {
             🎵 Elige tu versión favorita
           </h1>
           <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
-            {songs.length} versiones • <span style={{color: '#f5d77a', fontWeight: '600'}}>{genreName}</span>
+            {songs.length} {songs.length === 1 ? 'versión' : 'versiones'}
+            {song2Loading && ' • Versión 2 en camino...'}
+            {' • '}<span style={{color: '#f5d77a', fontWeight: '600'}}>{genreName}</span>
           </p>
           
           {/* Auto-play indicator */}
@@ -658,7 +762,8 @@ export default function ComparisonPage() {
                       ? `0 0 30px ${vibe.color}50, 0 8px 32px rgba(0,0,0,0.4)` 
                       : '0 4px 24px rgba(0,0,0,0.3)',
                   position: 'relative',
-                  backdropFilter: 'blur(10px)'
+                  backdropFilter: 'blur(10px)',
+                  animation: (song.version === 2 && song2Ready) ? 'song2Reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1)' : undefined
                 }}
               >
                 {/* Radio indicator */}
@@ -833,6 +938,92 @@ export default function ComparisonPage() {
               </div>
             );
           })}
+
+          {/* ✅ Song 2 Loading Placeholder Card */}
+          {song2Loading && songs.length < 2 && (
+            <div
+              style={{
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
+                border: '2px dashed rgba(168,85,247,0.35)',
+                borderRadius: '20px',
+                padding: '24px',
+                position: 'relative',
+                backdropFilter: 'blur(10px)',
+                overflow: 'hidden',
+                animation: 'fadeInUp 0.6s ease-out'
+              }}
+            >
+              {/* Shimmer overlay */}
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.06), transparent)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 2s ease-in-out infinite',
+                borderRadius: '20px',
+                pointerEvents: 'none'
+              }} />
+
+              {/* Version badge */}
+              <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                <span style={{
+                  background: 'linear-gradient(135deg, rgba(168,85,247,0.3), rgba(168,85,247,0.15))',
+                  padding: '7px 16px', borderRadius: '20px',
+                  fontSize: '13px', fontWeight: 'bold',
+                  border: '1px solid rgba(168,85,247,0.3)'
+                }}>
+                  🔥 Versión 2
+                </span>
+                <span style={{fontSize: '13px', color: '#a855f7', fontWeight: '700'}}>
+                  Enérgica
+                </span>
+              </div>
+
+              {/* Placeholder album art */}
+              <div style={{
+                height: '220px', borderRadius: '14px',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                marginBottom: '18px',
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(225,29,116,0.1))'
+              }}>
+                {/* Pulsing music icon */}
+                <div style={{
+                  width: '80px', height: '80px', borderRadius: '50%',
+                  background: 'rgba(168,85,247,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'pulse 2s ease-in-out infinite',
+                  marginBottom: '16px'
+                }}>
+                  <span style={{fontSize: '36px'}}>🎵</span>
+                </div>
+                <p style={{
+                  color: 'rgba(255,255,255,0.7)', fontSize: '15px',
+                  fontWeight: '600', margin: '0 0 4px 0'
+                }}>
+                  Creando tu segunda versión...
+                </p>
+                <p style={{
+                  color: 'rgba(255,255,255,0.4)', fontSize: '13px', margin: 0
+                }}>
+                  Aparecerá aquí en un momento ✨
+                </p>
+              </div>
+
+              {/* Placeholder progress */}
+              <div style={{
+                height: '6px', background: 'rgba(255,255,255,0.08)',
+                borderRadius: '3px', overflow: 'hidden', marginTop: '12px'
+              }}>
+                <div style={{
+                  height: '100%', width: '60%',
+                  background: 'linear-gradient(90deg, #a855f7, #c084fc)',
+                  borderRadius: '3px',
+                  animation: 'shimmer 1.5s ease-in-out infinite',
+                  backgroundSize: '200% 100%'
+                }} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ===== REC 7: Upgraded bundle deal ===== */}
@@ -1130,6 +1321,24 @@ export default function ComparisonPage() {
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
           RegalosQueCantan © {new Date().getFullYear()}
         </p>
+
+        {/* ✅ Song 2 Ready Toast */}
+        {song2Ready && (
+          <div style={{
+            position: 'fixed', bottom: '30px', left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+            color: 'white', padding: '14px 28px', borderRadius: '50px',
+            fontSize: '15px', fontWeight: 'bold',
+            boxShadow: '0 8px 30px rgba(124,58,237,0.5)',
+            zIndex: 100,
+            display: 'flex', alignItems: 'center', gap: '8px',
+            animation: 'toastIn 3.5s ease-in-out forwards'
+          }}>
+            <span style={{fontSize: '20px'}}>✨</span>
+            ¡Versión 2 lista! Escúchala arriba 🔥
+          </div>
+        )}
       </div>
     </div>
   );
