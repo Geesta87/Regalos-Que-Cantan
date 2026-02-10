@@ -1127,7 +1127,10 @@ export default function SuccessPage() {
             </a>
           </div>
 
-          <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.2)', fontSize: '12px' }}>
+          <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.2)', fontSize: '10px', lineHeight: 1.6, maxWidth: 340, margin: '30px auto 0' }}>
+            Todas las ventas son finales. Al comprar, aceptas que escuchaste la vista previa antes de realizar tu compra. No se ofrecen reembolsos una vez completada la transacción.
+          </p>
+          <p style={{ textAlign: 'center', marginTop: '12px', color: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.15)', fontSize: '11px' }}>
             RegalosQueCantan © {new Date().getFullYear()}
           </p>
         </div>

@@ -1270,6 +1270,11 @@ export default function ComparisonPage() {
             )}
           </button>
 
+          {/* All sales final disclaimer */}
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '12px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
+            Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.
+          </p>
+
           {/* Trust badges */}
           <div style={{display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', flexWrap: 'wrap'}}>
             <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>

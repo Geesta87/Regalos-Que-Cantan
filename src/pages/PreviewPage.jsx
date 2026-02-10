@@ -472,6 +472,11 @@ export default function PreviewPage() {
                 </span>
                 <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
               </button>
+
+              {/* All sales final disclaimer */}
+              <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '12px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
+                Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.
+              </p>
             </div>
 
             <div className="mt-8 flex flex-col items-center gap-6">
@@ -490,7 +495,7 @@ export default function PreviewPage() {
               <div className="flex items-center gap-2 px-4 py-2 border border-gold/20 rounded-lg bg-gold/5">
                 <span className="material-symbols-outlined text-gold text-sm">verified_user</span>
                 <span className="text-gold text-[11px] font-bold uppercase tracking-widest">
-                  Garantía de Satisfacción
+                  Pago 100% Seguro
                 </span>
               </div>
             </div>
