@@ -24,7 +24,7 @@ export default function AdminDashboard() {
   const [previewingCampaign, setPreviewingCampaign] = useState(null);
   const [resendingEmail, setResendingEmail] = useState(null);
   const [lookupSearch, setLookupSearch] = useState('');
-  const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name'
+  const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name', 'phone'
   const [copiedLinkId, setCopiedLinkId] = useState(null);
   const [stats, setStats] = useState({
     totalSongs: 0,
@@ -33,7 +33,8 @@ export default function AdminDashboard() {
     pendingOrders: 0,
     freeOrders: 0,
     todayRevenue: 0,
-    todayOrders: 0
+    todayOrders: 0,
+    whatsappContacts: 0
   });
 
   // Check auth on mount
@@ -152,6 +153,11 @@ export default function AdminDashboard() {
         }
       });
 
+      // Count unique WhatsApp contacts
+      const whatsappContacts = new Set(
+        data?.filter(s => s.whatsapp_phone).map(s => s.whatsapp_phone)
+      ).size;
+
       setStats({ 
         totalSongs, 
         totalRevenue, 
@@ -159,7 +165,8 @@ export default function AdminDashboard() {
         pendingOrders, 
         freeOrders,
         todayRevenue,
-        todayOrders
+        todayOrders,
+        whatsappContacts
       });
     } catch (err) {
       console.error('Error fetching songs:', err);
@@ -446,7 +453,8 @@ export default function AdminDashboard() {
     const matchesSearch = 
       song.recipient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       song.sender_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      song.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      song.whatsapp_phone?.includes(searchTerm);
     const matchesFilter = 
       filterStatus === 'all' ||
       (filterStatus === 'paid' && isPaid(song)) ||
@@ -577,6 +585,35 @@ export default function AdminDashboard() {
             <p className="text-sm text-gray-400">Sin pagar</p>
           </div>
         </div>
+
+        {/* WhatsApp Contacts Banner */}
+        {stats.whatsappContacts > 0 && (
+          <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-2xl p-4 mb-6 border border-green-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💬</span>
+                <div>
+                  <p className="font-semibold text-green-400">WhatsApp Contacts</p>
+                  <p className="text-sm text-gray-400">{stats.whatsappContacts} números únicos recopilados</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const contacts = songs
+                    .filter(s => s.whatsapp_phone)
+                    .map(s => `${s.whatsapp_phone}\t${s.email || ''}\t${s.recipient_name || ''}\t${s.sender_name || ''}`)
+                    .filter((v, i, a) => a.indexOf(v) === i);
+                  const csv = 'Phone\tEmail\tRecipient\tSender\n' + contacts.join('\n');
+                  navigator.clipboard.writeText(csv);
+                  alert(`✅ ${contacts.length} contactos copiados al portapapeles (formato TSV)`);
+                }}
+                className="px-4 py-2 bg-green-500/20 text-green-400 rounded-xl text-sm font-medium hover:bg-green-500/30 transition border border-green-500/30"
+              >
+                📋 Exportar Contactos
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Today's Stats Banner */}
         {stats.todayOrders > 0 && (
@@ -712,6 +749,16 @@ export default function AdminDashboard() {
                               <p className="font-medium text-white">{song.recipient_name || '—'}</p>
                               <p className="text-xs text-gray-500">de {song.sender_name || '—'}</p>
                               <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
+                              {song.whatsapp_phone && (
+                                <a 
+                                  href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-green-400 hover:text-green-300 mt-0.5"
+                                >
+                                  💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
+                                </a>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3">
@@ -1139,7 +1186,8 @@ export default function AdminDashboard() {
                 {[
                   { value: 'all', label: 'Todos' },
                   { value: 'email', label: '📧 Email' },
-                  { value: 'name', label: '👤 Nombre' }
+                  { value: 'name', label: '👤 Nombre' },
+                  { value: 'phone', label: '💬 WhatsApp' }
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -1181,13 +1229,15 @@ export default function AdminDashboard() {
                 const q = lookupSearch.toLowerCase().trim();
                 if (lookupSearchType === 'email') return (song.email || '').toLowerCase().includes(q);
                 if (lookupSearchType === 'name') return (song.recipient_name || '').toLowerCase().includes(q) || (song.sender_name || '').toLowerCase().includes(q);
+                if (lookupSearchType === 'phone') return (song.whatsapp_phone || '').includes(q);
                 // 'all' — search everything
                 return (
                   (song.email || '').toLowerCase().includes(q) ||
                   (song.recipient_name || '').toLowerCase().includes(q) ||
                   (song.sender_name || '').toLowerCase().includes(q) ||
                   (song.id || '').toLowerCase().includes(q) ||
-                  (song.genre || '').toLowerCase().includes(q)
+                  (song.genre || '').toLowerCase().includes(q) ||
+                  (song.whatsapp_phone || '').includes(q)
                 );
               });
 
@@ -1223,7 +1273,11 @@ export default function AdminDashboard() {
                                 )}
                               </h3>
                               <p className="text-xs text-gray-500 mt-1">
-                                {song.email || 'Sin email'} • {(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {formatDate(song.created_at)}
+                                {song.email || 'Sin email'}
+                                {song.whatsapp_phone && (
+                                  <> • <a href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}`} target="_blank" rel="noopener noreferrer" className="text-green-400 hover:text-green-300">💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</a></>
+                                )}
+                                {' '}• {(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {formatDate(song.created_at)}
                               </p>
                             </div>
                             <span className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${
@@ -1593,6 +1647,37 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500 mb-1">Email</p>
                 <p className="font-semibold">{selectedSong.email}</p>
               </div>
+
+              {/* WhatsApp */}
+              {selectedSong.whatsapp_phone && (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                  <p className="text-xs text-green-400 mb-2">💬 WhatsApp</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-lg">
+                      {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
+                    </p>
+                    <div className="flex gap-2">
+                      <a
+                        href={`https://wa.me/${selectedSong.whatsapp_phone.startsWith('1') ? selectedSong.whatsapp_phone : '1' + selectedSong.whatsapp_phone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-[#25D366] text-white rounded-lg text-sm font-medium hover:bg-[#20bd5a] transition flex items-center gap-2"
+                      >
+                        💬 Abrir Chat
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedSong.whatsapp_phone);
+                          alert('Número copiado!');
+                        }}
+                        className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
+                      >
+                        📋 Copiar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Details */}
               {selectedSong.details && (
