@@ -1250,7 +1250,7 @@ export default function AdminDashboard() {
 
                           {/* Link buttons */}
                           {hasAudio && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               <button
                                 onClick={() => { navigator.clipboard.writeText(previewLink); setCopiedLinkId(`preview-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
                                 className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-semibold transition ${
@@ -1273,6 +1273,39 @@ export default function AdminDashboard() {
                               </button>
                             </div>
                           )}
+
+                          {/* Combined link for session pairs */}
+                          {hasAudio && song.session_id && (() => {
+                            const sessionSongs = songs.filter(s => s.session_id === song.session_id && s.id !== song.id && s.audio_url);
+                            if (sessionSongs.length === 0) return null;
+                            const combinedIds = [song.id, ...sessionSongs.map(s => s.id)].join(',');
+                            const combinedPreviewLink = `${window.location.origin}/listen?song_ids=${combinedIds}`;
+                            const combinedSuccessLink = `${window.location.origin}/success?song_ids=${combinedIds}`;
+                            return (
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => { navigator.clipboard.writeText(combinedPreviewLink); setCopiedLinkId(`combo-preview-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition ${
+                                    copiedLinkId === `combo-preview-${song.id}`
+                                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                      : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
+                                  }`}
+                                >
+                                  {copiedLinkId === `combo-preview-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Preview (${sessionSongs.length + 1})`}
+                                </button>
+                                <button
+                                  onClick={() => { navigator.clipboard.writeText(combinedSuccessLink); setCopiedLinkId(`combo-success-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
+                                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold transition ${
+                                    copiedLinkId === `combo-success-${song.id}`
+                                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                      : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
+                                  }`}
+                                >
+                                  {copiedLinkId === `combo-success-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Download (${sessionSongs.length + 1})`}
+                                </button>
+                              </div>
+                            );
+                          })()}
 
                           {/* Quick open + detail */}
                           <div className="flex items-center justify-between mt-2">
