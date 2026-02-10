@@ -409,12 +409,14 @@ export default function SuccessPage() {
   // ------ Share ------
   const handleShareWhatsApp = () => {
     const name = currentSong?.recipient_name || '';
-    const text = `🎵 ¡Escucha esta canción que hice especialmente para ${name}! 🎁\n\n${window.location.href}`;
+    const songUrl = `${window.location.origin}/song/${currentSong?.id}`;
+    const text = `🎵 ¡${name}, te crearon una canción especial! 🎁\n\nEscúchala aquí:\n${songUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const songUrl = `${window.location.origin}/song/${currentSong?.id}`;
+    navigator.clipboard.writeText(songUrl);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };

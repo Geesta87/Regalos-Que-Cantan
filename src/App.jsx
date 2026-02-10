@@ -19,6 +19,7 @@ import SuccessPage from './pages/SuccessPage';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import ShareablePreviewPage from './pages/ShareablePreviewPage';
+import SongPage from './pages/SongPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 // SEO Hub pages
@@ -74,6 +75,11 @@ function getInitialPage() {
     return 'preview';
   }
   
+  // Handle shareable song page /song/:id
+  if (path.startsWith('/song/') && path !== '/song/') {
+    return 'songPage';
+  }
+  
   // Check for dynamic SEO routes
   if (path.startsWith('/generos/') && path !== '/generos/') {
     return path.substring(1);
@@ -99,13 +105,6 @@ const getSlugFromPage = (page, prefix) => {
 export default function App() {
   // ✅ FIX: Initialize currentPage from URL IMMEDIATELY (not in useEffect)
   const [currentPage, setCurrentPage] = useState(getInitialPage);
-  
-  // ✅ Funnel variant: 'fast' (from /) or 'control' (from /v2)
-  const [funnelVariant] = useState(() => {
-    const path = window.location.pathname;
-    if (path === '/v2') return 'control';
-    return 'fast';
-  });
   const [formData, setFormData] = useState({
     genre: '',
     genreName: '',
@@ -209,6 +208,7 @@ export default function App() {
       comparison: '/comparison',
       success: '/success',
       listen: '/listen',
+      songPage: '/song',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard',
       generos: '/generos',
@@ -260,19 +260,18 @@ export default function App() {
     setSongData,
     clearSession,
     directSongId,
-    setDirectSongId,
-    funnelVariant
+    setDirectSongId
   };
 
   // Debug log
-  console.log('🔄 App rendering, currentPage:', currentPage, '| funnel:', funnelVariant);
+  console.log('🔄 App rendering, currentPage:', currentPage);
 
   return (
     <HelmetProvider>
       <AppContext.Provider value={contextValue}>
         <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors duration-300">
-          {/* Landing pages — both use LandingPageV2, variant tracked via funnelVariant */}
-          {currentPage === 'landing' && <LandingPageV2 />}
+          {/* Landing pages */}
+          {currentPage === 'landing' && <LandingPage />}
           {currentPage === 'landing_v2' && <LandingPageV2 />}
           
           {/* Funnel pages */}
@@ -289,6 +288,9 @@ export default function App() {
           {currentPage === 'comparison' && <ComparisonPage />}
           {currentPage === 'success' && <SuccessPage />}
           {currentPage === 'listen' && <ShareablePreviewPage />}
+          
+          {/* Shareable Song Page */}
+          {currentPage === 'songPage' && <SongPage />}
           
           {/* Admin pages */}
           {currentPage === 'adminLogin' && <AdminLogin />}
