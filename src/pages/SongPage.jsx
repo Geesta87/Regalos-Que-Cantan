@@ -127,11 +127,13 @@ export default function SongPage({ songId: propSongId }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [phase, setPhase] = useState('loading');
+  const [phase, setPhase] = useState('loading'); // loading → mystery → sender → countdown → flash → ready
   const [isPlaying, setIsPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [dur, setDur] = useState(0);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [countdownNum, setCountdownNum] = useState(3);
+  const [confettiPieces, setConfettiPieces] = useState([]);
   const audioRef = useRef(null);
   const vizRef = useRef(null);
 
@@ -158,8 +160,7 @@ export default function SongPage({ songId: propSongId }) {
         if (!ordered[0].audio_url) throw new Error('Esta canción aún no está lista');
         setAllSongs(ordered);
         setLoading(false);
-        setTimeout(() => setPhase('reveal'), 100);
-        setTimeout(() => setPhase('ready'), 1200);
+        setPhase('mystery');
       } catch (err) { setError(err.message); setLoading(false); }
     })();
   }, [songIds]);
@@ -252,9 +253,66 @@ export default function SongPage({ songId: propSongId }) {
     a.click();
   };
 
+  // ═══════════════════════════════════════
+  // GIFT REVEAL SEQUENCE
+  // ═══════════════════════════════════════
+  const startReveal = () => {
+    setPhase('sender');
+    setTimeout(() => {
+      setPhase('countdown');
+      setCountdownNum(3);
+      setTimeout(() => setCountdownNum(2), 1000);
+      setTimeout(() => setCountdownNum(1), 2000);
+      setTimeout(() => {
+        // Launch confetti
+        const pieces = Array.from({ length: 80 }, (_, i) => ({
+          id: i,
+          left: Math.random() * 100,
+          delay: Math.random() * 0.6,
+          duration: 2.5 + Math.random() * 2,
+          color: ['#f4c025', '#f20d59', '#9947eb', '#25D366', '#ff6b8a', '#fde68a', '#ffffff'][Math.floor(Math.random() * 7)],
+          size: 6 + Math.random() * 8,
+          rotation: Math.random() * 360,
+        }));
+        setConfettiPieces(pieces);
+        setPhase('flash');
+        // Auto-play audio
+        setTimeout(() => {
+          const a = audioRef.current;
+          if (a) { a.play().catch(() => {}); setIsPlaying(true); }
+        }, 800);
+        // Transition to ready
+        setTimeout(() => setPhase('ready'), 2500);
+      }, 3000);
+    }, 3000);
+  };
+
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
   const progress = dur > 0 ? (time / dur) * 100 : 0;
   const template = allSongs[0]?.template || 'golden_hour';
+
+  // Clear confetti after animation completes
+  useEffect(() => {
+    if (confettiPieces.length > 0) {
+      const timer = setTimeout(() => setConfettiPieces([]), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [confettiPieces]);
+
+  // Confetti overlay (persists across phase transitions)
+  const confettiOverlay = confettiPieces.length > 0 ? (
+    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9999, overflow: 'hidden' }}>
+      {confettiPieces.map(p => (
+        <div key={p.id} style={{
+          position: 'absolute', top: -20, left: `${p.left}%`, width: p.size, height: p.size * 0.6,
+          background: p.color, borderRadius: 2,
+          animation: `confettiFall ${p.duration}s ease-in ${p.delay}s both`,
+          transform: `rotate(${p.rotation}deg)`,
+        }} />
+      ))}
+      <style>{`@keyframes confettiFall{0%{transform:translateY(-20vh) rotate(0deg);opacity:1}80%{opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:0}}`}</style>
+    </div>
+  ) : null;
 
   // ─── LOADING ───
   if (loading) {
@@ -298,6 +356,168 @@ export default function SongPage({ songId: propSongId }) {
 
   const audioEl = <audio ref={audioRef} preload="metadata" />;
 
+  // ═══════════════════════════════════════
+  // REVEAL SCREENS (before template)
+  // ═══════════════════════════════════════
+  const REVEAL_CSS = `
+    @keyframes revealPulse{0%,100%{box-shadow:0 0 20px rgba(244,192,37,0.2), 0 0 60px rgba(244,192,37,0.1)}50%{box-shadow:0 0 40px rgba(244,192,37,0.4), 0 0 80px rgba(244,192,37,0.2)}}
+    @keyframes revealFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    @keyframes revealFadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes revealFadeInSlow{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+    @keyframes revealGlow{0%,100%{opacity:0.3}50%{opacity:0.7}}
+    @keyframes countdownPop{0%{transform:scale(0.3);opacity:0}20%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:1}}
+    @keyframes countdownRing{0%{transform:scale(0.8);opacity:0.8}100%{transform:scale(2.5);opacity:0}}
+    @keyframes flashBurst{0%{transform:scale(0);opacity:1}100%{transform:scale(4);opacity:0}}
+    @keyframes confettiFall{0%{transform:translateY(-20vh) rotate(0deg);opacity:1}80%{opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:0}}
+    @keyframes nameReveal{0%{opacity:0;transform:scale(0.7);letter-spacing:0.3em}50%{opacity:1;transform:scale(1.05);letter-spacing:0.15em}100%{opacity:1;transform:scale(1);letter-spacing:0.08em}}
+    @keyframes subtitleSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes sparkle{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
+    @keyframes heartbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.1)}28%{transform:scale(1)}}
+  `;
+
+  // Screen 1: Mystery — "Alguien te dedicó algo muy especial"
+  if (phase === 'mystery') {
+    return (
+      <>{head}{audioEl}
+        <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 50% 30%, #1a1408 0%, #0a0804 60%, #000 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
+          <style>{SHARED_CSS}{REVEAL_CSS}</style>
+          {/* Ambient glow */}
+          <div style={{ position: 'absolute', top: '25%', left: '50%', transform: 'translate(-50%, -50%)', width: '60vw', height: '60vw', maxWidth: 400, maxHeight: 400, background: 'radial-gradient(circle, rgba(244,192,37,0.12) 0%, rgba(244,192,37,0.03) 50%, transparent 70%)', borderRadius: '50%', animation: 'revealGlow 3s ease-in-out infinite', pointerEvents: 'none' }} />
+          {/* Floating sparkles */}
+          {['✦','✧','♪','✦','♫'].map((s, i) => (
+            <span key={i} style={{ position: 'absolute', color: 'rgba(244,192,37,0.15)', fontSize: 12 + i * 3, top: `${15 + i * 15}%`, left: `${10 + i * 18}%`, animation: `sparkle ${2 + i * 0.5}s ease-in-out ${i * 0.8}s infinite` }}>{s}</span>
+          ))}
+          {/* Gift icon */}
+          <div style={{ fontSize: 64, marginBottom: 32, animation: 'revealFloat 3s ease-in-out infinite, revealFadeIn 1s ease-out both' }}>🎁</div>
+          {/* Name */}
+          <h1 style={{ fontSize: 'clamp(28px, 7vw, 44px)', fontWeight: 800, textAlign: 'center', marginBottom: 12, animation: 'revealFadeIn 1s ease-out 0.3s both', lineHeight: 1.2 }}>
+            <span style={{ color: '#f4c025' }}>{recipient}</span>...
+          </h1>
+          {/* Mystery text */}
+          <p style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontWeight: 300, lineHeight: 1.6, maxWidth: 340, marginBottom: 48, animation: 'revealFadeIn 1s ease-out 0.8s both' }}>
+            alguien te dedicó algo<br/>
+            <span style={{ fontWeight: 600, color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>muy especial</span>
+          </p>
+          {/* CTA Button */}
+          <button
+            onClick={startReveal}
+            style={{
+              padding: '18px 48px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              background: 'linear-gradient(135deg, #f4c025 0%, #e8a810 100%)',
+              color: '#1a1408', fontSize: 18, fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif",
+              animation: 'revealFadeIn 0.8s ease-out 1.3s both, revealPulse 2s ease-in-out 2.1s infinite',
+              display: 'flex', alignItems: 'center', gap: 10,
+              boxShadow: '0 8px 32px rgba(244,192,37,0.3)',
+            }}
+          >
+            Abrir Mi Regalo <span style={{ fontSize: 22 }}>🎁</span>
+          </button>
+          {/* Subtle brand */}
+          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
+        </div>
+      </>
+    );
+  }
+
+  // Screen 2: Sender Reveal — "Con todo el cariño de... Carlos"
+  if (phase === 'sender') {
+    return (
+      <>{head}{audioEl}
+        <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 50% 40%, #1a1408 0%, #0a0804 60%, #000 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
+          <style>{SHARED_CSS}{REVEAL_CSS}</style>
+          {/* Warm glow */}
+          <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)', width: '80vw', height: '80vw', maxWidth: 500, maxHeight: 500, background: 'radial-gradient(circle, rgba(244,192,37,0.08) 0%, transparent 60%)', borderRadius: '50%', pointerEvents: 'none' }} />
+          {/* "Con todo el cariño de..." */}
+          <p style={{ fontSize: 'clamp(14px, 3.5vw, 18px)', color: 'rgba(255,255,255,0.5)', fontWeight: 300, textAlign: 'center', marginBottom: 16, animation: 'revealFadeIn 0.8s ease-out both', letterSpacing: '0.05em' }}>
+            Con todo el cariño de...
+          </p>
+          {/* Sender name (big reveal) */}
+          <h1 style={{ fontSize: 'clamp(36px, 9vw, 56px)', fontWeight: 800, textAlign: 'center', marginBottom: 8, animation: 'revealFadeInSlow 1s ease-out 0.6s both', lineHeight: 1.1 }}>
+            <span style={{ color: '#f4c025' }}>{sender || 'Alguien especial'}</span> 💛
+          </h1>
+          {/* Heartbeat animation on emoji */}
+          <div style={{ fontSize: 40, marginTop: 24, marginBottom: 24, animation: 'heartbeat 1.2s ease-in-out 1.2s infinite' }}>💌</div>
+          {/* "te dedicó una canción..." */}
+          <p style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontWeight: 300, fontStyle: 'italic', lineHeight: 1.6, maxWidth: 320, animation: 'revealFadeIn 0.8s ease-out 1.4s both' }}>
+            te dedicó {isCombo ? '2 canciones únicas' : 'una canción única'}<br/>en el mundo
+          </p>
+          {/* Music notes floating */}
+          {['🎵','🎶','🎵'].map((n, i) => (
+            <span key={i} style={{ position: 'absolute', fontSize: 20, color: 'rgba(244,192,37,0.2)', bottom: `${20 + i * 15}%`, right: `${10 + i * 12}%`, animation: `revealFloat ${2 + i}s ease-in-out ${i * 0.5}s infinite` }}>{n}</span>
+          ))}
+          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
+        </div>
+      </>
+    );
+  }
+
+  // Screen 3: Countdown 3...2...1
+  if (phase === 'countdown') {
+    const subtitles = { 3: '🎸 Preparando los instrumentos...', 2: '🎤 Afinando la voz...', 1: '🎵 ¡Aquí viene!' };
+    return (
+      <>{head}{audioEl}
+        <div style={{ minHeight: '100vh', background: '#0a0804', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
+          <style>{SHARED_CSS}{REVEAL_CSS}</style>
+          {/* Pulsing ring */}
+          <div key={`ring-${countdownNum}`} style={{ position: 'absolute', width: 200, height: 200, borderRadius: '50%', border: '2px solid rgba(244,192,37,0.4)', animation: 'countdownRing 1s ease-out both' }} />
+          <div key={`ring2-${countdownNum}`} style={{ position: 'absolute', width: 200, height: 200, borderRadius: '50%', border: '1px solid rgba(244,192,37,0.2)', animation: 'countdownRing 1s ease-out 0.2s both' }} />
+          {/* Number */}
+          <div key={`num-${countdownNum}`} style={{ fontSize: 'clamp(80px, 20vw, 140px)', fontWeight: 900, color: '#f4c025', animation: 'countdownPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both', textShadow: '0 0 60px rgba(244,192,37,0.4), 0 0 120px rgba(244,192,37,0.2)' }}>
+            {countdownNum}
+          </div>
+          {/* Subtitle */}
+          <p key={`sub-${countdownNum}`} style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginTop: 24, animation: 'subtitleSlide 0.4s ease-out 0.2s both', fontWeight: 300 }}>
+            {subtitles[countdownNum]}
+          </p>
+          {/* "Para [name]" reminder */}
+          <p style={{ position: 'absolute', bottom: 60, fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>
+            Para <span style={{ color: 'rgba(244,192,37,0.5)' }}>{recipient}</span>
+          </p>
+        </div>
+      </>
+    );
+  }
+
+  // Screen 4: Flash Burst + Confetti + Name Reveal
+  if (phase === 'flash') {
+    return (
+      <>{head}{audioEl}{confettiOverlay}
+        <div style={{ minHeight: '100vh', background: '#0a0804', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
+          <style>{SHARED_CSS}{REVEAL_CSS}</style>
+          {/* White flash burst */}
+          <div style={{ position: 'absolute', width: 100, height: 100, background: 'radial-gradient(circle, rgba(244,192,37,0.8) 0%, rgba(244,192,37,0) 70%)', borderRadius: '50%', animation: 'flashBurst 1s ease-out both' }} />
+          {/* Name reveal */}
+          <div style={{ textAlign: 'center', zIndex: 50, animation: 'nameReveal 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both' }}>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {isCombo ? '2 canciones' : 'Una canción'}</p>
+            <h1 style={{ fontSize: 'clamp(40px, 10vw, 72px)', fontWeight: 900, lineHeight: 1, textShadow: '0 0 40px rgba(244,192,37,0.3)' }}>
+              Para <span style={{ color: '#f4c025' }}>{recipient}</span>
+            </h1>
+            {sender && (
+              <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginTop: 16, animation: 'revealFadeIn 0.6s ease-out 1s both', fontStyle: 'italic' }}>
+                Con amor, <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong>
+              </p>
+            )}
+          </div>
+          {/* Photo polaroid effect */}
+          {photoUrl && (
+            <div style={{
+              position: 'absolute', bottom: '15%', zIndex: 40,
+              padding: 8, background: 'white', borderRadius: 4,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              animation: 'revealFadeInSlow 1.5s ease-out 1s both',
+              transform: 'rotate(-3deg)',
+            }}>
+              <img src={photoUrl} alt="" style={{ width: 160, height: 160, objectFit: 'cover', borderRadius: 2 }} />
+              <p style={{ textAlign: 'center', fontSize: 12, color: '#333', fontWeight: 600, marginTop: 6, fontFamily: "'Newsreader', serif", fontStyle: 'italic' }}>
+                {recipient} 💛
+              </p>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
   // Lyrics block builder
   const lyricsBlock = (textColor, bgStyle, sectionColor) => {
     if (!song.lyrics) return null;
@@ -334,7 +554,7 @@ export default function SongPage({ songId: propSongId }) {
   // ═══════════════════════════════════════
   if (template === 'golden_hour') {
     return (
-      <>{head}{audioEl}
+      <>{head}{audioEl}{confettiOverlay}
         <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #1a1408 0%, #2a1f10 25%, #1e1508 50%, #0f0c04 100%)', position: 'relative', overflow: 'hidden', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white' }}>
           <style>{SHARED_CSS}{T1_CSS}</style>
           <div style={{ position: 'fixed', top: '-15%', right: '-15%', width: '60vw', height: '60vh', background: 'rgba(244,192,37,0.06)', filter: 'blur(140px)', borderRadius: '50%' }} />
@@ -432,7 +652,7 @@ export default function SongPage({ songId: propSongId }) {
   // ═══════════════════════════════════════
   if (template === 'lavender_dream') {
     return (
-      <>{head}{audioEl}
+      <>{head}{audioEl}{confettiOverlay}
         <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top right, #fdfbf7 0%, #f0e9f7 100%)', fontFamily: "'Newsreader', serif", color: '#334155', position: 'relative' }}>
           <style>{SHARED_CSS}{T2_CSS}</style>
           <div style={{ position: 'fixed', top: 20, left: 20, width: 256, height: 256, background: 'rgba(153,71,235,0.05)', borderRadius: '50%', filter: 'blur(100px)', pointerEvents: 'none' }} />
@@ -509,7 +729,7 @@ export default function SongPage({ songId: propSongId }) {
   // TEMPLATE 3: ELECTRIC MAGENTA (default fallback)
   // ═══════════════════════════════════════
   return (
-    <>{head}{audioEl}
+    <>{head}{audioEl}{confettiOverlay}
       <div style={{ minHeight: '100vh', background: '#0a0507', fontFamily: "'Space Grotesk', sans-serif", color: 'white', overflow: 'hidden' }}>
         <style>{SHARED_CSS}{T3_CSS}</style>
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0.15, zIndex: 60, mixBlendMode: 'overlay', background: 'radial-gradient(circle at center, transparent 0%, #000 100%)' }} />
