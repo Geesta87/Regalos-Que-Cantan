@@ -502,6 +502,48 @@ export default function AdminDashboard() {
     return map[occasion] || occasion.replace(/_/g, ' ');
   };
 
+  // ===== WhatsApp One-Click Delivery =====
+  // Find all songs from the same order (combo detection via same email + close timestamps)
+  const getOrderSongIds = (song) => {
+    const relatedSongs = songs.filter(s => {
+      if (s.email !== song.email) return false;
+      if (!isPaid(s)) return false;
+      if (!s.audio_url) return false;
+      // Same stripe session = same order (combos)
+      if (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id) return true;
+      // Fallback: same email, created within 5 minutes of each other
+      const timeDiff = Math.abs(new Date(s.created_at) - new Date(song.created_at));
+      return timeDiff < 5 * 60 * 1000;
+    });
+    return relatedSongs.length > 0 ? relatedSongs.map(s => s.id) : [song.id];
+  };
+
+  const buildWhatsAppDeliveryUrl = (song) => {
+    const phone = song.whatsapp_phone?.startsWith('1') 
+      ? song.whatsapp_phone 
+      : '1' + song.whatsapp_phone;
+    const songIds = getOrderSongIds(song);
+    const isCombo = songIds.length > 1;
+    const songLink = `${window.location.origin}/song/${songIds.join(',')}`;
+    const recipientName = song.recipient_name || 'tu persona especial';
+    
+    const message = isCombo
+      ? `🎵 ¡Hola! Tus 2 canciones personalizadas para *${recipientName}* están listas. 🎁\n\n🎧 Escúchalas aquí: ${songLink}\n\nCuando quieras regalárselas, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`
+      : `🎵 ¡Hola! Tu canción personalizada para *${recipientName}* está lista. 🎁\n\n🎧 Escúchala aquí: ${songLink}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
+    
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  };
+
+  const [whatsappSent, setWhatsappSent] = useState({});
+
+  const handleWhatsAppDelivery = (song) => {
+    const url = buildWhatsAppDeliveryUrl(song);
+    window.open(url, '_blank');
+    // Mark as sent (visual feedback)
+    setWhatsappSent(prev => ({ ...prev, [song.id]: true }));
+    setTimeout(() => setWhatsappSent(prev => ({ ...prev, [song.id]: false })), 5000);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
@@ -841,6 +883,22 @@ export default function AdminDashboard() {
                                     <span className="material-symbols-outlined text-blue-400 text-xl">download</span>
                                   </a>
                                 </>
+                              )}
+                              {/* WhatsApp Delivery Button — only for paid orders with WhatsApp + audio */}
+                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (
+                                <button
+                                  onClick={() => handleWhatsAppDelivery(song)}
+                                  className={`p-2 rounded-lg transition ${
+                                    whatsappSent[song.id] 
+                                      ? 'bg-green-500/30' 
+                                      : 'hover:bg-green-500/20'
+                                  }`}
+                                  title={whatsappSent[song.id] ? '✓ Enviado' : 'Enviar link por WhatsApp'}
+                                >
+                                  <span className={`text-xl ${whatsappSent[song.id] ? 'opacity-50' : ''}`}>
+                                    {whatsappSent[song.id] ? '✅' : '📩'}
+                                  </span>
+                                </button>
                               )}
                             </div>
                           </td>
@@ -1679,7 +1737,7 @@ export default function AdminDashboard() {
               {selectedSong.whatsapp_phone && (
                 <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
                   <p className="text-xs text-green-400 mb-2">💬 WhatsApp</p>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-3">
                     <p className="font-semibold text-lg">
                       {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
                     </p>
@@ -1688,9 +1746,9 @@ export default function AdminDashboard() {
                         href={`https://wa.me/${selectedSong.whatsapp_phone.startsWith('1') ? selectedSong.whatsapp_phone : '1' + selectedSong.whatsapp_phone}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-4 py-2 bg-[#25D366] text-white rounded-lg text-sm font-medium hover:bg-[#20bd5a] transition flex items-center gap-2"
+                        className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition flex items-center gap-2"
                       >
-                        💬 Abrir Chat
+                        💬 Chat
                       </a>
                       <button
                         onClick={() => {
@@ -1703,6 +1761,22 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   </div>
+                  {/* One-Click Delivery Button */}
+                  {isPaid(selectedSong) && selectedSong.audio_url && (
+                    <button
+                      onClick={() => handleWhatsAppDelivery(selectedSong)}
+                      className={`w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${
+                        whatsappSent[selectedSong.id]
+                          ? 'bg-green-600/30 text-green-300 border border-green-500/30'
+                          : 'bg-[#25D366] text-white hover:bg-[#20bd5a]'
+                      }`}
+                    >
+                      {whatsappSent[selectedSong.id] 
+                        ? '✅ ¡Abierto! Revisa WhatsApp' 
+                        : `📩 Enviar Link de ${getOrderSongIds(selectedSong).length > 1 ? '2 Canciones' : 'Canción'} por WhatsApp`
+                      }
+                    </button>
+                  )}
                 </div>
               )}
               
