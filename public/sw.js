@@ -1,6 +1,6 @@
 // RegalosQueCantan Service Worker
 // ✅ IMPORTANT: Bump this version string on every deploy to bust old caches
-const CACHE_VERSION = 'rqc-v2.0.3';
+const CACHE_VERSION = 'rqc-v2.0.4';
 const CACHE_NAME = `rqc-static-${CACHE_VERSION}`;
 
 // Only cache fonts and the shell - NOT JS bundles (Vite hashes those already)
@@ -38,7 +38,6 @@ self.addEventListener('activate', (event) => {
 });
 
 // Fetch - NETWORK FIRST for everything
-// This ensures new deploys are always served immediately
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -46,36 +45,40 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (request.method !== 'GET') return;
 
-  // Skip API calls, Supabase, Stripe, SendGrid, analytics
+  // ===== BYPASS LIST - let these go straight to network, SW does NOT touch them =====
   if (url.hostname.includes('supabase')) return;
   if (url.hostname.includes('stripe')) return;
   if (url.hostname.includes('sendgrid')) return;
   if (url.hostname.includes('facebook')) return;
+  if (url.hostname.includes('fbcdn')) return;
   if (url.hostname.includes('clarity')) return;
   if (url.hostname.includes('google-analytics')) return;
+  if (url.hostname.includes('googletagmanager')) return;
+  // ✅ FIX: Bypass Kie.ai / aiquickdraw temp files (audio, images)
+  if (url.hostname.includes('aiquickdraw')) return;
+  if (url.hostname.includes('kie.ai')) return;
+  if (url.hostname.includes('tempfile')) return;
+  // Skip non-http
   if (!url.protocol.startsWith('http')) return;
 
-  // For HTML navigation requests - ALWAYS network first
-  // This is critical: ensures /comparison, /success etc. always get fresh index.html
+  // ===== HTML navigation - ALWAYS network first =====
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache a copy for offline fallback
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
         .catch(() => {
-          // Offline: try cache, then fall back to cached root
           return caches.match(request)
-            .then((cached) => cached || caches.match('/'));
+            .then((cached) => cached || caches.match('/') || new Response('Offline', { status: 503 }));
         })
     );
     return;
   }
 
-  // For fonts (Google Fonts) - cache first (they never change)
+  // ===== Fonts - cache first (they never change) =====
   if (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -83,24 +86,48 @@ self.addEventListener('fetch', (event) => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
-        });
+        }).catch(() => new Response('', { status: 503 }));
       })
     );
     return;
   }
 
-  // For JS/CSS bundles (Vite adds hashes, so new deploys = new URLs automatically)
-  // Network first with cache fallback
+  // ===== Images in /images/ or /icons/ - network first, cache-bust with version =====
+  // This ensures updated photos with the same filename always show the new version
+  if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|ico)$/i)) {
+    event.respondWith(
+      fetch(request, { cache: 'no-cache' })
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => {
+          // ✅ FIX: Always return a valid Response, never undefined
+          return caches.match(request)
+            .then((cached) => cached || new Response('', { status: 404, statusText: 'Not Found' }));
+        })
+    );
+    return;
+  }
+
+  // ===== Everything else (JS/CSS bundles) - network first with cache fallback =====
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.status === 200) {
+        if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
       })
-      .catch(() => caches.match(request))
+      .catch(() => {
+        // ✅ FIX: Always return a valid Response, never undefined
+        return caches.match(request)
+          .then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' }));
+      })
   );
 });
 
