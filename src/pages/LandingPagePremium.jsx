@@ -236,7 +236,12 @@ export default function LandingPagePremium() {
             ♥ &nbsp; Crear Su Canción
           </button>
 
-          <p style={{ marginTop: '20px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
+          <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.02em' }}>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$39.99</span>{' '}
+            <span style={{ color: '#f4c025', fontWeight: 700 }}>$29.99</span>
+          </p>
+
+          <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
             Preview gratis · Listo en ~3 minutos · A tiempo para el sábado
           </p>
         </div>
