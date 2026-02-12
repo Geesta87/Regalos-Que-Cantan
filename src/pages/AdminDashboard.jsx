@@ -26,6 +26,8 @@ export default function AdminDashboard() {
   const [lookupSearch, setLookupSearch] = useState('');
   const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name', 'phone'
   const [copiedLinkId, setCopiedLinkId] = useState(null);
+  const [hotLeadSort, setHotLeadSort] = useState('recent'); // 'recent', 'oldest'
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [stats, setStats] = useState({
     totalSongs: 0,
     totalRevenue: 0,
@@ -502,48 +504,6 @@ export default function AdminDashboard() {
     return map[occasion] || occasion.replace(/_/g, ' ');
   };
 
-  // ===== WhatsApp One-Click Delivery =====
-  // Find all songs from the same order (combo detection via same email + close timestamps)
-  const getOrderSongIds = (song) => {
-    const relatedSongs = songs.filter(s => {
-      if (s.email !== song.email) return false;
-      if (!isPaid(s)) return false;
-      if (!s.audio_url) return false;
-      // Same stripe session = same order (combos)
-      if (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id) return true;
-      // Fallback: same email, created within 5 minutes of each other
-      const timeDiff = Math.abs(new Date(s.created_at) - new Date(song.created_at));
-      return timeDiff < 5 * 60 * 1000;
-    });
-    return relatedSongs.length > 0 ? relatedSongs.map(s => s.id) : [song.id];
-  };
-
-  const buildWhatsAppDeliveryUrl = (song) => {
-    const phone = song.whatsapp_phone?.startsWith('1') 
-      ? song.whatsapp_phone 
-      : '1' + song.whatsapp_phone;
-    const songIds = getOrderSongIds(song);
-    const isCombo = songIds.length > 1;
-    const songLink = `${window.location.origin}/song/${songIds.join(',')}`;
-    const recipientName = song.recipient_name || 'tu persona especial';
-    
-    const message = isCombo
-      ? `🎵 ¡Hola! Tus 2 canciones personalizadas para *${recipientName}* están listas. 🎁\n\n🎧 Escúchalas aquí: ${songLink}\n\nCuando quieras regalárselas, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`
-      : `🎵 ¡Hola! Tu canción personalizada para *${recipientName}* está lista. 🎁\n\n🎧 Escúchala aquí: ${songLink}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
-    
-    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-  };
-
-  const [whatsappSent, setWhatsappSent] = useState({});
-
-  const handleWhatsAppDelivery = (song) => {
-    const url = buildWhatsAppDeliveryUrl(song);
-    window.open(url, '_blank');
-    // Mark as sent (visual feedback)
-    setWhatsappSent(prev => ({ ...prev, [song.id]: true }));
-    setTimeout(() => setWhatsappSent(prev => ({ ...prev, [song.id]: false })), 5000);
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
@@ -717,6 +677,34 @@ export default function AdminDashboard() {
           >
             🔍 Lookup
           </button>
+          <button
+            onClick={() => setActiveTab('hotleads')}
+            className={`px-5 py-2.5 rounded-xl font-medium transition relative ${
+              activeTab === 'hotleads' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/30'
+            }`}
+          >
+            🔥 Hot Leads
+            {(() => {
+              const count = (() => {
+                const paidEmails = new Set(songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase()));
+                const leadsMap = {};
+                songs.forEach(s => {
+                  if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
+                  if (paidEmails.has(s.email.toLowerCase())) return;
+                  const key = s.whatsapp_phone;
+                  if (!leadsMap[key]) leadsMap[key] = true;
+                });
+                return Object.keys(leadsMap).length;
+              })();
+              return count > 0 ? (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {count}
+                </span>
+              ) : null;
+            })()}
+          </button>
         </div>
 
         {activeTab === 'orders' ? (
@@ -883,22 +871,6 @@ export default function AdminDashboard() {
                                     <span className="material-symbols-outlined text-blue-400 text-xl">download</span>
                                   </a>
                                 </>
-                              )}
-                              {/* WhatsApp Delivery Button — only for paid orders with WhatsApp + audio */}
-                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (
-                                <button
-                                  onClick={() => handleWhatsAppDelivery(song)}
-                                  className={`p-2 rounded-lg transition ${
-                                    whatsappSent[song.id] 
-                                      ? 'bg-green-500/30' 
-                                      : 'hover:bg-green-500/20'
-                                  }`}
-                                  title={whatsappSent[song.id] ? '✓ Enviado' : 'Enviar link por WhatsApp'}
-                                >
-                                  <span className={`text-xl ${whatsappSent[song.id] ? 'opacity-50' : ''}`}>
-                                    {whatsappSent[song.id] ? '✅' : '📩'}
-                                  </span>
-                                </button>
                               )}
                             </div>
                           </td>
@@ -1489,6 +1461,284 @@ export default function AdminDashboard() {
               );
             })()}
           </div>
+        ) : activeTab === 'hotleads' ? (
+          /* 🔥 HOT LEADS TAB - WhatsApp contacts who didn't buy */
+          (() => {
+            // Build leads: group by whatsapp_phone, exclude anyone who has ANY paid song
+            const paidEmails = new Set(
+              songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase())
+            );
+            const paidPhones = new Set(
+              songs.filter(s => isPaid(s) && s.whatsapp_phone).map(s => s.whatsapp_phone)
+            );
+
+            const leadsMap = {};
+            songs.forEach(s => {
+              if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
+              // Skip if this person has paid (by email OR phone)
+              if (paidEmails.has(s.email.toLowerCase())) return;
+              if (paidPhones.has(s.whatsapp_phone)) return;
+
+              const key = s.whatsapp_phone;
+              if (!leadsMap[key]) {
+                leadsMap[key] = {
+                  phone: s.whatsapp_phone,
+                  email: s.email,
+                  senderName: s.sender_name,
+                  songs: [],
+                  latestDate: s.created_at,
+                  occasions: new Set(),
+                  genres: new Set()
+                };
+              }
+              leadsMap[key].songs.push(s);
+              if (s.occasion) leadsMap[key].occasions.add(s.occasion);
+              if (s.genre) leadsMap[key].genres.add(s.genre);
+              if (new Date(s.created_at) > new Date(leadsMap[key].latestDate)) {
+                leadsMap[key].latestDate = s.created_at;
+              }
+            });
+
+            const leads = Object.values(leadsMap).sort((a, b) => 
+              hotLeadSort === 'recent' 
+                ? new Date(b.latestDate) - new Date(a.latestDate)
+                : new Date(a.latestDate) - new Date(b.latestDate)
+            );
+
+            // Calculate time since last activity
+            const getTimeSince = (dateStr) => {
+              const diff = Date.now() - new Date(dateStr).getTime();
+              const mins = Math.floor(diff / 60000);
+              if (mins < 60) return `hace ${mins}m`;
+              const hrs = Math.floor(mins / 60);
+              if (hrs < 24) return `hace ${hrs}h`;
+              const days = Math.floor(hrs / 24);
+              return `hace ${days}d`;
+            };
+
+            // Heat level based on recency
+            const getHeatLevel = (dateStr) => {
+              const hrs = (Date.now() - new Date(dateStr).getTime()) / 3600000;
+              if (hrs < 1) return { label: 'CALIENTE', color: 'bg-red-500', emoji: '🔥🔥🔥' };
+              if (hrs < 6) return { label: 'MUY CALIENTE', color: 'bg-orange-500', emoji: '🔥🔥' };
+              if (hrs < 24) return { label: 'TIBIO', color: 'bg-yellow-500', emoji: '🔥' };
+              if (hrs < 72) return { label: 'FRÍO', color: 'bg-blue-400', emoji: '❄️' };
+              return { label: 'VIEJO', color: 'bg-gray-500', emoji: '💤' };
+            };
+
+            // Build WhatsApp message for a lead
+            const buildWhatsAppMessage = (lead) => {
+              const song = lead.songs[0]; // most recent song
+              const recipientName = song?.recipient_name || 'tu ser querido';
+              const senderName = lead.senderName || 'amigo';
+              const genreDisplay = song?.genre_name || song?.genre || 'personalizada';
+              
+              const msg = `Hola ${senderName} 👋 Soy de RegalosQueCantan. Vi que creaste una canción increíble de ${genreDisplay} para ${recipientName} pero no completaste tu compra.\n\nTu canción todavía está guardada y lista para ti 🎵\n\n¿Quieres que te mande el link para escucharla otra vez?`;
+              return msg;
+            };
+
+            const buildWhatsAppUrl = (lead) => {
+              const phone = lead.phone.startsWith('1') ? lead.phone : '1' + lead.phone;
+              const msg = encodeURIComponent(buildWhatsAppMessage(lead));
+              return `https://wa.me/${phone}?text=${msg}`;
+            };
+
+            return (
+              <div className="space-y-4">
+                {/* Header Stats */}
+                <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-2xl p-5 border border-orange-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">🔥</span>
+                      <div>
+                        <h2 className="text-xl font-bold text-orange-400">Super Hot Leads</h2>
+                        <p className="text-sm text-gray-400">Dieron WhatsApp, crearon canciones, pero NO compraron</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-3xl font-bold text-orange-400">{leads.length}</p>
+                      <p className="text-xs text-gray-500">leads sin convertir</p>
+                    </div>
+                  </div>
+                  {/* Potential revenue */}
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
+                    <div className="flex-1 text-center">
+                      <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 19.99)}</p>
+                      <p className="text-xs text-gray-500">Ingreso potencial</p>
+                    </div>
+                    <div className="flex-1 text-center">
+                      <p className="text-lg font-bold text-yellow-400">{leads.reduce((sum, l) => sum + l.songs.length, 0)}</p>
+                      <p className="text-xs text-gray-500">Canciones generadas</p>
+                    </div>
+                    <div className="flex-1 text-center">
+                      <p className="text-lg font-bold text-blue-400">{leads.filter(l => (Date.now() - new Date(l.latestDate).getTime()) < 86400000).length}</p>
+                      <p className="text-xs text-gray-500">Últimas 24hrs</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sort + Bulk Actions */}
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setHotLeadSort('recent')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                        hotLeadSort === 'recent' ? 'bg-orange-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                      }`}
+                    >
+                      Más recientes
+                    </button>
+                    <button
+                      onClick={() => setHotLeadSort('oldest')}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                        hotLeadSort === 'oldest' ? 'bg-orange-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                      }`}
+                    >
+                      Más antiguos
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const csv = 'Phone,Email,Sender,Recipient,Genre,Occasion,Date,Songs\n' + 
+                        leads.map(l => {
+                          const s = l.songs[0];
+                          return `${l.phone},${l.email},${l.senderName || ''},${s?.recipient_name || ''},${s?.genre || ''},${s?.occasion || ''},${new Date(l.latestDate).toLocaleDateString()},${l.songs.length}`;
+                        }).join('\n');
+                      navigator.clipboard.writeText(csv);
+                      alert(`✅ ${leads.length} leads copiados (CSV)`);
+                    }}
+                    className="px-4 py-2 bg-white/5 text-gray-400 rounded-xl text-sm font-medium hover:bg-white/10 transition border border-white/10"
+                  >
+                    📋 Exportar CSV
+                  </button>
+                </div>
+
+                {/* Lead Cards */}
+                {leads.length > 0 ? (
+                  <div className="space-y-3">
+                    {leads.map((lead, idx) => {
+                      const heat = getHeatLevel(lead.latestDate);
+                      const mainSong = lead.songs[0];
+                      const phoneFormatted = lead.phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+
+                      return (
+                        <div key={lead.phone} className="bg-[#1a1f26] rounded-2xl border border-white/5 overflow-hidden hover:border-orange-500/30 transition">
+                          {/* Lead Header */}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 ${heat.color} rounded-full flex items-center justify-center text-lg`}>
+                                  {heat.emoji.charAt(0) === '🔥' ? '🔥' : heat.emoji}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-white text-lg">
+                                    {lead.senderName || 'Sin nombre'}
+                                  </p>
+                                  <p className="text-sm text-gray-400">
+                                    Para: <span className="text-amber-400 font-medium">{mainSong?.recipient_name}</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className={`inline-block px-2 py-1 rounded-full text-[10px] font-bold ${heat.color} text-white`}>
+                                  {heat.label}
+                                </span>
+                                <p className="text-xs text-gray-500 mt-1">{getTimeSince(lead.latestDate)}</p>
+                              </div>
+                            </div>
+
+                            {/* Lead Details Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                              <div className="bg-white/5 rounded-lg px-3 py-2">
+                                <p className="text-[10px] text-gray-500 uppercase">WhatsApp</p>
+                                <p className="text-sm font-medium text-green-400">{phoneFormatted}</p>
+                              </div>
+                              <div className="bg-white/5 rounded-lg px-3 py-2">
+                                <p className="text-[10px] text-gray-500 uppercase">Email</p>
+                                <p className="text-sm font-medium text-gray-300 truncate">{lead.email}</p>
+                              </div>
+                              <div className="bg-white/5 rounded-lg px-3 py-2">
+                                <p className="text-[10px] text-gray-500 uppercase">Género</p>
+                                <p className="text-sm font-medium text-amber-400 capitalize">{[...lead.genres].join(', ') || '—'}</p>
+                              </div>
+                              <div className="bg-white/5 rounded-lg px-3 py-2">
+                                <p className="text-[10px] text-gray-500 uppercase">Canciones</p>
+                                <p className="text-sm font-medium">{lead.songs.length} generada{lead.songs.length !== 1 ? 's' : ''}</p>
+                              </div>
+                            </div>
+
+                            {/* Song preview links */}
+                            {lead.songs.filter(s => s.audio_url).length > 0 && (
+                              <div className="mb-3 bg-amber-500/5 border border-amber-500/10 rounded-lg p-2">
+                                <p className="text-[10px] text-amber-400 uppercase font-bold mb-1">🎵 Canciones listas para escuchar:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {lead.songs.filter(s => s.audio_url).map((s, i) => (
+                                    <button
+                                      key={s.id}
+                                      onClick={() => {
+                                        const url = `${window.location.origin}/listen?song_id=${s.id}`;
+                                        navigator.clipboard.writeText(url);
+                                        setCopiedLinkId(s.id);
+                                        setTimeout(() => setCopiedLinkId(null), 2000);
+                                      }}
+                                      className="px-2 py-1 bg-amber-500/10 text-amber-400 rounded text-xs hover:bg-amber-500/20 transition"
+                                    >
+                                      {copiedLinkId === s.id ? '✅ Copiado!' : `🎧 Canción ${i + 1}`}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2">
+                              {/* One-click WhatsApp with pre-filled message */}
+                              <a
+                                href={buildWhatsAppUrl(lead)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] text-white rounded-xl font-medium text-sm hover:bg-[#20bd5a] transition"
+                              >
+                                💬 Enviar WhatsApp
+                              </a>
+                              {/* Copy message to customize */}
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(buildWhatsAppMessage(lead));
+                                  setCopiedMessageId(lead.phone);
+                                  setTimeout(() => setCopiedMessageId(null), 2000);
+                                }}
+                                className={`px-4 py-2.5 rounded-xl font-medium text-sm transition ${
+                                  copiedMessageId === lead.phone
+                                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                    : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/10'
+                                }`}
+                              >
+                                {copiedMessageId === lead.phone ? '✅ Copiado' : '📋 Copiar Mensaje'}
+                              </button>
+                              {/* View song detail */}
+                              <button
+                                onClick={() => setSelectedSong(mainSong)}
+                                className="px-4 py-2.5 bg-white/5 text-gray-400 rounded-xl font-medium text-sm hover:bg-white/10 transition border border-white/10"
+                              >
+                                👁️ Ver
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-16 bg-[#1a1f26] rounded-2xl">
+                    <p className="text-5xl mb-4">🎉</p>
+                    <p className="text-xl font-bold text-green-400 mb-2">¡No hay leads pendientes!</p>
+                    <p className="text-gray-500">Todos los contactos con WhatsApp ya compraron</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()
         ) : null}
       </main>
 
@@ -1737,7 +1987,7 @@ export default function AdminDashboard() {
               {selectedSong.whatsapp_phone && (
                 <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
                   <p className="text-xs text-green-400 mb-2">💬 WhatsApp</p>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between">
                     <p className="font-semibold text-lg">
                       {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
                     </p>
@@ -1746,9 +1996,9 @@ export default function AdminDashboard() {
                         href={`https://wa.me/${selectedSong.whatsapp_phone.startsWith('1') ? selectedSong.whatsapp_phone : '1' + selectedSong.whatsapp_phone}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition flex items-center gap-2"
+                        className="px-4 py-2 bg-[#25D366] text-white rounded-lg text-sm font-medium hover:bg-[#20bd5a] transition flex items-center gap-2"
                       >
-                        💬 Chat
+                        💬 Abrir Chat
                       </a>
                       <button
                         onClick={() => {
@@ -1761,22 +2011,6 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   </div>
-                  {/* One-Click Delivery Button */}
-                  {isPaid(selectedSong) && selectedSong.audio_url && (
-                    <button
-                      onClick={() => handleWhatsAppDelivery(selectedSong)}
-                      className={`w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${
-                        whatsappSent[selectedSong.id]
-                          ? 'bg-green-600/30 text-green-300 border border-green-500/30'
-                          : 'bg-[#25D366] text-white hover:bg-[#20bd5a]'
-                      }`}
-                    >
-                      {whatsappSent[selectedSong.id] 
-                        ? '✅ ¡Abierto! Revisa WhatsApp' 
-                        : `📩 Enviar Link de ${getOrderSongIds(selectedSong).length > 1 ? '2 Canciones' : 'Canción'} por WhatsApp`
-                      }
-                    </button>
-                  )}
                 </div>
               )}
               
