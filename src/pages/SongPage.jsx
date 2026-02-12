@@ -257,7 +257,7 @@ export default function SongPage({ songId: propSongId }) {
   // GIFT REVEAL SEQUENCE
   // ═══════════════════════════════════════
   const startReveal = () => {
-    setPhase('sender');
+    setPhase('envelope');
     setTimeout(() => {
       setPhase('countdown');
       setCountdownNum(3);
@@ -284,7 +284,7 @@ export default function SongPage({ songId: propSongId }) {
         // Transition to ready
         setTimeout(() => setPhase('ready'), 2500);
       }, 3000);
-    }, 3000);
+    }, 5500);
   };
 
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
@@ -419,32 +419,180 @@ export default function SongPage({ songId: propSongId }) {
     );
   }
 
-  // Screen 2: Sender Reveal — "Con todo el cariño de... Carlos"
-  if (phase === 'sender') {
+  // Screen 2: Envelope Reveal — sealed envelope opens to reveal sender
+  if (phase === 'envelope') {
+    const ENVELOPE_CSS = `
+      @keyframes envFloat {
+        0% { opacity: 0; transform: translateY(80px) scale(0.8); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes envGlow {
+        0%, 100% { box-shadow: 0 20px 60px rgba(244,192,37,0.15), 0 0 0 rgba(244,192,37,0); }
+        50% { box-shadow: 0 20px 60px rgba(244,192,37,0.3), 0 0 80px rgba(244,192,37,0.1); }
+      }
+      @keyframes envShake {
+        0%, 100% { transform: rotate(0deg); }
+        15% { transform: rotate(-2deg); }
+        30% { transform: rotate(2deg); }
+        45% { transform: rotate(-1.5deg); }
+        60% { transform: rotate(1.5deg); }
+        75% { transform: rotate(-0.5deg); }
+        90% { transform: rotate(0.5deg); }
+      }
+      @keyframes envFlapOpen {
+        0% { transform: rotateX(0deg); }
+        100% { transform: rotateX(180deg); }
+      }
+      @keyframes envCardSlide {
+        0% { transform: translateY(0); opacity: 0; }
+        30% { opacity: 1; }
+        100% { transform: translateY(-120px); opacity: 1; }
+      }
+      @keyframes envCardContent {
+        0% { opacity: 0; transform: translateY(10px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes envSenderName {
+        0% { opacity: 0; transform: scale(0.8); letter-spacing: 0.2em; }
+        50% { transform: scale(1.05); letter-spacing: 0.05em; }
+        100% { opacity: 1; transform: scale(1); letter-spacing: 0.02em; }
+      }
+      @keyframes envSubtext {
+        0% { opacity: 0; transform: translateY(8px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes envSeal {
+        0% { opacity: 1; transform: scale(1); }
+        50% { transform: scale(1.3); opacity: 0.8; }
+        100% { transform: scale(0); opacity: 0; }
+      }
+      @keyframes envSparkle {
+        0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+        50% { opacity: 1; transform: scale(1) rotate(180deg); }
+      }
+    `;
+
     return (
       <>{head}{audioEl}
         <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 50% 40%, #1a1408 0%, #0a0804 60%, #000 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
-          <style>{SHARED_CSS}{REVEAL_CSS}</style>
-          {/* Warm glow */}
-          <div style={{ position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)', width: '80vw', height: '80vw', maxWidth: 500, maxHeight: 500, background: 'radial-gradient(circle, rgba(244,192,37,0.08) 0%, transparent 60%)', borderRadius: '50%', pointerEvents: 'none' }} />
-          {/* "Con todo el cariño de..." */}
-          <p style={{ fontSize: 'clamp(14px, 3.5vw, 18px)', color: 'rgba(255,255,255,0.5)', fontWeight: 300, textAlign: 'center', marginBottom: 16, animation: 'revealFadeIn 0.8s ease-out both', letterSpacing: '0.05em' }}>
-            Con todo el cariño de...
-          </p>
-          {/* Sender name (big reveal) */}
-          <h1 style={{ fontSize: 'clamp(36px, 9vw, 56px)', fontWeight: 800, textAlign: 'center', marginBottom: 8, animation: 'revealFadeInSlow 1s ease-out 0.6s both', lineHeight: 1.1 }}>
-            <span style={{ color: '#f4c025' }}>{sender || 'Alguien especial'}</span> 💛
-          </h1>
-          {/* Heartbeat animation on emoji */}
-          <div style={{ fontSize: 40, marginTop: 24, marginBottom: 24, animation: 'heartbeat 1.2s ease-in-out 1.2s infinite' }}>💌</div>
-          {/* "te dedicó una canción..." */}
-          <p style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontWeight: 300, fontStyle: 'italic', lineHeight: 1.6, maxWidth: 320, animation: 'revealFadeIn 0.8s ease-out 1.4s both' }}>
-            te dedicó {isCombo ? '2 canciones únicas' : 'una canción única'}<br/>en el mundo
-          </p>
-          {/* Music notes floating */}
-          {['🎵','🎶','🎵'].map((n, i) => (
-            <span key={i} style={{ position: 'absolute', fontSize: 20, color: 'rgba(244,192,37,0.2)', bottom: `${20 + i * 15}%`, right: `${10 + i * 12}%`, animation: `revealFloat ${2 + i}s ease-in-out ${i * 0.5}s infinite` }}>{n}</span>
+          <style>{SHARED_CSS}{REVEAL_CSS}{ENVELOPE_CSS}</style>
+
+          {/* Ambient glow */}
+          <div style={{ position: 'absolute', top: '35%', left: '50%', transform: 'translate(-50%, -50%)', width: '70vw', height: '70vw', maxWidth: 450, maxHeight: 450, background: 'radial-gradient(circle, rgba(244,192,37,0.1) 0%, rgba(244,192,37,0.02) 50%, transparent 70%)', borderRadius: '50%', animation: 'revealGlow 3s ease-in-out infinite', pointerEvents: 'none' }} />
+
+          {/* Floating sparkles around envelope */}
+          {['✦','✧','✦','♪','✧','✦'].map((s, i) => (
+            <span key={i} style={{ position: 'absolute', color: 'rgba(244,192,37,0.2)', fontSize: 10 + i * 2, top: `${20 + (i % 3) * 25}%`, left: `${8 + i * 15}%`, animation: `envSparkle ${2 + i * 0.4}s ease-in-out ${1.5 + i * 0.3}s infinite`, pointerEvents: 'none' }}>{s}</span>
           ))}
+
+          {/* Envelope container */}
+          <div style={{ position: 'relative', animation: 'envFloat 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both' }}>
+
+            {/* The card that slides up from inside */}
+            <div style={{
+              position: 'absolute',
+              bottom: '50%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 220,
+              minHeight: 160,
+              background: 'linear-gradient(170deg, #fffef7 0%, #fdf6e3 50%, #faf0d1 100%)',
+              borderRadius: '12px 12px 4px 4px',
+              padding: '20px 16px',
+              textAlign: 'center',
+              zIndex: 5,
+              animation: 'envCardSlide 1s cubic-bezier(0.34, 1.2, 0.64, 1) 2.3s both',
+              boxShadow: '0 -4px 20px rgba(244,192,37,0.15)',
+            }}>
+              {/* "Con todo el cariño de..." */}
+              <p style={{
+                fontSize: 12, color: 'rgba(0,0,0,0.4)', fontWeight: 400, letterSpacing: '0.08em',
+                marginBottom: 8, fontStyle: 'italic',
+                animation: 'envCardContent 0.6s ease-out 3.0s both',
+              }}>
+                Con todo el cariño de...
+              </p>
+
+              {/* Sender name */}
+              <h2 style={{
+                fontSize: 'clamp(22px, 6vw, 32px)', fontWeight: 800, color: '#1a1408',
+                lineHeight: 1.1, marginBottom: 6,
+                animation: 'envSenderName 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 3.4s both',
+              }}>
+                {sender || 'Alguien especial'} <span style={{ fontSize: '0.8em' }}>💛</span>
+              </h2>
+
+              {/* "te dedicó una canción..." */}
+              <p style={{
+                fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 300, fontStyle: 'italic',
+                lineHeight: 1.5,
+                animation: 'envSubtext 0.6s ease-out 4.2s both',
+              }}>
+                te dedicó {isCombo ? '2 canciones únicas' : 'una canción única'}<br/>en el mundo
+              </p>
+
+              {/* Small decorative line on card */}
+              <div style={{
+                width: 40, height: 1.5, background: 'linear-gradient(90deg, transparent, rgba(244,192,37,0.5), transparent)',
+                margin: '10px auto 0',
+                animation: 'envSubtext 0.6s ease-out 4.4s both',
+              }} />
+            </div>
+
+            {/* Envelope body */}
+            <div style={{
+              width: 260, height: 180,
+              background: 'linear-gradient(180deg, #d4a024 0%, #c4912a 40%, #b8832e 100%)',
+              borderRadius: '4px 4px 12px 12px',
+              position: 'relative',
+              zIndex: 10,
+              animation: 'envGlow 2s ease-in-out 0.9s infinite, envShake 0.6s ease-in-out 1.2s both',
+              overflow: 'visible',
+            }}>
+              {/* Inner shadow on envelope body */}
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '4px 4px 12px 12px', background: 'linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 30%, rgba(0,0,0,0.1) 100%)', pointerEvents: 'none' }} />
+
+              {/* V-fold lines on envelope body */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                background: 'linear-gradient(135deg, transparent 48%, rgba(0,0,0,0.06) 49%, rgba(0,0,0,0.06) 51%, transparent 52%), linear-gradient(225deg, transparent 48%, rgba(0,0,0,0.06) 49%, rgba(0,0,0,0.06) 51%, transparent 52%)',
+                pointerEvents: 'none', borderRadius: '4px 4px 12px 12px',
+              }} />
+
+              {/* Wax seal (disappears when flap opens) */}
+              <div style={{
+                position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)',
+                width: 36, height: 36, borderRadius: '50%',
+                background: 'radial-gradient(circle at 40% 35%, #e84040, #b81c1c)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 14, zIndex: 30,
+                animation: 'envSeal 0.4s ease-in 1.4s both',
+              }}>
+                ♪
+              </div>
+            </div>
+
+            {/* Envelope flap (triangle on top) */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, width: 260, height: 0,
+              zIndex: 20,
+              transformOrigin: 'top center',
+              perspective: 600,
+            }}>
+              <div style={{
+                width: 0, height: 0,
+                borderLeft: '130px solid transparent',
+                borderRight: '130px solid transparent',
+                borderTop: '100px solid #c99520',
+                transformOrigin: 'top center',
+                animation: 'envFlapOpen 0.8s cubic-bezier(0.4, 0, 0.2, 1) 1.5s both',
+                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))',
+              }} />
+            </div>
+          </div>
+
+          {/* Brand */}
           <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
         </div>
       </>
