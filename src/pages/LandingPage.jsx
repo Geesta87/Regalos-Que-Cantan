@@ -121,7 +121,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background-dark flex flex-col">
       {/* 💘 Valentine's Sticky Urgency Bar */}
       <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
+        😉 ¿Aún sin regalo? Tu canción personalizada lista en minutos — a tiempo para el sábado 💝
       </div>
 
       <Header variant="landing" />
@@ -156,7 +156,7 @@ export default function LandingPage() {
           <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-2 border-red-400 rounded-2xl px-8 py-4 mb-4 shadow-lg shadow-red-500/40 animate-pulse">
             <span className="text-white text-base md:text-lg font-bold flex items-center justify-center gap-3">
               <span className="text-2xl">💘</span>
-              <span>¡San Valentín está aquí! Regala una canción única</span>
+              <span>🎵 San Valentín es este sábado — ¡Todavía llegas a tiempo! 💝</span>
               <span className="text-2xl">💘</span>
             </span>
           </div>
@@ -185,7 +185,7 @@ export default function LandingPage() {
           
           <p className="text-red-400 text-base font-semibold flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
             <span>💝</span>
-            Preview gratis • ¡Ordena antes del 12 de Feb!
+            Preview gratis • ¡Lista en minutos para San Valentín!
             <span>💝</span>
           </p>
         </div>
