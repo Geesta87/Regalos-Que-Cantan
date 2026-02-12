@@ -84,6 +84,10 @@ export default function LandingPagePremium() {
         }
         @keyframes lpp-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes lpp-shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+        @keyframes lpp-bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-20px); }
+        }
         .lpp-shimmer {
           background: linear-gradient(90deg, #c9184a, #ff6b8a, #c9184a, #ff6b8a, #c9184a);
           background-size: 200% auto;
@@ -178,6 +182,16 @@ export default function LandingPagePremium() {
           }}>{p}</div>
         ))}
 
+        {/* Bouncing emoji hearts */}
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 2 }}>
+          <div style={{ position: 'absolute', top: '12%', left: '8%', fontSize: '48px', opacity: 0.5, animation: 'lpp-bounce 3s ease-in-out infinite' }}>💕</div>
+          <div style={{ position: 'absolute', top: '25%', right: '12%', fontSize: '40px', opacity: 0.45, animation: 'lpp-bounce 4s ease-in-out 0.5s infinite' }}>💖</div>
+          <div style={{ position: 'absolute', top: '45%', left: '18%', fontSize: '32px', opacity: 0.4, animation: 'lpp-bounce 3.5s ease-in-out 1s infinite' }}>💗</div>
+          <div style={{ position: 'absolute', bottom: '20%', right: '15%', fontSize: '44px', opacity: 0.45, animation: 'lpp-bounce 4s ease-in-out 0.7s infinite' }}>💕</div>
+          <div style={{ position: 'absolute', bottom: '35%', left: '5%', fontSize: '28px', opacity: 0.35, animation: 'lpp-bounce 3.8s ease-in-out 1.2s infinite' }}>💘</div>
+          <div style={{ position: 'absolute', top: '60%', right: '6%', fontSize: '36px', opacity: 0.4, animation: 'lpp-bounce 3.2s ease-in-out 0.3s infinite' }}>💝</div>
+        </div>
+
         {/* Hero content */}
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '700px' }}>
           <div style={{
@@ -194,7 +208,7 @@ export default function LandingPagePremium() {
 
           <h1 style={{
             fontFamily: "'Playfair Display', serif",
-            fontSize: 'clamp(40px, 7vw, 72px)', fontWeight: 400, lineHeight: 1.05,
+            fontSize: 'clamp(48px, 8vw, 82px)', fontWeight: 400, lineHeight: 1.05,
             marginBottom: '24px', letterSpacing: '-0.02em'
           }}>
             Regala algo que<br />
@@ -203,7 +217,7 @@ export default function LandingPagePremium() {
           </h1>
 
           <p style={{
-            fontSize: '18px', color: 'rgba(255,255,255,0.5)', fontWeight: 300,
+            fontSize: '20px', color: 'rgba(255,255,255,0.5)', fontWeight: 300,
             lineHeight: 1.7, maxWidth: '520px', margin: '0 auto 40px'
           }}>
             Una canción compuesta exclusivamente para esa persona especial.
