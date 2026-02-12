@@ -182,6 +182,17 @@ export default function GeneratingPage() {
 
     async function startDualGeneration() {
       try {
+        // ✅ FIX: Guard against empty formData (prevents ghost records)
+        if (!formData?.recipientName?.trim() || !formData?.email?.trim() || !formData?.genre?.trim()) {
+          console.error('❌ Missing required formData fields:', {
+            recipientName: formData?.recipientName || 'MISSING',
+            email: formData?.email || 'MISSING',
+            genre: formData?.genre || 'MISSING'
+          });
+          setError('Faltan datos del formulario. Por favor regresa e intenta de nuevo.');
+          return;
+        }
+
         // ✅ FIX: Wrapped in DEV check
         if (import.meta.env.DEV) {
           console.log('🎵 Starting dual song generation...');

@@ -430,6 +430,23 @@ export default function ComparisonPage() {
         ? songs.map(s => s.id)
         : [selectedSongId];
       
+      // ✅ FIX: Verify songs have actual customer data before checkout
+      // This prevents paying for ghost/empty records
+      for (const songId of songIdsToCheckout) {
+        const { data: dbSong, error: verifyError } = await supabase
+          .from('songs')
+          .select('recipient_name, email')
+          .eq('id', songId)
+          .single();
+        
+        if (verifyError || !dbSong?.recipient_name || !dbSong?.email) {
+          console.error('❌ Song missing data, blocking checkout:', songId, dbSong);
+          alert('Error: Esta canción no tiene datos completos. Por favor genera una nueva canción desde el inicio.');
+          setIsCheckingOut(false);
+          return;
+        }
+      }
+
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
 
       const allSongIds = songs.map(s => s.id);
