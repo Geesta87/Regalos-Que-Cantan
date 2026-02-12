@@ -873,17 +873,34 @@ export default function AdminDashboard() {
                                 </>
                               )}
                               {/* WhatsApp delivery button - for paid songs with WhatsApp number */}
-                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (
-                                <a
-                                  href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}?text=${encodeURIComponent(`¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${window.location.origin}/song/${song.id}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 rounded-lg hover:bg-green-500/20 transition"
-                                  title={`Enviar por WhatsApp a ${song.whatsapp_phone}`}
-                                >
-                                  <span className="material-symbols-outlined text-green-400 text-xl">mail</span>
-                                </a>
-                              )}
+                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (() => {
+                                // Find all sibling songs from same purchase (same session_id or stripe_session_id)
+                                const siblingsSongs = songs.filter(s => 
+                                  s.id !== song.id && 
+                                  isPaid(s) && 
+                                  s.audio_url &&
+                                  ((song.session_id && s.session_id === song.session_id) ||
+                                   (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id))
+                                );
+                                const allSongs = [song, ...siblingsSongs];
+                                const songIds = allSongs.map(s => s.id).join(',');
+                                const songPageUrl = `${window.location.origin}/song/${songIds}`;
+                                const phone = song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone;
+                                
+                                const msg = `¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${songPageUrl}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
+                                
+                                return (
+                                  <a
+                                    href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 rounded-lg hover:bg-green-500/20 transition"
+                                    title={`Enviar por WhatsApp a ${song.whatsapp_phone}`}
+                                  >
+                                    <span className="material-symbols-outlined text-green-400 text-xl">mail</span>
+                                  </a>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>
