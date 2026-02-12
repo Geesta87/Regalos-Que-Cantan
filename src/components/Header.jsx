@@ -2,10 +2,15 @@ import React, { useContext } from 'react';
 import { AppContext } from '../App';
 
 export default function Header({ variant = 'default' }) {
-  const { navigateTo, clearSession } = useContext(AppContext);
+  const { navigateTo, clearSession, formData } = useContext(AppContext);
+  const isPremium = formData?.pricingTier === 'premium';
 
   const handleLogoClick = () => {
-    clearSession(); // Reset everything and go to landing
+    if (isPremium) {
+      navigateTo('landing_premium');
+    } else {
+      clearSession();
+    }
   };
 
   if (variant === 'landing') {

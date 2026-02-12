@@ -73,9 +73,10 @@ export default function ComparisonPage() {
   const genreConfig = genres?.[formData?.genre];
   const genreName = genreConfig?.name || formData?.genre || 'Género';
 
-  // Pricing
-  const singlePrice = 19.99;
-  const bundlePrice = 29.99;
+  // Pricing — conditional on funnel tier
+  const isPremium = formData?.pricingTier === 'premium';
+  const singlePrice = isPremium ? 29.99 : 19.99;
+  const bundlePrice = isPremium ? 39.99 : 29.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
 
@@ -479,7 +480,7 @@ export default function ComparisonPage() {
         console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth, formData?.pricingTier);
       
       if (result.url) {
         window.location.href = result.url;

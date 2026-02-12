@@ -4,6 +4,7 @@ import { HelmetProvider } from 'react-helmet-async';
 // Import all pages
 import LandingPage from './pages/LandingPage';
 import LandingPageV2 from './pages/LandingPageV2';
+import LandingPagePremium from './pages/LandingPagePremium';
 import GenreStep from './pages/GenreStep';
 import ArtistStep from './pages/ArtistStep';
 import SubGenreStep from './pages/SubGenreStep';
@@ -46,6 +47,7 @@ const STORAGE_KEYS = {
 const pathToPage = {
   '/': 'landing',
   '/v2': 'landing_v2',
+  '/premium': 'landing_premium',
   '/create/genre': 'genre',
   '/create/artist': 'artist',
   '/create/subgenre': 'subgenre',
@@ -122,7 +124,8 @@ export default function App() {
     relationship: '',
     details: '',
     email: '',
-    voiceType: 'male'
+    voiceType: 'male',
+    pricingTier: ''
   });
   const [songData, setSongData] = useState(null);
   const [directSongId, setDirectSongId] = useState(null);
@@ -168,7 +171,7 @@ export default function App() {
 
   // Save to localStorage when state changes
   useEffect(() => {
-    if (currentPage && currentPage !== 'landing' && currentPage !== 'landing_v2') {
+    if (currentPage && currentPage !== 'landing' && currentPage !== 'landing_v2' && currentPage !== 'landing_premium') {
       localStorage.setItem(STORAGE_KEYS.PAGE, currentPage);
     }
   }, [currentPage]);
@@ -195,6 +198,7 @@ export default function App() {
     const pageUrls = {
       landing: '/',
       landing_v2: '/v2',
+      landing_premium: '/premium',
       genre: '/create/genre',
       artist: '/create/artist',
       subgenre: '/create/subgenre',
@@ -241,7 +245,8 @@ export default function App() {
       relationship: '',
       details: '',
       email: '',
-      voiceType: 'male'
+      voiceType: 'male',
+      pricingTier: ''
     });
     setSongData(null);
     setDirectSongId(null);
@@ -272,6 +277,7 @@ export default function App() {
           {/* Landing pages */}
           {currentPage === 'landing' && <LandingPage />}
           {currentPage === 'landing_v2' && <LandingPageV2 />}
+          {currentPage === 'landing_premium' && <LandingPagePremium />}
           
           {/* Funnel pages */}
           {currentPage === 'genre' && <GenreStep />}
@@ -308,7 +314,7 @@ export default function App() {
           )}
 
           {/* WhatsApp floating button - only on landing, comparison, and success pages */}
-          {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'comparison' || currentPage === 'success') && (
+          {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'landing_premium' || currentPage === 'comparison' || currentPage === 'success') && (
             <WhatsAppButton />
           )}
         </div>
