@@ -289,7 +289,7 @@ export default function SongPage({ songId: propSongId }) {
 
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
   const progress = dur > 0 ? (time / dur) * 100 : 0;
-  const template = allSongs[0]?.template || 'golden_hour';
+  const template = 'golden_hour';
 
   // Clear confetti after animation completes
   useEffect(() => {
