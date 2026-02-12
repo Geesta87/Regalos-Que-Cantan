@@ -127,15 +127,18 @@ export default function SongPage({ songId: propSongId }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [phase, setPhase] = useState('loading'); // loading → mystery → sender → countdown → flash → ready
+  const [phase, setPhase] = useState('loading'); // loading → mystery → envelope → countdown → flash → ready
   const [isPlaying, setIsPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [dur, setDur] = useState(0);
   const [showLyrics, setShowLyrics] = useState(false);
   const [countdownNum, setCountdownNum] = useState(3);
   const [confettiPieces, setConfettiPieces] = useState([]);
+  const [giftOpening, setGiftOpening] = useState(false);
+  const [flashParticles, setFlashParticles] = useState([]);
   const audioRef = useRef(null);
   const vizRef = useRef(null);
+  const sfxRef = useRef(null);
 
   // Parse song IDs — supports /song/id1,id2 for combos
   const songIds = useMemo(() => {
@@ -254,37 +257,211 @@ export default function SongPage({ songId: propSongId }) {
   };
 
   // ═══════════════════════════════════════
+  // SOUND EFFECTS (Web Audio API)
+  // ═══════════════════════════════════════
+  const initSFX = () => {
+    if (sfxRef.current) return sfxRef.current;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      sfxRef.current = ctx;
+      return ctx;
+    } catch (e) { return null; }
+  };
+
+  const playSFX = (type) => {
+    try {
+      const ctx = sfxRef.current || initSFX();
+      if (!ctx) return;
+      const t = ctx.currentTime;
+
+      switch (type) {
+        case 'whoosh': {
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          const flt = ctx.createBiquadFilter();
+          flt.type = 'bandpass'; flt.Q.value = 1.5;
+          flt.frequency.setValueAtTime(200, t);
+          flt.frequency.exponentialRampToValueAtTime(3000, t + 0.25);
+          flt.frequency.exponentialRampToValueAtTime(400, t + 0.5);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.25, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+          src.connect(flt).connect(g).connect(ctx.destination);
+          src.start(t); src.stop(t + 0.6);
+          break;
+        }
+        case 'chime': {
+          [880, 1318.5, 1760].forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine'; osc.frequency.value = freq;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.12 - i * 0.02, t + i * 0.1);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
+            osc.connect(g).connect(ctx.destination);
+            osc.start(t + i * 0.1); osc.stop(t + 1.8);
+          });
+          break;
+        }
+        case 'drumhit': {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(150, t);
+          osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.35, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          osc.connect(g).connect(ctx.destination);
+          osc.start(t); osc.stop(t + 0.3);
+          // Click layer
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.02, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+          const src = ctx.createBufferSource(); src.buffer = buf;
+          const g2 = ctx.createGain();
+          g2.gain.setValueAtTime(0.15, t);
+          g2.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+          src.connect(g2).connect(ctx.destination);
+          src.start(t);
+          break;
+        }
+        case 'drumroll': {
+          for (let i = 0; i < 10; i++) {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            const dt = t + i * 0.05;
+            osc.frequency.setValueAtTime(130 + i * 5, dt);
+            osc.frequency.exponentialRampToValueAtTime(45, dt + 0.08);
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.15 + i * 0.025, dt);
+            g.gain.exponentialRampToValueAtTime(0.001, dt + 0.1);
+            osc.connect(g).connect(ctx.destination);
+            osc.start(dt); osc.stop(dt + 0.15);
+          }
+          break;
+        }
+        case 'celebration': {
+          // Major chord burst (C5, E5, G5, C6)
+          [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'triangle'; osc.frequency.value = freq;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.15, t + i * 0.04);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+            osc.connect(g).connect(ctx.destination);
+            osc.start(t + i * 0.04); osc.stop(t + 2.5);
+          });
+          // Shimmer layer
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.4, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+          const src = ctx.createBufferSource(); src.buffer = buf;
+          const flt = ctx.createBiquadFilter();
+          flt.type = 'highpass'; flt.frequency.value = 5000;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.06, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+          src.connect(flt).connect(g).connect(ctx.destination);
+          src.start(t);
+          break;
+        }
+      }
+    } catch (e) { /* silent fail — SFX are non-critical */ }
+  };
+
+  // ═══════════════════════════════════════
   // GIFT REVEAL SEQUENCE
   // ═══════════════════════════════════════
   const startReveal = () => {
-    setPhase('envelope');
+    // ── Gift box lid animation ──
+    initSFX();
+    playSFX('whoosh');
+    navigator.vibrate?.(50);
+    setGiftOpening(true);
+
+    // ── Unlock audio immediately (within user gesture for iOS) ──
+    const au = audioRef.current;
+    if (au) {
+      au.volume = 0;
+      au.currentTime = 0;
+      au.play().then(() => { au.pause(); au.currentTime = 0; }).catch(() => {});
+    }
+
+    // After lid flies off → envelope
     setTimeout(() => {
-      setPhase('countdown');
-      setCountdownNum(3);
-      setTimeout(() => setCountdownNum(2), 1000);
-      setTimeout(() => setCountdownNum(1), 2000);
+      setPhase('envelope');
+      playSFX('chime');
+
+      // After envelope → countdown
       setTimeout(() => {
-        // Launch confetti
-        const pieces = Array.from({ length: 80 }, (_, i) => ({
-          id: i,
-          left: Math.random() * 100,
-          delay: Math.random() * 0.6,
-          duration: 2.5 + Math.random() * 2,
-          color: ['#f4c025', '#f20d59', '#9947eb', '#25D366', '#ff6b8a', '#fde68a', '#ffffff'][Math.floor(Math.random() * 7)],
-          size: 6 + Math.random() * 8,
-          rotation: Math.random() * 360,
-        }));
-        setConfettiPieces(pieces);
-        setPhase('flash');
-        // Auto-play audio
+        setPhase('countdown');
+        setCountdownNum(3);
+        playSFX('drumhit');
+        navigator.vibrate?.(50);
+
+        // ── Music teaser: start song very quiet ──
+        const a = audioRef.current;
+        if (a) {
+          a.volume = 0.05;
+          a.currentTime = 0;
+          a.play().catch(() => {});
+        }
+
+        // Beat 2
         setTimeout(() => {
-          const a = audioRef.current;
-          if (a) { a.play().catch(() => {}); setIsPlaying(true); }
-        }, 800);
-        // Transition to ready
-        setTimeout(() => setPhase('ready'), 2500);
-      }, 3000);
-    }, 5500);
+          setCountdownNum(2);
+          playSFX('drumhit');
+          navigator.vibrate?.(50);
+          if (audioRef.current) audioRef.current.volume = 0.1;
+        }, 1000);
+
+        // Beat 1
+        setTimeout(() => {
+          setCountdownNum(1);
+          playSFX('drumroll');
+          navigator.vibrate?.(100);
+          if (audioRef.current) audioRef.current.volume = 0.15;
+        }, 2000);
+
+        // FLASH — full volume blast
+        setTimeout(() => {
+          if (audioRef.current) audioRef.current.volume = 1.0;
+          setIsPlaying(true);
+
+          playSFX('celebration');
+          navigator.vibrate?.([100, 50, 100, 50, 200]);
+
+          // Confetti
+          const pieces = Array.from({ length: 80 }, (_, i) => ({
+            id: i,
+            left: Math.random() * 100,
+            delay: Math.random() * 0.6,
+            duration: 2.5 + Math.random() * 2,
+            color: ['#f4c025', '#f20d59', '#9947eb', '#25D366', '#ff6b8a', '#fde68a', '#ffffff'][Math.floor(Math.random() * 7)],
+            size: 6 + Math.random() * 8,
+            rotation: Math.random() * 360,
+          }));
+          setConfettiPieces(pieces);
+
+          // ── Golden particle explosion from center ──
+          const particles = Array.from({ length: 40 }, (_, i) => ({
+            id: i,
+            angle: (i / 40) * 360 + Math.random() * 9,
+            distance: 80 + Math.random() * 200,
+            size: 3 + Math.random() * 6,
+            delay: Math.random() * 0.15,
+            duration: 0.6 + Math.random() * 0.6,
+            color: ['#f4c025', '#fde68a', '#ffffff', '#f4c025', '#e8a810'][i % 5],
+          }));
+          setFlashParticles(particles);
+
+          setPhase('flash');
+          setTimeout(() => { setPhase('ready'); setFlashParticles([]); }, 2500);
+        }, 3000);
+      }, 5500);
+    }, 800);
   };
 
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
@@ -298,6 +475,14 @@ export default function SongPage({ songId: propSongId }) {
       return () => clearTimeout(timer);
     }
   }, [confettiPieces]);
+
+  // Clear flash particles
+  useEffect(() => {
+    if (flashParticles.length > 0) {
+      const timer = setTimeout(() => setFlashParticles([]), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [flashParticles]);
 
   // Confetti overlay (persists across phase transitions)
   const confettiOverlay = confettiPieces.length > 0 ? (
@@ -373,9 +558,15 @@ export default function SongPage({ songId: propSongId }) {
     @keyframes subtitleSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
     @keyframes sparkle{0%,100%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1)}}
     @keyframes heartbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.1)}28%{transform:scale(1)}}
+    @keyframes giftWobble{0%,100%{transform:rotate(-1.5deg)}25%{transform:rotate(1.5deg) scale(1.02)}50%{transform:rotate(-1deg) scale(1.01)}75%{transform:rotate(1deg) scale(1.02)}}
+    @keyframes giftBounce{0%{transform:translateY(0)}40%{transform:translateY(-6px)}60%{transform:translateY(-3px)}100%{transform:translateY(0)}}
+    @keyframes giftLidOff{0%{transform:translateY(0) rotateZ(0) scale(1);opacity:1}30%{transform:translateY(-40px) rotateZ(-8deg) scale(1.05);opacity:1}100%{transform:translateY(-180px) rotateZ(-25deg) scale(0.4);opacity:0}}
+    @keyframes giftLightBurst{0%{transform:scale(0);opacity:0}20%{opacity:1}100%{transform:scale(5);opacity:0}}
+    @keyframes giftShake{0%,100%{transform:translateX(0)}10%{transform:translateX(-4px) rotate(-1deg)}20%{transform:translateX(4px) rotate(1deg)}30%{transform:translateX(-3px) rotate(-0.5deg)}40%{transform:translateX(3px) rotate(0.5deg)}50%{transform:translateX(-2px)}60%{transform:translateX(2px)}70%{transform:translateX(0)}}
+    @keyframes particleExplode{0%{transform:translate(0,0) scale(1);opacity:1}70%{opacity:0.8}100%{opacity:0}}
   `;
 
-  // Screen 1: Mystery — "Alguien te dedicó algo muy especial"
+  // Screen 1: Mystery — 3D gift box + "Alguien te dedicó algo muy especial"
   if (phase === 'mystery') {
     return (
       <>{head}{audioEl}
@@ -387,8 +578,64 @@ export default function SongPage({ songId: propSongId }) {
           {['✦','✧','♪','✦','♫'].map((s, i) => (
             <span key={i} style={{ position: 'absolute', color: 'rgba(244,192,37,0.15)', fontSize: 12 + i * 3, top: `${15 + i * 15}%`, left: `${10 + i * 18}%`, animation: `sparkle ${2 + i * 0.5}s ease-in-out ${i * 0.8}s infinite` }}>{s}</span>
           ))}
-          {/* Gift icon */}
-          <div style={{ fontSize: 64, marginBottom: 32, animation: 'revealFloat 3s ease-in-out infinite, revealFadeIn 1s ease-out both' }}>🎁</div>
+
+          {/* ── 3D GIFT BOX ── */}
+          <div style={{
+            position: 'relative', marginBottom: 28,
+            animation: giftOpening
+              ? 'giftShake 0.4s ease-in-out both'
+              : 'revealFadeIn 1s ease-out both, giftBounce 2.5s ease-in-out 1.5s infinite',
+          }}>
+            {/* Light burst (appears when opening) */}
+            {giftOpening && (
+              <div style={{
+                position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%, -50%)',
+                width: 60, height: 60, borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(244,192,37,0.9) 0%, rgba(244,192,37,0.4) 30%, transparent 70%)',
+                animation: 'giftLightBurst 0.8s ease-out 0.2s both',
+                zIndex: 5,
+              }} />
+            )}
+
+            {/* Gift lid */}
+            <div style={{
+              width: 110, height: 24, position: 'relative', zIndex: 3, marginBottom: -2,
+              animation: giftOpening ? 'giftLidOff 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) 0.15s both' : 'none',
+            }}>
+              {/* Lid body */}
+              <div style={{
+                width: '100%', height: '100%', borderRadius: '6px 6px 2px 2px',
+                background: 'linear-gradient(180deg, #f4c025 0%, #d4a020 60%, #c49018 100%)',
+                boxShadow: '0 -2px 8px rgba(244,192,37,0.2), inset 0 2px 4px rgba(255,255,255,0.3)',
+                position: 'relative',
+              }}>
+                {/* Lid ribbon */}
+                <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 18, height: '100%', background: 'linear-gradient(90deg, #b8751a, #d4941e, #b8751a)', opacity: 0.7 }} />
+                {/* Bow */}
+                <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2 }}>
+                  <div style={{ width: 16, height: 14, borderRadius: '50% 50% 10% 50%', background: 'linear-gradient(135deg, #e8a810, #c4850e)', transform: 'rotate(-20deg)', boxShadow: 'inset 0 1px 3px rgba(255,255,255,0.3)' }} />
+                  <div style={{ width: 16, height: 14, borderRadius: '50% 50% 50% 10%', background: 'linear-gradient(225deg, #e8a810, #c4850e)', transform: 'rotate(20deg)', boxShadow: 'inset 0 1px 3px rgba(255,255,255,0.3)' }} />
+                  <div style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#c4850e' }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Gift box body */}
+            <div style={{
+              width: 100, height: 80, borderRadius: '4px 4px 10px 10px', position: 'relative',
+              background: 'linear-gradient(180deg, #e8a810 0%, #d49a15 40%, #c08a10 100%)',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3), 0 4px 16px rgba(244,192,37,0.15), inset 0 1px 2px rgba(255,255,255,0.2)',
+              margin: '0 auto',
+            }}>
+              {/* Vertical ribbon */}
+              <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 18, height: '100%', background: 'linear-gradient(90deg, rgba(184,117,26,0.5), rgba(212,148,30,0.7), rgba(184,117,26,0.5))', borderRadius: '0 0 4px 4px' }} />
+              {/* Horizontal ribbon */}
+              <div style={{ position: 'absolute', top: '45%', left: 0, width: '100%', height: 16, background: 'linear-gradient(180deg, rgba(184,117,26,0.5), rgba(212,148,30,0.7), rgba(184,117,26,0.5))' }} />
+              {/* Shine overlay */}
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '4px 4px 10px 10px', background: 'linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 40%, rgba(0,0,0,0.05) 100%)', pointerEvents: 'none' }} />
+            </div>
+          </div>
+
           {/* Name */}
           <h1 style={{ fontSize: 'clamp(28px, 7vw, 44px)', fontWeight: 800, textAlign: 'center', marginBottom: 12, animation: 'revealFadeIn 1s ease-out 0.3s both', lineHeight: 1.2 }}>
             <span style={{ color: '#f4c025' }}>{recipient}</span>...
@@ -401,16 +648,18 @@ export default function SongPage({ songId: propSongId }) {
           {/* CTA Button */}
           <button
             onClick={startReveal}
+            disabled={giftOpening}
             style={{
-              padding: '18px 48px', borderRadius: 999, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #f4c025 0%, #e8a810 100%)',
+              padding: '18px 48px', borderRadius: 999, border: 'none', cursor: giftOpening ? 'default' : 'pointer',
+              background: giftOpening ? 'rgba(244,192,37,0.5)' : 'linear-gradient(135deg, #f4c025 0%, #e8a810 100%)',
               color: '#1a1408', fontSize: 18, fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif",
-              animation: 'revealFadeIn 0.8s ease-out 1.3s both, revealPulse 2s ease-in-out 2.1s infinite',
+              animation: giftOpening ? 'none' : 'revealFadeIn 0.8s ease-out 1.3s both, revealPulse 2s ease-in-out 2.1s infinite',
               display: 'flex', alignItems: 'center', gap: 10,
-              boxShadow: '0 8px 32px rgba(244,192,37,0.3)',
+              boxShadow: giftOpening ? 'none' : '0 8px 32px rgba(244,192,37,0.3)',
+              transition: 'opacity 0.3s', opacity: giftOpening ? 0 : 1,
             }}
           >
-            Abrir Mi Regalo <span style={{ fontSize: 22 }}>🎁</span>
+            Abrir Mi Regalo <span style={{ fontSize: 22 }}>✨</span>
           </button>
           {/* Subtle brand */}
           <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
@@ -626,7 +875,7 @@ export default function SongPage({ songId: propSongId }) {
     );
   }
 
-  // Screen 4: Flash Burst + Confetti + Name Reveal
+  // Screen 4: Flash Burst + Confetti + Particle Explosion + Name Reveal
   if (phase === 'flash') {
     return (
       <>{head}{audioEl}{confettiOverlay}
@@ -634,6 +883,40 @@ export default function SongPage({ songId: propSongId }) {
           <style>{SHARED_CSS}{REVEAL_CSS}</style>
           {/* White flash burst */}
           <div style={{ position: 'absolute', width: 100, height: 100, background: 'radial-gradient(circle, rgba(244,192,37,0.8) 0%, rgba(244,192,37,0) 70%)', borderRadius: '50%', animation: 'flashBurst 1s ease-out both' }} />
+
+          {/* ── Golden particle explosion from center ── */}
+          {flashParticles.length > 0 && (
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 60 }}>
+              {flashParticles.map(p => {
+                const rad = (p.angle * Math.PI) / 180;
+                const tx = Math.cos(rad) * p.distance;
+                const ty = Math.sin(rad) * p.distance;
+                return (
+                  <div key={p.id} style={{
+                    position: 'absolute', width: p.size, height: p.size, borderRadius: '50%',
+                    background: p.color,
+                    boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
+                    animation: `particleExplode ${p.duration}s cubic-bezier(0.2, 0.8, 0.3, 1) ${p.delay}s both`,
+                    // Use CSS custom properties for the translation
+                    transform: `translate(${tx}px, ${ty}px)`,
+                    left: -p.size / 2, top: -p.size / 2,
+                    // Override animation with inline keyframes via style
+                    animationName: 'none',
+                  }}>
+                    <style>{`
+                      @keyframes pe${p.id}{0%{transform:translate(0,0) scale(1);opacity:1}70%{opacity:0.8}100%{transform:translate(${tx}px,${ty}px) scale(0.3);opacity:0}}
+                    `}</style>
+                    <div style={{
+                      width: '100%', height: '100%', borderRadius: '50%',
+                      background: p.color, boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
+                      animation: `pe${p.id} ${p.duration}s cubic-bezier(0.2, 0.8, 0.3, 1) ${p.delay}s both`,
+                    }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Name reveal */}
           <div style={{ textAlign: 'center', zIndex: 50, animation: 'nameReveal 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both' }}>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {isCombo ? '2 canciones' : 'Una canción'}</p>
