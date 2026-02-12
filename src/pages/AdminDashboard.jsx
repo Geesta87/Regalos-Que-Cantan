@@ -872,6 +872,18 @@ export default function AdminDashboard() {
                                   </a>
                                 </>
                               )}
+                              {/* WhatsApp delivery button - for paid songs with WhatsApp number */}
+                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (
+                                <a
+                                  href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}?text=${encodeURIComponent(`¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${window.location.origin}/song/${song.id}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 rounded-lg hover:bg-green-500/20 transition"
+                                  title={`Enviar por WhatsApp a ${song.whatsapp_phone}`}
+                                >
+                                  <span className="material-symbols-outlined text-green-400 text-xl">mail</span>
+                                </a>
+                              )}
                             </div>
                           </td>
                         </tr>
