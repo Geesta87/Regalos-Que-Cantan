@@ -88,6 +88,12 @@ export default function LandingPagePremium() {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-20px); }
         }
+        @keyframes lpp-ctaPulse {
+          0%, 100% { transform: scale(1) rotate(0deg); box-shadow: 0 8px 32px rgba(201,24,74,0.3); }
+          25% { transform: scale(1.03) rotate(-1.5deg); box-shadow: 0 12px 40px rgba(201,24,74,0.5); }
+          50% { transform: scale(1.05) rotate(0deg); box-shadow: 0 14px 44px rgba(201,24,74,0.55); }
+          75% { transform: scale(1.03) rotate(1.5deg); box-shadow: 0 12px 40px rgba(201,24,74,0.5); }
+        }
         .lpp-shimmer {
           background: linear-gradient(90deg, #c9184a, #ff6b8a, #c9184a, #ff6b8a, #c9184a);
           background-size: 200% auto;
@@ -95,7 +101,8 @@ export default function LandingPagePremium() {
           -webkit-text-fill-color: transparent;
           animation: lpp-shimmer 4s linear infinite;
         }
-        .lpp-hero-cta:hover { transform: scale(1.05) !important; box-shadow: 0 12px 40px rgba(201,24,74,0.4) !important; }
+        .lpp-hero-cta { animation: lpp-ctaPulse 2.5s ease-in-out infinite !important; }
+        .lpp-hero-cta:hover { animation: none !important; transform: scale(1.05) !important; box-shadow: 0 12px 40px rgba(201,24,74,0.4) !important; }
         .lpp-cta-btn:hover { transform: scale(1.03) !important; box-shadow: 0 8px 30px rgba(201,24,74,0.35) !important; }
         .lpp-header-cta:hover { background: rgba(201,24,74,0.1) !important; border-color: #c9184a !important; }
         .lpp-step:hover { border-color: rgba(201,24,74,0.2) !important; background: rgba(201,24,74,0.03) !important; }
