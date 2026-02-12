@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
@@ -55,17 +55,34 @@ export default function LandingPagePremium() {
     navigateTo('landing_premium');
   };
 
-  const handleVideoToggle = (e) => {
-    const wrapper = e.currentTarget;
-    const video = wrapper.querySelector('video');
-    const overlay = wrapper.querySelector('[data-overlay]');
+  // Video refs and state
+  const videoRefs = useRef({});
+  const [playingVideo, setPlayingVideo] = useState(null);
+
+  const handleVideoToggle = (videoId) => {
+    const video = videoRefs.current[videoId];
     if (!video) return;
-    if (video.paused) {
-      video.play();
-      if (overlay) overlay.style.display = 'none';
-    } else {
+
+    if (playingVideo === videoId) {
+      // Pause current
       video.pause();
-      if (overlay) overlay.style.display = 'flex';
+      setPlayingVideo(null);
+    } else {
+      // Pause any other playing video first
+      if (playingVideo && videoRefs.current[playingVideo]) {
+        videoRefs.current[playingVideo].pause();
+      }
+      // Play this one
+      video.play().then(() => {
+        setPlayingVideo(videoId);
+      }).catch(err => {
+        console.log('Video play failed:', err);
+        // Try muted as fallback (autoplay policy)
+        video.muted = true;
+        video.play().then(() => {
+          setPlayingVideo(videoId);
+        }).catch(() => {});
+      });
     }
   };
 
@@ -271,39 +288,50 @@ export default function LandingPagePremium() {
         </h2>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', alignItems: 'start' }}>
-          {VIDEOS.map((v) => (
-            <div key={v.id} className="lpp-video-card" style={{
-              position: 'relative', borderRadius: '18px', overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.06)',
-              transition: 'all 0.4s cubic-bezier(0.2, 0.8, 0.3, 1)',
-              background: 'rgba(255,255,255,0.02)',
-              aspectRatio: '9/16', maxHeight: '520px'
-            }}>
-              <div onClick={handleVideoToggle} style={{
-                position: 'relative', width: '100%', height: '100%', cursor: 'pointer',
-                borderRadius: '16px', overflow: 'hidden'
+          {VIDEOS.map((v) => {
+            const isPlaying = playingVideo === v.id;
+            return (
+              <div key={v.id} className="lpp-video-card" style={{
+                position: 'relative', borderRadius: '18px', overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.06)',
+                transition: 'all 0.4s cubic-bezier(0.2, 0.8, 0.3, 1)',
+                background: 'rgba(255,255,255,0.02)',
+                aspectRatio: '9/16', maxHeight: '520px'
               }}>
-                <video playsInline webkit-playsinline="" preload="metadata" style={{
-                  width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px', display: 'block'
+                <div onClick={() => handleVideoToggle(v.id)} style={{
+                  position: 'relative', width: '100%', height: '100%', cursor: 'pointer',
+                  borderRadius: '16px', overflow: 'hidden'
                 }}>
-                  <source src={v.src} type="video/mp4" />
-                </video>
-                <div data-overlay="" className="lpp-play-overlay" style={{
-                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'rgba(0,0,0,0.25)', transition: 'all 0.3s', zIndex: 5
-                }}>
-                  <div className="lpp-play-btn" style={{
-                    width: '64px', height: '64px', borderRadius: '50%',
-                    background: 'rgba(201,24,74,0.85)', backdropFilter: 'blur(8px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '22px', color: 'white', paddingLeft: '4px',
-                    boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
-                    transition: 'all 0.3s', border: '2px solid rgba(255,255,255,0.15)'
-                  }}>▶</div>
+                  <video
+                    ref={el => { videoRefs.current[v.id] = el; }}
+                    playsInline
+                    preload="auto"
+                    src={v.src + '#t=0.5'}
+                    onEnded={() => setPlayingVideo(null)}
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px', display: 'block'
+                    }}
+                  />
+                  {/* Play/Pause overlay — hidden when playing */}
+                  {!isPlaying && (
+                    <div className="lpp-play-overlay" style={{
+                      position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(0,0,0,0.25)', transition: 'all 0.3s', zIndex: 5
+                    }}>
+                      <div className="lpp-play-btn" style={{
+                        width: '64px', height: '64px', borderRadius: '50%',
+                        background: 'rgba(201,24,74,0.85)', backdropFilter: 'blur(8px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '22px', color: 'white', paddingLeft: '4px',
+                        boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
+                        transition: 'all 0.3s', border: '2px solid rgba(255,255,255,0.15)'
+                      }}>▶</div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.05em' }}>
