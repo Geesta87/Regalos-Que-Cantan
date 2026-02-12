@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const WHATSAPP_NUMBER = '18182885001'; // Replace with your actual WhatsApp number
+const WHATSAPP_NUMBER = '12136666619';
 const DEFAULT_MESSAGE = '¡Hola! Tengo una pregunta sobre RegalosQueCantan 🎵';
 
 export default function WhatsAppButton() {
