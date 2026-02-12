@@ -1545,7 +1545,21 @@ export default function AdminDashboard() {
               const senderName = lead.senderName || 'amigo';
               const genreDisplay = song?.genre_name || song?.genre || 'personalizada';
               
-              const msg = `Hola ${senderName} 👋 Soy de RegalosQueCantan. Vi que creaste una canción increíble de ${genreDisplay} para ${recipientName} pero no completaste tu compra.\n\nTu canción todavía está guardada y lista para ti 🎵\n\n¿Quieres que te mande el link para escucharla otra vez?`;
+              // Get songs that have audio ready
+              const readySongs = lead.songs.filter(s => s.audio_url);
+              
+              let msg = `Hola ${senderName} 👋 Soy de RegalosQueCantan. Vi que creaste una canción increíble de ${genreDisplay} para ${recipientName} pero no completaste tu compra.\n\nTu canción todavía está guardada y lista para ti 🎵`;
+              
+              if (readySongs.length > 0) {
+                msg += `\n\nEscúchala aquí y completa tu compra 👇`;
+                readySongs.forEach((s, i) => {
+                  msg += `\n🎧 ${readySongs.length > 1 ? `Canción ${i + 1}: ` : ''}${window.location.origin}/listen?song_id=${s.id}`;
+                });
+                msg += `\n\nSan Valentín es este sábado 💝 ¡Todavía llegas a tiempo!`;
+              } else {
+                msg += `\n\n¿Quieres que te mande el link para escucharla otra vez?`;
+              }
+              
               return msg;
             };
 
