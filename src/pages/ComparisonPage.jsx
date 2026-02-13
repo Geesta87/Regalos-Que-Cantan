@@ -871,7 +871,7 @@ export default function ComparisonPage() {
 
                 {/* REC 2: Bigger album art with glow */}
                 <div style={{
-                  height: '220px',
+                  height: '280px',
                   borderRadius: '14px', 
                   display: 'flex', 
                   alignItems: 'center', 
@@ -880,7 +880,8 @@ export default function ComparisonPage() {
                   overflow: 'hidden',
                   position: 'relative',
                   animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
-                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`
+                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`,
+                  boxShadow: `0 8px 30px ${vibe.color}25`
                 }}>
                   {song.imageUrl ? (
                     <img 
@@ -899,6 +900,15 @@ export default function ComparisonPage() {
                   ) : (
                     <span style={{fontSize: '72px'}}>🎵</span>
                   )}
+                  
+                  {/* Shine sweep effect */}
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 45%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 55%, transparent 60%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer 4s ease-in-out infinite',
+                    pointerEvents: 'none'
+                  }} />
                   
                   {/* Playing overlay with equalizer */}
                   {isPlaying && (
@@ -1168,11 +1178,13 @@ export default function ComparisonPage() {
                 }}>
                   {songs.slice(0, 2).map((song, i) => (
                     <div key={song.id} style={{
-                      width: '80px', height: '80px', borderRadius: '12px',
+                      width: '110px', height: '110px', borderRadius: '14px',
                       overflow: 'hidden', border: '3px solid #1a3a2f',
-                      marginLeft: i > 0 ? '-15px' : 0,
+                      marginLeft: i > 0 ? '-20px' : 0,
                       position: 'relative', zIndex: songs.length - i,
-                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`
+                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`,
+                      boxShadow: `0 6px 20px ${VERSION_VIBES[i]?.color || '#3b82f6'}30`,
+                      transition: 'transform 0.3s',
                     }}>
                       {song.imageUrl ? (
                         <img 
@@ -1180,7 +1192,7 @@ export default function ComparisonPage() {
                           style={{width: '100%', height: '100%', objectFit: 'cover'}}
                           onError={(e) => {
                             e.target.style.display = 'none';
-                            e.target.parentElement.innerHTML = '<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
+                            e.target.parentElement.innerHTML = '<span style="font-size:42px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
                           }}
                         />
                       ) : (
@@ -1266,11 +1278,11 @@ export default function ComparisonPage() {
           }}>
             {[
               { src: '/videos/testimonial3.mp4', id: 'tc1', name: 'Cliente feliz', poster: '' },
-              { src: '/videos/testimonial2.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
+              { src: '/videos/testimonial1.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
             ].map((vid) => (
               <div key={vid.id} style={{
-                width: '160px',
-                height: '220px',
+                width: '200px',
+                height: '280px',
                 borderRadius: '16px',
                 overflow: 'hidden',
                 position: 'relative',
