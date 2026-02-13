@@ -3,6 +3,65 @@ import { AppContext } from '../App';
 import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 
+// Valentine blast email builder
+function buildValentineBlastEmail(recipientName) {
+  const hasRecipient = recipientName && recipientName.trim().length > 0;
+  const ctaUrl = 'https://regalosquecantan.com/v2';
+  const headline = hasRecipient
+    ? `&iquest;A&uacute;n no le diste su regalo a <span style="color:#ff6b8a;">${recipientName}</span>?`
+    : `&iquest;A&uacute;n no tienes el regalo perfecto?`;
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="es"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>San Valent&iacute;n</title><style>body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}body{margin:0!important;padding:0!important;width:100%!important;}@media only screen and (max-width:620px){.email-container{width:100%!important;}.mobile-padding{padding-left:16px!important;padding-right:16px!important;}.mobile-text{font-size:24px!important;}}</style></head>
+<body style="margin:0;padding:0;background-color:#0a0507;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#0a0507;">
+<tr><td align="center" style="padding:20px 10px;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" class="email-container" style="max-width:600px;width:100%;">
+<tr><td style="background:linear-gradient(90deg,#c9184a,#e8364f,#c9184a);padding:14px 20px;text-align:center;border-radius:12px 12px 0 0;">
+<span style="color:#ffffff;font-size:14px;font-weight:800;letter-spacing:1px;">&#9200; SAN VALENT&Iacute;N ES MA&Ntilde;ANA &mdash; QUEDAN POCAS HORAS</span></td></tr>
+<tr><td style="background-color:#1a080e;border-left:1px solid rgba(201,24,74,0.2);border-right:1px solid rgba(201,24,74,0.2);">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+<tr><td align="center" style="padding:48px 40px 0;" class="mobile-padding"><div style="font-size:64px;line-height:1;">&#128152;</div></td></tr>
+<tr><td align="center" style="padding:20px 32px 0;" class="mobile-padding"><h1 class="mobile-text" style="margin:0;font-size:32px;line-height:1.2;color:#ffffff;font-weight:800;">${headline}</h1></td></tr>
+<tr><td align="center" style="padding:16px 40px 0;" class="mobile-padding"><p style="margin:0;font-size:17px;color:rgba(255,255,255,0.6);line-height:1.6;">Ma&ntilde;ana es <strong style="color:#ff8fa3;">14 de febrero</strong>. Todav&iacute;a est&aacute;s a tiempo de regalar algo que <strong style="color:#ffffff;">nadie m&aacute;s puede dar</strong>.</p></td></tr>
+<tr><td align="center" style="padding:28px 50px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="60"><tr><td style="border-top:1px solid rgba(201,24,74,0.3);font-size:1px;">&nbsp;</td></tr></table></td></tr>
+<tr><td style="padding:0 36px;" class="mobile-padding">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:rgba(201,24,74,0.06);border:1px solid rgba(201,24,74,0.15);border-radius:16px;">
+<tr><td style="padding:28px;">
+<p style="margin:0 0 16px;font-size:13px;color:#ff8fa3;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#10024; UNA CANCI&Oacute;N &Uacute;NICA EN ~3 MINUTOS</p>
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+<tr><td style="padding:6px 0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">&#9829; Letra personalizada con nombres reales</td></tr>
+<tr><td style="padding:6px 0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">&#9829; Elige entre 20+ g&eacute;neros: corrido, bachata, reggaet&oacute;n...</td></tr>
+<tr><td style="padding:6px 0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">&#9829; 2 versiones &uacute;nicas para elegir</td></tr>
+<tr><td style="padding:6px 0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">&#9829; Descarga MP3 + p&aacute;gina de regalo especial</td></tr>
+<tr><td style="padding:6px 0;font-size:15px;color:rgba(255,255,255,0.75);line-height:1.5;">&#9829; Preview GRATIS antes de pagar</td></tr>
+</table></td></tr></table></td></tr>
+<tr><td align="center" style="padding:32px 40px 12px;" class="mobile-padding">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+<tr><td align="center" style="border-radius:50px;background:linear-gradient(135deg,#c9184a,#a01540);">
+<a href="${ctaUrl}" target="_blank" style="display:inline-block;padding:19px 48px;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:50px;background:linear-gradient(135deg,#c9184a,#a01540);text-align:center;box-shadow:0 4px 20px rgba(201,24,74,0.4);">&#9829; CREAR SU CANCI&Oacute;N AHORA</a>
+</td></tr></table></td></tr>
+<tr><td align="center" style="padding:0 40px 8px;"><p style="margin:0;font-size:12px;color:rgba(255,255,255,0.3);">&#128274; Preview gratis &bull; Listo en minutos &bull; Pago seguro</p></td></tr>
+<tr><td align="center" style="padding:20px 36px 0;" class="mobile-padding">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:rgba(255,0,0,0.06);border:1px solid rgba(255,0,0,0.15);border-radius:12px;">
+<tr><td align="center" style="padding:20px;">
+<p style="margin:0;font-size:15px;color:#ff6b6b;font-weight:700;">&#128680; Ma&ntilde;ana 14 de febrero ya no hay tiempo</p>
+<p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.45);line-height:1.5;">Crea la canci&oacute;n HOY y tenla lista para ma&ntilde;ana.<br/>En 3 minutos tienes el regalo m&aacute;s &uacute;nico que puedes dar.</p>
+</td></tr></table></td></tr>
+<tr><td style="padding:28px 36px;" class="mobile-padding">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;">
+<tr><td style="padding:20px 24px;">
+<p style="margin:0;font-size:15px;color:rgba(255,255,255,0.65);font-style:italic;line-height:1.6;text-align:center;">&ldquo;Mi esposa llor&oacute; de felicidad. Nunca hab&iacute;a visto una reacci&oacute;n as&iacute; con un regalo.&rdquo;</p>
+<p style="margin:10px 0 0;font-size:12px;color:#ff8fa3;font-weight:600;text-align:center;">&mdash; Roberto M. &nbsp;&#11088;&#11088;&#11088;&#11088;&#11088;</p>
+</td></tr></table></td></tr>
+</table></td></tr>
+<tr><td style="background-color:#1a080e;padding:20px 36px;text-align:center;border-top:1px solid rgba(201,24,74,0.1);border-left:1px solid rgba(201,24,74,0.2);border-right:1px solid rgba(201,24,74,0.2);border-radius:0 0 12px 12px;">
+<p style="margin:0 0 8px;font-size:12px;color:rgba(255,255,255,0.2);">&iquest;Preguntas? <a href="https://wa.me/12136666619?text=Hola%2C%20tengo%20una%20pregunta%20sobre%20RegalosQueCantan" style="color:#ff8fa3;text-decoration:none;">Escr&iacute;benos por WhatsApp</a></p>
+<p style="margin:0;font-size:10px;color:rgba(255,255,255,0.1);letter-spacing:1px;">&copy; 2026 RegalosQueCantan &bull; Hecho con &#9829;</p>
+</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
 export default function AdminDashboard() {
   const { navigateTo } = useContext(AppContext);
   const [songs, setSongs] = useState([]);
@@ -1858,19 +1917,48 @@ export default function AdminDashboard() {
 
               <button
                 onClick={async () => {
-                  if (!confirm(`Are you sure you want to send the Valentine blast to ${blastData?.recipientCount || '?'} leads? This cannot be undone.`)) return;
+                  const recipients = blastData?._recipients;
+                  if (!recipients?.length) return;
+                  if (!confirm(`Are you sure you want to send the Valentine blast to ${recipients.length} leads? This cannot be undone.`)) return;
                   setBlastStatus('sending');
-                  try {
-                    const { data, error } = await supabase.functions.invoke('valentines-blast-index', {
-                      body: { dryRun: false }
-                    });
-                    if (error) throw error;
-                    setBlastData(data);
-                    setBlastStatus('done');
-                  } catch (err) {
-                    setBlastData({ error: err.message });
-                    setBlastStatus('done');
+                  
+                  let sent = 0;
+                  let failed = 0;
+                  const errors = [];
+                  const subject = '\u{1F498} San Valent\u00EDn es MA\u00D1ANA \u2014 \u00BFYa tienes el regalo perfecto?';
+                  
+                  for (const recipient of recipients) {
+                    try {
+                      const html = buildValentineBlastEmail(recipient.recipientName);
+                      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-purchase-email`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+                        },
+                        body: JSON.stringify({ customHtml: html, customSubject: subject, email: recipient.email })
+                      });
+                      const result = await res.json();
+                      if (result.success) {
+                        sent++;
+                        // Mark songs so they don't get blasted again
+                        await supabase.from('songs')
+                          .update({ valentine_blast_sent: true })
+                          .in('id', recipient.songIds);
+                      } else {
+                        failed++;
+                        errors.push(`${recipient.email}: ${result.error || 'Failed'}`);
+                      }
+                    } catch (err) {
+                      failed++;
+                      errors.push(`${recipient.email}: ${err.message}`);
+                    }
+                    // Small delay between sends
+                    await new Promise(r => setTimeout(r, 200));
                   }
+                  
+                  setBlastData({ sent, failed, total: recipients.length, errors: errors.length ? errors : undefined });
+                  setBlastStatus('done');
                 }}
                 disabled={blastStatus !== 'preview' || !blastData?.recipientCount}
                 className="px-6 py-3 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 transition disabled:opacity-30 disabled:cursor-not-allowed"
