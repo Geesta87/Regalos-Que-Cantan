@@ -306,7 +306,7 @@ export default function SuccessPage() {
     hasFiredPurchase.current = true;
 
     // Determine purchase value based on number of songs
-    const purchaseValue = songs.length > 1 ? 24.99 : 19.99;
+    const purchaseValue = songs.length > 1 ? 34.99 : 24.99;
 
     // Fire Meta Pixel Purchase event
     if (typeof window.fbq === 'function') {
@@ -441,13 +441,12 @@ export default function SuccessPage() {
         
         const { error: uploadErr } = await supabase.storage
           .from('song-photos')
-          .upload(filePath, photoFile, { cacheControl: '60', upsert: true });
+          .upload(filePath, photoFile, { cacheControl: '31536000', upsert: true });
         
         if (uploadErr) throw uploadErr;
         
         const { data: urlData } = supabase.storage.from('song-photos').getPublicUrl(filePath);
-        // Cache-bust: append timestamp so browser/CDN always fetches the new image
-        photoUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+        photoUrl = urlData.publicUrl;
         setUploadingPhoto(false);
       }
 
