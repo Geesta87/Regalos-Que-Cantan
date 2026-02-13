@@ -12,6 +12,8 @@ export default function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedSong, setSelectedSong] = useState(null);
   const [activeTab, setActiveTab] = useState('orders');
+  const [blastStatus, setBlastStatus] = useState(null); // null | 'loading' | 'preview' | 'sending' | 'done'
+  const [blastData, setBlastData] = useState(null);
   const [dateRange, setDateRange] = useState('7days');
   const [funnelData, setFunnelData] = useState([]);
   const [emailLogs, setEmailLogs] = useState([]);
@@ -704,6 +706,16 @@ export default function AdminDashboard() {
                 </span>
               ) : null;
             })()}
+          </button>
+          <button
+            onClick={() => setActiveTab('blast')}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'blast' 
+                ? 'bg-rose-500 text-white' 
+                : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30'
+            }`}
+          >
+            💘 Valentine Blast
           </button>
         </div>
 
@@ -1782,6 +1794,148 @@ export default function AdminDashboard() {
               </div>
             );
           })()
+        ) : activeTab === 'blast' ? (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-rose-900/30 to-pink-900/30 rounded-2xl p-6 border border-rose-500/20">
+              <h2 className="text-2xl font-bold text-white mb-2">💘 Valentine's Day Email Blast</h2>
+              <p className="text-gray-400">Send a FOMO email to all leads who gave their email but didn't purchase. Safe to run multiple times — each lead only receives it once.</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-4">
+              <button
+                onClick={async () => {
+                  setBlastStatus('loading');
+                  setBlastData(null);
+                  try {
+                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentine-blast`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+                      },
+                      body: JSON.stringify({ dryRun: true })
+                    });
+                    const data = await res.json();
+                    setBlastData(data);
+                    setBlastStatus('preview');
+                  } catch (err) {
+                    setBlastData({ error: err.message });
+                    setBlastStatus('done');
+                  }
+                }}
+                disabled={blastStatus === 'loading' || blastStatus === 'sending'}
+                className="px-6 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition disabled:opacity-50"
+              >
+                {blastStatus === 'loading' ? '⏳ Loading...' : '👀 Preview Recipients'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!confirm(`Are you sure you want to send the Valentine blast to ${blastData?.recipientCount || '?'} leads? This cannot be undone.`)) return;
+                  setBlastStatus('sending');
+                  try {
+                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentine-blast`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+                      },
+                      body: JSON.stringify({ dryRun: false })
+                    });
+                    const data = await res.json();
+                    setBlastData(data);
+                    setBlastStatus('done');
+                  } catch (err) {
+                    setBlastData({ error: err.message });
+                    setBlastStatus('done');
+                  }
+                }}
+                disabled={blastStatus !== 'preview' || !blastData?.recipientCount}
+                className="px-6 py-3 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 transition disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {blastStatus === 'sending' ? '🚀 Sending...' : `🚀 Send Blast${blastData?.recipientCount ? ` (${blastData.recipientCount} leads)` : ''}`}
+              </button>
+
+              {blastStatus && (
+                <button
+                  onClick={() => { setBlastStatus(null); setBlastData(null); }}
+                  className="px-4 py-3 bg-white/5 text-gray-400 rounded-xl hover:bg-white/10 transition"
+                >
+                  🔄 Reset
+                </button>
+              )}
+            </div>
+
+            {/* Results */}
+            {blastData && (
+              <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
+                {blastData.error ? (
+                  <div className="text-red-400">
+                    <p className="font-bold text-lg mb-2">❌ Error</p>
+                    <p className="font-mono text-sm">{blastData.error}</p>
+                  </div>
+                ) : blastData.dryRun ? (
+                  <>
+                    <div className="flex gap-6 mb-6">
+                      <div className="bg-rose-500/10 rounded-xl p-4 flex-1 text-center border border-rose-500/20">
+                        <p className="text-3xl font-bold text-rose-400">{blastData.recipientCount}</p>
+                        <p className="text-gray-400 text-sm mt-1">Leads to email</p>
+                      </div>
+                      <div className="bg-green-500/10 rounded-xl p-4 flex-1 text-center border border-green-500/20">
+                        <p className="text-3xl font-bold text-green-400">{blastData.excludedPaidCount}</p>
+                        <p className="text-gray-400 text-sm mt-1">Paid (excluded)</p>
+                      </div>
+                    </div>
+                    <p className="text-white font-semibold mb-3">📋 Recipient List:</p>
+                    <div className="max-h-80 overflow-y-auto space-y-1">
+                      {blastData.recipients?.map((r, i) => (
+                        <div key={i} className="flex justify-between items-center bg-white/3 px-4 py-2 rounded-lg text-sm">
+                          <span className="text-gray-300">{r.email}</span>
+                          <span className="text-rose-400 text-xs">{r.recipientName ? `Para: ${r.recipientName}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-4xl mb-3">{blastData.failed === 0 ? '🎉' : '⚠️'}</p>
+                    <p className="text-2xl font-bold text-white mb-2">Blast Complete!</p>
+                    <div className="flex gap-6 justify-center mt-4">
+                      <div className="text-center">
+                        <p className="text-3xl font-bold text-green-400">{blastData.sent}</p>
+                        <p className="text-gray-400 text-sm">Sent ✅</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-3xl font-bold text-red-400">{blastData.failed}</p>
+                        <p className="text-gray-400 text-sm">Failed ❌</p>
+                      </div>
+                    </div>
+                    {blastData.errors && (
+                      <div className="mt-4 text-left bg-red-500/10 rounded-xl p-4 border border-red-500/20">
+                        <p className="text-red-400 font-semibold text-sm mb-2">Errors:</p>
+                        {blastData.errors.map((e, i) => (
+                          <p key={i} className="text-red-300 text-xs font-mono">{e}</p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-gray-500 text-sm mt-4">Run again later to catch new leads — already-sent leads are skipped.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info */}
+            <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
+              <p className="text-gray-400 text-sm leading-relaxed">
+                <strong className="text-white">How it works:</strong> Queries all emails from the songs table where paid=false, 
+                excludes anyone who already purchased, and excludes anyone who was already sent this blast. 
+                Subject: "💘 San Valentín es MAÑANA — ¿Ya tienes el regalo perfecto?" • 
+                CTA links to /v2 (standard pricing) • Personalized with recipient name when available.
+              </p>
+            </div>
+          </div>
         ) : null}
       </main>
 
