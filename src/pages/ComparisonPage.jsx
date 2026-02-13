@@ -61,6 +61,48 @@ export default function ComparisonPage() {
   const [couponError, setCouponError] = useState('');
   const [isLoadingCoupon, setIsLoadingCoupon] = useState(false);
   
+  // Valentine countdown timer
+  const [vCountdown, setVCountdown] = useState({ hours: 0, mins: 0, secs: 0 });
+  const videoTestimonialRefs = useRef({});
+  const [playingTestimonial, setPlayingTestimonial] = useState(null);
+
+  useEffect(() => {
+    const valentineEnd = new Date('2026-02-15T00:00:00');
+    const tick = () => {
+      const now = new Date();
+      const diff = valentineEnd - now;
+      if (diff <= 0) {
+        setVCountdown({ hours: 0, mins: 0, secs: 0 });
+        return;
+      }
+      setVCountdown({
+        hours: Math.floor(diff / 3600000),
+        mins: Math.floor((diff % 3600000) / 60000),
+        secs: Math.floor((diff % 60000) / 1000)
+      });
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleTestimonialToggle = (id) => {
+    const video = videoTestimonialRefs.current[id];
+    if (!video) return;
+    if (playingTestimonial === id) {
+      video.pause();
+      setPlayingTestimonial(null);
+    } else {
+      if (playingTestimonial && videoTestimonialRefs.current[playingTestimonial]) {
+        videoTestimonialRefs.current[playingTestimonial].pause();
+      }
+      video.play().then(() => setPlayingTestimonial(id)).catch(() => {
+        video.muted = true;
+        video.play().then(() => setPlayingTestimonial(id)).catch(() => {});
+      });
+    }
+  };
+
   // WhatsApp phone state
   const [whatsappPhone, setWhatsappPhone] = useState('');
   
@@ -73,8 +115,7 @@ export default function ComparisonPage() {
   const genreConfig = genres?.[formData?.genre];
   const genreName = genreConfig?.name || formData?.genre || 'Género';
 
-  // Pricing — conditional on funnel tier
-  const isPremium = formData?.pricingTier === 'premium';
+  // Pricing
   const singlePrice = 24.99;
   const bundlePrice = 34.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
@@ -480,7 +521,7 @@ export default function ComparisonPage() {
         console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth, formData?.pricingTier);
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
       
       if (result.url) {
         window.location.href = result.url;
@@ -582,6 +623,14 @@ export default function ComparisonPage() {
           85% { opacity: 1; transform: translate(-50%, 0); }
           100% { opacity: 0; transform: translate(-50%, -10px); }
         }
+        @keyframes vBannerPulse {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        @keyframes vCountBounce {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
       `}</style>
 
       {/* Audio elements */}
@@ -605,6 +654,46 @@ export default function ComparisonPage() {
         transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
       }}>
+
+        {/* ===== VALENTINE COUNTDOWN BANNER ===== */}
+        <div style={{
+          background: 'linear-gradient(135deg, #c9184a, #e11d74, #ff2d78)',
+          backgroundSize: '200% 200%',
+          animation: 'vBannerPulse 3s ease infinite',
+          borderRadius: '16px',
+          padding: '14px 20px',
+          marginBottom: '20px',
+          textAlign: 'center',
+          boxShadow: '0 4px 25px rgba(201,24,74,0.4)',
+          border: '1px solid rgba(255,255,255,0.15)'
+        }}>
+          <div style={{ fontSize: '15px', fontWeight: '800', marginBottom: '6px', letterSpacing: '0.5px' }}>
+            💘 ¡San Valentín es MAÑANA! Tu canción lista en minutos
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', opacity: 0.9 }}>Tiempo restante:</span>
+            {[
+              { val: vCountdown.hours, label: 'hrs' },
+              { val: vCountdown.mins, label: 'min' },
+              { val: vCountdown.secs, label: 'seg' }
+            ].map((t, i) => (
+              <span key={i} style={{
+                background: 'rgba(0,0,0,0.3)',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                fontSize: '16px',
+                fontFamily: 'monospace',
+                animation: i === 2 ? 'vCountBounce 1s ease infinite' : 'none',
+                minWidth: '45px',
+                display: 'inline-block',
+                textAlign: 'center'
+              }}>
+                {String(t.val).padStart(2, '0')}<span style={{ fontSize: '10px', opacity: 0.7 }}> {t.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
         
         {/* ===== REC 3: Personalized emotional banner ===== */}
         <div style={{textAlign: 'center', marginBottom: '30px'}}>
@@ -1158,6 +1247,124 @@ export default function ComparisonPage() {
         )}
 
         {/* Checkout Section */}
+        <div style={{
+
+          /* ===== VIDEO TESTIMONIALS ===== */
+        }}></div>
+        <div style={{
+          marginBottom: '24px',
+          animation: 'fadeInUp 0.5s ease-out'
+        }}>
+          <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '14px', fontWeight: '600' }}>
+            ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
+          </p>
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {[
+              { src: '/videos/testimonial3.mp4', id: 'tc1', name: 'Cliente feliz', poster: '' },
+              { src: '/videos/testimonial2.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
+            ].map((vid) => (
+              <div key={vid.id} style={{
+                width: '160px',
+                height: '220px',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                position: 'relative',
+                border: '2px solid rgba(212,175,55,0.3)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                cursor: 'pointer',
+                flexShrink: 0
+              }} onClick={() => handleTestimonialToggle(vid.id)}>
+                <video
+                  ref={el => videoTestimonialRefs.current[vid.id] = el}
+                  src={vid.src}
+                  playsInline
+                  preload="metadata"
+                  onEnded={() => setPlayingTestimonial(null)}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+                {playingTestimonial !== vid.id && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.7))',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      background: 'rgba(201,24,74,0.85)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 15px rgba(201,24,74,0.5)'
+                    }}>
+                      <span style={{ fontSize: '20px', marginLeft: '3px' }}>▶</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <p style={{
+            textAlign: 'center',
+            fontSize: '13px',
+            color: '#f5d77a',
+            marginTop: '10px',
+            fontStyle: 'italic'
+          }}>
+            "Mi esposa lloró de felicidad... el mejor regalo que le he dado" ⭐⭐⭐⭐⭐
+          </p>
+        </div>
+
+        {/* ===== LO QUE RECIBES CHECKLIST ===== */}
+        <div style={{
+          background: 'rgba(212,175,55,0.08)',
+          border: '1px solid rgba(212,175,55,0.2)',
+          borderRadius: '14px',
+          padding: '18px 22px',
+          marginBottom: '24px',
+          animation: 'fadeInUp 0.6s ease-out'
+        }}>
+          <p style={{ fontSize: '15px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: '#f5d77a' }}>
+            🎁 Lo que recibes con tu compra:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+            {[
+              { icon: '🎵', text: 'Canción completa (~2 min)' },
+              { icon: '⚡', text: 'Descarga instantánea MP3' },
+              { icon: '💬', text: 'Envío por WhatsApp' },
+              { icon: '♾️', text: 'Tuya para siempre' },
+              { icon: '❤️', text: 'Personalizada con su nombre' },
+              { icon: '🔒', text: 'Pago seguro con Stripe' }
+            ].map((item, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: 'rgba(255,255,255,0.85)'
+              }}>
+                <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                <span>{item.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Actual Checkout Section */}
         <div style={{
           background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
