@@ -631,6 +631,10 @@ export default function ComparisonPage() {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.1); }
         }
+        @keyframes btnPulse {
+          0%, 100% { box-shadow: 0 4px 18px var(--pulse-color, rgba(59,130,246,0.4)); }
+          50% { box-shadow: 0 6px 28px var(--pulse-color, rgba(59,130,246,0.6)); }
+        }
       `}</style>
 
       {/* Audio elements */}
@@ -819,10 +823,10 @@ export default function ComparisonPage() {
                 style={{
                   background: (isSelected || isAutoHighlight)
                     ? `linear-gradient(135deg, ${vibe.color}30, ${vibe.color}15)` 
-                    : 'linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
+                    : 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
                   border: (isSelected || isAutoHighlight)
                     ? `3px solid ${isSelected ? '#f5d77a' : vibe.color}` 
-                    : '2px solid rgba(255,255,255,0.18)',
+                    : `2px solid ${vibe.color}35`,
                   borderRadius: '20px',
                   padding: '24px',
                   cursor: 'pointer',
@@ -881,7 +885,8 @@ export default function ComparisonPage() {
                   position: 'relative',
                   animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
                   background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`,
-                  boxShadow: `0 8px 30px ${vibe.color}25`
+                  boxShadow: `0 8px 30px ${vibe.color}25`,
+                  border: `2px solid ${vibe.color}50`
                 }}>
                   {song.imageUrl ? (
                     <img 
@@ -943,23 +948,23 @@ export default function ComparisonPage() {
                       setExpandedLyrics(prev => ({...prev, [song.id]: !prev[song.id]}));
                     }}
                     style={{
-                      background: 'rgba(255,255,255,0.06)',
+                      background: `rgba(255,255,255,0.09)`,
                       borderRadius: '10px',
                       padding: '12px 14px',
                       marginBottom: '15px',
-                      borderLeft: `3px solid ${vibe.color}70`,
+                      borderLeft: `3px solid ${vibe.color}`,
                       cursor: 'pointer'
                     }}
                   >
                     <p style={{
-                      fontSize: '11px', color: 'rgba(255,255,255,0.55)',
+                      fontSize: '11px', color: 'rgba(255,255,255,0.7)',
                       margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '1px'
                     }}>
                       📝 Vista previa de la letra
                     </p>
                     {lyricsPreview.slice(0, isExpanded ? 4 : 2).map((line, i) => (
                       <p key={i} style={{
-                        fontSize: '13px', color: 'rgba(255,255,255,0.75)',
+                        fontSize: '13px', color: 'rgba(255,255,255,0.9)',
                         margin: i < (isExpanded ? 3 : 1) ? '0 0 3px 0' : 0,
                         fontStyle: 'italic', lineHeight: '1.4'
                       }}>
@@ -987,7 +992,9 @@ export default function ComparisonPage() {
                     cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'all 0.3s',
-                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.5)' : `0 4px 18px ${vibe.color}40`
+                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.5)' : `0 4px 18px ${vibe.color}40`,
+                    animation: !isPlaying && !previewEnded[song.id] ? 'btnPulse 2s ease-in-out infinite' : 'none',
+                    '--pulse-color': `${vibe.color}50`
                   }}
                 >
                   <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
@@ -1011,10 +1018,25 @@ export default function ComparisonPage() {
                 {/* Price */}
                 <div style={{
                   marginTop: '12px', paddingTop: '15px',
-                  borderTop: '1px solid rgba(255,255,255,0.12)',
+                  borderTop: `1px solid ${vibe.color}30`,
                   textAlign: 'center'
                 }}>
-                  <span style={{fontSize: '28px', fontWeight: 'bold', color: isSelected ? '#f5d77a' : 'white'}}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through' }}>
+                      $34.99
+                    </span>
+                    <span style={{
+                      background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      color: 'white'
+                    }}>
+                      AHORRA $10
+                    </span>
+                  </div>
+                  <span style={{fontSize: '32px', fontWeight: '800', color: isSelected ? '#f5d77a' : 'white'}}>
                     ${singlePrice}
                   </span>
                 </div>
