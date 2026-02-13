@@ -1809,7 +1809,7 @@ export default function AdminDashboard() {
                   setBlastStatus('loading');
                   setBlastData(null);
                   try {
-                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentine-blast`, {
+                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentines-blast-index`, {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
@@ -1836,7 +1836,7 @@ export default function AdminDashboard() {
                   if (!confirm(`Are you sure you want to send the Valentine blast to ${blastData?.recipientCount || '?'} leads? This cannot be undone.`)) return;
                   setBlastStatus('sending');
                   try {
-                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentine-blast`, {
+                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentines-blast-index`, {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
