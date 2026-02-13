@@ -75,8 +75,8 @@ export default function ComparisonPage() {
 
   // Pricing — conditional on funnel tier
   const isPremium = formData?.pricingTier === 'premium';
-  const singlePrice = isPremium ? 29.99 : 19.99;
-  const bundlePrice = isPremium ? 39.99 : 29.99;
+  const singlePrice = 24.99;
+  const bundlePrice = 34.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
 

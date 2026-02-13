@@ -261,8 +261,8 @@ export default function LandingPagePremium() {
           </button>
 
           <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.02em' }}>
-            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$39.99</span>{' '}
-            <span style={{ color: '#f4c025', fontWeight: 700 }}>$29.99</span>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$34.99</span>{' '}
+            <span style={{ color: '#f4c025', fontWeight: 700 }}>$24.99</span>
           </p>
 
           <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
@@ -414,7 +414,7 @@ export default function LandingPagePremium() {
             ♥ Canción de San Valentín ♥
           </div>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '56px', fontWeight: 900, marginBottom: '4px', position: 'relative', zIndex: 1 }}>
-            $29<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
+            $24<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
           </div>
           <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '32px', position: 'relative', zIndex: 1 }}>
             Pago único · Acceso de por vida
@@ -453,13 +453,13 @@ export default function LandingPagePremium() {
               ♥ Paquete San Valentín
             </div>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '28px', fontWeight: 700 }}>
-              $39<span style={{ fontSize: '18px', color: 'rgba(255,255,255,0.4)' }}>.99</span>{' '}
+              $34<span style={{ fontSize: '18px', color: 'rgba(255,255,255,0.4)' }}>.99</span>{' '}
               <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', fontWeight: 300, fontFamily: "'Plus Jakarta Sans'" }}>por 2 canciones</span>{' '}
               <span style={{
                 display: 'inline-block', background: '#c9184a', color: 'white',
                 fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '999px',
                 letterSpacing: '0.05em', marginLeft: '8px', verticalAlign: 'middle'
-              }}>AHORRA $20</span>
+              }}>AHORRA $15</span>
             </div>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>
               Regala ambas versiones — el doble de emoción

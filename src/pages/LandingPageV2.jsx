@@ -241,7 +241,7 @@ export default function LandingPageV2() {
 
       {/* 💘 Valentine's Sticky Urgency Bar */}
       <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        😉 ¿Aún sin regalo? Tu canción personalizada lista en minutos — a tiempo para el sábado 💝
+        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
       </div>
 
       {/* Header */}
@@ -288,7 +288,9 @@ export default function LandingPageV2() {
           {/* Valentine's Banner */}
           <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-2 border-red-400 rounded-2xl px-6 py-3 mb-6 inline-block shadow-lg shadow-red-500/40 animate-pulse">
             <span className="text-white text-sm md:text-base font-bold flex items-center justify-center gap-2">
-              <span>🎵 San Valentín es este sábado — ¡Todavía llegas a tiempo! 💝</span>
+              <span>💘</span>
+              <span>¡San Valentín está aquí!</span>
+              <span>💘</span>
             </span>
           </div>
           
@@ -314,7 +316,7 @@ export default function LandingPageV2() {
           </button>
           
           <p className="mt-4 text-white/60 text-sm">
-            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$29.99</span> <span className="text-gold font-bold">$19.99</span>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$34.99</span> <span className="text-gold font-bold">$24.99</span>
           </p>
         </div>
       </section>
@@ -461,8 +463,8 @@ export default function LandingPageV2() {
             </div>
 
             <div className="mb-6">
-              <span className="text-white/40 line-through text-2xl">$29.99</span>
-              <div className="text-white text-5xl font-black">$19.99</div>
+              <span className="text-white/40 line-through text-2xl">$34.99</span>
+              <div className="text-white text-5xl font-black">$24.99</div>
               <span className="text-gold text-sm font-semibold">Pago único • Acceso de por vida</span>
             </div>
 
@@ -564,7 +566,7 @@ export default function LandingPageV2() {
 
           <p className="mt-6 text-red-400 font-semibold flex items-center justify-center gap-2">
             <span className="material-symbols-outlined">schedule</span>
-            Tu canción lista en minutos — a tiempo para San Valentín 💝
+            Ordena antes del 12 de Feb para San Valentín
           </p>
         </div>
       </section>
