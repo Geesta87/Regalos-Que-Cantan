@@ -1809,15 +1809,10 @@ export default function AdminDashboard() {
                   setBlastStatus('loading');
                   setBlastData(null);
                   try {
-                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentines-blast-index`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-                      },
-                      body: JSON.stringify({ dryRun: true })
+                    const { data, error } = await supabase.functions.invoke('valentines-blast-index', {
+                      body: { dryRun: true }
                     });
-                    const data = await res.json();
+                    if (error) throw error;
                     setBlastData(data);
                     setBlastStatus('preview');
                   } catch (err) {
@@ -1836,15 +1831,10 @@ export default function AdminDashboard() {
                   if (!confirm(`Are you sure you want to send the Valentine blast to ${blastData?.recipientCount || '?'} leads? This cannot be undone.`)) return;
                   setBlastStatus('sending');
                   try {
-                    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/valentines-blast-index`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-                      },
-                      body: JSON.stringify({ dryRun: false })
+                    const { data, error } = await supabase.functions.invoke('valentines-blast-index', {
+                      body: { dryRun: false }
                     });
-                    const data = await res.json();
+                    if (error) throw error;
                     setBlastData(data);
                     setBlastStatus('done');
                   } catch (err) {
