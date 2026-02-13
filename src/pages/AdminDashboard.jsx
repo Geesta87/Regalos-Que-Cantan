@@ -1809,11 +1809,41 @@ export default function AdminDashboard() {
                   setBlastStatus('loading');
                   setBlastData(null);
                   try {
-                    const { data, error } = await supabase.functions.invoke('valentines-blast-index', {
-                      body: { dryRun: true }
+                    // Query unpaid songs directly — no edge function needed
+                    const { data: unpaidSongs, error: e1 } = await supabase
+                      .from('songs')
+                      .select('id, email, recipient_name, genre_name')
+                      .eq('paid', false)
+                      .not('email', 'is', null)
+                      .not('email', 'eq', '')
+                      .or('valentine_blast_sent.is.null,valentine_blast_sent.eq.false');
+                    if (e1) throw e1;
+
+                    const { data: paidSongs, error: e2 } = await supabase
+                      .from('songs')
+                      .select('email')
+                      .eq('paid', true)
+                      .not('email', 'is', null);
+                    if (e2) throw e2;
+
+                    const paidEmails = new Set((paidSongs || []).map(s => s.email.toLowerCase().trim()));
+                    const emailMap = {};
+                    for (const song of (unpaidSongs || [])) {
+                      const em = song.email.toLowerCase().trim();
+                      if (!paidEmails.has(em) && !emailMap[em]) {
+                        emailMap[em] = { email: song.email, recipientName: song.recipient_name || '', songIds: [song.id] };
+                      } else if (emailMap[em]) {
+                        emailMap[em].songIds.push(song.id);
+                      }
+                    }
+                    const recipients = Object.values(emailMap);
+                    setBlastData({
+                      dryRun: true,
+                      recipientCount: recipients.length,
+                      excludedPaidCount: paidEmails.size,
+                      recipients: recipients.map(r => ({ email: r.email, recipientName: r.recipientName })),
+                      _recipients: recipients // keep full data for send
                     });
-                    if (error) throw error;
-                    setBlastData(data);
                     setBlastStatus('preview');
                   } catch (err) {
                     setBlastData({ error: err.message });
