@@ -12,8 +12,8 @@ const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
-const SINGLE_PRICE = 19.99;
-const BUNDLE_PRICE = 29.99;
+const SINGLE_PRICE = 24.99;
+const BUNDLE_PRICE = 34.99;
 
 // Robust payment check (same logic as AdminDashboard)
 const isSongPaid = (song) => {
@@ -565,7 +565,7 @@ export default function ShareablePreviewPage() {
                   fontSize: '32px', fontWeight: '900',
                   color: purchaseMode === 'bundle' ? '#f5d77a' : 'white'
                 }}>
-                  $29.99
+                  $34.99
                 </span>
               </div>
 
