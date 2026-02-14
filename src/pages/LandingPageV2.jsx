@@ -316,7 +316,7 @@ export default function LandingPageV2() {
           </button>
           
           <p className="mt-4 text-white/60 text-sm">
-            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$34.99</span> <span className="text-gold font-bold">$24.99</span>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$39.99</span> <span className="text-gold font-bold">$29.99</span>
           </p>
         </div>
       </section>
@@ -463,8 +463,8 @@ export default function LandingPageV2() {
             </div>
 
             <div className="mb-6">
-              <span className="text-white/40 line-through text-2xl">$34.99</span>
-              <div className="text-white text-5xl font-black">$24.99</div>
+              <span className="text-white/40 line-through text-2xl">$39.99</span>
+              <div className="text-white text-5xl font-black">$29.99</div>
               <span className="text-gold text-sm font-semibold">Pago único • Acceso de por vida</span>
             </div>
 

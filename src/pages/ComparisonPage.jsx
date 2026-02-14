@@ -116,8 +116,8 @@ export default function ComparisonPage() {
   const genreName = genreConfig?.name || formData?.genre || 'Género';
 
   // Pricing
-  const singlePrice = 24.99;
-  const bundlePrice = 34.99;
+  const singlePrice = 29.99;
+  const bundlePrice = 39.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
 
@@ -1127,7 +1127,7 @@ export default function ComparisonPage() {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '2px' }}>
                     <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
-                      $34.99
+                      $39.99
                     </span>
                     <span style={{
                       background: 'linear-gradient(90deg, #22c55e, #16a34a)',
