@@ -39,7 +39,7 @@ const genreIcons = {
 };
 
 // Primary genres to show first - Romántica first for Valentine's
-const primaryGenreIds = ['romantica', 'balada', 'bachata', 'bolero', 'corrido', 'ranchera', 'reggaeton', 'banda'];
+const primaryGenreIds = ['romantica', 'balada', 'bolero', 'bachata', 'corrido', 'banda', 'ranchera', 'reggaeton'];
 
 export default function GenrePage() {
   const { state, dispatch, navigateTo } = useContext(AppContext);
@@ -48,12 +48,12 @@ export default function GenrePage() {
   const [showMoreGenres, setShowMoreGenres] = useState(false);
 
   // Split genres into primary and secondary
-  const primaryGenres = genreList.filter(g => primaryGenreIds.includes(g.id));
+  const primaryGenres = primaryGenreIds.map(id => genreList.find(g => g.id === id)).filter(Boolean);
   const secondaryGenres = genreList.filter(g => !primaryGenreIds.includes(g.id));
   const secondaryCount = secondaryGenres.length;
 
   // What to display based on showMore state
-  const displayedGenres = showMoreGenres ? genreList : primaryGenres;
+  const displayedGenres = showMoreGenres ? [...primaryGenres, ...secondaryGenres] : primaryGenres;
 
   // Get current genre object for sub-genre display
   const currentGenre = genreList.find(g => g.id === selectedGenre);
@@ -239,7 +239,7 @@ export default function GenrePage() {
       <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 z-50 shadow-lg shadow-red-500/30">
         <p className="text-sm font-bold flex items-center justify-center gap-2">
           <span>⏰</span>
-          <span>Ordena antes del 12 de Feb para San Valentín</span>
+          <span>¡San Valentín es HOY! Tu canción lista en minutos</span>
           <span>💘</span>
         </p>
       </div>
