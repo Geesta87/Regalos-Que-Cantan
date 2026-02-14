@@ -51,9 +51,11 @@ export default function ComparisonPage() {
   // ✅ NEW: Lyrics expand state
   const [expandedLyrics, setExpandedLyrics] = useState({});
   
-  // Selection state
+  // Selection state — ✅ REC 1: Pre-select V1 (set after songs load)
   const [selectedSongId, setSelectedSongId] = useState(null);
   const [purchaseBoth, setPurchaseBoth] = useState(false);
+  const [showCouponInput, setShowCouponInput] = useState(false); // ✅ REC 3: Hide coupon behind toggle
+  const [selectionPop, setSelectionPop] = useState(null); // ✅ REC 10: Micro-interaction
   
   // Coupon state
   const [couponCode, setCouponCode] = useState('');
@@ -61,23 +63,21 @@ export default function ComparisonPage() {
   const [couponError, setCouponError] = useState('');
   const [isLoadingCoupon, setIsLoadingCoupon] = useState(false);
   
-  // Valentine countdown timer
-  const [vCountdown, setVCountdown] = useState({ hours: 0, mins: 0, secs: 0 });
-  const videoTestimonialRefs = useRef({});
+  // ✅ REC 8: Dynamic session urgency timer (works year-round)
+  const [sessionCountdown, setSessionCountdown] = useState({ mins: 29, secs: 59 });
+  const sessionEndRef = useRef(Date.now() + 30 * 60 * 1000); // 30 min session
+  const videoTestimonialRefs = useRef({}); // kept for potential future use
   const [playingTestimonial, setPlayingTestimonial] = useState(null);
 
   useEffect(() => {
-    const valentineEnd = new Date('2026-02-15T00:00:00');
     const tick = () => {
-      const now = new Date();
-      const diff = valentineEnd - now;
+      const diff = sessionEndRef.current - Date.now();
       if (diff <= 0) {
-        setVCountdown({ hours: 0, mins: 0, secs: 0 });
+        setSessionCountdown({ mins: 0, secs: 0 });
         return;
       }
-      setVCountdown({
-        hours: Math.floor(diff / 3600000),
-        mins: Math.floor((diff % 3600000) / 60000),
+      setSessionCountdown({
+        mins: Math.floor(diff / 60000),
         secs: Math.floor((diff % 60000) / 1000)
       });
     };
@@ -120,6 +120,19 @@ export default function ComparisonPage() {
   const bundlePrice = 34.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
+
+  // ✅ REC 1: Auto-select Version 1 when songs load (reduce decision friction)
+  useEffect(() => {
+    if (songs.length > 0 && !selectedSongId && !purchaseBoth) {
+      setSelectedSongId(songs[0].id);
+    }
+  }, [songs]);
+
+  // ✅ REC 10: Selection micro-interaction helper
+  const triggerSelectionPop = (id) => {
+    setSelectionPop(id);
+    setTimeout(() => setSelectionPop(null), 600);
+  };
 
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
@@ -539,11 +552,13 @@ export default function ComparisonPage() {
   const selectSong = (songId) => {
     setSelectedSongId(songId);
     setPurchaseBoth(false);
+    triggerSelectionPop(songId); // ✅ REC 10
   };
 
   const selectBoth = () => {
     setPurchaseBoth(true);
     setSelectedSongId(null);
+    triggerSelectionPop('bundle'); // ✅ REC 10
   };
 
   const getSelectionLabel = () => {
@@ -623,17 +638,32 @@ export default function ComparisonPage() {
           85% { opacity: 1; transform: translate(-50%, 0); }
           100% { opacity: 0; transform: translate(-50%, -10px); }
         }
-        @keyframes vBannerPulse {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
+        @keyframes urgencyPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
         }
-        @keyframes vCountBounce {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.1); }
+        @keyframes selectionPop {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.06); }
+          100% { transform: scale(1); }
+        }
+        @keyframes heartBurst {
+          0% { opacity: 1; transform: scale(0.5) translateY(0); }
+          100% { opacity: 0; transform: scale(1.5) translateY(-40px); }
         }
         @keyframes btnPulse {
           0%, 100% { box-shadow: 0 4px 18px var(--pulse-color, rgba(59,130,246,0.4)); }
           50% { box-shadow: 0 6px 28px var(--pulse-color, rgba(59,130,246,0.6)); }
+        }
+        @keyframes stickySlideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes testimonialSlide {
+          0%, 30% { opacity: 1; transform: translateX(0); }
+          33%, 63% { opacity: 1; transform: translateX(-100%); }
+          66%, 96% { opacity: 1; transform: translateX(-200%); }
+          100% { opacity: 1; transform: translateX(0); }
         }
       `}</style>
 
@@ -659,95 +689,138 @@ export default function ComparisonPage() {
         transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
       }}>
 
-        {/* ===== VALENTINE COUNTDOWN BANNER ===== */}
+        {/* ===== REC 8: Dynamic session urgency banner (works year-round) ===== */}
         <div style={{
-          background: 'linear-gradient(135deg, #c9184a, #e11d74, #ff2d78)',
-          backgroundSize: '200% 200%',
-          animation: 'vBannerPulse 3s ease infinite',
-          borderRadius: '16px',
-          padding: '14px 20px',
-          marginBottom: '20px',
-          textAlign: 'center',
-          boxShadow: '0 4px 25px rgba(201,24,74,0.4)',
-          border: '1px solid rgba(255,255,255,0.15)'
+          background: 'linear-gradient(135deg, rgba(225,29,116,0.15), rgba(168,85,247,0.1))',
+          border: '1px solid rgba(225,29,116,0.3)',
+          borderRadius: '12px',
+          padding: '10px 18px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px'
         }}>
-          <div style={{ fontSize: '15px', fontWeight: '800', marginBottom: '6px', letterSpacing: '0.5px' }}>
-            💘 ¡San Valentín es MAÑANA! Tu canción lista en minutos
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', opacity: 0.9 }}>Tiempo restante:</span>
-            {[
-              { val: vCountdown.hours, label: 'hrs' },
-              { val: vCountdown.mins, label: 'min' },
-              { val: vCountdown.secs, label: 'seg' }
-            ].map((t, i) => (
-              <span key={i} style={{
-                background: 'rgba(0,0,0,0.3)',
-                padding: '4px 10px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-                fontSize: '16px',
-                fontFamily: 'monospace',
-                animation: i === 2 ? 'vCountBounce 1s ease infinite' : 'none',
-                minWidth: '45px',
-                display: 'inline-block',
-                textAlign: 'center'
-              }}>
-                {String(t.val).padStart(2, '0')}<span style={{ fontSize: '10px', opacity: 0.7 }}> {t.label}</span>
-              </span>
-            ))}
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)' }}>🔥 Tu precio especial expira en</span>
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <span style={{
+              background: 'rgba(225,29,116,0.3)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '15px',
+              fontFamily: 'monospace',
+              color: '#ff6b9d',
+              minWidth: '32px',
+              textAlign: 'center'
+            }}>
+              {String(sessionCountdown.mins).padStart(2, '0')}
+            </span>
+            <span style={{ color: '#ff6b9d', fontWeight: 'bold', animation: 'urgencyPulse 1s ease infinite' }}>:</span>
+            <span style={{
+              background: 'rgba(225,29,116,0.3)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '15px',
+              fontFamily: 'monospace',
+              color: '#ff6b9d',
+              minWidth: '32px',
+              textAlign: 'center'
+            }}>
+              {String(sessionCountdown.secs).padStart(2, '0')}
+            </span>
           </div>
         </div>
         
-        {/* ===== REC 3: Personalized emotional banner ===== */}
-        <div style={{textAlign: 'center', marginBottom: '30px'}}>
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(225,29,116,0.15), rgba(139,92,246,0.1))',
-            borderRadius: '16px',
-            padding: '24px 28px',
-            marginBottom: '20px',
-            border: '1px solid rgba(212,175,55,0.3)',
-            boxShadow: '0 4px 30px rgba(212,175,55,0.1), inset 0 1px 0 rgba(255,255,255,0.05)'
+        {/* ===== Simplified emotional header ===== */}
+        <div style={{textAlign: 'center', marginBottom: '20px'}}>
+          <p style={{
+            fontSize: '12px',
+            color: 'rgba(255,255,255,0.5)',
+            margin: '0 0 4px 0',
+            letterSpacing: '2px',
+            textTransform: 'uppercase'
           }}>
-            <p style={{
-              fontSize: '13px',
-              color: 'rgba(255,255,255,0.7)',
-              margin: '0 0 6px 0',
-              letterSpacing: '2.5px',
-              textTransform: 'uppercase'
-            }}>
-              Hecho con ❤️ exclusivamente para
-            </p>
-            <h2 style={{
-              fontSize: '32px',
-              fontWeight: 'bold',
-              margin: '0 0 8px 0',
-              background: 'linear-gradient(90deg, #d4af37, #f5d77a, #d4af37)',
-              backgroundSize: '200% auto',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              animation: 'shimmer 3s linear infinite'
-            }}>
-              {recipientName}
-            </h2>
-            <p style={{
-              fontSize: '14px',
-              color: 'rgba(255,255,255,0.6)',
-              margin: 0,
-              fontStyle: 'italic'
-            }}>
-              Una canción que nunca antes ha existido — creada solo para {recipientName}
-            </p>
-          </div>
-
-          <h1 style={{fontSize: '24px', marginBottom: '6px', fontWeight: 'bold'}}>
-            🎵 Elige tu versión favorita
-          </h1>
-          <p style={{color: 'rgba(255,255,255,0.7)', fontSize: '15px', margin: 0}}>
-            {songs.length} {songs.length === 1 ? 'versión' : 'versiones'}
-            {song2Loading && ' • Versión 2 en camino...'}
-            {' • '}<span style={{color: '#f5d77a', fontWeight: '600'}}>{genreName}</span>
+            Hecho con ❤️ para
           </p>
+          <h2 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            margin: '0 0 6px 0',
+            background: 'linear-gradient(90deg, #d4af37, #f5d77a, #d4af37)',
+            backgroundSize: '200% auto',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            animation: 'shimmer 3s linear infinite'
+          }}>
+            {recipientName}
+          </h2>
+          <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '14px', margin: '0 0 14px 0'}}>
+            Escucha y elige tu versión favorita
+          </p>
+
+          {/* ===== REC 6: Bundle toggle — top-level pricing selector ===== */}
+          {songs.length >= 2 && (
+            <div style={{
+              display: 'inline-flex',
+              background: 'rgba(255,255,255,0.06)',
+              borderRadius: '14px',
+              padding: '4px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              gap: '4px'
+            }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); if (purchaseBoth) { setSelectedSongId(songs[0]?.id); setPurchaseBoth(false); } }}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '11px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  transition: 'all 0.3s',
+                  background: !purchaseBoth ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : 'transparent',
+                  color: !purchaseBoth ? 'white' : 'rgba(255,255,255,0.5)',
+                  boxShadow: !purchaseBoth ? '0 2px 12px rgba(37,99,235,0.4)' : 'none'
+                }}
+              >
+                1 Canción — ${singlePrice}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); selectBoth(); }}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '11px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  transition: 'all 0.3s',
+                  background: purchaseBoth ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'transparent',
+                  color: purchaseBoth ? 'white' : 'rgba(255,255,255,0.5)',
+                  boxShadow: purchaseBoth ? '0 2px 12px rgba(34,197,94,0.4)' : 'none',
+                  position: 'relative'
+                }}
+              >
+                2 Canciones — ${bundlePrice}
+                <span style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  background: '#ef4444',
+                  color: 'white',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  padding: '2px 6px',
+                  borderRadius: '8px',
+                  whiteSpace: 'nowrap'
+                }}>
+                  MEJOR VALOR
+                </span>
+              </button>
+            </div>
+          )}
           
           {/* Auto-play indicator */}
           {autoPlayingIndex >= 0 && (
@@ -773,23 +846,22 @@ export default function ComparisonPage() {
           )}
         </div>
 
-        {/* ===== REC 6: Social proof strip ===== */}
+        {/* ===== Social proof strip (compact) ===== */}
         <div style={{
           display: 'flex',
           justifyContent: 'center',
-          gap: '16px',
-          marginBottom: '28px',
+          gap: '14px',
+          marginBottom: '20px',
           flexWrap: 'wrap',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.2s both' : 'none'
         }}>
           {[
             { icon: '🔥', text: '147 canciones', sub: 'creadas hoy' },
-            { icon: '⭐', text: '4.9/5', sub: 'satisfacción' },
-            { icon: '💝', text: 'Ideal para', sub: 'San Valentín' }
+            { icon: '⭐', text: '4.9/5', sub: 'satisfacción' }
           ].map((item, i) => (
             <span key={i} style={{
-              fontSize: '13px',
-              color: 'rgba(255,255,255,0.6)',
+              fontSize: '12px',
+              color: 'rgba(255,255,255,0.55)',
               display: 'flex',
               alignItems: 'center',
               gap: '4px'
@@ -799,11 +871,11 @@ export default function ComparisonPage() {
           ))}
         </div>
 
-        {/* ===== REC 2, 4, 5: Song Cards ===== */}
+        {/* ===== Song Cards (REC 4,5: Compact + Más Popular) ===== */}
         <div style={{
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-          gap: '20px', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', 
+          gap: '16px', 
           marginBottom: '20px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.3s both' : 'none'
         }}>
@@ -811,10 +883,11 @@ export default function ComparisonPage() {
             const isSelected = selectedSongId === song.id;
             const isOtherSelected = (selectedSongId && !isSelected) || purchaseBoth;
             const isPlaying = playingId === song.id;
-            const isAutoHighlight = autoPlayingIndex === index; // ✅ Card being auto-played
+            const isAutoHighlight = autoPlayingIndex === index;
             const vibe = VERSION_VIBES[index] || VERSION_VIBES[0];
             const lyricsPreview = getLyricsPreview(song.lyrics);
             const isExpanded = expandedLyrics[song.id];
+            const isPop = selectionPop === song.id;
             
             return (
               <div
@@ -823,70 +896,104 @@ export default function ComparisonPage() {
                 style={{
                   background: (isSelected || isAutoHighlight)
                     ? `linear-gradient(135deg, ${vibe.color}30, ${vibe.color}15)` 
-                    : 'linear-gradient(145deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))',
-                  border: (isSelected || isAutoHighlight)
-                    ? `3px solid ${isSelected ? '#f5d77a' : vibe.color}` 
-                    : `2px solid ${vibe.color}35`,
-                  borderRadius: '20px',
-                  padding: '24px',
-                  cursor: 'pointer',
-                  transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
-                  opacity: isOtherSelected ? 0.55 : 1,
-                  transform: (isSelected || isAutoHighlight) ? 'scale(1.02)' : 'scale(1)',
-                  boxShadow: isSelected 
-                    ? '0 0 35px rgba(212,175,55,0.4), 0 8px 32px rgba(0,0,0,0.4)' 
+                    : 'linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))',
+                  border: isSelected
+                    ? `3px solid #f5d77a` 
                     : isAutoHighlight 
-                      ? `0 0 30px ${vibe.color}50, 0 8px 32px rgba(0,0,0,0.4)` 
-                      : '0 4px 24px rgba(0,0,0,0.3)',
+                      ? `3px solid ${vibe.color}`
+                      : `2px solid ${vibe.color}30`,
+                  borderRadius: '18px',
+                  padding: '18px',
+                  cursor: 'pointer',
+                  transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                  opacity: (isOtherSelected && !purchaseBoth) ? 0.5 : 1,
+                  transform: isPop ? 'scale(1.04)' : (isSelected || isAutoHighlight) ? 'scale(1.01)' : 'scale(1)',
+                  boxShadow: isSelected 
+                    ? '0 0 30px rgba(212,175,55,0.35), 0 6px 28px rgba(0,0,0,0.35)' 
+                    : isAutoHighlight 
+                      ? `0 0 25px ${vibe.color}40, 0 6px 28px rgba(0,0,0,0.3)` 
+                      : '0 3px 20px rgba(0,0,0,0.25)',
                   position: 'relative',
                   backdropFilter: 'blur(10px)',
-                  animation: (song.version === 2 && song2Ready) ? 'song2Reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1)' : undefined
+                  animation: isPop ? 'selectionPop 0.4s ease' : (song.version === 2 && song2Ready) ? 'song2Reveal 0.6s cubic-bezier(0.16, 1, 0.3, 1)' : undefined,
+                  overflow: 'hidden'
                 }}
               >
+                {/* ✅ REC 10: Heart burst micro-interaction */}
+                {isPop && (
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none', zIndex: 10 }}>
+                    {['❤️','💛','✨'].map((e, i) => (
+                      <span key={i} style={{
+                        position: 'absolute',
+                        fontSize: '24px',
+                        animation: `heartBurst 0.6s ease-out ${i * 0.1}s forwards`,
+                        left: `${(i - 1) * 20}px`
+                      }}>{e}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* ✅ REC 4: "Más Popular" badge on Version 1 */}
+                {index === 0 && (
+                  <div style={{
+                    position: 'absolute', top: '-1px', right: '50px',
+                    background: 'linear-gradient(135deg, #d4af37, #f5d77a)',
+                    color: '#1a3a2f',
+                    padding: '4px 12px 6px',
+                    borderRadius: '0 0 10px 10px',
+                    fontSize: '10px',
+                    fontWeight: '800',
+                    letterSpacing: '0.5px',
+                    boxShadow: '0 3px 10px rgba(212,175,55,0.4)',
+                    zIndex: 3
+                  }}>
+                    ⭐ MÁS POPULAR
+                  </div>
+                )}
+
                 {/* Radio indicator */}
                 <div style={{
-                  position: 'absolute', top: '15px', right: '15px',
-                  width: '28px', height: '28px', borderRadius: '50%',
-                  border: isSelected ? '3px solid #d4af37' : '3px solid rgba(255,255,255,0.3)',
+                  position: 'absolute', top: '14px', right: '14px',
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  border: isSelected ? '3px solid #d4af37' : '3px solid rgba(255,255,255,0.25)',
                   background: isSelected ? '#d4af37' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.2s', zIndex: 2
                 }}>
-                  {isSelected && <span style={{color: '#1a3a2f', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
+                  {isSelected && <span style={{color: '#1a3a2f', fontSize: '14px', fontWeight: 'bold'}}>✓</span>}
                 </div>
 
-                {/* REC 5: Version badge with personality */}
-                <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                {/* Version badge */}
+                <div style={{marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px'}}>
                   <span style={{
                     background: vibe.gradient, 
-                    padding: '7px 16px', 
-                    borderRadius: '20px', 
-                    fontSize: '13px', 
+                    padding: '5px 14px', 
+                    borderRadius: '18px', 
+                    fontSize: '12px', 
                     fontWeight: 'bold',
-                    boxShadow: `0 3px 12px ${vibe.color}50`,
-                    letterSpacing: '0.3px'
+                    boxShadow: `0 2px 10px ${vibe.color}40`
                   }}>
                     {vibe.emoji} Versión {index + 1}
                   </span>
-                  <span style={{fontSize: '13px', color: vibe.color, fontWeight: '700', letterSpacing: '0.5px'}}>
+                  <span style={{fontSize: '12px', color: vibe.color, fontWeight: '700'}}>
                     {vibe.label}
                   </span>
                 </div>
 
-                {/* REC 2: Bigger album art with glow */}
+                {/* ✅ REC 5: Compact album art (180px instead of 280px) */}
                 <div style={{
-                  height: '280px',
-                  borderRadius: '14px', 
+                  height: '180px',
+                  borderRadius: '12px', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
-                  marginBottom: '18px',
+                  marginBottom: '14px',
                   overflow: 'hidden',
                   position: 'relative',
                   animation: isPlaying ? 'glow 2s ease-in-out infinite' : 'none',
-                  background: `linear-gradient(135deg, ${vibe.color}40, rgba(225,29,116,0.25))`,
-                  boxShadow: `0 8px 30px ${vibe.color}25`,
-                  border: `2px solid ${vibe.color}50`
+                  background: `linear-gradient(135deg, ${vibe.color}35, rgba(225,29,116,0.2))`,
+                  boxShadow: `0 6px 24px ${vibe.color}20`,
+                  border: `1px solid ${vibe.color}40`
                 }}>
                   {song.imageUrl ? (
                     <img 
@@ -899,14 +1006,14 @@ export default function ComparisonPage() {
                       }} 
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = '<span style="font-size:72px">🎵</span>';
+                        e.target.parentElement.innerHTML = '<span style="font-size:56px">🎵</span>';
                       }}
                     />
                   ) : (
-                    <span style={{fontSize: '72px'}}>🎵</span>
+                    <span style={{fontSize: '56px'}}>🎵</span>
                   )}
                   
-                  {/* Shine sweep effect */}
+                  {/* Shine sweep */}
                   <div style={{
                     position: 'absolute', inset: 0,
                     background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 45%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 55%, transparent 60%)',
@@ -915,14 +1022,14 @@ export default function ComparisonPage() {
                     pointerEvents: 'none'
                   }} />
                   
-                  {/* Playing overlay with equalizer */}
+                  {/* Playing equalizer overlay */}
                   {isPlaying && (
                     <div style={{
                       position: 'absolute', bottom: 0, left: 0, right: 0,
-                      padding: '12px',
+                      padding: '10px',
                       background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
                       display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                      gap: '3px', height: '50px'
+                      gap: '3px', height: '40px'
                     }}>
                       {[0.6, 0.5, 0.7, 0.8, 0.4].map((dur, i) => (
                         <div key={i} style={{
@@ -934,13 +1041,12 @@ export default function ComparisonPage() {
                   )}
                 </div>
 
-                {/* Song info */}
-                <h3 style={{fontSize: '18px', marginBottom: '4px', fontWeight: 'bold'}}>
+                {/* Song title (no genre label — REC 5) */}
+                <h3 style={{fontSize: '16px', marginBottom: '10px', fontWeight: 'bold'}}>
                   Para {recipientName}
                 </h3>
-                <p style={{color: '#f5d77a', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>{genreName}</p>
 
-                {/* REC 4: Lyrics preview snippet */}
+                {/* ✅ REC 5: Collapsed lyrics — expand on tap */}
                 {lyricsPreview.length > 0 && (
                   <div 
                     onClick={(e) => {
@@ -948,33 +1054,31 @@ export default function ComparisonPage() {
                       setExpandedLyrics(prev => ({...prev, [song.id]: !prev[song.id]}));
                     }}
                     style={{
-                      background: `rgba(255,255,255,0.09)`,
-                      borderRadius: '10px',
-                      padding: '12px 14px',
-                      marginBottom: '15px',
+                      background: 'rgba(255,255,255,0.07)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      marginBottom: '12px',
                       borderLeft: `3px solid ${vibe.color}`,
                       cursor: 'pointer'
                     }}
                   >
-                    <p style={{
-                      fontSize: '11px', color: 'rgba(255,255,255,0.7)',
-                      margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '1px'
-                    }}>
-                      📝 Vista previa de la letra
-                    </p>
-                    {lyricsPreview.slice(0, isExpanded ? 4 : 2).map((line, i) => (
-                      <p key={i} style={{
-                        fontSize: '13px', color: 'rgba(255,255,255,0.9)',
-                        margin: i < (isExpanded ? 3 : 1) ? '0 0 3px 0' : 0,
-                        fontStyle: 'italic', lineHeight: '1.4'
-                      }}>
-                        "{line}"
+                    {!isExpanded ? (
+                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        📝 <span style={{ fontStyle: 'italic' }}>"{lyricsPreview[0]}"</span>
+                        <span style={{ color: vibe.color, fontSize: '11px', marginLeft: 'auto', whiteSpace: 'nowrap' }}>ver más ▼</span>
                       </p>
-                    ))}
-                    {lyricsPreview.length > 2 && (
-                      <p style={{fontSize: '11px', color: vibe.color, margin: '6px 0 0 0'}}>
-                        {isExpanded ? '▲ Ver menos' : '▼ Ver más letra...'}
-                      </p>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                          📝 Vista previa de la letra
+                        </p>
+                        {lyricsPreview.map((line, i) => (
+                          <p key={i} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', margin: i < lyricsPreview.length - 1 ? '0 0 2px 0' : 0, fontStyle: 'italic', lineHeight: '1.4' }}>
+                            "{line}"
+                          </p>
+                        ))}
+                        <p style={{ fontSize: '11px', color: vibe.color, margin: '4px 0 0 0' }}>▲ cerrar</p>
+                      </>
                     )}
                   </div>
                 )}
@@ -983,26 +1087,26 @@ export default function ComparisonPage() {
                 <button
                   onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
                   style={{
-                    width: '100%', padding: '16px',
+                    width: '100%', padding: '14px',
                     background: isPlaying 
                       ? 'linear-gradient(90deg, #f5d77a, #d4af37)' 
                       : vibe.gradient,
                     color: isPlaying ? '#1a3a2f' : 'white',
-                    border: 'none', borderRadius: '12px',
-                    cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
+                    border: 'none', borderRadius: '10px',
+                    cursor: 'pointer', fontWeight: 'bold', fontSize: '14px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'all 0.3s',
-                    boxShadow: isPlaying ? '0 4px 20px rgba(212,175,55,0.5)' : `0 4px 18px ${vibe.color}40`,
+                    boxShadow: isPlaying ? '0 3px 16px rgba(212,175,55,0.5)' : `0 3px 14px ${vibe.color}35`,
                     animation: !isPlaying && !previewEnded[song.id] ? 'btnPulse 2s ease-in-out infinite' : 'none',
                     '--pulse-color': `${vibe.color}50`
                   }}
                 >
-                  <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
+                  <span style={{fontSize: '16px'}}>{isPlaying ? '⏸' : '▶'}</span>
                   {isPlaying ? 'Pausar' : 'Escuchar Preview'}
                 </button>
 
                 {/* Progress bar */}
-                <div style={{marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.12)', borderRadius: '3px', overflow: 'hidden'}}>
+                <div style={{marginTop: '8px', height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden'}}>
                   <div style={{
                     height: '100%', 
                     background: isPlaying ? 'linear-gradient(90deg, #d4af37, #f5d77a)' : vibe.color, 
@@ -1011,32 +1115,32 @@ export default function ComparisonPage() {
                     transition: 'width 0.1s'
                   }} />
                 </div>
-                <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
+                <p style={{fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '4px', textAlign: 'right'}}>
                   {formatTime(currentTimes[song.id] || 0)} / 0:20
                 </p>
 
                 {/* Price */}
                 <div style={{
-                  marginTop: '12px', paddingTop: '15px',
-                  borderTop: `1px solid ${vibe.color}30`,
+                  marginTop: '8px', paddingTop: '10px',
+                  borderTop: `1px solid ${vibe.color}25`,
                   textAlign: 'center'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
                       $34.99
                     </span>
                     <span style={{
                       background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-                      padding: '3px 10px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      fontSize: '10px',
                       fontWeight: 'bold',
                       color: 'white'
                     }}>
                       AHORRA $10
                     </span>
                   </div>
-                  <span style={{fontSize: '32px', fontWeight: '800', color: isSelected ? '#f5d77a' : 'white'}}>
+                  <span style={{fontSize: '28px', fontWeight: '800', color: isSelected ? '#f5d77a' : 'white'}}>
                     ${singlePrice}
                   </span>
                 </div>
@@ -1131,351 +1235,86 @@ export default function ComparisonPage() {
           )}
         </div>
 
-        {/* ===== REC 7: Upgraded bundle deal ===== */}
-        {songs.length >= 2 && (
-          <>
-            {/* OR Divider */}
-            <div style={{
-              display: 'flex', alignItems: 'center', margin: '30px 0', gap: '20px',
-              animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
-            }}>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(212,175,55,0.5))'}} />
-              <span style={{
-                color: '#f5d77a', fontSize: '16px', fontWeight: 'bold',
-                padding: '8px 20px', background: 'rgba(212,175,55,0.15)',
-                borderRadius: '20px', border: '1px solid rgba(212,175,55,0.4)'
-              }}>
-                O MEJOR AÚN
-              </span>
-              <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(212,175,55,0.5), transparent)'}} />
-            </div>
-
-            {/* Bundle card */}
-            <div
-              onClick={selectBoth}
-              style={{
-                background: purchaseBoth 
-                  ? 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(212,175,55,0.15))' 
-                  : 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
-                border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(255,255,255,0.18)',
-                borderRadius: '20px', padding: '30px 25px',
-                cursor: 'pointer', marginBottom: '30px',
-                position: 'relative', transition: 'all 0.3s',
-                transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
-                boxShadow: purchaseBoth ? '0 0 30px rgba(34,197,94,0.2)' : 'none',
-                opacity: selectedSongId ? 0.6 : 1,
-                animation: isVisible ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
-              }}
-            >
-              {/* Ribbon badge */}
-              <div style={{
-                position: 'absolute', top: '-14px', left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-                color: 'white', padding: '8px 24px', borderRadius: '20px',
-                fontSize: '13px', fontWeight: 'bold',
-                boxShadow: '0 4px 15px rgba(34,197,94,0.4)',
-                animation: 'ribbonFloat 3s ease-in-out infinite',
-                whiteSpace: 'nowrap'
-              }}>
-                🎁 2 CANCIONES POR SOLO ${bundlePrice}
-              </div>
-
-              {/* Radio indicator */}
-              <div style={{
-                position: 'absolute', top: '20px', right: '20px',
-                width: '28px', height: '28px', borderRadius: '50%',
-                border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
-                background: purchaseBoth ? '#22c55e' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.2s'
-              }}>
-                {purchaseBoth && <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
-              </div>
-
-              {/* Bundle content with overlapping album arts */}
-              <div style={{marginTop: '10px'}}>
-                <div style={{
-                  display: 'flex', justifyContent: 'center', gap: '0px', marginBottom: '18px'
+        {/* ===== REC 7: Text testimonials (replaces video — faster, no audio conflict) ===== */}
+        <div style={{
+          marginBottom: '20px',
+          marginTop: '8px',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
+        }}>
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            borderRadius: '14px',
+            padding: '16px 20px',
+            border: '1px solid rgba(212,175,55,0.15)'
+          }}>
+            <p style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[
+                { quote: 'Mi esposa lloró de felicidad... el mejor regalo que le he dado', name: 'Carlos M.', stars: 5 },
+                { quote: 'Nunca pensé que una canción personalizada me haría llorar. Hermosa.', name: 'Ana R.', stars: 5 },
+                { quote: 'La calidad es increíble, parece hecha por un artista profesional', name: 'Diego L.', stars: 5 }
+              ].map((t, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'flex-start',
+                  padding: '10px 14px',
+                  background: 'rgba(255,255,255,0.04)',
+                  borderRadius: '10px'
                 }}>
-                  {songs.slice(0, 2).map((song, i) => (
-                    <div key={song.id} style={{
-                      width: '110px', height: '110px', borderRadius: '14px',
-                      overflow: 'hidden', border: '3px solid #1a3a2f',
-                      marginLeft: i > 0 ? '-20px' : 0,
-                      position: 'relative', zIndex: songs.length - i,
-                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`,
-                      boxShadow: `0 6px 20px ${VERSION_VIBES[i]?.color || '#3b82f6'}30`,
-                      transition: 'transform 0.3s',
-                    }}>
-                      {song.imageUrl ? (
-                        <img 
-                          src={song.imageUrl} alt=""
-                          style={{width: '100%', height: '100%', objectFit: 'cover'}}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.parentElement.innerHTML = '<span style="font-size:42px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
-                          }}
-                        />
-                      ) : (
-                        <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', flexWrap: 'wrap', gap: '20px'
-                }}>
+                  <span style={{ fontSize: '24px', flexShrink: 0, marginTop: '2px' }}>💬</span>
                   <div>
-                    <h3 style={{fontSize: '20px', marginBottom: '8px', fontWeight: 'bold'}}>
-                      🎁 ¡Llévate AMBAS versiones!
-                    </h3>
-                    <p style={{color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 4px 0'}}>
-                      Regala 2 versiones — deja que {recipientName} elija su favorita
+                    <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: 'rgba(255,255,255,0.85)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                      "{t.quote}"
                     </p>
-                    <p style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', margin: 0}}>
-                      💫 Emotiva + 🔥 Enérgica • Descarga instantánea
-                    </p>
-                  </div>
-                  <div style={{textAlign: 'right'}}>
-                    <p style={{color: 'rgba(255,255,255,0.45)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
-                      ${(singlePrice * 2).toFixed(2)}
-                    </p>
-                    <p style={{
-                      color: purchaseBoth ? '#22c55e' : '#f5d77a', 
-                      fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
-                    }}>
-                      ${bundlePrice}
+                    <p style={{ margin: 0, fontSize: '11px', color: '#f5d77a' }}>
+                      — {t.name} {'⭐'.repeat(t.stars)}
                     </p>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          </>
-        )}
-
-        {/* Selection Summary */}
-        {hasSelection && (
-          <div style={{
-            background: 'rgba(212,175,55,0.15)',
-            border: '2px solid #f5d77a', borderRadius: '12px',
-            padding: '15px 20px', marginBottom: '20px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            animation: 'fadeInUp 0.4s ease-out'
-          }}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-              <span style={{fontSize: '24px'}}>✓</span>
-              <div>
-                <p style={{margin: 0, fontWeight: 'bold', color: '#f5d77a'}}>Seleccionado:</p>
-                <p style={{margin: 0, fontSize: '14px'}}>{getSelectionLabel()}</p>
-              </div>
-            </div>
-            <div style={{textAlign: 'right'}}>
-              <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
-                {isFree ? '¡GRATIS!' : `$${purchaseBoth ? bundlePrice : singlePrice.toFixed(2)}`}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Checkout Section */}
-        <div style={{
-
-          /* ===== VIDEO TESTIMONIALS ===== */
-        }}></div>
-        <div style={{
-          marginBottom: '24px',
-          animation: 'fadeInUp 0.5s ease-out'
-        }}>
-          <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '14px', fontWeight: '600' }}>
-            ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
-          </p>
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'center',
-            flexWrap: 'wrap'
-          }}>
-            {[
-              { src: '/videos/testimonial3.mp4', id: 'tc1', name: 'Cliente feliz', poster: '' },
-              { src: '/videos/testimonial1.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
-            ].map((vid) => (
-              <div key={vid.id} style={{
-                width: '200px',
-                height: '280px',
-                borderRadius: '16px',
-                overflow: 'hidden',
-                position: 'relative',
-                border: '2px solid rgba(212,175,55,0.3)',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                cursor: 'pointer',
-                flexShrink: 0
-              }} onClick={() => handleTestimonialToggle(vid.id)}>
-                <video
-                  ref={el => videoTestimonialRefs.current[vid.id] = el}
-                  src={vid.src}
-                  playsInline
-                  preload="metadata"
-                  onEnded={() => setPlayingTestimonial(null)}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
-                  }}
-                />
-                {playingTestimonial !== vid.id && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.7))',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      borderRadius: '50%',
-                      background: 'rgba(201,24,74,0.85)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 15px rgba(201,24,74,0.5)'
-                    }}>
-                      <span style={{ fontSize: '20px', marginLeft: '3px' }}>▶</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <p style={{
-            textAlign: 'center',
-            fontSize: '13px',
-            color: '#f5d77a',
-            marginTop: '10px',
-            fontStyle: 'italic'
-          }}>
-            "Mi esposa lloró de felicidad... el mejor regalo que le he dado" ⭐⭐⭐⭐⭐
-          </p>
-        </div>
-
-        {/* ===== LO QUE RECIBES CHECKLIST ===== */}
-        <div style={{
-          background: 'rgba(212,175,55,0.08)',
-          border: '1px solid rgba(212,175,55,0.2)',
-          borderRadius: '14px',
-          padding: '18px 22px',
-          marginBottom: '24px',
-          animation: 'fadeInUp 0.6s ease-out'
-        }}>
-          <p style={{ fontSize: '15px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: '#f5d77a' }}>
-            🎁 Lo que recibes con tu compra:
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
-            {[
-              { icon: '🎵', text: 'Canción completa (~2 min)' },
-              { icon: '⚡', text: 'Descarga instantánea MP3' },
-              { icon: '💬', text: 'Envío por WhatsApp' },
-              { icon: '♾️', text: 'Tuya para siempre' },
-              { icon: '❤️', text: 'Personalizada con su nombre' },
-              { icon: '🔒', text: 'Pago seguro con Stripe' }
-            ].map((item, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: 'rgba(255,255,255,0.85)'
-              }}>
-                <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                <span>{item.text}</span>
-              </div>
-            ))}
           </div>
         </div>
 
-        {/* Actual Checkout Section */}
+        {/* ===== Streamlined Checkout Section ===== */}
         <div style={{
-          background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
-          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
+          background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '20px',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none',
+          marginBottom: '100px' /* Space for sticky bar */
         }}>
-          {/* Coupon Input */}
-          <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', flexWrap: 'wrap'}}>
-            <input
-              type="text"
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              placeholder="¿Tienes un código de cupón?"
-              disabled={!!couponApplied}
-              style={{
-                flex: 1, minWidth: '200px', padding: '14px 18px', 
-                background: 'rgba(255,255,255,0.07)', 
-                border: '2px solid rgba(255,255,255,0.15)', 
-                borderRadius: '10px', color: 'white', fontSize: '15px'
-              }}
-            />
-            {!couponApplied ? (
-              <button 
-                onClick={handleApplyCoupon}
-                disabled={isLoadingCoupon || !couponCode.trim()}
-                style={{
-                  padding: '14px 24px', 
-                  background: couponCode.trim() ? '#f5d77a' : 'rgba(255,255,255,0.1)', 
-                  color: couponCode.trim() ? '#1a3a2f' : 'rgba(255,255,255,0.3)', 
-                  border: 'none', borderRadius: '10px', 
-                  cursor: couponCode.trim() ? 'pointer' : 'not-allowed', 
-                  fontWeight: 'bold', fontSize: '15px'
-                }}
-              >
-                {isLoadingCoupon ? '...' : 'Aplicar'}
-              </button>
-            ) : (
-              <span style={{
-                color: '#22c55e', fontWeight: 'bold',
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '14px 20px', background: 'rgba(34,197,94,0.1)', borderRadius: '10px'
-              }}>
-                ✓ {couponApplied.code} aplicado
-              </span>
-            )}
-          </div>
-          {couponError && (
-            <p style={{color: '#ef4444', fontSize: '14px', marginTop: '-10px', marginBottom: '15px'}}>{couponError}</p>
-          )}
-
-          {/* WhatsApp Phone - Optional */}
+          
+          {/* WhatsApp Phone - Kept per user request (commitment driver) */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(37,211,102,0.08), rgba(37,211,102,0.03))',
             border: '1px solid rgba(37,211,102,0.25)',
             borderRadius: '14px',
-            padding: '16px 18px',
-            marginBottom: '20px'
+            padding: '14px 16px',
+            marginBottom: '16px'
           }}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px'}}>
-              <span style={{fontSize: '20px'}}>📱</span>
-              <p style={{margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: '600'}}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px'}}>
+              <span style={{fontSize: '18px'}}>📱</span>
+              <p style={{margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '13px', fontWeight: '600'}}>
                 ¿Quieres recibir tu canción por WhatsApp?
               </p>
               <span style={{
-                color: 'rgba(255,255,255,0.4)', fontSize: '11px', 
-                border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px',
-                padding: '2px 8px', whiteSpace: 'nowrap'
+                color: 'rgba(255,255,255,0.4)', fontSize: '10px', 
+                border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px',
+                padding: '2px 6px', whiteSpace: 'nowrap'
               }}>
                 Opcional
               </span>
             </div>
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
                 background: 'rgba(255,255,255,0.07)', borderRadius: '10px',
-                padding: '0 12px', border: '2px solid rgba(37,211,102,0.2)',
+                padding: '0 12px', border: '1px solid rgba(37,211,102,0.2)',
                 flex: 1
               }}>
-                <span style={{color: 'rgba(255,255,255,0.5)', fontSize: '14px', userSelect: 'none'}}>+</span>
+                <span style={{color: 'rgba(255,255,255,0.5)', fontSize: '13px', userSelect: 'none'}}>+</span>
                 <input
                   type="tel"
                   value={whatsappPhone}
@@ -1486,33 +1325,119 @@ export default function ComparisonPage() {
                   placeholder="1 (818) 555-1234"
                   maxLength={20}
                   style={{
-                    width: '100%', padding: '12px 0',
+                    width: '100%', padding: '11px 0',
                     background: 'transparent', border: 'none',
-                    color: 'white', fontSize: '15px', outline: 'none'
+                    color: 'white', fontSize: '14px', outline: 'none'
                   }}
                 />
               </div>
               {whatsappPhone.replace(/\D/g, '').length >= 10 && (
-                <span style={{color: '#25D366', fontSize: '20px'}}>✓</span>
+                <span style={{color: '#25D366', fontSize: '18px'}}>✓</span>
               )}
             </div>
-            <p style={{margin: '8px 0 0 0', color: 'rgba(255,255,255,0.4)', fontSize: '12px'}}>
+            <p style={{margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)', fontSize: '11px'}}>
               Te enviaremos el link de descarga directo a tu WhatsApp 💬
             </p>
           </div>
 
-          {/* Checkout Button */}
+          {/* ✅ REC 3: Coupon hidden behind toggle link */}
+          {!showCouponInput ? (
+            <p 
+              onClick={() => setShowCouponInput(true)}
+              style={{
+                textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '13px',
+                cursor: 'pointer', marginBottom: '16px', textDecoration: 'underline',
+                textUnderlineOffset: '3px'
+              }}
+            >
+              ¿Tienes un código de cupón?
+            </p>
+          ) : (
+            <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap'}}>
+              <input
+                type="text"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="Código de cupón"
+                disabled={!!couponApplied}
+                style={{
+                  flex: 1, minWidth: '160px', padding: '12px 14px', 
+                  background: 'rgba(255,255,255,0.07)', 
+                  border: '1px solid rgba(255,255,255,0.15)', 
+                  borderRadius: '10px', color: 'white', fontSize: '14px'
+                }}
+              />
+              {!couponApplied ? (
+                <button 
+                  onClick={handleApplyCoupon}
+                  disabled={isLoadingCoupon || !couponCode.trim()}
+                  style={{
+                    padding: '12px 18px', 
+                    background: couponCode.trim() ? '#f5d77a' : 'rgba(255,255,255,0.08)', 
+                    color: couponCode.trim() ? '#1a3a2f' : 'rgba(255,255,255,0.3)', 
+                    border: 'none', borderRadius: '10px', 
+                    cursor: couponCode.trim() ? 'pointer' : 'not-allowed', 
+                    fontWeight: 'bold', fontSize: '14px'
+                  }}
+                >
+                  {isLoadingCoupon ? '...' : 'Aplicar'}
+                </button>
+              ) : (
+                <span style={{
+                  color: '#22c55e', fontWeight: 'bold',
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  padding: '12px 16px', background: 'rgba(34,197,94,0.1)', borderRadius: '10px',
+                  fontSize: '13px'
+                }}>
+                  ✓ {couponApplied.code}
+                </span>
+              )}
+            </div>
+          )}
+          {couponError && (
+            <p style={{color: '#ef4444', fontSize: '13px', marginTop: '-8px', marginBottom: '12px'}}>{couponError}</p>
+          )}
+
+          {/* ✅ What you get checklist (compact) */}
+          <div style={{
+            background: 'rgba(212,175,55,0.06)',
+            border: '1px solid rgba(212,175,55,0.15)',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            marginBottom: '16px'
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+              {[
+                { icon: '🎵', text: 'Canción completa ~2 min' },
+                { icon: '⚡', text: 'Descarga instantánea' },
+                { icon: '💬', text: 'Envío por WhatsApp' },
+                { icon: '♾️', text: 'Tuya para siempre' },
+                { icon: '❤️', text: 'Personalizada' },
+                { icon: '🔒', text: 'Pago seguro Stripe' }
+              ].map((item, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  fontSize: '12px', color: 'rgba(255,255,255,0.7)'
+                }}>
+                  <span style={{ fontSize: '13px' }}>{item.icon}</span>
+                  <span>{item.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ✅ REC 9: Gift-framed checkout button */}
           <button
             onClick={handleCheckout}
             disabled={isCheckingOut || !hasSelection}
             style={{
-              width: '100%', padding: '22px',
+              width: '100%', padding: '20px',
               background: hasSelection 
                 ? 'linear-gradient(90deg, #e11d74, #c026d3)' 
                 : 'rgba(255,255,255,0.08)',
               color: hasSelection ? 'white' : 'rgba(255,255,255,0.3)',
               border: 'none', borderRadius: '14px',
-              fontSize: '20px', fontWeight: 'bold',
+              fontSize: '18px', fontWeight: 'bold',
               cursor: hasSelection ? 'pointer' : 'not-allowed',
               transition: 'all 0.3s',
               boxShadow: hasSelection ? '0 4px 25px rgba(225,29,116,0.5)' : 'none'
@@ -1521,30 +1446,22 @@ export default function ComparisonPage() {
             {isCheckingOut ? (
               <span>⏳ Procesando...</span>
             ) : !hasSelection ? (
-              <span>👆 Primero selecciona una opción arriba</span>
+              <span>👆 Selecciona una opción</span>
             ) : isFree ? (
               <span>🎉 Descargar Gratis</span>
             ) : (
-              <span>💳 {purchaseBoth ? 'Comprar Ambas Canciones' : 'Comprar Canción Seleccionada'}</span>
+              <span>🎁 Regalar Canción a {recipientName} — ${purchaseBoth ? bundlePrice : singlePrice}</span>
             )}
           </button>
 
-          {/* All sales final disclaimer */}
-          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '12px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
-            Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '10px', lineHeight: 1.5, maxWidth: 320, marginLeft: 'auto', marginRight: 'auto' }}>
+            Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar.
           </p>
 
-          {/* Trust badges */}
-          <div style={{display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', flexWrap: 'wrap'}}>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              🔒 Pago Seguro
-            </span>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              ⚡ Descarga Instantánea
-            </span>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              ✨ Calidad Premium
-            </span>
+          <div style={{display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '14px', flexWrap: 'wrap'}}>
+            {['🔒 Pago Seguro', '⚡ Instantánea', '✨ Premium'].map((badge, i) => (
+              <span key={i} style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px'}}>{badge}</span>
+            ))}
           </div>
         </div>
 
@@ -1555,7 +1472,7 @@ export default function ComparisonPage() {
         {/* ✅ Song 2 Ready Toast */}
         {song2Ready && (
           <div style={{
-            position: 'fixed', bottom: '30px', left: '50%',
+            position: 'fixed', bottom: '100px', left: '50%',
             transform: 'translateX(-50%)',
             background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
             color: 'white', padding: '14px 28px', borderRadius: '50px',
@@ -1567,6 +1484,71 @@ export default function ComparisonPage() {
           }}>
             <span style={{fontSize: '20px'}}>✨</span>
             ¡Versión 2 lista! Escúchala arriba 🔥
+          </div>
+        )}
+
+        {/* ===== REC 2: STICKY BOTTOM CHECKOUT BAR ===== */}
+        {hasSelection && (
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: 'linear-gradient(180deg, rgba(15,32,39,0.0) 0%, rgba(15,32,39,0.95) 15%, #0f2027 100%)',
+            padding: '20px 16px 16px',
+            zIndex: 50,
+            animation: 'stickySlideUp 0.4s ease-out'
+          }}>
+            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+              <button
+                onClick={handleCheckout}
+                disabled={isCheckingOut}
+                style={{
+                  width: '100%',
+                  padding: '16px 24px',
+                  background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '14px',
+                  fontSize: '17px',
+                  fontWeight: 'bold',
+                  cursor: isCheckingOut ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 -2px 20px rgba(225,29,116,0.4), 0 4px 20px rgba(225,29,116,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'all 0.3s'
+                }}
+              >
+                {isCheckingOut ? (
+                  <span>⏳ Procesando...</span>
+                ) : isFree ? (
+                  <span>🎉 Descargar Gratis</span>
+                ) : (
+                  <>
+                    <span>🎁 Regalar a {recipientName}</span>
+                    <span style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      padding: '3px 10px',
+                      borderRadius: '8px',
+                      fontSize: '15px'
+                    }}>
+                      ${purchaseBoth ? bundlePrice : singlePrice}
+                    </span>
+                  </>
+                )}
+              </button>
+              <p style={{
+                textAlign: 'center',
+                fontSize: '11px',
+                color: 'rgba(255,255,255,0.4)',
+                marginTop: '6px',
+                marginBottom: 0
+              }}>
+                {purchaseBoth ? '2 canciones' : getSelectionLabel()} • 🔒 Pago seguro
+              </p>
+            </div>
           </div>
         )}
       </div>
