@@ -181,6 +181,10 @@ export default function SongPage({ songId: propSongId }) {
       de: 'De',
       alguienDedicoCard: (combo) => combo ? 'Alguien te dedicó 2 canciones' : 'Alguien te dedicó una canción',
       cancionNum: (i) => `Canción ${i + 1}`,
+      para: 'Para',
+      conAmor: 'con amor,',
+      conCarino: 'Con todo el cariño de...',
+      conAmorCap: 'Con amor,',
     },
     en: {
       preparando: 'Preparing your song...',
@@ -213,6 +217,10 @@ export default function SongPage({ songId: propSongId }) {
       de: 'From',
       alguienDedicoCard: (combo) => combo ? 'Someone dedicated 2 songs to you' : 'Someone dedicated a song to you',
       cancionNum: (i) => `Song ${i + 1}`,
+      para: 'For',
+      conAmor: 'with love,',
+      conCarino: 'With all the love from...',
+      conAmorCap: 'With love,',
     }
   };
 
@@ -837,7 +845,7 @@ export default function SongPage({ songId: propSongId }) {
                 marginBottom: 8, fontStyle: 'italic',
                 animation: 'envCardContent 0.6s ease-out 3.0s both',
               }}>
-                Con todo el cariño de...
+                {t.conCarino}
               </p>
 
               {/* Sender name */}
@@ -946,7 +954,7 @@ export default function SongPage({ songId: propSongId }) {
           </p>
           {/* "Para [name]" reminder */}
           <p style={{ position: 'absolute', bottom: 60, fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>
-            Para <span style={{ color: 'rgba(244,192,37,0.5)' }}>{recipient}</span>
+            {t.para} <span style={{ color: 'rgba(244,192,37,0.5)' }}>{recipient}</span>
           </p>
         </div>
       </>
@@ -999,11 +1007,11 @@ export default function SongPage({ songId: propSongId }) {
           <div style={{ textAlign: 'center', zIndex: 50, animation: 'nameReveal 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both' }}>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {t.unaCanciones(isCombo)}</p>
             <h1 style={{ fontSize: 'clamp(40px, 10vw, 72px)', fontWeight: 900, lineHeight: 1, textShadow: '0 0 40px rgba(244,192,37,0.3)' }}>
-              Para <span style={{ color: '#f4c025' }}>{recipient}</span>
+              {t.para} <span style={{ color: '#f4c025' }}>{recipient}</span>
             </h1>
             {sender && (
               <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginTop: 16, animation: 'revealFadeIn 0.6s ease-out 1s both', fontStyle: 'italic' }}>
-                Con amor, <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong>
+                {t.conAmorCap} <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong>
               </p>
             )}
           </div>
@@ -1100,10 +1108,10 @@ export default function SongPage({ songId: propSongId }) {
                 </div>
               </div>
               <h1 className="t1-anim2" style={{ fontSize: 'clamp(36px, 8vw, 64px)', fontWeight: 800, lineHeight: 0.95, marginBottom: 8, textShadow: '0 4px 30px rgba(0,0,0,0.3)' }}>
-                Para <span style={{ color: '#f4c025' }}>{recipient}</span>
+                {t.para} <span style={{ color: '#f4c025' }}>{recipient}</span>
               </h1>
               <p className="t1-anim2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginBottom: isCombo ? 20 : 32, fontWeight: 300 }}>
-                {sender && <><em>con amor,</em> <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong></>}
+                {sender && <><em>{t.conAmor}</em> <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong></>}
                 {sender && genre && <span style={{ color: 'rgba(255,255,255,0.25)', margin: '0 8px' }}>·</span>}
                 {genre && <span style={{ color: 'rgba(244,192,37,0.7)', fontSize: 13, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{genre}</span>}
               </p>
@@ -1185,7 +1193,7 @@ export default function SongPage({ songId: propSongId }) {
               )}
               <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <div>
-                  <h2 style={{ fontSize: 20, color: '#0f172a', fontWeight: 600 }}>Para {recipient}</h2>
+                  <h2 style={{ fontSize: 20, color: '#0f172a', fontWeight: 600 }}>{t.para} {recipient}</h2>
                   <p style={{ color: 'rgba(153,71,235,0.7)', fontWeight: 500, fontSize: 14 }}>{genre}{song.occasion ? ` · ${song.occasion.replace(/_/g, ' ')}` : ''}</p>
                 </div>
                 {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 2 }}>{t.duracion}</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
@@ -1193,10 +1201,10 @@ export default function SongPage({ songId: propSongId }) {
               <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(153,71,235,0.06)', paddingTop: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                   <div style={{ height: 1, width: 32, background: 'rgba(153,71,235,0.25)' }} />
-                  <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(153,71,235,0.5)', fontWeight: 700 }}>Dedicatoria</span>
+                  <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(153,71,235,0.5)', fontWeight: 700 }}>{lang === 'en' ? 'Dedication' : 'Dedicatoria'}</span>
                 </div>
                 <p style={{ fontSize: 17, lineHeight: 1.7, color: '#475569', fontWeight: 300, fontStyle: 'italic' }}>{dedication}</p>
-                {sender && <p style={{ textAlign: 'right', color: '#9947eb', fontWeight: 500, marginTop: 8, fontSize: 15 }}>— Con amor, {sender}</p>}
+                {sender && <p style={{ textAlign: 'right', color: '#9947eb', fontWeight: 500, marginTop: 8, fontSize: 15 }}>— {t.conAmorCap} {sender}</p>}
               </div>
               {/* Player */}
               <div style={{ padding: '0 24px 24px' }}>
@@ -1275,7 +1283,7 @@ export default function SongPage({ songId: propSongId }) {
               {Array.from({ length: 15 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 4, height: isPlaying ? 14 : 6, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'height 0.1s, opacity 0.3s', opacity: isPlaying ? 0.85 : 0.3 }} />))}
             </div>
             <div className="t3-anim3" style={{ textAlign: 'center', width: '100%', maxWidth: 500 }}>
-              <h1 style={{ fontSize: 'clamp(24px, 5.5vw, 42px)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em', marginBottom: 4 }}>Para {recipient}</h1>
+              <h1 style={{ fontSize: 'clamp(24px, 5.5vw, 42px)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em', marginBottom: 4 }}>{t.para} {recipient}</h1>
               <p style={{ color: '#f20d59', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 500 }}>{t.de} {sender || (lang === 'en' ? 'Someone special' : 'Alguien especial')} · {genre}</p>
             </div>
             {isCombo && <div className="t3-anim3" style={{ marginTop: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="electric_magenta" lang={lang} /></div>}
