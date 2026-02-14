@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
+import SocialProofToast from '../components/SocialProofToast';
 
 const HEART_SVG = "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
 
@@ -73,31 +74,7 @@ export default function LandingPagePremium() {
     return () => clearInterval(iv);
   }, []);
 
-  // ═══════════════════════════════════════
-  // SOCIAL PROOF TICKER
-  // ═══════════════════════════════════════
-  const proofMessages = [
-    '🎵 María de Los Ángeles regaló una canción hace 3 min',
-    '🎵 Carlos de Houston compró 2 canciones hace 8 min',
-    '🎵 Ana de Chicago regaló un corrido hace 12 min',
-    '🎵 José de Dallas compró una bachata hace 5 min',
-    '🎵 Laura de Phoenix regaló 2 canciones hace 15 min',
-    '🎵 Roberto de San Antonio compró una banda hace 7 min',
-    '🎵 Daniela de Denver regaló una romántica hace 2 min',
-    '💝 47 canciones regaladas hoy para San Valentín',
-  ];
-  const [proofIndex, setProofIndex] = useState(0);
-  const [proofVisible, setProofVisible] = useState(true);
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setProofVisible(false);
-      setTimeout(() => {
-        setProofIndex(i => (i + 1) % proofMessages.length);
-        setProofVisible(true);
-      }, 400);
-    }, 4000);
-    return () => clearInterval(iv);
-  }, []);
+  // (Social proof handled by SocialProofToast component)
 
   // Video refs and state
   const videoRefs = useRef({});
@@ -194,22 +171,8 @@ export default function LandingPagePremium() {
         ⏰ San Valentín termina en <span style={{ color: '#fde68a', fontFamily: 'monospace', fontSize: '15px', letterSpacing: '0.05em' }}>{countdown}</span> — ¡Tu canción lista en minutos! 💝
       </div>
 
-      {/* SOCIAL PROOF TICKER */}
-      <div style={{
-        background: 'rgba(0,0,0,0.6)', textAlign: 'center', padding: '8px 20px',
-        fontSize: '12px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em',
-        borderBottom: '1px solid rgba(201,24,74,0.1)',
-        height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden'
-      }}>
-        <span style={{
-          transition: 'opacity 0.4s, transform 0.4s',
-          opacity: proofVisible ? 1 : 0,
-          transform: proofVisible ? 'translateY(0)' : 'translateY(-10px)'
-        }}>
-          {proofMessages[proofIndex]}
-        </span>
-      </div>
+      {/* SOCIAL PROOF TOAST */}
+      <SocialProofToast />
 
       {/* HEADER */}
       <div className="lpp-header" style={{

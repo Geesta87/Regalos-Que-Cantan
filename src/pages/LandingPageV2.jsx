@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
 import { trackStep } from '../services/tracking';
+import SocialProofToast from '../components/SocialProofToast';
 
 // ============================================
 // SAMPLE SONGS - Your actual customer samples
@@ -210,30 +211,7 @@ export default function LandingPageV2() {
     return () => clearInterval(iv);
   }, []);
 
-  // ═══════════════════════════════════════
-  // SOCIAL PROOF TICKER
-  // ═══════════════════════════════════════
-  const proofMessages = [
-    '🎵 María de Los Ángeles regaló una canción hace 3 min',
-    '🎵 Carlos de Houston compró 2 canciones hace 8 min',
-    '🎵 Ana de Chicago regaló un corrido hace 12 min',
-    '🎵 José de Dallas compró una bachata hace 5 min',
-    '🎵 Laura de Phoenix regaló 2 canciones hace 15 min',
-    '🎵 Roberto de San Antonio compró una banda hace 7 min',
-    '💝 47 canciones regaladas hoy para San Valentín',
-  ];
-  const [proofIndex, setProofIndex] = useState(0);
-  const [proofVisible, setProofVisible] = useState(true);
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setProofVisible(false);
-      setTimeout(() => {
-        setProofIndex(i => (i + 1) % proofMessages.length);
-        setProofVisible(true);
-      }, 400);
-    }, 4000);
-    return () => clearInterval(iv);
-  }, []);
+  // (Social proof handled by SocialProofToast component)
 
   // Audio player logic
   useEffect(() => {
@@ -288,12 +266,8 @@ export default function LandingPageV2() {
         ⏰ San Valentín termina en <span className="text-yellow-300 font-mono tracking-wide">{countdown}</span> — ¡Tu canción lista en minutos! 💝
       </div>
 
-      {/* SOCIAL PROOF TICKER */}
-      <div className="bg-black/60 text-center py-2 px-4 text-xs text-white/60 border-b border-red-500/10" style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        <span style={{ transition: 'opacity 0.4s, transform 0.4s', opacity: proofVisible ? 1 : 0, transform: proofVisible ? 'translateY(0)' : 'translateY(-10px)' }}>
-          {proofMessages[proofIndex]}
-        </span>
-      </div>
+      {/* SOCIAL PROOF TOAST */}
+      <SocialProofToast />
 
       {/* Header */}
       <header className="bg-forest/80 backdrop-blur-md py-4 px-6 md:px-12">
