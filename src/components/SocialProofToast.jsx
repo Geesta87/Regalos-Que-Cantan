@@ -39,6 +39,13 @@ function generateMessage() {
 export default function SocialProofToast() {
   const [visible, setVisible] = useState(false);
   const [msg, setMsg] = useState(generateMessage);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     // First toast after 8 seconds
@@ -68,13 +75,17 @@ export default function SocialProofToast() {
     <div
       style={{
         position: 'fixed',
-        bottom: 24,
-        left: 24,
         zIndex: 9999,
         pointerEvents: 'none',
         transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
         opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.95)',
+        // Mobile: top center, slide down. Desktop: bottom left, slide up.
+        bottom: isMobile ? 'auto' : 24,
+        top: isMobile ? 56 : 'auto',
+        left: isMobile ? '50%' : 24,
+        transform: visible
+          ? isMobile ? 'translateX(-50%) translateY(0)' : 'translateY(0) scale(1)'
+          : isMobile ? 'translateX(-50%) translateY(-20px)' : 'translateY(20px) scale(0.95)',
       }}
     >
       <div
