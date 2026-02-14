@@ -1324,7 +1324,7 @@ export default function ComparisonPage() {
                     🎁 El Regalo Completo
                   </p>
                   <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.4' }}>
-                    Una para llorar, otra para bailar — que {recipientName} elija su favorita
+                    2 versiones únicas — porque un regalo así merece más de una opción
                   </p>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
