@@ -117,7 +117,7 @@ export default function ComparisonPage() {
 
   // Pricing
   const singlePrice = 24.99;
-  const bundlePrice = 34.99;
+  const bundlePrice = 39.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
 

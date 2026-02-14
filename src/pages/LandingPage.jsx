@@ -215,7 +215,7 @@ export default function LandingPage() {
           
           <p className="text-red-400 text-base font-semibold flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
             <span>💝</span>
-            Desde <span className="line-through text-red-400/50">$49.99</span> <span className="text-gold font-bold">$29.99</span> · ¡Preview gratis!
+            Desde <span className="line-through text-red-400/50">$49.99</span> <span className="text-gold font-bold">$24.99</span> · ¡Preview gratis!
             <span>💝</span>
           </p>
         </div>
