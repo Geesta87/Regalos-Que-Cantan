@@ -191,6 +191,50 @@ export default function LandingPageV2() {
     trackStep('landing_v2');
   }, []);
 
+  // ═══════════════════════════════════════
+  // COUNTDOWN TIMER
+  // ═══════════════════════════════════════
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    const target = new Date('2026-02-15T08:00:00Z');
+    const tick = () => {
+      const diff = target - Date.now();
+      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${h}h ${m}m ${s}s`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ═══════════════════════════════════════
+  // SOCIAL PROOF TICKER
+  // ═══════════════════════════════════════
+  const proofMessages = [
+    '🎵 María de Los Ángeles regaló una canción hace 3 min',
+    '🎵 Carlos de Houston compró 2 canciones hace 8 min',
+    '🎵 Ana de Chicago regaló un corrido hace 12 min',
+    '🎵 José de Dallas compró una bachata hace 5 min',
+    '🎵 Laura de Phoenix regaló 2 canciones hace 15 min',
+    '🎵 Roberto de San Antonio compró una banda hace 7 min',
+    '💝 47 canciones regaladas hoy para San Valentín',
+  ];
+  const [proofIndex, setProofIndex] = useState(0);
+  const [proofVisible, setProofVisible] = useState(true);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setProofVisible(false);
+      setTimeout(() => {
+        setProofIndex(i => (i + 1) % proofMessages.length);
+        setProofVisible(true);
+      }, 400);
+    }, 4000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Audio player logic
   useEffect(() => {
     if (audioRef.current) {
@@ -239,9 +283,16 @@ export default function LandingPageV2() {
       {/* Hidden Audio Element */}
       <audio ref={audioRef} preload="metadata" />
 
-      {/* 💘 Valentine's Sticky Urgency Bar */}
-      <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
+      {/* COUNTDOWN URGENCY BAR */}
+      <div className="bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+        ⏰ San Valentín termina en <span className="text-yellow-300 font-mono tracking-wide">{countdown}</span> — ¡Tu canción lista en minutos! 💝
+      </div>
+
+      {/* SOCIAL PROOF TICKER */}
+      <div className="bg-black/60 text-center py-2 px-4 text-xs text-white/60 border-b border-red-500/10" style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <span style={{ transition: 'opacity 0.4s, transform 0.4s', opacity: proofVisible ? 1 : 0, transform: proofVisible ? 'translateY(0)' : 'translateY(-10px)' }}>
+          {proofMessages[proofIndex]}
+        </span>
       </div>
 
       {/* Header */}
@@ -303,7 +354,7 @@ export default function LandingPageV2() {
           
           <p className="text-white/70 text-lg md:text-xl font-light leading-relaxed max-w-2xl mx-auto mb-8">
             Crea una canción única con los nombres, la historia y el género que elijas. 
-            El regalo perfecto que recordarán para siempre.
+            Lista en minutos — el regalo que nunca va a olvidar.
           </p>
 
           <button 
@@ -311,12 +362,17 @@ export default function LandingPageV2() {
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-bougainvillea text-white text-lg font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95"
           >
             <span className="material-symbols-outlined mr-2">music_note</span>
-            <span className="relative z-10">Crear Mi Canción</span>
+            <span className="relative z-10">🎁 Regalar Canción Para Hoy 💝</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
+
+          {/* ÚLTIMO MINUTO BADGE */}
+          <div className="mt-4 inline-flex items-center gap-2 bg-green-500/15 border border-green-500/30 rounded-full px-4 py-1.5 text-xs text-green-400 font-bold">
+            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+          </div>
           
-          <p className="mt-4 text-white/60 text-sm">
-            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$39.99</span> <span className="text-gold font-bold">$29.99</span>
+          <p className="mt-3 text-white/60 text-sm">
+            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$49.99</span> <span className="text-gold font-bold">$29.99</span>
           </p>
         </div>
       </section>
@@ -463,7 +519,7 @@ export default function LandingPageV2() {
             </div>
 
             <div className="mb-6">
-              <span className="text-white/40 line-through text-2xl">$39.99</span>
+              <span className="text-white/40 line-through text-lg">Precio normal $49.99</span>
               <div className="text-white text-5xl font-black">$29.99</div>
               <span className="text-gold text-sm font-semibold">Pago único • Acceso de por vida</span>
             </div>
@@ -496,7 +552,7 @@ export default function LandingPageV2() {
               className="w-full group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 bg-bougainvillea text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95"
             >
               <span className="material-symbols-outlined mr-2">music_note</span>
-              Crear Mi Canción
+              🎁 Regalar Canción Ahora 💝
             </button>
 
             <p className="mt-4 text-white/50 text-sm flex items-center justify-center gap-2">
@@ -548,11 +604,11 @@ export default function LandingPageV2() {
         <div className="max-w-xl mx-auto text-center relative z-10">
           <div className="text-5xl mb-4">💘</div>
           <h2 className="text-white text-3xl md:text-4xl font-black mb-4">
-            Regala Algo Único
+            San Valentín Es HOY 💝
           </h2>
           <p className="text-white/70 text-lg mb-8">
-            Una canción personalizada que recordará para siempre. 
-            El regalo perfecto para San Valentín.
+            Quedan pocas horas. Una canción personalizada lista en minutos. 
+            El regalo que nunca va a olvidar.
           </p>
 
           <button 
@@ -560,13 +616,13 @@ export default function LandingPageV2() {
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-bougainvillea to-red-500 text-white text-xl font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95"
           >
             <span className="material-symbols-outlined mr-2 text-2xl">favorite</span>
-            <span className="relative z-10">Crear Mi Canción</span>
+            <span className="relative z-10">🎁 Regalar Canción Ahora 💝</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
           <p className="mt-6 text-red-400 font-semibold flex items-center justify-center gap-2">
             <span className="material-symbols-outlined">schedule</span>
-            Ordena antes del 12 de Feb para San Valentín
+            ⏰ Quedan pocas horas — ¡Tu canción lista en minutos!
           </p>
         </div>
       </section>

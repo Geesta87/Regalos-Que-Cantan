@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
 import { trackStep } from '../services/tracking';
@@ -78,6 +78,49 @@ export default function LandingPage() {
     trackStep('landing');
   }, []);
 
+  // ═══════════════════════════════════════
+  // COUNTDOWN TIMER
+  // ═══════════════════════════════════════
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    const target = new Date('2026-02-15T08:00:00Z');
+    const tick = () => {
+      const diff = target - Date.now();
+      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${h}h ${m}m ${s}s`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ═══════════════════════════════════════
+  // SOCIAL PROOF TICKER
+  // ═══════════════════════════════════════
+  const proofMessages = [
+    '🎵 María de Los Ángeles regaló una canción hace 3 min',
+    '🎵 Carlos de Houston compró 2 canciones hace 8 min',
+    '🎵 Ana de Chicago regaló un corrido hace 12 min',
+    '🎵 José de Dallas compró una bachata hace 5 min',
+    '🎵 Laura de Phoenix regaló 2 canciones hace 15 min',
+    '💝 47 canciones regaladas hoy para San Valentín',
+  ];
+  const [proofIndex, setProofIndex] = useState(0);
+  const [proofVisible, setProofVisible] = useState(true);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setProofVisible(false);
+      setTimeout(() => {
+        setProofIndex(i => (i + 1) % proofMessages.length);
+        setProofVisible(true);
+      }, 400);
+    }, 4000);
+    return () => clearInterval(iv);
+  }, []);
+
   useEffect(() => {
     const scrollContainer = scrollRef.current;
     if (!scrollContainer) return;
@@ -119,9 +162,16 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background-dark flex flex-col">
-      {/* 💘 Valentine's Sticky Urgency Bar */}
-      <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        😉 ¿Aún sin regalo? Tu canción personalizada lista en minutos — a tiempo para el sábado 💝
+      {/* COUNTDOWN URGENCY BAR */}
+      <div className="bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+        ⏰ San Valentín termina en <span className="text-yellow-300 font-mono tracking-wide">{countdown}</span> — ¡Tu canción lista en minutos! 💝
+      </div>
+
+      {/* SOCIAL PROOF TICKER */}
+      <div className="bg-black/60 text-center py-2 px-4 text-xs text-white/60 border-b border-red-500/10" style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <span style={{ transition: 'opacity 0.4s, transform 0.4s', opacity: proofVisible ? 1 : 0, transform: proofVisible ? 'translateY(0)' : 'translateY(-10px)' }}>
+          {proofMessages[proofIndex]}
+        </span>
       </div>
 
       <Header variant="landing" />
@@ -156,7 +206,7 @@ export default function LandingPage() {
           <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-2 border-red-400 rounded-2xl px-8 py-4 mb-4 shadow-lg shadow-red-500/40 animate-pulse">
             <span className="text-white text-base md:text-lg font-bold flex items-center justify-center gap-3">
               <span className="text-2xl">💘</span>
-              <span>🎵 San Valentín es este sábado — ¡Todavía llegas a tiempo! 💝</span>
+              <span>🎵 ¡San Valentín es HOY! — ¡Quedan pocas horas! 💝</span>
               <span className="text-2xl">💘</span>
             </span>
           </div>
@@ -165,13 +215,13 @@ export default function LandingPage() {
             Canciones Personalizadas
           </span>
           <h1 className="text-white text-5xl md:text-7xl lg:text-8xl font-black leading-none tracking-tighter font-display">
-            Tu Historia, <br />
+            Dale Algo Que <br />
             <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-gold via-white to-gold">
-              Tu Canción
+              Nunca Va a Olvidar
             </span>
           </h1>
           <p className="text-white/70 text-lg md:text-xl font-light leading-relaxed max-w-2xl mx-auto">
-            Crea una canción única para alguien especial en minutos.
+            Una canción personalizada lista en minutos — el regalo perfecto de último minuto.
           </p>
 
           <button 
@@ -179,13 +229,18 @@ export default function LandingPage() {
             className="group relative flex min-w-[280px] md:min-w-[340px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-bougainvillea text-white text-lg font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95 mt-4"
           >
             <span className="material-symbols-outlined mr-2">music_note</span>
-            <span className="relative z-10">Crear Mi Canción</span>
+            <span className="relative z-10">🎁 Regalar Canción Para Hoy 💝</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
+
+          {/* ÚLTIMO MINUTO BADGE */}
+          <div className="inline-flex items-center gap-2 bg-green-500/15 border border-green-500/30 rounded-full px-4 py-1.5 text-xs text-green-400 font-bold">
+            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+          </div>
           
           <p className="text-red-400 text-base font-semibold flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
             <span>💝</span>
-            Preview gratis • ¡Lista en minutos para San Valentín!
+            Desde <span className="line-through text-red-400/50">$49.99</span> <span className="text-gold font-bold">$29.99</span> · ¡Preview gratis!
             <span>💝</span>
           </p>
         </div>

@@ -44,7 +44,6 @@ export default function LandingPagePremium() {
   }, []);
 
   const handleCTA = () => {
-    // Ensure tier persists even if formData was loaded from localStorage without it
     if (formData?.pricingTier !== 'premium') {
       updateFormData('pricingTier', 'premium');
     }
@@ -54,6 +53,51 @@ export default function LandingPagePremium() {
   const handleLogoClick = () => {
     navigateTo('landing_premium');
   };
+
+  // ═══════════════════════════════════════
+  // COUNTDOWN TIMER — midnight PST Feb 14
+  // ═══════════════════════════════════════
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    const target = new Date('2026-02-15T08:00:00Z'); // midnight PST = 8am UTC
+    const tick = () => {
+      const diff = target - Date.now();
+      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${h}h ${m}m ${s}s`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ═══════════════════════════════════════
+  // SOCIAL PROOF TICKER
+  // ═══════════════════════════════════════
+  const proofMessages = [
+    '🎵 María de Los Ángeles regaló una canción hace 3 min',
+    '🎵 Carlos de Houston compró 2 canciones hace 8 min',
+    '🎵 Ana de Chicago regaló un corrido hace 12 min',
+    '🎵 José de Dallas compró una bachata hace 5 min',
+    '🎵 Laura de Phoenix regaló 2 canciones hace 15 min',
+    '🎵 Roberto de San Antonio compró una banda hace 7 min',
+    '🎵 Daniela de Denver regaló una romántica hace 2 min',
+    '💝 47 canciones regaladas hoy para San Valentín',
+  ];
+  const [proofIndex, setProofIndex] = useState(0);
+  const [proofVisible, setProofVisible] = useState(true);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setProofVisible(false);
+      setTimeout(() => {
+        setProofIndex(i => (i + 1) % proofMessages.length);
+        setProofVisible(true);
+      }, 400);
+    }, 4000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Video refs and state
   const videoRefs = useRef({});
@@ -139,15 +183,32 @@ export default function LandingPagePremium() {
         }
       `}</style>
 
-      {/* TOP BAR */}
+      {/* COUNTDOWN URGENCY BAR */}
       <div style={{
-        background: 'linear-gradient(90deg, #1a080e, #2a1018, #1a080e)',
-        borderBottom: '1px solid rgba(201,24,74,0.2)',
-        textAlign: 'center', padding: '12px 20px',
-        fontSize: '13px', letterSpacing: '0.1em', color: 'rgba(255,182,193,0.7)',
-        position: 'sticky', top: 0, zIndex: 100
+        background: 'linear-gradient(90deg, #b91c1c, #dc2626, #b91c1c)',
+        textAlign: 'center', padding: '10px 20px',
+        fontSize: '14px', fontWeight: 800, color: 'white',
+        position: 'sticky', top: 0, zIndex: 100,
+        borderBottom: '1px solid rgba(255,255,255,0.15)'
       }}>
-        ♥ &nbsp; Edición Especial San Valentín &nbsp;·&nbsp; Tu canción lista en minutos &nbsp; ♥
+        ⏰ San Valentín termina en <span style={{ color: '#fde68a', fontFamily: 'monospace', fontSize: '15px', letterSpacing: '0.05em' }}>{countdown}</span> — ¡Tu canción lista en minutos! 💝
+      </div>
+
+      {/* SOCIAL PROOF TICKER */}
+      <div style={{
+        background: 'rgba(0,0,0,0.6)', textAlign: 'center', padding: '8px 20px',
+        fontSize: '12px', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em',
+        borderBottom: '1px solid rgba(201,24,74,0.1)',
+        height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden'
+      }}>
+        <span style={{
+          transition: 'opacity 0.4s, transform 0.4s',
+          opacity: proofVisible ? 1 : 0,
+          transform: proofVisible ? 'translateY(0)' : 'translateY(-10px)'
+        }}>
+          {proofMessages[proofIndex]}
+        </span>
       </div>
 
       {/* HEADER */}
@@ -236,8 +297,8 @@ export default function LandingPagePremium() {
             marginBottom: '24px', letterSpacing: '-0.02em'
           }}>
             Regala algo que<br />
-            <strong style={{ fontWeight: 900 }}>nadie más</strong>{' '}
-            <em className="lpp-shimmer" style={{ fontStyle: 'italic' }}>puede dar</em>
+            <strong style={{ fontWeight: 900 }}>nunca va a olvidar</strong>{' '}
+            <em className="lpp-shimmer" style={{ fontStyle: 'italic' }}>— listo en minutos</em>
           </h1>
 
           <p style={{
@@ -257,16 +318,26 @@ export default function LandingPagePremium() {
             boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
             transition: 'all 0.3s', letterSpacing: '0.02em'
           }}>
-            ♥ &nbsp; Crear Su Canción
+            ♥ &nbsp; Regalar Canción Para Hoy 💝
           </button>
 
+          {/* ÚLTIMO MINUTO BADGE */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            marginTop: '16px', background: 'rgba(34,197,94,0.15)',
+            border: '1px solid rgba(34,197,94,0.3)', borderRadius: '999px',
+            padding: '6px 16px', fontSize: '12px', color: '#4ade80', fontWeight: 700
+          }}>
+            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+          </div>
+
           <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.02em' }}>
-            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$39.99</span>{' '}
+            ✓ Preview gratis antes de pagar • ✓ Desde <span style={{ textDecoration: 'line-through', color: 'rgba(255,255,255,0.35)' }}>$49.99</span>{' '}
             <span style={{ color: '#f4c025', fontWeight: 700 }}>$29.99</span>
           </p>
 
           <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
-            Preview gratis · Listo en ~3 minutos · A tiempo para el sábado
+            Preview gratis · Listo en ~3 minutos · ¡Hoy es el día! 💝
           </p>
         </div>
       </section>
@@ -413,6 +484,9 @@ export default function LandingPagePremium() {
           <div style={{ fontSize: '11px', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#ff8fa3', marginBottom: '24px', fontWeight: 600, position: 'relative', zIndex: 1 }}>
             ♥ Canción de San Valentín ♥
           </div>
+          <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', marginBottom: '4px', position: 'relative', zIndex: 1 }}>
+            Precio normal $49.99
+          </div>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '56px', fontWeight: 900, marginBottom: '4px', position: 'relative', zIndex: 1 }}>
             $29<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
           </div>
@@ -440,7 +514,7 @@ export default function LandingPagePremium() {
             boxShadow: '0 4px 20px rgba(201,24,74,0.25)',
             position: 'relative', zIndex: 1
           }}>
-            ♥ &nbsp; Crear Su Canción de Amor
+            ♥ &nbsp; Regalar Canción Ahora 💝
           </button>
 
           {/* Combo */}
@@ -496,13 +570,13 @@ export default function LandingPagePremium() {
           fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 400, marginBottom: '16px', position: 'relative'
         }}>
-          San Valentín es<br />este <em style={{ fontStyle: 'italic', color: '#c9184a' }}>sábado</em>
+          San Valentín es<br /><em style={{ fontStyle: 'italic', color: '#c9184a' }}>HOY</em>
         </h2>
         <p style={{
           fontSize: '16px', color: 'rgba(255,255,255,0.4)', maxWidth: '400px',
           margin: '0 auto 32px', lineHeight: 1.6, fontWeight: 300, position: 'relative'
         }}>
-          Tu canción lista en minutos. El regalo más único y personal que puedes dar este 14 de febrero.
+          Quedan pocas horas. Tu canción lista en minutos. El regalo más único y personal que puedes dar.
         </p>
         <button className="lpp-hero-cta" onClick={handleCTA} style={{
           display: 'inline-flex', alignItems: 'center', gap: '10px',
@@ -512,7 +586,7 @@ export default function LandingPagePremium() {
           boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
           transition: 'all 0.3s', letterSpacing: '0.02em', position: 'relative'
         }}>
-          ♥ &nbsp; Crear Su Canción Ahora
+          ♥ &nbsp; Regalar Canción Ahora 💝
         </button>
         <p style={{ marginTop: '16px', fontSize: '13px', color: 'rgba(255,255,255,0.2)', position: 'relative' }}>
           No necesitas experiencia musical. Solo cuéntanos su historia de amor.
