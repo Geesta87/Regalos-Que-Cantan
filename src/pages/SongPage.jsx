@@ -140,6 +140,10 @@ export default function SongPage({ songId: propSongId }) {
   const audioRef = useRef(null);
   const vizRef = useRef(null);
   const sfxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const [typedCharCount, setTypedCharCount] = useState(0);
+  const [dedicationTyping, setDedicationTyping] = useState(false);
 
   // ═══════════════════════════════════════
   // LANGUAGE SUPPORT (?lang=en)
@@ -289,19 +293,66 @@ export default function SongPage({ songId: propSongId }) {
     return () => Object.entries(h).forEach(([e, fn]) => a.removeEventListener(e, fn));
   }, [song, activeIndex]);
 
-  // Visualizer
+  // Real Waveform Visualizer (Web Audio API)
   useEffect(() => {
-    if (!isPlaying) return;
-    let raf;
-    const tick = () => {
-      vizRef.current?.querySelectorAll('.sp-vbar').forEach((bar, i) => {
-        bar.style.height = (6 + Math.sin(Date.now() / (150 + i * 25) + i * 0.8) * 14 + Math.random() * 8) + 'px';
-        bar.style.opacity = '0.85';
-      });
-      raf = requestAnimationFrame(tick);
+    const a = audioRef.current;
+    if (!a) return;
+
+    // Connect audio element to analyser (once only)
+    const connectAnalyser = () => {
+      if (analyserRef.current) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.8;
+        if (!audioSourceRef.current) {
+          audioSourceRef.current = ctx.createMediaElementSource(a);
+        }
+        audioSourceRef.current.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyserRef.current = analyser;
+      } catch (e) { console.log('Visualizer fallback'); }
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    if (isPlaying) {
+      connectAnalyser();
+      const analyser = analyserRef.current;
+      const bars = vizRef.current?.querySelectorAll('.sp-vbar');
+      if (!bars || bars.length === 0) return;
+
+      const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+      let raf;
+
+      const tick = () => {
+        if (analyser && dataArray) {
+          analyser.getByteFrequencyData(dataArray);
+          const barCount = bars.length;
+          const step = Math.max(1, Math.floor(dataArray.length / barCount));
+          bars.forEach((bar, i) => {
+            const val = dataArray[i * step] || 0;
+            const h = 4 + (val / 255) * 38;
+            bar.style.height = h + 'px';
+            bar.style.opacity = (0.4 + (val / 255) * 0.6).toFixed(2);
+          });
+        } else {
+          // Fallback if Web Audio unavailable
+          bars.forEach((bar, i) => {
+            bar.style.height = (6 + Math.sin(Date.now() / (150 + i * 25) + i * 0.8) * 14 + Math.random() * 8) + 'px';
+            bar.style.opacity = '0.85';
+          });
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    } else {
+      // Reset bars to idle
+      vizRef.current?.querySelectorAll('.sp-vbar').forEach((bar) => {
+        bar.style.height = '4px';
+        bar.style.opacity = '0.3';
+      });
+    }
   }, [isPlaying]);
 
   const toggle = () => {
@@ -551,6 +602,38 @@ export default function SongPage({ songId: propSongId }) {
   };
 
   const dedication = useMemo(() => song ? generateDedication(song) : '', [song]);
+
+  // ═══════════════════════════════════════
+  // TYPED DEDICATION REVEAL (#3)
+  // ═══════════════════════════════════════
+  useEffect(() => {
+    if (phase !== 'ready' || !dedication) return;
+    setTypedCharCount(0);
+    setDedicationTyping(true);
+    let i = 0;
+    const baseSpeed = 35;
+    let timeout;
+    const typeNext = () => {
+      i++;
+      setTypedCharCount(i);
+      if (i >= dedication.length) {
+        setDedicationTyping(false);
+        return;
+      }
+      const ch = dedication[i];
+      const delay = (ch === '.' || ch === ',' || ch === '—' || ch === '…') ? 220
+        : ch === ' ' ? 20
+        : baseSpeed + Math.random() * 15;
+      timeout = setTimeout(typeNext, delay);
+    };
+    timeout = setTimeout(typeNext, 600); // initial delay before typing starts
+    return () => clearTimeout(timeout);
+  }, [phase, dedication]);
+
+  const typedDedication = useMemo(() => {
+    if (phase !== 'ready') return '';
+    return dedication.slice(0, typedCharCount);
+  }, [dedication, typedCharCount, phase]);
   const progress = dur > 0 ? (time / dur) * 100 : 0;
   const template = 'golden_hour';
 
@@ -1118,8 +1201,8 @@ export default function SongPage({ songId: propSongId }) {
               {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" lang={lang} /></div>}
               {/* Glass player */}
               <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, padding: 28, borderRadius: 20, boxShadow: '0 25px 50px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24 }}>
-                <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 32, marginBottom: 24 }}>
-                  {Array.from({ length: 20 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: isPlaying ? 14 : 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: isPlaying ? 0.85 : 0.3, transition: 'height 0.1s, opacity 0.3s' }} />))}
+                <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 40, marginBottom: 24 }}>
+                  {Array.from({ length: 32 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: 0.3, transition: 'height 0.08s ease-out, opacity 0.15s' }} />))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginBottom: 24 }}>
                   <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
@@ -1154,7 +1237,10 @@ export default function SongPage({ songId: propSongId }) {
             <div className="t1-anim5" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'center' }}>
               <div className="t1-glass" style={{ width: '100%', maxWidth: 420, borderRadius: 20, padding: 20, position: 'relative' }}>
                 <span style={{ position: 'absolute', top: 16, left: 20, fontSize: 20, color: 'rgba(244,192,37,0.5)' }}>❝</span>
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32 }}>{dedication}</p>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32, minHeight: '3.4em' }}>
+                  {typedDedication}
+                  {dedicationTyping && <span style={{ display: 'inline-block', width: 2, height: '1em', background: '#f4c025', marginLeft: 2, verticalAlign: 'text-bottom', animation: 'cursorBlink 0.7s steps(1) infinite' }} />}
+                </p>
               </div>
             </div>
             {brandFooter('rgba(244,192,37,0.3)', 'rgba(255,255,255,0.15)')}
@@ -1203,7 +1289,10 @@ export default function SongPage({ songId: propSongId }) {
                   <div style={{ height: 1, width: 32, background: 'rgba(153,71,235,0.25)' }} />
                   <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(153,71,235,0.5)', fontWeight: 700 }}>{lang === 'en' ? 'Dedication' : 'Dedicatoria'}</span>
                 </div>
-                <p style={{ fontSize: 17, lineHeight: 1.7, color: '#475569', fontWeight: 300, fontStyle: 'italic' }}>{dedication}</p>
+                <p style={{ fontSize: 17, lineHeight: 1.7, color: '#475569', fontWeight: 300, fontStyle: 'italic', minHeight: '3.4em' }}>
+                  {typedDedication}
+                  {dedicationTyping && <span style={{ display: 'inline-block', width: 2, height: '1em', background: '#9947eb', marginLeft: 2, verticalAlign: 'text-bottom', animation: 'cursorBlink 0.7s steps(1) infinite' }} />}
+                </p>
                 {sender && <p style={{ textAlign: 'right', color: '#9947eb', fontWeight: 500, marginTop: 8, fontSize: 15 }}>— {t.conAmorCap} {sender}</p>}
               </div>
               {/* Player */}
@@ -1273,14 +1362,15 @@ export default function SongPage({ songId: propSongId }) {
             )}
             <div className="t3-anim2" style={{ position: 'absolute', bottom: 32, left: 24, zIndex: 20, maxWidth: '85%' }}>
               <p style={{ fontSize: 'clamp(20px, 4.5vw, 36px)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '-0.05em', lineHeight: 1.05 }}>
-                {dedication.replace(/[💕❤️🎵💫🎂🎁💌🌹💒🥂🎓🌟🌷💐🤍💙⭐🎉✨🤝🫂💝]/g, '').trim()}
+                {typedDedication.replace(/[💕❤️🎵💫🎂🎁💌🌹💒🥂🎓🌟🌷💐🤍💙⭐🎉✨🤝🫂💝]/g, '').trim()}
+                {dedicationTyping && <span style={{ display: 'inline-block', width: 3, height: '0.85em', background: '#f20d59', marginLeft: 3, verticalAlign: 'text-bottom', animation: 'cursorBlink 0.7s steps(1) infinite' }} />}
               </p>
             </div>
           </section>
           {/* Player section */}
           <section style={{ flex: 1, width: '100%', background: '#0a0507', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 24px 80px', borderTop: '1px solid rgba(242,13,89,0.15)' }}>
-            <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 4, height: 64, marginBottom: 24, opacity: 0.7 }}>
-              {Array.from({ length: 15 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 4, height: isPlaying ? 14 : 6, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'height 0.1s, opacity 0.3s', opacity: isPlaying ? 0.85 : 0.3 }} />))}
+            <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 64, marginBottom: 24, opacity: 0.7 }}>
+              {Array.from({ length: 32 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: 6, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'height 0.08s ease-out, opacity 0.15s', opacity: 0.3 }} />))}
             </div>
             <div className="t3-anim3" style={{ textAlign: 'center', width: '100%', maxWidth: 500 }}>
               <h1 style={{ fontSize: 'clamp(24px, 5.5vw, 42px)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em', marginBottom: 4 }}>{t.para} {recipient}</h1>
@@ -1332,6 +1422,7 @@ const SHARED_CSS = `
 *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 button:active{transform:scale(0.97)}
 @keyframes spPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:0.7}}
+@keyframes cursorBlink{0%,49%{opacity:1}50%,100%{opacity:0}}
 .sp-lyrics-slide{max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease}
 .sp-lyrics-slide.open{max-height:50vh;opacity:1}
 .sp-lyrics-scroll::-webkit-scrollbar{width:3px}
