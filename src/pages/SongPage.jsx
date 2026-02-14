@@ -294,38 +294,23 @@ export default function SongPage({ songId: propSongId }) {
   }, [song, activeIndex]);
 
   // Real Waveform Visualizer (Web Audio API)
+  const audioCtxRef = useRef(null);
+
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-
-    // Connect audio element to analyser (once only)
-    const connectAnalyser = () => {
-      if (analyserRef.current) return;
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 64;
-        analyser.smoothingTimeConstant = 0.8;
-        if (!audioSourceRef.current) {
-          audioSourceRef.current = ctx.createMediaElementSource(a);
-        }
-        audioSourceRef.current.connect(analyser);
-        analyser.connect(ctx.destination);
-        analyserRef.current = analyser;
-      } catch (e) { console.log('Visualizer fallback'); }
-    };
-
     if (isPlaying) {
-      connectAnalyser();
-      const analyser = analyserRef.current;
+      // Resume AudioContext if suspended (e.g. tab was backgrounded)
+      if (audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+
       const bars = vizRef.current?.querySelectorAll('.sp-vbar');
       if (!bars || bars.length === 0) return;
 
-      const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
       let raf;
-
       const tick = () => {
-        if (analyser && dataArray) {
+        const analyser = analyserRef.current;
+        if (analyser) {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
           analyser.getByteFrequencyData(dataArray);
           const barCount = bars.length;
           const step = Math.max(1, Math.floor(dataArray.length / barCount));
@@ -336,7 +321,7 @@ export default function SongPage({ songId: propSongId }) {
             bar.style.opacity = (0.4 + (val / 255) * 0.6).toFixed(2);
           });
         } else {
-          // Fallback if Web Audio unavailable
+          // Fallback if Web Audio didn't connect
           bars.forEach((bar, i) => {
             bar.style.height = (6 + Math.sin(Date.now() / (150 + i * 25) + i * 0.8) * 14 + Math.random() * 8) + 'px';
             bar.style.opacity = '0.85';
@@ -347,7 +332,6 @@ export default function SongPage({ songId: propSongId }) {
       raf = requestAnimationFrame(tick);
       return () => cancelAnimationFrame(raf);
     } else {
-      // Reset bars to idle
       vizRef.current?.querySelectorAll('.sp-vbar').forEach((bar) => {
         bar.style.height = '4px';
         bar.style.opacity = '0.3';
@@ -518,12 +502,29 @@ export default function SongPage({ songId: propSongId }) {
     navigator.vibrate?.(50);
     setGiftOpening(true);
 
-    // ── Unlock audio immediately (within user gesture for iOS) ──
+    // ── Unlock audio + connect Web Audio API analyser (within user gesture for iOS) ──
     const au = audioRef.current;
     if (au) {
       au.volume = 0;
       au.currentTime = 0;
       au.play().then(() => { au.pause(); au.currentTime = 0; }).catch(() => {});
+
+      // Connect analyser during user gesture so AudioContext is 'running'
+      if (!analyserRef.current) {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          audioCtxRef.current = ctx;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          analyser.smoothingTimeConstant = 0.8;
+          if (!audioSourceRef.current) {
+            audioSourceRef.current = ctx.createMediaElementSource(au);
+          }
+          audioSourceRef.current.connect(analyser);
+          analyser.connect(ctx.destination);
+          analyserRef.current = analyser;
+        } catch (e) { console.log('Web Audio init skipped — fallback visualizer'); }
+      }
     }
 
     // After lid flies off → envelope
