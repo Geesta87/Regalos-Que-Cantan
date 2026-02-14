@@ -66,7 +66,7 @@ export default function ComparisonPage() {
   // ✅ REC 8: Dynamic session urgency timer (works year-round)
   const [sessionCountdown, setSessionCountdown] = useState({ mins: 29, secs: 59 });
   const sessionEndRef = useRef(Date.now() + 30 * 60 * 1000); // 30 min session
-  const videoTestimonialRefs = useRef({}); // kept for potential future use
+  const videoTestimonialRefs = useRef({});
   const [playingTestimonial, setPlayingTestimonial] = useState(null);
 
   useEffect(() => {
@@ -1235,48 +1235,84 @@ export default function ComparisonPage() {
           )}
         </div>
 
-        {/* ===== REC 7: Text testimonials (replaces video — faster, no audio conflict) ===== */}
+        {/* ===== VIDEO TESTIMONIALS ===== */}
         <div style={{
           marginBottom: '20px',
           marginTop: '8px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
         }}>
+          <p style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
+            ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
+          </p>
           <div style={{
-            background: 'rgba(255,255,255,0.04)',
-            borderRadius: '14px',
-            padding: '16px 20px',
-            border: '1px solid rgba(212,175,55,0.15)'
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
           }}>
-            <p style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '12px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
-              ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { quote: 'Mi esposa lloró de felicidad... el mejor regalo que le he dado', name: 'Carlos M.', stars: 5 },
-                { quote: 'Nunca pensé que una canción personalizada me haría llorar. Hermosa.', name: 'Ana R.', stars: 5 },
-                { quote: 'La calidad es increíble, parece hecha por un artista profesional', name: 'Diego L.', stars: 5 }
-              ].map((t, i) => (
-                <div key={i} style={{
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                  padding: '10px 14px',
-                  background: 'rgba(255,255,255,0.04)',
-                  borderRadius: '10px'
-                }}>
-                  <span style={{ fontSize: '24px', flexShrink: 0, marginTop: '2px' }}>💬</span>
-                  <div>
-                    <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: 'rgba(255,255,255,0.85)', fontStyle: 'italic', lineHeight: '1.4' }}>
-                      "{t.quote}"
-                    </p>
-                    <p style={{ margin: 0, fontSize: '11px', color: '#f5d77a' }}>
-                      — {t.name} {'⭐'.repeat(t.stars)}
-                    </p>
+            {[
+              { src: '/videos/testimonial3.mp4', id: 'tc1', name: 'Cliente feliz', poster: '' },
+              { src: '/videos/testimonial1.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
+            ].map((vid) => (
+              <div key={vid.id} style={{
+                width: '200px',
+                height: '280px',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                position: 'relative',
+                border: '2px solid rgba(212,175,55,0.3)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                cursor: 'pointer',
+                flexShrink: 0
+              }} onClick={() => handleTestimonialToggle(vid.id)}>
+                <video
+                  ref={el => videoTestimonialRefs.current[vid.id] = el}
+                  src={vid.src}
+                  playsInline
+                  preload="metadata"
+                  onEnded={() => setPlayingTestimonial(null)}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+                {playingTestimonial !== vid.id && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.7))',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      background: 'rgba(201,24,74,0.85)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 15px rgba(201,24,74,0.5)'
+                    }}>
+                      <span style={{ fontSize: '20px', marginLeft: '3px' }}>▶</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
+          <p style={{
+            textAlign: 'center',
+            fontSize: '13px',
+            color: '#f5d77a',
+            marginTop: '10px',
+            fontStyle: 'italic'
+          }}>
+            "Mi esposa lloró de felicidad... el mejor regalo que le he dado" ⭐⭐⭐⭐⭐
+          </p>
         </div>
 
         {/* ===== Streamlined Checkout Section ===== */}
