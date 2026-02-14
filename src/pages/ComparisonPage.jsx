@@ -1271,7 +1271,7 @@ export default function ComparisonPage() {
                 animation: selectionPop === 'bundle' ? 'selectionPop 0.4s ease' : isVisible ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
               }}
             >
-              {/* Ribbon */}
+              {/* Ribbon — #5: Reframe as low add-on cost */}
               <div style={{
                 position: 'absolute', top: '-12px', left: '50%',
                 transform: 'translateX(-50%)',
@@ -1281,7 +1281,7 @@ export default function ComparisonPage() {
                 boxShadow: '0 3px 12px rgba(34,197,94,0.4)',
                 whiteSpace: 'nowrap'
               }}>
-                🎁 MEJOR VALOR — AHORRA ${(singlePrice * 2 - parseFloat(bundlePrice)).toFixed(2)}
+                🎁 Segunda canción por solo ${(parseFloat(bundlePrice) - singlePrice).toFixed(0)} más
               </div>
 
               {/* Radio indicator */}
@@ -1318,12 +1318,13 @@ export default function ComparisonPage() {
                     </div>
                   ))}
                 </div>
+                {/* #1: Gift experience framing */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 'bold' }}>
-                    2 Canciones Completas
+                  <p style={{ margin: '0 0 3px', fontSize: '16px', fontWeight: 'bold' }}>
+                    🎁 El Regalo Completo
                   </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>
-                    💫 Emotiva + 🔥 Enérgica — que {recipientName} elija
+                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.6)', lineHeight: '1.4' }}>
+                    Una para llorar, otra para bailar — que {recipientName} elija su favorita
                   </p>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -1338,6 +1339,15 @@ export default function ComparisonPage() {
                   </p>
                 </div>
               </div>
+
+              {/* #3: Social proof */}
+              <p style={{
+                margin: '12px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.5)',
+                textAlign: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+              }}>
+                <span style={{ color: '#22c55e', fontWeight: '700' }}>🔥 78% de clientes eligen esta opción</span>
+              </p>
             </div>
           </>
         )}
