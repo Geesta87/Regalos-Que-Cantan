@@ -182,7 +182,8 @@ export default function AdminDashboard() {
       const { data, error } = await supabase
         .from('songs')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 4999);
 
       if (error) throw error;
 
