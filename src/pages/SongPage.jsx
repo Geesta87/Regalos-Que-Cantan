@@ -84,8 +84,9 @@ const fmt = (s) => {
 // ═══════════════════════════════════════
 // SONG SELECTOR (combo with 2 songs)
 // ═══════════════════════════════════════
-function SongSelector({ songs, activeIndex, onSelect, template }) {
+function SongSelector({ songs, activeIndex, onSelect, template, lang }) {
   if (songs.length <= 1) return null;
+  const songLabel = lang === 'en' ? (i) => `Song ${i + 1}` : (i) => `Canción ${i + 1}`;
   const themes = {
     golden_hour: { active: '#f4c025', activeBg: 'rgba(244,192,37,0.15)', border: 'rgba(244,192,37,0.25)', bg: 'rgba(255,255,255,0.07)', textActive: 'rgba(255,255,255,0.9)', textInactive: 'rgba(255,255,255,0.4)', labelInactive: 'rgba(255,255,255,0.35)', font: "'Plus Jakarta Sans', sans-serif" },
     lavender_dream: { active: '#9947eb', activeBg: 'rgba(153,71,235,0.08)', border: 'rgba(153,71,235,0.15)', bg: 'white', textActive: '#0f172a', textInactive: '#94a3b8', labelInactive: '#94a3b8', font: "'Newsreader', serif" },
@@ -107,7 +108,7 @@ function SongSelector({ songs, activeIndex, onSelect, template }) {
             fontFamily: c.font, color: 'inherit',
           }}>
             <span style={{ display: 'block', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isActive ? c.active : c.labelInactive, marginBottom: 2 }}>
-              Canción {i + 1}
+              {songLabel(i)}
             </span>
             <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: isActive ? c.textActive : c.textInactive, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {genre || `#${i + 1}`}
@@ -140,6 +141,83 @@ export default function SongPage({ songId: propSongId }) {
   const vizRef = useRef(null);
   const sfxRef = useRef(null);
 
+  // ═══════════════════════════════════════
+  // LANGUAGE SUPPORT (?lang=en)
+  // ═══════════════════════════════════════
+  const lang = useMemo(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('lang') === 'en' ? 'en' : 'es';
+  }, []);
+
+  const translations = {
+    es: {
+      preparando: 'Preparando tu canción...',
+      noEncontrada: 'Canción no encontrada',
+      noLista: 'Esta canción aún no está lista',
+      linkExpirado: 'Es posible que este link haya expirado.',
+      alguienEspecial: 'Alguien Especial',
+      alguienDedico: 'alguien te dedicó algo',
+      muyEspecial: 'muy especial',
+      abrirRegalo: 'Abrir Mi Regalo',
+      teDedico1: (s) => `${s || 'Alguien especial'}`,
+      teDedico2: (combo) => combo ? 'te dedicó 2 canciones únicas' : 'te dedicó una canción única',
+      teDedico2b: 'en el mundo',
+      countdown3: '🎸 Preparando los instrumentos...',
+      countdown2: '🎤 Afinando la voz...',
+      countdown1: '🎵 ¡Aquí viene!',
+      unaCanciones: (combo) => combo ? '2 canciones' : 'Una canción',
+      compartir: 'Compartir',
+      descargar: 'Descargar',
+      linkCopiado: '¡Link copiado!',
+      shareText: (combo, name) => `🎵 ¡Escucha ${combo ? 'estas canciones' : 'esta canción'} que hicieron para ${name || 'ti'}! 🎁`,
+      shareTitle: (combo, name) => `🎵 ${combo ? '2 canciones' : 'Canción'} para ${name}`,
+      downloadFile: (name, combo, idx) => `cancion-para-${name || 'ti'}${combo ? `-${idx + 1}` : ''}.mp3`,
+      metaTitle: (combo, r) => `🎵 ${combo ? '2 canciones' : 'Canción'} para ${r} | RegalosQueCantan`,
+      metaOgTitle: (combo, r) => `🎵 ${combo ? '2 canciones' : 'Una canción'} para ${r}`,
+      metaDesc: (sender, combo) => `${sender ? `${sender} te dedicó` : 'Te dedicaron'} ${combo ? '2 canciones personalizadas' : 'una canción personalizada'}. ¡Escúchala${combo ? 's' : ''} ahora!`,
+      especiales: (combo, r) => `${combo ? '2 canciones especiales' : 'Una canción especial'} para ${r}`,
+      duracion: 'Duración',
+      presenta: 'RegalosQueCantan Presenta',
+      de: 'De',
+      alguienDedicoCard: (combo) => combo ? 'Alguien te dedicó 2 canciones' : 'Alguien te dedicó una canción',
+      cancionNum: (i) => `Canción ${i + 1}`,
+    },
+    en: {
+      preparando: 'Preparing your song...',
+      noEncontrada: 'Song not found',
+      noLista: 'This song is not ready yet',
+      linkExpirado: 'This link may have expired.',
+      alguienEspecial: 'Someone Special',
+      alguienDedico: 'someone made you something',
+      muyEspecial: 'very special',
+      abrirRegalo: 'Open My Gift',
+      teDedico1: (s) => `${s || 'Someone special'}`,
+      teDedico2: (combo) => combo ? 'dedicated 2 unique songs to you' : 'dedicated a unique song to you',
+      teDedico2b: 'in the world',
+      countdown3: '🎸 Warming up the instruments...',
+      countdown2: '🎤 Tuning the vocals...',
+      countdown1: '🎵 Here it comes!',
+      unaCanciones: (combo) => combo ? '2 songs' : 'A song',
+      compartir: 'Share',
+      descargar: 'Download',
+      linkCopiado: 'Link copied!',
+      shareText: (combo, name) => `🎵 Listen to ${combo ? 'these songs' : 'this song'} made for ${name || 'you'}! 🎁`,
+      shareTitle: (combo, name) => `🎵 ${combo ? '2 songs' : 'Song'} for ${name}`,
+      downloadFile: (name, combo, idx) => `song-for-${name || 'you'}${combo ? `-${idx + 1}` : ''}.mp3`,
+      metaTitle: (combo, r) => `🎵 ${combo ? '2 songs' : 'Song'} for ${r} | RegalosQueCantan`,
+      metaOgTitle: (combo, r) => `🎵 ${combo ? '2 songs' : 'A song'} for ${r}`,
+      metaDesc: (sender, combo) => `${sender ? `${sender} dedicated` : 'Someone dedicated'} ${combo ? '2 personalized songs' : 'a personalized song'} to you. Listen now!`,
+      especiales: (combo, r) => `${combo ? '2 special songs' : 'A special song'} for ${r}`,
+      duracion: 'Duration',
+      presenta: 'RegalosQueCantan Presents',
+      de: 'From',
+      alguienDedicoCard: (combo) => combo ? 'Someone dedicated 2 songs to you' : 'Someone dedicated a song to you',
+      cancionNum: (i) => `Song ${i + 1}`,
+    }
+  };
+
+  const t = translations[lang];
+
   // Parse song IDs — supports /song/id1,id2 for combos
   const songIds = useMemo(() => {
     if (propSongId) return propSongId.split(',').filter(Boolean);
@@ -152,15 +230,15 @@ export default function SongPage({ songId: propSongId }) {
 
   // Fetch songs
   useEffect(() => {
-    if (!songIds.length) { setError('No se encontró la canción'); setLoading(false); return; }
+    if (!songIds.length) { setError(t.noEncontrada); setLoading(false); return; }
     (async () => {
       try {
         const { data, error: e } = await supabase.from('songs').select('*').in('id', songIds);
         if (e) throw e;
-        if (!data || data.length === 0) throw new Error('Canción no encontrada');
+        if (!data || data.length === 0) throw new Error(t.noEncontrada);
         const ordered = songIds.map(id => data.find(s => s.id === id)).filter(Boolean);
-        if (ordered.length === 0) throw new Error('Canción no encontrada');
-        if (!ordered[0].audio_url) throw new Error('Esta canción aún no está lista');
+        if (ordered.length === 0) throw new Error(t.noEncontrada);
+        if (!ordered[0].audio_url) throw new Error(t.noLista);
         setAllSongs(ordered);
         setLoading(false);
         setPhase('mystery');
@@ -234,25 +312,25 @@ export default function SongPage({ songId: propSongId }) {
 
   const shareUrl = useMemo(() => {
     const ids = allSongs.map(s => s.id).join(',');
-    return `https://regalosquecantan.com/song/${ids}`;
-  }, [allSongs]);
+    return `https://regalosquecantan.com/song/${ids}${lang === 'en' ? '?lang=en' : ''}`;
+  }, [allSongs, lang]);
 
   const share = (name) => {
-    const text = `🎵 ¡Escucha ${isCombo ? 'estas canciones' : 'esta canción'} que hicieron para ${name || 'ti'}! 🎁\n\n${shareUrl}`;
+    const text = t.shareText(isCombo, name) + `\n\n${shareUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const nativeShare = (name) => {
     if (navigator.share) {
-      navigator.share({ title: `🎵 ${isCombo ? '2 canciones' : 'Canción'} para ${name}`, url: shareUrl }).catch(() => {});
-    } else { navigator.clipboard.writeText(shareUrl); alert('¡Link copiado!'); }
+      navigator.share({ title: t.shareTitle(isCombo, name), url: shareUrl }).catch(() => {});
+    } else { navigator.clipboard.writeText(shareUrl); alert(t.linkCopiado); }
   };
 
   const download = () => {
     if (!song?.audio_url) return;
     const a = document.createElement('a');
     a.href = song.audio_url;
-    a.download = `cancion-para-${song.recipient_name || 'ti'}${isCombo ? `-${activeIndex + 1}` : ''}.mp3`;
+    a.download = t.downloadFile(song.recipient_name, isCombo, activeIndex);
     a.click();
   };
 
@@ -505,7 +583,7 @@ export default function SongPage({ songId: propSongId }) {
       <div style={{ minHeight: '100vh', background: '#1a1408', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <style>{SHARED_CSS}</style>
         <div style={{ fontSize: 40, animation: 'spPulse 2s ease-in-out infinite' }}>🎵</div>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>Preparando tu canción...</p>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>{t.preparando}</p>
       </div>
     );
   }
@@ -516,23 +594,23 @@ export default function SongPage({ songId: propSongId }) {
       <div style={{ minHeight: '100vh', background: '#1a1408', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', gap: 12, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white' }}>
         <style>{SHARED_CSS}</style>
         <div style={{ fontSize: 56 }}>🎵</div>
-        <h2 style={{ fontSize: 22, fontWeight: 700 }}>{error || 'Canción no encontrada'}</h2>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>Es posible que este link haya expirado.</p>
+        <h2 style={{ fontSize: 22, fontWeight: 700 }}>{error || t.noEncontrada}</h2>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>{t.linkExpirado}</p>
       </div>
     );
   }
 
   // ─── SHARED DATA ───
-  const recipient = song.recipient_name || 'Alguien Especial';
+  const recipient = song.recipient_name || t.alguienEspecial;
   const sender = song.sender_name || '';
   const genre = (song.genre_name || song.genre || '').replace(/_/g, ' ');
   const photoUrl = song.photo_url || allSongs[0]?.photo_url || null;
 
   const head = (
     <Helmet>
-      <title>🎵 {isCombo ? '2 canciones' : 'Canción'} para {recipient} | RegalosQueCantan</title>
-      <meta property="og:title" content={`🎵 ${isCombo ? '2 canciones' : 'Una canción'} para ${recipient}`} />
-      <meta property="og:description" content={`${sender ? `${sender} te dedicó` : 'Te dedicaron'} ${isCombo ? '2 canciones personalizadas' : 'una canción personalizada'}. ¡Escúchala${isCombo ? 's' : ''} ahora!`} />
+      <title>{t.metaTitle(isCombo, recipient)}</title>
+      <meta property="og:title" content={t.metaOgTitle(isCombo, recipient)} />
+      <meta property="og:description" content={t.metaDesc(sender, isCombo)} />
       <meta property="og:url" content={shareUrl} />
       <meta property="og:type" content="music.song" />
       <meta name="robots" content="noindex, nofollow" />
@@ -642,8 +720,8 @@ export default function SongPage({ songId: propSongId }) {
           </h1>
           {/* Mystery text */}
           <p style={{ fontSize: 'clamp(16px, 4vw, 22px)', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontWeight: 300, lineHeight: 1.6, maxWidth: 340, marginBottom: 48, animation: 'revealFadeIn 1s ease-out 0.8s both' }}>
-            alguien te dedicó algo<br/>
-            <span style={{ fontWeight: 600, color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>muy especial</span>
+            {t.alguienDedico}<br/>
+            <span style={{ fontWeight: 600, color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>{t.muyEspecial}</span>
           </p>
           {/* CTA Button */}
           <button
@@ -659,7 +737,7 @@ export default function SongPage({ songId: propSongId }) {
               transition: 'opacity 0.3s', opacity: giftOpening ? 0 : 1,
             }}
           >
-            Abrir Mi Regalo <span style={{ fontSize: 22 }}>✨</span>
+            {t.abrirRegalo} <span style={{ fontSize: 22 }}>✨</span>
           </button>
           {/* Subtle brand */}
           <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
@@ -768,7 +846,7 @@ export default function SongPage({ songId: propSongId }) {
                 lineHeight: 1.1, marginBottom: 6,
                 animation: 'envSenderName 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 3.4s both',
               }}>
-                {sender || 'Alguien especial'} <span style={{ fontSize: '0.8em' }}>💛</span>
+                {sender || (lang === 'en' ? 'Someone special' : 'Alguien especial')} <span style={{ fontSize: '0.8em' }}>💛</span>
               </h2>
 
               {/* "te dedicó una canción..." */}
@@ -777,7 +855,7 @@ export default function SongPage({ songId: propSongId }) {
                 lineHeight: 1.5,
                 animation: 'envSubtext 0.6s ease-out 4.2s both',
               }}>
-                te dedicó {isCombo ? '2 canciones únicas' : 'una canción única'}<br/>en el mundo
+                {t.teDedico2(isCombo)}<br/>{t.teDedico2b}
               </p>
 
               {/* Small decorative line on card */}
@@ -850,7 +928,7 @@ export default function SongPage({ songId: propSongId }) {
 
   // Screen 3: Countdown 3...2...1
   if (phase === 'countdown') {
-    const subtitles = { 3: '🎸 Preparando los instrumentos...', 2: '🎤 Afinando la voz...', 1: '🎵 ¡Aquí viene!' };
+    const subtitles = { 3: t.countdown3, 2: t.countdown2, 1: t.countdown1 };
     return (
       <>{head}{audioEl}
         <div style={{ minHeight: '100vh', background: '#0a0804', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
@@ -919,7 +997,7 @@ export default function SongPage({ songId: propSongId }) {
 
           {/* Name reveal */}
           <div style={{ textAlign: 'center', zIndex: 50, animation: 'nameReveal 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both' }}>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {isCombo ? '2 canciones' : 'Una canción'}</p>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {t.unaCanciones(isCombo)}</p>
             <h1 style={{ fontSize: 'clamp(40px, 10vw, 72px)', fontWeight: 900, lineHeight: 1, textShadow: '0 0 40px rgba(244,192,37,0.3)' }}>
               Para <span style={{ color: '#f4c025' }}>{recipient}</span>
             </h1>
@@ -1007,7 +1085,7 @@ export default function SongPage({ songId: propSongId }) {
               </div>
               <button onClick={() => nativeShare(recipient)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, cursor: 'pointer', color: 'white', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(16px)' }}>
                 <span style={{ color: '#f4c025', fontSize: 14 }}>📤</span>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>Compartir</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{t.compartir}</span>
               </button>
             </header>
             <div style={{ flex: 1, minHeight: 40 }} />
@@ -1017,7 +1095,7 @@ export default function SongPage({ songId: propSongId }) {
                 <div className="t1-glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 999 }}>
                   <span style={{ fontSize: 12 }}>🎵</span>
                   <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
-                    {isCombo ? 'Alguien te dedicó 2 canciones' : 'Alguien te dedicó una canción'}
+                    {t.alguienDedicoCard(isCombo)}
                   </span>
                 </div>
               </div>
@@ -1029,7 +1107,7 @@ export default function SongPage({ songId: propSongId }) {
                 {sender && genre && <span style={{ color: 'rgba(255,255,255,0.25)', margin: '0 8px' }}>·</span>}
                 {genre && <span style={{ color: 'rgba(244,192,37,0.7)', fontSize: 13, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{genre}</span>}
               </p>
-              {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" /></div>}
+              {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" lang={lang} /></div>}
               {/* Glass player */}
               <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, padding: 28, borderRadius: 20, boxShadow: '0 25px 50px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24 }}>
                 <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 32, marginBottom: 24 }}>
@@ -1054,7 +1132,7 @@ export default function SongPage({ songId: propSongId }) {
               {/* Buttons */}
               <div className="t1-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
                 {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
-                <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>⬇️ Descargar</button>
+                <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>{"⬇️ " + t.descargar}</button>
                 <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'rgba(37,211,102,0.9)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
               </div>
             </div>
@@ -1090,12 +1168,12 @@ export default function SongPage({ songId: propSongId }) {
           <div style={{ position: 'fixed', bottom: 20, right: 20, width: 384, height: 384, background: 'rgba(153,71,235,0.1)', borderRadius: '50%', filter: 'blur(120px)', pointerEvents: 'none' }} />
           <main style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: '100vh', padding: '32px 24px 48px' }}>
             <header className="t2-anim1" style={{ textAlign: 'center', marginBottom: 32, maxWidth: 600 }}>
-              <span style={{ color: '#9947eb', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', fontSize: 11, display: 'block', marginBottom: 12 }}>RegalosQueCantan Presenta</span>
+              <span style={{ color: '#9947eb', fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', fontSize: 11, display: 'block', marginBottom: 12 }}>{t.presenta}</span>
               <h1 style={{ fontSize: 'clamp(28px, 5.5vw, 48px)', color: '#0f172a', fontWeight: 300, fontStyle: 'italic', marginBottom: 12, lineHeight: 1.15 }}>
-                {isCombo ? '2 canciones especiales' : 'Una canción especial'} para {recipient}
+                {t.especiales(isCombo, recipient)}
               </h1>
             </header>
-            {isCombo && <div className="t2-anim1" style={{ marginBottom: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="lavender_dream" /></div>}
+            {isCombo && <div className="t2-anim1" style={{ marginBottom: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="lavender_dream" lang={lang} /></div>}
             <div className="t2-anim2 t2-brushed" style={{ width: '100%', maxWidth: 500, borderRadius: 16, overflow: 'hidden', border: '1px solid rgba(153,71,235,0.1)' }}>
               {photoUrl && (
                 <div style={{ padding: '20px 20px 0' }}>
@@ -1110,7 +1188,7 @@ export default function SongPage({ songId: propSongId }) {
                   <h2 style={{ fontSize: 20, color: '#0f172a', fontWeight: 600 }}>Para {recipient}</h2>
                   <p style={{ color: 'rgba(153,71,235,0.7)', fontWeight: 500, fontSize: 14 }}>{genre}{song.occasion ? ` · ${song.occasion.replace(/_/g, ' ')}` : ''}</p>
                 </div>
-                {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 2 }}>Duración</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
+                {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 2 }}>{t.duracion}</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
               </div>
               <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(153,71,235,0.06)', paddingTop: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -1141,7 +1219,7 @@ export default function SongPage({ songId: propSongId }) {
             {/* Actions */}
             <div className="t2-anim3" style={{ marginTop: 28, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
               {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
-              <button onClick={download} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>⬇️ Descargar</button>
+              <button onClick={download} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>{"⬇️ " + t.descargar}</button>
               <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: '#25D366', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'Newsreader', serif", boxShadow: '0 4px 12px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
             </div>
             <div style={{ width: '100%', maxWidth: 500, marginTop: 8, display: 'flex', justifyContent: 'center' }}>
@@ -1198,9 +1276,9 @@ export default function SongPage({ songId: propSongId }) {
             </div>
             <div className="t3-anim3" style={{ textAlign: 'center', width: '100%', maxWidth: 500 }}>
               <h1 style={{ fontSize: 'clamp(24px, 5.5vw, 42px)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.05em', marginBottom: 4 }}>Para {recipient}</h1>
-              <p style={{ color: '#f20d59', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 500 }}>De {sender || 'Alguien especial'} · {genre}</p>
+              <p style={{ color: '#f20d59', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 500 }}>{t.de} {sender || (lang === 'en' ? 'Someone special' : 'Alguien especial')} · {genre}</p>
             </div>
-            {isCombo && <div className="t3-anim3" style={{ marginTop: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="electric_magenta" /></div>}
+            {isCombo && <div className="t3-anim3" style={{ marginTop: 20, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="electric_magenta" lang={lang} /></div>}
             {/* Progress */}
             <div className="t3-anim3" style={{ width: '100%', maxWidth: 500, marginTop: 24 }}>
               <div onClick={seek} style={{ position: 'relative', width: '100%', height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden', cursor: 'pointer' }}>
@@ -1220,7 +1298,7 @@ export default function SongPage({ songId: propSongId }) {
             {/* Action buttons */}
             <div className="t3-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 24 }}>
               {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ padding: '10px 24px', border: '1px solid rgba(242,13,89,0.3)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>{showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
-              <button onClick={download} style={{ padding: '10px 24px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>Descargar</button>
+              <button onClick={download} style={{ padding: '10px 24px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>{t.descargar}</button>
               <button onClick={() => share(recipient)} style={{ padding: '10px 24px', border: 'none', background: '#25D366', color: 'white', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>💬 WhatsApp</button>
             </div>
             {/* Lyrics */}
