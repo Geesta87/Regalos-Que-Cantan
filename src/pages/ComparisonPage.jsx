@@ -1235,6 +1235,113 @@ export default function ComparisonPage() {
           )}
         </div>
 
+        {/* ===== BUNDLE COMBO CARD (below song cards) ===== */}
+        {songs.length >= 2 && (
+          <>
+            <div style={{
+              display: 'flex', alignItems: 'center', margin: '6px 0 16px', gap: '16px',
+              animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
+            }}>
+              <div style={{flex: 1, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.4))'}} />
+              <span style={{
+                color: '#22c55e', fontSize: '12px', fontWeight: 'bold',
+                letterSpacing: '1px', textTransform: 'uppercase', whiteSpace: 'nowrap'
+              }}>
+                O LLÉVATE AMBAS
+              </span>
+              <div style={{flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(34,197,94,0.4), transparent)'}} />
+            </div>
+
+            <div
+              onClick={selectBoth}
+              style={{
+                background: purchaseBoth 
+                  ? 'linear-gradient(135deg, rgba(34,197,94,0.18), rgba(212,175,55,0.1))' 
+                  : 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
+                border: purchaseBoth ? '3px solid #22c55e' : '2px solid rgba(34,197,94,0.25)',
+                borderRadius: '18px',
+                padding: '20px',
+                cursor: 'pointer',
+                marginBottom: '20px',
+                position: 'relative',
+                transition: 'all 0.3s',
+                transform: purchaseBoth ? 'scale(1.01)' : 'scale(1)',
+                boxShadow: purchaseBoth ? '0 0 25px rgba(34,197,94,0.2)' : 'none',
+                opacity: selectedSongId ? 0.65 : 1,
+                animation: selectionPop === 'bundle' ? 'selectionPop 0.4s ease' : isVisible ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
+              }}
+            >
+              {/* Ribbon */}
+              <div style={{
+                position: 'absolute', top: '-12px', left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                color: 'white', padding: '5px 18px', borderRadius: '16px',
+                fontSize: '11px', fontWeight: 'bold',
+                boxShadow: '0 3px 12px rgba(34,197,94,0.4)',
+                whiteSpace: 'nowrap'
+              }}>
+                🎁 MEJOR VALOR — AHORRA ${(singlePrice * 2 - parseFloat(bundlePrice)).toFixed(2)}
+              </div>
+
+              {/* Radio indicator */}
+              <div style={{
+                position: 'absolute', top: '16px', right: '16px',
+                width: '26px', height: '26px', borderRadius: '50%',
+                border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.25)',
+                background: purchaseBoth ? '#22c55e' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}>
+                {purchaseBoth && <span style={{color: 'white', fontSize: '14px', fontWeight: 'bold'}}>✓</span>}
+              </div>
+
+              {/* Overlapping album arts + pricing */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', flexShrink: 0 }}>
+                  {songs.slice(0, 2).map((song, i) => (
+                    <div key={song.id} style={{
+                      width: '64px', height: '64px', borderRadius: '12px',
+                      overflow: 'hidden', border: '2px solid #0f2027',
+                      marginLeft: i > 0 ? '-16px' : 0,
+                      position: 'relative', zIndex: 2 - i,
+                      background: `linear-gradient(135deg, ${VERSION_VIBES[i]?.color || '#3b82f6'}30, rgba(225,29,116,0.2))`,
+                      boxShadow: `0 3px 10px ${VERSION_VIBES[i]?.color || '#3b82f6'}25`
+                    }}>
+                      {song.imageUrl ? (
+                        <img src={song.imageUrl} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                          onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<span style="font-size:28px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>'; }}
+                        />
+                      ) : (
+                        <span style={{fontSize: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 'bold' }}>
+                    2 Canciones Completas
+                  </p>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>
+                    💫 Emotiva + 🔥 Enérgica — que {recipientName} elija
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p style={{ margin: '0 0 2px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', fontSize: '13px' }}>
+                    ${(singlePrice * 2).toFixed(2)}
+                  </p>
+                  <p style={{
+                    margin: 0, fontSize: '26px', fontWeight: '800', lineHeight: 1,
+                    color: purchaseBoth ? '#22c55e' : '#f5d77a'
+                  }}>
+                    ${bundlePrice}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* ===== VIDEO TESTIMONIALS ===== */}
         <div style={{
           marginBottom: '20px',
