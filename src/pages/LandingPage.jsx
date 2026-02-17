@@ -79,25 +79,6 @@ export default function LandingPage() {
     trackStep('landing');
   }, []);
 
-  // ═══════════════════════════════════════
-  // COUNTDOWN TIMER
-  // ═══════════════════════════════════════
-  const [countdown, setCountdown] = useState('');
-  useEffect(() => {
-    const target = new Date('2026-02-15T08:00:00Z');
-    const tick = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown(`${h}h ${m}m ${s}s`);
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   // (Social proof handled by SocialProofToast component)
 
   useEffect(() => {
@@ -141,9 +122,9 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background-dark flex flex-col">
-      {/* COUNTDOWN URGENCY BAR */}
-      <div className="bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        ⏰ San Valentín termina en <span className="text-yellow-300 font-mono tracking-wide">{countdown}</span> — ¡Tu canción lista en minutos! 💝
+      {/* URGENCY BAR */}
+      <div className="bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-forest text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+        ⚡ Tu canción personalizada lista en ~3 minutos · Desde $24.99
       </div>
 
       {/* SOCIAL PROOF TOAST */}
@@ -162,27 +143,25 @@ export default function LandingPage() {
           <div className="hero-gradient absolute inset-0 z-10" />
           <div className="papel-picado-overlay absolute inset-0 z-10 text-white" />
           
-          {/* Floating Hearts for Valentine's */}
+          {/* Floating Music Notes */}
           <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none">
-            <div className="absolute top-20 left-[10%] text-5xl animate-bounce opacity-60" style={{ animationDelay: '0s', animationDuration: '3s' }}>💕</div>
-            <div className="absolute top-32 right-[15%] text-4xl animate-bounce opacity-50" style={{ animationDelay: '0.5s', animationDuration: '4s' }}>💖</div>
-            <div className="absolute top-48 left-[25%] text-3xl animate-bounce opacity-50" style={{ animationDelay: '1s', animationDuration: '3.5s' }}>💗</div>
-            <div className="absolute top-24 right-[30%] text-4xl animate-bounce opacity-60" style={{ animationDelay: '1.5s', animationDuration: '4.5s' }}>💘</div>
-            <div className="absolute bottom-40 left-[20%] text-3xl animate-bounce opacity-50" style={{ animationDelay: '2s', animationDuration: '3s' }}>❤️</div>
-            <div className="absolute bottom-32 right-[25%] text-5xl animate-bounce opacity-50" style={{ animationDelay: '0.7s', animationDuration: '4s' }}>💕</div>
-            <div className="absolute top-40 left-[45%] text-6xl animate-bounce opacity-40" style={{ animationDelay: '0.3s', animationDuration: '5s' }}>❤️</div>
-            <div className="absolute bottom-48 right-[10%] text-4xl animate-bounce opacity-55" style={{ animationDelay: '1.2s', animationDuration: '3.8s' }}>💖</div>
+            <div className="absolute top-20 left-[10%] text-5xl animate-bounce opacity-40" style={{ animationDelay: '0s', animationDuration: '3s' }}>🎵</div>
+            <div className="absolute top-32 right-[15%] text-4xl animate-bounce opacity-35" style={{ animationDelay: '0.5s', animationDuration: '4s' }}>✨</div>
+            <div className="absolute top-48 left-[25%] text-3xl animate-bounce opacity-35" style={{ animationDelay: '1s', animationDuration: '3.5s' }}>🎶</div>
+            <div className="absolute top-24 right-[30%] text-4xl animate-bounce opacity-40" style={{ animationDelay: '1.5s', animationDuration: '4.5s' }}>♪</div>
+            <div className="absolute bottom-40 left-[20%] text-3xl animate-bounce opacity-35" style={{ animationDelay: '2s', animationDuration: '3s' }}>🎵</div>
+            <div className="absolute bottom-32 right-[25%] text-5xl animate-bounce opacity-35" style={{ animationDelay: '0.7s', animationDuration: '4s' }}>✨</div>
+            <div className="absolute top-40 left-[45%] text-6xl animate-bounce opacity-30" style={{ animationDelay: '0.3s', animationDuration: '5s' }}>🎶</div>
+            <div className="absolute bottom-48 right-[10%] text-4xl animate-bounce opacity-35" style={{ animationDelay: '1.2s', animationDuration: '3.8s' }}>♪</div>
           </div>
         </div>
 
         {/* Content */}
         <div className="relative z-20 container mx-auto px-6 text-center flex flex-col items-center gap-6 max-w-5xl">
-          {/* Valentine's Day Promo Banner */}
-          <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-2 border-red-400 rounded-2xl px-8 py-4 mb-4 shadow-lg shadow-red-500/40 animate-pulse">
-            <span className="text-white text-base md:text-lg font-bold flex items-center justify-center gap-3">
-              <span className="text-2xl">💘</span>
-              <span>🎵 ¡San Valentín es HOY! — ¡Quedan pocas horas! 💝</span>
-              <span className="text-2xl">💘</span>
+          {/* Occasions Badge */}
+          <div className="bg-gold/10 border border-gold/30 rounded-2xl px-6 py-3 mb-4">
+            <span className="text-gold text-sm md:text-base font-bold flex items-center justify-center gap-3">
+              🎵 Cumpleaños · Aniversarios · Bodas · O simplemente porque sí ✨
             </span>
           </div>
           
@@ -196,7 +175,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-white/70 text-lg md:text-xl font-light leading-relaxed max-w-2xl mx-auto">
-            Una canción personalizada lista en minutos — el regalo perfecto de último minuto.
+            Una canción personalizada lista en minutos — el regalo más único que puedes dar.
           </p>
 
           <button 
@@ -204,19 +183,19 @@ export default function LandingPage() {
             className="group relative flex min-w-[280px] md:min-w-[340px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-bougainvillea text-white text-lg font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95 mt-4"
           >
             <span className="material-symbols-outlined mr-2">music_note</span>
-            <span className="relative z-10">🎁 Regalar Canción Para Hoy 💝</span>
+            <span className="relative z-10">🎵 Crear Mi Canción</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
           {/* ÚLTIMO MINUTO BADGE */}
           <div className="inline-flex items-center gap-2 bg-green-500/15 border border-green-500/30 rounded-full px-4 py-1.5 text-xs text-green-400 font-bold">
-            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+            ⚡ Lista en ~3 minutos · Entrega instantánea
           </div>
           
-          <p className="text-red-400 text-base font-semibold flex items-center gap-2 bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
-            <span>💝</span>
-            Desde <span className="line-through text-red-400/50">$49.99</span> <span className="text-gold font-bold">$24.99</span> · ¡Preview gratis!
-            <span>💝</span>
+          <p className="text-gold text-base font-semibold flex items-center gap-2 bg-gold/10 px-4 py-2 rounded-full border border-gold/30">
+            <span>✨</span>
+            Desde <span className="line-through text-white/40">$49.99</span> <span className="text-gold font-bold">$24.99</span> · Preview gratis
+            <span>✨</span>
           </p>
         </div>
       </section>

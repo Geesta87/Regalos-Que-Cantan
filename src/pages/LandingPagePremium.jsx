@@ -55,25 +55,6 @@ export default function LandingPagePremium() {
     navigateTo('landing_premium');
   };
 
-  // ═══════════════════════════════════════
-  // COUNTDOWN TIMER — midnight PST Feb 14
-  // ═══════════════════════════════════════
-  const [countdown, setCountdown] = useState('');
-  useEffect(() => {
-    const target = new Date('2026-02-15T08:00:00Z'); // midnight PST = 8am UTC
-    const tick = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown(`${h}h ${m}m ${s}s`);
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   // (Social proof handled by SocialProofToast component)
 
   // Video refs and state
@@ -160,15 +141,15 @@ export default function LandingPagePremium() {
         }
       `}</style>
 
-      {/* COUNTDOWN URGENCY BAR */}
+      {/* URGENCY BAR */}
       <div style={{
-        background: 'linear-gradient(90deg, #b91c1c, #dc2626, #b91c1c)',
+        background: 'linear-gradient(90deg, #d4af37, #c9a82c, #d4af37)',
         textAlign: 'center', padding: '10px 20px',
-        fontSize: '14px', fontWeight: 800, color: 'white',
+        fontSize: '14px', fontWeight: 800, color: '#1a1a2e',
         position: 'sticky', top: 0, zIndex: 100,
         borderBottom: '1px solid rgba(255,255,255,0.15)'
       }}>
-        ⏰ San Valentín termina en <span style={{ color: '#fde68a', fontFamily: 'monospace', fontSize: '15px', letterSpacing: '0.05em' }}>{countdown}</span> — ¡Tu canción lista en minutos! 💝
+        ⚡ Tu canción personalizada lista en ~3 minutos · Desde $24.99
       </div>
 
       {/* SOCIAL PROOF TOAST */}
@@ -230,28 +211,28 @@ export default function LandingPagePremium() {
           }}>{p}</div>
         ))}
 
-        {/* Bouncing emoji hearts */}
+        {/* Floating music accents */}
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 2 }}>
-          <div style={{ position: 'absolute', top: '12%', left: '8%', fontSize: '48px', opacity: 0.5, animation: 'lpp-bounce 3s ease-in-out infinite' }}>💕</div>
-          <div style={{ position: 'absolute', top: '25%', right: '12%', fontSize: '40px', opacity: 0.45, animation: 'lpp-bounce 4s ease-in-out 0.5s infinite' }}>💖</div>
-          <div style={{ position: 'absolute', top: '45%', left: '18%', fontSize: '32px', opacity: 0.4, animation: 'lpp-bounce 3.5s ease-in-out 1s infinite' }}>💗</div>
-          <div style={{ position: 'absolute', bottom: '20%', right: '15%', fontSize: '44px', opacity: 0.45, animation: 'lpp-bounce 4s ease-in-out 0.7s infinite' }}>💕</div>
-          <div style={{ position: 'absolute', bottom: '35%', left: '5%', fontSize: '28px', opacity: 0.35, animation: 'lpp-bounce 3.8s ease-in-out 1.2s infinite' }}>💘</div>
-          <div style={{ position: 'absolute', top: '60%', right: '6%', fontSize: '36px', opacity: 0.4, animation: 'lpp-bounce 3.2s ease-in-out 0.3s infinite' }}>💝</div>
+          <div style={{ position: 'absolute', top: '12%', left: '8%', fontSize: '48px', opacity: 0.3, animation: 'lpp-bounce 3s ease-in-out infinite' }}>🎵</div>
+          <div style={{ position: 'absolute', top: '25%', right: '12%', fontSize: '40px', opacity: 0.25, animation: 'lpp-bounce 4s ease-in-out 0.5s infinite' }}>✨</div>
+          <div style={{ position: 'absolute', top: '45%', left: '18%', fontSize: '32px', opacity: 0.25, animation: 'lpp-bounce 3.5s ease-in-out 1s infinite' }}>🎶</div>
+          <div style={{ position: 'absolute', bottom: '20%', right: '15%', fontSize: '44px', opacity: 0.3, animation: 'lpp-bounce 4s ease-in-out 0.7s infinite' }}>♪</div>
+          <div style={{ position: 'absolute', bottom: '35%', left: '5%', fontSize: '28px', opacity: 0.2, animation: 'lpp-bounce 3.8s ease-in-out 1.2s infinite' }}>🎵</div>
+          <div style={{ position: 'absolute', top: '60%', right: '6%', fontSize: '36px', opacity: 0.25, animation: 'lpp-bounce 3.2s ease-in-out 0.3s infinite' }}>✨</div>
         </div>
 
         {/* Hero content */}
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '700px' }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '10px',
-            background: 'rgba(201,24,74,0.08)', border: '1px solid rgba(201,24,74,0.25)',
+            background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)',
             borderRadius: '999px', padding: '8px 22px', marginBottom: '32px',
             fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase',
-            color: '#ff8fa3', fontWeight: 600
+            color: '#d4af37', fontWeight: 600
           }}>
-            <span style={{ display: 'inline-block', color: '#c9184a', fontSize: '10px', animation: 'lpp-heartbeat 1.4s ease-in-out infinite' }}>♥</span>
-            San Valentín · Edición Especial
-            <span style={{ display: 'inline-block', color: '#c9184a', fontSize: '10px', animation: 'lpp-heartbeat 1.4s ease-in-out infinite' }}>♥</span>
+            <span style={{ display: 'inline-block', fontSize: '10px' }}>✨</span>
+            Canciones Personalizadas
+            <span style={{ display: 'inline-block', fontSize: '10px' }}>✨</span>
           </div>
 
           <h1 style={{
@@ -270,7 +251,7 @@ export default function LandingPagePremium() {
           }}>
             Una canción compuesta exclusivamente para esa persona especial.
             Su nombre, su historia, su género favorito. Un regalo{' '}
-            <em style={{ color: 'rgba(255,182,193,0.7)', fontStyle: 'italic' }}>irrepetible</em> este San Valentín.
+            <em style={{ color: 'rgba(212,175,55,0.8)', fontStyle: 'italic' }}>irrepetible</em>.
           </p>
 
           <button className="lpp-hero-cta" onClick={handleCTA} style={{
@@ -281,17 +262,17 @@ export default function LandingPagePremium() {
             boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
             transition: 'all 0.3s', letterSpacing: '0.02em'
           }}>
-            ♥ &nbsp; Regalar Canción Para Hoy 💝
+            ♥ &nbsp; Crear Su Canción
           </button>
 
-          {/* ÚLTIMO MINUTO BADGE */}
+          {/* INSTANT DELIVERY BADGE */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             marginTop: '16px', background: 'rgba(34,197,94,0.15)',
             border: '1px solid rgba(34,197,94,0.3)', borderRadius: '999px',
             padding: '6px 16px', fontSize: '12px', color: '#4ade80', fontWeight: 700
           }}>
-            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+            ⚡ Lista en ~3 minutos · Entrega instantánea
           </div>
 
           <p style={{ marginTop: '20px', fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.02em' }}>
@@ -300,7 +281,7 @@ export default function LandingPagePremium() {
           </p>
 
           <p style={{ marginTop: '10px', fontSize: '13px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em' }}>
-            Preview gratis · Listo en ~3 minutos · ¡Hoy es el día! 💝
+            Preview gratis · Listo en ~3 minutos · Entrega instantánea
           </p>
         </div>
       </section>
@@ -445,7 +426,7 @@ export default function LandingPagePremium() {
           }} />
 
           <div style={{ fontSize: '11px', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#ff8fa3', marginBottom: '24px', fontWeight: 600, position: 'relative', zIndex: 1 }}>
-            ♥ Canción de San Valentín ♥
+            ✨ Canción Personalizada ✨
           </div>
           <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through', marginBottom: '4px', position: 'relative', zIndex: 1 }}>
             Precio normal $49.99
@@ -477,7 +458,7 @@ export default function LandingPagePremium() {
             boxShadow: '0 4px 20px rgba(201,24,74,0.25)',
             position: 'relative', zIndex: 1
           }}>
-            ♥ &nbsp; Regalar Canción Ahora 💝
+            ♥ &nbsp; Crear Mi Canción
           </button>
 
           {/* Combo */}
@@ -487,7 +468,7 @@ export default function LandingPagePremium() {
             position: 'relative', zIndex: 1
           }}>
             <div style={{ fontSize: '11px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#ff8fa3', fontWeight: 600, marginBottom: '4px' }}>
-              ♥ Paquete San Valentín
+              ♥ Paquete Doble
             </div>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '28px', fontWeight: 700 }}>
               $39<span style={{ fontSize: '18px', color: 'rgba(255,255,255,0.4)' }}>.99</span>{' '}
@@ -533,13 +514,13 @@ export default function LandingPagePremium() {
           fontFamily: "'Playfair Display', serif",
           fontSize: 'clamp(32px, 5vw, 48px)', fontWeight: 400, marginBottom: '16px', position: 'relative'
         }}>
-          San Valentín es<br /><em style={{ fontStyle: 'italic', color: '#c9184a' }}>HOY</em>
+          Regala algo que<br /><em style={{ fontStyle: 'italic', color: '#c9184a' }}>nadie más puede dar</em>
         </h2>
         <p style={{
           fontSize: '16px', color: 'rgba(255,255,255,0.4)', maxWidth: '400px',
           margin: '0 auto 32px', lineHeight: 1.6, fontWeight: 300, position: 'relative'
         }}>
-          Quedan pocas horas. Tu canción lista en minutos. El regalo más único y personal que puedes dar.
+          Tu canción lista en minutos. El regalo más único y personal para cumpleaños, aniversarios, o simplemente porque sí.
         </p>
         <button className="lpp-hero-cta" onClick={handleCTA} style={{
           display: 'inline-flex', alignItems: 'center', gap: '10px',
@@ -549,10 +530,10 @@ export default function LandingPagePremium() {
           boxShadow: '0 8px 32px rgba(201,24,74,0.3)',
           transition: 'all 0.3s', letterSpacing: '0.02em', position: 'relative'
         }}>
-          ♥ &nbsp; Regalar Canción Ahora 💝
+          ♥ &nbsp; Crear Su Canción Ahora
         </button>
         <p style={{ marginTop: '16px', fontSize: '13px', color: 'rgba(255,255,255,0.2)', position: 'relative' }}>
-          No necesitas experiencia musical. Solo cuéntanos su historia de amor.
+          No necesitas experiencia musical. Solo cuéntanos su historia.
         </p>
       </div>
 

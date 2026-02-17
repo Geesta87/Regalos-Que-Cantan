@@ -40,8 +40,8 @@ const genreIcons = {
   rock_espanol: 'electric_bolt'
 };
 
-// Primary genres to show first - Romántica first for Valentine's
-const primaryGenreIds = ['romantica', 'balada', 'bolero', 'bachata', 'corrido', 'banda', 'ranchera', 'reggaeton'];
+// Primary genres to show first — balanced for all occasions
+const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'bolero'];
 
 // Voice guidance configuration per genre/subgenre
 // default: pre-selected voice, femalePopular: show female as recommended
@@ -324,13 +324,13 @@ export default function GenreStep() {
               Elige el <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-gold via-white/90 to-gold">Ritmo</span>
             </h1>
             <p className="text-white/60 text-lg font-light max-w-xl mx-auto">
-              ¿Qué ritmo quieres para tu canción de San Valentín? 💕
+              ¿Qué ritmo quieres para tu canción? 🎵
             </p>
           </div>
 
-          {/* Valentine's Banner */}
-          <div className="bg-red-500/20 border border-red-400/50 rounded-xl px-4 py-3 mb-8 max-w-xl mx-auto">
-            <p className="text-red-300 text-sm text-center font-medium">💘 Elige un género romántico para sorprender a tu pareja 💘</p>
+          {/* Occasions hint */}
+          <div className="bg-gold/10 border border-gold/30 rounded-xl px-4 py-3 mb-8 max-w-xl mx-auto">
+            <p className="text-gold text-sm text-center font-medium">🎵 Cumpleaños · Aniversarios · Bodas · Graduaciones · O simplemente porque sí ✨</p>
           </div>
 
           {/* Genre Grid */}
@@ -353,7 +353,7 @@ export default function GenreStep() {
                 `}
               >
                 {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
-                  <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">💘 Romántico</span>
+                  <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">❤️ Romántico</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl transition-transform ${
                   (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
@@ -531,12 +531,12 @@ export default function GenreStep() {
         </div>
       </main>
 
-      {/* Sticky Valentine's Urgency Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 z-50 shadow-lg shadow-red-500/30">
+      {/* Sticky Info Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-forest text-center py-3 z-50 shadow-lg">
         <p className="text-sm font-bold flex items-center justify-center gap-2">
-          <span>⏰</span>
-          <span>¡San Valentín es HOY! Tu canción lista en minutos</span>
-          <span>💘</span>
+          <span>🎵</span>
+          <span>+500 canciones creadas · Tu canción lista en ~3 minutos</span>
+          <span>⚡</span>
         </p>
       </div>
 

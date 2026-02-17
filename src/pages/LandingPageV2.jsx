@@ -77,8 +77,8 @@ const faqs = [
     answer: "2 versiones únicas de tu canción en MP3 de alta calidad, la letra completa personalizada, y una carátula de álbum única."
   },
   {
-    question: "¿Llega a tiempo para San Valentín?",
-    answer: "¡Entrega digital instantánea! Ordena hoy, recibe hoy. No hay envío físico que esperar."
+    question: "¿Cuánto tarda en llegar?",
+    answer: "¡Entrega digital instantánea! Tu canción está lista en ~3 minutos. No hay envío físico que esperar."
   }
 ];
 
@@ -192,25 +192,6 @@ export default function LandingPageV2() {
     trackStep('landing_v2');
   }, []);
 
-  // ═══════════════════════════════════════
-  // COUNTDOWN TIMER
-  // ═══════════════════════════════════════
-  const [countdown, setCountdown] = useState('');
-  useEffect(() => {
-    const target = new Date('2026-02-15T08:00:00Z');
-    const tick = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) { setCountdown('⏰ ¡Última oportunidad!'); return; }
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown(`${h}h ${m}m ${s}s`);
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   // (Social proof handled by SocialProofToast component)
 
   // Audio player logic
@@ -261,9 +242,9 @@ export default function LandingPageV2() {
       {/* Hidden Audio Element */}
       <audio ref={audioRef} preload="metadata" />
 
-      {/* COUNTDOWN URGENCY BAR */}
-      <div className="bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        ⏰ San Valentín termina en <span className="text-yellow-300 font-mono tracking-wide">{countdown}</span> — ¡Tu canción lista en minutos! 💝
+      {/* URGENCY BAR */}
+      <div className="bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-forest text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+        ⚡ Tu canción personalizada lista en ~3 minutos · Desde $24.99
       </div>
 
       {/* SOCIAL PROOF TOAST */}
@@ -299,23 +280,21 @@ export default function LandingPageV2() {
           />
           <div className="hero-gradient absolute inset-0 z-10" />
           
-          {/* Floating Hearts */}
+          {/* Floating Music Notes */}
           <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none">
-            <div className="absolute top-20 left-[10%] text-5xl animate-bounce opacity-60" style={{ animationDelay: '0s', animationDuration: '3s' }}>💕</div>
-            <div className="absolute top-32 right-[15%] text-4xl animate-bounce opacity-50" style={{ animationDelay: '0.5s', animationDuration: '4s' }}>💖</div>
-            <div className="absolute top-48 left-[25%] text-3xl animate-bounce opacity-50" style={{ animationDelay: '1s', animationDuration: '3.5s' }}>💗</div>
-            <div className="absolute bottom-32 right-[25%] text-5xl animate-bounce opacity-50" style={{ animationDelay: '0.7s', animationDuration: '4s' }}>💕</div>
+            <div className="absolute top-20 left-[10%] text-5xl animate-bounce opacity-40" style={{ animationDelay: '0s', animationDuration: '3s' }}>🎵</div>
+            <div className="absolute top-32 right-[15%] text-4xl animate-bounce opacity-35" style={{ animationDelay: '0.5s', animationDuration: '4s' }}>✨</div>
+            <div className="absolute top-48 left-[25%] text-3xl animate-bounce opacity-35" style={{ animationDelay: '1s', animationDuration: '3.5s' }}>🎶</div>
+            <div className="absolute bottom-32 right-[25%] text-5xl animate-bounce opacity-35" style={{ animationDelay: '0.7s', animationDuration: '4s' }}>♪</div>
           </div>
         </div>
 
         {/* Content */}
         <div className="relative z-20 container mx-auto px-6 text-center max-w-4xl">
-          {/* Valentine's Banner */}
-          <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 border-2 border-red-400 rounded-2xl px-6 py-3 mb-6 inline-block shadow-lg shadow-red-500/40 animate-pulse">
-            <span className="text-white text-sm md:text-base font-bold flex items-center justify-center gap-2">
-              <span>💘</span>
-              <span>¡San Valentín está aquí!</span>
-              <span>💘</span>
+          {/* Occasions Badge */}
+          <div className="bg-gold/10 border border-gold/30 rounded-2xl px-6 py-3 mb-6 inline-block">
+            <span className="text-gold text-sm md:text-base font-bold flex items-center justify-center gap-2">
+              🎵 Cumpleaños · Aniversarios · Bodas · Y más ✨
             </span>
           </div>
           
@@ -328,7 +307,7 @@ export default function LandingPageV2() {
           
           <p className="text-white/70 text-lg md:text-xl font-light leading-relaxed max-w-2xl mx-auto mb-8">
             Crea una canción única con los nombres, la historia y el género que elijas. 
-            Lista en minutos — el regalo que nunca va a olvidar.
+            El regalo más único que puedes dar — lista en minutos.
           </p>
 
           <button 
@@ -336,13 +315,13 @@ export default function LandingPageV2() {
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-bougainvillea text-white text-lg font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95"
           >
             <span className="material-symbols-outlined mr-2">music_note</span>
-            <span className="relative z-10">🎁 Regalar Canción Para Hoy 💝</span>
+            <span className="relative z-10">🎵 Crear Mi Canción</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
-          {/* ÚLTIMO MINUTO BADGE */}
+          {/* INSTANT DELIVERY BADGE */}
           <div className="mt-4 inline-flex items-center gap-2 bg-green-500/15 border border-green-500/30 rounded-full px-4 py-1.5 text-xs text-green-400 font-bold">
-            ⚡ Regalo de Último Minuto Perfecto — Lista en ~3 min
+            ⚡ Lista en ~3 minutos · Entrega instantánea
           </div>
           
           <p className="mt-3 text-white/60 text-sm">
@@ -487,9 +466,9 @@ export default function LandingPageV2() {
           </div>
 
           <div className="bg-white/[0.03] backdrop-blur-xl border-2 border-gold/50 rounded-3xl p-8 text-center relative overflow-hidden">
-            {/* Valentine's ribbon */}
-            <div className="absolute top-4 -right-8 bg-red-500 text-white text-xs font-bold px-10 py-1 rotate-45">
-              💘 San Valentín
+            {/* Promo ribbon */}
+            <div className="absolute top-4 -right-8 bg-gold text-forest text-xs font-bold px-10 py-1 rotate-45">
+              ⚡ Oferta Especial
             </div>
 
             <div className="mb-6">
@@ -526,7 +505,7 @@ export default function LandingPageV2() {
               className="w-full group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 bg-bougainvillea text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95"
             >
               <span className="material-symbols-outlined mr-2">music_note</span>
-              🎁 Regalar Canción Ahora 💝
+              🎵 Crear Mi Canción
             </button>
 
             <p className="mt-4 text-white/50 text-sm flex items-center justify-center gap-2">
@@ -569,34 +548,34 @@ export default function LandingPageV2() {
 
       {/* ==================== FINAL CTA SECTION ==================== */}
       <section className="py-20 px-6 bg-gradient-to-b from-forest to-background-dark relative overflow-hidden">
-        {/* Background hearts */}
+        {/* Background decorations */}
         <div className="absolute inset-0 pointer-events-none opacity-20">
-          <div className="absolute top-10 left-[20%] text-6xl">💕</div>
-          <div className="absolute bottom-10 right-[20%] text-6xl">💖</div>
+          <div className="absolute top-10 left-[20%] text-6xl">🎵</div>
+          <div className="absolute bottom-10 right-[20%] text-6xl">✨</div>
         </div>
 
         <div className="max-w-xl mx-auto text-center relative z-10">
-          <div className="text-5xl mb-4">💘</div>
+          <div className="text-5xl mb-4">🎶</div>
           <h2 className="text-white text-3xl md:text-4xl font-black mb-4">
-            San Valentín Es HOY 💝
+            Regala Algo Único
           </h2>
           <p className="text-white/70 text-lg mb-8">
-            Quedan pocas horas. Una canción personalizada lista en minutos. 
-            El regalo que nunca va a olvidar.
+            Una canción personalizada que recordará para siempre. 
+            Para cumpleaños, aniversarios, o simplemente porque sí.
           </p>
 
           <button 
             onClick={() => navigateTo('genre')}
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-bougainvillea to-red-500 text-white text-xl font-bold shadow-2xl shadow-bougainvillea/30 transition-all hover:scale-105 active:scale-95"
           >
-            <span className="material-symbols-outlined mr-2 text-2xl">favorite</span>
-            <span className="relative z-10">🎁 Regalar Canción Ahora 💝</span>
+            <span className="material-symbols-outlined mr-2 text-2xl">music_note</span>
+            <span className="relative z-10">🎵 Crear Mi Canción</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
-          <p className="mt-6 text-red-400 font-semibold flex items-center justify-center gap-2">
+          <p className="mt-6 text-gold font-semibold flex items-center justify-center gap-2">
             <span className="material-symbols-outlined">schedule</span>
-            ⏰ Quedan pocas horas — ¡Tu canción lista en minutos!
+            ⚡ Lista en ~3 minutos · +500 canciones creadas
           </p>
         </div>
       </section>

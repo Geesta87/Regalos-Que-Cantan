@@ -61,30 +61,9 @@ export default function ComparisonPage() {
   const [couponError, setCouponError] = useState('');
   const [isLoadingCoupon, setIsLoadingCoupon] = useState(false);
   
-  // Valentine countdown timer
-  const [vCountdown, setVCountdown] = useState({ hours: 0, mins: 0, secs: 0 });
+  // Removed Valentine countdown
   const videoTestimonialRefs = useRef({});
   const [playingTestimonial, setPlayingTestimonial] = useState(null);
-
-  useEffect(() => {
-    const valentineEnd = new Date('2026-02-15T00:00:00');
-    const tick = () => {
-      const now = new Date();
-      const diff = valentineEnd - now;
-      if (diff <= 0) {
-        setVCountdown({ hours: 0, mins: 0, secs: 0 });
-        return;
-      }
-      setVCountdown({
-        hours: Math.floor(diff / 3600000),
-        mins: Math.floor((diff % 3600000) / 60000),
-        secs: Math.floor((diff % 60000) / 1000)
-      });
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleTestimonialToggle = (id) => {
     const video = videoTestimonialRefs.current[id];
@@ -659,43 +638,17 @@ export default function ComparisonPage() {
         transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
       }}>
 
-        {/* ===== VALENTINE COUNTDOWN BANNER ===== */}
+        {/* ===== INSTANT DELIVERY BANNER ===== */}
         <div style={{
-          background: 'linear-gradient(135deg, #c9184a, #e11d74, #ff2d78)',
-          backgroundSize: '200% 200%',
-          animation: 'vBannerPulse 3s ease infinite',
+          background: 'linear-gradient(135deg, rgba(212,175,55,0.2), rgba(212,175,55,0.1))',
           borderRadius: '16px',
           padding: '14px 20px',
           marginBottom: '20px',
           textAlign: 'center',
-          boxShadow: '0 4px 25px rgba(201,24,74,0.4)',
-          border: '1px solid rgba(255,255,255,0.15)'
+          border: '1px solid rgba(212,175,55,0.3)'
         }}>
-          <div style={{ fontSize: '15px', fontWeight: '800', marginBottom: '6px', letterSpacing: '0.5px' }}>
-            💘 ¡San Valentín es MAÑANA! Tu canción lista en minutos
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', opacity: 0.9 }}>Tiempo restante:</span>
-            {[
-              { val: vCountdown.hours, label: 'hrs' },
-              { val: vCountdown.mins, label: 'min' },
-              { val: vCountdown.secs, label: 'seg' }
-            ].map((t, i) => (
-              <span key={i} style={{
-                background: 'rgba(0,0,0,0.3)',
-                padding: '4px 10px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-                fontSize: '16px',
-                fontFamily: 'monospace',
-                animation: i === 2 ? 'vCountBounce 1s ease infinite' : 'none',
-                minWidth: '45px',
-                display: 'inline-block',
-                textAlign: 'center'
-              }}>
-                {String(t.val).padStart(2, '0')}<span style={{ fontSize: '10px', opacity: 0.7 }}> {t.label}</span>
-              </span>
-            ))}
+          <div style={{ fontSize: '15px', fontWeight: '800', letterSpacing: '0.5px', color: '#d4af37' }}>
+            ⚡ +500 canciones creadas · Entrega instantánea
           </div>
         </div>
         
@@ -788,7 +741,7 @@ export default function ComparisonPage() {
           {[
             { icon: '🔥', text: '147 canciones', sub: 'creadas hoy' },
             { icon: '⭐', text: '4.9/5', sub: 'satisfacción' },
-            { icon: '💝', text: 'Ideal para', sub: 'San Valentín' }
+            { icon: '🎁', text: 'Ideal para', sub: 'Cualquier Ocasión' }
           ].map((item, i) => (
             <span key={i} style={{
               fontSize: '13px',
