@@ -225,6 +225,17 @@ const genres = {
     }
   },
 
+  vals: {
+    name: "Vals",
+    emoji: "👑",
+    description: "Vals elegante para quinceañeras y bodas",
+    subGenres: {
+      vals_mexicano: { name: "Mexicano", description: "Vals tradicional de quinceañera con orquesta" },
+      vals_romantico: { name: "Romántico", description: "Vals suave para bodas y aniversarios" },
+      vals_moderno: { name: "Moderno", description: "Vals contemporáneo con arreglos pop" }
+    }
+  },
+
   // ==========================================
   // ROCK
   // ==========================================

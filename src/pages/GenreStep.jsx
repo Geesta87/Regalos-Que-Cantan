@@ -37,11 +37,12 @@ const genreIcons = {
   vallenato: 'library_music',
   duranguense: 'queue_music',
   merengue: 'sports_handball',
-  rock_espanol: 'electric_bolt'
+  rock_espanol: 'electric_bolt',
+  vals: 'attractions'
 };
 
 // Primary genres to show first — balanced for all occasions
-const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'bolero'];
+const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'vals'];
 
 // Voice guidance configuration per genre/subgenre
 // default: pre-selected voice, femalePopular: show female as recommended
@@ -157,6 +158,12 @@ const voiceGuidance = {
     bolero_clasico: { default: 'male', femalePopular: true, tip: 'Los Panchos o voces femeninas clásicas' },
     bolero_ranchero: { default: 'male', femalePopular: true },
     bolero_moderno: { default: 'male', femalePopular: true, tip: 'Luis Miguel style' }
+  },
+  vals: {
+    _default: { default: 'female', femalePopular: true, tip: 'Voz suave y elegante para vals' },
+    vals_mexicano: { default: 'female', femalePopular: true, tip: 'Voz dulce para quinceañera' },
+    vals_romantico: { default: 'female', femalePopular: true, tip: 'Voz emotiva para bodas' },
+    vals_moderno: { default: 'female', femalePopular: true, tip: 'Voz contemporánea con arreglos pop' }
   },
   rock_espanol: {
     _default: { default: 'male', femalePopular: true },
@@ -343,7 +350,7 @@ export default function GenreStep() {
                   relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-4 
                   group cursor-pointer transition-all duration-300
                   bg-white/[0.03] backdrop-blur-xl border
-                  ${(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero')
+                  ${(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals')
                     ? selectedGenre === genre.id
                       ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
                       : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
@@ -352,11 +359,11 @@ export default function GenreStep() {
                       : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
-                {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
+                {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals') && (
                   <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">❤️ Romántico</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl transition-transform ${
-                  (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
+                  (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals') 
                     ? 'text-red-400' 
                     : 'text-gold'
                 } ${selectedGenre === genre.id ? 'scale-110' : 'group-hover:scale-110'}`}>

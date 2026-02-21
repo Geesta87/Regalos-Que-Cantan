@@ -35,11 +35,12 @@ const genreIcons = {
   bolero: 'nights_stay',
   grupera: 'groups',
   tejano: 'music_note',
-  vallenato: 'library_music'
+  vallenato: 'library_music',
+  vals: 'attractions'
 };
 
 // Primary genres to show first — balanced for all occasions
-const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'bolero'];
+const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'vals'];
 
 export default function GenrePage() {
   const { state, dispatch, navigateTo } = useContext(AppContext);
@@ -145,7 +146,7 @@ export default function GenrePage() {
                   relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-4 
                   group cursor-pointer transition-all duration-300
                   bg-white/[0.03] backdrop-blur-xl border
-                  ${(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero')
+                  ${(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals')
                     ? selectedGenre === genre.id
                       ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
                       : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
@@ -154,11 +155,11 @@ export default function GenrePage() {
                       : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
-                {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') && (
+                {(genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals') && (
                   <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">❤️ Romántico</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl transition-transform ${
-                  (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero') 
+                  (genre.id === 'romantica' || genre.id === 'balada' || genre.id === 'bachata' || genre.id === 'bolero' || genre.id === 'vals') 
                     ? 'text-red-400' 
                     : 'text-gold'
                 } ${selectedGenre === genre.id ? 'scale-110' : 'group-hover:scale-110'}`}>
