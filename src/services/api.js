@@ -86,6 +86,16 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
+  // Capture Facebook cookies for Meta Conversions API attribution
+  const getCookie = (name) => {
+    try {
+      const match = document.cookie.split(';').find(c => c.trim().startsWith(name + '='));
+      return match ? match.split('=').slice(1).join('=').trim() : '';
+    } catch { return ''; }
+  };
+  const fbc = getCookie('_fbc');
+  const fbp = getCookie('_fbp');
+  
   const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
     method: 'POST',
     headers: {
@@ -97,7 +107,10 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       email,
       couponCode,
       purchaseBoth,
-      pricingTier
+      pricingTier,
+      fbc,
+      fbp,
+      clientUserAgent: navigator.userAgent
     })
   });
 
