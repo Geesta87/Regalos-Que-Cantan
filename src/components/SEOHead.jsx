@@ -30,7 +30,7 @@ export default function SEOHead({
   const fullCanonical = canonical ? `${baseUrl}${canonical}` : baseUrl;
   const fullOgImage = ogImage.startsWith('http') ? ogImage : `${baseUrl}${ogImage}`;
   
-  const defaultDescription = 'Crea canciones personalizadas únicas con IA para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $19.99.';
+  const defaultDescription = 'Crea canciones personalizadas únicas con IA para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $29.99.';
   const finalDescription = description || defaultDescription;
 
   return (
@@ -67,9 +67,17 @@ export default function SEOHead({
       
       {/* Structured Data */}
       {structuredData && (
-        <script type="application/ld+json">
-          {JSON.stringify(structuredData)}
-        </script>
+        Array.isArray(structuredData) ? (
+          structuredData.map((data, i) => (
+            <script key={i} type="application/ld+json">
+              {JSON.stringify(data)}
+            </script>
+          ))
+        ) : (
+          <script type="application/ld+json">
+            {JSON.stringify(structuredData)}
+          </script>
+        )
       )}
     </Helmet>
   );
@@ -90,7 +98,7 @@ export function generateGenreStructuredData(genre) {
     },
     "offers": {
       "@type": "Offer",
-      "price": "19.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -118,7 +126,7 @@ export function generateOccasionStructuredData(occasion) {
     },
     "offers": {
       "@type": "Offer",
-      "price": "19.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },

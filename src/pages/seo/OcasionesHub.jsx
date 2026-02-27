@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../App';
-import SEOHead from '../../components/SEOHead';
+import SEOHead, { generateBreadcrumbData } from '../../components/SEOHead';
+import SEOLink from '../../components/SEOLink';
 import { getAllOccasions, getFeaturedOccasions, getCurrentSeasonalOccasions } from '../../data/seoData';
 
 /**
@@ -13,7 +14,12 @@ export default function OcasionesHub() {
   const featuredOccasions = getFeaturedOccasions();
   const seasonalOccasions = getCurrentSeasonalOccasions();
 
-  const structuredData = {
+  const breadcrumbData = generateBreadcrumbData([
+    { name: 'Inicio', path: '/' },
+    { name: 'Ocasiones', path: '/ocasiones' }
+  ]);
+
+  const itemListData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": "Ocasiones para Canciones Personalizadas",
@@ -26,6 +32,8 @@ export default function OcasionesHub() {
       "url": `https://regalosquecantan.com/ocasiones/${occasion.slug}`
     }))
   };
+
+  const structuredData = [breadcrumbData, itemListData];
 
   // Occasion images mapping
   const occasionImages = {
@@ -75,36 +83,36 @@ export default function OcasionesHub() {
       <div className="min-h-screen bg-[#F9F6F2] font-['Inter',sans-serif] text-[#111318]">
         {/* Top Navigation Bar */}
         <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f1f5] px-6 md:px-10 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-          <button 
-            onClick={() => navigateTo('landing')}
+          <SEOLink
+            to="landing"
             className="flex items-center gap-3 text-[#1A4338] hover:opacity-80 transition-opacity"
           >
             <div className="w-8 h-8 bg-[#1A4338] rounded-lg flex items-center justify-center">
               <span className="text-white text-lg">🎵</span>
             </div>
             <h2 className="text-[#111318] text-xl font-bold leading-tight tracking-[-0.015em]">RegalosQueCantan</h2>
-          </button>
+          </SEOLink>
           <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
             <nav className="hidden md:flex items-center gap-9">
-              <button 
-                onClick={() => navigateTo('generos')}
+              <SEOLink
+                to="generos"
                 className="text-[#111318] text-sm font-medium hover:text-[#1A4338] transition-colors"
               >
                 Géneros
-              </button>
-              <button 
-                onClick={() => navigateTo('ocasiones')}
+              </SEOLink>
+              <SEOLink
+                to="ocasiones"
                 className="text-[#1A4338] text-sm font-medium hover:text-[#D4AF37] transition-colors"
               >
                 Ocasiones
-              </button>
+              </SEOLink>
             </nav>
-            <button 
-              onClick={() => navigateTo('landing')}
+            <SEOLink
+              to="landing"
               className="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-10 px-5 bg-[#1A4338]/10 text-[#1A4338] hover:bg-[#1A4338] hover:text-white transition-all text-sm font-bold border border-[#1A4338]/20"
             >
               <span className="truncate">Inicio</span>
-            </button>
+            </SEOLink>
           </div>
         </header>
 
@@ -115,12 +123,12 @@ export default function OcasionesHub() {
               <p className="text-[#1A4338] font-bold text-lg">
                 🎉 ¡{seasonalOccasions[0].name} se acerca! Crea tu canción ahora
               </p>
-              <button
-                onClick={() => navigateTo(`ocasiones/${seasonalOccasions[0].slug}`)}
-                className="mt-3 px-6 py-2 bg-[#1A4338] text-white rounded-full text-sm font-medium hover:bg-[#2D5A4A] transition-colors"
+              <SEOLink
+                to={`ocasiones/${seasonalOccasions[0].slug}`}
+                className="inline-block mt-3 px-6 py-2 bg-[#1A4338] text-white rounded-full text-sm font-medium hover:bg-[#2D5A4A] transition-colors"
               >
                 Ver canciones para {seasonalOccasions[0].name} →
-              </button>
+              </SEOLink>
             </div>
           </div>
         )}
@@ -150,9 +158,9 @@ export default function OcasionesHub() {
             {/* Occasion Grid with Talavera Accents */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-4">
               {allOccasions.map((occasion) => (
-                <button
+                <SEOLink
                   key={occasion.slug}
-                  onClick={() => navigateTo(`ocasiones/${occasion.slug}`)}
+                  to={`ocasiones/${occasion.slug}`}
                   className="group relative flex flex-col p-[2px] rounded-xl overflow-hidden bg-white border border-[#1A4338]/10 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left"
                 >
                   {/* Talavera Pattern Background */}
@@ -160,8 +168,10 @@ export default function OcasionesHub() {
                   
                   <div className="relative bg-white m-1 rounded-lg flex flex-col h-full overflow-hidden">
                     {/* Occasion Image */}
-                    <div 
+                    <div
                       className="h-48 bg-cover bg-center relative"
+                      role="img"
+                      aria-label={`Canción personalizada para ${occasion.name}`}
                       style={{
                         backgroundImage: `linear-gradient(0deg, rgba(26, 67, 56, 0.6) 0%, transparent 100%), url("${getOccasionImage(occasion.slug)}")`
                       }}
@@ -185,7 +195,7 @@ export default function OcasionesHub() {
                       )}
                     </div>
                   </div>
-                </button>
+                </SEOLink>
               ))}
             </div>
 
@@ -228,20 +238,20 @@ export default function OcasionesHub() {
                 La estética Talavera honra nuestra herencia compartida con un toque de lujo moderno.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-                <button 
-                  onClick={() => navigateTo('generos')}
+                <SEOLink
+                  to="generos"
                   className="flex min-w-[200px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-white border-2 border-[#1A4338] text-[#1A4338] hover:bg-[#1A4338]/5 transition-all text-base font-bold"
                 >
                   <span>🎵</span>
                   Ver Géneros
-                </button>
-                <button 
-                  onClick={() => navigateTo('genre')}
+                </SEOLink>
+                <SEOLink
+                  to="genre"
                   className="flex min-w-[240px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-[#1A4338] text-white hover:bg-[#1A4338]/90 transition-all text-base font-bold shadow-lg shadow-[#1A4338]/30"
                 >
                   Crear Mi Canción
                   <span>→</span>
-                </button>
+                </SEOLink>
               </div>
             </div>
           </div>
@@ -260,17 +270,15 @@ export default function OcasionesHub() {
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Navegación</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <button onClick={() => navigateTo('landing')} className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</button>
-                <button onClick={() => navigateTo('generos')} className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</button>
-                <button onClick={() => navigateTo('ocasiones')} className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</button>
+                <SEOLink to="landing" className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</SEOLink>
+                <SEOLink to="generos" className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</SEOLink>
+                <SEOLink to="ocasiones" className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</SEOLink>
               </div>
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Soporte</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Términos de Servicio</a>
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Política de Privacidad</a>
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
+                <a href="mailto:hola@regalosquecantan.com" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
               </div>
             </div>
           </div>

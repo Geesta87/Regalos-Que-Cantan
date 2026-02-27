@@ -28,6 +28,7 @@ import GenerosHub from './pages/seo/GenerosHub';
 import OcasionesHub from './pages/seo/OcasionesHub';
 import GenreLanding from './pages/seo/GenreLanding';
 import OccasionLanding from './pages/seo/OccasionLanding';
+import NotFoundPage from './pages/NotFoundPage';
 
 // App State Context
 export const AppContext = React.createContext();
@@ -94,9 +95,12 @@ function getInitialPage() {
   if (pathToPage[path]) {
     return pathToPage[path];
   }
-  
-  // Default to landing
-  return 'landing';
+
+  // Root path fallback
+  if (path === '/') return 'landing';
+
+  // Unknown page - show 404
+  return 'notFound';
 }
 
 // Helper to extract slug from page path
@@ -218,7 +222,11 @@ export default function App() {
       ocasiones: '/ocasiones'
     };
     
-    const url = pageUrls[page] || '/';
+    // Handle dynamic SEO routes (generos/*, ocasiones/*)
+    let url = pageUrls[page];
+    if (!url) {
+      url = (page.startsWith('generos/') || page.startsWith('ocasiones/')) ? `/${page}` : '/';
+    }
     window.history.pushState({ page }, '', url);
     
     window.scrollTo(0, 0);
@@ -312,6 +320,9 @@ export default function App() {
           {currentPage.startsWith('ocasiones/') && (
             <OccasionLanding occasionSlug={getSlugFromPage(currentPage, 'ocasiones/')} />
           )}
+
+          {/* 404 Not Found */}
+          {currentPage === 'notFound' && <NotFoundPage />}
 
           {/* WhatsApp floating button - only on landing, comparison, and success pages */}
           {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'landing_premium' || currentPage === 'comparison' || currentPage === 'success') && (

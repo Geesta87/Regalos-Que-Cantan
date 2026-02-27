@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../App';
-import SEOHead from '../../components/SEOHead';
+import SEOHead, { generateBreadcrumbData } from '../../components/SEOHead';
+import SEOLink from '../../components/SEOLink';
 import { getAllGenres, getFeaturedGenres } from '../../data/seoData';
 
 /**
@@ -12,7 +13,12 @@ export default function GenerosHub() {
   const allGenres = getAllGenres();
   const featuredGenres = getFeaturedGenres();
 
-  const structuredData = {
+  const breadcrumbData = generateBreadcrumbData([
+    { name: 'Inicio', path: '/' },
+    { name: 'Géneros', path: '/generos' }
+  ]);
+
+  const itemListData = {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": "Géneros Musicales para Canciones Personalizadas",
@@ -25,6 +31,8 @@ export default function GenerosHub() {
       "url": `https://regalosquecantan.com/generos/${genre.slug}`
     }))
   };
+
+  const structuredData = [breadcrumbData, itemListData];
 
   // Genre images mapping (placeholder URLs - replace with actual images)
   const genreImages = {
@@ -76,36 +84,36 @@ export default function GenerosHub() {
       <div className="min-h-screen bg-[#F9F6F2] font-['Inter',sans-serif] text-[#111318]">
         {/* Top Navigation Bar */}
         <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f1f5] px-6 md:px-10 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-          <button 
-            onClick={() => navigateTo('landing')}
+          <SEOLink
+            to="landing"
             className="flex items-center gap-3 text-[#1A4338] hover:opacity-80 transition-opacity"
           >
             <div className="w-8 h-8 bg-[#1A4338] rounded-lg flex items-center justify-center">
               <span className="text-white text-lg">🎵</span>
             </div>
             <h2 className="text-[#111318] text-xl font-bold leading-tight tracking-[-0.015em]">RegalosQueCantan</h2>
-          </button>
+          </SEOLink>
           <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
             <nav className="hidden md:flex items-center gap-9">
-              <button 
-                onClick={() => navigateTo('generos')}
+              <SEOLink
+                to="generos"
                 className="text-[#1A4338] text-sm font-medium hover:text-[#D4AF37] transition-colors"
               >
                 Géneros
-              </button>
-              <button 
-                onClick={() => navigateTo('ocasiones')}
+              </SEOLink>
+              <SEOLink
+                to="ocasiones"
                 className="text-[#111318] text-sm font-medium hover:text-[#1A4338] transition-colors"
               >
                 Ocasiones
-              </button>
+              </SEOLink>
             </nav>
-            <button 
-              onClick={() => navigateTo('landing')}
+            <SEOLink
+              to="landing"
               className="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-10 px-5 bg-[#1A4338]/10 text-[#1A4338] hover:bg-[#1A4338] hover:text-white transition-all text-sm font-bold border border-[#1A4338]/20"
             >
               <span className="truncate">Inicio</span>
-            </button>
+            </SEOLink>
           </div>
         </header>
 
@@ -134,9 +142,9 @@ export default function GenerosHub() {
             {/* Genre Grid with Talavera Accents */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-4">
               {allGenres.map((genre) => (
-                <button
+                <SEOLink
                   key={genre.slug}
-                  onClick={() => navigateTo(`generos/${genre.slug}`)}
+                  to={`generos/${genre.slug}`}
                   className="group relative flex flex-col p-[2px] rounded-xl overflow-hidden bg-white border border-[#1A4338]/10 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left"
                 >
                   {/* Talavera Pattern Background */}
@@ -144,8 +152,10 @@ export default function GenerosHub() {
                   
                   <div className="relative bg-white m-1 rounded-lg flex flex-col h-full overflow-hidden">
                     {/* Genre Image */}
-                    <div 
-                      className="h-48 bg-cover bg-center"
+                    <div
+                      className="h-48 bg-cover bg-center relative"
+                      role="img"
+                      aria-label={`Canción de ${genre.name} personalizada`}
                       style={{
                         backgroundImage: `linear-gradient(0deg, rgba(26, 67, 56, 0.6) 0%, transparent 100%), url("${getGenreImage(genre.slug)}")`
                       }}
@@ -169,7 +179,7 @@ export default function GenerosHub() {
                       )}
                     </div>
                   </div>
-                </button>
+                </SEOLink>
               ))}
             </div>
 
@@ -179,20 +189,20 @@ export default function GenerosHub() {
                 La estética Talavera honra nuestra herencia compartida con un toque de lujo moderno.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-                <button 
-                  onClick={() => navigateTo('ocasiones')}
+                <SEOLink
+                  to="ocasiones"
                   className="flex min-w-[200px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-white border-2 border-[#1A4338] text-[#1A4338] hover:bg-[#1A4338]/5 transition-all text-base font-bold"
                 >
                   <span>🎁</span>
                   Ver Ocasiones
-                </button>
-                <button 
-                  onClick={() => navigateTo('genre')}
+                </SEOLink>
+                <SEOLink
+                  to="genre"
                   className="flex min-w-[240px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-[#1A4338] text-white hover:bg-[#1A4338]/90 transition-all text-base font-bold shadow-lg shadow-[#1A4338]/30"
                 >
                   Crear Mi Canción
                   <span>→</span>
-                </button>
+                </SEOLink>
               </div>
             </div>
           </div>
@@ -211,17 +221,15 @@ export default function GenerosHub() {
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Navegación</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <button onClick={() => navigateTo('landing')} className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</button>
-                <button onClick={() => navigateTo('generos')} className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</button>
-                <button onClick={() => navigateTo('ocasiones')} className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</button>
+                <SEOLink to="landing" className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</SEOLink>
+                <SEOLink to="generos" className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</SEOLink>
+                <SEOLink to="ocasiones" className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</SEOLink>
               </div>
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Soporte</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Términos de Servicio</a>
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Política de Privacidad</a>
-                <a href="#" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
+                <a href="mailto:hola@regalosquecantan.com" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
               </div>
             </div>
           </div>

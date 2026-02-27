@@ -1,6 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateOccasionStructuredData, generateBreadcrumbData } from '../../components/SEOHead';
+import SEOLink from '../../components/SEOLink';
 import { getOccasionBySlug, getAllOccasions, getGenreBySlug, getAllGenres } from '../../data/seoData';
 
 /**
@@ -68,7 +69,7 @@ export default function OccasionLanding({ occasionSlug }) {
         canonical={`/ocasiones/${occasion.slug}`}
         keywords={occasion.keywords}
         ogImage={`/images/occasions/${occasion.slug}.jpg`}
-        structuredData={generateOccasionStructuredData(occasion)}
+        structuredData={[generateOccasionStructuredData(occasion), generateBreadcrumbData(breadcrumbs)]}
       />
       
       <div className="min-h-screen bg-[#F9F6F2]">
@@ -89,12 +90,12 @@ export default function OccasionLanding({ occasionSlug }) {
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-gray-900 font-medium">{item.name}</span>
                     ) : (
-                      <button 
-                        onClick={() => navigateTo(item.path === '/' ? 'landing' : item.path.replace('/', ''))}
+                      <SEOLink
+                        to={item.path === '/' ? 'landing' : item.path.replace('/', '')}
                         className="hover:text-gray-900 transition-colors"
                       >
                         {item.name}
-                      </button>
+                      </SEOLink>
                     )}
                   </li>
                 ))}
@@ -132,7 +133,7 @@ export default function OccasionLanding({ occasionSlug }) {
             
             {/* Price Badge */}
             <p className="mt-4 text-gray-500">
-              Desde <span className="font-bold text-[#1A4338]">$19.99</span> • Listo en minutos
+              Desde <span className="font-bold text-[#1A4338]">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -341,7 +342,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </button>
             
             <div className="mt-6 flex items-center justify-center gap-6 text-sm text-gray-500">
-              <span>✓ Desde $19.99</span>
+              <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
             </div>
@@ -357,24 +358,24 @@ export default function OccasionLanding({ occasionSlug }) {
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {relatedOccasions.map(o => (
-                <button
+                <SEOLink
                   key={o.slug}
-                  onClick={() => navigateTo(`ocasiones/${o.slug}`)}
-                  className="p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
+                  to={`ocasiones/${o.slug}`}
+                  className="block p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
                 >
                   <div className="text-2xl mb-2">{o.icon}</div>
                   <div className="font-medium text-[#1A4338] text-sm">{o.name}</div>
-                </button>
+                </SEOLink>
               ))}
             </div>
-            
+
             <div className="text-center mt-6">
-              <button
-                onClick={() => navigateTo('ocasiones')}
+              <SEOLink
+                to="ocasiones"
                 className="text-[#1A4338] font-medium hover:underline"
               >
                 Ver todas las ocasiones →
-              </button>
+              </SEOLink>
             </div>
           </div>
         </section>

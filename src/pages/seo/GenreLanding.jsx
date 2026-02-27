@@ -1,6 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateGenreStructuredData, generateBreadcrumbData } from '../../components/SEOHead';
+import SEOLink from '../../components/SEOLink';
 import { getGenreBySlug, getAllGenres, getAllOccasions } from '../../data/seoData';
 
 /**
@@ -59,7 +60,7 @@ export default function GenreLanding({ genreSlug }) {
         canonical={`/generos/${genre.slug}`}
         keywords={genre.keywords}
         ogImage={`/images/genres/${genre.slug}.jpg`}
-        structuredData={generateGenreStructuredData(genre)}
+        structuredData={[generateGenreStructuredData(genre), generateBreadcrumbData(breadcrumbs)]}
       />
       
       <div className="min-h-screen bg-[#F9F6F2]">
@@ -80,12 +81,12 @@ export default function GenreLanding({ genreSlug }) {
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-gray-900 font-medium">{item.name}</span>
                     ) : (
-                      <button 
-                        onClick={() => navigateTo(item.path === '/' ? 'landing' : item.path.replace('/', ''))}
+                      <SEOLink
+                        to={item.path === '/' ? 'landing' : item.path.replace('/', '')}
                         className="hover:text-gray-900 transition-colors"
                       >
                         {item.name}
-                      </button>
+                      </SEOLink>
                     )}
                   </li>
                 ))}
@@ -123,7 +124,7 @@ export default function GenreLanding({ genreSlug }) {
             
             {/* Price Badge */}
             <p className="mt-4 text-gray-500">
-              Desde <span className="font-bold text-[#1A4338]">$19.99</span> • Listo en minutos
+              Desde <span className="font-bold text-[#1A4338]">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -278,24 +279,24 @@ export default function GenreLanding({ genreSlug }) {
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {relatedGenres.map(g => (
-                <button
+                <SEOLink
                   key={g.slug}
-                  onClick={() => navigateTo(`generos/${g.slug}`)}
-                  className="p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
+                  to={`generos/${g.slug}`}
+                  className="block p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
                 >
                   <div className="text-2xl mb-2">{g.icon}</div>
                   <div className="font-medium text-[#1A4338] text-sm">{g.name}</div>
-                </button>
+                </SEOLink>
               ))}
             </div>
-            
+
             <div className="text-center mt-6">
-              <button
-                onClick={() => navigateTo('generos')}
+              <SEOLink
+                to="generos"
                 className="text-[#1A4338] font-medium hover:underline"
               >
                 Ver los 20+ géneros disponibles →
-              </button>
+              </SEOLink>
             </div>
           </div>
         </section>

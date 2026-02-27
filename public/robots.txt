@@ -5,25 +5,18 @@ User-agent: *
 Allow: /
 
 # Allow all crawlers access to all public pages
-Allow: /generos/
-Allow: /ocasiones/
-Allow: /como-funciona
-Allow: /precios
-Allow: /ejemplos
+Allow: /generos
+Allow: /ocasiones
 
 # Block admin and internal pages
 Disallow: /admin
-Disallow: /admin/
-Disallow: /create/
-Disallow: /preview/
+Disallow: /create
+Disallow: /preview
 Disallow: /success
 Disallow: /comparison
 
-# Block API endpoints if any
-Disallow: /api/
+# Block API endpoints
+Disallow: /api
 
 # Sitemap location
 Sitemap: https://regalosquecantan.com/sitemap.xml
-
-# Crawl-delay for politeness (optional)
-Crawl-delay: 1
