@@ -169,7 +169,14 @@ input:focus, textarea:focus, button:focus {
 
 .polaroid-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
   transform: rotate(-2deg);
+}
+
+@media (min-width: 768px) {
+  .polaroid-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
 }
