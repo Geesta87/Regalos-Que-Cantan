@@ -14,6 +14,8 @@ export default {
         "gold": "#D4AF37",
         "background-light": "#FDFCFB",
         "background-dark": "#0F1211",
+        "landing-bg": "#181114",
+        "landing-primary": "#f20d80",
       },
       fontFamily: {
         "display": ["Playfair Display", "serif"],

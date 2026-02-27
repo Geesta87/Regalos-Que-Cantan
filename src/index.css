@@ -161,3 +161,15 @@ input:focus, textarea:focus, button:focus {
 .animate-shimmer {
   animation: shimmer 2s infinite;
 }
+
+/* Polaroid mosaic styles */
+.polaroid-shadow {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.polaroid-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  transform: rotate(-2deg);
+}
