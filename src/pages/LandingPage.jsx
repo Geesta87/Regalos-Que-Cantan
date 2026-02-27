@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 import SocialProofToast from '../components/SocialProofToast';
@@ -12,6 +12,48 @@ const polaroidCards = [
   { src: '/images/album-art/cumbia.jpg', alt: 'Cumbia album artwork', rotate: 'rotate-[6deg]', offset: 'translate-y-12' },
   { src: '/images/reactions/reaction6.jpg', alt: 'Customer reaction', rotate: '-rotate-[8deg]', offset: 'translate-x-4' },
 ];
+
+// Testimonial video component with play/pause
+function TestimonialVideo({ src, poster }) {
+  const videoRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play();
+      setPlaying(true);
+    } else {
+      video.pause();
+      setPlaying(false);
+    }
+  };
+
+  return (
+    <div
+      className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-slate-900 cursor-pointer group shadow-xl"
+      onClick={togglePlay}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-cover"
+        onEnded={() => setPlaying(false)}
+      />
+      {/* Play overlay */}
+      {!playing && (
+        <div className="absolute inset-0 bg-black/30 flex items-center justify-center transition-opacity">
+          <div className="w-16 h-16 bg-landing-primary/90 rounded-full flex items-center justify-center shadow-xl shadow-landing-primary/30">
+            <span className="material-symbols-outlined text-white text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const { navigateTo } = useContext(AppContext);
@@ -76,16 +118,6 @@ export default function LandingPage() {
         {/* Layer 3: Content */}
         <div className="relative z-20 flex flex-col items-center justify-center text-center px-6 max-w-4xl mx-auto">
 
-          {/* Occasions Badge */}
-          <div className="inline-flex items-center gap-2 bg-landing-primary/10 border border-landing-primary/20 px-4 py-2 rounded-full text-landing-primary text-xs font-bold uppercase tracking-wider mb-4">
-            🎵 Cumpleaños · Aniversarios · Bodas · O simplemente porque sí ✨
-          </div>
-
-          {/* Uppercase Label */}
-          <span className="text-landing-primary uppercase tracking-[0.3em] text-xs font-bold bg-landing-primary/10 px-4 py-2 rounded-full border border-landing-primary/20 mb-6">
-            Canciones Personalizadas
-          </span>
-
           {/* Main Heading */}
           <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight mb-6">
             Dale Algo Que <br />
@@ -97,23 +129,14 @@ export default function LandingPage() {
             Una canción personalizada lista en minutos — el regalo más único que puedes dar.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 items-center">
-            <button
-              onClick={() => navigateTo('genre')}
-              className="w-full sm:w-auto min-w-[200px] bg-landing-primary hover:bg-landing-primary/90 text-white text-lg font-bold px-8 py-4 rounded-xl transition-all shadow-xl shadow-landing-primary/20 flex items-center justify-center gap-2 group"
-            >
-              🎵 Crear Mi Canción
-              <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">arrow_forward</span>
-            </button>
-            <button
-              onClick={() => navigateTo('genre')}
-              className="w-full sm:w-auto min-w-[200px] bg-slate-800/50 hover:bg-slate-800 border border-white/10 text-white text-lg font-bold px-8 py-4 rounded-xl transition-all backdrop-blur-sm flex items-center justify-center gap-2"
-            >
-              Ver Ejemplos
-              <span className="material-symbols-outlined">play_circle</span>
-            </button>
-          </div>
+          {/* CTA Button */}
+          <button
+            onClick={() => navigateTo('genre')}
+            className="min-w-[200px] bg-landing-primary hover:bg-landing-primary/90 text-white text-lg font-bold px-8 py-4 rounded-xl transition-all shadow-xl shadow-landing-primary/20 flex items-center justify-center gap-2 group"
+          >
+            🎵 Crear Mi Canción
+            <span className="material-symbols-outlined transition-transform group-hover:translate-x-1">arrow_forward</span>
+          </button>
 
           {/* Delivery + Pricing Badges */}
           <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
@@ -147,6 +170,26 @@ export default function LandingPage() {
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-landing-bg to-transparent z-20" />
       </main>
+
+      {/* ─── Testimonial Videos Section ─── */}
+      <section className="relative z-30 bg-landing-bg py-16 px-6 lg:px-20">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <span className="text-landing-primary text-sm font-bold uppercase tracking-widest">Reacciones Reales</span>
+            <h2 className="text-white text-3xl md:text-4xl font-extrabold mt-3">
+              Mira lo que pasa cuando <span className="text-landing-primary">escuchan su canción</span>
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto">
+            <TestimonialVideo src="/videos/testimonial1.mp4" />
+            <TestimonialVideo src="/videos/testimonial2.mp4" />
+            <TestimonialVideo src="/videos/testimonial3.mp4" />
+          </div>
+
+          <p className="text-center text-slate-500 text-xs mt-6">Videos reales de clientes</p>
+        </div>
+      </section>
 
       {/* ─── Footer ─── */}
       <footer className="relative z-30 bg-landing-bg border-t border-white/5 py-8 px-6 lg:px-20 flex flex-col md:flex-row justify-between items-center gap-4">
