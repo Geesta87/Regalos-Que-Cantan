@@ -14,14 +14,24 @@ const polaroidCards = [
 ];
 
 // Testimonial video component with play/pause
-function TestimonialVideo({ src, poster }) {
+function TestimonialVideo({ src }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
+
+  // Show thumbnail on mobile by seeking to 0.1s once metadata loads
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const showThumb = () => { video.currentTime = 0.1; };
+    video.addEventListener('loadeddata', showThumb);
+    return () => video.removeEventListener('loadeddata', showThumb);
+  }, []);
 
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
+      video.currentTime = 0;
       video.play();
       setPlaying(true);
     } else {
@@ -39,7 +49,7 @@ function TestimonialVideo({ src, poster }) {
         ref={videoRef}
         src={src}
         playsInline
-        preload="metadata"
+        preload="auto"
         className="w-full h-full object-cover"
         onEnded={() => setPlaying(false)}
       />
@@ -182,9 +192,9 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto">
+            <TestimonialVideo src="/videos/testimonial3.mp4" />
             <TestimonialVideo src="/videos/testimonial1.mp4" />
             <TestimonialVideo src="/videos/testimonial2.mp4" />
-            <TestimonialVideo src="/videos/testimonial3.mp4" />
           </div>
 
           <p className="text-center text-slate-500 text-xs mt-6">Videos reales de clientes</p>
