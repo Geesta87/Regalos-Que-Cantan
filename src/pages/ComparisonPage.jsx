@@ -89,6 +89,7 @@ export default function ComparisonPage() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
   const audioRefs = useRef({});
+  const checkoutCtaRef = useRef(null);
 
   // Safely get genre display name
   const genreConfig = genres?.[formData?.genre];
@@ -518,11 +519,19 @@ export default function ComparisonPage() {
   const selectSong = (songId) => {
     setSelectedSongId(songId);
     setPurchaseBoth(false);
+    // Auto-scroll to checkout CTA
+    setTimeout(() => {
+      checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
   };
 
   const selectBoth = () => {
     setPurchaseBoth(true);
     setSelectedSongId(null);
+    // Auto-scroll to checkout CTA
+    setTimeout(() => {
+      checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
   };
 
   const getSelectionLabel = () => {
@@ -1459,6 +1468,7 @@ export default function ComparisonPage() {
 
           {/* Checkout Button */}
           <button
+            ref={checkoutCtaRef}
             onClick={handleCheckout}
             disabled={isCheckingOut || !hasSelection}
             style={{
