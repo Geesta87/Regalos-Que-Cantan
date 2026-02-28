@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
@@ -34,6 +34,15 @@ export default function OccasionStep() {
   const [showOtroModal, setShowOtroModal] = useState(false);
   const [customOccasion, setCustomOccasion] = useState(formData.customOccasion || '');
   const [emotionalTone, setEmotionalTone] = useState(formData.emotionalTone || '');
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
+  const autoAdvanceTimer = useRef(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    };
+  }, []);
 
   // Track page view
   useEffect(() => {
@@ -41,9 +50,18 @@ export default function OccasionStep() {
   }, []);
 
   const handleOccasionSelect = (occasionId) => {
+    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
     setSelectedOccasion(occasionId);
     if (occasionId === 'otro') {
+      setIsAutoAdvancing(false);
       setShowOtroModal(true);
+    } else {
+      // Auto-advance for standard occasions
+      setIsAutoAdvancing(true);
+      updateFormData('occasion', occasionId);
+      autoAdvanceTimer.current = setTimeout(() => {
+        navigateTo('names');
+      }, 600);
     }
   };
 
@@ -57,6 +75,14 @@ export default function OccasionStep() {
   const handleOtroModalConfirm = () => {
     if (customOccasion.length >= 20 && emotionalTone) {
       setShowOtroModal(false);
+      // Auto-advance after "Otro" modal confirm
+      setIsAutoAdvancing(true);
+      updateFormData('occasion', 'otro');
+      updateFormData('customOccasion', customOccasion);
+      updateFormData('emotionalTone', emotionalTone);
+      autoAdvanceTimer.current = setTimeout(() => {
+        navigateTo('names');
+      }, 600);
     }
   };
 

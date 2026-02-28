@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
@@ -22,6 +22,7 @@ export default function NamesStep() {
   const [customRelationship, setCustomRelationship] = useState(formData.customRelationship || '');
   const [showOtroModal, setShowOtroModal] = useState(false);
   const [errors, setErrors] = useState({});
+  const continueButtonRef = useRef(null);
 
   // Track page view
   useEffect(() => {
@@ -32,6 +33,11 @@ export default function NamesStep() {
     setRelationship(relationshipId);
     if (relationshipId === 'otro') {
       setShowOtroModal(true);
+    } else {
+      // Auto-scroll to Continue button
+      setTimeout(() => {
+        continueButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
     }
   };
 
@@ -45,6 +51,10 @@ export default function NamesStep() {
   const handleOtroModalConfirm = () => {
     if (customRelationship.length >= 3) {
       setShowOtroModal(false);
+      // Auto-scroll to Continue button after modal closes
+      setTimeout(() => {
+        continueButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
     }
   };
 
@@ -220,7 +230,7 @@ export default function NamesStep() {
             </div>
 
             {/* Buttons */}
-            <div className="pt-8 flex flex-col items-center gap-6">
+            <div ref={continueButtonRef} className="pt-8 flex flex-col items-center gap-6">
               <button
                 onClick={handleContinue}
                 disabled={!isValid}

@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
@@ -206,6 +206,11 @@ export default function GenreStep() {
   const [selectedVoice, setSelectedVoice] = useState(formData.voiceType || 'male');
   const [showMoreGenres, setShowMoreGenres] = useState(false);
 
+  // Auto-scroll refs
+  const subGenreSectionRef = useRef(null);
+  const voiceSectionRef = useRef(null);
+  const continueButtonRef = useRef(null);
+
   // Track page view
   useEffect(() => {
     trackStep('genre');
@@ -237,14 +242,32 @@ export default function GenreStep() {
   const handleGenreSelect = (genreId) => {
     setSelectedGenre(genreId);
     setSelectedSubGenre('');
+    // Auto-scroll to sub-genre section (or voice if no sub-genres)
+    const targetGenre = genreList.find(g => g.id === genreId);
+    const hasSubGenres = targetGenre?.subGenres?.length > 0;
+    setTimeout(() => {
+      if (hasSubGenres) {
+        subGenreSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        voiceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 350);
   };
 
   const handleSubGenreSelect = (subGenreId) => {
     setSelectedSubGenre(subGenreId);
+    // Auto-scroll to voice section
+    setTimeout(() => {
+      voiceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
   };
 
   const handleVoiceSelect = (voice) => {
     setSelectedVoice(voice);
+    // Auto-scroll to continue button
+    setTimeout(() => {
+      continueButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
   };
 
   const handleContinue = () => {
@@ -389,7 +412,7 @@ export default function GenreStep() {
 
           {/* Sub-genre Selection */}
           {currentGenre && currentGenre.subGenres && currentGenre.subGenres.length > 0 && (
-            <div className="mt-10 p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10">
+            <div ref={subGenreSectionRef} className="mt-10 p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10">
               <h3 className="text-gold text-xs uppercase tracking-[0.2em] font-bold mb-6 flex items-center gap-2">
                 <span className="material-symbols-outlined text-sm">tune</span>
                 Estilo de {currentGenre.name}
@@ -415,7 +438,7 @@ export default function GenreStep() {
 
           {/* Voice Selection - Shows after genre is selected */}
           {selectedGenre && (
-            <div className="mt-8 p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10">
+            <div ref={voiceSectionRef} className="mt-8 p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10">
               <h3 className="text-gold text-xs uppercase tracking-[0.2em] font-bold mb-6 flex items-center gap-2">
                 <span className="material-symbols-outlined text-sm">mic</span>
                 Tipo de Voz
@@ -512,7 +535,7 @@ export default function GenreStep() {
           )}
 
           {/* Continue Button */}
-          <div className="mt-16 flex flex-col items-center gap-6">
+          <div ref={continueButtonRef} className="mt-16 flex flex-col items-center gap-6">
             <button
               onClick={handleContinue}
               disabled={!selectedGenre}

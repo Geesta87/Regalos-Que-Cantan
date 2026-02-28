@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo, useEffect } from 'react';
+import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
@@ -476,6 +476,15 @@ export default function ArtistStep() {
   const [selectedArtist, setSelectedArtist] = useState(formData.artistInspiration || '');
   const [customArtist, setCustomArtist] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
+  const autoAdvanceTimer = useRef(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    };
+  }, []);
 
   // Track page view
   useEffect(() => {
@@ -516,12 +525,20 @@ export default function ArtistStep() {
   }, [formData.genre, formData.subGenre]);
 
   const handleArtistSelect = (artistName) => {
+    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
     if (selectedArtist === artistName) {
       setSelectedArtist('');
+      setIsAutoAdvancing(false);
     } else {
       setSelectedArtist(artistName);
       setShowCustomInput(false);
       setCustomArtist('');
+      // Auto-advance after selection
+      setIsAutoAdvancing(true);
+      updateFormData('artistInspiration', artistName);
+      autoAdvanceTimer.current = setTimeout(() => {
+        navigateTo('occasion');
+      }, 600);
     }
   };
 
@@ -531,6 +548,8 @@ export default function ArtistStep() {
   };
 
   const handleShowCustom = () => {
+    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    setIsAutoAdvancing(false);
     setShowCustomInput(true);
     setSelectedArtist('');
   };
@@ -681,9 +700,16 @@ export default function ArtistStep() {
           {/* "No specific style" option */}
           <button
             onClick={() => {
+              if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
               setSelectedArtist('');
               setCustomArtist('');
               setShowCustomInput(false);
+              // Auto-advance with no artist preference
+              setIsAutoAdvancing(true);
+              updateFormData('artistInspiration', '');
+              autoAdvanceTimer.current = setTimeout(() => {
+                navigateTo('occasion');
+              }, 600);
             }}
             className={`
               w-full p-4 rounded-xl text-center transition-all mb-8
