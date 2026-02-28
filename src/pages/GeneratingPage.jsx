@@ -413,7 +413,7 @@ export default function GeneratingPage() {
           <p className="text-white/70 mb-6">{error}</p>
           <button
             onClick={() => navigateTo('details')}
-            className="px-8 py-3 bg-gold text-forest font-bold rounded-full hover:bg-gold/90 transition"
+            className="px-8 py-3 bg-gold text-white font-bold rounded-full hover:bg-gold/90 transition"
           >
             Intentar de nuevo
           </button>
@@ -523,7 +523,7 @@ export default function GeneratingPage() {
                 <div key={idx} className="flex flex-col items-center">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                     idx < currentStep ? 'bg-green-500 text-white' :
-                    idx === currentStep ? 'bg-gold text-forest scale-110' :
+                    idx === currentStep ? 'bg-gold text-white scale-110' :
                     'bg-white/10 text-white/30'
                   }`}>
                     {idx < currentStep ? (

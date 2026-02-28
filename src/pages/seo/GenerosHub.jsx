@@ -70,12 +70,12 @@ export default function GenerosHub() {
       <style>{`
         .talavera-pattern-bg {
           background-color: #ffffff;
-          background-image: linear-gradient(30deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
-                            linear-gradient(150deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
-                            linear-gradient(30deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
-                            linear-gradient(150deg, #1A4338 12%, transparent 12.5%, transparent 87%, #1A4338 87.5%, #1A4338), 
-                            linear-gradient(60deg, #1A433877 25%, transparent 25.5%, transparent 75%, #1A433877 75%, #1A433877), 
-                            linear-gradient(60deg, #1A433877 25%, transparent 25.5%, transparent 75%, #1A433877 75%, #1A433877);
+          background-image: linear-gradient(30deg, #181114 12%, transparent 12.5%, transparent 87%, #181114 87.5%, #181114), 
+                            linear-gradient(150deg, #181114 12%, transparent 12.5%, transparent 87%, #181114 87.5%, #181114), 
+                            linear-gradient(30deg, #181114 12%, transparent 12.5%, transparent 87%, #181114 87.5%, #181114), 
+                            linear-gradient(150deg, #181114 12%, transparent 12.5%, transparent 87%, #181114 87.5%, #181114), 
+                            linear-gradient(60deg, #18111477 25%, transparent 25.5%, transparent 75%, #18111477 75%, #18111477), 
+                            linear-gradient(60deg, #18111477 25%, transparent 25.5%, transparent 75%, #18111477 75%, #18111477);
           background-size: 20px 35px;
           background-position: 0 0, 0 0, 10px 18px, 10px 18px, 0 0, 10px 18px;
         }
@@ -86,9 +86,9 @@ export default function GenerosHub() {
         <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#f0f1f5] px-6 md:px-10 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50">
           <SEOLink
             to="landing"
-            className="flex items-center gap-3 text-[#1A4338] hover:opacity-80 transition-opacity"
+            className="flex items-center gap-3 text-[#181114] hover:opacity-80 transition-opacity"
           >
-            <div className="w-8 h-8 bg-[#1A4338] rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#181114] rounded-lg flex items-center justify-center">
               <span className="text-white text-lg">🎵</span>
             </div>
             <h2 className="text-[#111318] text-xl font-bold leading-tight tracking-[-0.015em]">RegalosQueCantan</h2>
@@ -97,20 +97,20 @@ export default function GenerosHub() {
             <nav className="hidden md:flex items-center gap-9">
               <SEOLink
                 to="generos"
-                className="text-[#1A4338] text-sm font-medium hover:text-[#D4AF37] transition-colors"
+                className="text-[#181114] text-sm font-medium hover:text-[#f20d80] transition-colors"
               >
                 Géneros
               </SEOLink>
               <SEOLink
                 to="ocasiones"
-                className="text-[#111318] text-sm font-medium hover:text-[#1A4338] transition-colors"
+                className="text-[#111318] text-sm font-medium hover:text-[#181114] transition-colors"
               >
                 Ocasiones
               </SEOLink>
             </nav>
             <SEOLink
               to="landing"
-              className="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-10 px-5 bg-[#1A4338]/10 text-[#1A4338] hover:bg-[#1A4338] hover:text-white transition-all text-sm font-bold border border-[#1A4338]/20"
+              className="flex min-w-[84px] cursor-pointer items-center justify-center rounded-lg h-10 px-5 bg-[#181114]/10 text-[#181114] hover:bg-[#181114] hover:text-white transition-all text-sm font-bold border border-[#181114]/20"
             >
               <span className="truncate">Inicio</span>
             </SEOLink>
@@ -122,7 +122,7 @@ export default function GenerosHub() {
             {/* Page Heading */}
             <div className="flex flex-wrap justify-between gap-3 p-4 mb-6">
               <div className="flex min-w-72 flex-col gap-3">
-                <h1 className="text-[#1A4338] text-4xl md:text-5xl font-black leading-tight tracking-[-0.033em]">
+                <h1 className="text-[#181114] text-4xl md:text-5xl font-black leading-tight tracking-[-0.033em]">
                   Elige Tu<br/>Herencia Musical
                 </h1>
                 <p className="text-[#606e8a] text-lg font-normal max-w-xl">
@@ -134,8 +134,8 @@ export default function GenerosHub() {
             {/* Featured Genres Section */}
             <div className="px-4 mb-4">
               <div className="flex items-center gap-2 mb-6">
-                <span className="text-[#D4AF37] text-xl">⭐</span>
-                <h2 className="text-[#1A4338] text-xs font-bold uppercase tracking-widest">Géneros Más Populares</h2>
+                <span className="text-[#f20d80] text-xl">⭐</span>
+                <h2 className="text-[#181114] text-xs font-bold uppercase tracking-widest">Géneros Más Populares</h2>
               </div>
             </div>
 
@@ -145,7 +145,7 @@ export default function GenerosHub() {
                 <SEOLink
                   key={genre.slug}
                   to={`generos/${genre.slug}`}
-                  className="group relative flex flex-col p-[2px] rounded-xl overflow-hidden bg-white border border-[#1A4338]/10 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left"
+                  className="group relative flex flex-col p-[2px] rounded-xl overflow-hidden bg-white border border-[#181114]/10 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left"
                 >
                   {/* Talavera Pattern Background */}
                   <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity talavera-pattern-bg"></div>
@@ -168,12 +168,12 @@ export default function GenerosHub() {
                     
                     {/* Genre Info */}
                     <div className="p-5 flex flex-col gap-2">
-                      <h3 className="text-[#1A4338] text-xl font-bold">{genre.name}</h3>
+                      <h3 className="text-[#181114] text-xl font-bold">{genre.name}</h3>
                       <p className="text-xs text-slate-500 uppercase font-bold tracking-wide line-clamp-1">
                         {genre.description?.split('.')[0] || 'Estilo único'}
                       </p>
                       {genre.featured && (
-                        <span className="inline-flex items-center gap-1 text-[#D4AF37] text-xs font-medium mt-1">
+                        <span className="inline-flex items-center gap-1 text-[#f20d80] text-xs font-medium mt-1">
                           <span>⭐</span> Popular
                         </span>
                       )}
@@ -191,14 +191,14 @@ export default function GenerosHub() {
               <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
                 <SEOLink
                   to="ocasiones"
-                  className="flex min-w-[200px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-white border-2 border-[#1A4338] text-[#1A4338] hover:bg-[#1A4338]/5 transition-all text-base font-bold"
+                  className="flex min-w-[200px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-white border-2 border-[#181114] text-[#181114] hover:bg-[#181114]/5 transition-all text-base font-bold"
                 >
                   <span>🎁</span>
                   Ver Ocasiones
                 </SEOLink>
                 <SEOLink
                   to="genre"
-                  className="flex min-w-[240px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-[#1A4338] text-white hover:bg-[#1A4338]/90 transition-all text-base font-bold shadow-lg shadow-[#1A4338]/30"
+                  className="flex min-w-[240px] items-center justify-center gap-2 rounded-xl h-14 px-8 bg-[#181114] text-white hover:bg-[#181114]/90 transition-all text-base font-bold shadow-lg shadow-[#181114]/30"
                 >
                   Crear Mi Canción
                   <span>→</span>
@@ -209,35 +209,35 @@ export default function GenerosHub() {
         </main>
 
         {/* Minimalist Patterned Footer */}
-        <footer className="w-full bg-white border-t border-[#1A4338]/10 py-12 px-6 md:px-10">
+        <footer className="w-full bg-white border-t border-[#181114]/10 py-12 px-6 md:px-10">
           <div className="max-w-[1000px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 text-[#1A4338]">
+              <div className="flex items-center gap-2 text-[#181114]">
                 <span className="text-3xl">🎵</span>
                 <span className="font-bold text-lg">RegalosQueCantan</span>
               </div>
               <p className="text-sm text-slate-500">Fusionando la belleza atemporal de la cerámica Talavera con el poder emocional de la canción.</p>
             </div>
             <div className="flex flex-col gap-4">
-              <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Navegación</h4>
+              <h4 className="font-bold text-[#181114] uppercase text-xs tracking-widest">Navegación</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <SEOLink to="landing" className="hover:text-[#1A4338] transition-colors text-left">Cómo Funciona</SEOLink>
-                <SEOLink to="generos" className="hover:text-[#1A4338] transition-colors text-left">Catálogo de Géneros</SEOLink>
-                <SEOLink to="ocasiones" className="hover:text-[#1A4338] transition-colors text-left">Guía de Regalos</SEOLink>
+                <SEOLink to="landing" className="hover:text-[#181114] transition-colors text-left">Cómo Funciona</SEOLink>
+                <SEOLink to="generos" className="hover:text-[#181114] transition-colors text-left">Catálogo de Géneros</SEOLink>
+                <SEOLink to="ocasiones" className="hover:text-[#181114] transition-colors text-left">Guía de Regalos</SEOLink>
               </div>
             </div>
             <div className="flex flex-col gap-4">
-              <h4 className="font-bold text-[#1A4338] uppercase text-xs tracking-widest">Soporte</h4>
+              <h4 className="font-bold text-[#181114] uppercase text-xs tracking-widest">Soporte</h4>
               <div className="flex flex-col gap-2 text-sm text-[#111318]">
-                <a href="mailto:hola@regalosquecantan.com" className="hover:text-[#1A4338] transition-colors">Contáctanos</a>
+                <a href="mailto:hola@regalosquecantan.com" className="hover:text-[#181114] transition-colors">Contáctanos</a>
               </div>
             </div>
           </div>
-          <div className="max-w-[1000px] mx-auto mt-12 pt-8 border-t border-[#1A4338]/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-400">
+          <div className="max-w-[1000px] mx-auto mt-12 pt-8 border-t border-[#181114]/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-400">
             <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
             <div className="flex gap-4">
-              <span className="cursor-pointer hover:text-[#1A4338] transition-colors">🌐</span>
-              <span className="cursor-pointer hover:text-[#1A4338] transition-colors">🛡️</span>
+              <span className="cursor-pointer hover:text-[#181114] transition-colors">🌐</span>
+              <span className="cursor-pointer hover:text-[#181114] transition-colors">🛡️</span>
             </div>
           </div>
         </footer>

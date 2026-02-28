@@ -111,7 +111,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </div>
             
             {/* Title */}
-            <h1 className="text-4xl md:text-5xl font-bold text-[#1A4338] mb-4">
+            <h1 className="text-4xl md:text-5xl font-bold text-[#181114] mb-4">
               {occasion.heroTitle}
             </h1>
             
@@ -133,7 +133,7 @@ export default function OccasionLanding({ occasionSlug }) {
             
             {/* Price Badge */}
             <p className="mt-4 text-gray-500">
-              Desde <span className="font-bold text-[#1A4338]">$29.99</span> • Listo en minutos
+              Desde <span className="font-bold text-[#181114]">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -141,7 +141,7 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* Description Section */}
         <section className="py-16 px-6 bg-white">
           <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-6">
+            <h2 className="text-2xl font-bold text-[#181114] mb-6">
               El Regalo Perfecto para {occasion.name}
             </h2>
             <div className="prose prose-lg text-gray-600">
@@ -160,7 +160,7 @@ export default function OccasionLanding({ occasionSlug }) {
         {suggestedGenres.length > 0 && (
           <section className="py-16 px-6 bg-[#F9F6F2]">
             <div className="max-w-4xl mx-auto">
-              <h2 className="text-2xl font-bold text-[#1A4338] mb-4 text-center">
+              <h2 className="text-2xl font-bold text-[#181114] mb-4 text-center">
                 Géneros Recomendados para {occasion.name}
               </h2>
               <p className="text-gray-600 text-center mb-8">
@@ -181,7 +181,7 @@ export default function OccasionLanding({ occasionSlug }) {
                       {genre.icon}
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-bold text-[#1A4338] group-hover:text-opacity-80">
+                      <h3 className="font-bold text-[#181114] group-hover:text-opacity-80">
                         {genre.name}
                       </h3>
                       <p className="text-sm text-gray-500 line-clamp-2">
@@ -198,7 +198,7 @@ export default function OccasionLanding({ occasionSlug }) {
               <div className="text-center mt-6">
                 <button
                   onClick={() => handleCreateSong()}
-                  className="text-[#1A4338] font-medium hover:underline"
+                  className="text-[#181114] font-medium hover:underline"
                 >
                   Ver los 20+ géneros disponibles →
                 </button>
@@ -210,46 +210,46 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* How It Works Section */}
         <section className="py-16 px-6 bg-white">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               ¿Cómo Funciona?
             </h2>
             
             <div className="grid md:grid-cols-4 gap-6">
               <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-[#1A4338] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 rounded-full bg-[#181114] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   1
                 </div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Elige el Género</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Elige el Género</h3>
                 <p className="text-gray-600 text-sm">
                   Corridos, cumbia, banda, bachata y más
                 </p>
               </div>
               
               <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-[#1A4338] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 rounded-full bg-[#181114] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   2
                 </div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Agrega los Detalles</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Agrega los Detalles</h3>
                 <p className="text-gray-600 text-sm">
                   Nombre, relación, memorias especiales
                 </p>
               </div>
               
               <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-[#1A4338] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 rounded-full bg-[#181114] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   3
                 </div>
-                <h3 className="font-bold text-[#1A4338] mb-2">IA Crea la Canción</h3>
+                <h3 className="font-bold text-[#181114] mb-2">IA Crea la Canción</h3>
                 <p className="text-gray-600 text-sm">
                   2 versiones únicas en minutos
                 </p>
               </div>
               
               <div className="text-center">
-                <div className="w-12 h-12 rounded-full bg-[#1A4338] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 rounded-full bg-[#181114] text-white flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   4
                 </div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Descarga y Comparte</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Descarga y Comparte</h3>
                 <p className="text-gray-600 text-sm">
                   MP3 de alta calidad instantáneo
                 </p>
@@ -261,14 +261,14 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* What's Included */}
         <section className="py-16 px-6 bg-[#F9F6F2]">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               ¿Qué incluye tu canción?
             </h2>
             
             <div className="grid md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">🎤</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Letra Personalizada</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Letra Personalizada</h3>
                 <p className="text-gray-600 text-sm">
                   Con el nombre del destinatario y detalles que tú proporcionas
                 </p>
@@ -276,7 +276,7 @@ export default function OccasionLanding({ occasionSlug }) {
               
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">🎵</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Música Profesional</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Música Profesional</h3>
                 <p className="text-gray-600 text-sm">
                   Producción de alta calidad en el género que elijas
                 </p>
@@ -284,7 +284,7 @@ export default function OccasionLanding({ occasionSlug }) {
               
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">📱</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Fácil de Compartir</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Fácil de Compartir</h3>
                 <p className="text-gray-600 text-sm">
                   Descarga MP3 instantánea para enviar por WhatsApp, redes o email
                 </p>
@@ -294,7 +294,7 @@ export default function OccasionLanding({ occasionSlug }) {
         </section>
         
         {/* Social Proof */}
-        <section className="py-16 px-6 bg-[#1A4338] text-white">
+        <section className="py-16 px-6 bg-[#181114] text-white">
           <div className="max-w-4xl mx-auto text-center">
             <div className="flex items-center justify-center gap-1 mb-4">
               {[...Array(5)].map((_, i) => (
@@ -323,7 +323,7 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* Final CTA */}
         <section className="py-20 px-6 bg-[#F9F6F2]">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl font-bold text-[#1A4338] mb-4">
+            <h2 className="text-3xl font-bold text-[#181114] mb-4">
               Haz este {occasion.name} inolvidable
             </h2>
             <p className="text-gray-600 mb-8">
@@ -352,7 +352,7 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* Related Occasions */}
         <section className="py-16 px-6 bg-white">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               Otras ocasiones populares
             </h2>
             
@@ -364,7 +364,7 @@ export default function OccasionLanding({ occasionSlug }) {
                   className="block p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
                 >
                   <div className="text-2xl mb-2">{o.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm">{o.name}</div>
+                  <div className="font-medium text-[#181114] text-sm">{o.name}</div>
                 </SEOLink>
               ))}
             </div>
@@ -372,7 +372,7 @@ export default function OccasionLanding({ occasionSlug }) {
             <div className="text-center mt-6">
               <SEOLink
                 to="ocasiones"
-                className="text-[#1A4338] font-medium hover:underline"
+                className="text-[#181114] font-medium hover:underline"
               >
                 Ver todas las ocasiones →
               </SEOLink>
@@ -383,13 +383,13 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* FAQ Section for SEO */}
         <section className="py-16 px-6 bg-[#F9F6F2]">
           <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               Preguntas Frecuentes
             </h2>
             
             <div className="space-y-4">
               <details className="bg-white rounded-xl p-6 group">
-                <summary className="font-bold text-[#1A4338] cursor-pointer flex justify-between items-center">
+                <summary className="font-bold text-[#181114] cursor-pointer flex justify-between items-center">
                   ¿Cuánto tiempo tarda en crearse la canción?
                   <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
@@ -399,7 +399,7 @@ export default function OccasionLanding({ occasionSlug }) {
               </details>
               
               <details className="bg-white rounded-xl p-6 group">
-                <summary className="font-bold text-[#1A4338] cursor-pointer flex justify-between items-center">
+                <summary className="font-bold text-[#181114] cursor-pointer flex justify-between items-center">
                   ¿Puedo escuchar la canción antes de pagar?
                   <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
@@ -409,7 +409,7 @@ export default function OccasionLanding({ occasionSlug }) {
               </details>
               
               <details className="bg-white rounded-xl p-6 group">
-                <summary className="font-bold text-[#1A4338] cursor-pointer flex justify-between items-center">
+                <summary className="font-bold text-[#181114] cursor-pointer flex justify-between items-center">
                   ¿En qué formato recibo la canción?
                   <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
@@ -419,7 +419,7 @@ export default function OccasionLanding({ occasionSlug }) {
               </details>
               
               <details className="bg-white rounded-xl p-6 group">
-                <summary className="font-bold text-[#1A4338] cursor-pointer flex justify-between items-center">
+                <summary className="font-bold text-[#181114] cursor-pointer flex justify-between items-center">
                   ¿Qué pasa si no me gusta la canción?
                   <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
@@ -432,7 +432,7 @@ export default function OccasionLanding({ occasionSlug }) {
         </section>
         
         {/* Footer */}
-        <footer className="py-8 px-6 bg-[#1A4338] text-white/70 text-center text-sm">
+        <footer className="py-8 px-6 bg-[#181114] text-white/70 text-center text-sm">
           <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
           <p className="mt-2">Canciones personalizadas con inteligencia artificial.</p>
         </footer>

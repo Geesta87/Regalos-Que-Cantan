@@ -18,7 +18,7 @@ h1, h2, .brand-font, .font-display {
 
 /* Hero gradient */
 .hero-gradient {
-  background: linear-gradient(135deg, rgba(26,67,56,0.98) 0%, rgba(15,18,17,0.92) 100%);
+  background: linear-gradient(135deg, rgba(24,17,20,0.98) 0%, rgba(15,12,14,0.92) 100%);
 }
 
 /* Glass morphism effect */
@@ -33,7 +33,7 @@ h1, h2, .brand-font, .font-display {
   background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(212, 175, 55, 0.2);
+  border: 1px solid rgba(242, 13, 128, 0.2);
 }
 
 /* Pink glow effect for CTAs */
@@ -56,14 +56,14 @@ h1, h2, .brand-font, .font-display {
 /* Mexican pattern background */
 .mexican-pattern {
   background-color: transparent;
-  background-image: radial-gradient(#d4af35 0.5px, transparent 0.5px), radial-gradient(#d4af35 0.5px, #f8f7f6 0.5px);
+  background-image: radial-gradient(#f20d80 0.5px, transparent 0.5px), radial-gradient(#f20d80 0.5px, #f8f7f6 0.5px);
   background-size: 20px 20px;
   background-position: 0 0, 10px 10px;
   opacity: 0.05;
 }
 
 .dark .mexican-pattern {
-  background-image: radial-gradient(#d4af35 0.5px, transparent 0.5px), radial-gradient(#d4af35 0.5px, #201d12 0.5px);
+  background-image: radial-gradient(#f20d80 0.5px, transparent 0.5px), radial-gradient(#f20d80 0.5px, #1a1015 0.5px);
   opacity: 0.1;
 }
 
@@ -91,12 +91,12 @@ h1, h2, .brand-font, .font-display {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4af35;
+  background: #f20d80;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #c4a030;
+  background: #d40b6e;
 }
 
 /* Focus styles */

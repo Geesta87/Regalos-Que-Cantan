@@ -102,7 +102,7 @@ export default function GenreLanding({ genreSlug }) {
             </div>
             
             {/* Title */}
-            <h1 className="text-4xl md:text-5xl font-bold text-[#1A4338] mb-4">
+            <h1 className="text-4xl md:text-5xl font-bold text-[#181114] mb-4">
               {genre.heroTitle}
             </h1>
             
@@ -124,7 +124,7 @@ export default function GenreLanding({ genreSlug }) {
             
             {/* Price Badge */}
             <p className="mt-4 text-gray-500">
-              Desde <span className="font-bold text-[#1A4338]">$29.99</span> • Listo en minutos
+              Desde <span className="font-bold text-[#181114]">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -132,7 +132,7 @@ export default function GenreLanding({ genreSlug }) {
         {/* Description Section */}
         <section className="py-16 px-6 bg-white">
           <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-6">
+            <h2 className="text-2xl font-bold text-[#181114] mb-6">
               ¿Qué es un {genre.name} Personalizado?
             </h2>
             <div className="prose prose-lg text-gray-600">
@@ -148,7 +148,7 @@ export default function GenreLanding({ genreSlug }) {
             {/* Artists Reference */}
             {genre.artists && genre.artists.length > 0 && (
               <div className="mt-8 p-6 bg-gray-50 rounded-xl">
-                <h3 className="font-bold text-[#1A4338] mb-3">
+                <h3 className="font-bold text-[#181114] mb-3">
                   Estilo inspirado en artistas como:
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -169,14 +169,14 @@ export default function GenreLanding({ genreSlug }) {
         {/* Features Section */}
         <section className="py-16 px-6 bg-[#F9F6F2]">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               ¿Qué incluye tu {genre.name}?
             </h2>
             
             <div className="grid md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">✨</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">100% Personalizado</h3>
+                <h3 className="font-bold text-[#181114] mb-2">100% Personalizado</h3>
                 <p className="text-gray-600 text-sm">
                   Letra única con el nombre de tu ser querido y detalles especiales que tú proporcionas.
                 </p>
@@ -184,7 +184,7 @@ export default function GenreLanding({ genreSlug }) {
               
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">🎵</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">2 Versiones</h3>
+                <h3 className="font-bold text-[#181114] mb-2">2 Versiones</h3>
                 <p className="text-gray-600 text-sm">
                   Generamos dos versiones únicas para que elijas tu favorita o te quedes con ambas.
                 </p>
@@ -192,7 +192,7 @@ export default function GenreLanding({ genreSlug }) {
               
               <div className="bg-white p-6 rounded-xl shadow-sm">
                 <div className="text-3xl mb-4">⚡</div>
-                <h3 className="font-bold text-[#1A4338] mb-2">Listo en Minutos</h3>
+                <h3 className="font-bold text-[#181114] mb-2">Listo en Minutos</h3>
                 <p className="text-gray-600 text-sm">
                   Nuestra IA crea tu canción en 2-4 minutos. Descarga instantánea en MP3.
                 </p>
@@ -205,7 +205,7 @@ export default function GenreLanding({ genreSlug }) {
         {genre.popularFor && genre.popularFor.length > 0 && (
           <section className="py-16 px-6 bg-white">
             <div className="max-w-4xl mx-auto">
-              <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+              <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
                 Perfecto para estas ocasiones
               </h2>
               
@@ -213,7 +213,7 @@ export default function GenreLanding({ genreSlug }) {
                 {genre.popularFor.map(occasion => (
                   <div 
                     key={occasion}
-                    className="px-6 py-3 rounded-full border-2 text-[#1A4338] font-medium"
+                    className="px-6 py-3 rounded-full border-2 text-[#181114] font-medium"
                     style={{ borderColor: genre.color }}
                   >
                     {occasion}
@@ -225,7 +225,7 @@ export default function GenreLanding({ genreSlug }) {
         )}
         
         {/* Social Proof */}
-        <section className="py-16 px-6 bg-[#1A4338] text-white">
+        <section className="py-16 px-6 bg-[#181114] text-white">
           <div className="max-w-4xl mx-auto text-center">
             <div className="flex items-center justify-center gap-1 mb-4">
               {[...Array(5)].map((_, i) => (
@@ -244,7 +244,7 @@ export default function GenreLanding({ genreSlug }) {
         {/* CTA Section */}
         <section className="py-20 px-6 bg-[#F9F6F2]">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl font-bold text-[#1A4338] mb-4">
+            <h2 className="text-3xl font-bold text-[#181114] mb-4">
               ¿Listo para crear tu {genre.name}?
             </h2>
             <p className="text-gray-600 mb-8">
@@ -273,7 +273,7 @@ export default function GenreLanding({ genreSlug }) {
         {/* Related Genres */}
         <section className="py-16 px-6 bg-white">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-[#1A4338] mb-8 text-center">
+            <h2 className="text-2xl font-bold text-[#181114] mb-8 text-center">
               Explora otros géneros
             </h2>
             
@@ -285,7 +285,7 @@ export default function GenreLanding({ genreSlug }) {
                   className="block p-4 rounded-xl border border-gray-200 hover:border-gray-300 transition-all text-center"
                 >
                   <div className="text-2xl mb-2">{g.icon}</div>
-                  <div className="font-medium text-[#1A4338] text-sm">{g.name}</div>
+                  <div className="font-medium text-[#181114] text-sm">{g.name}</div>
                 </SEOLink>
               ))}
             </div>
@@ -293,7 +293,7 @@ export default function GenreLanding({ genreSlug }) {
             <div className="text-center mt-6">
               <SEOLink
                 to="generos"
-                className="text-[#1A4338] font-medium hover:underline"
+                className="text-[#181114] font-medium hover:underline"
               >
                 Ver los 20+ géneros disponibles →
               </SEOLink>
@@ -302,7 +302,7 @@ export default function GenreLanding({ genreSlug }) {
         </section>
         
         {/* Footer */}
-        <footer className="py-8 px-6 bg-[#1A4338] text-white/70 text-center text-sm">
+        <footer className="py-8 px-6 bg-[#181114] text-white/70 text-center text-sm">
           <p>© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
           <p className="mt-2">Canciones personalizadas con inteligencia artificial.</p>
         </footer>

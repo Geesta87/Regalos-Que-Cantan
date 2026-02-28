@@ -450,8 +450,8 @@ export default function AdminDashboard() {
 
   // Generate email preview HTML from campaign data
   const generateEmailPreview = (campaign) => {
-    const buttonColor = campaign.button_color || '#d4af37';
-    const bgColor = campaign.id === 'abandoned_24hr' ? '#e11d74' : '#d4af37';
+    const buttonColor = campaign.button_color || '#f20d80';
+    const bgColor = campaign.id === 'abandoned_24hr' ? '#e11d74' : '#f20d80';
     
     return `
       <!DOCTYPE html>
@@ -459,12 +459,12 @@ export default function AdminDashboard() {
       <body style="margin: 0; padding: 0; background-color: #0f1419; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #d4af37; font-size: 28px; margin: 0;">🎵 RegalosQueCantan</h1>
+            <h1 style="color: #f20d80; font-size: 28px; margin: 0;">🎵 RegalosQueCantan</h1>
           </div>
-          <div style="background: linear-gradient(135deg, #1a3a2f 0%, #0d2620 100%); border-radius: 20px; padding: 40px; text-align: center; border: 1px solid #d4af3730;">
+          <div style="background: linear-gradient(135deg, #181114 0%, #110d0f 100%); border-radius: 20px; padding: 40px; text-align: center; border: 1px solid #f20d8030;">
             <h2 style="color: #ffffff; font-size: 28px; margin: 0 0 20px 0;">${campaign.heading || '¡Tu canción está lista!'}</h2>
             <p style="color: #ffffff; font-size: 16px; margin: 0 0 30px 0; line-height: 1.6;">
-              ${(campaign.body_text || '').replace('{{recipient_name}}', '<strong style="color: #d4af37;">María</strong>')}
+              ${(campaign.body_text || '').replace('{{recipient_name}}', '<strong style="color: #f20d80;">María</strong>')}
             </p>
             <a href="#" style="display: inline-block; background: ${buttonColor}; color: ${buttonColor === '#e11d74' ? '#ffffff' : '#0f1419'}; text-decoration: none; padding: 16px 40px; border-radius: 30px; font-weight: bold; font-size: 16px;">
               ${campaign.button_text || 'Ver Canción'}

@@ -107,7 +107,7 @@ function SamplePlayer({ sample, isPlaying, onPlay, onPause, currentTime, duratio
           className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-300 ${isPlaying ? 'bg-black/50' : 'bg-black/30 hover:bg-black/50'}`}
         >
           <div className={`w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-2xl transform transition-all duration-300 ${isPlaying ? 'scale-110' : 'hover:scale-110'}`}>
-            <span className="material-symbols-outlined text-forest text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+            <span className="material-symbols-outlined text-white text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
               {isPlaying ? 'pause' : 'play_arrow'}
             </span>
           </div>
@@ -243,7 +243,7 @@ export default function LandingPageV2() {
       <audio ref={audioRef} preload="metadata" />
 
       {/* URGENCY BAR */}
-      <div className="bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-forest text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
+      <div className="bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
         ⚡ Tu canción personalizada lista en ~3 minutos · Desde $24.99
       </div>
 
@@ -467,7 +467,7 @@ export default function LandingPageV2() {
 
           <div className="bg-white/[0.03] backdrop-blur-xl border-2 border-gold/50 rounded-3xl p-8 text-center relative overflow-hidden">
             {/* Promo ribbon */}
-            <div className="absolute top-4 -right-8 bg-gold text-forest text-xs font-bold px-10 py-1 rotate-45">
+            <div className="absolute top-4 -right-8 bg-gold text-white text-xs font-bold px-10 py-1 rotate-45">
               ⚡ Oferta Especial
             </div>
 

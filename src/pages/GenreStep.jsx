@@ -307,7 +307,7 @@ export default function GenreStep() {
         </div>
         {/* Progress bar */}
         <div className="w-full bg-white/10 h-[1px] relative">
-          <div className="absolute top-0 left-0 h-full w-[20%] bg-gold shadow-[0_0_10px_rgba(212,175,55,0.8)] transition-all duration-700"></div>
+          <div className="absolute top-0 left-0 h-full w-[20%] bg-gold shadow-[0_0_10px_rgba(242,13,128,0.8)] transition-all duration-700"></div>
         </div>
       </header>
 
@@ -355,7 +355,7 @@ export default function GenreStep() {
                       ? 'border-red-400 border-[3px] shadow-[0_0_25px_rgba(248,113,113,0.4)] -translate-y-1 bg-red-500/10'
                       : 'border-red-400/50 hover:border-red-400 hover:bg-red-500/10'
                     : selectedGenre === genre.id
-                      ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(212,175,55,0.3)] -translate-y-1'
+                      ? 'border-gold border-[3px] shadow-[0_0_25px_rgba(242,13,128,0.3)] -translate-y-1'
                       : 'border-white/10 hover:border-gold/50 hover:bg-white/5'}
                 `}
               >
@@ -467,7 +467,7 @@ export default function GenreStep() {
                 >
                   {/* Popular badge for female when applicable */}
                   {currentVoiceGuidance.femalePopular && !currentVoiceGuidance.maleOnly && (
-                    <span className="absolute -top-2 -right-2 bg-gold text-forest text-[10px] font-bold px-2 py-1 rounded-full">
+                    <span className="absolute -top-2 -right-2 bg-gold text-white text-[10px] font-bold px-2 py-1 rounded-full">
                       ⭐ Popular
                     </span>
                   )}
@@ -539,7 +539,7 @@ export default function GenreStep() {
       </main>
 
       {/* Sticky Info Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-forest text-center py-3 z-50 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-white text-center py-3 z-50 shadow-lg">
         <p className="text-sm font-bold flex items-center justify-center gap-2">
           <span>🎵</span>
           <span>+500 canciones creadas · Tu canción lista en ~3 minutos</span>

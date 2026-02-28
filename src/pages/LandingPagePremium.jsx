@@ -143,7 +143,7 @@ export default function LandingPagePremium() {
 
       {/* URGENCY BAR */}
       <div style={{
-        background: 'linear-gradient(90deg, #d4af37, #c9a82c, #d4af37)',
+        background: 'linear-gradient(90deg, #f20d80, #d40b6e, #f20d80)',
         textAlign: 'center', padding: '10px 20px',
         fontSize: '14px', fontWeight: 800, color: '#1a1a2e',
         position: 'sticky', top: 0, zIndex: 100,
@@ -165,7 +165,7 @@ export default function LandingPagePremium() {
           fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: 700,
           color: 'white', letterSpacing: '-0.02em'
         }}>
-          Regalos<span style={{ color: '#d4af37' }}>Que</span>Cantan
+          Regalos<span style={{ color: '#f20d80' }}>Que</span>Cantan
         </button>
         <button className="lpp-header-cta" onClick={handleCTA} style={{
           background: 'transparent', border: '1px solid rgba(201,24,74,0.4)', color: '#ff8fa3',
@@ -184,7 +184,7 @@ export default function LandingPagePremium() {
         {/* Radial glow */}
         <div style={{
           position: 'absolute', inset: 0,
-          background: 'radial-gradient(ellipse at 50% 20%, rgba(201,24,74,0.15) 0%, transparent 50%), radial-gradient(ellipse at 30% 70%, rgba(212,175,55,0.1) 0%, transparent 40%)'
+          background: 'radial-gradient(ellipse at 50% 20%, rgba(201,24,74,0.15) 0%, transparent 50%), radial-gradient(ellipse at 30% 70%, rgba(242,13,128,0.1) 0%, transparent 40%)'
         }} />
 
         {/* Floating hearts */}
@@ -225,10 +225,10 @@ export default function LandingPagePremium() {
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '700px' }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '10px',
-            background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)',
+            background: 'rgba(242,13,128,0.08)', border: '1px solid rgba(242,13,128,0.25)',
             borderRadius: '999px', padding: '8px 22px', marginBottom: '32px',
             fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase',
-            color: '#d4af37', fontWeight: 600
+            color: '#f20d80', fontWeight: 600
           }}>
             <span style={{ display: 'inline-block', fontSize: '10px' }}>✨</span>
             Canciones Personalizadas
@@ -251,7 +251,7 @@ export default function LandingPagePremium() {
           }}>
             Una canción compuesta exclusivamente para esa persona especial.
             Su nombre, su historia, su género favorito. Un regalo{' '}
-            <em style={{ color: 'rgba(212,175,55,0.8)', fontStyle: 'italic' }}>irrepetible</em>.
+            <em style={{ color: 'rgba(242,13,128,0.8)', fontStyle: 'italic' }}>irrepetible</em>.
           </p>
 
           <button className="lpp-hero-cta" onClick={handleCTA} style={{

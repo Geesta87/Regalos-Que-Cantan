@@ -97,7 +97,7 @@ export default function LandingPage() {
       <main className="relative flex flex-1 flex-col items-center justify-center pt-24 overflow-hidden">
 
         {/* Layer 1: Polaroid Mosaic Background */}
-        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-30 md:opacity-40 select-none pointer-events-none">
+        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-50 md:opacity-60 select-none pointer-events-none">
           <div className="polaroid-grid w-[140%] md:w-[120%] lg:w-[100%] max-w-6xl">
             {polaroidCards.map((card, i) => (
               <div
@@ -123,7 +123,7 @@ export default function LandingPage() {
         </div>
 
         {/* Layer 2: Gradient Overlay — stronger on mobile for readability */}
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-landing-bg via-landing-bg/90 to-landing-bg/60 md:via-landing-bg/80 md:to-landing-bg/40" />
+        <div className="absolute inset-0 z-10 bg-gradient-to-t from-landing-bg via-landing-bg/80 to-landing-bg/40 md:via-landing-bg/65 md:to-landing-bg/25" />
 
         {/* Layer 3: Content */}
         <div className="relative z-20 flex flex-col items-center justify-center text-center px-6 max-w-4xl mx-auto">

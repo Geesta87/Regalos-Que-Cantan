@@ -260,7 +260,7 @@ export default function ShareablePreviewPage() {
           <div style={{fontSize: '48px', marginBottom: '16px'}}>⏳</div>
           <h1 style={{fontSize: '22px', fontWeight: 'bold', marginBottom: '12px'}}>Canciones en proceso</h1>
           <p style={{color: 'rgba(255,255,255,0.6)', fontSize: '15px', marginBottom: '24px'}}>
-            Las canciones para <span style={{color: '#f5d77a', fontWeight: '600'}}>{recipientName}</span> todavía se están generando.
+            Las canciones para <span style={{color: '#f74da6', fontWeight: '600'}}>{recipientName}</span> todavía se están generando.
           </p>
           <button onClick={loadSongs} style={styles.retryBtn}>🔄 Verificar de nuevo</button>
         </div>
@@ -270,12 +270,12 @@ export default function ShareablePreviewPage() {
 
   // ==================== MAIN PREVIEW PAGE ====================
   return (
-    <div style={{background: 'linear-gradient(160deg, #0f2027 0%, #1a3a2f 40%, #1e3a24 70%, #162832 100%)', color: 'white', minHeight: '100vh', padding: '0 0 40px', overflow: 'hidden'}}>
+    <div style={{background: 'linear-gradient(160deg, #110d0f 0%, #181114 40%, #1e1519 70%, #151015 100%)', color: 'white', minHeight: '100vh', padding: '0 0 40px', overflow: 'hidden'}}>
 
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(212,175,55,0.3); } 50% { box-shadow: 0 0 35px rgba(212,175,55,0.5); } }
+        @keyframes glow { 0%, 100% { box-shadow: 0 0 20px rgba(242,13,128,0.3); } 50% { box-shadow: 0 0 35px rgba(242,13,128,0.5); } }
         @keyframes eq1 { 0%, 100% { height: 10px; } 50% { height: 28px; } }
         @keyframes eq2 { 0%, 100% { height: 20px; } 50% { height: 10px; } }
         @keyframes eq3 { 0%, 100% { height: 15px; } 50% { height: 30px; } }
@@ -285,7 +285,7 @@ export default function ShareablePreviewPage() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes urgentPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
         @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes bundleGlow { 0%, 100% { box-shadow: 0 0 30px rgba(212,175,55,0.15), inset 0 0 30px rgba(212,175,55,0.05); } 50% { box-shadow: 0 0 50px rgba(212,175,55,0.3), inset 0 0 40px rgba(212,175,55,0.08); } }
+        @keyframes bundleGlow { 0%, 100% { box-shadow: 0 0 30px rgba(242,13,128,0.15), inset 0 0 30px rgba(242,13,128,0.05); } 50% { box-shadow: 0 0 50px rgba(242,13,128,0.3), inset 0 0 40px rgba(242,13,128,0.08); } }
       `}</style>
 
       {/* Hidden Audio */}
@@ -328,7 +328,7 @@ export default function ShareablePreviewPage() {
               {['🇲🇽', '🇺🇸', '🇨🇴'].map((flag, i) => (
                 <div key={i} style={{
                   width: '26px', height: '26px', borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.1)', border: '2px solid #0f2027',
+                  background: 'rgba(255,255,255,0.1)', border: '2px solid #110d0f',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '14px', marginLeft: i > 0 ? '-8px' : '0', zIndex: 3 - i
                 }}>{flag}</div>
@@ -347,12 +347,12 @@ export default function ShareablePreviewPage() {
         }}>
           <div style={{
             display: 'inline-block',
-            background: 'linear-gradient(135deg, rgba(212,175,55,0.25), rgba(212,175,55,0.1))',
+            background: 'linear-gradient(135deg, rgba(242,13,128,0.25), rgba(242,13,128,0.1))',
             borderRadius: '50px', padding: '8px 20px',
-            border: '1px solid rgba(212,175,55,0.3)',
+            border: '1px solid rgba(242,13,128,0.3)',
             marginBottom: '20px'
           }}>
-            <span style={{fontSize: '13px', color: '#f5d77a', fontWeight: '600', letterSpacing: '0.5px'}}>
+            <span style={{fontSize: '13px', color: '#f74da6', fontWeight: '600', letterSpacing: '0.5px'}}>
               🎧 PREVIEW • 20 SEGUNDOS {songs.length > 1 ? `• ${songs.length} VERSIONES` : ''}
             </span>
           </div>
@@ -363,7 +363,7 @@ export default function ShareablePreviewPage() {
 
           <p style={{
             fontSize: '28px', fontWeight: 'bold', margin: '0 0 8px 0',
-            background: 'linear-gradient(90deg, #f5d77a, #fbbf24, #f5d77a)',
+            background: 'linear-gradient(90deg, #f74da6, #fbbf24, #f74da6)',
             backgroundSize: '200% auto',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             animation: 'shimmer 3s linear infinite'
@@ -433,33 +433,33 @@ export default function ShareablePreviewPage() {
                   {isCurrentlyPlaying && (
                     <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '3px', paddingBottom: '6px'}}>
                       {[0.6, 0.5, 0.7, 0.4, 0.8].map((dur, i) => (
-                        <div key={i} style={{width: '3px', background: '#f5d77a', borderRadius: '2px', animation: `eq${(i % 4) + 1} ${dur}s ease-in-out infinite`}} />
+                        <div key={i} style={{width: '3px', background: '#f74da6', borderRadius: '2px', animation: `eq${(i % 4) + 1} ${dur}s ease-in-out infinite`}} />
                       ))}
                     </div>
                   )}
                 </div>
 
                 <div style={{flex: 1}}>
-                  <p style={{fontSize: '12px', color: '#f5d77a', margin: '0 0 8px 0', textTransform: 'capitalize'}}>
+                  <p style={{fontSize: '12px', color: '#f74da6', margin: '0 0 8px 0', textTransform: 'capitalize'}}>
                     {(song.genre_name || song.genre || '').replace(/_/g, ' ')}{song.occasion ? ` • ${song.occasion.replace(/_/g, ' ')}` : ''}
                   </p>
                   <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
                     <button onClick={() => togglePlay(song.id)} style={{
                       width: '48px', height: '48px', minWidth: '48px', borderRadius: '50%', border: 'none',
-                      background: isCurrentlyPlaying ? 'linear-gradient(135deg, #f5d77a, #d4af37)' : 'linear-gradient(135deg, #22c55e, #16a34a)',
+                      background: isCurrentlyPlaying ? 'linear-gradient(135deg, #f74da6, #f20d80)' : 'linear-gradient(135deg, #22c55e, #16a34a)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                      boxShadow: isCurrentlyPlaying ? '0 4px 15px rgba(212,175,55,0.4)' : '0 4px 15px rgba(34,197,94,0.4)',
+                      boxShadow: isCurrentlyPlaying ? '0 4px 15px rgba(242,13,128,0.4)' : '0 4px 15px rgba(34,197,94,0.4)',
                       transition: 'all 0.3s'
                     }}>
                       {isCurrentlyPlaying ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="#1a3a2f"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="#181114"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                       ) : (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="white" style={{marginLeft: '2px'}}><path d="M8 5v14l11-7z"/></svg>
                       )}
                     </button>
                     <div style={{flex: 1}}>
                       <div onClick={(e) => handleSeek(song.id, e)} style={{height: '6px', background: 'rgba(255,255,255,0.12)', borderRadius: '3px', cursor: 'pointer', overflow: 'hidden', marginBottom: '4px'}}>
-                        <div style={{height: '100%', background: 'linear-gradient(90deg, #f5d77a, #d4af37)', borderRadius: '3px', width: `${progressPercent || 0}%`, transition: 'width 0.1s'}} />
+                        <div style={{height: '100%', background: 'linear-gradient(90deg, #f74da6, #f20d80)', borderRadius: '3px', width: `${progressPercent || 0}%`, transition: 'width 0.1s'}} />
                       </div>
                       <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.4)'}}>
                         <span>{formatTime(songTime)}</span>
@@ -493,10 +493,10 @@ export default function ShareablePreviewPage() {
             style={{
               position: 'relative',
               background: purchaseMode === 'bundle'
-                ? 'linear-gradient(145deg, rgba(212,175,55,0.12), rgba(212,175,55,0.04))'
+                ? 'linear-gradient(145deg, rgba(242,13,128,0.12), rgba(242,13,128,0.04))'
                 : 'linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
               borderRadius: '24px', padding: '28px',
-              border: `2px solid ${purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.1)'}`,
+              border: `2px solid ${purchaseMode === 'bundle' ? '#f74da6' : 'rgba(255,255,255,0.1)'}`,
               marginBottom: '20px', cursor: 'pointer', transition: 'all 0.3s',
               animation: isVisible ? `fadeInUp 0.8s ease-out 0.5s both${purchaseMode === 'bundle' ? ', bundleGlow 3s ease-in-out infinite' : ''}` : 'none',
               overflow: 'hidden'
@@ -522,7 +522,7 @@ export default function ShareablePreviewPage() {
                     left: i === 0 ? '0' : '76px', top: i === 0 ? '0' : '4px',
                     width: '80px', height: '80px',
                     borderRadius: '16px', overflow: 'hidden',
-                    border: `3px solid ${purchaseMode === 'bundle' ? '#f5d77a' : 'rgba(255,255,255,0.2)'}`,
+                    border: `3px solid ${purchaseMode === 'bundle' ? '#f74da6' : 'rgba(255,255,255,0.2)'}`,
                     background: 'linear-gradient(135deg, #1e3a5f, #4c1d95)',
                     zIndex: i === 0 ? 2 : 1,
                     boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
@@ -545,7 +545,7 @@ export default function ShareablePreviewPage() {
             <div style={{textAlign: 'center'}}>
               <p style={{
                 fontSize: '20px', fontWeight: '900', margin: '0 0 6px 0',
-                color: purchaseMode === 'bundle' ? '#f5d77a' : 'white'
+                color: purchaseMode === 'bundle' ? '#f74da6' : 'white'
               }}>
                 {purchaseMode === 'bundle' ? '✓ ' : ''}Llevarme las dos canciones
               </p>
@@ -563,7 +563,7 @@ export default function ShareablePreviewPage() {
                 </span>
                 <span style={{
                   fontSize: '32px', fontWeight: '900',
-                  color: purchaseMode === 'bundle' ? '#f5d77a' : 'white'
+                  color: purchaseMode === 'bundle' ? '#f74da6' : 'white'
                 }}>
                   ${BUNDLE_PRICE}
                 </span>
@@ -664,13 +664,13 @@ export default function ShareablePreviewPage() {
                   width: '100%', padding: '20px',
                   background: checkoutLoading || selectedIds.size === 0
                     ? 'rgba(255,255,255,0.1)'
-                    : 'linear-gradient(90deg, #f5d77a, #d4af37)',
-                  color: checkoutLoading || selectedIds.size === 0 ? 'rgba(255,255,255,0.4)' : '#1a3a2f',
+                    : 'linear-gradient(90deg, #f74da6, #f20d80)',
+                  color: checkoutLoading || selectedIds.size === 0 ? 'rgba(255,255,255,0.4)' : '#181114',
                   fontWeight: 'bold', fontSize: '18px',
                   border: 'none', borderRadius: '14px',
                   cursor: checkoutLoading || selectedIds.size === 0 ? 'default' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                  boxShadow: selectedIds.size > 0 && !checkoutLoading ? '0 6px 25px rgba(212,175,55,0.4)' : 'none',
+                  boxShadow: selectedIds.size > 0 && !checkoutLoading ? '0 6px 25px rgba(242,13,128,0.4)' : 'none',
                   animation: !checkoutLoading && selectedIds.size > 0 && Object.values(playCounts).some(c => c > 0) ? 'pulse 2s ease-in-out infinite' : 'none',
                   transition: 'all 0.3s',
                   opacity: (showEmailForm && !emailInput) ? 0.5 : 1
@@ -731,9 +731,9 @@ export default function ShareablePreviewPage() {
 
         {/* ===== WHAT'S INCLUDED ===== */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(212,175,55,0.12), rgba(225,29,116,0.08))',
+          background: 'linear-gradient(135deg, rgba(242,13,128,0.12), rgba(225,29,116,0.08))',
           borderRadius: '20px', padding: '24px',
-          border: '1px solid rgba(212,175,55,0.2)',
+          border: '1px solid rgba(242,13,128,0.2)',
           marginBottom: '24px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.65s both' : 'none'
         }}>
@@ -801,7 +801,7 @@ export default function ShareablePreviewPage() {
 
 const styles = {
   fullScreen: {
-    background: 'linear-gradient(160deg, #0f2027, #1a3a2f, #162832)',
+    background: 'linear-gradient(160deg, #110d0f, #181114, #151015)',
     color: 'white', minHeight: '100vh',
     display: 'flex', alignItems: 'center', justifyContent: 'center'
   },

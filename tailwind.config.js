@@ -8,12 +8,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        "primary": "#d4af35",
-        "bougainvillea": "#E11D74",
-        "forest": "#1A4338",
-        "gold": "#D4AF37",
+        "primary": "#f20d80",
+        "bougainvillea": "#f20d80",
+        "forest": "#181114",
+        "gold": "#f20d80",
         "background-light": "#FDFCFB",
-        "background-dark": "#0F1211",
+        "background-dark": "#181114",
         "landing-bg": "#181114",
         "landing-primary": "#f20d80",
       },

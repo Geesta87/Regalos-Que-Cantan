@@ -19,7 +19,7 @@ function Confetti({ intensity = 200 }) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
     
-    const colors = ['#f5d77a', '#e11d74', '#22c55e', '#3b82f6', '#a855f7', '#f97316', '#ec4899', '#fbbf24', '#06b6d4'];
+    const colors = ['#f74da6', '#e11d74', '#22c55e', '#3b82f6', '#a855f7', '#f97316', '#ec4899', '#fbbf24', '#06b6d4'];
     const particles = [];
     
     for (let i = 0; i < intensity; i++) {
@@ -115,8 +115,8 @@ function CountdownOverlay({ onComplete, recipientName }) {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 200,
       background: phase === 'flash'
-        ? 'radial-gradient(circle, rgba(245,215,122,0.4), rgba(15,32,39,0.98))'
-        : 'linear-gradient(160deg, #0a1a1f 0%, #0f2027 40%, #122620 100%)',
+        ? 'radial-gradient(circle, rgba(242,13,128,0.4), rgba(24,17,20,0.98))'
+        : 'linear-gradient(160deg, #110d0f 0%, #181114 40%, #1e1519 100%)',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.4s ease',
@@ -127,7 +127,7 @@ function CountdownOverlay({ onComplete, recipientName }) {
         position: 'absolute',
         width: '400px', height: '400px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(212,175,55,0.08), transparent 70%)',
+        background: 'radial-gradient(circle, rgba(242,13,128,0.08), transparent 70%)',
         animation: 'pulseRing 2s ease-in-out infinite'
       }} />
       <div style={{
@@ -183,11 +183,11 @@ function CountdownOverlay({ onComplete, recipientName }) {
               fontWeight: '900',
               lineHeight: 1,
               fontFamily: "'Montserrat', sans-serif",
-              background: 'linear-gradient(180deg, #f5d77a 0%, #d4af37 50%, #b8860b 100%)',
+              background: 'linear-gradient(180deg, #f74da6 0%, #f20d80 50%, #c0095e 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               textShadow: 'none',
-              filter: 'drop-shadow(0 0 40px rgba(212,175,55,0.4))',
+              filter: 'drop-shadow(0 0 40px rgba(242,13,128,0.4))',
               animation: 'countPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)',
               position: 'relative'
             }}
@@ -218,7 +218,7 @@ function CountdownOverlay({ onComplete, recipientName }) {
         <div style={{
           width: '80px', height: '80px',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, #f5d77a, #d4af37)',
+          background: 'radial-gradient(circle, #f74da6, #f20d80)',
           animation: 'flashBurst 0.5s ease-out forwards'
         }} />
       )}
@@ -513,7 +513,7 @@ export default function SuccessPage() {
           <div style={{
             width: '56px', height: '56px', margin: '0 auto 20px',
             border: '3px solid rgba(255,255,255,0.1)',
-            borderTopColor: '#f5d77a',
+            borderTopColor: '#f74da6',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite'
           }} />
@@ -533,7 +533,7 @@ export default function SuccessPage() {
         <div style={{ textAlign: 'center', padding: '20px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>😔</div>
           <p style={{ color: '#f87171', marginBottom: '16px', fontSize: '18px', fontFamily: "'Montserrat', sans-serif" }}>{error}</p>
-          <a href="/" style={{ color: '#f5d77a', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif" }}>← Volver al inicio</a>
+          <a href="/" style={{ color: '#f74da6', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif" }}>← Volver al inicio</a>
         </div>
       </div>
     );
@@ -564,7 +564,7 @@ export default function SuccessPage() {
           </div>
           <h1 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '12px', fontFamily: "'Montserrat', sans-serif" }}>¡Pago Exitoso!</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '28px', fontSize: '15px', fontFamily: "'Montserrat', sans-serif", lineHeight: '1.6' }}>
-            Tu canción para <span style={{ color: '#f5d77a', fontWeight: '700' }}>{currentSong?.recipient_name}</span> está siendo creada.
+            Tu canción para <span style={{ color: '#f74da6', fontWeight: '700' }}>{currentSong?.recipient_name}</span> está siendo creada.
           </p>
           <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', marginBottom: '24px', fontFamily: "'Montserrat', sans-serif" }}>
             Recibirás un email cuando esté lista • ~2-5 min
@@ -1144,7 +1144,7 @@ export default function SuccessPage() {
 // ============================================================
 const S = {
   fullScreenCenter: {
-    background: 'linear-gradient(160deg, #0a1a1f 0%, #0f2a22 35%, #122a1e 65%, #0d2030 100%)',
+    background: 'linear-gradient(160deg, #110d0f 0%, #181114 35%, #1e1519 65%, #151015 100%)',
     color: 'white',
     minHeight: '100vh',
     display: 'flex',
