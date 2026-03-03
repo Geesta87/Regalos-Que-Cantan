@@ -1,13 +1,6 @@
 dist
 node_modules
 
-# Large media files (hosted externally, not in git)
-*.mp4
-*.mp3
-*.wav
-public/videos/
-public/samples/
-
 # Misc
 .DS_Store
 .env
