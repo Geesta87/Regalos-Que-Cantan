@@ -1,0 +1,4 @@
+-e /admin    /index.html   200
+/admin/*  /index.html   200
+/preview/*  /index.html   200
+/*        /index.html   200

@@ -1,0 +1,71 @@
+{
+  "name": "Dogfathers Plus - Premium Mobile Dog Grooming",
+  "short_name": "Dogfathers Plus",
+  "description": "Premium mobile dog grooming service - we come to you! Book appointments, earn rewards, and keep your furry friends looking their best.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f7f8",
+  "theme_color": "#13a4ec",
+  "scope": "/",
+  "lang": "en-US",
+  "categories": ["lifestyle", "business", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%2313a4ec' width='192' height='192' rx='40'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle' fill='white'%3E🐕%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%2313a4ec' width='512' height='512' rx='100'/%3E%3Ctext x='256' y='350' font-size='280' text-anchor='middle' fill='white'%3E🐕%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Book Appointment",
+      "short_name": "Book",
+      "description": "Book a new grooming appointment",
+      "url": "/?action=book",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect fill='%2313a4ec' width='96' height='96' rx='20'/%3E%3Ctext x='48' y='65' font-size='50' text-anchor='middle' fill='white'%3E📅%3C/text%3E%3C/svg%3E",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "My Pets",
+      "short_name": "Pets",
+      "description": "View and manage your pets",
+      "url": "/?tab=pets",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect fill='%2313a4ec' width='96' height='96' rx='20'/%3E%3Ctext x='48' y='65' font-size='50' text-anchor='middle' fill='white'%3E🐾%3C/text%3E%3C/svg%3E",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Rewards",
+      "short_name": "Rewards",
+      "description": "Check your loyalty points and rewards",
+      "url": "/?tab=rewards",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect fill='%23c9a962' width='96' height='96' rx='20'/%3E%3Ctext x='48' y='65' font-size='50' text-anchor='middle' fill='white'%3E⭐%3C/text%3E%3C/svg%3E",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

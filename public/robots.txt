@@ -1,0 +1,43 @@
+# RegalosQueCantan - Robots.txt
+# https://regalosquecantan.com
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+Allow: /generos
+Allow: /ocasiones
+Disallow: /admin
+Disallow: /create
+Disallow: /preview
+Disallow: /success
+Disallow: /comparison
+Disallow: /api
+
+# Googlebot
+User-agent: Googlebot
+Allow: /
+
+# Google Extended (AI training)
+User-agent: Google-Extended
+Allow: /
+
+# OpenAI
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+
+# Anthropic
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+# Sitemap location
+Sitemap: https://regalosquecantan.com/sitemap.xml
