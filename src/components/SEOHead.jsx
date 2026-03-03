@@ -140,6 +140,25 @@ export function generateOccasionStructuredData(occasion) {
 }
 
 /**
+ * Generate FAQPage structured data for SEO
+ */
+export function generateFAQStructuredData(faqs) {
+  if (!faqs || faqs.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqs.map(faq => ({
+      "@type": "Question",
+      "name": faq.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": faq.answer
+      }
+    }))
+  };
+}
+
+/**
  * Generate BreadcrumbList structured data
  */
 export function generateBreadcrumbData(items) {

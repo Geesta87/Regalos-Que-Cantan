@@ -4,6 +4,47 @@
  */
 
 // ============================================
+// DEFAULT FAQ DATA
+// ============================================
+export const DEFAULT_GENRE_FAQS = [
+  {
+    question: '¿Cuánto tiempo tarda en crearse la canción?',
+    answer: 'Tu canción personalizada estará lista en solo 2-4 minutos. Nuestra IA genera dos versiones únicas para que elijas tu favorita o te quedes con ambas.'
+  },
+  {
+    question: '¿Puedo escuchar la canción antes de pagar?',
+    answer: 'Sí, escuchas un preview de 20 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta antes de completar tu compra.'
+  },
+  {
+    question: '¿En qué formato recibo la canción?',
+    answer: 'Recibes un archivo MP3 de alta calidad que puedes descargar inmediatamente y compartir por WhatsApp, redes sociales, email o reproducir en cualquier dispositivo.'
+  },
+  {
+    question: '¿Qué pasa si no me gusta la canción?',
+    answer: 'Generamos dos versiones diferentes para que tengas opciones. Si ninguna te convence completamente, contáctanos y buscaremos una solución para que quedes satisfecho.'
+  }
+];
+
+export const DEFAULT_OCCASION_FAQS = [
+  {
+    question: '¿Cuánto tiempo tarda en crearse la canción?',
+    answer: 'Tu canción estará lista en solo 2-4 minutos. Nuestra IA genera dos versiones únicas para que elijas tu favorita.'
+  },
+  {
+    question: '¿Puedo escuchar la canción antes de pagar?',
+    answer: 'Sí, escuchas un preview de 20 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta.'
+  },
+  {
+    question: '¿En qué formato recibo la canción?',
+    answer: 'Recibes un archivo MP3 de alta calidad que puedes descargar inmediatamente y compartir por WhatsApp, redes sociales o email.'
+  },
+  {
+    question: '¿Qué pasa si no me gusta la canción?',
+    answer: 'Ofrecemos dos versiones diferentes para que tengas opciones. Si ninguna te convence, contáctanos y buscaremos una solución.'
+  }
+];
+
+// ============================================
 // GENRES DATA
 // ============================================
 export const GENRES_SEO = {
@@ -28,9 +69,15 @@ Perfecto para cumpleaños, graduaciones, o simplemente para sorprender a alguien
     icon: '🎤',
     popularFor: ['Cumpleaños', 'Graduaciones', 'Logros personales', 'Día del Padre'],
     reviewCount: 89,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Cómo suena un corrido tumbado personalizado?', answer: 'Suena como las canciones de Peso Pluma o Junior H pero con la letra completamente personalizada. Incluye el nombre de tu ser querido, menciones de sus logros y el flow característico del género.' },
+      { question: '¿Puedo elegir el estilo de artista para mi corrido tumbado?', answer: 'Sí, nuestra IA puede crear corridos tumbados inspirados en el estilo de artistas como Peso Pluma, Natanael Cano, Junior H o Fuerza Regida. Tú eliges el vibe.' },
+      { question: '¿Es un buen regalo para un joven?', answer: 'Definitivamente. Los corridos tumbados son el género más popular entre jóvenes latinos. Es un regalo moderno, original y que demuestra que conoces sus gustos musicales.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'corrido-clasico': {
     id: 'corrido-clasico',
     name: 'Corrido Clásico',
@@ -69,9 +116,14 @@ Tu canción personalizada incluirá el nombre de tu ser querido, un mensaje espe
     icon: '🎷',
     popularFor: ['Bodas', 'Quinceañeras', 'Cumpleaños', 'Fiestas'],
     reviewCount: 124,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Cómo suena una canción de banda personalizada?', answer: 'Suena como Banda MS o El Recodo con metales, tuba y clarinete, pero la letra es 100% personalizada con el nombre de tu ser querido y tu mensaje especial.' },
+      { question: '¿Es buena opción para una fiesta?', answer: 'La banda sinaloense es perfecta para fiestas, bodas y quinceañeras. Tu canción personalizada será el momento más especial de la celebración.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'norteno': {
     id: 'norteno',
     name: 'Norteño',
@@ -110,9 +162,15 @@ Tu cumbia personalizada incluirá el nombre de tu ser querido, un mensaje especi
     icon: '💃',
     popularFor: ['Cumpleaños', 'Bodas', 'Fiestas', 'Quinceañeras'],
     reviewCount: 156,
-    featured: true
+    featured: true,
+    demoAudio: '/sample-3.mp3',
+    faqs: [
+      { question: '¿Cómo suena una cumbia personalizada?', answer: 'Suena como las cumbias de Los Ángeles Azules o Sonora Dinamita — ritmo contagioso, güiro y teclados — pero con letra personalizada que menciona el nombre de tu ser querido.' },
+      { question: '¿Es buena para una fiesta de cumpleaños?', answer: '¡Es perfecta! La cumbia pone a bailar a todos. Imagina la sorpresa cuando escuchen el nombre del festejado en una cumbia profesional.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'cumbia-nortena': {
     id: 'cumbia-nortena',
     name: 'Cumbia Norteña',
@@ -182,9 +240,14 @@ Una serenata de mariachi es el regalo más romántico y tradicional. Con Regalos
     icon: '🎺',
     popularFor: ['Serenatas', 'Día de las Madres', 'Aniversarios', 'Propuestas de matrimonio'],
     reviewCount: 187,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Puedo usar la canción como serenata?', answer: 'Absolutamente. El mariachi es el género de serenata por excelencia. Tu canción personalizada puede reproducirse como serenata digital o acompañar a un mariachi en vivo.' },
+      { question: '¿Suena como un mariachi real?', answer: 'Sí, nuestra IA genera música con trompetas, violines y guitarrón que captura la esencia del mariachi tradicional. La producción es de calidad profesional.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'bachata': {
     id: 'bachata',
     name: 'Bachata',
@@ -203,9 +266,15 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     icon: '💕',
     popularFor: ['San Valentín', 'Aniversarios', 'Declaraciones de amor', 'Propuestas'],
     reviewCount: 143,
-    featured: true
+    featured: true,
+    demoAudio: '/sample-romantica-1.mp3',
+    faqs: [
+      { question: '¿Cómo suena una bachata personalizada?', answer: 'Suena como Romeo Santos o Prince Royce — guitarra requinteada, bongos y ritmo sensual — pero con una letra de amor escrita específicamente para tu persona especial.' },
+      { question: '¿Es un buen regalo romántico?', answer: 'La bachata es el género romántico por excelencia. Una bachata con el nombre de tu pareja es uno de los regalos más emotivos que puedes dar.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'reggaeton': {
     id: 'reggaeton',
     name: 'Reggaeton',
@@ -254,9 +323,15 @@ Una bachata personalizada es el regalo perfecto para esa persona especial. Inclu
     color: '#991B1B',
     icon: '🌹',
     popularFor: ['Aniversarios', 'Propuestas', 'Día de las Madres', 'San Valentín'],
-    reviewCount: 89
+    reviewCount: 89,
+    demoAudio: '/sample-romantica-2.mp3',
+    faqs: [
+      { question: '¿Cómo suena un bolero personalizado?', answer: 'Suena como las canciones de Luis Miguel o Trío Los Panchos — guitarras suaves, voces aterciopeladas y letras poéticas — pero con un mensaje escrito solo para tu ser querido.' },
+      { question: '¿Es apropiado para personas mayores?', answer: 'El bolero es perfecto para cualquier edad, pero es especialmente apreciado por personas que crecieron con este género romántico clásico. Es un regalo elegante y emotivo.' },
+      ...DEFAULT_GENRE_FAQS
+    ]
   },
-  
+
   'ranchera': {
     id: 'ranchera',
     name: 'Ranchera',
@@ -422,9 +497,14 @@ Imagina la cara de sorpresa cuando escuchen su nombre en una canción profesiona
     suggestedGenres: ['cumbia', 'banda-sinaloense', 'corridos-tumbados', 'reggaeton', 'mariachi'],
     ageGroups: ['Niños', 'Adolescentes', 'Adultos', 'Adultos mayores'],
     reviewCount: 234,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Puedo incluir la edad del festejado en la canción?', answer: 'Sí, puedes incluir su edad, nombre, apodo y cualquier detalle especial. La canción mencionará todo lo que tú quieras para hacerla única.' },
+      { question: '¿Es mejor que las mañanitas tradicionales?', answer: 'Es mil veces mejor. Las mañanitas las cantan millones. Tu canción personalizada solo existe para esa persona especial, con su nombre y detalles únicos.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'dia-de-las-madres': {
     id: 'dia-de-las-madres',
     name: 'Día de las Madres',
@@ -450,9 +530,14 @@ Ya sea mariachi tradicional, bolero romántico, o el género que ella prefiera, 
     reviewCount: 312,
     featured: true,
     seasonal: true,
-    peakMonth: 5
+    peakMonth: 5,
+    faqs: [
+      { question: '¿Puedo mencionar cómo le digo a mi mamá cariñosamente?', answer: 'Claro que sí. Puedes incluir apodos como "mami", "jefa", "madre" o cualquier nombre cariñoso. La canción lo incorporará de forma natural.' },
+      { question: '¿Es un buen regalo de último minuto para el 10 de Mayo?', answer: 'Perfecto para último minuto. Tu canción estará lista en 2-4 minutos. Puedes crearla el mismo día y enviársela por WhatsApp al instante.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'dia-del-padre': {
     id: 'dia-del-padre',
     name: 'Día del Padre',
@@ -472,9 +557,13 @@ Crea un corrido que cuente sus logros, una ranchera que exprese tu admiración, 
     reviewCount: 156,
     featured: true,
     seasonal: true,
-    peakMonth: 6
+    peakMonth: 6,
+    faqs: [
+      { question: '¿Puedo mencionar los logros de mi papá?', answer: 'Sí, puedes incluir sus logros profesionales, hobbies, sacrificios y todo lo que admiras de él. La canción contará su historia.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'aniversario': {
     id: 'aniversario',
     name: 'Aniversario',
@@ -498,9 +587,13 @@ En bachata romántica, bolero clásico, o el género que marque su relación.`,
     color: '#DC2626',
     suggestedGenres: ['bachata', 'bolero', 'balada', 'salsa', 'mariachi'],
     reviewCount: 189,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Puedo incluir cómo nos conocimos?', answer: 'Sí, puedes incluir la historia de cómo se conocieron, momentos especiales, fechas importantes y cualquier detalle que haga la canción única para su relación.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'boda': {
     id: 'boda',
     name: 'Boda',
@@ -524,9 +617,13 @@ Ya sea un vals romántico, una cumbia para que todos bailen, o una bachata sensu
     color: '#F472B6',
     suggestedGenres: ['bachata', 'balada', 'bolero', 'cumbia', 'mariachi'],
     reviewCount: 98,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Puedo usarla como primer baile?', answer: 'Absolutamente. Muchas parejas usan nuestra canción personalizada como primer baile. Es una canción única que solo ustedes tendrán.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'quinceanera': {
     id: 'quinceanera',
     name: 'Quinceañera',
@@ -550,9 +647,13 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     color: '#A855F7',
     suggestedGenres: ['balada', 'bachata', 'cumbia', 'pop-latino', 'mariachi'],
     reviewCount: 87,
-    featured: true
+    featured: true,
+    faqs: [
+      { question: '¿Puedo usarla como vals de XV años?', answer: 'Sí, es perfecta como vals personalizado. La canción incluirá el nombre de la quinceañera y deseos especiales para su nueva etapa.' },
+      ...DEFAULT_OCCASION_FAQS
+    ]
   },
-  
+
   'graduacion': {
     id: 'graduacion',
     name: 'Graduación',
