@@ -210,12 +210,18 @@ export default function GeneratingPage() {
             console.log('✅ Song 1 started:', result1.song.id);
           }
           setSong1Id(result1.song.id);
-          
+
+          // If Kie.ai is down, song was queued for retry — show friendly message
+          if (result1.queued) {
+            setSong1Status('queued_retry');
+            return; // Don't start Song 2, we'll email them
+          }
+
           // Capture sessionId from API for Song 2 linking
           if (result1.sessionId) {
             setApiSessionId(result1.sessionId);
           }
-          
+
           // If we got lyrics back immediately, show them
           if (result1.song.lyrics) {
             const lines = result1.song.lyrics.split('\n').filter(l => l.trim());
@@ -273,7 +279,7 @@ export default function GeneratingPage() {
 
   // Poll for Song 1 status
   useEffect(() => {
-    if (!song1Id || song1Status === 'completed' || song1Status === 'failed') return;
+    if (!song1Id || song1Status === 'completed' || song1Status === 'failed' || song1Status === 'queued_retry') return;
 
     const pollStatus = async () => {
       try {
@@ -294,6 +300,8 @@ export default function GeneratingPage() {
           }
         } else if (result.status === 'failed') {
           setSong1Status('failed');
+        } else if (result.status === 'queued_retry') {
+          setSong1Status('queued_retry');
         }
       } catch (err) {
         if (import.meta.env.DEV) {
@@ -402,6 +410,56 @@ export default function GeneratingPage() {
       setError('No pudimos generar tu canción. Por favor intenta de nuevo.');
     }
   }, [song1Status, song2Status, song1Data, song2Data, song2Id, navigateTo, setSongData, apiSessionId, isFastFunnel]);
+
+  // Queued retry state — Kie.ai is down, show humorous "down moment" page
+  if (song1Status === 'queued_retry') {
+    return (
+      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+        <div className="bg-white/10 border border-gold/30 rounded-2xl p-8 max-w-md text-center">
+          <div className="text-6xl mb-4">🎤😴</div>
+          <h2 className="text-white text-2xl font-bold mb-3">
+            Nuestro cantante está tomando una siesta
+          </h2>
+          <p className="text-white/70 mb-2 text-lg">
+            Hasta los mejores artistas necesitan un descanso...
+          </p>
+          <p className="text-white/60 mb-6 text-sm leading-relaxed">
+            Nuestro servicio de música está teniendo un momento de diva.
+            No te preocupes — tu canción para <span className="text-gold font-semibold">{formData.recipientName}</span> ya
+            está en la fila y la letra está lista. En cuanto nuestro cantante
+            despierte, te enviamos tu canción por email. ☕🎵
+          </p>
+
+          <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="material-symbols-outlined text-gold text-xl">mail</span>
+              <p className="text-white/80 text-sm font-medium">Te avisamos a:</p>
+            </div>
+            <p className="text-gold font-semibold">{formData.email}</p>
+          </div>
+
+          <p className="text-white/40 text-xs mb-6">
+            Normalmente tarda unos minutos. Máximo una hora si el cantante pide un encore de su siesta. 🛌
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => navigateTo('details')}
+              className="px-8 py-3 bg-gold text-forest font-bold rounded-full hover:bg-gold/90 transition"
+            >
+              Intentar de nuevo ahora
+            </button>
+            <a
+              href="/"
+              className="text-white/50 text-sm hover:text-white/70 transition"
+            >
+              Volver al inicio
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Error state
   if (error) {

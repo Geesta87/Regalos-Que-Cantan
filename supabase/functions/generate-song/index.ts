@@ -1147,13 +1147,35 @@ RESPONDE SOLO JSON:
     
     const musicResponse = await fetch('https://api.kie.ai/api/v1/generate', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${KIE_API_KEY}` 
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${KIE_API_KEY}`
       },
       body: JSON.stringify(kiePayload)
     });
-    
+
+    if (!musicResponse.ok) {
+      const errorText = await musicResponse.text();
+      console.error(`Kie.ai API error: ${musicResponse.status} - ${errorText.substring(0, 500)}`);
+
+      // Save the Kie payload so we can retry later, and mark as queued_retry
+      await supabase.from('songs').update({
+        status: 'queued_retry',
+        error_message: `Kie.ai ${musicResponse.status}: service temporarily unavailable`,
+        kie_payload: JSON.stringify(kiePayload)
+      }).eq('id', songId);
+
+      console.log(`Song ${songId} queued for retry — Kie.ai is down`);
+
+      // Return success with queued_retry status so frontend shows friendly message
+      return new Response(JSON.stringify({
+        success: true,
+        song: { id: songId, status: 'queued_retry', imageUrl },
+        sessionId: currentSessionId,
+        queued: true
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
+    }
+
     const musicData = await musicResponse.json();
     const taskId = musicData.data?.taskId;
     
