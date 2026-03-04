@@ -159,6 +159,48 @@ export function generateFAQStructuredData(faqs) {
 }
 
 /**
+ * Generate HowTo structured data for SEO
+ * @param {Object} opts - { name, description, steps: [{ name, text }], totalTime }
+ */
+export function generateHowToStructuredData({ name, description, steps, totalTime = 'PT5M' }) {
+  if (!steps || steps.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": name,
+    "description": description,
+    "totalTime": totalTime,
+    "step": steps.map((step, i) => ({
+      "@type": "HowToStep",
+      "position": i + 1,
+      "name": step.name,
+      "text": step.text
+    }))
+  };
+}
+
+/**
+ * Generate Organization structured data for About/brand pages
+ */
+export function generateOrganizationData() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "RegalosQueCantan",
+    "url": "https://regalosquecantan.com",
+    "logo": "https://regalosquecantan.com/images/logo.png",
+    "description": "Canciones personalizadas con inteligencia artificial para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros.",
+    "foundingDate": "2024",
+    "sameAs": [],
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer service",
+      "availableLanguage": ["Spanish", "English"]
+    }
+  };
+}
+
+/**
  * Generate BreadcrumbList structured data
  */
 export function generateBreadcrumbData(items) {

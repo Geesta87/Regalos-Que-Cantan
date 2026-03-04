@@ -28,6 +28,9 @@ import GenerosHub from './pages/seo/GenerosHub';
 import OcasionesHub from './pages/seo/OcasionesHub';
 import GenreLanding from './pages/seo/GenreLanding';
 import OccasionLanding from './pages/seo/OccasionLanding';
+import ComoFunciona from './pages/seo/ComoFunciona';
+import PreguntasFrecuentes from './pages/seo/PreguntasFrecuentes';
+import SobreNosotros from './pages/seo/SobreNosotros';
 import NotFoundPage from './pages/NotFoundPage';
 
 // App State Context
@@ -65,7 +68,10 @@ const pathToPage = {
   '/admin': 'adminLogin',
   '/admin/dashboard': 'adminDashboard',
   '/generos': 'generos',
-  '/ocasiones': 'ocasiones'
+  '/ocasiones': 'ocasiones',
+  '/como-funciona': 'comoFunciona',
+  '/preguntas-frecuentes': 'preguntasFrecuentes',
+  '/sobre-nosotros': 'sobreNosotros'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -219,7 +225,10 @@ export default function App() {
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard',
       generos: '/generos',
-      ocasiones: '/ocasiones'
+      ocasiones: '/ocasiones',
+      comoFunciona: '/como-funciona',
+      preguntasFrecuentes: '/preguntas-frecuentes',
+      sobreNosotros: '/sobre-nosotros'
     };
     
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -310,6 +319,9 @@ export default function App() {
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}
           {currentPage === 'ocasiones' && <OcasionesHub />}
+          {currentPage === 'comoFunciona' && <ComoFunciona />}
+          {currentPage === 'preguntasFrecuentes' && <PreguntasFrecuentes />}
+          {currentPage === 'sobreNosotros' && <SobreNosotros />}
           
           {/* SEO Dynamic Genre pages */}
           {currentPage.startsWith('generos/') && (

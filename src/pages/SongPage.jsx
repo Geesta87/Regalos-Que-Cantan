@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Helmet } from 'react-helmet-async';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const supabase = import.meta.env.VITE_SUPABASE_URL
+  ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
+  : null;
 
 // ═══════════════════════════════════════
 // DEDICATION GENERATOR

@@ -130,6 +130,19 @@ export default function GenreLanding({ genreSlug }) {
           </div>
         </section>
 
+        {/* Definition Block — AI-extractable snippet */}
+        {genre.definitionBlock && (
+          <section className="px-6 -mt-8 mb-8 relative z-10">
+            <div className="max-w-3xl mx-auto">
+              <div className="glass-morphism rounded-2xl p-6 md:p-8 border border-white/10" style={{ borderLeftWidth: '4px', borderLeftColor: genre.color }}>
+                <p className="text-white/80 leading-relaxed text-lg">
+                  {genre.definitionBlock}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Description Section */}
         <section className="py-20 px-6">
           <div className="max-w-3xl mx-auto">
