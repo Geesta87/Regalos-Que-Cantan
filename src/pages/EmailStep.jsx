@@ -85,7 +85,7 @@ export default function EmailStep() {
     trackFB('Lead', {
       content_name: `${genreName} - ${occasionName}`,
       content_category: formData.genre || 'song',
-      value: 19.99,
+      value: 24.99,
       currency: 'USD'
     });
 

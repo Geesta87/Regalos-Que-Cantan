@@ -125,7 +125,7 @@ export default function GenreLanding({ genreSlug }) {
 
             {/* Price Badge */}
             <p className="mt-5 text-white/50">
-              Desde <span className="font-bold text-white">$29.99</span> • Listo en minutos
+              Desde <span className="font-bold text-white">$24.99</span> • Listo en minutos
             </p>
           </div>
         </section>

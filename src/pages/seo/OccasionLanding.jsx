@@ -132,7 +132,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </button>
 
             <p className="mt-5 text-white/50">
-              Desde <span className="font-bold text-white">$29.99</span> • Listo en minutos
+              Desde <span className="font-bold text-white">$24.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -368,7 +368,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </button>
 
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
-              <span>✓ Desde $29.99</span>
+              <span>✓ Desde $24.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
             </div>

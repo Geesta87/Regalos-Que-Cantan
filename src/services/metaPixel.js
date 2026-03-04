@@ -36,7 +36,7 @@ export const trackAddToCart = (genre, occasion, recipientName) => {
     content_type: 'product',
     content_name: `Canción Personalizada - ${genre}`,
     content_category: occasion,
-    value: 19.99,
+    value: 24.99,
     currency: 'USD'
   });
 };
@@ -44,7 +44,7 @@ export const trackAddToCart = (genre, occasion, recipientName) => {
 /**
  * Track when user initiates checkout (submits email / confirms)
  */
-export const trackInitiateCheckout = (value = 19.99, numItems = 1) => {
+export const trackInitiateCheckout = (value = 24.99, numItems = 1) => {
   fbq('track', 'InitiateCheckout', {
     value: value,
     currency: 'USD',
@@ -67,7 +67,7 @@ export const trackLead = () => {
  */
 export const trackPurchase = (songId, amount, couponCode = null) => {
   const eventData = {
-    value: parseFloat(amount) || 19.99,
+    value: parseFloat(amount) || 24.99,
     currency: 'USD',
     content_type: 'product',
     content_ids: Array.isArray(songId) ? songId : [songId],

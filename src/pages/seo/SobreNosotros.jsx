@@ -166,7 +166,7 @@ export default function SobreNosotros() {
               🎤 Crear Mi Canción Ahora
             </button>
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
-              <span>✓ Desde $29.99</span>
+              <span>✓ Desde $24.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
             </div>

@@ -11,7 +11,7 @@ const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
-const SINGLE_PRICE = 29.99;
+const SINGLE_PRICE = 24.99;
 const BUNDLE_PRICE = 39.99;
 
 // Robust payment check (same logic as AdminDashboard)
