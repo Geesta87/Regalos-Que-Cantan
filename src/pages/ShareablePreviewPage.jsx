@@ -14,6 +14,12 @@ const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 const SINGLE_PRICE = 24.99;
 const BUNDLE_PRICE = 39.99;
 
+// Helper to get static genre image path
+const getGenreImagePath = (genre) => {
+  if (!genre) return null;
+  return `/images/album-art/${genre}.jpg`;
+};
+
 // Robust payment check (same logic as AdminDashboard)
 const isSongPaid = (song) => {
   if (!song) return false;
@@ -423,12 +429,23 @@ export default function ShareablePreviewPage() {
                   background: 'linear-gradient(135deg, #1e3a5f, #4c1d95)',
                   boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
                 }}>
-                  {song.image_url ? (
-                    <img src={song.image_url} alt="" style={{width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s', transform: isCurrentlyPlaying ? 'scale(1.05)' : 'scale(1)'}}
-                      onError={(e) => { e.target.style.display = 'none'; }} />
-                  ) : (
-                    <span style={{fontSize: songs.length > 1 ? '40px' : '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
-                  )}
+                  {(() => {
+                    const staticImg = getGenreImagePath(song.genre);
+                    const imgSrc = staticImg || song.image_url;
+                    return imgSrc ? (
+                      <img src={imgSrc} alt="" style={{width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s', transform: isCurrentlyPlaying ? 'scale(1.05)' : 'scale(1)'}}
+                        onError={(e) => {
+                          if (song.image_url && e.target.src !== song.image_url) {
+                            e.target.src = song.image_url;
+                          } else {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.innerHTML = `<span style="font-size:${songs.length > 1 ? '40' : '60'}px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>`;
+                          }
+                        }} />
+                    ) : (
+                      <span style={{fontSize: songs.length > 1 ? '40px' : '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
+                    );
+                  })()}
                   {isCurrentlyPlaying && (
                     <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '30px', background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '3px', paddingBottom: '6px'}}>
                       {[0.6, 0.5, 0.7, 0.4, 0.8].map((dur, i) => (
@@ -528,13 +545,25 @@ export default function ShareablePreviewPage() {
                     transition: 'all 0.3s',
                     transform: purchaseMode === 'bundle' ? `rotate(${i === 0 ? '-5' : '5'}deg) scale(1.02)` : `rotate(${i === 0 ? '-3' : '3'}deg)`
                   }}>
-                    {s.image_url ? (
-                      <img src={s.image_url} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}} onError={(e) => { e.target.style.display = 'none'; }} />
-                    ) : (
-                      <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-                        {i === 0 ? '💫' : '🔥'}
-                      </span>
-                    )}
+                    {(() => {
+                      const staticImg = getGenreImagePath(s.genre);
+                      const imgSrc = staticImg || s.image_url;
+                      return imgSrc ? (
+                        <img src={imgSrc} alt="" style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                          onError={(e) => {
+                            if (s.image_url && e.target.src !== s.image_url) {
+                              e.target.src = s.image_url;
+                            } else {
+                              e.target.style.display = 'none';
+                              e.target.parentElement.innerHTML = `<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">${i === 0 ? '💫' : '🔥'}</span>`;
+                            }
+                          }} />
+                      ) : (
+                        <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                          {i === 0 ? '💫' : '🔥'}
+                        </span>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
