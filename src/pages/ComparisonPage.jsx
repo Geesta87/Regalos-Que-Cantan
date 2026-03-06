@@ -9,17 +9,10 @@ const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
-// Genre album art fallback map (for genres without their own static image)
-const GENRE_IMAGE_FALLBACK = {
-  vals: 'bolero',
-  romantica: 'balada',
-};
-
 // Helper to get static genre image path
 const getGenreImagePath = (genre) => {
   if (!genre) return null;
-  const mappedGenre = GENRE_IMAGE_FALLBACK[genre] || genre;
-  return `/images/album-art/${mappedGenre}.jpg`;
+  return `/images/album-art/${genre}.jpg`;
 };
 
 // ✅ NEW: Version personality - VIBRANT colors
