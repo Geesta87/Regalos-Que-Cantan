@@ -9,6 +9,19 @@ const PREVIEW_START = 15;
 const PREVIEW_DURATION = 20;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
+// Genre album art fallback map (for genres without their own static image)
+const GENRE_IMAGE_FALLBACK = {
+  vals: 'bolero',
+  romantica: 'balada',
+};
+
+// Helper to get static genre image path
+const getGenreImagePath = (genre) => {
+  if (!genre) return null;
+  const mappedGenre = GENRE_IMAGE_FALLBACK[genre] || genre;
+  return `/images/album-art/${mappedGenre}.jpg`;
+};
+
 // ✅ NEW: Version personality - VIBRANT colors
 const VERSION_VIBES = [
   { label: 'Emotiva', emoji: '💫', color: '#4f9cf7', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)', bgTint: 'rgba(59,130,246,0.12)' },
@@ -130,6 +143,7 @@ export default function ComparisonPage() {
           audioUrl: song.audio_url,
           previewUrl: song.preview_url || song.audio_url,
           imageUrl: song.image_url,
+          genre: song.genre,
           lyrics: song.lyrics
         }));
         setSongs(loadedSongs.sort((a, b) => (a.version || 1) - (b.version || 1)));
@@ -835,23 +849,33 @@ export default function ComparisonPage() {
                   boxShadow: `0 8px 30px ${vibe.color}25`,
                   border: `2px solid ${vibe.color}50`
                 }}>
-                  {song.imageUrl ? (
-                    <img 
-                      src={song.imageUrl} 
-                      alt="" 
-                      style={{
-                        width: '100%', height: '100%', objectFit: 'cover',
-                        transition: 'transform 0.5s',
-                        transform: isPlaying ? 'scale(1.05)' : 'scale(1)'
-                      }} 
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = '<span style="font-size:72px">🎵</span>';
-                      }}
-                    />
-                  ) : (
-                    <span style={{fontSize: '72px'}}>🎵</span>
-                  )}
+                  {(() => {
+                    const genreKey = song.genre || formData?.genre;
+                    const staticImg = getGenreImagePath(genreKey);
+                    const imgSrc = staticImg || song.imageUrl;
+                    return imgSrc ? (
+                      <img
+                        src={imgSrc}
+                        alt=""
+                        style={{
+                          width: '100%', height: '100%', objectFit: 'cover',
+                          transition: 'transform 0.5s',
+                          transform: isPlaying ? 'scale(1.05)' : 'scale(1)'
+                        }}
+                        onError={(e) => {
+                          // Try Pollinations URL as second fallback if static failed
+                          if (song.imageUrl && e.target.src !== song.imageUrl) {
+                            e.target.src = song.imageUrl;
+                          } else {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.innerHTML = '<span style="font-size:72px">🎵</span>';
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span style={{fontSize: '72px'}}>🎵</span>
+                    );
+                  })()}
                   
                   {/* Shine sweep effect */}
                   <div style={{
@@ -1155,18 +1179,27 @@ export default function ComparisonPage() {
                       boxShadow: `0 6px 20px ${VERSION_VIBES[i]?.color || '#3b82f6'}30`,
                       transition: 'transform 0.3s',
                     }}>
-                      {song.imageUrl ? (
-                        <img 
-                          src={song.imageUrl} alt=""
-                          style={{width: '100%', height: '100%', objectFit: 'cover'}}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.parentElement.innerHTML = '<span style="font-size:42px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
-                          }}
-                        />
-                      ) : (
-                        <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
-                      )}
+                      {(() => {
+                        const genreKey = song.genre || formData?.genre;
+                        const staticImg = genreKey ? `/images/album-art/${genreKey}.jpg` : null;
+                        const imgSrc = staticImg || song.imageUrl;
+                        return imgSrc ? (
+                          <img
+                            src={imgSrc} alt=""
+                            style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                            onError={(e) => {
+                              if (song.imageUrl && e.target.src !== song.imageUrl) {
+                                e.target.src = song.imageUrl;
+                              } else {
+                                e.target.style.display = 'none';
+                                e.target.parentElement.innerHTML = '<span style="font-size:42px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span style={{fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>🎵</span>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
