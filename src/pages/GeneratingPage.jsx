@@ -119,17 +119,17 @@ export default function GeneratingPage() {
         if (isFastFunnel) {
           // Fast funnel: 100% when Song 1 done
           if (song1Status === 'completed') return 100;
-          if (song1Status === 'generating') return Math.min(prev + 0.4, 90);
+          if (song1Status === 'generating') return Math.min(prev + 0.8, 92);
         } else {
           // Control: Track both songs
           if (song1Status === 'completed' && song2Status === 'completed') return 100;
-          if (song1Status === 'completed') return Math.min(prev + 0.5, 85);
-          if (song1Status === 'generating') return Math.min(prev + 0.3, 50);
+          if (song1Status === 'completed') return Math.min(prev + 0.8, 90);
+          if (song1Status === 'generating') return Math.min(prev + 0.6, 85);
         }
         if (prev >= 95) return prev;
-        return prev + Math.random() * 1.5;
+        return prev + Math.random() * 2;
       });
-    }, 800);
+    }, 500);
     return () => clearInterval(progressTimer);
   }, [song1Status, song2Status, isFastFunnel]);
 
