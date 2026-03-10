@@ -7,6 +7,12 @@ import { trackStep } from '../services/tracking';
 // ✅ FIX: Added timeout constant (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
 
+// Module-level guard: prevents double generation across component remounts.
+// useRef alone resets if the component fully unmounts (hydration recovery, parent re-render).
+// This persists for the lifetime of the JS module (i.e., until full page reload).
+let lastGenerationStartMs = 0;
+const GENERATION_DEBOUNCE_MS = 15000; // 15 seconds — no two generations within this window
+
 // Personalized step messages based on what's actually happening
 const getPersonalizedSteps = (recipientName, genre, occasion) => {
   const genreName = genres[genre]?.name || genre;
@@ -176,9 +182,22 @@ export default function GeneratingPage() {
 
   // Start two-song generation
   useEffect(() => {
+    // Guard 1: Component-level ref (handles normal re-renders)
     if (hasStarted.current) return;
+
+    // Guard 2: Module-level timestamp (survives full component unmount/remount,
+    // React.StrictMode double-fire, and hydration recovery)
+    const now = Date.now();
+    if (now - lastGenerationStartMs < GENERATION_DEBOUNCE_MS) {
+      if (import.meta.env.DEV) {
+        console.warn('⚠️ Duplicate generation blocked by module guard (fired within 15s of last start)');
+      }
+      return;
+    }
+
     hasStarted.current = true;
-    generationStartTime.current = Date.now(); // ✅ FIX: Track start time
+    lastGenerationStartMs = now;
+    generationStartTime.current = now; // ✅ FIX: Track start time
 
     async function startDualGeneration() {
       try {
@@ -195,7 +214,7 @@ export default function GeneratingPage() {
 
         // ✅ FIX: Wrapped in DEV check
         if (import.meta.env.DEV) {
-          console.log('🎵 Starting dual song generation...');
+          console.log('🎵 Starting song generation (single call — Mureka creates 2 versions)...');
         }
         
         // Generate Song 1
@@ -228,35 +247,45 @@ export default function GeneratingPage() {
             setLyricsLines(lines);
             setShowLyrics(true);
           }
-          
+
           // ============================================
           // BOTH FUNNELS: Kick off Song 2 in parallel
+          // useapi.net already creates both songs in 1 call — skip 2nd API call
           // FAST: Fire and forget (ComparisonPage polls)
           // CONTROL: Wait for both before navigating
           // ============================================
-          if (import.meta.env.DEV) {
-            console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
-          }
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          // Start Song 2 generation
-          setSong2Status('generating');
-          const result2 = await generateSong({
-            ...formData,
-            version: 2,
-            sessionId: result1.sessionId
-          });
-          
-          if (result2.success && result2.song?.id) {
+          if (result1.song.song2PendingId) {
+            // useapi.net provider: Song 2 already created in same job
             if (import.meta.env.DEV) {
-              console.log('✅ Song 2 started:', result2.song.id);
+              console.log('✅ Song 2 already created by useapi.net:', result1.song.song2PendingId);
             }
-            setSong2Id(result2.song.id);
+            setSong2Id(result1.song.song2PendingId);
+            setSong2Status('generating');
           } else {
+            // Direct Mureka fallback: need separate API call for Song 2
             if (import.meta.env.DEV) {
-              console.warn('⚠️ Song 2 failed to start, continuing with single song');
+              console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
             }
-            setSong2Status('failed');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            setSong2Status('generating');
+            const result2 = await generateSong({
+              ...formData,
+              version: 2,
+              sessionId: result1.sessionId
+            });
+
+            if (result2.success && result2.song?.id) {
+              if (import.meta.env.DEV) {
+                console.log('✅ Song 2 started:', result2.song.id);
+              }
+              setSong2Id(result2.song.id);
+            } else {
+              if (import.meta.env.DEV) {
+                console.warn('⚠️ Song 2 failed to start, continuing with single song');
+              }
+              setSong2Status('failed');
+            }
           }
         } else {
           throw new Error(result1.error || 'Failed to start song generation');
@@ -275,7 +304,8 @@ export default function GeneratingPage() {
       if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
       if (pollInterval2Ref.current) clearInterval(pollInterval2Ref.current);
     };
-  }, [formData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps: run ONCE on mount only. formData is captured in closure at mount time.
 
   // Poll for Song 1 status
   useEffect(() => {
