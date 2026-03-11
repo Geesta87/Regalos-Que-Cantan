@@ -1,10 +1,36 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { createVideoCheckout, checkVideoStatus, generateVideo } from '../services/api';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Inlined video API helpers
+async function createVideoCheckout(songId, email) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-video-checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ songId, email }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+async function checkVideoStatus(songId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/check-video-status?songId=${songId}`, {
+    headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+async function generateVideo(videoOrderId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ videoOrderId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
 // ============================================================
 // CONFETTI — Canvas-based particle system
