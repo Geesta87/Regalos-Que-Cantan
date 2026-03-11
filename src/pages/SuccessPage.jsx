@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { createVideoCheckout, checkVideoStatus, generateVideo } from '../services/api';
 
-const supabase = import.meta.env.VITE_SUPABASE_URL
-  ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
-  : null;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
 // CONFETTI — Canvas-based particle system
@@ -247,6 +248,16 @@ export default function SuccessPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
 
+  // Video upsell states
+  const [videoOrder, setVideoOrder] = useState(null); // null | { id, status, video_url, ... }
+  const [videoPhotos, setVideoPhotos] = useState([]); // array of { file, preview }
+  const [uploadingVideoPics, setUploadingVideoPics] = useState(false);
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoError, setVideoError] = useState(null);
+  const [videoPurchasing, setVideoPurchasing] = useState(false);
+  const videoPhotoInputRef = useRef(null);
+  const videoPollingRef = useRef(null);
+
   // Countdown + reveal states
   const [showCountdown, setShowCountdown] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -472,6 +483,203 @@ export default function SuccessPage() {
     } finally {
       setSavingTemplate(false);
       setUploadingPhoto(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Detect video_paid URL param & check status on load ------
+  const hasFiredVideoCheck = useRef(false);
+  useEffect(() => {
+    if (hasFiredVideoCheck.current) return;
+    if (!songs.length) return;
+    const songId = songs[0]?.id;
+    if (!songId) return;
+    hasFiredVideoCheck.current = true;
+
+    // Check if there's an existing video order for this song
+    checkVideoStatus(songId)
+      .then(res => {
+        if (res?.videoOrder) {
+          setVideoOrder(res.videoOrder);
+          // If processing, start polling
+          if (res.videoOrder.status === 'processing') {
+            startVideoPolling(songId);
+          }
+        }
+      })
+      .catch(() => {}); // No video order yet, that's fine
+  }, [songs]);
+
+  // ------ VIDEO UPSELL: Polling for video render completion ------
+  const startVideoPolling = useCallback((songId) => {
+    if (videoPollingRef.current) clearInterval(videoPollingRef.current);
+    setVideoGenerating(true);
+    videoPollingRef.current = setInterval(async () => {
+      try {
+        const res = await checkVideoStatus(songId);
+        if (res?.videoOrder) {
+          setVideoOrder(res.videoOrder);
+          if (res.videoOrder.status === 'completed' || res.videoOrder.status === 'failed') {
+            clearInterval(videoPollingRef.current);
+            videoPollingRef.current = null;
+            setVideoGenerating(false);
+            if (res.videoOrder.status === 'failed') {
+              setVideoError(res.videoOrder.error_message || 'Error al generar el video');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Video poll error:', err);
+      }
+    }, 5000);
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (videoPollingRef.current) clearInterval(videoPollingRef.current);
+    };
+  }, []);
+
+  // ------ VIDEO UPSELL: Purchase handler ------
+  const handleVideoPurchase = async () => {
+    if (!songs.length) return;
+    setVideoPurchasing(true);
+    setVideoError(null);
+    try {
+      const res = await createVideoCheckout(songs[0].id, songs[0].email || '');
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      setVideoError('Error al iniciar la compra. Intenta de nuevo.');
+      setVideoPurchasing(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Photo upload handler ------
+  const handleVideoPhotoSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    // Limit to 15 photos total
+    const totalPhotos = videoPhotos.length + files.length;
+    if (totalPhotos > 15) {
+      setVideoError(`Máximo 15 fotos. Ya tienes ${videoPhotos.length}, seleccionaste ${files.length}.`);
+      return;
+    }
+
+    // Validate each file (max 5MB, images only)
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) {
+        setVideoError(`"${file.name}" es mayor a 5MB.`);
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setVideoError(`"${file.name}" no es una imagen válida.`);
+        return;
+      }
+    }
+
+    setVideoError(null);
+
+    // Create previews
+    const newPhotos = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      name: file.name,
+    }));
+
+    setVideoPhotos(prev => [...prev, ...newPhotos]);
+  };
+
+  const removeVideoPhoto = (index) => {
+    setVideoPhotos(prev => {
+      const updated = [...prev];
+      URL.revokeObjectURL(updated[index].preview);
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  // ------ VIDEO UPSELL: Upload photos to Supabase & trigger generation ------
+  const handleVideoGenerate = async () => {
+    if (videoPhotos.length < 3) {
+      setVideoError('Necesitas al menos 3 fotos para generar el video.');
+      return;
+    }
+    if (!videoOrder?.id) {
+      setVideoError('No se encontró la orden de video.');
+      return;
+    }
+
+    setUploadingVideoPics(true);
+    setVideoError(null);
+
+    try {
+      const photoUrls = [];
+
+      // Upload each photo to Supabase Storage
+      for (let i = 0; i < videoPhotos.length; i++) {
+        const photo = videoPhotos[i];
+        const ext = photo.file.name.split('.').pop();
+        const filePath = `${videoOrder.id}/${i}_${Date.now()}.${ext}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from('video-photos')
+          .upload(filePath, photo.file, { cacheControl: '31536000', upsert: true });
+
+        if (uploadErr) throw new Error(`Error subiendo foto ${i + 1}: ${uploadErr.message}`);
+
+        const { data: urlData } = supabase.storage.from('video-photos').getPublicUrl(filePath);
+        photoUrls.push(urlData.publicUrl);
+      }
+
+      // Update video_orders with photo URLs and status
+      const { error: updateErr } = await supabase
+        .from('video_orders')
+        .update({ photo_urls: photoUrls, status: 'photos_uploaded', photo_count: photoUrls.length })
+        .eq('id', videoOrder.id);
+
+      if (updateErr) throw new Error('Error guardando fotos en la orden');
+
+      setUploadingVideoPics(false);
+
+      // Trigger video generation
+      setVideoGenerating(true);
+      const genRes = await generateVideo(videoOrder.id);
+
+      // Update local state
+      setVideoOrder(prev => ({ ...prev, status: 'processing' }));
+
+      // Start polling
+      startVideoPolling(songs[0].id);
+
+    } catch (err) {
+      console.error('Video generation error:', err);
+      setVideoError(err.message || 'Error al generar el video. Intenta de nuevo.');
+      setUploadingVideoPics(false);
+      setVideoGenerating(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Download handler ------
+  const handleVideoDownload = async () => {
+    if (!videoOrder?.video_url) return;
+    try {
+      const response = await fetch(videoOrder.video_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `video-para-${recipientName || 'ti'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      window.open(videoOrder.video_url, '_blank');
     }
   };
 
@@ -898,6 +1106,259 @@ export default function SuccessPage() {
                 }}>
                 📦 Descargar Todas ({songs.length})
               </button>
+            )}
+          </div>
+
+          {/* ===== VIDEO UPSELL SECTION ===== */}
+          <div style={{
+            background: ts.cardBg, borderRadius: '24px', padding: '24px',
+            border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
+            backdropFilter: ts.cardBlur,
+            animation: 'fadeInUp 0.7s ease-out 0.4s both',
+            overflow: 'hidden', position: 'relative',
+          }}>
+            {/* Decorative gradient stripe at top */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+              background: `linear-gradient(90deg, ${ts.accent}, rgba(${ts.accentRgb},0.3), ${ts.accent})`,
+              backgroundSize: '200% 100%',
+              animation: 'shimmerAccent 3s linear infinite',
+            }} />
+
+            {/* STATE: No video order yet — Show upsell CTA */}
+            {!videoOrder && (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+                  <span style={{ fontSize: '40px', display: 'block', marginBottom: '10px' }}>🎬</span>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                    ¡Hazlo aún más especial!
+                  </h3>
+                  <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6', maxWidth: '320px', margin: '0 auto' }}>
+                    Crea un <span style={{ color: ts.accent, fontWeight: '700' }}>video con fotos</span> y la canción de fondo. Efecto Ken Burns cinematográfico con texto personalizado.
+                  </p>
+                </div>
+                <div style={{
+                  display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '16px',
+                  flexWrap: 'wrap'
+                }}>
+                  {['📸 Hasta 15 fotos', '🎵 Con tu canción', '✨ Efecto cine'].map((feat, i) => (
+                    <span key={i} style={{
+                      fontSize: '12px', fontWeight: '600',
+                      padding: '6px 12px', borderRadius: '20px',
+                      background: isLight ? `rgba(${ts.accentRgb},0.08)` : `rgba(${ts.accentRgb},0.12)`,
+                      color: ts.accent, whiteSpace: 'nowrap'
+                    }}>{feat}</span>
+                  ))}
+                </div>
+                <button onClick={handleVideoPurchase} disabled={videoPurchasing}
+                  style={{
+                    width: '100%', padding: '18px',
+                    background: `linear-gradient(135deg, #8b5cf6, #a78bfa)`,
+                    color: 'white', fontWeight: '800', fontSize: '17px',
+                    border: 'none', borderRadius: '16px',
+                    cursor: videoPurchasing ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: '0 8px 30px rgba(139,92,246,0.35)',
+                    opacity: videoPurchasing ? 0.7 : 1,
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  {videoPurchasing ? '⏳ Redirigiendo a pago...' : '🎬 Crear Video — $9.99 USD'}
+                </button>
+                {videoError && (
+                  <p style={{ color: '#f87171', fontSize: '13px', textAlign: 'center', marginTop: '10px' }}>{videoError}</p>
+                )}
+              </>
+            )}
+
+            {/* STATE: Paid, pending photos (status: pending) */}
+            {videoOrder && videoOrder.status === 'pending' && (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>📸</span>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                    ¡Sube tus fotos!
+                  </h3>
+                  <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6' }}>
+                    Selecciona de <span style={{ color: ts.accent, fontWeight: '700' }}>3 a 15 fotos</span> para tu video personalizado
+                  </p>
+                </div>
+
+                {/* Photo grid */}
+                {videoPhotos.length > 0 && (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                    gap: '8px', marginBottom: '16px',
+                  }}>
+                    {videoPhotos.map((photo, i) => (
+                      <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: '12px', overflow: 'hidden' }}>
+                        <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button onClick={() => removeVideoPhoto(i)} style={{
+                          position: 'absolute', top: '4px', right: '4px',
+                          width: '22px', height: '22px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white',
+                          fontSize: '11px', cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>✕</button>
+                        <div style={{
+                          position: 'absolute', bottom: '4px', left: '4px',
+                          background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+                          padding: '2px 6px', fontSize: '10px', color: 'white', fontWeight: '700'
+                        }}>{i + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload button */}
+                <input
+                  ref={videoPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleVideoPhotoSelect}
+                  style={{ display: 'none' }}
+                />
+
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                  {videoPhotos.length < 15 && (
+                    <button onClick={() => videoPhotoInputRef.current?.click()}
+                      style={{
+                        flex: 1, padding: '14px',
+                        background: isLight ? 'white' : 'rgba(255,255,255,0.06)',
+                        color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
+                        border: `1.5px dashed ${ts.cardBorder}`, borderRadius: '14px',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        fontFamily: ts.font,
+                      }}>
+                      📷 {videoPhotos.length > 0 ? 'Agregar más' : 'Seleccionar fotos'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Photo count indicator */}
+                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                  <span style={{
+                    fontSize: '13px', fontWeight: '600',
+                    color: videoPhotos.length >= 3 ? '#22c55e' : ts.textSecondary,
+                  }}>
+                    {videoPhotos.length >= 3 ? '✅' : '⚠️'} {videoPhotos.length}/15 fotos
+                    {videoPhotos.length < 3 && ` (mínimo 3)`}
+                  </span>
+                </div>
+
+                {/* Generate button */}
+                <button
+                  onClick={handleVideoGenerate}
+                  disabled={videoPhotos.length < 3 || uploadingVideoPics}
+                  style={{
+                    width: '100%', padding: '18px',
+                    background: videoPhotos.length >= 3
+                      ? 'linear-gradient(135deg, #8b5cf6, #a78bfa)'
+                      : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
+                    color: videoPhotos.length >= 3 ? 'white' : ts.textSecondary,
+                    fontWeight: '800', fontSize: '17px',
+                    border: 'none', borderRadius: '16px',
+                    cursor: videoPhotos.length >= 3 && !uploadingVideoPics ? 'pointer' : 'not-allowed',
+                    opacity: uploadingVideoPics ? 0.7 : 1,
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                    boxShadow: videoPhotos.length >= 3 ? '0 8px 30px rgba(139,92,246,0.35)' : 'none',
+                  }}>
+                  {uploadingVideoPics ? '📤 Subiendo fotos...' : '🎬 Generar Video'}
+                </button>
+
+                {videoError && (
+                  <p style={{ color: '#f87171', fontSize: '13px', textAlign: 'center', marginTop: '10px' }}>{videoError}</p>
+                )}
+              </>
+            )}
+
+            {/* STATE: Photos uploaded, processing */}
+            {videoOrder && (videoOrder.status === 'photos_uploaded' || videoOrder.status === 'processing') && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{
+                  width: '64px', height: '64px', margin: '0 auto 18px',
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'pulse 2s ease-in-out infinite',
+                }}>
+                  <span style={{ fontSize: '28px' }}>🎬</span>
+                </div>
+                <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                  Generando tu video...
+                </h3>
+                <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6', marginBottom: '16px' }}>
+                  Estamos creando tu video con efecto cinematográfico. Esto puede tomar unos minutos.
+                </p>
+                <div style={{
+                  width: '100%', height: '6px', borderRadius: '3px',
+                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: '60%', height: '100%', borderRadius: '3px',
+                    background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)',
+                    animation: 'shimmerAccent 2s linear infinite',
+                    backgroundSize: '200% 100%',
+                  }} />
+                </div>
+                <p style={{ fontSize: '12px', color: ts.textSecondary, marginTop: '12px' }}>
+                  Te notificaremos por email cuando esté listo
+                </p>
+              </div>
+            )}
+
+            {/* STATE: Completed — Show video player + download */}
+            {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '8px' }}>🎉</span>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: ts.textPrimary }}>
+                    ¡Tu video está listo!
+                  </h3>
+                </div>
+                <div style={{
+                  borderRadius: '16px', overflow: 'hidden', marginBottom: '16px',
+                  boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`,
+                }}>
+                  <video
+                    src={videoOrder.video_url}
+                    controls
+                    style={{ width: '100%', display: 'block', borderRadius: '16px' }}
+                    poster=""
+                  />
+                </div>
+                <button onClick={handleVideoDownload}
+                  style={{
+                    width: '100%', padding: '16px',
+                    background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+                    color: 'white', fontWeight: '800', fontSize: '16px',
+                    border: 'none', borderRadius: '16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: '0 8px 30px rgba(139,92,246,0.35)',
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  ⬇️ Descargar Video MP4
+                </button>
+              </>
+            )}
+
+            {/* STATE: Failed */}
+            {videoOrder && videoOrder.status === 'failed' && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>😔</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                  Error al generar el video
+                </h3>
+                <p style={{ fontSize: '13px', color: '#f87171', marginBottom: '16px' }}>
+                  {videoOrder.error_message || 'Ocurrió un error. Contáctanos para ayuda.'}
+                </p>
+                <a href="mailto:soporte@regalosquecantan.com" style={{
+                  color: ts.accent, fontSize: '14px', fontWeight: '600', textDecoration: 'underline',
+                }}>
+                  📧 Contactar soporte
+                </a>
+              </div>
             )}
           </div>
 

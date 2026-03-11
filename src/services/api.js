@@ -183,6 +183,70 @@ export async function regenerateSong(songId) {
   return response.json();
 }
 
+// ============================================================
+// VIDEO UPSELL API FUNCTIONS
+// ============================================================
+
+/**
+ * Create a Stripe checkout session for video upsell ($9.99)
+ */
+export async function createVideoCheckout(songId, email) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-video-checkout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    body: JSON.stringify({ songId, email })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to create video checkout: ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Check video order status
+ */
+export async function checkVideoStatus(songId) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/check-video-status?songId=${songId}`, {
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to check video status: ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Trigger video generation after photos are uploaded
+ */
+export async function generateVideo(videoOrderId) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-video`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    body: JSON.stringify({ videoOrderId })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to generate video: ${errorText}`);
+  }
+
+  return response.json();
+}
+
 /**
  * Validate a coupon code
  */
