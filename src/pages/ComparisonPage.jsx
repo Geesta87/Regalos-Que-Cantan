@@ -168,9 +168,27 @@ export default function ComparisonPage() {
         loadedSongs.push(...songData.songs);
       } 
       else if (songData?.song1) {
-        loadedSongs.push({ ...songData.song1, version: 1 });
+        const s1 = songData.song1;
+        loadedSongs.push({
+          id: s1.id,
+          version: 1,
+          audioUrl: s1.audio_url || s1.audioUrl,
+          previewUrl: s1.preview_url || s1.previewUrl || s1.audio_url || s1.audioUrl,
+          imageUrl: s1.image_url || s1.imageUrl,
+          genre: s1.genre,
+          lyrics: s1.lyrics
+        });
         if (songData?.song2) {
-          loadedSongs.push({ ...songData.song2, version: 2 });
+          const s2 = songData.song2;
+          loadedSongs.push({
+            id: s2.id,
+            version: 2,
+            audioUrl: s2.audio_url || s2.audioUrl,
+            previewUrl: s2.preview_url || s2.previewUrl || s2.audio_url || s2.audioUrl,
+            imageUrl: s2.image_url || s2.imageUrl,
+            genre: s2.genre,
+            lyrics: s2.lyrics
+          });
         }
       }
       else if (songData?.id) {
