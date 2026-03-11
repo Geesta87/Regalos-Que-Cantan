@@ -179,39 +179,73 @@ serve(async (req) => {
         throw new Error('No songId in metadata');
       }
 
-      console.log('Processing payment for song:', songId);
-
       // Update database
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      
-      const { data: song, error: updateError } = await supabase
-        .from('songs')
-        .update({ 
-          paid: true,
-          paid_at: new Date().toISOString(),
-          stripe_session_id: session.id
-        })
-        .eq('id', songId)
-        .select()
-        .single();
 
-      if (updateError) {
-        throw new Error('Failed to update song: ' + updateError.message);
-      }
+      const isVideoUpsell = session.metadata?.type === 'video_upsell';
 
-      console.log('Song marked as paid:', song.id);
+      if (isVideoUpsell) {
+        // Handle video upsell payment
+        console.log('Processing VIDEO payment for song:', songId);
 
-      // Send email with download link via SendGrid
-      if (email) {
-        try {
-          await sendEmail(
-            email,
-            `🎵 Tu canción para ${song.recipient_name} está lista!`,
-            getPurchaseEmailHtml(song)
-          );
-        } catch (emailError) {
-          console.error('Failed to send email:', emailError);
-          // Don't fail the webhook if email fails
+        const { error: videoUpdateError } = await supabase
+          .from('video_orders')
+          .update({
+            paid: true,
+            paid_at: new Date().toISOString(),
+            stripe_session_id: session.id,
+            status: 'pending' // ready for photo upload
+          })
+          .eq('song_id', songId)
+          .eq('stripe_session_id', session.id);
+
+        if (videoUpdateError) {
+          console.error('Failed to update video order:', videoUpdateError);
+          // Try matching by song_id only as fallback
+          await supabase
+            .from('video_orders')
+            .update({
+              paid: true,
+              paid_at: new Date().toISOString(),
+              status: 'pending'
+            })
+            .eq('song_id', songId)
+            .eq('paid', false);
+        }
+
+        console.log('Video order marked as paid for song:', songId);
+      } else {
+        // Handle song payment
+        console.log('Processing SONG payment for song:', songId);
+
+        const { data: song, error: updateError } = await supabase
+          .from('songs')
+          .update({
+            paid: true,
+            paid_at: new Date().toISOString(),
+            stripe_session_id: session.id
+          })
+          .eq('id', songId)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw new Error('Failed to update song: ' + updateError.message);
+        }
+
+        console.log('Song marked as paid:', song.id);
+
+        // Send email with download link via SendGrid
+        if (email) {
+          try {
+            await sendEmail(
+              email,
+              `🎵 Tu canción para ${song.recipient_name} está lista!`,
+              getPurchaseEmailHtml(song)
+            );
+          } catch (emailError) {
+            console.error('Failed to send email:', emailError);
+          }
         }
       }
     }
