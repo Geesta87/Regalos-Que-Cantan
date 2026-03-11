@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { createVideoCheckout, checkVideoStatus, generateVideo } from '../services/api';
 
-const supabase = import.meta.env.VITE_SUPABASE_URL
-  ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
-  : null;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================================================
 // CONFETTI — Canvas-based particle system
@@ -247,6 +248,16 @@ export default function SuccessPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
 
+  // Video upsell states
+  const [videoOrder, setVideoOrder] = useState(null); // null | { id, status, video_url, ... }
+  const [videoPhotos, setVideoPhotos] = useState([]); // array of { file, preview }
+  const [uploadingVideoPics, setUploadingVideoPics] = useState(false);
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoError, setVideoError] = useState(null);
+  const [videoPurchasing, setVideoPurchasing] = useState(false);
+  const videoPhotoInputRef = useRef(null);
+  const videoPollingRef = useRef(null);
+
   // Countdown + reveal states
   const [showCountdown, setShowCountdown] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -385,6 +396,21 @@ export default function SuccessPage() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  // Genre image fallback (Pollinations often fails)
+  const getGenreImage = (genreKey) => {
+    const fallbacks = { vals: 'bolero', romantica: 'balada', otro: 'balada' };
+    const g = fallbacks[genreKey] || genreKey;
+    return `/images/album-art/${g}.jpg`;
+  };
+  const handleAlbumArtError = (e) => {
+    const fallback = getGenreImage(currentSong?.genre);
+    if (e.target.src !== window.location.origin + fallback) {
+      e.target.src = fallback;
+    } else {
+      e.target.style.display = 'none';
+    }
+  };
+
   // ------ Download ------
   const handleDownload = async (song) => {
     const target = song || currentSong;
@@ -472,6 +498,203 @@ export default function SuccessPage() {
     } finally {
       setSavingTemplate(false);
       setUploadingPhoto(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Detect video_paid URL param & check status on load ------
+  const hasFiredVideoCheck = useRef(false);
+  useEffect(() => {
+    if (hasFiredVideoCheck.current) return;
+    if (!songs.length) return;
+    const songId = songs[0]?.id;
+    if (!songId) return;
+    hasFiredVideoCheck.current = true;
+
+    // Check if there's an existing video order for this song
+    checkVideoStatus(songId)
+      .then(res => {
+        if (res?.videoOrder) {
+          setVideoOrder(res.videoOrder);
+          // If processing, start polling
+          if (res.videoOrder.status === 'processing') {
+            startVideoPolling(songId);
+          }
+        }
+      })
+      .catch(() => {}); // No video order yet, that's fine
+  }, [songs]);
+
+  // ------ VIDEO UPSELL: Polling for video render completion ------
+  const startVideoPolling = useCallback((songId) => {
+    if (videoPollingRef.current) clearInterval(videoPollingRef.current);
+    setVideoGenerating(true);
+    videoPollingRef.current = setInterval(async () => {
+      try {
+        const res = await checkVideoStatus(songId);
+        if (res?.videoOrder) {
+          setVideoOrder(res.videoOrder);
+          if (res.videoOrder.status === 'completed' || res.videoOrder.status === 'failed') {
+            clearInterval(videoPollingRef.current);
+            videoPollingRef.current = null;
+            setVideoGenerating(false);
+            if (res.videoOrder.status === 'failed') {
+              setVideoError(res.videoOrder.error_message || 'Error al generar el video');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Video poll error:', err);
+      }
+    }, 5000);
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (videoPollingRef.current) clearInterval(videoPollingRef.current);
+    };
+  }, []);
+
+  // ------ VIDEO UPSELL: Purchase handler ------
+  const handleVideoPurchase = async () => {
+    if (!songs.length) return;
+    setVideoPurchasing(true);
+    setVideoError(null);
+    try {
+      const res = await createVideoCheckout(songs[0].id, songs[0].email || '');
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      setVideoError('Error al iniciar la compra. Intenta de nuevo.');
+      setVideoPurchasing(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Photo upload handler ------
+  const handleVideoPhotoSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    // Limit to 15 photos total
+    const totalPhotos = videoPhotos.length + files.length;
+    if (totalPhotos > 15) {
+      setVideoError(`Máximo 15 fotos. Ya tienes ${videoPhotos.length}, seleccionaste ${files.length}.`);
+      return;
+    }
+
+    // Validate each file (max 5MB, images only)
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) {
+        setVideoError(`"${file.name}" es mayor a 5MB.`);
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setVideoError(`"${file.name}" no es una imagen válida.`);
+        return;
+      }
+    }
+
+    setVideoError(null);
+
+    // Create previews
+    const newPhotos = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      name: file.name,
+    }));
+
+    setVideoPhotos(prev => [...prev, ...newPhotos]);
+  };
+
+  const removeVideoPhoto = (index) => {
+    setVideoPhotos(prev => {
+      const updated = [...prev];
+      URL.revokeObjectURL(updated[index].preview);
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  // ------ VIDEO UPSELL: Upload photos to Supabase & trigger generation ------
+  const handleVideoGenerate = async () => {
+    if (videoPhotos.length < 3) {
+      setVideoError('Necesitas al menos 3 fotos para generar el video.');
+      return;
+    }
+    if (!videoOrder?.id) {
+      setVideoError('No se encontró la orden de video.');
+      return;
+    }
+
+    setUploadingVideoPics(true);
+    setVideoError(null);
+
+    try {
+      const photoUrls = [];
+
+      // Upload each photo to Supabase Storage
+      for (let i = 0; i < videoPhotos.length; i++) {
+        const photo = videoPhotos[i];
+        const ext = photo.file.name.split('.').pop();
+        const filePath = `${videoOrder.id}/${i}_${Date.now()}.${ext}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from('video-photos')
+          .upload(filePath, photo.file, { cacheControl: '31536000', upsert: true });
+
+        if (uploadErr) throw new Error(`Error subiendo foto ${i + 1}: ${uploadErr.message}`);
+
+        const { data: urlData } = supabase.storage.from('video-photos').getPublicUrl(filePath);
+        photoUrls.push(urlData.publicUrl);
+      }
+
+      // Update video_orders with photo URLs and status
+      const { error: updateErr } = await supabase
+        .from('video_orders')
+        .update({ photo_urls: photoUrls, status: 'photos_uploaded', photo_count: photoUrls.length })
+        .eq('id', videoOrder.id);
+
+      if (updateErr) throw new Error('Error guardando fotos en la orden');
+
+      setUploadingVideoPics(false);
+
+      // Trigger video generation
+      setVideoGenerating(true);
+      const genRes = await generateVideo(videoOrder.id);
+
+      // Update local state
+      setVideoOrder(prev => ({ ...prev, status: 'processing' }));
+
+      // Start polling
+      startVideoPolling(songs[0].id);
+
+    } catch (err) {
+      console.error('Video generation error:', err);
+      setVideoError(err.message || 'Error al generar el video. Intenta de nuevo.');
+      setUploadingVideoPics(false);
+      setVideoGenerating(false);
+    }
+  };
+
+  // ------ VIDEO UPSELL: Download handler ------
+  const handleVideoDownload = async () => {
+    if (!videoOrder?.video_url) return;
+    try {
+      const response = await fetch(videoOrder.video_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `video-para-${recipientName || 'ti'}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      window.open(videoOrder.video_url, '_blank');
     }
   };
 
@@ -747,17 +970,16 @@ export default function SuccessPage() {
               background: `linear-gradient(135deg, rgba(${ts.accentRgb},0.3), rgba(${ts.accentRgb},0.1))`,
               boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`
             }}>
-              {currentSong.image_url ? (
-                <img src={currentSong.image_url} alt="" style={{
+              <img
+                src={currentSong.image_url || getGenreImage(currentSong?.genre)}
+                alt=""
+                style={{
                   width: '100%', height: '100%', objectFit: 'cover',
                   transition: 'transform 0.6s',
                   transform: isPlaying ? 'scale(1.05)' : 'scale(1)'
-                }} onError={(e) => { e.target.style.display = 'none'; }} />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '72px' }}>🎵</span>
-                </div>
-              )}
+                }}
+                onError={handleAlbumArtError}
+              />
               {/* Equalizer overlay */}
               {isPlaying && (
                 <div style={{
@@ -901,6 +1123,323 @@ export default function SuccessPage() {
             )}
           </div>
 
+          {/* ===== VIDEO UPSELL SECTION ===== */}
+          <div style={{
+            borderRadius: '24px', padding: '24px',
+            border: '1px solid rgba(139,92,246,0.25)',
+            marginBottom: '24px',
+            background: isLight
+              ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
+              : 'linear-gradient(160deg, rgba(109,40,217,0.14) 0%, rgba(79,70,229,0.07) 50%, rgba(0,0,0,0) 100%)',
+            backdropFilter: ts.cardBlur,
+            animation: 'fadeInUp 0.7s ease-out 0.4s both',
+            overflow: 'hidden', position: 'relative',
+            boxShadow: isLight ? '0 8px 30px rgba(124,58,237,0.1)' : '0 8px 40px rgba(109,40,217,0.12)',
+          }}>
+            {/* Shimmer top border */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+              background: 'linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, #8b5cf6, transparent)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmerAccent 3s linear infinite',
+            }} />
+
+            {/* STATE: No video order yet — Show upsell CTA */}
+            {!videoOrder && (
+              <>
+                {/* Film strip decoration */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                  ))}
+                </div>
+
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
+                  <div style={{
+                    width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '26px',
+                    boxShadow: '0 8px 24px rgba(124,58,237,0.4)',
+                    flexShrink: 0,
+                  }}>🎬</div>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                      Convierte tu canción en un video
+                    </h3>
+                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Tus fotos + tu canción = un recuerdo cinematográfico para siempre
+                    </p>
+                  </div>
+                </div>
+
+                {/* Feature 2x2 grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '18px' }}>
+                  {[
+                    { icon: '📸', label: 'Hasta 15 fotos', sub: 'Tuyas y personales' },
+                    { icon: '🎵', label: 'Tu canción', sub: 'La que acabas de crear' },
+                    { icon: '🎞️', label: 'Efecto Ken Burns', sub: 'Cinematográfico HD' },
+                    { icon: '💾', label: 'Descarga MP4', sub: 'Lista en minutos' },
+                  ].map((f, i) => (
+                    <div key={i} style={{
+                      padding: '11px 12px', borderRadius: '12px',
+                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
+                      border: `1px solid ${isLight ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.15)'}`,
+                      display: 'flex', gap: '9px', alignItems: 'center',
+                    }}>
+                      <span style={{ fontSize: '20px', lineHeight: 1, flexShrink: 0 }}>{f.icon}</span>
+                      <div>
+                        <p style={{ fontSize: '12px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 1px', lineHeight: 1 }}>{f.label}</p>
+                        <p style={{ fontSize: '11px', color: ts.textSecondary, margin: 0, lineHeight: 1.3 }}>{f.sub}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Price strip */}
+                <div style={{
+                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
+                  border: '1px solid rgba(139,92,246,0.2)',
+                  borderRadius: '14px', padding: '14px 16px', marginBottom: '14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <p style={{ fontSize: '10px', color: '#a78bfa', margin: '0 0 2px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Un solo pago</p>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontSize: '32px', fontWeight: '900', color: isLight ? '#6d28d9' : '#c4b5fd', lineHeight: 1 }}>$9.99</span>
+                      <span style={{ fontSize: '13px', color: ts.textSecondary }}>USD</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {['✓ Sin suscripción', '✓ Descarga inmediata', '✓ Tuyo para siempre'].map((t, i) => (
+                      <p key={i} style={{ fontSize: '11px', color: '#a78bfa', margin: '0 0 3px', fontWeight: 600 }}>{t}</p>
+                    ))}
+                  </div>
+                </div>
+
+                {/* CTA */}
+                <button onClick={handleVideoPurchase} disabled={videoPurchasing}
+                  style={{
+                    width: '100%', padding: '18px 24px',
+                    background: videoPurchasing
+                      ? 'rgba(124,58,237,0.4)'
+                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                    color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
+                    border: 'none', borderRadius: '16px',
+                    cursor: videoPurchasing ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: videoPurchasing ? 'none' : '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  {videoPurchasing ? (
+                    '⏳ Redirigiendo al pago...'
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '20px' }}>🎬</span>
+                      <span>Crear mi video — $9.99</span>
+                      <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
+                    </>
+                  )}
+                </button>
+                {videoError && (
+                  <p style={{ color: '#f87171', fontSize: '13px', textAlign: 'center', marginTop: '10px' }}>{videoError}</p>
+                )}
+              </>
+            )}
+
+            {/* STATE: Paid, pending photos (status: pending) */}
+            {videoOrder && videoOrder.status === 'pending' && (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>📸</span>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                    ¡Sube tus fotos!
+                  </h3>
+                  <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6' }}>
+                    Selecciona de <span style={{ color: ts.accent, fontWeight: '700' }}>3 a 15 fotos</span> para tu video personalizado
+                  </p>
+                </div>
+
+                {/* Photo grid */}
+                {videoPhotos.length > 0 && (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                    gap: '8px', marginBottom: '16px',
+                  }}>
+                    {videoPhotos.map((photo, i) => (
+                      <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: '12px', overflow: 'hidden' }}>
+                        <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button onClick={() => removeVideoPhoto(i)} style={{
+                          position: 'absolute', top: '4px', right: '4px',
+                          width: '22px', height: '22px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white',
+                          fontSize: '11px', cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                        }}>✕</button>
+                        <div style={{
+                          position: 'absolute', bottom: '4px', left: '4px',
+                          background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+                          padding: '2px 6px', fontSize: '10px', color: 'white', fontWeight: '700'
+                        }}>{i + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload button */}
+                <input
+                  ref={videoPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleVideoPhotoSelect}
+                  style={{ display: 'none' }}
+                />
+
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                  {videoPhotos.length < 15 && (
+                    <button onClick={() => videoPhotoInputRef.current?.click()}
+                      style={{
+                        flex: 1, padding: '14px',
+                        background: isLight ? 'white' : 'rgba(255,255,255,0.06)',
+                        color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
+                        border: `1.5px dashed ${ts.cardBorder}`, borderRadius: '14px',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        fontFamily: ts.font,
+                      }}>
+                      📷 {videoPhotos.length > 0 ? 'Agregar más' : 'Seleccionar fotos'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Photo count indicator */}
+                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                  <span style={{
+                    fontSize: '13px', fontWeight: '600',
+                    color: videoPhotos.length >= 3 ? '#22c55e' : ts.textSecondary,
+                  }}>
+                    {videoPhotos.length >= 3 ? '✅' : '⚠️'} {videoPhotos.length}/15 fotos
+                    {videoPhotos.length < 3 && ` (mínimo 3)`}
+                  </span>
+                </div>
+
+                {/* Generate button */}
+                <button
+                  onClick={handleVideoGenerate}
+                  disabled={videoPhotos.length < 3 || uploadingVideoPics}
+                  style={{
+                    width: '100%', padding: '18px',
+                    background: videoPhotos.length >= 3
+                      ? 'linear-gradient(135deg, #8b5cf6, #a78bfa)'
+                      : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
+                    color: videoPhotos.length >= 3 ? 'white' : ts.textSecondary,
+                    fontWeight: '800', fontSize: '17px',
+                    border: 'none', borderRadius: '16px',
+                    cursor: videoPhotos.length >= 3 && !uploadingVideoPics ? 'pointer' : 'not-allowed',
+                    opacity: uploadingVideoPics ? 0.7 : 1,
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                    boxShadow: videoPhotos.length >= 3 ? '0 8px 30px rgba(139,92,246,0.35)' : 'none',
+                  }}>
+                  {uploadingVideoPics ? '📤 Subiendo fotos...' : '🎬 Generar Video'}
+                </button>
+
+                {videoError && (
+                  <p style={{ color: '#f87171', fontSize: '13px', textAlign: 'center', marginTop: '10px' }}>{videoError}</p>
+                )}
+              </>
+            )}
+
+            {/* STATE: Photos uploaded, processing */}
+            {videoOrder && (videoOrder.status === 'photos_uploaded' || videoOrder.status === 'processing') && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{
+                  width: '64px', height: '64px', margin: '0 auto 18px',
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'pulse 2s ease-in-out infinite',
+                }}>
+                  <span style={{ fontSize: '28px' }}>🎬</span>
+                </div>
+                <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                  Generando tu video...
+                </h3>
+                <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6', marginBottom: '16px' }}>
+                  Estamos creando tu video con efecto cinematográfico. Esto puede tomar unos minutos.
+                </p>
+                <div style={{
+                  width: '100%', height: '6px', borderRadius: '3px',
+                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: '60%', height: '100%', borderRadius: '3px',
+                    background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)',
+                    animation: 'shimmerAccent 2s linear infinite',
+                    backgroundSize: '200% 100%',
+                  }} />
+                </div>
+                <p style={{ fontSize: '12px', color: ts.textSecondary, marginTop: '12px' }}>
+                  Te notificaremos por email cuando esté listo
+                </p>
+              </div>
+            )}
+
+            {/* STATE: Completed — Show video player + download */}
+            {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
+              <>
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '8px' }}>🎉</span>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: ts.textPrimary }}>
+                    ¡Tu video está listo!
+                  </h3>
+                </div>
+                <div style={{
+                  borderRadius: '16px', overflow: 'hidden', marginBottom: '16px',
+                  boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`,
+                }}>
+                  <video
+                    src={videoOrder.video_url}
+                    controls
+                    style={{ width: '100%', display: 'block', borderRadius: '16px' }}
+                    poster=""
+                  />
+                </div>
+                <button onClick={handleVideoDownload}
+                  style={{
+                    width: '100%', padding: '16px',
+                    background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+                    color: 'white', fontWeight: '800', fontSize: '16px',
+                    border: 'none', borderRadius: '16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: '0 8px 30px rgba(139,92,246,0.35)',
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  ⬇️ Descargar Video MP4
+                </button>
+              </>
+            )}
+
+            {/* STATE: Failed */}
+            {videoOrder && videoOrder.status === 'failed' && (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>😔</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
+                  Error al generar el video
+                </h3>
+                <p style={{ fontSize: '13px', color: '#f87171', marginBottom: '16px' }}>
+                  {videoOrder.error_message || 'Ocurrió un error. Contáctanos para ayuda.'}
+                </p>
+                <a href="mailto:soporte@regalosquecantan.com" style={{
+                  color: ts.accent, fontSize: '14px', fontWeight: '600', textDecoration: 'underline',
+                }}>
+                  📧 Contactar soporte
+                </a>
+              </div>
+            )}
+          </div>
+
           {/* ===== SHARE SECTION ===== */}
           <div style={{
             background: ts.cardBg, borderRadius: '24px', padding: '24px',
@@ -922,12 +1461,19 @@ export default function SuccessPage() {
                 borderRadius: '12px', overflow: 'hidden',
                 background: `linear-gradient(135deg, rgba(${ts.accentRgb},0.3), rgba(${ts.accentRgb},0.1))`
               }}>
-                {currentSong.image_url ? (
-                  <img src={currentSong.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={(e) => { e.target.parentElement.innerHTML = '<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>'; }} />
-                ) : (
-                  <span style={{ fontSize: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>🎵</span>
-                )}
+                <img
+                  src={currentSong.image_url || getGenreImage(currentSong?.genre)}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => {
+                    const fallback = getGenreImage(currentSong?.genre);
+                    if (e.target.src !== window.location.origin + fallback) {
+                      e.target.src = fallback;
+                    } else {
+                      e.target.parentElement.innerHTML = '<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
+                    }
+                  }}
+                />
               </div>
               <p style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 4px 0', color: ts.accent }}>
                 🎵 {songs.length > 1 ? `${songs.length} canciones` : 'Una canción'} para {recipientName}
