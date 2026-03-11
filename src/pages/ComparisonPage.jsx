@@ -54,8 +54,10 @@ export default function ComparisonPage() {
   // ✅ NEW: Entrance animation state
   const [isVisible, setIsVisible] = useState(false);
 
-  // Track how many audio elements are ready (loaded metadata)
+  // Track how many audio elements are ready (deduplicated — only counts first canplay per element)
   const [audioReadyCount, setAudioReadyCount] = useState(0);
+  const audioReadySet = useRef(new Set()); // Track which audio IDs already fired canplay
+  const autoPlayTimerRef = useRef(null); // Persistent timer ref so effect cleanup doesn't kill it
   
   // ✅ NEW: Lyrics expand state
   const [expandedLyrics, setExpandedLyrics] = useState({});
@@ -296,16 +298,18 @@ export default function ComparisonPage() {
     };
   }, [songData, songs.length, loading]);
 
-  // ✅ NEW: Auto-play full sequential preview (Song 1 → Song 2)
-  // Depends on audioReadyCount so it re-fires once <audio> elements have loaded their metadata
+  // ✅ Auto-play full sequential preview (Song 1 → Song 2)
+  // Uses a persistent timer ref so repeated audioReadyCount changes don't reset the timer
   useEffect(() => {
     if (autoPlayed || songs.length === 0 || loading) return;
+    if (autoPlayTimerRef.current) return; // Timer already scheduled — don't reset
 
     const firstSong = songs[0];
     const audio = audioRefs.current[firstSong?.id];
     if (!audio || audio.readyState < 3) return; // Wait until HAVE_FUTURE_DATA (can play)
 
-    const startTimer = setTimeout(() => {
+    autoPlayTimerRef.current = setTimeout(() => {
+      autoPlayTimerRef.current = null;
       try {
         audio.currentTime = PREVIEW_START;
         audio.volume = 0.7;
@@ -325,7 +329,13 @@ export default function ComparisonPage() {
       }
     }, 1500);
 
-    return () => clearTimeout(startTimer);
+    // Only clear on unmount, NOT on re-runs
+    return () => {
+      if (autoPlayTimerRef.current) {
+        clearTimeout(autoPlayTimerRef.current);
+        autoPlayTimerRef.current = null;
+      }
+    };
   }, [songs, loading, autoPlayed, audioReadyCount]);
 
   // ✅ Auto-play Song 2 when it arrives late (fast funnel: Song 1 finished but Song 2 wasn't ready yet)
@@ -659,7 +669,13 @@ export default function ComparisonPage() {
           src={song.audioUrl || song.previewUrl}
           preload="auto"
           onLoadedMetadata={(e) => { if (e.target) e.target.currentTime = PREVIEW_START; }}
-          onCanPlay={() => setAudioReadyCount(c => c + 1)}
+          onCanPlay={() => {
+            // Only count first canplay per audio element to avoid resetting autoplay timer
+            if (!audioReadySet.current.has(song.id)) {
+              audioReadySet.current.add(song.id);
+              setAudioReadyCount(c => c + 1);
+            }
+          }}
           onTimeUpdate={(e) => handleTimeUpdate(song.id, e.target)}
           onEnded={() => setPlayingId(null)}
         />
