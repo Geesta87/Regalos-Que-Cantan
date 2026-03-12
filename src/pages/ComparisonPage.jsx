@@ -1451,7 +1451,7 @@ export default function ComparisonPage() {
             {[
               { icon: '🎵', text: 'Canción completa (~2 min)' },
               { icon: '⚡', text: 'Descarga instantánea MP3' },
-              { icon: '💬', text: 'Envío por WhatsApp' },
+              { icon: '💬', text: 'Envío por teléfono o WhatsApp' },
               { icon: '♾️', text: 'Tuya para siempre' },
               { icon: '❤️', text: 'Personalizada con su nombre' },
               { icon: '🔒', text: 'Pago seguro con Stripe' }
@@ -1475,7 +1475,7 @@ export default function ComparisonPage() {
           background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
         }}>
-          {/* WhatsApp Phone — Redesigned for higher conversions */}
+          {/* Phone / WhatsApp — Redesigned for higher conversions */}
           <div style={{
             background: 'linear-gradient(135deg, rgba(37,211,102,0.15), rgba(37,211,102,0.05))',
             border: '2px solid rgba(37,211,102,0.4)',
@@ -1506,7 +1506,7 @@ export default function ComparisonPage() {
               </div>
               <div style={{flex: 1}}>
                 <p style={{margin: 0, color: 'white', fontSize: '15px', fontWeight: '700'}}>
-                  Envíale la canción directo por WhatsApp
+                  Recibe la canción por teléfono o WhatsApp
                 </p>
               </div>
               <span style={{
@@ -1543,7 +1543,7 @@ export default function ComparisonPage() {
                     const val = e.target.value.replace(/[^\d\s\-\+\(\)]/g, '');
                     setWhatsappPhone(val);
                   }}
-                  placeholder="52 55 1234 5678"
+                  placeholder="Tu teléfono o WhatsApp"
                   maxLength={20}
                   style={{
                     width: '100%', padding: '14px 0',
@@ -1564,9 +1564,9 @@ export default function ComparisonPage() {
               )}
             </div>
 
-            {/* Social proof micro-copy */}
-            <p style={{margin: '10px 0 0 0', color: 'rgba(37,211,102,0.8)', fontSize: '12px', fontWeight: '600', position: 'relative'}}>
-              📊 9 de cada 10 clientes eligen recibir su canción por WhatsApp
+            {/* A2P compliance + social proof */}
+            <p style={{margin: '10px 0 0 0', color: 'rgba(255,255,255,0.4)', fontSize: '10px', lineHeight: 1.5, position: 'relative'}}>
+              Al ingresar tu número, aceptas recibir tu canción y actualizaciones por mensaje. Puedes cancelar en cualquier momento respondiendo ALTO.
             </p>
           </div>
 
