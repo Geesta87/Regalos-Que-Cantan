@@ -268,7 +268,7 @@ export default function EmailStep() {
                   type="email"
                   value={email}
                   onChange={handleEmailChange}
-                  placeholder="tu@email.com"
+                  placeholder="📧 tu@email.com"
                   className={`
                     w-full bg-transparent border-0 border-b-2 py-4 text-xl md:text-2xl text-center
                     focus:ring-0 text-white placeholder:text-white/20 transition-all font-light
@@ -288,7 +288,7 @@ export default function EmailStep() {
                     type="tel"
                     value={phone}
                     onChange={handlePhoneChange}
-                    placeholder="Tu teléfono o WhatsApp (opcional)"
+                    placeholder="📱 Tu teléfono o WhatsApp (opcional)"
                     className="w-full bg-transparent border-0 py-4 text-xl md:text-2xl text-center focus:ring-0 text-white placeholder:text-white/20 transition-all font-light"
                   />
                 </div>

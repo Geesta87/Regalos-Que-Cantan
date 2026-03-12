@@ -1539,7 +1539,7 @@ export default function ComparisonPage() {
                     const val = e.target.value.replace(/[^\d\s\-\+\(\)]/g, '');
                     setWhatsappPhone(val);
                   }}
-                  placeholder="Tu teléfono o WhatsApp"
+                  placeholder="📱 Tu teléfono o WhatsApp"
                   maxLength={20}
                   style={{
                     width: '100%', padding: '14px 0',
