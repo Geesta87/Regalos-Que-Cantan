@@ -1535,7 +1535,6 @@ export default function ComparisonPage() {
                 flex: 1,
                 transition: 'border-color 0.3s'
               }}>
-                <span style={{color: 'rgba(255,255,255,0.6)', fontSize: '15px', userSelect: 'none', fontWeight: '600'}}>+</span>
                 <input
                   type="tel"
                   value={whatsappPhone}
