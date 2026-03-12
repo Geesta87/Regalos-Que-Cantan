@@ -42,6 +42,7 @@ const relationshipNames = {
 export default function EmailStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
   const [email, setEmail] = useState(formData.email || '');
+  const [phone, setPhone] = useState(formData.whatsappPhone || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState('');
 
@@ -72,6 +73,11 @@ export default function EmailStep() {
     setEmailError('');
   };
 
+  const handlePhoneChange = (e) => {
+    const value = e.target.value.replace(/[^0-9\s\-()]/g, '');
+    setPhone(value);
+  };
+
   const handleSubmit = async () => {
     if (!validateEmail(email)) {
       setEmailError('Por favor ingresa un email válido');
@@ -80,7 +86,8 @@ export default function EmailStep() {
     
     setIsSubmitting(true);
     updateFormData('email', email);
-    
+    if (phone) updateFormData('whatsappPhone', phone);
+
     // ✅ META PIXEL: Track Lead when email is captured
     trackFB('Lead', {
       content_name: `${genreName} - ${occasionName}`,
@@ -253,7 +260,9 @@ export default function EmailStep() {
               <label className="block text-center text-gold/80 text-sm uppercase tracking-widest font-bold mb-4" htmlFor="email">
                 ¿A dónde enviamos tu canción?
               </label>
-              <div className="relative">
+
+              {/* Email Input */}
+              <div className="relative mb-5">
                 <input
                   id="email"
                   type="email"
@@ -261,7 +270,7 @@ export default function EmailStep() {
                   onChange={handleEmailChange}
                   placeholder="tu@email.com"
                   className={`
-                    w-full bg-transparent border-0 border-b-2 py-4 text-xl md:text-2xl text-center 
+                    w-full bg-transparent border-0 border-b-2 py-4 text-xl md:text-2xl text-center
                     focus:ring-0 text-white placeholder:text-white/20 transition-all font-light
                     ${emailError ? 'border-red-400' : 'border-gold/30 focus:border-gold'}
                   `}
@@ -269,6 +278,29 @@ export default function EmailStep() {
                 {emailError && (
                   <p className="text-red-400 text-xs text-center mt-2">{emailError}</p>
                 )}
+              </div>
+
+              {/* Phone / WhatsApp Input */}
+              <div className="relative">
+                <div className="flex items-center gap-3 border-b-2 border-white/20 focus-within:border-gold/60 transition-all">
+                  <div className="flex items-center gap-2 pl-2 shrink-0">
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 text-green-400" fill="currentColor">
+                      <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                    </svg>
+                    <span className="text-white/40 text-sm font-medium">+52</span>
+                  </div>
+                  <input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={handlePhoneChange}
+                    placeholder="Tu teléfono o WhatsApp (opcional)"
+                    className="w-full bg-transparent border-0 py-4 text-xl md:text-2xl text-center focus:ring-0 text-white placeholder:text-white/20 transition-all font-light"
+                  />
+                </div>
+                <p className="text-white/30 text-[10px] text-center mt-2 leading-relaxed">
+                  Al ingresar tu número, aceptas recibir tu canción y actualizaciones por mensaje. Puedes cancelar en cualquier momento respondiendo ALTO.
+                </p>
               </div>
             </div>
 
