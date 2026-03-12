@@ -1272,7 +1272,7 @@ export default function SuccessPage() {
                     'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1529634597503-139d3726fed5?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1488116593952-937c38246bbe?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1606216794079-73f85bbd57d5?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600&h=340&fit=crop',
