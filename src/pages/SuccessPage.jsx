@@ -1192,11 +1192,97 @@ export default function SuccessPage() {
                   }}>🎬</div>
                   <div>
                     <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-                      Convierte tu canción en un video
+                      Hazlo llorar de emoción 🥹
                     </h3>
                     <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
-                      Tus fotos + tu canción = un recuerdo cinematográfico para siempre
+                      Imagina su cara al ver sus fotos juntos con esta canción de fondo
                     </p>
+                  </div>
+                </div>
+
+                {/* Video preview mockup — Ken Burns style demo */}
+                <div style={{
+                  position: 'relative', borderRadius: '16px', overflow: 'hidden',
+                  marginBottom: '18px', aspectRatio: '16/9',
+                  border: `2px solid rgba(139,92,246,0.3)`,
+                  boxShadow: '0 8px 32px rgba(124,58,237,0.25)',
+                  background: '#0a0015',
+                }}>
+                  {/* Animated Ken Burns slideshow with sample images */}
+                  <style>{`
+                    @keyframes kenBurns1 { 0%{transform:scale(1) translate(0,0);opacity:1} 12.5%{transform:scale(1.12) translate(-2%,1%);opacity:1} 14.3%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns2 { 0%{opacity:0} 12.5%{opacity:0} 14.3%{transform:scale(1.08) translate(2%,-1%);opacity:1} 26.8%{transform:scale(1.2) translate(-1%,2%);opacity:1} 28.6%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns3 { 0%{opacity:0} 26.8%{opacity:0} 28.6%{transform:scale(1) translate(-1%,0);opacity:1} 41.1%{transform:scale(1.15) translate(2%,-2%);opacity:1} 42.9%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns4 { 0%{opacity:0} 41.1%{opacity:0} 42.9%{transform:scale(1.05) translate(0,1%);opacity:1} 55.4%{transform:scale(1.18) translate(-3%,2%);opacity:1} 57.1%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns5 { 0%{opacity:0} 55.4%{opacity:0} 57.1%{transform:scale(1) translate(1%,0);opacity:1} 69.6%{transform:scale(1.14) translate(-2%,-1%);opacity:1} 71.4%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns6 { 0%{opacity:0} 69.6%{opacity:0} 71.4%{transform:scale(1.1) translate(1%,1%);opacity:1} 83.9%{transform:scale(1.2) translate(-2%,0);opacity:1} 85.7%{opacity:0} 100%{opacity:0} }
+                    @keyframes kenBurns7 { 0%{opacity:0} 83.9%{opacity:0} 85.7%{transform:scale(1.05) translate(0,-1%);opacity:1} 98.2%{transform:scale(1.16) translate(2%,1%);opacity:1} 100%{opacity:0} }
+                    @keyframes progressPreview { 0%{width:0%} 100%{width:100%} }
+                    @keyframes noteFloat { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
+                  `}</style>
+
+                  {/* Real people: couples, hugging, birthday, celebrating, anniversary */}
+                  {[
+                    'https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1529634597503-139d3726fed5?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1488116593952-937c38246bbe?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1606216794079-73f85bbd57d5?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600&h=340&fit=crop',
+                  ].map((src, i) => (
+                    <img key={i} src={src} alt="" style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                      animation: `kenBurns${i + 1} 28s ease-in-out infinite`,
+                      opacity: i === 0 ? 1 : 0,
+                    }} />
+                  ))}
+
+                  {/* Gradient overlay for cinematic feel */}
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    background: 'linear-gradient(180deg, rgba(10,0,21,0) 50%, rgba(10,0,21,0.7) 100%)',
+                    pointerEvents: 'none',
+                  }} />
+
+                  {/* Floating music notes */}
+                  <div style={{ position: 'absolute', top: '12px', right: '14px', display: 'flex', gap: '8px' }}>
+                    {['🎵', '🎶'].map((n, i) => (
+                      <span key={i} style={{
+                        fontSize: '18px', opacity: 0.7,
+                        animation: `noteFloat 2s ease-in-out ${i * 0.7}s infinite`,
+                      }}>{n}</span>
+                    ))}
+                  </div>
+
+                  {/* Play button overlay */}
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                    width: '56px', height: '56px', borderRadius: '50%',
+                    background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+                  }}>
+                    <span style={{ fontSize: '22px', marginLeft: '3px', color: 'white' }}>▶</span>
+                  </div>
+
+                  {/* Bottom info bar */}
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: 'linear-gradient(180deg, transparent, rgba(10,0,21,0.9))',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', color: '#c4b5fd', fontWeight: 700 }}>Vista previa</span>
+                      <span style={{ fontSize: '11px', color: 'rgba(196,181,253,0.6)' }}>•</span>
+                      <span style={{ fontSize: '11px', color: 'rgba(196,181,253,0.6)' }}>Tus fotos + su canción</span>
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#a78bfa', fontWeight: 600, background: 'rgba(124,58,237,0.3)', padding: '3px 8px', borderRadius: '6px' }}>HD 1080p</span>
+                  </div>
+
+                  {/* Animated progress bar at very bottom */}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)' }}>
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressPreview 28s linear infinite' }} />
                   </div>
                 </div>
 
@@ -1205,7 +1291,7 @@ export default function SuccessPage() {
                   {[
                     { icon: '📸', label: 'Hasta 15 fotos', sub: 'Tuyas y personales' },
                     { icon: '🎵', label: 'Tu canción', sub: 'La que acabas de crear' },
-                    { icon: '🎞️', label: 'Efecto Ken Burns', sub: 'Cinematográfico HD' },
+                    { icon: '🎞️', label: 'Video cinematográfico', sub: 'Calidad profesional' },
                     { icon: '💾', label: 'Descarga MP4', sub: 'Lista en minutos' },
                   ].map((f, i) => (
                     <div key={i} style={{
@@ -1263,7 +1349,7 @@ export default function SuccessPage() {
                   ) : (
                     <>
                       <span style={{ fontSize: '20px' }}>🎬</span>
-                      <span>Crear mi video — $9.99</span>
+                      <span>Sorpréndelo con un video — $9.99</span>
                       <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
                     </>
                   )}
@@ -1277,14 +1363,31 @@ export default function SuccessPage() {
             {/* STATE: Paid, pending photos (status: pending) */}
             {videoOrder && videoOrder.status === 'pending' && (
               <>
-                <div style={{ textAlign: 'center', marginBottom: '18px' }}>
-                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>📸</span>
-                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
-                    ¡Sube tus fotos!
-                  </h3>
-                  <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6' }}>
-                    Selecciona de <span style={{ color: ts.accent, fontWeight: '700' }}>3 a 15 fotos</span> para tu video personalizado
-                  </p>
+                {/* Film strip decoration */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                  ))}
+                </div>
+
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
+                  <div style={{
+                    width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '26px',
+                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    flexShrink: 0,
+                  }}>📸</div>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                      ¡Sube tus fotos!
+                    </h3>
+                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Selecciona de <span style={{ color: '#a78bfa', fontWeight: '700' }}>3 a 15 fotos</span> para tu video cinematográfico
+                    </p>
+                  </div>
                 </div>
 
                 {/* Photo grid */}
@@ -1294,19 +1397,26 @@ export default function SuccessPage() {
                     gap: '8px', marginBottom: '16px',
                   }}>
                     {videoPhotos.map((photo, i) => (
-                      <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: '12px', overflow: 'hidden' }}>
+                      <div key={i} style={{
+                        position: 'relative', aspectRatio: '1', borderRadius: '12px', overflow: 'hidden',
+                        border: '2px solid rgba(139,92,246,0.3)',
+                        boxShadow: '0 4px 12px rgba(124,58,237,0.2)',
+                      }}>
                         <img src={photo.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         <button onClick={() => removeVideoPhoto(i)} style={{
                           position: 'absolute', top: '4px', right: '4px',
                           width: '22px', height: '22px', borderRadius: '50%',
-                          background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white',
+                          background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', border: 'none', color: 'white',
                           fontSize: '11px', cursor: 'pointer', display: 'flex',
                           alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 8px rgba(124,58,237,0.5)',
                         }}>✕</button>
                         <div style={{
                           position: 'absolute', bottom: '4px', left: '4px',
-                          background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
-                          padding: '2px 6px', fontSize: '10px', color: 'white', fontWeight: '700'
+                          background: 'linear-gradient(135deg, rgba(124,58,237,0.85), rgba(79,70,229,0.85))',
+                          borderRadius: '8px',
+                          padding: '2px 7px', fontSize: '10px', color: 'white', fontWeight: '700',
+                          backdropFilter: 'blur(4px)',
                         }}>{i + 1}</div>
                       </div>
                     ))}
@@ -1323,31 +1433,57 @@ export default function SuccessPage() {
                   style={{ display: 'none' }}
                 />
 
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-                  {videoPhotos.length < 15 && (
-                    <button onClick={() => videoPhotoInputRef.current?.click()}
-                      style={{
-                        flex: 1, padding: '14px',
-                        background: isLight ? 'white' : 'rgba(255,255,255,0.06)',
-                        color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
-                        border: `1.5px dashed ${ts.cardBorder}`, borderRadius: '14px',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        fontFamily: ts.font,
-                      }}>
-                      📷 {videoPhotos.length > 0 ? 'Agregar más' : 'Seleccionar fotos'}
-                    </button>
-                  )}
+                {videoPhotos.length < 15 && (
+                  <button onClick={() => videoPhotoInputRef.current?.click()}
+                    style={{
+                      width: '100%', padding: '16px',
+                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
+                      color: isLight ? '#6d28d9' : '#c4b5fd', fontWeight: '700', fontSize: '15px',
+                      border: '2px dashed rgba(139,92,246,0.3)', borderRadius: '14px',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      fontFamily: ts.font, marginBottom: '14px',
+                      transition: 'all 0.3s',
+                    }}>
+                    📷 {videoPhotos.length > 0 ? 'Agregar más fotos' : 'Seleccionar fotos'}
+                  </button>
+                )}
+
+                {/* Photo count strip */}
+                <div style={{
+                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
+                  border: '1px solid rgba(139,92,246,0.2)',
+                  borderRadius: '12px', padding: '12px 16px', marginBottom: '14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      width: '8px', height: '8px', borderRadius: '50%',
+                      background: videoPhotos.length >= 3 ? '#22c55e' : '#a78bfa',
+                      boxShadow: videoPhotos.length >= 3 ? '0 0 8px rgba(34,197,94,0.5)' : 'none',
+                    }} />
+                    <span style={{
+                      fontSize: '13px', fontWeight: '700',
+                      color: videoPhotos.length >= 3 ? '#22c55e' : '#a78bfa',
+                    }}>
+                      {videoPhotos.length}/15 fotos
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: ts.textSecondary, fontWeight: 600 }}>
+                    {videoPhotos.length < 3 ? `Faltan ${3 - videoPhotos.length} más` : '✓ Listo para generar'}
+                  </span>
                 </div>
 
-                {/* Photo count indicator */}
-                <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                  <span style={{
-                    fontSize: '13px', fontWeight: '600',
-                    color: videoPhotos.length >= 3 ? '#22c55e' : ts.textSecondary,
-                  }}>
-                    {videoPhotos.length >= 3 ? '✅' : '⚠️'} {videoPhotos.length}/15 fotos
-                    {videoPhotos.length < 3 && ` (mínimo 3)`}
-                  </span>
+                {/* Progress bar for count */}
+                <div style={{
+                  width: '100%', height: '4px', borderRadius: '2px',
+                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                  marginBottom: '16px', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: `${Math.min(100, (videoPhotos.length / 3) * 100)}%`, height: '100%', borderRadius: '2px',
+                    background: videoPhotos.length >= 3 ? 'linear-gradient(90deg, #22c55e, #16a34a)' : 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                    transition: 'width 0.4s ease',
+                  }} />
                 </div>
 
                 {/* Generate button */}
@@ -1355,19 +1491,29 @@ export default function SuccessPage() {
                   onClick={handleVideoGenerate}
                   disabled={videoPhotos.length < 3 || uploadingVideoPics}
                   style={{
-                    width: '100%', padding: '18px',
+                    width: '100%', padding: '18px 24px',
                     background: videoPhotos.length >= 3
-                      ? 'linear-gradient(135deg, #8b5cf6, #a78bfa)'
-                      : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
+                      ? (uploadingVideoPics ? 'rgba(124,58,237,0.4)' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)')
+                      : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
                     color: videoPhotos.length >= 3 ? 'white' : ts.textSecondary,
-                    fontWeight: '800', fontSize: '17px',
+                    fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
                     border: 'none', borderRadius: '16px',
                     cursor: videoPhotos.length >= 3 && !uploadingVideoPics ? 'pointer' : 'not-allowed',
-                    opacity: uploadingVideoPics ? 0.7 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
                     transition: 'all 0.3s', fontFamily: ts.font,
-                    boxShadow: videoPhotos.length >= 3 ? '0 8px 30px rgba(139,92,246,0.35)' : 'none',
+                    boxShadow: videoPhotos.length >= 3 && !uploadingVideoPics
+                      ? '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)'
+                      : 'none',
                   }}>
-                  {uploadingVideoPics ? '📤 Subiendo fotos...' : '🎬 Generar Video'}
+                  {uploadingVideoPics ? (
+                    '⏳ Subiendo fotos...'
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '20px' }}>🎬</span>
+                      <span>Generar Video</span>
+                      {videoPhotos.length >= 3 && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
+                    </>
+                  )}
                 </button>
 
                 {videoError && (
@@ -1378,91 +1524,259 @@ export default function SuccessPage() {
 
             {/* STATE: Photos uploaded, processing */}
             {videoOrder && (videoOrder.status === 'photos_uploaded' || videoOrder.status === 'processing') && (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{
-                  width: '64px', height: '64px', margin: '0 auto 18px',
-                  borderRadius: '50%',
-                  background: `linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  animation: 'pulse 2s ease-in-out infinite',
-                }}>
-                  <span style={{ fontSize: '28px' }}>🎬</span>
+              <>
+                {/* Film strip decoration */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                  ))}
                 </div>
-                <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
-                  Generando tu video...
-                </h3>
-                <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.6', marginBottom: '16px' }}>
-                  Estamos creando tu video con efecto cinematográfico. Esto puede tomar unos minutos.
-                </p>
+
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '22px' }}>
+                  <div style={{
+                    width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '26px',
+                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    flexShrink: 0,
+                    animation: 'pulse 2s ease-in-out infinite',
+                  }}>🎬</div>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                      Generando tu video...
+                    </h3>
+                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Creando tu recuerdo cinematográfico con efecto Ken Burns
+                    </p>
+                  </div>
+                </div>
+
+                {/* Steps progress */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                  {[
+                    { icon: '✅', label: 'Fotos recibidas', done: true },
+                    { icon: '🎞️', label: 'Aplicando efectos cinematográficos', done: false, active: true },
+                    { icon: '🎵', label: 'Sincronizando con tu canción', done: false },
+                    { icon: '💾', label: 'Renderizando video HD', done: false },
+                  ].map((step, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '10px 14px', borderRadius: '12px',
+                      background: step.active ? (isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)') : 'transparent',
+                      border: step.active ? '1px solid rgba(139,92,246,0.15)' : '1px solid transparent',
+                    }}>
+                      <span style={{ fontSize: '16px', width: '22px', textAlign: 'center' }}>
+                        {step.done ? '✅' : (step.active ? '⏳' : <span style={{ opacity: 0.3 }}>{step.icon}</span>)}
+                      </span>
+                      <span style={{
+                        fontSize: '13px', fontWeight: step.active ? '700' : '600',
+                        color: step.done ? '#22c55e' : (step.active ? '#a78bfa' : ts.textSecondary),
+                      }}>{step.label}</span>
+                      {step.active && (
+                        <div style={{
+                          marginLeft: 'auto', width: '16px', height: '16px',
+                          border: '2px solid rgba(139,92,246,0.3)', borderTopColor: '#a78bfa',
+                          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+                        }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progress bar */}
                 <div style={{
                   width: '100%', height: '6px', borderRadius: '3px',
-                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)',
-                  overflow: 'hidden',
+                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                  overflow: 'hidden', marginBottom: '14px',
                 }}>
                   <div style={{
                     width: '60%', height: '100%', borderRadius: '3px',
-                    background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)',
-                    animation: 'shimmerAccent 2s linear infinite',
+                    background: 'linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed)',
                     backgroundSize: '200% 100%',
+                    animation: 'shimmerAccent 2s linear infinite',
                   }} />
                 </div>
-                <p style={{ fontSize: '12px', color: ts.textSecondary, marginTop: '12px' }}>
-                  Te notificaremos por email cuando esté listo
-                </p>
-              </div>
+
+                {/* Info strip */}
+                <div style={{
+                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
+                  border: '1px solid rgba(139,92,246,0.2)',
+                  borderRadius: '12px', padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                }}>
+                  <span style={{ fontSize: '16px' }}>📧</span>
+                  <p style={{ fontSize: '12px', color: '#a78bfa', margin: 0, fontWeight: 600, lineHeight: 1.4 }}>
+                    Te notificaremos por email cuando esté listo — esto puede tomar unos minutos
+                  </p>
+                </div>
+              </>
             )}
 
             {/* STATE: Completed — Show video player + download */}
             {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
               <>
-                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '36px', display: 'block', marginBottom: '8px' }}>🎉</span>
-                  <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: ts.textPrimary }}>
-                    ¡Tu video está listo!
-                  </h3>
+                {/* Film strip decoration */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                  ))}
                 </div>
+
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' }}>
+                  <div style={{
+                    width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '26px',
+                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    flexShrink: 0,
+                  }}>🎉</div>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                      ¡Tu video está listo!
+                    </h3>
+                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Tu recuerdo cinematográfico quedó increíble
+                    </p>
+                  </div>
+                </div>
+
+                {/* Video player */}
                 <div style={{
                   borderRadius: '16px', overflow: 'hidden', marginBottom: '16px',
-                  boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`,
+                  border: '2px solid rgba(139,92,246,0.25)',
+                  boxShadow: '0 12px 40px rgba(109,40,217,0.3)',
                 }}>
                   <video
                     src={videoOrder.video_url}
                     controls
-                    style={{ width: '100%', display: 'block', borderRadius: '16px' }}
+                    style={{ width: '100%', display: 'block' }}
                     poster=""
                   />
                 </div>
+
+                {/* Feature chips */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {['🎞️ HD', '🎵 Con tu canción', '📸 Tus fotos', '✨ Efecto Ken Burns'].map((chip, i) => (
+                    <span key={i} style={{
+                      padding: '5px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
+                      border: '1px solid rgba(139,92,246,0.15)',
+                      color: '#a78bfa',
+                    }}>{chip}</span>
+                  ))}
+                </div>
+
+                {/* Download CTA */}
                 <button onClick={handleVideoDownload}
                   style={{
-                    width: '100%', padding: '16px',
-                    background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
-                    color: 'white', fontWeight: '800', fontSize: '16px',
+                    width: '100%', padding: '18px 24px',
+                    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                    color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
                     border: 'none', borderRadius: '16px', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: '0 8px 30px rgba(139,92,246,0.35)',
+                    boxShadow: '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
                     transition: 'all 0.3s', fontFamily: ts.font,
                   }}>
-                  ⬇️ Descargar Video MP4
+                  <span style={{ fontSize: '20px' }}>⬇️</span>
+                  <span>Descargar Video MP4</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
                 </button>
+
+                {/* Share hint */}
+                <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '12px', fontWeight: 600 }}>
+                  💡 Compártelo por WhatsApp para sorprender a {recipientName}
+                </p>
               </>
             )}
 
             {/* STATE: Failed */}
             {videoOrder && videoOrder.status === 'failed' && (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <span style={{ fontSize: '36px', display: 'block', marginBottom: '10px' }}>😔</span>
-                <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px', color: ts.textPrimary }}>
-                  Error al generar el video
-                </h3>
-                <p style={{ fontSize: '13px', color: '#f87171', marginBottom: '16px' }}>
-                  {videoOrder.error_message || 'Ocurrió un error. Contáctanos para ayuda.'}
-                </p>
-                <a href="mailto:soporte@regalosquecantan.com" style={{
-                  color: ts.accent, fontSize: '14px', fontWeight: '600', textDecoration: 'underline',
+              <>
+                {/* Film strip decoration */}
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, borderRadius: '2px', background: i % 3 === 0 ? '#8b5cf6' : 'rgba(139,92,246,0.25)' }} />
+                  ))}
+                </div>
+
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' }}>
+                  <div style={{
+                    width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '26px',
+                    boxShadow: '0 8px 24px rgba(124,58,237,0.45)',
+                    flexShrink: 0,
+                  }}>⚠️</div>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                      Error al generar el video
+                    </h3>
+                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Algo salió mal, pero no te preocupes — te ayudamos
+                    </p>
+                  </div>
+                </div>
+
+                {/* Error detail card */}
+                <div style={{
+                  background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  borderRadius: '12px', padding: '14px 16px', marginBottom: '16px',
+                  display: 'flex', alignItems: 'center', gap: '10px',
                 }}>
-                  📧 Contactar soporte
+                  <span style={{ fontSize: '16px' }}>❌</span>
+                  <p style={{ fontSize: '13px', color: '#f87171', margin: 0, fontWeight: 600, lineHeight: 1.4 }}>
+                    {videoOrder.error_message || 'Ocurrió un error inesperado durante la generación del video.'}
+                  </p>
+                </div>
+
+                {/* Help options */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
+                  <div style={{
+                    padding: '14px 12px', borderRadius: '12px',
+                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
+                    border: '1px solid rgba(139,92,246,0.15)',
+                    textAlign: 'center',
+                  }}>
+                    <span style={{ fontSize: '20px', display: 'block', marginBottom: '6px' }}>🔄</span>
+                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 2px' }}>Reintentar</p>
+                    <p style={{ fontSize: '10px', color: ts.textSecondary, margin: 0 }}>Sin costo extra</p>
+                  </div>
+                  <div style={{
+                    padding: '14px 12px', borderRadius: '12px',
+                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
+                    border: '1px solid rgba(139,92,246,0.15)',
+                    textAlign: 'center',
+                  }}>
+                    <span style={{ fontSize: '20px', display: 'block', marginBottom: '6px' }}>💰</span>
+                    <p style={{ fontSize: '11px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 2px' }}>Reembolso</p>
+                    <p style={{ fontSize: '10px', color: ts.textSecondary, margin: 0 }}>100% garantizado</p>
+                  </div>
+                </div>
+
+                {/* Contact CTA */}
+                <a href="mailto:soporte@regalosquecantan.com" style={{ textDecoration: 'none', display: 'block' }}>
+                  <button style={{
+                    width: '100%', padding: '18px 24px',
+                    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                    color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
+                    border: 'none', borderRadius: '16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                    <span style={{ fontSize: '20px' }}>📧</span>
+                    <span>Contactar soporte</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
+                  </button>
                 </a>
-              </div>
+              </>
             )}
           </div>
 
