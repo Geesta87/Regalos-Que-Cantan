@@ -1271,11 +1271,11 @@ export default function SuccessPage() {
                   {[
                     'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1559070169-a3077159ee16?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1596560548464-f010549b84d7?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&h=340&fit=crop',
                   ].map((src, i) => (
                     <img key={i} src={src} alt="" style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
