@@ -66,6 +66,9 @@ export default function ComparisonPage() {
   const [selectedSongId, setSelectedSongId] = useState(null);
   const [purchaseBoth, setPurchaseBoth] = useState(false);
   
+  // Video add-on state
+  const [addVideo, setAddVideo] = useState(false);
+
   // Coupon state (kept for deep-link/URL coupon support)
   const [couponCode, setCouponCode] = useState('');
   const [couponApplied, setCouponApplied] = useState(null);
@@ -579,7 +582,7 @@ export default function ComparisonPage() {
         console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth, '', addVideo);
       
       if (result.url) {
         window.location.href = result.url;
@@ -1566,6 +1569,76 @@ export default function ComparisonPage() {
             </p>
           </div>
 
+          {/* Video Add-on Toggle */}
+          <div
+            onClick={() => setAddVideo(!addVideo)}
+            style={{
+              background: addVideo
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(79,156,247,0.15))'
+                : 'rgba(255,255,255,0.04)',
+              border: addVideo
+                ? '2px solid rgba(168,85,247,0.5)'
+                : '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '16px',
+              padding: '16px 18px',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              marginBottom: '6px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                <span style={{ fontSize: '28px' }}>🎬</span>
+                <div>
+                  <div style={{ color: 'white', fontSize: '15px', fontWeight: '700', lineHeight: 1.3 }}>
+                    Agrega Video Musical
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginTop: '2px' }}>
+                    Video con tus fotos + tu cancion
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: '#a855f7', fontSize: '17px', fontWeight: '800' }}>+$7.99</div>
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', textDecoration: 'line-through' }}>$9.99</div>
+                </div>
+                {/* Toggle switch */}
+                <div style={{
+                  width: '44px', height: '24px',
+                  borderRadius: '12px',
+                  background: addVideo ? '#a855f7' : 'rgba(255,255,255,0.15)',
+                  position: 'relative',
+                  transition: 'background 0.3s ease',
+                  flexShrink: 0,
+                }}>
+                  <div style={{
+                    width: '20px', height: '20px',
+                    borderRadius: '50%',
+                    background: 'white',
+                    position: 'absolute',
+                    top: '2px',
+                    left: addVideo ? '22px' : '2px',
+                    transition: 'left 0.3s ease',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }} />
+                </div>
+              </div>
+            </div>
+            {addVideo && (
+              <div style={{
+                marginTop: '10px',
+                paddingTop: '10px',
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.45)',
+                fontSize: '11px',
+                lineHeight: 1.5,
+              }}>
+                Despues de pagar, sube tus fotos y crearemos un video cinematografico con efecto Ken Burns. Recibes el video en minutos.
+              </div>
+            )}
+          </div>
+
           {/* Checkout Button */}
           <button
             ref={checkoutCtaRef}
@@ -1573,8 +1646,8 @@ export default function ComparisonPage() {
             disabled={isCheckingOut || !hasSelection}
             style={{
               width: '100%', padding: '22px',
-              background: hasSelection 
-                ? 'linear-gradient(90deg, #e11d74, #c026d3)' 
+              background: hasSelection
+                ? 'linear-gradient(90deg, #e11d74, #c026d3)'
                 : 'rgba(255,255,255,0.08)',
               color: hasSelection ? 'white' : 'rgba(255,255,255,0.3)',
               border: 'none', borderRadius: '14px',
@@ -1587,11 +1660,14 @@ export default function ComparisonPage() {
             {isCheckingOut ? (
               <span>⏳ Procesando...</span>
             ) : !hasSelection ? (
-              <span>👆 Primero selecciona una opción arriba</span>
+              <span>👆 Primero selecciona una opcion arriba</span>
             ) : isFree ? (
               <span>🎉 Descargar Gratis</span>
             ) : (
-              <span>💳 {purchaseBoth ? 'Comprar Ambas Canciones' : 'Comprar Canción Seleccionada'}</span>
+              <span>💳 {purchaseBoth
+                ? (addVideo ? 'Comprar Canciones + Video' : 'Comprar Ambas Canciones')
+                : (addVideo ? 'Comprar Cancion + Video' : 'Comprar Cancion Seleccionada')
+              }</span>
             )}
           </button>
 

@@ -5,6 +5,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
@@ -152,68 +154,109 @@ function getPurchaseEmailHtml(song: any) {
 
 serve(async (req) => {
   const signature = req.headers.get('stripe-signature');
-  
+
   if (!signature) {
+    console.error('Webhook error: No stripe-signature header');
     return new Response('No signature', { status: 400 });
   }
 
   try {
     const body = await req.text();
-    
-    // Verify webhook signature
-    const event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      STRIPE_WEBHOOK_SECRET
-    );
 
-    console.log('Webhook event:', event.type);
+    console.log('Webhook received, verifying signature...');
+    console.log('Webhook secret exists:', !!STRIPE_WEBHOOK_SECRET);
+    console.log('Signature header:', signature?.substring(0, 20) + '...');
+
+    // Verify webhook signature (must use async version for Deno/SubtleCrypto)
+    let event;
+    try {
+      event = await stripe.webhooks.constructEventAsync(
+        body,
+        signature,
+        STRIPE_WEBHOOK_SECRET,
+        undefined,
+        cryptoProvider
+      );
+    } catch (sigError) {
+      console.error('SIGNATURE VERIFICATION FAILED:', sigError.message);
+      console.error('This means STRIPE_WEBHOOK_SECRET env var does not match the Stripe dashboard webhook signing secret');
+      return new Response(
+        JSON.stringify({ error: 'Signature verification failed: ' + sigError.message }),
+        { status: 400 }
+      );
+    }
+
+    console.log('Webhook event verified:', event.type);
 
     // Handle successful payment
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const songId = session.metadata?.songId;
+
+      // Support all metadata key formats: songId, song_id, song_ids (comma-separated)
+      const rawSongId = session.metadata?.songId || session.metadata?.song_id || session.metadata?.song_ids;
       const email = session.metadata?.email || session.customer_email;
 
-      if (!songId) {
-        throw new Error('No songId in metadata');
+      console.log('Session metadata:', JSON.stringify(session.metadata));
+      console.log('Raw songId value:', rawSongId);
+      console.log('Session ID:', session.id);
+      console.log('Payment status:', session.payment_status);
+
+      if (!rawSongId) {
+        console.error('No songId found in metadata. Available keys:', Object.keys(session.metadata || {}));
+        // Still return 200 so Stripe doesn't keep retrying
+        return new Response(JSON.stringify({ received: true, warning: 'No songId in metadata' }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200
+        });
       }
 
-      console.log('Processing payment for song:', songId);
+      // Handle comma-separated song_ids (multiple songs in one purchase)
+      const songIds = rawSongId.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+      console.log('Processing payment for songs:', songIds);
 
       // Update database
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      
-      const { data: song, error: updateError } = await supabase
-        .from('songs')
-        .update({ 
-          paid: true,
-          paid_at: new Date().toISOString(),
-          stripe_session_id: session.id
-        })
-        .eq('id', songId)
-        .select()
-        .single();
 
-      if (updateError) {
-        throw new Error('Failed to update song: ' + updateError.message);
-      }
+      const results = [];
+      for (const sid of songIds) {
+        const { data: song, error: updateError } = await supabase
+          .from('songs')
+          .update({
+            paid: true,
+            paid_at: new Date().toISOString(),
+            stripe_session_id: session.id,
+            stripe_payment_id: session.payment_intent as string || null,
+            payment_status: 'completed',
+            amount_paid: (session.amount_total || 0) / 100
+          })
+          .eq('id', sid)
+          .select()
+          .single();
 
-      console.log('Song marked as paid:', song.id);
+        if (updateError) {
+          console.error('Database update failed for song', sid, ':', updateError.message);
+          results.push({ songId: sid, error: updateError.message });
+        } else {
+          console.log('Song marked as paid successfully:', song.id);
+          results.push({ songId: sid, success: true });
 
-      // Send email with download link via SendGrid
-      if (email) {
-        try {
-          await sendEmail(
-            email,
-            `🎵 Tu canción para ${song.recipient_name} está lista!`,
-            getPurchaseEmailHtml(song)
-          );
-        } catch (emailError) {
-          console.error('Failed to send email:', emailError);
-          // Don't fail the webhook if email fails
+          // Send email with download link via SendGrid
+          if (email) {
+            try {
+              await sendEmail(
+                email,
+                `🎵 Tu canción para ${song.recipient_name} está lista!`,
+                getPurchaseEmailHtml(song)
+              );
+            } catch (emailError) {
+              console.error('Failed to send email:', emailError);
+              // Don't fail the webhook if email fails
+            }
+          }
         }
       }
+
+      console.log('Payment processing complete. Results:', JSON.stringify(results));
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -222,7 +265,8 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('Webhook unexpected error:', error.message);
+    console.error('Stack:', error.stack);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 400 }

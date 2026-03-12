@@ -82,7 +82,7 @@ export async function generateSong(formData) {
  * @param {string} couponCode - Optional coupon code
  * @param {boolean} purchaseBoth - Whether user is buying the bundle
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '') {
+export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', addVideo = false) {
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
@@ -108,6 +108,7 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       couponCode,
       purchaseBoth,
       pricingTier,
+      addVideo,
       fbc,
       fbp,
       clientUserAgent: navigator.userAgent
