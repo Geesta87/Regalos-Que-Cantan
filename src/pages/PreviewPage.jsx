@@ -524,7 +524,7 @@ export default function PreviewPage() {
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} • Hecho con alma en México.</p>
+          <p className="text-white/20 text-[10px] uppercase tracking-widest">© {new Date().getFullYear()} RegalosQueCantan</p>
         </div>
       </footer>
     </div>
