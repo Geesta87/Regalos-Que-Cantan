@@ -330,6 +330,47 @@ export default function SuccessPage() {
     }
   };
 
+  // ------ Fallback: verify payment with Stripe if webhook failed ------
+  const hasVerifiedPayment = useRef(false);
+  useEffect(() => {
+    if (hasVerifiedPayment.current) return;
+    if (!songs.length) return;
+
+    const sessionId = urlParams.get('session_id');
+    const songId = urlParams.get('song_id') || urlParams.get('song_ids');
+    if (!sessionId || !songId) return;
+
+    // Check if song is already marked as paid
+    const firstSong = songs[0];
+    if (firstSong?.paid) return;
+
+    hasVerifiedPayment.current = true;
+
+    // Song is not paid but we have a session_id — webhook likely failed
+    // Call verify-payment to confirm with Stripe and update DB
+    const verifyPayment = async () => {
+      try {
+        console.log('[Payment Verify] Webhook may have failed, verifying payment with Stripe...');
+        const songIds = songId.split(',').filter(id => id.trim());
+        for (const sid of songIds) {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-payment`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({ sessionId, songId: sid })
+          });
+          const result = await res.json();
+          console.log('[Payment Verify] Result for', sid, ':', result);
+        }
+      } catch (err) {
+        console.error('[Payment Verify] Error:', err);
+      }
+    };
+    verifyPayment();
+  }, [songs]);
+
   // ------ 🔥 META PIXEL: Track Purchase after Stripe payment ------
   const hasFiredPurchase = useRef(false);
   useEffect(() => {
@@ -1228,7 +1269,7 @@ export default function SuccessPage() {
 
                   {/* Real people: couples, hugging, birthday, celebrating, anniversary */}
                   {[
-                    'https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1529634597503-139d3726fed5?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=600&h=340&fit=crop',
