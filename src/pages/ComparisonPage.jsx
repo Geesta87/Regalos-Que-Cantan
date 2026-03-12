@@ -95,7 +95,7 @@ export default function ComparisonPage() {
   };
 
   // WhatsApp phone state
-  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState(formData?.whatsappPhone || localStorage.getItem('rqc_whatsapp_phone') || '');
   const whatsappSaveTimer = useRef(null);
 
   // Auto-save WhatsApp phone to DB when user types a valid number (10+ digits)
@@ -1435,39 +1435,227 @@ export default function ComparisonPage() {
           </p>
         </div>
 
-        {/* ===== LO QUE RECIBES CHECKLIST ===== */}
-        <div style={{
-          background: 'rgba(242,13,128,0.08)',
-          border: '1px solid rgba(242,13,128,0.2)',
-          borderRadius: '14px',
-          padding: '18px 22px',
-          marginBottom: '24px',
-          animation: 'fadeInUp 0.6s ease-out'
-        }}>
-          <p style={{ fontSize: '15px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: '#f74da6' }}>
-            🎁 Lo que recibes con tu compra:
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+        {/* ===== VIDEO ADD-ON UPSELL ===== */}
+        <div
+          onClick={() => setAddVideo(!addVideo)}
+          style={{
+            borderRadius: '20px',
+            padding: addVideo ? '0' : '0',
+            border: addVideo
+              ? '2px solid rgba(139,92,246,0.5)'
+              : '2px solid rgba(255,255,255,0.1)',
+            marginBottom: '24px',
+            background: addVideo
+              ? 'linear-gradient(160deg, rgba(109,40,217,0.18) 0%, rgba(79,70,229,0.08) 50%, rgba(0,0,0,0) 100%)'
+              : 'rgba(255,255,255,0.03)',
+            cursor: 'pointer',
+            transition: 'all 0.4s ease',
+            overflow: 'hidden',
+            position: 'relative',
+            boxShadow: addVideo ? '0 8px 40px rgba(109,40,217,0.2)' : 'none',
+            animation: 'fadeInUp 0.6s ease-out',
+          }}
+        >
+          {/* Shimmer top border when active */}
+          {addVideo && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+              background: 'linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, #8b5cf6, transparent)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 3s linear infinite',
+            }} />
+          )}
+
+          {/* Ken Burns slideshow preview */}
+          <div style={{
+            position: 'relative', overflow: 'hidden',
+            aspectRatio: '16/9',
+            background: '#0a0015',
+            borderRadius: addVideo ? '18px 18px 0 0' : '18px',
+            transition: 'border-radius 0.3s',
+          }}>
+            <style>{`
+              @keyframes kb1v { 0%{transform:scale(1) translate(0,0);opacity:1} 20%{transform:scale(1.12) translate(-2%,1%);opacity:1} 22%{opacity:0} 100%{opacity:0} }
+              @keyframes kb2v { 0%{opacity:0} 20%{opacity:0} 22%{transform:scale(1.08) translate(2%,-1%);opacity:1} 42%{transform:scale(1.2) translate(-1%,2%);opacity:1} 44%{opacity:0} 100%{opacity:0} }
+              @keyframes kb3v { 0%{opacity:0} 42%{opacity:0} 44%{transform:scale(1) translate(-1%,0);opacity:1} 64%{transform:scale(1.15) translate(2%,-2%);opacity:1} 66%{opacity:0} 100%{opacity:0} }
+              @keyframes kb4v { 0%{opacity:0} 64%{opacity:0} 66%{transform:scale(1.05) translate(0,1%);opacity:1} 86%{transform:scale(1.18) translate(-3%,2%);opacity:1} 88%{opacity:0} 100%{opacity:0} }
+              @keyframes kb5v { 0%{opacity:0} 86%{opacity:0} 88%{transform:scale(1) translate(1%,0);opacity:1} 98%{transform:scale(1.14) translate(-2%,-1%);opacity:1} 100%{opacity:0} }
+              @keyframes progressV { 0%{width:0%} 100%{width:100%} }
+              @keyframes noteV { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
+            `}</style>
+
             {[
-              { icon: '🎵', text: 'Canción completa (~2 min)' },
-              { icon: '⚡', text: 'Descarga instantánea MP3' },
-              { icon: '💬', text: 'Envío por teléfono o WhatsApp' },
-              { icon: '♾️', text: 'Tuya para siempre' },
-              { icon: '❤️', text: 'Personalizada con su nombre' },
-              { icon: '🔒', text: 'Pago seguro con Stripe' }
-            ].map((item, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: 'rgba(255,255,255,0.85)'
-              }}>
-                <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                <span>{item.text}</span>
-              </div>
+              'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
+              'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
+              'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&h=340&fit=crop',
+              'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
+              'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&h=340&fit=crop',
+            ].map((src, i) => (
+              <img key={i} src={src} alt="" style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                animation: `kb${i + 1}v 20s ease-in-out infinite`,
+                opacity: i === 0 ? 1 : 0,
+              }} />
             ))}
+
+            {/* Cinematic gradient overlay */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(10,0,21,0.1) 0%, rgba(10,0,21,0.5) 60%, rgba(10,0,21,0.85) 100%)',
+              pointerEvents: 'none',
+            }} />
+
+            {/* Floating music notes */}
+            <div style={{ position: 'absolute', top: '12px', right: '14px', display: 'flex', gap: '8px' }}>
+              {['🎵', '🎶'].map((n, i) => (
+                <span key={i} style={{
+                  fontSize: '16px', opacity: 0.7,
+                  animation: `noteV 2s ease-in-out ${i * 0.7}s infinite`,
+                }}>{n}</span>
+              ))}
+            </div>
+
+            {/* Play button overlay */}
+            <div style={{
+              position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%,-50%)',
+              width: '48px', height: '48px', borderRadius: '50%',
+              background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+            }}>
+              <span style={{ fontSize: '20px', marginLeft: '3px', color: 'white' }}>▶</span>
+            </div>
+
+            {/* Bottom content overlay */}
+            <div style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              padding: '16px 18px 14px',
+            }}>
+              <h3 style={{
+                fontSize: '20px', fontWeight: '900', color: '#e9d5ff',
+                margin: '0 0 4px', lineHeight: 1.2, letterSpacing: '-0.02em',
+                textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              }}>
+                Hazla llorar de emocion
+              </h3>
+              <p style={{
+                fontSize: '12px', color: 'rgba(196,181,253,0.8)', margin: 0,
+                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+              }}>
+                Video cinematografico con sus fotos + tu cancion
+              </p>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'rgba(124,58,237,0.2)' }}>
+              <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressV 20s linear infinite' }} />
+            </div>
+
+            {/* HD badge */}
+            <div style={{
+              position: 'absolute', top: '12px', left: '14px',
+              fontSize: '10px', color: '#a78bfa', fontWeight: 600,
+              background: 'rgba(124,58,237,0.3)', backdropFilter: 'blur(4px)',
+              padding: '3px 8px', borderRadius: '6px',
+            }}>HD 1080p</div>
           </div>
+
+          {/* Toggle bar below preview */}
+          <div style={{
+            padding: '14px 18px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: '12px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+              <span style={{ fontSize: '22px' }}>🎬</span>
+              <div>
+                <div style={{ color: 'white', fontSize: '14px', fontWeight: '700', lineHeight: 1.3 }}>
+                  Agregar Video Musical
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '1px' }}>
+                  2,400+ familias ya lo tienen
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: '#a855f7', fontSize: '17px', fontWeight: '800' }}>+$7.99</div>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', textDecoration: 'line-through' }}>$9.99</div>
+              </div>
+              {/* Toggle switch */}
+              <div style={{
+                width: '48px', height: '26px',
+                borderRadius: '13px',
+                background: addVideo
+                  ? 'linear-gradient(90deg, #7c3aed, #a855f7)'
+                  : 'rgba(255,255,255,0.15)',
+                position: 'relative',
+                transition: 'background 0.3s ease',
+                flexShrink: 0,
+                boxShadow: addVideo ? '0 0 12px rgba(124,58,237,0.4)' : 'none',
+              }}>
+                <div style={{
+                  width: '22px', height: '22px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  position: 'absolute',
+                  top: '2px',
+                  left: addVideo ? '24px' : '2px',
+                  transition: 'left 0.3s ease',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Expanded details when toggled on */}
+          {addVideo && (
+            <div style={{
+              padding: '0 18px 16px',
+              animation: 'fadeInUp 0.3s ease-out',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0',
+                padding: '0',
+              }}>
+                {/* Step 1 */}
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 12px', borderRadius: '12px',
+                  background: 'rgba(139,92,246,0.1)',
+                }}>
+                  <div style={{
+                    width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '15px',
+                  }}>📸</div>
+                  <div>
+                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube fotos</p>
+                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>3-15 momentos</p>
+                  </div>
+                </div>
+                <div style={{ padding: '0 4px', fontSize: '14px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
+                {/* Step 2 */}
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 12px', borderRadius: '12px',
+                  background: 'rgba(139,92,246,0.1)',
+                }}>
+                  <div style={{
+                    width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '15px',
+                  }}>✨</div>
+                  <div>
+                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe video</p>
+                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>En minutos</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actual Checkout Section */}
@@ -1475,169 +1663,6 @@ export default function ComparisonPage() {
           background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
         }}>
-          {/* Phone / WhatsApp — Redesigned for higher conversions */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(37,211,102,0.15), rgba(37,211,102,0.05))',
-            border: '2px solid rgba(37,211,102,0.4)',
-            borderRadius: '16px',
-            padding: '20px',
-            marginBottom: '22px',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            {/* Subtle animated glow behind */}
-            <div style={{
-              position: 'absolute', top: '-50%', right: '-20%',
-              width: '180px', height: '180px',
-              background: 'radial-gradient(circle, rgba(37,211,102,0.12) 0%, transparent 70%)',
-              borderRadius: '50%', pointerEvents: 'none'
-            }} />
-
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', position: 'relative'}}>
-              {/* WhatsApp SVG icon */}
-              <div style={{
-                width: '32px', height: '32px', borderRadius: '8px',
-                background: '#25D366', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-              </div>
-              <div style={{flex: 1}}>
-                <p style={{margin: 0, color: 'white', fontSize: '15px', fontWeight: '700'}}>
-                  Recibe la canción por teléfono o WhatsApp
-                </p>
-              </div>
-              <span style={{
-                color: '#25D366', fontSize: '11px', fontWeight: '700',
-                background: 'rgba(37,211,102,0.15)', borderRadius: '6px',
-                padding: '3px 10px', whiteSpace: 'nowrap',
-                border: '1px solid rgba(37,211,102,0.3)',
-                textTransform: 'uppercase', letterSpacing: '0.5px'
-              }}>
-                Recomendado
-              </span>
-            </div>
-
-            <p style={{margin: '0 0 12px 0', color: 'rgba(255,255,255,0.7)', fontSize: '13px', lineHeight: 1.5, position: 'relative'}}>
-              Recibe el link de descarga al instante — ábrelo, escúchalo y compártelo con quien quieras 🎁
-            </p>
-
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px', position: 'relative'}}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: 'rgba(255,255,255,0.1)', borderRadius: '12px',
-                padding: '0 14px',
-                border: whatsappPhone.replace(/\D/g, '').length >= 10
-                  ? '2px solid #25D366'
-                  : '2px solid rgba(37,211,102,0.3)',
-                flex: 1,
-                transition: 'border-color 0.3s'
-              }}>
-                <input
-                  type="tel"
-                  value={whatsappPhone}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^\d\s\-\+\(\)]/g, '');
-                    setWhatsappPhone(val);
-                  }}
-                  placeholder="📱 Tu teléfono o WhatsApp"
-                  maxLength={20}
-                  style={{
-                    width: '100%', padding: '14px 0',
-                    background: 'transparent', border: 'none',
-                    color: 'white', fontSize: '16px', outline: 'none',
-                    fontWeight: '500'
-                  }}
-                />
-              </div>
-              {whatsappPhone.replace(/\D/g, '').length >= 10 && (
-                <div style={{
-                  width: '36px', height: '36px', borderRadius: '50%',
-                  background: '#25D366', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, animation: 'fadeIn 0.3s ease-out'
-                }}>
-                  <span style={{color: 'white', fontSize: '18px', fontWeight: 'bold'}}>✓</span>
-                </div>
-              )}
-            </div>
-
-            {/* A2P compliance + social proof */}
-            <p style={{margin: '10px 0 0 0', color: 'rgba(255,255,255,0.4)', fontSize: '10px', lineHeight: 1.5, position: 'relative'}}>
-              Al ingresar tu número, aceptas recibir tu canción y actualizaciones por mensaje. Puedes cancelar en cualquier momento respondiendo ALTO.
-            </p>
-          </div>
-
-          {/* Video Add-on Toggle */}
-          <div
-            onClick={() => setAddVideo(!addVideo)}
-            style={{
-              background: addVideo
-                ? 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(79,156,247,0.15))'
-                : 'rgba(255,255,255,0.04)',
-              border: addVideo
-                ? '2px solid rgba(168,85,247,0.5)'
-                : '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '16px',
-              padding: '16px 18px',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              marginBottom: '6px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-                <span style={{ fontSize: '28px' }}>🎬</span>
-                <div>
-                  <div style={{ color: 'white', fontSize: '15px', fontWeight: '700', lineHeight: 1.3 }}>
-                    Agrega Video Musical
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginTop: '2px' }}>
-                    Video con tus fotos + tu cancion
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: '#a855f7', fontSize: '17px', fontWeight: '800' }}>+$7.99</div>
-                  <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', textDecoration: 'line-through' }}>$9.99</div>
-                </div>
-                {/* Toggle switch */}
-                <div style={{
-                  width: '44px', height: '24px',
-                  borderRadius: '12px',
-                  background: addVideo ? '#a855f7' : 'rgba(255,255,255,0.15)',
-                  position: 'relative',
-                  transition: 'background 0.3s ease',
-                  flexShrink: 0,
-                }}>
-                  <div style={{
-                    width: '20px', height: '20px',
-                    borderRadius: '50%',
-                    background: 'white',
-                    position: 'absolute',
-                    top: '2px',
-                    left: addVideo ? '22px' : '2px',
-                    transition: 'left 0.3s ease',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                  }} />
-                </div>
-              </div>
-            </div>
-            {addVideo && (
-              <div style={{
-                marginTop: '10px',
-                paddingTop: '10px',
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.45)',
-                fontSize: '11px',
-                lineHeight: 1.5,
-              }}>
-                Despues de pagar, sube tus fotos y crearemos un video cinematografico con efecto Ken Burns. Recibes el video en minutos.
-              </div>
-            )}
-          </div>
 
           {/* Checkout Button */}
           <button
@@ -1679,18 +1704,18 @@ export default function ComparisonPage() {
             Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.
           </p>
 
-          {/* Trust badges */}
-          <div style={{display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '20px', flexWrap: 'wrap'}}>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              🔒 Pago Seguro
-            </span>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              ⚡ Descarga Instantánea
-            </span>
-            <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
-              ✨ Calidad Premium
-            </span>
-          </div>
+          {/* Trust badges — compact inline */}
+          <p style={{
+            textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '11px',
+            marginTop: '14px', display: 'flex', justifyContent: 'center',
+            gap: '6px', flexWrap: 'wrap', alignItems: 'center'
+          }}>
+            <span>🔒 Pago seguro</span>
+            <span style={{ opacity: 0.3 }}>•</span>
+            <span>⚡ Descarga instantanea</span>
+            <span style={{ opacity: 0.3 }}>•</span>
+            <span>🎵 Cancion completa ~3 min</span>
+          </p>
         </div>
 
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
