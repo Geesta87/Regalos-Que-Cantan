@@ -1196,8 +1196,11 @@ export default function SuccessPage() {
                     <h3 style={{ fontSize: '26px', fontWeight: '900', marginBottom: '8px', color: isLight ? '#4c1d95' : '#e9d5ff', lineHeight: 1.15, letterSpacing: '-0.03em' }}>
                       Ya tienes la canción... ahora hazla inolvidable
                     </h3>
-                    <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                    <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.5', margin: '0 0 10px' }}>
                       Convierte su canción en un video con sus fotos favoritas. El regalo que los hará llorar de emoción 🥹
+                    </p>
+                    <p style={{ fontSize: '12px', color: '#a78bfa', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '14px' }}>💜</span> Ya 2,400+ familias han creado su video personalizado
                     </p>
                   </div>
                 </div>
@@ -1205,7 +1208,7 @@ export default function SuccessPage() {
                 {/* Video preview mockup — Ken Burns style demo */}
                 <div style={{
                   position: 'relative', borderRadius: '16px', overflow: 'hidden',
-                  marginBottom: '18px', aspectRatio: '16/9',
+                  marginBottom: '24px', aspectRatio: '16/9',
                   border: `2px solid rgba(139,92,246,0.3)`,
                   boxShadow: '0 8px 32px rgba(124,58,237,0.25)',
                   background: '#0a0015',
@@ -1289,7 +1292,7 @@ export default function SuccessPage() {
                 </div>
 
                 {/* How it works — 2 easy steps */}
-                <div style={{ marginBottom: '18px' }}>
+                <div style={{ marginBottom: '24px' }}>
                   <p style={{ fontSize: '11px', fontWeight: '700', color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px', textAlign: 'center' }}>Así de fácil</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
                     {/* Step 1 */}
@@ -1334,7 +1337,7 @@ export default function SuccessPage() {
                 {/* Song selector for combo purchases */}
                 {songs.length > 1 && !videoOrder && (
                   <div style={{
-                    marginBottom: '14px', padding: '12px 14px', borderRadius: '12px',
+                    marginBottom: '20px', padding: '12px 14px', borderRadius: '12px',
                     background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
                     border: `1px solid ${isLight ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.2)'}`,
                   }}>
@@ -1379,34 +1382,11 @@ export default function SuccessPage() {
                   </div>
                 )}
 
-                {/* Feature 2x2 grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '18px' }}>
-                  {[
-                    { icon: '📸', label: 'Hasta 15 fotos', sub: 'Tuyas y personales' },
-                    { icon: '🎵', label: 'Tu canción', sub: 'La que acabas de crear' },
-                    { icon: '🎞️', label: 'Video cinematográfico', sub: 'Calidad profesional' },
-                    { icon: '💾', label: 'Descarga MP4', sub: 'Lista en minutos' },
-                  ].map((f, i) => (
-                    <div key={i} style={{
-                      padding: '11px 12px', borderRadius: '12px',
-                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.08)',
-                      border: `1px solid ${isLight ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.15)'}`,
-                      display: 'flex', gap: '9px', alignItems: 'center',
-                    }}>
-                      <span style={{ fontSize: '20px', lineHeight: 1, flexShrink: 0 }}>{f.icon}</span>
-                      <div>
-                        <p style={{ fontSize: '12px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 1px', lineHeight: 1 }}>{f.label}</p>
-                        <p style={{ fontSize: '11px', color: ts.textSecondary, margin: 0, lineHeight: 1.3 }}>{f.sub}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
                 {/* Price strip — deal pricing */}
                 <div style={{
                   background: isLight ? 'linear-gradient(135deg, rgba(109,40,217,0.08), rgba(79,70,229,0.04))' : 'linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.08))',
                   border: '1px solid rgba(139,92,246,0.25)',
-                  borderRadius: '16px', padding: '16px 18px', marginBottom: '14px',
+                  borderRadius: '16px', padding: '16px 18px', marginBottom: '20px',
                   position: 'relative', overflow: 'hidden',
                 }}>
                   {/* Sale badge */}
@@ -1426,6 +1406,7 @@ export default function SuccessPage() {
                         <span style={{ fontSize: '12px', color: ts.textSecondary }}>USD</span>
                       </div>
                       <p style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', margin: '4px 0 0' }}>Ahorras $20 — 67% de descuento</p>
+                      <p style={{ fontSize: '10px', color: '#facc15', fontWeight: '700', margin: '6px 0 0', letterSpacing: '0.05em' }}>⏳ Precio de lanzamiento — por tiempo limitado</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       {['✓ Sin suscripción', '✓ Descarga inmediata', '✓ Tuyo para siempre'].map((t, i) => (
@@ -1454,7 +1435,7 @@ export default function SuccessPage() {
                   ) : (
                     <>
                       <span style={{ fontSize: '20px' }}>🎬</span>
-                      <span>Crear mi video — <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '14px' }}>$29.99</span> $9.99</span>
+                      <span>Quiero sorprenderlo con un video — <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '14px' }}>$29.99</span> $9.99</span>
                       <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
                     </>
                   )}
