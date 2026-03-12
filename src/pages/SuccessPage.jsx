@@ -1267,15 +1267,15 @@ export default function SuccessPage() {
                     @keyframes noteFloat { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
                   `}</style>
 
-                  {/* Real people: couples, hugging, birthday, celebrating, anniversary */}
+                  {/* Emotional: couples, family, hugging, celebrations */}
                   {[
-                    'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1529634597503-139d3726fed5?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1559070169-a3077159ee16?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=600&h=340&fit=crop',
                     'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1474552226712-ac0f0961a954?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1488116593952-937c38246bbe?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1606216794079-73f85bbd57d5?w=600&h=340&fit=crop',
-                    'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=600&h=340&fit=crop',
+                    'https://images.unsplash.com/photo-1596560548464-f010549b84d7?w=600&h=340&fit=crop',
                   ].map((src, i) => (
                     <img key={i} src={src} alt="" style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
