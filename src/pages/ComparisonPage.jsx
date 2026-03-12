@@ -1440,27 +1440,46 @@ export default function ComparisonPage() {
           marginBottom: '24px',
           animation: 'fadeInUp 0.6s ease-out',
         }}>
-          {/* Headline - above everything, centered, elegant */}
-          <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-            <p style={{
-              fontSize: '11px', fontWeight: '700', color: '#a78bfa',
-              textTransform: 'uppercase', letterSpacing: '0.15em',
-              margin: '0 0 6px',
+          {/* Headline - above everything, centered, elegant Playfair Display */}
+          <div style={{ textAlign: 'center', marginBottom: '16px', position: 'relative' }}>
+            <style>{`
+              @keyframes headlineGlow {
+                0%, 100% { text-shadow: 0 0 20px rgba(168,85,247,0.3), 0 2px 10px rgba(0,0,0,0.5); }
+                50% { text-shadow: 0 0 30px rgba(168,85,247,0.5), 0 0 60px rgba(139,92,246,0.2), 0 2px 10px rgba(0,0,0,0.5); }
+              }
+              @keyframes sparkle {
+                0%, 100% { opacity: 0.4; transform: scale(1); }
+                50% { opacity: 1; transform: scale(1.3); }
+              }
+            `}</style>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              background: 'linear-gradient(90deg, rgba(139,92,246,0.15), rgba(168,85,247,0.08))',
+              border: '1px solid rgba(139,92,246,0.2)',
+              padding: '4px 14px', borderRadius: '20px',
+              marginBottom: '10px',
             }}>
-              Complemento exclusivo
-            </p>
+              <span style={{ fontSize: '12px', animation: 'sparkle 2s ease-in-out infinite' }}>✨</span>
+              <span style={{
+                fontSize: '11px', fontWeight: '700', color: '#c4b5fd',
+                textTransform: 'uppercase', letterSpacing: '0.12em',
+              }}>Complemento Exclusivo</span>
+              <span style={{ fontSize: '12px', animation: 'sparkle 2s ease-in-out 1s infinite' }}>✨</span>
+            </div>
             <h3 style={{
-              fontSize: '24px', fontWeight: '800', color: 'white',
-              margin: '0 0 4px', lineHeight: 1.15,
-              letterSpacing: '-0.03em',
-              background: 'linear-gradient(135deg, #e9d5ff 0%, #c4b5fd 40%, #f9a8d4 100%)',
+              fontFamily: "'Playfair Display', Georgia, serif",
+              fontSize: '28px', fontWeight: '900', fontStyle: 'italic',
+              margin: '0 0 6px', lineHeight: 1.1,
+              letterSpacing: '-0.01em',
+              background: 'linear-gradient(135deg, #ffffff 0%, #e9d5ff 30%, #c4b5fd 60%, #f9a8d4 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              animation: 'headlineGlow 3s ease-in-out infinite',
             }}>
               Hazla llorar de emocion
             </h3>
             <p style={{
               fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0,
-              fontStyle: 'italic',
+              letterSpacing: '0.01em',
             }}>
               Un video cinematografico con sus fotos y tu cancion
             </p>
@@ -1569,53 +1588,46 @@ export default function ComparisonPage() {
               </div>
             </div>
 
-            {/* Premium toggle bar */}
+            {/* Toggle + context section */}
             <div style={{
-              padding: '16px 18px',
+              padding: '16px 18px 14px',
               background: addVideo
                 ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(168,85,247,0.06))'
                 : 'transparent',
               transition: 'background 0.3s',
             }}>
+              {/* Top row: title + toggle + price */}
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: '12px',
+                marginBottom: '14px',
               }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    marginBottom: '6px',
-                  }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    padding: '5px 9px', borderRadius: '10px',
+                    fontSize: '15px',
+                  }}>🎬</span>
+                  <div>
                     <span style={{
-                      background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-                      padding: '4px 8px', borderRadius: '8px',
-                      fontSize: '13px',
-                    }}>🎬</span>
-                    <span style={{
-                      color: 'white', fontSize: '16px', fontWeight: '800',
+                      color: 'white', fontSize: '17px', fontWeight: '800',
                       letterSpacing: '-0.01em',
                     }}>
                       Agregar Video Musical
                     </span>
-                  </div>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    flexWrap: 'wrap',
-                  }}>
-                    <span style={{
-                      fontSize: '11px', color: '#34d399', fontWeight: '700',
-                      background: 'rgba(52,211,153,0.1)',
-                      padding: '2px 8px', borderRadius: '20px',
-                      border: '1px solid rgba(52,211,153,0.2)',
-                    }}>
-                      OFERTA -20%
-                    </span>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
-                      2,400+ familias lo agregaron
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                      <span style={{
+                        fontSize: '10px', color: '#34d399', fontWeight: '700',
+                        background: 'rgba(52,211,153,0.1)',
+                        padding: '1px 7px', borderRadius: '20px',
+                        border: '1px solid rgba(52,211,153,0.2)',
+                      }}>AHORRA 20%</span>
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)' }}>
+                        2,400+ familias
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{
                       color: '#a855f7', fontSize: '20px', fontWeight: '900',
@@ -1651,55 +1663,78 @@ export default function ComparisonPage() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Expanded details when toggled on */}
-            {addVideo && (
+              {/* Divider */}
               <div style={{
-                padding: '0 18px 16px',
-                animation: 'fadeInUp 0.3s ease-out',
+                height: '1px', background: 'linear-gradient(90deg, transparent, rgba(139,92,246,0.25), transparent)',
+                marginBottom: '14px',
+              }} />
+
+              {/* Easy 2-step process */}
+              <div style={{
+                display: 'flex', alignItems: 'stretch', gap: '8px',
+                marginBottom: '14px',
               }}>
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0',
+                  flex: 1, padding: '10px 12px', borderRadius: '12px',
+                  background: 'rgba(139,92,246,0.08)',
+                  border: '1px solid rgba(139,92,246,0.12)',
+                  textAlign: 'center',
                 }}>
-                  {/* Step 1 */}
                   <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '10px 12px', borderRadius: '12px',
-                    background: 'rgba(139,92,246,0.1)',
-                  }}>
-                    <div style={{
-                      width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '15px',
-                    }}>📸</div>
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube fotos</p>
-                      <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>3-15 momentos</p>
-                    </div>
-                  </div>
-                  <div style={{ padding: '0 4px', fontSize: '14px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
-                  {/* Step 2 */}
+                    width: '36px', height: '36px', borderRadius: '50%', margin: '0 auto 6px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '16px',
+                  }}>📸</div>
+                  <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: '0 0 2px' }}>Paso 1: Sube fotos</p>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Hasta 15 fotos favoritas</p>
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  fontSize: '16px', color: '#7c3aed', fontWeight: '900',
+                }}>→</div>
+                <div style={{
+                  flex: 1, padding: '10px 12px', borderRadius: '12px',
+                  background: 'rgba(139,92,246,0.08)',
+                  border: '1px solid rgba(139,92,246,0.12)',
+                  textAlign: 'center',
+                }}>
                   <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '10px 12px', borderRadius: '12px',
-                    background: 'rgba(139,92,246,0.1)',
-                  }}>
-                    <div style={{
-                      width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '15px',
-                    }}>✨</div>
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe video</p>
-                      <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>En minutos</p>
-                    </div>
-                  </div>
+                    width: '36px', height: '36px', borderRadius: '50%', margin: '0 auto 6px',
+                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '16px',
+                  }}>🎬</div>
+                  <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: '0 0 2px' }}>Paso 2: Recibe video</p>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Listo en minutos</p>
                 </div>
               </div>
-            )}
+
+              {/* Feature pills */}
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '6px',
+                justifyContent: 'center',
+              }}>
+                {[
+                  { icon: '🎵', text: 'Tu cancion de fondo' },
+                  { icon: '📱', text: 'HD 1080p' },
+                  { icon: '⬇️', text: 'Descarga instantanea' },
+                  { icon: '💜', text: 'Transiciones cinematicas' },
+                ].map((f, i) => (
+                  <span key={i} style={{
+                    fontSize: '10px', color: 'rgba(255,255,255,0.55)',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    padding: '3px 10px', borderRadius: '20px',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    <span style={{ fontSize: '11px' }}>{f.icon}</span> {f.text}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
