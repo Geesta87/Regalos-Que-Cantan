@@ -93,7 +93,31 @@ export default function ComparisonPage() {
 
   // WhatsApp phone state
   const [whatsappPhone, setWhatsappPhone] = useState('');
-  
+  const whatsappSaveTimer = useRef(null);
+
+  // Auto-save WhatsApp phone to DB when user types a valid number (10+ digits)
+  useEffect(() => {
+    const cleanPhone = whatsappPhone.replace(/\D/g, '');
+    if (cleanPhone.length >= 10 && songs?.length > 0) {
+      // Debounce: wait 1 second after user stops typing
+      clearTimeout(whatsappSaveTimer.current);
+      whatsappSaveTimer.current = setTimeout(async () => {
+        try {
+          for (const song of songs) {
+            await supabase
+              .from('songs')
+              .update({ whatsapp_phone: cleanPhone })
+              .eq('id', song.id);
+          }
+          localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
+        } catch (err) {
+          // Silent fail — phone will still be saved at checkout as backup
+        }
+      }, 1000);
+    }
+    return () => clearTimeout(whatsappSaveTimer.current);
+  }, [whatsappPhone, songs]);
+
   // Checkout state
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   
@@ -533,16 +557,19 @@ export default function ComparisonPage() {
         couponCode: codeToSend
       }));
 
-      // Save WhatsApp phone if provided
+      // Save WhatsApp phone if provided (uses RPC to bypass RLS)
       const cleanPhone = whatsappPhone.replace(/\D/g, '');
       if (cleanPhone) {
         localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
         try {
           for (const songId of songIdsToCheckout) {
-            await supabase
-              .from('songs')
-              .update({ whatsapp_phone: cleanPhone })
-              .eq('id', songId);
+            const { error: rpcErr } = await supabase.rpc('save_whatsapp_phone', {
+              song_id: songId,
+              phone: cleanPhone
+            });
+            if (rpcErr && import.meta.env.DEV) {
+              console.warn('Could not save WhatsApp phone for song:', songId, rpcErr);
+            }
           }
         } catch (phoneErr) {
           if (import.meta.env.DEV) console.warn('Could not save WhatsApp phone:', phoneErr);
