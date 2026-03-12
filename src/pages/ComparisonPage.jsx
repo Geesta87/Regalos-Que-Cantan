@@ -1436,226 +1436,271 @@ export default function ComparisonPage() {
         </div>
 
         {/* ===== VIDEO ADD-ON UPSELL ===== */}
-        <div
-          onClick={() => setAddVideo(!addVideo)}
-          style={{
-            borderRadius: '20px',
-            padding: addVideo ? '0' : '0',
-            border: addVideo
-              ? '2px solid rgba(139,92,246,0.5)'
-              : '2px solid rgba(255,255,255,0.1)',
-            marginBottom: '24px',
-            background: addVideo
-              ? 'linear-gradient(160deg, rgba(109,40,217,0.18) 0%, rgba(79,70,229,0.08) 50%, rgba(0,0,0,0) 100%)'
-              : 'rgba(255,255,255,0.03)',
-            cursor: 'pointer',
-            transition: 'all 0.4s ease',
-            overflow: 'hidden',
-            position: 'relative',
-            boxShadow: addVideo ? '0 8px 40px rgba(109,40,217,0.2)' : 'none',
-            animation: 'fadeInUp 0.6s ease-out',
-          }}
-        >
-          {/* Shimmer top border when active */}
-          {addVideo && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
-              background: 'linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, #8b5cf6, transparent)',
-              backgroundSize: '200% 100%',
-              animation: 'shimmer 3s linear infinite',
-            }} />
-          )}
+        <div style={{
+          marginBottom: '24px',
+          animation: 'fadeInUp 0.6s ease-out',
+        }}>
+          {/* Headline - above everything, centered, elegant */}
+          <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+            <p style={{
+              fontSize: '11px', fontWeight: '700', color: '#a78bfa',
+              textTransform: 'uppercase', letterSpacing: '0.15em',
+              margin: '0 0 6px',
+            }}>
+              Complemento exclusivo
+            </p>
+            <h3 style={{
+              fontSize: '24px', fontWeight: '800', color: 'white',
+              margin: '0 0 4px', lineHeight: 1.15,
+              letterSpacing: '-0.03em',
+              background: 'linear-gradient(135deg, #e9d5ff 0%, #c4b5fd 40%, #f9a8d4 100%)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>
+              Hazla llorar de emocion
+            </h3>
+            <p style={{
+              fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0,
+              fontStyle: 'italic',
+            }}>
+              Un video cinematografico con sus fotos y tu cancion
+            </p>
+          </div>
 
-          {/* Ken Burns slideshow preview */}
-          <div style={{
-            position: 'relative', overflow: 'hidden',
-            aspectRatio: '16/9',
-            background: '#0a0015',
-            borderRadius: addVideo ? '18px 18px 0 0' : '18px',
-            transition: 'border-radius 0.3s',
-          }}>
-            <style>{`
-              @keyframes kb1v { 0%{transform:scale(1) translate(0,0);opacity:1} 20%{transform:scale(1.12) translate(-2%,1%);opacity:1} 22%{opacity:0} 100%{opacity:0} }
-              @keyframes kb2v { 0%{opacity:0} 20%{opacity:0} 22%{transform:scale(1.08) translate(2%,-1%);opacity:1} 42%{transform:scale(1.2) translate(-1%,2%);opacity:1} 44%{opacity:0} 100%{opacity:0} }
-              @keyframes kb3v { 0%{opacity:0} 42%{opacity:0} 44%{transform:scale(1) translate(-1%,0);opacity:1} 64%{transform:scale(1.15) translate(2%,-2%);opacity:1} 66%{opacity:0} 100%{opacity:0} }
-              @keyframes kb4v { 0%{opacity:0} 64%{opacity:0} 66%{transform:scale(1.05) translate(0,1%);opacity:1} 86%{transform:scale(1.18) translate(-3%,2%);opacity:1} 88%{opacity:0} 100%{opacity:0} }
-              @keyframes kb5v { 0%{opacity:0} 86%{opacity:0} 88%{transform:scale(1) translate(1%,0);opacity:1} 98%{transform:scale(1.14) translate(-2%,-1%);opacity:1} 100%{opacity:0} }
-              @keyframes progressV { 0%{width:0%} 100%{width:100%} }
-              @keyframes noteV { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
-            `}</style>
-
-            {[
-              'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
-              'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
-              'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&h=340&fit=crop',
-              'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
-              'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&h=340&fit=crop',
-            ].map((src, i) => (
-              <img key={i} src={src} alt="" style={{
-                position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
-                animation: `kb${i + 1}v 20s ease-in-out infinite`,
-                opacity: i === 0 ? 1 : 0,
+          {/* Clickable card */}
+          <div
+            onClick={() => setAddVideo(!addVideo)}
+            style={{
+              borderRadius: '20px',
+              border: addVideo
+                ? '2px solid rgba(139,92,246,0.5)'
+                : '2px solid rgba(255,255,255,0.08)',
+              background: addVideo
+                ? 'linear-gradient(160deg, rgba(109,40,217,0.18) 0%, rgba(79,70,229,0.08) 50%, rgba(0,0,0,0) 100%)'
+                : 'rgba(255,255,255,0.03)',
+              cursor: 'pointer',
+              transition: 'all 0.4s ease',
+              overflow: 'hidden',
+              position: 'relative',
+              boxShadow: addVideo ? '0 8px 40px rgba(109,40,217,0.2)' : 'none',
+            }}
+          >
+            {/* Shimmer top border when active */}
+            {addVideo && (
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+                background: 'linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, #8b5cf6, transparent)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 3s linear infinite',
               }} />
-            ))}
+            )}
 
-            {/* Cinematic gradient overlay */}
+            {/* Ken Burns slideshow preview */}
             <div style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(180deg, rgba(10,0,21,0.1) 0%, rgba(10,0,21,0.5) 60%, rgba(10,0,21,0.85) 100%)',
-              pointerEvents: 'none',
-            }} />
-
-            {/* Floating music notes */}
-            <div style={{ position: 'absolute', top: '12px', right: '14px', display: 'flex', gap: '8px' }}>
-              {['🎵', '🎶'].map((n, i) => (
-                <span key={i} style={{
-                  fontSize: '16px', opacity: 0.7,
-                  animation: `noteV 2s ease-in-out ${i * 0.7}s infinite`,
-                }}>{n}</span>
-              ))}
-            </div>
-
-            {/* Play button overlay */}
-            <div style={{
-              position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%,-50%)',
-              width: '48px', height: '48px', borderRadius: '50%',
-              background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              position: 'relative', overflow: 'hidden',
+              aspectRatio: '16/9',
+              background: '#0a0015',
+              borderRadius: '18px 18px 0 0',
             }}>
-              <span style={{ fontSize: '20px', marginLeft: '3px', color: 'white' }}>▶</span>
-            </div>
+              <style>{`
+                @keyframes kb1v { 0%{transform:scale(1) translate(0,0);opacity:1} 20%{transform:scale(1.12) translate(-2%,1%);opacity:1} 22%{opacity:0} 100%{opacity:0} }
+                @keyframes kb2v { 0%{opacity:0} 20%{opacity:0} 22%{transform:scale(1.08) translate(2%,-1%);opacity:1} 42%{transform:scale(1.2) translate(-1%,2%);opacity:1} 44%{opacity:0} 100%{opacity:0} }
+                @keyframes kb3v { 0%{opacity:0} 42%{opacity:0} 44%{transform:scale(1) translate(-1%,0);opacity:1} 64%{transform:scale(1.15) translate(2%,-2%);opacity:1} 66%{opacity:0} 100%{opacity:0} }
+                @keyframes kb4v { 0%{opacity:0} 64%{opacity:0} 66%{transform:scale(1.05) translate(0,1%);opacity:1} 86%{transform:scale(1.18) translate(-3%,2%);opacity:1} 88%{opacity:0} 100%{opacity:0} }
+                @keyframes kb5v { 0%{opacity:0} 86%{opacity:0} 88%{transform:scale(1) translate(1%,0);opacity:1} 98%{transform:scale(1.14) translate(-2%,-1%);opacity:1} 100%{opacity:0} }
+                @keyframes progressV { 0%{width:0%} 100%{width:100%} }
+                @keyframes noteV { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
+                @keyframes pulseGlow { 0%{box-shadow:0 0 0 0 rgba(124,58,237,0.4)} 70%{box-shadow:0 0 0 10px rgba(124,58,237,0)} 100%{box-shadow:0 0 0 0 rgba(124,58,237,0)} }
+              `}</style>
 
-            {/* Bottom content overlay */}
-            <div style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              padding: '16px 18px 14px',
-            }}>
-              <h3 style={{
-                fontSize: '20px', fontWeight: '900', color: '#e9d5ff',
-                margin: '0 0 4px', lineHeight: 1.2, letterSpacing: '-0.02em',
-                textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-              }}>
-                Hazla llorar de emocion
-              </h3>
-              <p style={{
-                fontSize: '12px', color: 'rgba(196,181,253,0.8)', margin: 0,
-                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-              }}>
-                Video cinematografico con sus fotos + tu cancion
-              </p>
-            </div>
-
-            {/* Progress bar */}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'rgba(124,58,237,0.2)' }}>
-              <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressV 20s linear infinite' }} />
-            </div>
-
-            {/* HD badge */}
-            <div style={{
-              position: 'absolute', top: '12px', left: '14px',
-              fontSize: '10px', color: '#a78bfa', fontWeight: 600,
-              background: 'rgba(124,58,237,0.3)', backdropFilter: 'blur(4px)',
-              padding: '3px 8px', borderRadius: '6px',
-            }}>HD 1080p</div>
-          </div>
-
-          {/* Toggle bar below preview */}
-          <div style={{
-            padding: '14px 18px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: '12px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-              <span style={{ fontSize: '22px' }}>🎬</span>
-              <div>
-                <div style={{ color: 'white', fontSize: '14px', fontWeight: '700', lineHeight: 1.3 }}>
-                  Agregar Video Musical
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '1px' }}>
-                  2,400+ familias ya lo tienen
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: '#a855f7', fontSize: '17px', fontWeight: '800' }}>+$7.99</div>
-                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', textDecoration: 'line-through' }}>$9.99</div>
-              </div>
-              {/* Toggle switch */}
-              <div style={{
-                width: '48px', height: '26px',
-                borderRadius: '13px',
-                background: addVideo
-                  ? 'linear-gradient(90deg, #7c3aed, #a855f7)'
-                  : 'rgba(255,255,255,0.15)',
-                position: 'relative',
-                transition: 'background 0.3s ease',
-                flexShrink: 0,
-                boxShadow: addVideo ? '0 0 12px rgba(124,58,237,0.4)' : 'none',
-              }}>
-                <div style={{
-                  width: '22px', height: '22px',
-                  borderRadius: '50%',
-                  background: 'white',
-                  position: 'absolute',
-                  top: '2px',
-                  left: addVideo ? '24px' : '2px',
-                  transition: 'left 0.3s ease',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              {[
+                'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
+                'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
+                'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&h=340&fit=crop',
+                'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
+                'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&h=340&fit=crop',
+              ].map((src, i) => (
+                <img key={i} src={src} alt="" style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                  animation: `kb${i + 1}v 20s ease-in-out infinite`,
+                  opacity: i === 0 ? 1 : 0,
                 }} />
+              ))}
+
+              {/* Cinematic gradient overlay */}
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'linear-gradient(180deg, rgba(10,0,21,0.15) 0%, rgba(10,0,21,0.6) 70%, rgba(10,0,21,0.9) 100%)',
+                pointerEvents: 'none',
+              }} />
+
+              {/* Floating music notes */}
+              <div style={{ position: 'absolute', top: '12px', right: '14px', display: 'flex', gap: '8px' }}>
+                {['🎵', '🎶'].map((n, i) => (
+                  <span key={i} style={{
+                    fontSize: '16px', opacity: 0.7,
+                    animation: `noteV 2s ease-in-out ${i * 0.7}s infinite`,
+                  }}>{n}</span>
+                ))}
+              </div>
+
+              {/* Play button overlay */}
+              <div style={{
+                position: 'absolute', top: '42%', left: '50%', transform: 'translate(-50%,-50%)',
+                width: '52px', height: '52px', borderRadius: '50%',
+                background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+                animation: 'pulseGlow 2s ease-in-out infinite',
+              }}>
+                <span style={{ fontSize: '22px', marginLeft: '3px', color: 'white' }}>▶</span>
+              </div>
+
+              {/* HD badge */}
+              <div style={{
+                position: 'absolute', top: '12px', left: '14px',
+                fontSize: '10px', color: '#a78bfa', fontWeight: 600,
+                background: 'rgba(124,58,237,0.3)', backdropFilter: 'blur(4px)',
+                padding: '3px 8px', borderRadius: '6px',
+              }}>HD 1080p</div>
+
+              {/* Progress bar */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '2px', background: 'rgba(124,58,237,0.2)' }}>
+                <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressV 20s linear infinite' }} />
               </div>
             </div>
-          </div>
 
-          {/* Expanded details when toggled on */}
-          {addVideo && (
+            {/* Premium toggle bar */}
             <div style={{
-              padding: '0 18px 16px',
-              animation: 'fadeInUp 0.3s ease-out',
+              padding: '16px 18px',
+              background: addVideo
+                ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(168,85,247,0.06))'
+                : 'transparent',
+              transition: 'background 0.3s',
             }}>
               <div style={{
-                display: 'flex', alignItems: 'center', gap: '0',
-                padding: '0',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: '12px',
               }}>
-                {/* Step 1 */}
-                <div style={{
-                  flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '10px 12px', borderRadius: '12px',
-                  background: 'rgba(139,92,246,0.1)',
-                }}>
+                <div style={{ flex: 1 }}>
                   <div style={{
-                    width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '15px',
-                  }}>📸</div>
-                  <div>
-                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube fotos</p>
-                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>3-15 momentos</p>
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    marginBottom: '6px',
+                  }}>
+                    <span style={{
+                      background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                      padding: '4px 8px', borderRadius: '8px',
+                      fontSize: '13px',
+                    }}>🎬</span>
+                    <span style={{
+                      color: 'white', fontSize: '16px', fontWeight: '800',
+                      letterSpacing: '-0.01em',
+                    }}>
+                      Agregar Video Musical
+                    </span>
+                  </div>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    flexWrap: 'wrap',
+                  }}>
+                    <span style={{
+                      fontSize: '11px', color: '#34d399', fontWeight: '700',
+                      background: 'rgba(52,211,153,0.1)',
+                      padding: '2px 8px', borderRadius: '20px',
+                      border: '1px solid rgba(52,211,153,0.2)',
+                    }}>
+                      OFERTA -20%
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+                      2,400+ familias lo agregaron
+                    </span>
                   </div>
                 </div>
-                <div style={{ padding: '0 4px', fontSize: '14px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
-                {/* Step 2 */}
-                <div style={{
-                  flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '10px 12px', borderRadius: '12px',
-                  background: 'rgba(139,92,246,0.1)',
-                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{
+                      color: '#a855f7', fontSize: '20px', fontWeight: '900',
+                      lineHeight: 1,
+                    }}>+$7.99</div>
+                    <div style={{
+                      color: 'rgba(255,255,255,0.3)', fontSize: '12px',
+                      textDecoration: 'line-through',
+                    }}>$9.99</div>
+                  </div>
+                  {/* Toggle switch */}
                   <div style={{
-                    width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '15px',
-                  }}>✨</div>
-                  <div>
-                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe video</p>
-                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>En minutos</p>
+                    width: '52px', height: '28px',
+                    borderRadius: '14px',
+                    background: addVideo
+                      ? 'linear-gradient(90deg, #7c3aed, #a855f7)'
+                      : 'rgba(255,255,255,0.15)',
+                    position: 'relative',
+                    transition: 'all 0.3s ease',
+                    flexShrink: 0,
+                    boxShadow: addVideo ? '0 0 16px rgba(124,58,237,0.5)' : 'none',
+                  }}>
+                    <div style={{
+                      width: '24px', height: '24px',
+                      borderRadius: '50%',
+                      background: 'white',
+                      position: 'absolute',
+                      top: '2px',
+                      left: addVideo ? '26px' : '2px',
+                      transition: 'left 0.3s ease',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                    }} />
                   </div>
                 </div>
               </div>
             </div>
-          )}
+
+            {/* Expanded details when toggled on */}
+            {addVideo && (
+              <div style={{
+                padding: '0 18px 16px',
+                animation: 'fadeInUp 0.3s ease-out',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0',
+                }}>
+                  {/* Step 1 */}
+                  <div style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '10px 12px', borderRadius: '12px',
+                    background: 'rgba(139,92,246,0.1)',
+                  }}>
+                    <div style={{
+                      width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '15px',
+                    }}>📸</div>
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube fotos</p>
+                      <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>3-15 momentos</p>
+                    </div>
+                  </div>
+                  <div style={{ padding: '0 4px', fontSize: '14px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
+                  {/* Step 2 */}
+                  <div style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '10px 12px', borderRadius: '12px',
+                    background: 'rgba(139,92,246,0.1)',
+                  }}>
+                    <div style={{
+                      width: '32px', height: '32px', minWidth: '32px', borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '15px',
+                    }}>✨</div>
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: '700', color: '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe video</p>
+                      <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', margin: '1px 0 0' }}>En minutos</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Actual Checkout Section */}
