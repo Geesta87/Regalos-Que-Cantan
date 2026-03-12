@@ -281,6 +281,7 @@ export default function SuccessPage() {
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [videoPurchasing, setVideoPurchasing] = useState(false);
+  const [selectedVideoSongIdx, setSelectedVideoSongIdx] = useState(0);
   const videoPhotoInputRef = useRef(null);
   const videoPollingRef = useRef(null);
 
@@ -532,7 +533,7 @@ export default function SuccessPage() {
   useEffect(() => {
     if (hasFiredVideoCheck.current) return;
     if (!songs.length) return;
-    const songId = songs[0]?.id;
+    const songId = songs[selectedVideoSongIdx]?.id;
     if (!songId) return;
     hasFiredVideoCheck.current = true;
 
@@ -587,7 +588,8 @@ export default function SuccessPage() {
     setVideoPurchasing(true);
     setVideoError(null);
     try {
-      const res = await createVideoCheckout(songs[0].id, songs[0].email || '');
+      const selectedSong = songs[selectedVideoSongIdx];
+      const res = await createVideoCheckout(selectedSong.id, selectedSong.email || '');
       if (res?.url) {
         window.location.href = res.url;
       } else {
@@ -695,7 +697,7 @@ export default function SuccessPage() {
       setVideoOrder(prev => ({ ...prev, status: 'processing' }));
 
       // Start polling
-      startVideoPolling(songs[0].id);
+      startVideoPolling(songs[selectedVideoSongIdx].id);
 
     } catch (err) {
       console.error('Video generation error:', err);
@@ -1191,11 +1193,11 @@ export default function SuccessPage() {
                     flexShrink: 0,
                   }}>🎬</div>
                   <div>
-                    <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-                      Hazlo llorar de emoción 🥹
+                    <h3 style={{ fontSize: '26px', fontWeight: '900', marginBottom: '8px', color: isLight ? '#4c1d95' : '#e9d5ff', lineHeight: 1.15, letterSpacing: '-0.03em' }}>
+                      Ya tienes la canción... ahora hazla inolvidable
                     </h3>
-                    <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
-                      Imagina su cara al ver sus fotos juntos con esta canción de fondo
+                    <p style={{ fontSize: '14px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
+                      Convierte su canción en un video con sus fotos favoritas. El regalo que los hará llorar de emoción 🥹
                     </p>
                   </div>
                 </div>
@@ -1286,6 +1288,97 @@ export default function SuccessPage() {
                   </div>
                 </div>
 
+                {/* How it works — 2 easy steps */}
+                <div style={{ marginBottom: '18px' }}>
+                  <p style={{ fontSize: '11px', fontWeight: '700', color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px', textAlign: 'center' }}>Así de fácil</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                    {/* Step 1 */}
+                    <div style={{
+                      flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '12px 14px', borderRadius: '14px',
+                      background: isLight ? 'rgba(139,92,246,0.07)' : 'rgba(139,92,246,0.1)',
+                    }}>
+                      <div style={{
+                        width: '38px', height: '38px', minWidth: '38px', borderRadius: '12px',
+                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '18px', boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
+                      }}>📸</div>
+                      <div>
+                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#4c1d95' : '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Sube tus fotos</p>
+                        <p style={{ fontSize: '11px', color: ts.textSecondary, margin: '2px 0 0', lineHeight: 1.3 }}>Los momentos especiales</p>
+                      </div>
+                    </div>
+                    {/* Arrow connector */}
+                    <div style={{ padding: '0 6px', fontSize: '16px', color: '#7c3aed', fontWeight: '900', flexShrink: 0 }}>→</div>
+                    {/* Step 2 */}
+                    <div style={{
+                      flex: 1, display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '12px 14px', borderRadius: '14px',
+                      background: isLight ? 'rgba(139,92,246,0.07)' : 'rgba(139,92,246,0.1)',
+                    }}>
+                      <div style={{
+                        width: '38px', height: '38px', minWidth: '38px', borderRadius: '12px',
+                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '18px', boxShadow: '0 4px 12px rgba(124,58,237,0.35)',
+                      }}>✨</div>
+                      <div>
+                        <p style={{ fontSize: '13px', fontWeight: '800', color: isLight ? '#4c1d95' : '#e9d5ff', margin: 0, lineHeight: 1.2 }}>Recibe tu video</p>
+                        <p style={{ fontSize: '11px', color: ts.textSecondary, margin: '2px 0 0', lineHeight: 1.3 }}>Canción + fotos = magia</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Song selector for combo purchases */}
+                {songs.length > 1 && !videoOrder && (
+                  <div style={{
+                    marginBottom: '14px', padding: '12px 14px', borderRadius: '12px',
+                    background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
+                    border: `1px solid ${isLight ? 'rgba(139,92,246,0.15)' : 'rgba(139,92,246,0.2)'}`,
+                  }}>
+                    <p style={{ fontSize: '12px', fontWeight: '700', color: isLight ? '#4c1d95' : '#c4b5fd', margin: '0 0 8px' }}>
+                      🎵 ¿Para cuál canción quieres el video?
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {songs.map((song, i) => (
+                        <button key={song.id} onClick={() => setSelectedVideoSongIdx(i)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '10px 12px', borderRadius: '10px',
+                            background: selectedVideoSongIdx === i
+                              ? (isLight ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.2)')
+                              : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)'),
+                            border: selectedVideoSongIdx === i
+                              ? '2px solid rgba(124,58,237,0.5)'
+                              : `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'}`,
+                            cursor: 'pointer', fontFamily: ts.font, textAlign: 'left',
+                            transition: 'all 0.2s',
+                          }}>
+                          <span style={{
+                            width: '20px', height: '20px', borderRadius: '50%',
+                            border: selectedVideoSongIdx === i ? '2px solid #7c3aed' : `2px solid ${isLight ? '#ccc' : '#555'}`,
+                            background: selectedVideoSongIdx === i ? '#7c3aed' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            {selectedVideoSongIdx === i && <span style={{ color: 'white', fontSize: '11px' }}>✓</span>}
+                          </span>
+                          <div>
+                            <p style={{ fontSize: '13px', fontWeight: '700', color: ts.textPrimary, margin: 0 }}>
+                              {song.recipientName ? `Para ${song.recipientName}` : `Canción ${i + 1}`}
+                            </p>
+                            <p style={{ fontSize: '11px', color: ts.textSecondary, margin: 0 }}>
+                              {song.occasion || song.genre || 'Canción personalizada'}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Feature 2x2 grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '18px' }}>
                   {[
@@ -1309,24 +1402,36 @@ export default function SuccessPage() {
                   ))}
                 </div>
 
-                {/* Price strip */}
+                {/* Price strip — deal pricing */}
                 <div style={{
-                  background: isLight ? 'rgba(109,40,217,0.07)' : 'rgba(124,58,237,0.12)',
-                  border: '1px solid rgba(139,92,246,0.2)',
-                  borderRadius: '14px', padding: '14px 16px', marginBottom: '14px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: isLight ? 'linear-gradient(135deg, rgba(109,40,217,0.08), rgba(79,70,229,0.04))' : 'linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.08))',
+                  border: '1px solid rgba(139,92,246,0.25)',
+                  borderRadius: '16px', padding: '16px 18px', marginBottom: '14px',
+                  position: 'relative', overflow: 'hidden',
                 }}>
-                  <div>
-                    <p style={{ fontSize: '10px', color: '#a78bfa', margin: '0 0 2px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Un solo pago</p>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                      <span style={{ fontSize: '32px', fontWeight: '900', color: isLight ? '#6d28d9' : '#c4b5fd', lineHeight: 1 }}>$9.99</span>
-                      <span style={{ fontSize: '13px', color: ts.textSecondary }}>USD</span>
+                  {/* Sale badge */}
+                  <div style={{
+                    position: 'absolute', top: '10px', right: '-28px',
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    color: 'white', fontSize: '10px', fontWeight: '800',
+                    padding: '4px 32px', transform: 'rotate(35deg)',
+                    letterSpacing: '0.05em',
+                  }}>OFERTA</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <p style={{ fontSize: '10px', color: '#a78bfa', margin: '0 0 4px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Precio especial de lanzamiento</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '22px', fontWeight: '700', color: isLight ? '#999' : '#777', textDecoration: 'line-through', lineHeight: 1 }}>$29.99</span>
+                        <span style={{ fontSize: '36px', fontWeight: '900', color: isLight ? '#6d28d9' : '#c4b5fd', lineHeight: 1 }}>$9.99</span>
+                        <span style={{ fontSize: '12px', color: ts.textSecondary }}>USD</span>
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700', margin: '4px 0 0' }}>Ahorras $20 — 67% de descuento</p>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    {['✓ Sin suscripción', '✓ Descarga inmediata', '✓ Tuyo para siempre'].map((t, i) => (
-                      <p key={i} style={{ fontSize: '11px', color: '#a78bfa', margin: '0 0 3px', fontWeight: 600 }}>{t}</p>
-                    ))}
+                    <div style={{ textAlign: 'right' }}>
+                      {['✓ Sin suscripción', '✓ Descarga inmediata', '✓ Tuyo para siempre'].map((t, i) => (
+                        <p key={i} style={{ fontSize: '11px', color: '#a78bfa', margin: '0 0 3px', fontWeight: 600 }}>{t}</p>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1349,7 +1454,7 @@ export default function SuccessPage() {
                   ) : (
                     <>
                       <span style={{ fontSize: '20px' }}>🎬</span>
-                      <span>Sorpréndelo con un video — $9.99</span>
+                      <span>Crear mi video — <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '14px' }}>$29.99</span> $9.99</span>
                       <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
                     </>
                   )}
