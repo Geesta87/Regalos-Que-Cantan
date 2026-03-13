@@ -188,7 +188,7 @@ export default function GenreLanding({ genreSlug }) {
             <div className="max-w-3xl mx-auto">
               <div className="glass-morphism rounded-2xl p-8 text-center">
                 <h2 className="text-xl font-bold mb-2 font-display">🎧 Escucha un Ejemplo</h2>
-                <p className="text-white/50 text-sm mb-6">Preview de una canción de {genre.name} generada con IA</p>
+                <p className="text-white/50 text-sm mb-6">Preview de una canción de {genre.name} personalizada</p>
                 <audio
                   controls
                   className="w-full max-w-md mx-auto"
@@ -231,7 +231,7 @@ export default function GenreLanding({ genreSlug }) {
                 <div className="text-4xl mb-4">⚡</div>
                 <h3 className="font-bold text-white mb-2">Listo en Minutos</h3>
                 <p className="text-white/50 text-sm">
-                  Nuestra IA crea tu canción en 2-4 minutos. Descarga instantánea en MP3.
+                  Tu canción se crea en 2-4 minutos. Descarga instantánea en MP3.
                 </p>
               </div>
             </div>
@@ -393,7 +393,7 @@ export default function GenreLanding({ genreSlug }) {
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
           <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas con inteligencia artificial.</p>
+          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

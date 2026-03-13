@@ -199,7 +199,7 @@ export default function OcasionesHub() {
                 <span className="text-3xl">🎵</span>
                 <span className="font-bold text-lg text-white">RegalosQueCantan</span>
               </div>
-              <p className="text-sm text-white/30">Canciones personalizadas con inteligencia artificial para los momentos más especiales.</p>
+              <p className="text-sm text-white/30">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-white/50 uppercase text-xs tracking-widest">Navegación</h4>

@@ -24,8 +24,8 @@ const STEPS = [
   },
   {
     num: '4',
-    name: 'Nuestra IA Crea tu Canción',
-    text: 'En 2-4 minutos, nuestra inteligencia artificial compone la letra y genera la música. Recibes 2 versiones únicas con voces profesionales.',
+    name: 'Se Crea tu Canción',
+    text: 'En 2-4 minutos, se compone la letra y se genera la música. Recibes 2 versiones únicas con voces profesionales.',
     icon: '🤖'
   },
   {
@@ -51,8 +51,8 @@ export default function ComoFunciona() {
   ];
 
   const howToSchema = generateHowToStructuredData({
-    name: 'Cómo Crear una Canción Personalizada con IA en RegalosQueCantan',
-    description: 'Guía paso a paso para crear una canción personalizada con inteligencia artificial. Elige género, agrega detalles y recibe tu canción en minutos.',
+    name: 'Cómo Crear una Canción Personalizada en RegalosQueCantan',
+    description: 'Guía paso a paso para crear una canción personalizada. Elige género, agrega detalles y recibe tu canción en minutos.',
     steps: STEPS.map(s => ({ name: s.name, text: s.text })),
     totalTime: 'PT5M'
   });
@@ -65,10 +65,10 @@ export default function ComoFunciona() {
   return (
     <>
       <SEOHead
-        title="Cómo Funciona — Crea tu Canción Personalizada con IA"
-        description="Aprende cómo crear una canción personalizada con IA en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99."
+        title="Cómo Funciona — Crea tu Canción Personalizada"
+        description="Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99."
         canonical="/como-funciona"
-        keywords="cómo funciona regalos que cantan, crear canción con IA, canción personalizada pasos, tutorial canción IA"
+        keywords="cómo funciona regalos que cantan, crear canción personalizada, canción personalizada pasos, tutorial canción personalizada"
         structuredData={structuredData}
       />
 
@@ -97,7 +97,7 @@ export default function ComoFunciona() {
               ¿Cómo Funciona?
             </h1>
             <p className="text-xl text-white/60 mb-6 max-w-2xl mx-auto leading-relaxed">
-              Crea una canción personalizada con inteligencia artificial en 6 pasos simples. Sin conocimientos musicales necesarios.
+              Crea una canción personalizada en 6 pasos simples. Sin conocimientos musicales necesarios.
             </p>
             <p className="text-white/40">Listo en menos de 5 minutos • Desde $24.99</p>
           </div>
@@ -108,7 +108,7 @@ export default function ComoFunciona() {
           <div className="max-w-3xl mx-auto">
             <div className="glass-morphism rounded-2xl p-6 md:p-8 border border-white/10" style={{ borderLeftWidth: '4px', borderLeftColor: '#c9184a' }}>
               <p className="text-white/80 leading-relaxed text-lg">
-                RegalosQueCantan es un servicio que utiliza inteligencia artificial para crear canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nuestra IA compone la letra y genera la música en minutos. El resultado es una canción única que nadie más tendrá, lista para descargar y compartir desde $24.99.
+                RegalosQueCantan es un servicio que crea canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nosotros componemos la letra y generamos la música en minutos. El resultado es una canción única que nadie más tendrá, lista para descargar y compartir desde $24.99.
               </p>
             </div>
           </div>
@@ -201,7 +201,7 @@ export default function ComoFunciona() {
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
           <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas con inteligencia artificial.</p>
+          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

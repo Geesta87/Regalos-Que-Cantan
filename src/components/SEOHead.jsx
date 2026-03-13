@@ -26,11 +26,11 @@ export default function SEOHead({
   const baseUrl = 'https://regalosquecantan.com';
   const fullTitle = title 
     ? `${title} | RegalosQueCantan` 
-    : 'RegalosQueCantan - Canciones Personalizadas con IA';
+    : 'RegalosQueCantan - Canciones Personalizadas';
   const fullCanonical = canonical ? `${baseUrl}${canonical}` : baseUrl;
   const fullOgImage = ogImage.startsWith('http') ? ogImage : `${baseUrl}${ogImage}`;
   
-  const defaultDescription = 'Crea canciones personalizadas únicas con IA para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $24.99.';
+  const defaultDescription = 'Crea canciones personalizadas únicas para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $24.99.';
   const finalDescription = description || defaultDescription;
 
   return (
@@ -189,7 +189,7 @@ export function generateOrganizationData() {
     "name": "RegalosQueCantan",
     "url": "https://regalosquecantan.com",
     "logo": "https://regalosquecantan.com/images/logo.png",
-    "description": "Canciones personalizadas con inteligencia artificial para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros.",
+    "description": "Canciones personalizadas en géneros latinos para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros.",
     "foundingDate": "2024",
     "sameAs": [],
     "contactPoint": {

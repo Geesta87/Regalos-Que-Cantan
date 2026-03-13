@@ -22,7 +22,7 @@ export default function GenerosHub() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "name": "Géneros Musicales para Canciones Personalizadas",
-    "description": "Más de 20 géneros de música latina disponibles para crear canciones personalizadas con IA",
+    "description": "Más de 20 géneros de música latina disponibles para crear canciones personalizadas",
     "numberOfItems": allGenres.length,
     "itemListElement": allGenres.map((genre, index) => ({
       "@type": "ListItem",
@@ -148,7 +148,7 @@ export default function GenerosHub() {
                 <span className="text-3xl">🎵</span>
                 <span className="font-bold text-lg text-white">RegalosQueCantan</span>
               </div>
-              <p className="text-sm text-white/30">Canciones personalizadas con inteligencia artificial para los momentos más especiales.</p>
+              <p className="text-sm text-white/30">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
             </div>
             <div className="flex flex-col gap-4">
               <h4 className="font-bold text-white/50 uppercase text-xs tracking-widest">Navegación</h4>

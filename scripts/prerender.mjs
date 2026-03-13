@@ -136,14 +136,14 @@ function howToSchema() {
   return {
     "@context": "https://schema.org",
     "@type": "HowTo",
-    "name": "Cómo Crear una Canción Personalizada con IA",
+    "name": "Cómo Crear una Canción Personalizada",
     "description": "Guía paso a paso para crear tu canción personalizada con RegalosQueCantan.",
     "totalTime": "PT5M",
     "step": [
       { "@type": "HowToStep", "position": 1, "name": "Elige tu Género Musical", "text": "Escoge entre 20+ géneros latinos: corridos tumbados, cumbia, banda, mariachi, bachata, reggaeton, bolero y más." },
       { "@type": "HowToStep", "position": 2, "name": "Selecciona la Ocasión", "text": "Cumpleaños, Día de las Madres, aniversario, boda, quinceañera, graduación — elige la ocasión." },
       { "@type": "HowToStep", "position": 3, "name": "Agrega los Detalles Personales", "text": "Escribe el nombre del destinatario, tu nombre, la relación y detalles especiales." },
-      { "@type": "HowToStep", "position": 4, "name": "Nuestra IA Crea tu Canción", "text": "En 2-4 minutos, la IA compone la letra y genera la música. Recibes 2 versiones únicas." },
+      { "@type": "HowToStep", "position": 4, "name": "Se Crea tu Canción", "text": "En 2-4 minutos se compone la letra y se genera la música. Recibes 2 versiones únicas." },
       { "@type": "HowToStep", "position": 5, "name": "Escucha y Elige", "text": "Escucha un preview de cada versión antes de pagar. Elige tu favorita o quédate con ambas." },
       { "@type": "HowToStep", "position": 6, "name": "Descarga y Comparte", "text": "Descarga en MP3 de alta calidad. Comparte por WhatsApp, redes sociales o email." }
     ]
@@ -238,7 +238,7 @@ function generosHubBodyHtml() {
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Géneros</nav>
       <h1>Géneros Musicales para Canciones Personalizadas</h1>
-      <p>Explora más de 20 géneros de música latina para tu canción personalizada con IA.</p>
+      <p>Explora más de 20 géneros de música latina para tu canción personalizada.</p>
       <ul>${allGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
     </div>`;
@@ -259,13 +259,13 @@ function comoFuncionaBodyHtml() {
   return `
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Cómo Funciona</nav>
-      <h1>Cómo Crear una Canción Personalizada con IA</h1>
+      <h1>Cómo Crear una Canción Personalizada</h1>
       <p>Crear tu canción personalizada es fácil y rápido. En solo 5 minutos tendrás una canción única.</p>
       <ol>
         <li><strong>Elige tu Género Musical</strong> — Escoge entre 20+ géneros latinos: corridos tumbados, cumbia, banda, mariachi, bachata, reggaeton y más.</li>
         <li><strong>Selecciona la Ocasión</strong> — Cumpleaños, Día de las Madres, aniversario, boda, quinceañera, graduación.</li>
         <li><strong>Agrega los Detalles Personales</strong> — Escribe el nombre del destinatario, tu nombre, y detalles especiales.</li>
-        <li><strong>Nuestra IA Crea tu Canción</strong> — En 2-4 minutos, la IA compone la letra y genera la música. Recibes 2 versiones.</li>
+        <li><strong>Se Crea tu Canción</strong> — En 2-4 minutos se compone la letra y se genera la música. Recibes 2 versiones.</li>
         <li><strong>Escucha y Elige</strong> — Escucha un preview de cada versión antes de pagar.</li>
         <li><strong>Descarga y Comparte</strong> — Descarga en MP3 de alta calidad. Comparte por WhatsApp, redes sociales o email.</li>
       </ol>
@@ -283,7 +283,7 @@ function preguntasFrecuentesBodyHtml() {
   return `
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Preguntas Frecuentes</nav>
-      <h1>Preguntas Frecuentes — Canciones Personalizadas con IA</h1>
+      <h1>Preguntas Frecuentes — Canciones Personalizadas</h1>
       ${allFaqs.map(f => `<h2>${esc(f.question)}</h2><p>${esc(f.answer)}</p>`).join('')}
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
     </div>`;
@@ -294,7 +294,7 @@ function sobreNosotrosBodyHtml() {
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Sobre Nosotros</nav>
       <h1>Sobre RegalosQueCantan</h1>
-      <p>Creamos canciones personalizadas con inteligencia artificial para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros latinos.</p>
+      <p>Creamos canciones personalizadas para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros latinos.</p>
       <p>Nuestra misión es hacer cada celebración inolvidable con el regalo más emotivo: una canción creada solo para ti.</p>
       <p>Con más de 127 reseñas y una calificación de 4.9/5, miles de familias latinas ya han sorprendido a sus seres queridos con canciones personalizadas.</p>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
@@ -304,7 +304,7 @@ function sobreNosotrosBodyHtml() {
 function homepageBodyHtml() {
   return `
     <div id="prerender-content">
-      <h1>RegalosQueCantan — Canciones Personalizadas con IA</h1>
+      <h1>RegalosQueCantan — Canciones Personalizadas</h1>
       <p>Crea canciones personalizadas únicas para tus seres queridos en corridos, cumbia, banda, norteño, mariachi y más géneros latinos. Listo en minutos desde $24.99.</p>
       <a href="/create/occasion">Crear Mi Canción Ahora</a>
       <section>
@@ -336,9 +336,9 @@ function buildRouteConfigs() {
   // Como Funciona
   routes.push({
     path: '/como-funciona',
-    title: 'Cómo Funciona — Crea tu Canción Personalizada con IA | RegalosQueCantan',
-    description: 'Aprende cómo crear una canción personalizada con IA en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99.',
-    keywords: 'cómo funciona regalos que cantan, crear canción con IA, canción personalizada pasos',
+    title: 'Cómo Funciona — Crea tu Canción Personalizada | RegalosQueCantan',
+    description: 'Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99.',
+    keywords: 'cómo funciona regalos que cantan, crear canción personalizada, canción personalizada pasos',
     structuredData: [howToSchema(), breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Cómo Funciona', path: '/como-funciona' }])],
     bodyHtml: comoFuncionaBodyHtml()
   });
@@ -346,8 +346,8 @@ function buildRouteConfigs() {
   // Preguntas Frecuentes
   routes.push({
     path: '/preguntas-frecuentes',
-    title: 'Preguntas Frecuentes — Canciones Personalizadas con IA | RegalosQueCantan',
-    description: 'Respuestas a todas tus preguntas sobre canciones personalizadas con IA en RegalosQueCantan. Precios, géneros, tiempos de entrega, personalización y más.',
+    title: 'Preguntas Frecuentes — Canciones Personalizadas | RegalosQueCantan',
+    description: 'Respuestas a todas tus preguntas sobre canciones personalizadas en RegalosQueCantan. Precios, géneros, tiempos de entrega, personalización y más.',
     keywords: 'preguntas frecuentes regalos que cantan, FAQ canciones personalizadas',
     structuredData: [
       faqSchema([...DEFAULT_GENRE_FAQS, { question: '¿Qué géneros están disponibles?', answer: 'Más de 20 géneros latinos incluyendo corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, salsa, bolero, ranchera y más.' }, { question: '¿Cuánto cuesta?', answer: 'Una canción individual cuesta $24.99 USD. Paquete de dos versiones por $39.99 USD.' }]),
@@ -360,8 +360,8 @@ function buildRouteConfigs() {
   routes.push({
     path: '/sobre-nosotros',
     title: 'Sobre Nosotros — RegalosQueCantan',
-    description: 'Conoce a RegalosQueCantan: creamos canciones personalizadas con IA para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros.',
-    keywords: 'sobre regalos que cantan, quienes somos, canciones personalizadas IA',
+    description: 'Conoce a RegalosQueCantan: creamos canciones personalizadas para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros.',
+    keywords: 'sobre regalos que cantan, quienes somos, canciones personalizadas',
     structuredData: [breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Sobre Nosotros', path: '/sobre-nosotros' }])],
     bodyHtml: sobreNosotrosBodyHtml()
   });

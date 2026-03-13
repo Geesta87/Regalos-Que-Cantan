@@ -9,11 +9,11 @@ const FAQ_CATEGORIES = [
     faqs: [
       {
         question: '¿Qué es RegalosQueCantan?',
-        answer: 'RegalosQueCantan es un servicio que usa inteligencia artificial para crear canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nuestra IA compone una canción única lista para descargar y compartir.'
+        answer: 'RegalosQueCantan es un servicio que crea canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nosotros componemos una canción única lista para descargar y compartir.'
       },
       {
         question: '¿La canción es realmente única?',
-        answer: 'Sí, cada canción es 100% original. Nuestra IA genera letra y música desde cero basándose en los detalles que tú proporcionas. Nadie más tendrá la misma canción.'
+        answer: 'Sí, cada canción es 100% original. Se genera letra y música desde cero basándose en los detalles que tú proporcionas. Nadie más tendrá la misma canción.'
       },
       {
         question: '¿En qué géneros puedo crear canciones?',
@@ -21,7 +21,7 @@ const FAQ_CATEGORIES = [
       },
       {
         question: '¿Necesito saber de música para crear una canción?',
-        answer: 'No, para nada. Solo necesitas elegir el género, escribir los nombres y detalles que quieres incluir, y nuestra IA se encarga del resto. No necesitas ningún conocimiento musical.'
+        answer: 'No, para nada. Solo necesitas elegir el género, escribir los nombres y detalles que quieres incluir, y nos encargamos del resto. No necesitas ningún conocimiento musical.'
       }
     ]
   },
@@ -51,7 +51,7 @@ const FAQ_CATEGORIES = [
     faqs: [
       {
         question: '¿Cuánto tiempo tarda en crearse la canción?',
-        answer: 'Tu canción personalizada estará lista en solo 2-4 minutos. Nuestra IA genera dos versiones únicas para que elijas tu favorita o te quedes con ambas.'
+        answer: 'Tu canción personalizada estará lista en solo 2-4 minutos. Se generan dos versiones únicas para que elijas tu favorita o te quedes con ambas.'
       },
       {
         question: '¿Puedo escuchar la canción antes de pagar?',
@@ -126,8 +126,8 @@ export default function PreguntasFrecuentes() {
   return (
     <>
       <SEOHead
-        title="Preguntas Frecuentes — Canciones Personalizadas con IA"
-        description="Respuestas a todas tus preguntas sobre canciones personalizadas con IA en RegalosQueCantan. Precios, géneros, tiempos de entrega, personalización y más."
+        title="Preguntas Frecuentes — Canciones Personalizadas"
+        description="Respuestas a todas tus preguntas sobre canciones personalizadas en RegalosQueCantan. Precios, géneros, tiempos de entrega, personalización y más."
         canonical="/preguntas-frecuentes"
         keywords="preguntas frecuentes regalos que cantan, FAQ canciones personalizadas, dudas canciones IA, cómo funciona canción personalizada"
         structuredData={structuredData}
@@ -157,7 +157,7 @@ export default function PreguntasFrecuentes() {
               Preguntas Frecuentes
             </h1>
             <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
-              Todo lo que necesitas saber sobre canciones personalizadas con IA
+              Todo lo que necesitas saber sobre canciones personalizadas
             </p>
           </div>
         </section>
@@ -215,7 +215,7 @@ export default function PreguntasFrecuentes() {
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
           <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas con inteligencia artificial.</p>
+          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

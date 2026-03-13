@@ -236,7 +236,7 @@ export default function OccasionLanding({ occasionSlug }) {
               {[
                 { num: '1', title: 'Elige el Género', desc: 'Corridos, cumbia, banda, bachata y más' },
                 { num: '2', title: 'Agrega los Detalles', desc: 'Nombre, relación, memorias especiales' },
-                { num: '3', title: 'IA Crea la Canción', desc: '2 versiones únicas en minutos' },
+                { num: '3', title: 'Se Crea tu Canción', desc: '2 versiones únicas en minutos' },
                 { num: '4', title: 'Descarga y Comparte', desc: 'MP3 de alta calidad instantáneo' }
               ].map(step => (
                 <div key={step.num} className="text-center">
@@ -409,7 +409,7 @@ export default function OccasionLanding({ occasionSlug }) {
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
           <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas con inteligencia artificial.</p>
+          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

@@ -20,7 +20,7 @@ export default function SobreNosotros() {
     <>
       <SEOHead
         title="Sobre Nosotros — RegalosQueCantan"
-        description="Conoce a RegalosQueCantan: creamos canciones personalizadas con IA para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros. Nuestra misión es hacer cada celebración inolvidable."
+        description="Conoce a RegalosQueCantan: creamos canciones personalizadas para la comunidad latina. Corridos, cumbia, banda, mariachi y 20+ géneros. Nuestra misión es hacer cada celebración inolvidable."
         canonical="/sobre-nosotros"
         keywords="sobre regalos que cantan, quienes somos, canciones personalizadas IA, empresa canciones latinas"
         structuredData={structuredData}
@@ -176,7 +176,7 @@ export default function SobreNosotros() {
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
           <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas con inteligencia artificial.</p>
+          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>
