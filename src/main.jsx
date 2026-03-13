@@ -5,19 +5,12 @@ import './index.css';
 
 const rootElement = document.getElementById('root');
 
-// If the page was pre-rendered, hydrate to avoid a flash of blank content.
-// Otherwise, do a fresh render (funnel pages, admin, etc.).
-if (rootElement.hasChildNodes()) {
-  ReactDOM.hydrateRoot(
-    rootElement,
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-} else {
-  ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-}
+// Remove prerender-content div once React takes over
+const prerenderEl = document.getElementById('prerender-content');
+if (prerenderEl) prerenderEl.remove();
+
+ReactDOM.createRoot(rootElement).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
