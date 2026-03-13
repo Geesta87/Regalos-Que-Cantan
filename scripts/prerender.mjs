@@ -565,6 +565,11 @@ function main() {
   console.log('\n  Static prerender (no browser needed)\n');
 
   const template = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+
+  // Copy original template as 200.html — Vercel's SPA fallback for non-prerendered routes
+  writeFileSync(resolve(DIST, '200.html'), template, 'utf-8');
+  console.log('  Created 200.html (SPA fallback)\n');
+
   const routes = buildRouteConfigs();
   console.log(`  Prerendering ${routes.length} SEO routes...\n`);
 
