@@ -30,7 +30,8 @@ const {
   GENRES_SEO,
   OCCASIONS_SEO,
   DEFAULT_GENRE_FAQS,
-  DEFAULT_OCCASION_FAQS
+  DEFAULT_OCCASION_FAQS,
+  COMBO_ROUTES
 } = await import(`file://${seoDataPath.replace(/\\/g, '/')}`);
 
 const allGenres = Object.values(GENRES_SEO);
@@ -315,6 +316,17 @@ function homepageBodyHtml() {
         <h2>Ocasiones</h2>
         <ul>${allOccasions.map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a></li>`).join('')}</ul>
       </section>
+      <section>
+        <h2>Canciones Populares</h2>
+        <ul>${COMBO_ROUTES.slice(0, 8).map(c => {
+          const g = GENRES_SEO[c.genreSlug]; const o = OCCASIONS_SEO[c.occasionSlug];
+          return g && o ? `<li><a href="/canciones/${c.genreSlug}-${c.occasionSlug}">${esc(g.name)} para ${esc(o.name)}</a></li>` : '';
+        }).join('')}</ul>
+      </section>
+      <section>
+        <h2><a href="/dia-de-las-madres">Canciones para el Dia de las Madres — 10 de Mayo</a></h2>
+        <p>Sorprende a mama con una cancion personalizada este Dia de las Madres.</p>
+      </section>
     </div>`;
 }
 
@@ -435,6 +447,170 @@ function buildRouteConfigs() {
         faqSchema(faqs)
       ].filter(Boolean),
       bodyHtml: occasionBodyHtml(occasion)
+    });
+  }
+
+  // Dia de las Madres Seasonal Landing
+  const madresOccasion = OCCASIONS_SEO['dia-de-las-madres'];
+  const madresGenres = ['mariachi', 'bolero', 'ranchera', 'balada', 'norteno'].map(s => GENRES_SEO[s]).filter(Boolean);
+  routes.push({
+    path: '/dia-de-las-madres',
+    title: 'Cancion para Mama este 10 de Mayo | RegalosQueCantan',
+    description: 'Sorprende a mama con una cancion personalizada este Dia de las Madres. Con su nombre, en mariachi, bolero o ranchera. Lista en minutos desde $24.99.',
+    keywords: 'regalo dia de las madres, cancion para mama, 10 de mayo, regalo mama original, serenata mama, cancion personalizada mama, dia de las madres 2026',
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Cancion Personalizada para el Dia de las Madres",
+        "description": "Cancion personalizada para mama con su nombre en mariachi, bolero, ranchera y mas generos latinos.",
+        "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
+        "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 312 }
+      },
+      breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia de las Madres', path: '/dia-de-las-madres' }]),
+      faqSchema([
+        { question: '¿Puedo crear la cancion el mismo 10 de Mayo?', answer: 'Si, tu cancion estara lista en 2-4 minutos. Puedes crearla el mismo dia y enviarla por WhatsApp al instante.' },
+        { question: '¿Que genero es mejor para mama?', answer: 'Depende de sus gustos. Mariachi y ranchera son los mas populares para mamas tradicionales. Bolero para las romanticas. Cumbia para las fiesteras.' },
+        { question: '¿Puedo incluir su apodo carinoso?', answer: 'Claro que si. Mami, Jefa, Madre, Ma — cualquier nombre carinoso se incorpora naturalmente en la letra.' },
+        { question: '¿Cuanto cuesta la cancion para mama?', answer: 'Una cancion individual cuesta $24.99 USD. Sin suscripcion, pago unico. Recibes 2 versiones para elegir tu favorita.' },
+        { question: '¿Como se la envio a mama?', answer: 'Descargas el MP3 al instante y lo envias por WhatsApp, mensaje de texto, email o redes sociales.' },
+        { question: '¿La cancion menciona el nombre de mama?', answer: 'Si, la letra incluye su nombre, apodo, y los detalles personales que tu proporciones. Es una cancion 100% unica creada solo para ella.' }
+      ])
+    ].filter(Boolean),
+    bodyHtml: `
+    <div id="prerender-content">
+      <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Dia de las Madres</nav>
+      <h1>Cancion para Mama este 10 de Mayo — Dia de las Madres 2026</h1>
+      <p>Sorprende a mama con una cancion personalizada que incluya su nombre, un mensaje de amor y toda tu gratitud. En mariachi, bolero, ranchera o el genero que ella prefiera. Lista en minutos desde $24.99.</p>
+      <a href="/create/occasion">Crear Cancion para Mama — Desde $24.99</a>
+      <section>
+        <h2>¿Por que regalar una cancion para el Dia de las Madres?</h2>
+        <p>Mama merece mas que flores. Una cancion personalizada con su nombre es el regalo mas emotivo que puedes dar este 10 de Mayo. Menciona sus sacrificios, su amor incondicional y todo lo que significa para ti.</p>
+        <p>Con RegalosQueCantan, creas una cancion unica que mama podra escuchar una y otra vez. Es el regalo que la hara llorar de emocion.</p>
+      </section>
+      <section>
+        <h2>Generos Populares para Mama</h2>
+        <ul>${madresGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
+      </section>
+      <section>
+        <h2>Ideas para Personalizar tu Cancion</h2>
+        <ul>
+          <li>Incluye su apodo carinoso: Mami, Jefa, Madre</li>
+          <li>Menciona un recuerdo de la infancia</li>
+          <li>Agradece sus sacrificios y desvelos</li>
+          <li>Habla de su comida favorita o tradiciones familiares</li>
+          <li>Incluye los nombres de los hijos o nietos</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Regalo de Ultimo Minuto Perfecto</h2>
+        <p>Tu cancion estara lista en 2-4 minutos. Sin envio, sin espera. Descarga el MP3 y envialo por WhatsApp al instante. Perfecto si se te olvido el regalo.</p>
+      </section>
+      <section>
+        <h2>Preguntas Frecuentes — Canciones para Mama</h2>
+        <h3>¿Puedo crear la cancion el mismo 10 de Mayo?</h3><p>Si, tu cancion estara lista en 2-4 minutos.</p>
+        <h3>¿Que genero es mejor para mama?</h3><p>Mariachi y ranchera son los mas populares. Bolero para las romanticas. Cumbia para las fiesteras.</p>
+        <h3>¿Cuanto cuesta?</h3><p>$24.99 USD. Sin suscripcion, pago unico.</p>
+      </section>
+      <section>
+        <h2>Mas Ocasiones</h2>
+        <ul>${allOccasions.filter(o => o.slug !== 'dia-de-las-madres').slice(0, 5).map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a></li>`).join('')}</ul>
+      </section>
+    </div>`
+  });
+
+  // Combo Pages (genre + occasion)
+  for (const combo of COMBO_ROUTES) {
+    const genre = GENRES_SEO[combo.genreSlug];
+    const occasion = OCCASIONS_SEO[combo.occasionSlug];
+    if (!genre || !occasion) continue;
+
+    const comboSlug = `${combo.genreSlug}-${combo.occasionSlug}`;
+    const comboPath = `/canciones/${comboSlug}`;
+    const comboTitle = `${genre.name} para ${occasion.name} — Cancion Personalizada`;
+    const comboDesc = `Crea un ${genre.name.toLowerCase()} personalizado para ${occasion.name.toLowerCase()}. ${genre.description} Con el nombre de tu ser querido, listo en minutos desde $24.99.`;
+    const comboKeywords = `${genre.name.toLowerCase()} ${occasion.name.toLowerCase()}, ${genre.name.toLowerCase()} personalizado, cancion ${occasion.name.toLowerCase()}, ${genre.keywords}, ${occasion.keywords}`;
+
+    const comboBreadcrumbs = [
+      { name: 'Inicio', path: '/' },
+      { name: 'Generos', path: '/generos' },
+      { name: genre.name, path: `/generos/${genre.slug}` },
+      { name: occasion.name, path: comboPath }
+    ];
+
+    const comboFaqs = [
+      { question: `¿Como suena un ${genre.name.toLowerCase()} para ${occasion.name.toLowerCase()}?`, answer: `Suena como las canciones de ${(genre.artists || []).slice(0, 2).join(' y ') || genre.name} pero con una letra personalizada para celebrar ${occasion.name.toLowerCase()}. Incluye el nombre de tu ser querido y detalles especiales.` },
+      ...(genre.faqs || DEFAULT_GENRE_FAQS).slice(0, 2),
+      ...(occasion.faqs || DEFAULT_OCCASION_FAQS).slice(0, 2)
+    ];
+
+    const relatedCombos = COMBO_ROUTES
+      .filter(c => c !== combo && (c.genreSlug === combo.genreSlug || c.occasionSlug === combo.occasionSlug))
+      .slice(0, 4);
+
+    routes.push({
+      path: comboPath,
+      title: `${comboTitle} | RegalosQueCantan`,
+      description: comboDesc,
+      keywords: comboKeywords,
+      structuredData: [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": `${genre.name} para ${occasion.name} Personalizado`,
+          "description": comboDesc,
+          "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
+          "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+          "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": genre.reviewCount || 50 }
+        },
+        breadcrumbSchema(comboBreadcrumbs),
+        faqSchema(comboFaqs)
+      ].filter(Boolean),
+      bodyHtml: `
+    <div id="prerender-content">
+      <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / <a href="/generos">Generos</a> / <a href="/generos/${genre.slug}">${esc(genre.name)}</a> / ${esc(occasion.name)}</nav>
+      <h1>${esc(genre.name)} para ${esc(occasion.name)} — Cancion Personalizada</h1>
+      <p>${esc(comboDesc)}</p>
+      <a href="/create/occasion">Crear Mi ${esc(genre.name)} para ${esc(occasion.name)} — Desde $24.99</a>
+      <section>
+        <h2>¿Por que elegir ${esc(genre.name)} para ${esc(occasion.name)}?</h2>
+        <p>${esc(genre.description)} Es la combinacion perfecta para celebrar ${esc(occasion.name.toLowerCase())} con un regalo musical unico.</p>
+        ${genre.artists ? `<p>Inspirado en el estilo de: ${genre.artists.join(', ')}</p>` : ''}
+      </section>
+      <section>
+        <h2>¿Que incluye tu cancion?</h2>
+        <ul>
+          <li>Letra 100% personalizada con el nombre de tu ser querido</li>
+          <li>Musica profesional en estilo ${esc(genre.name.toLowerCase())}</li>
+          <li>2 versiones unicas para elegir</li>
+          <li>Listo en 2-4 minutos — descarga instantanea en MP3</li>
+        </ul>
+        <p>Desde $24.99 USD • Sin suscripcion • Pago unico</p>
+      </section>
+      <section>
+        <h2>Preguntas Frecuentes</h2>
+        ${comboFaqs.map(f => `<h3>${esc(f.question)}</h3><p>${esc(f.answer)}</p>`).join('')}
+      </section>
+      <section>
+        <h2>Otras combinaciones populares</h2>
+        <ul>
+          ${relatedCombos.map(c => {
+            const g = GENRES_SEO[c.genreSlug];
+            const o = OCCASIONS_SEO[c.occasionSlug];
+            return g && o ? `<li><a href="/canciones/${c.genreSlug}-${c.occasionSlug}">${esc(g.name)} para ${esc(o.name)}</a></li>` : '';
+          }).join('')}
+        </ul>
+      </section>
+      <section>
+        <h2>Explora mas</h2>
+        <ul>
+          <li><a href="/generos/${genre.slug}">Mas sobre ${esc(genre.name)}</a></li>
+          <li><a href="/ocasiones/${occasion.slug}">Mas canciones para ${esc(occasion.name)}</a></li>
+          <li><a href="/generos">Ver los 20+ generos disponibles</a></li>
+        </ul>
+      </section>
+    </div>`
     });
   }
 

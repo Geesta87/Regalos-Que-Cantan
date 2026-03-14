@@ -31,6 +31,9 @@ import OccasionLanding from './pages/seo/OccasionLanding';
 import ComoFunciona from './pages/seo/ComoFunciona';
 import PreguntasFrecuentes from './pages/seo/PreguntasFrecuentes';
 import SobreNosotros from './pages/seo/SobreNosotros';
+import DiaDeLasMadresLanding from './pages/seo/DiaDeLasMadresLanding';
+import ComboLanding from './pages/seo/ComboLanding';
+import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
 
 // App State Context
@@ -71,7 +74,8 @@ const pathToPage = {
   '/ocasiones': 'ocasiones',
   '/como-funciona': 'comoFunciona',
   '/preguntas-frecuentes': 'preguntasFrecuentes',
-  '/sobre-nosotros': 'sobreNosotros'
+  '/sobre-nosotros': 'sobreNosotros',
+  '/dia-de-las-madres': 'diaDeLasMadres'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -94,6 +98,9 @@ function getInitialPage() {
     return path.substring(1);
   }
   if (path.startsWith('/ocasiones/') && path !== '/ocasiones/') {
+    return path.substring(1);
+  }
+  if (path.startsWith('/canciones/') && path !== '/canciones/') {
     return path.substring(1);
   }
   
@@ -228,13 +235,14 @@ export default function App() {
       ocasiones: '/ocasiones',
       comoFunciona: '/como-funciona',
       preguntasFrecuentes: '/preguntas-frecuentes',
-      sobreNosotros: '/sobre-nosotros'
+      sobreNosotros: '/sobre-nosotros',
+      diaDeLasMadres: '/dia-de-las-madres'
     };
     
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
     let url = pageUrls[page];
     if (!url) {
-      url = (page.startsWith('generos/') || page.startsWith('ocasiones/')) ? `/${page}` : '/';
+      url = (page.startsWith('generos/') || page.startsWith('ocasiones/') || page.startsWith('canciones/')) ? `/${page}` : '/';
     }
     window.history.pushState({ page }, '', url);
     
@@ -322,6 +330,7 @@ export default function App() {
           {currentPage === 'comoFunciona' && <ComoFunciona />}
           {currentPage === 'preguntasFrecuentes' && <PreguntasFrecuentes />}
           {currentPage === 'sobreNosotros' && <SobreNosotros />}
+          {currentPage === 'diaDeLasMadres' && <DiaDeLasMadresLanding />}
           
           {/* SEO Dynamic Genre pages */}
           {currentPage.startsWith('generos/') && (
@@ -332,6 +341,15 @@ export default function App() {
           {currentPage.startsWith('ocasiones/') && (
             <OccasionLanding occasionSlug={getSlugFromPage(currentPage, 'ocasiones/')} />
           )}
+
+          {/* SEO Combo pages (genre + occasion) */}
+          {currentPage.startsWith('canciones/') && (() => {
+            const slug = getSlugFromPage(currentPage, 'canciones/');
+            const combo = getComboBySlug(slug);
+            return combo ? (
+              <ComboLanding genreSlug={combo.genreSlug} occasionSlug={combo.occasionSlug} />
+            ) : <NotFoundPage />;
+          })()}
 
           {/* 404 Not Found */}
           {currentPage === 'notFound' && <NotFoundPage />}

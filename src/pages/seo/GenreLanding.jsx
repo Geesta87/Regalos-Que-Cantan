@@ -2,7 +2,7 @@ import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateGenreStructuredData, generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
-import { getGenreBySlug, getAllGenres, getAllOccasions, DEFAULT_GENRE_FAQS } from '../../data/seoData';
+import { getGenreBySlug, getAllGenres, getAllOccasions, DEFAULT_GENRE_FAQS, COMBO_ROUTES } from '../../data/seoData';
 
 /**
  * GenreLanding - SEO Landing Page for individual genres
@@ -27,6 +27,11 @@ export default function GenreLanding({ genreSlug }) {
   const suggestedOccasions = getAllOccasions()
     .filter(o => genre.popularFor?.some(pf => o.name.toLowerCase().includes(pf.toLowerCase())))
     .slice(0, 4);
+
+  const genreCombos = COMBO_ROUTES
+    .filter(c => c.genreSlug === genreSlug)
+    .map(c => ({ ...c, occasion: getAllOccasions().find(o => o.slug === c.occasionSlug) }))
+    .filter(c => c.occasion);
 
   const handleCreateSong = () => {
     setFormData(prev => ({
@@ -278,6 +283,38 @@ export default function GenreLanding({ genreSlug }) {
                 >
                   Ver todas las ocasiones →
                 </SEOLink>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Combo Pages — genre + occasion cross-links */}
+        {genreCombos.length > 0 && (
+          <section className="py-20 px-6">
+            <div className="max-w-4xl mx-auto">
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center font-display">
+                {genre.name} para Cada Ocasión
+              </h2>
+              <p className="text-white/50 text-center mb-10">
+                Descubre cómo suena tu {genre.name.toLowerCase()} en cada celebración
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {genreCombos.map(c => (
+                  <SEOLink
+                    key={c.occasionSlug}
+                    to={`canciones/${c.genreSlug}-${c.occasionSlug}`}
+                    className="flex items-center gap-4 glass-morphism rounded-2xl p-5 hover:bg-white/[0.06] transition-all group"
+                  >
+                    <span className="text-2xl">{c.occasion.icon}</span>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
+                        {genre.name} para {c.occasion.name}
+                      </h3>
+                      <p className="text-sm text-white/40">Canción personalizada desde $24.99</p>
+                    </div>
+                    <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
+                  </SEOLink>
+                ))}
               </div>
             </div>
           </section>

@@ -33,12 +33,13 @@ const staticPageUrls = {
   adminLogin: '/admin',
   adminDashboard: '/admin/dashboard',
   generos: '/generos',
-  ocasiones: '/ocasiones'
+  ocasiones: '/ocasiones',
+  diaDeLasMadres: '/dia-de-las-madres'
 };
 
 export function pageToUrl(page) {
   if (staticPageUrls[page]) return staticPageUrls[page];
-  if (page.startsWith('generos/') || page.startsWith('ocasiones/')) return `/${page}`;
+  if (page.startsWith('generos/') || page.startsWith('ocasiones/') || page.startsWith('canciones/')) return `/${page}`;
   return '/';
 }
 

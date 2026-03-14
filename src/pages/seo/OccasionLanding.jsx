@@ -2,7 +2,7 @@ import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateOccasionStructuredData, generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
-import { getOccasionBySlug, getAllOccasions, getGenreBySlug, DEFAULT_OCCASION_FAQS } from '../../data/seoData';
+import { getOccasionBySlug, getAllOccasions, getGenreBySlug, getAllGenres, DEFAULT_OCCASION_FAQS, COMBO_ROUTES } from '../../data/seoData';
 
 /**
  * OccasionLanding - SEO Landing Page for individual occasions
@@ -27,6 +27,11 @@ export default function OccasionLanding({ occasionSlug }) {
   const suggestedGenres = (occasion.suggestedGenres || [])
     .map(slug => getGenreBySlug(slug))
     .filter(Boolean);
+
+  const occasionCombos = COMBO_ROUTES
+    .filter(c => c.occasionSlug === occasionSlug)
+    .map(c => ({ ...c, genre: getAllGenres().find(g => g.slug === c.genreSlug) }))
+    .filter(c => c.genre);
 
   const handleCreateSong = (genreSlug = null) => {
     const updates = {
@@ -317,6 +322,38 @@ export default function OccasionLanding({ occasionSlug }) {
             </div>
           </div>
         </section>
+
+        {/* Combo Pages — occasion + genre cross-links */}
+        {occasionCombos.length > 0 && (
+          <section className="py-20 px-6">
+            <div className="max-w-4xl mx-auto">
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center font-display">
+                Canciones de {occasion.name} por Género
+              </h2>
+              <p className="text-white/50 text-center mb-10">
+                Elige el estilo perfecto para tu canción de {occasion.name.toLowerCase()}
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                {occasionCombos.map(c => (
+                  <SEOLink
+                    key={c.genreSlug}
+                    to={`canciones/${c.genreSlug}-${c.occasionSlug}`}
+                    className="flex items-center gap-4 glass-morphism rounded-2xl p-5 hover:bg-white/[0.06] transition-all group"
+                  >
+                    <span className="text-2xl">{c.genre.icon}</span>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
+                        {c.genre.name} para {occasion.name}
+                      </h3>
+                      <p className="text-sm text-white/40">Canción personalizada desde $24.99</p>
+                    </div>
+                    <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
+                  </SEOLink>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* FAQ Section */}
         <section className="py-20 px-6">

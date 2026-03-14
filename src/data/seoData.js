@@ -789,6 +789,32 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
 };
 
 // ============================================
+// COMBO ROUTES (genre + occasion)
+// ============================================
+export const COMBO_ROUTES = [
+  { genreSlug: 'corridos-tumbados', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'mariachi', occasionSlug: 'dia-de-las-madres' },
+  { genreSlug: 'banda-sinaloense', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'bachata', occasionSlug: 'aniversario' },
+  { genreSlug: 'corridos-tumbados', occasionSlug: 'dia-del-padre' },
+  { genreSlug: 'cumbia', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'mariachi', occasionSlug: 'aniversario' },
+  { genreSlug: 'ranchera', occasionSlug: 'dia-de-las-madres' },
+  { genreSlug: 'bolero', occasionSlug: 'dia-de-las-madres' },
+  { genreSlug: 'bachata', occasionSlug: 'san-valentin' },
+  { genreSlug: 'norteno', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'reggaeton', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'cumbia', occasionSlug: 'boda' },
+  { genreSlug: 'bachata', occasionSlug: 'boda' },
+  { genreSlug: 'balada', occasionSlug: 'quinceanera' },
+  { genreSlug: 'mariachi', occasionSlug: 'boda' },
+  { genreSlug: 'corridos-tumbados', occasionSlug: 'graduacion' },
+  { genreSlug: 'cumbia', occasionSlug: 'dia-de-las-madres' },
+  { genreSlug: 'salsa', occasionSlug: 'cumpleanos' },
+  { genreSlug: 'reggaeton', occasionSlug: 'boda' },
+];
+
+// ============================================
 // HELPER FUNCTIONS
 // ============================================
 
@@ -828,4 +854,23 @@ export const getOccasionBySlug = (slug) => OCCASIONS_SEO[slug] || null;
 export const getCurrentSeasonalOccasions = () => {
   const currentMonth = new Date().getMonth() + 1;
   return getAllOccasions().filter(o => o.seasonal && o.peakMonth === currentMonth);
+};
+
+/**
+ * Get all combo routes with resolved genre/occasion data
+ */
+export const getComboRoutes = () =>
+  COMBO_ROUTES.map(c => ({
+    ...c,
+    genre: GENRES_SEO[c.genreSlug],
+    occasion: OCCASIONS_SEO[c.occasionSlug],
+    slug: `${c.genreSlug}-${c.occasionSlug}`
+  })).filter(c => c.genre && c.occasion);
+
+/**
+ * Get combo by slug (e.g. "corridos-tumbados-cumpleanos")
+ */
+export const getComboBySlug = (slug) => {
+  const combo = getComboRoutes().find(c => c.slug === slug);
+  return combo || null;
 };
