@@ -16,7 +16,7 @@
  * Usage:  node scripts/prerender.mjs
  */
 
-import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -595,43 +595,6 @@ function main() {
 
   console.log(`\n  Done! ${ok}/${routes.length} pages prerendered.\n`);
 
-  // ── Generate Vercel Build Output API structure ───────────────────
-  // This gives us full control over routing (no framework adapter interference).
-  // When Vercel sees .vercel/output after build, it uses it directly.
-  const vercelOutput = resolve(__dirname, '..', '.vercel', 'output');
-  const vercelStatic = resolve(vercelOutput, 'static');
-
-  mkdirSync(vercelStatic, { recursive: true });
-  cpSync(DIST, vercelStatic, { recursive: true });
-
-  // Build the overrides map from prerendered pages
-  const overrides = {};
-  overrides['200.html'] = { path: '200' };
-  overrides['index.html'] = { path: 'index' };
-  for (const route of routes) {
-    if (route.path === '/') continue;
-    const key = route.path.substring(1) + '/index.html';
-    const val = route.path.substring(1) + '/index';
-    overrides[key] = { path: val };
-  }
-
-  const config = {
-    version: 3,
-    routes: [
-      // Clean URL redirects
-      { src: '^/(?:(.+)/)?index(?:\\.html)?/?$', headers: { Location: '/$1' }, status: 308 },
-      { src: '^/(.*)\\.html/?$', headers: { Location: '/$1' }, status: 308 },
-      { src: '^/(.*)/$', headers: { Location: '/$1' }, status: 308 },
-      // Serve static files
-      { handle: 'filesystem' },
-      // SPA fallback — NO "check: true" so it always serves the fallback
-      { src: '^(?:/(.*))$', dest: '/200.html' },
-    ],
-    overrides
-  };
-
-  writeFileSync(resolve(vercelOutput, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
-  console.log('  Generated .vercel/output (Build Output API)\n');
 }
 
 main();
