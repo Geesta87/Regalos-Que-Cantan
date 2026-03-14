@@ -49,7 +49,10 @@ function jsonLd(obj) {
 }
 
 // ── Date for freshness signals ──────────────────────────────────────
-const BUILD_DATE = new Date().toISOString().split('T')[0]; // e.g. "2026-03-13"
+// Use month/year so it doesn't look like it auto-updates daily
+const now = new Date();
+const BUILD_DATE = `${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][now.getMonth()]} ${now.getFullYear()}`; // e.g. "Marzo 2026"
+const BUILD_DATE_ISO = now.toISOString().split('T')[0]; // for sitemap lastmod
 
 // ── Organization schema (site-wide entity recognition) ─────────────
 function organizationSchema() {
@@ -59,7 +62,7 @@ function organizationSchema() {
     "name": "RegalosQueCantan",
     "url": BASE_URL,
     "logo": `${BASE_URL}/rqc-logo.png`,
-    "description": "Plataforma líder en canciones personalizadas para la comunidad latina. Más de 5,000 canciones creadas en 20+ géneros musicales latinos.",
+    "description": "Plataforma de canciones personalizadas para la comunidad latina. 20+ géneros musicales latinos incluyendo corridos, cumbia, banda, mariachi, bachata y más.",
     "foundingDate": "2024",
     "contactPoint": {
       "@type": "ContactPoint",
@@ -90,16 +93,7 @@ function genreProductSchema(genre) {
       "@type": "AggregateRating",
       "ratingValue": "4.9",
       "reviewCount": genre.reviewCount || 50
-    },
-    "dateModified": BUILD_DATE,
-    "review": [
-      {
-        "@type": "Review",
-        "reviewRating": { "@type": "Rating", "ratingValue": "5" },
-        "author": { "@type": "Person", "name": genre.testimonialName || "Cliente Verificado" },
-        "reviewBody": genre.testimonialText || `Increíble canción de ${genre.name}. Mi familia no podía creer que fuera personalizada con nuestros nombres.`
-      }
-    ]
+    }
   };
 }
 
@@ -121,16 +115,7 @@ function occasionProductSchema(occasion) {
       "@type": "AggregateRating",
       "ratingValue": "4.9",
       "reviewCount": occasion.reviewCount || 75
-    },
-    "dateModified": BUILD_DATE,
-    "review": [
-      {
-        "@type": "Review",
-        "reviewRating": { "@type": "Rating", "ratingValue": "5" },
-        "author": { "@type": "Person", "name": occasion.testimonialName || "Cliente Verificado" },
-        "reviewBody": occasion.testimonialText || `La canción para ${occasion.name.toLowerCase()} quedó perfecta. Un regalo que hizo llorar de emoción a toda la familia.`
-      }
-    ]
+    }
   };
 }
 
@@ -197,15 +182,14 @@ function howToSchema() {
 function genreBodyHtml(genre) {
   const faqs = genre.faqs || DEFAULT_GENRE_FAQS;
   const relatedGenres = allGenres.filter(g => g.slug !== genre.slug).slice(0, 6);
-  const reviewCount = genre.reviewCount || 50;
   return `
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / <a href="/generos">Géneros</a> / ${esc(genre.name)}</nav>
       <h1>${esc(genre.heroTitle)}</h1>
       <p>${esc(genre.heroSubtitle)}</p>
       <p>${esc(genre.definitionBlock || genre.description)}</p>
-      <p><strong>${reviewCount}+ canciones de ${esc(genre.name)} creadas</strong> con una calificación de 4.9/5 estrellas. Listo en 2-4 minutos desde $24.99 USD.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>Listo en 2-4 minutos desde $24.99 USD.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Mi ${esc(genre.name)} Ahora — Desde $24.99</a>
       <section>
         <h2>¿Qué es un ${esc(genre.name)} Personalizado?</h2>
@@ -243,15 +227,14 @@ function occasionBodyHtml(occasion) {
   const faqs = occasion.faqs || DEFAULT_OCCASION_FAQS;
   const relatedOccasions = allOccasions.filter(o => o.slug !== occasion.slug).slice(0, 6);
   const suggestedGenres = (occasion.suggestedGenres || []).map(s => GENRES_SEO[s]).filter(Boolean);
-  const reviewCount = occasion.reviewCount || 75;
   return `
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / <a href="/ocasiones">Ocasiones</a> / ${esc(occasion.name)}</nav>
       <h1>${esc(occasion.heroTitle)}</h1>
       <p>${esc(occasion.heroSubtitle)}</p>
       <p>${esc(occasion.definitionBlock || occasion.description)}</p>
-      <p><strong>${reviewCount}+ canciones para ${esc(occasion.name.toLowerCase())} creadas</strong> con una calificación de 4.9/5 estrellas. El regalo musical más emotivo desde $24.99 USD.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>El regalo musical más emotivo desde $24.99 USD. Listo en 2-4 minutos.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Mi Canción de ${esc(occasion.name)} — Desde $24.99</a>
       <section>
         <h2>¿Por qué regalar una canción para ${esc(occasion.name)}?</h2>
@@ -288,8 +271,8 @@ function generosHubBodyHtml() {
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Géneros</nav>
       <h1>Géneros Musicales para Canciones Personalizadas</h1>
-      <p>RegalosQueCantan ofrece más de 20 géneros de música latina para canciones personalizadas. Cada género incluye instrumentación auténtica y estilo profesional. Más de 5,000 canciones creadas con una calificación de 4.9/5 estrellas.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>RegalosQueCantan ofrece más de 20 géneros de música latina para canciones personalizadas. Cada género incluye instrumentación auténtica y estilo profesional.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <ul>${allGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
     </div>`;
@@ -300,8 +283,8 @@ function ocasionesHubBodyHtml() {
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Ocasiones</nav>
       <h1>Ocasiones para Canciones Personalizadas</h1>
-      <p>Crea canciones personalizadas para cualquier ocasión especial — cumpleaños, Día de las Madres, aniversarios, bodas, quinceañeras y más. Más de 5,000 canciones creadas para familias latinas con calificación de 4.9/5.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>Crea canciones personalizadas para cualquier ocasión especial — cumpleaños, Día de las Madres, aniversarios, bodas, quinceañeras y más.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <ul>${allOccasions.map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a> — ${esc(o.description)}</li>`).join('')}</ul>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
     </div>`;
@@ -348,9 +331,9 @@ function sobreNosotrosBodyHtml() {
       <h1>Sobre RegalosQueCantan</h1>
       <p>RegalosQueCantan es una plataforma de canciones personalizadas fundada en 2024, diseñada específicamente para la comunidad latina. Ofrecemos más de 20 géneros musicales latinos auténticos — corridos tumbados, cumbia, banda, mariachi, bachata, reggaeton, bolero, ranchera y más.</p>
       <p>Nuestra misión es hacer cada celebración inolvidable con el regalo más emotivo: una canción creada solo para ti, con el nombre de tu ser querido y detalles personales únicos.</p>
-      <p><strong>Más de 5,000 canciones creadas</strong> para familias latinas en Estados Unidos, México y Latinoamérica. Con 127+ reseñas verificadas y una calificación de 4.9/5 estrellas, somos la plataforma líder en canciones personalizadas en español.</p>
-      <p>Cada canción se genera en 2-4 minutos con tecnología de inteligencia artificial, combinando composición lírica personalizada con producción musical profesional en el género seleccionado.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>Miles de familias latinas en Estados Unidos, México y Latinoamérica ya han sorprendido a sus seres queridos con canciones personalizadas.</p>
+      <p>Cada canción se genera en 2-4 minutos, combinando composición lírica personalizada con producción musical profesional en el género seleccionado.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
     </div>`;
 }
@@ -360,8 +343,8 @@ function homepageBodyHtml() {
     <div id="prerender-content">
       <h1>RegalosQueCantan — Canciones Personalizadas para la Comunidad Latina</h1>
       <p>RegalosQueCantan es una plataforma de canciones personalizadas que permite crear canciones únicas con el nombre de tu ser querido en más de 20 géneros musicales latinos — corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, bolero y más. Cada canción se genera en 2-4 minutos y cuesta desde $24.99 USD.</p>
-      <p><strong>Más de 5,000 canciones creadas</strong> con una calificación promedio de 4.9/5 estrellas basada en 127+ reseñas verificadas. El 94% de los clientes reportan que el destinatario lloró de emoción al escuchar su canción personalizada.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p>Miles de familias latinas ya han sorprendido a sus seres queridos con canciones personalizadas de RegalosQueCantan.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Mi Canción Ahora — Desde $24.99</a>
       <section>
         <h2>¿Qué es RegalosQueCantan?</h2>
@@ -385,7 +368,7 @@ function homepageBodyHtml() {
       </section>
       <section>
         <h2><a href="/dia-de-las-madres">Canciones para el Día de las Madres — 10 de Mayo</a></h2>
-        <p>Sorprende a mamá con una canción personalizada este Día de las Madres. Más de 300 canciones creadas para mamá con una calificación de 4.9/5.</p>
+        <p>Sorprende a mamá con una canción personalizada este Día de las Madres. En mariachi, bolero, ranchera o el género que ella prefiera.</p>
       </section>
       <section>
         <h2>¿Por qué elegir RegalosQueCantan?</h2>
@@ -537,12 +520,7 @@ function buildRouteConfigs() {
         "description": "Cancion personalizada para mama con su nombre en mariachi, bolero, ranchera y mas generos latinos.",
         "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
         "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
-        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 312 },
-        "dateModified": BUILD_DATE,
-        "review": [
-          { "@type": "Review", "reviewRating": { "@type": "Rating", "ratingValue": "5" }, "author": { "@type": "Person", "name": "María G." }, "reviewBody": "Mi mamá lloró de emoción. El mariachi con su nombre fue el mejor regalo del 10 de Mayo." },
-          { "@type": "Review", "reviewRating": { "@type": "Rating", "ratingValue": "5" }, "author": { "@type": "Person", "name": "Carlos R." }, "reviewBody": "Le regalé un bolero personalizado a mi jefa y no paraba de escucharlo. Toda la familia quedó impresionada." }
-        ]
+        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 312 }
       },
       breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia de las Madres', path: '/dia-de-las-madres' }]),
       faqSchema([
@@ -559,8 +537,8 @@ function buildRouteConfigs() {
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Dia de las Madres</nav>
       <h1>Cancion para Mama este 10 de Mayo — Dia de las Madres 2026</h1>
       <p>Una cancion personalizada para el Dia de las Madres es un regalo musical unico que incluye el nombre de mama, un mensaje de amor y detalles familiares especificos. Disponible en mariachi, bolero, ranchera y 20+ generos latinos, cada cancion se crea en 2-4 minutos y cuesta desde $24.99 USD.</p>
-      <p><strong>312+ canciones creadas para el Dia de las Madres</strong> con una calificacion de 4.9/5 estrellas. El 96% de las mamas reportaron que lloraron de emocion al escuchar su cancion personalizada.</p>
-      <p><em>Ultima actualizacion: ${BUILD_DATE}</em></p>
+      <p>Cientos de familias ya han sorprendido a mama con una cancion personalizada de RegalosQueCantan.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Cancion para Mama — Desde $24.99</a>
       <section>
         <h2>¿Por que regalar una cancion para el Dia de las Madres?</h2>
@@ -640,14 +618,7 @@ function buildRouteConfigs() {
           "description": comboDesc,
           "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
           "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
-          "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": genre.reviewCount || 50 },
-          "dateModified": BUILD_DATE,
-          "review": [{
-            "@type": "Review",
-            "reviewRating": { "@type": "Rating", "ratingValue": "5" },
-            "author": { "@type": "Person", "name": "Cliente Verificado" },
-            "reviewBody": `El ${genre.name.toLowerCase()} para ${occasion.name.toLowerCase()} quedó increíble. Mi familia no podía creer que fuera personalizado con nuestros nombres.`
-          }]
+          "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": genre.reviewCount || 50 }
         },
         breadcrumbSchema(comboBreadcrumbs),
         faqSchema(comboFaqs)
@@ -657,8 +628,7 @@ function buildRouteConfigs() {
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / <a href="/generos">Generos</a> / <a href="/generos/${genre.slug}">${esc(genre.name)}</a> / ${esc(occasion.name)}</nav>
       <h1>${esc(genre.name)} para ${esc(occasion.name)} — Cancion Personalizada</h1>
       <p>${esc(comboDesc)}</p>
-      <p><strong>Calificación 4.9/5 estrellas</strong> basada en ${genre.reviewCount || 50}+ canciones de ${esc(genre.name.toLowerCase())} creadas por RegalosQueCantan.</p>
-      <p><em>Última actualización: ${BUILD_DATE}</em></p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <a href="/create/occasion">Crear Mi ${esc(genre.name)} para ${esc(occasion.name)} — Desde $24.99</a>
       <section>
         <h2>¿Por que elegir ${esc(genre.name)} para ${esc(occasion.name)}?</h2>
