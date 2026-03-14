@@ -771,6 +771,41 @@ function main() {
 
   console.log(`\n  Done! ${ok}/${routes.length} pages prerendered.\n`);
 
+  // ── Generate sitemap.xml ─────────────────────────────────────────
+  const today = new Date().toISOString().split('T')[0];
+
+  // Priority mapping
+  const getPriority = (path) => {
+    if (path === '/') return '1.0';
+    if (path === '/dia-de-las-madres') return '0.9';
+    if (['/generos', '/ocasiones', '/como-funciona', '/preguntas-frecuentes', '/pricing'].includes(path)) return '0.9';
+    if (path.startsWith('/generos/') || path.startsWith('/ocasiones/')) return '0.8';
+    if (path.startsWith('/canciones/')) return '0.7';
+    return '0.6';
+  };
+
+  const getChangefreq = (path) => {
+    if (path === '/' || path === '/generos' || path === '/ocasiones') return 'weekly';
+    if (path === '/dia-de-las-madres') return 'weekly';
+    return 'monthly';
+  };
+
+  const sitemapUrls = routes.map(r => `  <url>
+    <loc>${BASE_URL}${r.path}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${getChangefreq(r.path)}</changefreq>
+    <priority>${getPriority(r.path)}</priority>
+  </url>`).join('\n');
+
+  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapUrls}
+</urlset>
+`;
+
+  writeFileSync(resolve(DIST, 'sitemap.xml'), sitemapXml, 'utf-8');
+  console.log(`  Generated sitemap.xml (${routes.length} URLs)\n`);
+
 }
 
 main();
