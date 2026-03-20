@@ -6,7 +6,7 @@ import { trackStep } from '../services/tracking';
 
 // Preview settings
 const PREVIEW_START = 10;
-const PREVIEW_DURATION = 45;
+const PREVIEW_DURATION = 30;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // Helper to get static genre image path
@@ -799,7 +799,7 @@ export default function ComparisonPage() {
             {' • '}<span style={{color: '#f74da6', fontWeight: '600'}}>{genreName}</span>
           </p>
           <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
-            🎧 Estos son previews de 45 segundos · Tu canción completa dura ~3-4 minutos
+            🎧 Estos son previews de 30 segundos · Tu canción completa dura ~3-4 minutos
           </p>
           
           {/* Auto-play indicator */}
@@ -1075,7 +1075,7 @@ export default function ComparisonPage() {
                   }} />
                 </div>
                 <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '6px', textAlign: 'right'}}>
-                  {formatTime(currentTimes[song.id] || 0)} / 0:20
+                  {formatTime(currentTimes[song.id] || 0)} / {formatTime(PREVIEW_DURATION)}
                 </p>
 
                 {/* Price */}
@@ -1590,7 +1590,7 @@ export default function ComparisonPage() {
 
           {/* All sales final disclaimer */}
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '12px', lineHeight: 1.5, maxWidth: 380, marginLeft: 'auto', marginRight: 'auto' }}>
-            🎵 Al comprar recibes la canción completa (~3-4 min) — lo que escuchaste es solo un preview de 45 segundos.
+            🎵 Al comprar recibes la canción completa (~3-4 min) — lo que escuchaste es solo un preview de 30 segundos.
           </p>
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '8px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
             Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.

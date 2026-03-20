@@ -37,8 +37,8 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Base price in cents ($19.99)
-    let priceInCents = 1999;
+    // Pricing: $24.99 single, $39.99 bundle
+    let priceInCents = purchaseBoth ? 3999 : 2499;
     let appliedCoupon = null;
 
     // Validate and apply coupon if provided
@@ -119,8 +119,8 @@ serve(async (req) => {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Canción Personalizada - RegalosQueCantan',
-              description: 'Canción completa en MP3, descarga ilimitada',
+              name: purchaseBoth ? '2 Canciones Personalizadas - RegalosQueCantan' : 'Canción Personalizada - RegalosQueCantan',
+              description: purchaseBoth ? '2 canciones completas en MP3, descarga ilimitada' : 'Canción completa en MP3, descarga ilimitada',
               images: ['https://regalosquecantan.com/og-image.jpg'],
             },
             unit_amount: priceInCents,

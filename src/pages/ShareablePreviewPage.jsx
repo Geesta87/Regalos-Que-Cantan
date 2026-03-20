@@ -630,7 +630,7 @@ export default function ShareablePreviewPage() {
             animation: isVisible ? 'fadeInUp 0.8s ease-out 0.45s both' : 'none'
           }}>
             <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 6px 0'}}>
-              🔒 Previews de 45 segundos. Compra para descargar la canción completa (~3 min).
+              🔒 Previews de 30 segundos. Compra para descargar la canción completa (~3 min).
             </p>
             <p style={{fontSize: '12px', color: '#fca5a5', margin: 0, fontWeight: '600'}}>
               ⚠️ Si no compras antes de que expire el tiempo, la canción será eliminada permanentemente.
