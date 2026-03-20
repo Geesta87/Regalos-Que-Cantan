@@ -5,8 +5,8 @@ import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
 // Preview settings
-const PREVIEW_START = 15;
-const PREVIEW_DURATION = 20;
+const PREVIEW_START = 10;
+const PREVIEW_DURATION = 45;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // Helper to get static genre image path
@@ -799,7 +799,7 @@ export default function ComparisonPage() {
             {' • '}<span style={{color: '#f74da6', fontWeight: '600'}}>{genreName}</span>
           </p>
           <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
-            🎧 Estos son previews de 20 segundos · Tu canción completa dura ~3-4 minutos
+            🎧 Estos son previews de 45 segundos · Tu canción completa dura ~3-4 minutos
           </p>
           
           {/* Auto-play indicator */}
@@ -1084,20 +1084,10 @@ export default function ComparisonPage() {
                   borderTop: `1px solid ${vibe.color}30`,
                   textAlign: 'center'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through' }}>
-                      $34.99
-                    </span>
-                    <span style={{
-                      background: 'linear-gradient(90deg, #22c55e, #16a34a)',
-                      padding: '3px 10px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      color: 'white'
-                    }}>
-                      AHORRA $10
-                    </span>
+                  <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                      Pago único · Para siempre
+                    </p>
                   </div>
                   <span style={{fontSize: '32px', fontWeight: '800', color: isSelected ? '#f74da6' : 'white'}}>
                     ${singlePrice}
@@ -1600,7 +1590,7 @@ export default function ComparisonPage() {
 
           {/* All sales final disclaimer */}
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '12px', lineHeight: 1.5, maxWidth: 380, marginLeft: 'auto', marginRight: 'auto' }}>
-            🎵 Al comprar recibes la canción completa (~3-4 min) — lo que escuchaste es solo un preview de 20 segundos.
+            🎵 Al comprar recibes la canción completa (~3-4 min) — lo que escuchaste es solo un preview de 45 segundos.
           </p>
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '8px', lineHeight: 1.5, maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
             Al comprar aceptas que todas las ventas son finales. Escucha la vista previa antes de comprar. No se ofrecen reembolsos.

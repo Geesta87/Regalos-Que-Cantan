@@ -39,6 +39,10 @@ const storeUtmParams = () => {
     if (utm.utm_source || utm.utm_medium || utm.utm_campaign) {
       sessionStorage.setItem('rqc_utm_params', JSON.stringify(utm));
     }
+    // Store email campaign attribution
+    if (utm.utm_source === 'email' && utm.utm_campaign) {
+      sessionStorage.setItem('rqc_from_email', utm.utm_campaign);
+    }
   }
 };
 

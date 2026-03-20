@@ -92,6 +92,18 @@ function getInitialPage() {
   if (path.startsWith('/song/')) {
     return 'songPage';
   }
+
+  // Handle /preview/:id links (from emails) → redirect to listen page
+  if (path.startsWith('/preview/') && path !== '/preview') {
+    const songId = path.replace('/preview/', '');
+    if (songId) {
+      // Preserve UTM params and add song_id
+      const currentParams = new URLSearchParams(window.location.search);
+      currentParams.set('song_id', songId);
+      window.history.replaceState({}, '', `/listen?${currentParams.toString()}`);
+      return 'listen';
+    }
+  }
   
   // Check for dynamic SEO routes
   if (path.startsWith('/generos/') && path !== '/generos/') {

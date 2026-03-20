@@ -110,7 +110,20 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       pricingTier,
       fbc,
       fbp,
-      clientUserAgent: navigator.userAgent
+      clientUserAgent: navigator.userAgent,
+      // UTM attribution passthrough
+      ...(() => {
+        try {
+          const stored = JSON.parse(sessionStorage.getItem('rqc_utm_params') || '{}');
+          return {
+            utm_source: stored.utm_source || null,
+            utm_medium: stored.utm_medium || null,
+            utm_campaign: stored.utm_campaign || null
+          };
+        } catch { return {}; }
+      })(),
+      session_id: sessionStorage.getItem('rqc_session_id') || null,
+      from_email_campaign: sessionStorage.getItem('rqc_from_email') || null
     })
   });
 

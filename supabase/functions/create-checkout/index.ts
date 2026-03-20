@@ -25,7 +25,11 @@ serve(async (req) => {
   }
 
   try {
-    const { songId, email, couponCode } = await req.json();
+    const body = await req.json();
+    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, fbc, fbp, clientUserAgent } = body;
+    // Accept both songIds (array from frontend) and songId (legacy)
+    const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
+    const songId = songIds[0];
 
     if (!songId || !email) {
       throw new Error('Missing songId or email');
@@ -72,10 +76,16 @@ serve(async (req) => {
       // Mark song as paid
       await supabase
         .from('songs')
-        .update({ 
-          paid: true, 
+        .update({
+          paid: true,
+          payment_status: 'paid',
+          amount_paid: 0,
           coupon_code: appliedCoupon.code,
-          paid_at: new Date().toISOString()
+          paid_at: new Date().toISOString(),
+          utm_source: utm_source || null,
+          utm_medium: utm_medium || null,
+          utm_campaign: utm_campaign || null,
+          from_email_campaign: from_email_campaign || null
         })
         .eq('id', songId);
 
@@ -124,7 +134,12 @@ serve(async (req) => {
       metadata: {
         songId: songId,
         email: email,
-        couponCode: appliedCoupon?.code || ''
+        couponCode: appliedCoupon?.code || '',
+        utm_source: utm_source || '',
+        utm_medium: utm_medium || '',
+        utm_campaign: utm_campaign || '',
+        session_id: session_id || '',
+        from_email_campaign: from_email_campaign || ''
       },
       payment_intent_data: {
         metadata: {
@@ -134,12 +149,15 @@ serve(async (req) => {
       }
     });
 
-    // If coupon was applied, save it to the song
-    if (appliedCoupon) {
-      await supabase
-        .from('songs')
-        .update({ coupon_code: appliedCoupon.code })
-        .eq('id', songId);
+    // Save coupon and UTM attribution to the song
+    const songUpdate: Record<string, any> = {};
+    if (appliedCoupon) songUpdate.coupon_code = appliedCoupon.code;
+    if (utm_source) songUpdate.utm_source = utm_source;
+    if (utm_medium) songUpdate.utm_medium = utm_medium;
+    if (utm_campaign) songUpdate.utm_campaign = utm_campaign;
+    if (from_email_campaign) songUpdate.from_email_campaign = from_email_campaign;
+    if (Object.keys(songUpdate).length > 0) {
+      await supabase.from('songs').update(songUpdate).eq('id', songId);
     }
 
     return new Response(

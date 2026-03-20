@@ -4,10 +4,10 @@ import { createCheckout, validateCoupon, regenerateSong } from '../services/api'
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
-// Preview settings - skip intro, play 20 seconds of vocals
-const PREVIEW_START = 15;  // Skip 15s intro
-const PREVIEW_DURATION = 20;  // Play 20 seconds
-const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 35s
+// Preview settings - skip intro, play 45 seconds of vocals
+const PREVIEW_START = 10;  // Skip 10s intro
+const PREVIEW_DURATION = 45;  // Play 45 seconds
+const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 55s
 
 export default function PreviewPage() {
   const { formData, songData, setSongData, navigateTo } = useContext(AppContext);
@@ -33,9 +33,27 @@ export default function PreviewPage() {
 
   // Calculate price
   const basePrice = 24.99;
-  const originalPrice = 49.99;
   const discount = couponApplied?.discount || 0;
   const finalPrice = (basePrice * (1 - discount / 100)).toFixed(2);
+
+  // Countdown timer: 24 hours from song creation
+  const [timeLeft, setTimeLeft] = useState('');
+  const [countdownExpired, setCountdownExpired] = useState(false);
+  useEffect(() => {
+    if (!songData?.createdAt) return;
+    const expiry = new Date(songData.createdAt).getTime() + 24 * 60 * 60 * 1000;
+    const tick = () => {
+      const diff = expiry - Date.now();
+      if (diff <= 0) { setCountdownExpired(true); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${h}h ${m.toString().padStart(2,'0')}m ${s.toString().padStart(2,'0')}s`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [songData?.createdAt]);
 
   // Track page view
   useEffect(() => {
@@ -198,28 +216,30 @@ export default function PreviewPage() {
 
   return (
     <div className="bg-forest text-white antialiased min-h-screen">
-      {/* 💘 Valentine's Sticky Urgency Bar */}
-      <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-[60] shadow-lg">
-        💘 ¡Ordena antes del 12 de Feb para San Valentín! ⏰ Solo quedan unos días
-      </div>
+      {/* ⏰ Urgency Countdown Bar */}
+      {!countdownExpired && timeLeft && (
+        <div className="bg-gradient-to-r from-red-600/90 via-red-500/90 to-red-600/90 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-[60] shadow-lg">
+          ⏰ Tu canción se eliminará en: <span className="font-mono">{timeLeft}</span>
+        </div>
+      )}
+      {countdownExpired && (
+        <div className="bg-red-700 text-white text-center py-3 px-4 font-bold text-sm sticky top-0 z-[60] shadow-lg">
+          ⚠️ Tu canción está a punto de ser eliminada — ¡compra ahora para guardarla!
+        </div>
+      )}
 
       {songData?.previewUrl && (
         <audio ref={audioRef} src={songData.previewUrl} preload="metadata" />
       )}
 
       <header className="fixed top-12 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6">
-        <div 
+        <div
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
           <h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
-        </div>
-        <div className="hidden md:block">
-          <span className="text-[10px] uppercase tracking-widest text-red-400 font-bold bg-red-500/20 px-4 py-2 rounded-full border border-red-400/50">
-            💘 San Valentín
-          </span>
         </div>
       </header>
 
@@ -251,7 +271,7 @@ export default function PreviewPage() {
                   <span className="material-symbols-outlined text-xs">
                     {previewEnded ? 'lock' : 'headphones'}
                   </span>
-                  {previewEnded ? 'Preview terminado' : 'Muestra de 20s'}
+                  {previewEnded ? 'Preview terminado' : 'Muestra de 45s'}
                 </span>
               </div>
 
@@ -350,10 +370,10 @@ export default function PreviewPage() {
               Letra de tu canción
             </h3>
             
-            <div className="relative max-h-64 overflow-hidden">
+            <div className="relative">
               <div className="space-y-6 italic font-display text-lg md:text-xl text-white/90 leading-relaxed">
-                {lyricsSections.slice(0, 2).map((section, index) => (
-                  <p key={index} className={index === 1 ? 'text-gold/80' : ''}>
+                {lyricsSections.map((section, index) => (
+                  <p key={index} className={index % 2 === 1 ? 'text-gold/80' : ''}>
                     {section.split('\n').map((line, i) => (
                       <React.Fragment key={i}>
                         {line}
@@ -362,32 +382,11 @@ export default function PreviewPage() {
                     ))}
                   </p>
                 ))}
-                
-                {lyricsSections.length > 2 && (
-                  <div className="pt-4 blur-sm opacity-30 select-none">
-                    {lyricsSections[2]?.split('\n').slice(0, 2).join('\n')}
-                  </div>
-                )}
               </div>
-              
-              <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-forest/95 to-transparent pointer-events-none"></div>
-            </div>
-            
-            <div className="mt-6">
-              <span className="text-[10px] uppercase tracking-[0.3em] text-gold/60 font-bold">
-                [ Adquiere la versión completa para ver toda la letra ]
-              </span>
             </div>
           </div>
 
           <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-8">
-            {/* Valentine's Promo Banner */}
-            <div className="bg-gradient-to-r from-red-600/20 to-pink-600/20 border border-red-400/30 rounded-2xl p-4 mb-6 text-center">
-              <p className="text-red-400 font-bold text-sm">
-                💘 Regalo perfecto para San Valentín • ¡Entrega digital instantánea!
-              </p>
-            </div>
-
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
               <div className="text-center md:text-left">
                 <div className="flex items-center gap-3 justify-center md:justify-start">
@@ -398,18 +397,22 @@ export default function PreviewPage() {
                     </>
                   ) : (
                     <>
-                      <span className="text-white/40 line-through text-xl">${originalPrice}</span>
                       <span className="text-white text-4xl font-bold tracking-tight">
                         ${couponApplied ? finalPrice : basePrice.toFixed(2)}
                       </span>
-                      <span className="bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
-                        {couponApplied ? `${discount + 33}% OFF` : '33% OFF'}
-                      </span>
+                      {couponApplied && (
+                        <span className="bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
+                          {discount}% OFF
+                        </span>
+                      )}
                     </>
                   )}
                 </div>
-                <p className="text-white/40 text-xs mt-1 uppercase tracking-widest">
-                  {couponApplied?.free ? 'Cupón 100% de descuento aplicado' : 'Pago único • Acceso de por vida'}
+                <p className="text-white/50 text-xs mt-2">
+                  {couponApplied?.free ? 'Cupón 100% de descuento aplicado' : 'Menos que unas flores que se mueren en 3 días 🌹'}
+                </p>
+                <p className="text-white/30 text-[10px] mt-1 uppercase tracking-widest">
+                  Pago único • Acceso de por vida
                 </p>
               </div>
 
@@ -465,8 +468,8 @@ export default function PreviewPage() {
                     </>
                   ) : (
                     <>
-                      <span>💘</span>
-                      Comprar Regalo de San Valentín
+                      <span>🎁</span>
+                      Comprar Canción — ${couponApplied ? finalPrice : basePrice.toFixed(2)}
                     </>
                   )}
                 </span>

@@ -7,7 +7,7 @@ const supabase = import.meta.env.VITE_SUPABASE_URL
 
 // ⏱️ Preview limits
 const PREVIEW_START = 10;
-const PREVIEW_DURATION = 20;
+const PREVIEW_DURATION = 45;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
@@ -33,18 +33,21 @@ const isSongPaid = (song) => {
 };
 
 // ⏰ Countdown Timer Component
-function CountdownTimer() {
-  const [timeLeft, setTimeLeft] = useState({ minutes: 30, seconds: 0 });
+function CountdownTimer({ createdAt }) {
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [expired, setExpired] = useState(false);
-  const expireTimeRef = useRef(Date.now() + (30 * 60 * 1000));
+  const expireTimeRef = useRef(
+    createdAt ? new Date(createdAt).getTime() + (24 * 60 * 60 * 1000) : Date.now() + (24 * 60 * 60 * 1000)
+  );
 
   useEffect(() => {
     const tick = () => {
       const diff = expireTimeRef.current - Date.now();
       if (diff <= 0) { setExpired(true); return; }
       setTimeLeft({
-        minutes: Math.floor(diff / (1000 * 60)),
-        seconds: Math.floor((diff % (1000 * 60)) / 1000)
+        hours: Math.floor(diff / 3600000),
+        minutes: Math.floor((diff % 3600000) / 60000),
+        seconds: Math.floor((diff % 60000) / 1000)
       });
     };
     tick();
@@ -55,7 +58,7 @@ function CountdownTimer() {
   if (expired) {
     return (
       <div style={{display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center'}}>
-        <span style={{color: '#f87171', fontWeight: '700', fontSize: '14px'}}>⚠️ Tiempo expirado</span>
+        <span style={{color: '#f87171', fontWeight: '700', fontSize: '14px'}}>⚠️ ¡Compra ahora antes de que se elimine!</span>
       </div>
     );
   }
@@ -65,6 +68,7 @@ function CountdownTimer() {
   return (
     <div style={{display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center'}}>
       {[
+        { val: pad(timeLeft.hours), label: 'hrs' },
         { val: pad(timeLeft.minutes), label: 'min' },
         { val: pad(timeLeft.seconds), label: 'seg' }
       ].map((unit, i) => (
@@ -78,7 +82,7 @@ function CountdownTimer() {
             </span>
           </div>
           <span style={{fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: '600'}}>{unit.label}</span>
-          {i < 1 && <span style={{color: 'rgba(239,68,68,0.5)', fontWeight: '900', fontSize: '18px', marginLeft: '2px'}}>:</span>}
+          {i < 2 && <span style={{color: 'rgba(239,68,68,0.5)', fontWeight: '900', fontSize: '18px', marginLeft: '2px'}}>:</span>}
         </div>
       ))}
     </div>
@@ -141,6 +145,14 @@ export default function ShareablePreviewPage() {
       if (data.length === 1) {
         setSelectedIds(new Set([data[0].id]));
         setPurchaseMode('single');
+      }
+
+      // Track email campaign attribution
+      const utmSource = urlParams.get('utm_source');
+      const utmCampaign = urlParams.get('utm_campaign');
+      if (utmSource === 'email' && utmCampaign && supabase) {
+        supabase.from('songs').update({ from_email_campaign: utmCampaign }).in('id', ids).then(() => {});
+        sessionStorage.setItem('rqc_from_email', utmCampaign);
       }
     } catch (err) {
       setError(err.message);
@@ -312,7 +324,7 @@ export default function ShareablePreviewPage() {
           <p style={{fontSize: '13px', color: '#fca5a5', margin: '0 0 8px 0', fontWeight: '600', animation: 'urgentPulse 2s ease-in-out infinite'}}>
             ⏰ Tu canción personalizada será eliminada en:
           </p>
-          {createdAt && <CountdownTimer />}
+          {createdAt && <CountdownTimer createdAt={createdAt} />}
         </div>
       )}
 
@@ -358,7 +370,7 @@ export default function ShareablePreviewPage() {
             marginBottom: '20px'
           }}>
             <span style={{fontSize: '13px', color: '#f74da6', fontWeight: '600', letterSpacing: '0.5px'}}>
-              🎧 PREVIEW • 20 SEGUNDOS {songs.length > 1 ? `• ${songs.length} VERSIONES` : ''}
+              🎧 PREVIEW • 45 SEGUNDOS {songs.length > 1 ? `• ${songs.length} VERSIONES` : ''}
             </span>
           </div>
 
@@ -618,7 +630,7 @@ export default function ShareablePreviewPage() {
             animation: isVisible ? 'fadeInUp 0.8s ease-out 0.45s both' : 'none'
           }}>
             <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 6px 0'}}>
-              🔒 Previews de 20 segundos. Compra para descargar la canción completa (~3 min).
+              🔒 Previews de 45 segundos. Compra para descargar la canción completa (~3 min).
             </p>
             <p style={{fontSize: '12px', color: '#fca5a5', margin: 0, fontWeight: '600'}}>
               ⚠️ Si no compras antes de que expire el tiempo, la canción será eliminada permanentemente.
