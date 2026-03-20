@@ -384,7 +384,7 @@ export default function SuccessPage() {
     hasFiredPurchase.current = true;
 
     // Determine purchase value based on number of songs
-    const purchaseValue = songs.length > 1 ? 34.99 : 24.99;
+    const purchaseValue = songs.length > 1 ? 39.99 : 24.99;
 
     // Fire Meta Pixel Purchase event
     if (typeof window.fbq === 'function') {

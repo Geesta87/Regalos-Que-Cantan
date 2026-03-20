@@ -81,10 +81,12 @@ export const trackStep = async (step, metadata = {}) => {
         'names': { event: 'ViewContent', params: { content_name: 'Names Input', content_category: 'funnel' }},
         'details': { event: 'ViewContent', params: { content_name: 'Details Input', content_category: 'funnel' }},
         'email': { event: 'Lead', params: { content_name: 'Email Captured', content_category: 'funnel' }},
-        'generating': { event: 'InitiateCheckout', params: { content_name: 'Song Generating', currency: 'USD', value: 24.99 }},
+        'generating': { event: 'ViewContent', params: { content_name: 'Song Generating', content_category: 'funnel' }},
         'preview': { event: 'ViewContent', params: { content_name: 'Song Preview', content_category: 'product', content_type: 'product' }},
-        'comparison': { event: 'AddToCart', params: { content_name: 'Song Comparison', currency: 'USD', value: 24.99 }},
-        'purchase': { event: 'Purchase', params: { content_name: 'Song Purchase', currency: 'USD', value: metadata.amount || 24.99 }}
+        'comparison': { event: 'ViewContent', params: { content_name: 'Song Comparison', content_category: 'product', content_type: 'product' }},
+        'song_selected': { event: 'AddToCart', params: { content_name: 'Song Selected', currency: 'USD', value: metadata.value || 24.99 }},
+        'checkout_clicked': { event: 'InitiateCheckout', params: { content_name: 'Checkout Started', currency: 'USD', value: metadata.value || 24.99, num_items: metadata.num_items || 1 }}
+        // Purchase event is fired directly on SuccessPage after Stripe confirms payment
       };
       
       const pixelData = pixelEventMap[step];

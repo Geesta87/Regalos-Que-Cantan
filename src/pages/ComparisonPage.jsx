@@ -582,8 +582,12 @@ export default function ComparisonPage() {
         console.log('Checkout - whatsapp:', cleanPhone || 'not provided');
       }
 
+      // 🔥 Meta Pixel: InitiateCheckout when user actually clicks buy and checkout is created
+      const checkoutValue = purchaseBoth ? 39.99 : 24.99;
+      trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
+
       const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
-      
+
       if (result.url) {
         window.location.href = result.url;
       } else {
@@ -600,6 +604,8 @@ export default function ComparisonPage() {
   const selectSong = (songId) => {
     setSelectedSongId(songId);
     setPurchaseBoth(false);
+    // 🔥 Meta Pixel: AddToCart when user selects a song
+    trackStep('song_selected', { value: 24.99, content_ids: [songId], num_items: 1 });
     // Auto-scroll to checkout CTA
     setTimeout(() => {
       checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -609,6 +615,8 @@ export default function ComparisonPage() {
   const selectBoth = () => {
     setPurchaseBoth(true);
     setSelectedSongId(null);
+    // 🔥 Meta Pixel: AddToCart when user selects both songs
+    trackStep('song_selected', { value: 39.99, content_ids: songs.map(s => s.id), num_items: 2 });
     // Auto-scroll to checkout CTA
     setTimeout(() => {
       checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
