@@ -4,10 +4,10 @@ import { createCheckout, validateCoupon, regenerateSong } from '../services/api'
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
-// Preview settings - skip intro, play 45 seconds of vocals
+// Preview settings - skip intro, play 30 seconds of vocals
 const PREVIEW_START = 10;  // Skip 10s intro
-const PREVIEW_DURATION = 45;  // Play 45 seconds
-const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 55s
+const PREVIEW_DURATION = 30;  // Play 30 seconds
+const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 40s
 
 export default function PreviewPage() {
   const { formData, songData, setSongData, navigateTo } = useContext(AppContext);
@@ -271,7 +271,7 @@ export default function PreviewPage() {
                   <span className="material-symbols-outlined text-xs">
                     {previewEnded ? 'lock' : 'headphones'}
                   </span>
-                  {previewEnded ? 'Preview terminado' : 'Muestra de 45s'}
+                  {previewEnded ? 'Preview terminado' : 'Muestra de 30s'}
                 </span>
               </div>
 

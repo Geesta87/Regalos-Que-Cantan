@@ -2133,9 +2133,31 @@ export default function SuccessPage() {
             </p>
           </div>
 
-          <div style={{ textAlign: 'center', animation: 'fadeInUp 0.7s ease-out 0.75s both' }}>
-            <a href="/" style={{ color: ts.textSecondary, textDecoration: 'none', fontSize: '14px', fontWeight: '600' }}>
-              ← Crear otra canción
+          {/* ===== CREATE ANOTHER SONG CTA ===== */}
+          <div style={{
+            background: ts.cardBg, borderRadius: '24px', padding: '24px',
+            border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
+            backdropFilter: ts.cardBlur,
+            animation: 'fadeInUp 0.7s ease-out 0.75s both',
+            textAlign: 'center',
+          }}>
+            <p style={{ fontSize: '28px', marginBottom: '10px' }}>🎁</p>
+            <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '6px', color: ts.textPrimary }}>
+              ¿Quieres sorprender a alguien más?
+            </h3>
+            <p style={{ fontSize: '13px', color: ts.textSecondary, marginBottom: '18px', lineHeight: '1.5' }}>
+              Crea otra canción personalizada para otra persona especial en tu vida.
+            </p>
+            <a href="/" style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '16px 32px',
+              background: ts.accentGrad,
+              color: ts.btnText, fontWeight: '800', fontSize: '16px',
+              border: 'none', borderRadius: '14px', textDecoration: 'none',
+              boxShadow: `0 6px 25px rgba(${ts.accentRgb},0.3)`,
+              transition: 'all 0.3s', fontFamily: ts.font,
+            }}>
+              🎤 Crear Otra Canción
             </a>
           </div>
 

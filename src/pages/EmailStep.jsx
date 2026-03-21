@@ -180,7 +180,7 @@ export default function EmailStep() {
                   <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Género Musical</p>
                   <button 
                     onClick={() => handleEditSection('genre')}
-                    className="text-gold/50 hover:text-gold text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -199,7 +199,7 @@ export default function EmailStep() {
                   <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Ocasión</p>
                   <button 
                     onClick={() => handleEditSection('occasion')}
-                    className="text-gold/50 hover:text-gold text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -218,7 +218,7 @@ export default function EmailStep() {
                   <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Para</p>
                   <button 
                     onClick={() => handleEditSection('names')}
-                    className="text-gold/50 hover:text-gold text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -241,7 +241,7 @@ export default function EmailStep() {
                   <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Tu Historia</p>
                   <button 
                     onClick={() => handleEditSection('details')}
-                    className="text-gold/50 hover:text-gold text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -316,7 +316,7 @@ export default function EmailStep() {
                     Procesando...
                   </span>
                 ) : (
-                  '🎤 Crear Mi Canción GRATIS'
+                  '🎤 Crear Mi Canción — Preview Gratis'
                 )}
               </span>
               {isValidEmail && !isSubmitting && (

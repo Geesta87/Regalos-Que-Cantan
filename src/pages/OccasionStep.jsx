@@ -2,6 +2,14 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
+// Show Valentine's badge only Jan 15 - Feb 14
+const isValentineSeason = () => {
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed
+  const day = now.getDate();
+  return (month === 0 && day >= 15) || (month === 1 && day <= 14);
+};
+
 const occasions = [
   { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
   { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
@@ -61,7 +69,7 @@ export default function OccasionStep() {
       updateFormData('occasion', occasionId);
       autoAdvanceTimer.current = setTimeout(() => {
         navigateTo('names');
-      }, 600);
+      }, 1200);
     }
   };
 
@@ -82,7 +90,7 @@ export default function OccasionStep() {
       updateFormData('emotionalTone', emotionalTone);
       autoAdvanceTimer.current = setTimeout(() => {
         navigateTo('names');
-      }, 600);
+      }, 1200);
     }
   };
 
@@ -162,7 +170,7 @@ export default function OccasionStep() {
                   relative overflow-hidden transition-all duration-300 
                   flex flex-col items-center justify-center p-6 rounded-2xl 
                   backdrop-blur-sm cursor-pointer
-                  ${occasion.id === 'san_valentin' 
+                  ${occasion.id === 'san_valentin' && isValentineSeason()
                     ? selectedOccasion === occasion.id
                       ? 'border-2 border-red-500 bg-red-500/30 ring-2 ring-red-400 shadow-lg shadow-red-500/40'
                       : 'border-2 border-red-500/70 bg-red-500/20 hover:bg-red-500/30 hover:border-red-400 shadow-md shadow-red-500/30'
@@ -171,17 +179,17 @@ export default function OccasionStep() {
                       : 'border border-white/10 hover:border-gold/50 hover:bg-white/10 bg-white/5'}
                 `}
               >
-                {occasion.id === 'san_valentin' && (
+                {occasion.id === 'san_valentin' && isValentineSeason() && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">¡14 FEB!</span>
                 )}
                 <span className={`material-symbols-outlined text-4xl mb-3 transition-transform ${
-                  occasion.id === 'san_valentin' 
-                    ? 'text-red-400' 
+                  occasion.id === 'san_valentin' && isValentineSeason()
+                    ? 'text-red-400'
                     : 'text-gold'
                 } ${selectedOccasion === occasion.id ? 'scale-110' : 'group-hover:scale-110'}`}>
                   {occasion.icon}
                 </span>
-                <span className={`text-sm font-medium tracking-wide ${occasion.id === 'san_valentin' ? 'text-red-200' : ''}`}>{occasion.name}</span>
+                <span className={`text-sm font-medium tracking-wide ${occasion.id === 'san_valentin' && isValentineSeason() ? 'text-red-200' : ''}`}>{occasion.name}</span>
                 {occasion.id === 'otro' && selectedOccasion === 'otro' && customOccasion.length >= 20 && emotionalTone && (
                   <span className="absolute top-2 right-2 material-symbols-outlined text-gold text-sm">check_circle</span>
                 )}

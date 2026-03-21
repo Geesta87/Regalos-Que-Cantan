@@ -538,7 +538,7 @@ export default function ArtistStep() {
       updateFormData('artistInspiration', artistName);
       autoAdvanceTimer.current = setTimeout(() => {
         navigateTo('occasion');
-      }, 600);
+      }, 1200);
     }
   };
 

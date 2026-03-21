@@ -53,12 +53,12 @@ export default function DetailsStep() {
   const charCount = details.length;
   const maxChars = 2000;
 
-  // Quality indicator
+  // Quality indicator — use full Tailwind class strings (dynamic interpolation breaks JIT)
   const getQualityLevel = () => {
-    if (charCount === 0) return { level: 'empty', label: 'Vacío', color: 'white/30' };
-    if (charCount < 50) return { level: 'low', label: 'Básico', color: 'yellow-400' };
-    if (charCount < 150) return { level: 'medium', label: 'Bueno', color: 'gold' };
-    return { level: 'high', label: '¡Excelente!', color: 'green-400' };
+    if (charCount === 0) return { level: 'empty', label: 'Vacío', dotClass: 'bg-white/30', textClass: 'text-white/30' };
+    if (charCount < 50) return { level: 'low', label: 'Básico', dotClass: 'bg-yellow-400', textClass: 'text-yellow-400' };
+    if (charCount < 150) return { level: 'medium', label: 'Bueno', dotClass: 'bg-gold', textClass: 'text-gold' };
+    return { level: 'high', label: '¡Excelente!', dotClass: 'bg-green-400', textClass: 'text-green-400' };
   };
 
   const quality = getQualityLevel();
@@ -140,8 +140,8 @@ export default function DetailsStep() {
                 <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between">
                   {/* Quality indicator */}
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full bg-${quality.color}`}></div>
-                    <span className={`text-xs font-medium text-${quality.color}`}>
+                    <div className={`w-2 h-2 rounded-full ${quality.dotClass}`}></div>
+                    <span className={`text-xs font-medium ${quality.textClass}`}>
                       {quality.label}
                     </span>
                   </div>

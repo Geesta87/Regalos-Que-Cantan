@@ -7,7 +7,7 @@ const supabase = import.meta.env.VITE_SUPABASE_URL
 
 // ⏱️ Preview limits
 const PREVIEW_START = 10;
-const PREVIEW_DURATION = 45;
+const PREVIEW_DURATION = 30;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
