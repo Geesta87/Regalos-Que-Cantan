@@ -515,7 +515,7 @@ export default function ComparisonPage() {
       .split('\n')
       .map(l => l.trim())
       .filter(l => l && !l.startsWith('['))
-      .slice(0, 4);
+      .slice(0, 10);
   };
 
   const handleCheckout = async () => {
@@ -1033,16 +1033,16 @@ export default function ComparisonPage() {
                     }}>
                       📝 Vista previa de la letra
                     </p>
-                    {lyricsPreview.slice(0, isExpanded ? 4 : 2).map((line, i) => (
+                    {lyricsPreview.slice(0, isExpanded ? 10 : 4).map((line, i) => (
                       <p key={i} style={{
                         fontSize: '13px', color: 'rgba(255,255,255,0.9)',
-                        margin: i < (isExpanded ? 3 : 1) ? '0 0 3px 0' : 0,
+                        margin: i < (isExpanded ? 9 : 3) ? '0 0 3px 0' : 0,
                         fontStyle: 'italic', lineHeight: '1.4'
                       }}>
                         "{line}"
                       </p>
                     ))}
-                    {lyricsPreview.length > 2 && (
+                    {lyricsPreview.length > 4 && (
                       <p style={{fontSize: '11px', color: vibe.color, margin: '6px 0 0 0'}}>
                         {isExpanded ? '▲ Ver menos' : '▼ Ver más letra...'}
                       </p>
