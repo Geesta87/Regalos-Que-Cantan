@@ -372,16 +372,23 @@ export default function SuccessPage() {
   }, [songs]);
 
   // ------ 🔥 META PIXEL: Track Purchase after Stripe payment ------
-  const hasFiredPurchase = useRef(false);
+  // Guard uses sessionStorage keyed by Stripe session_id so the pixel
+  // fires exactly ONCE per checkout — survives page reloads, redirects,
+  // back-button, and mobile browser app-switching.
   useEffect(() => {
-    if (hasFiredPurchase.current) return;
     if (!songs.length) return;
 
     // Only fire if coming from Stripe (session_id present)
     const sessionId = urlParams.get('session_id');
     if (!sessionId) return;
 
-    hasFiredPurchase.current = true;
+    // Deduplicate: check if we already fired for this exact checkout
+    const storageKey = `rqc_purchase_fired_${sessionId}`;
+    if (sessionStorage.getItem(storageKey)) {
+      console.log('[Meta Pixel] Purchase already fired for session:', sessionId, '— skipped');
+      return;
+    }
+    sessionStorage.setItem(storageKey, Date.now().toString());
 
     // Determine purchase value based on number of songs
     const purchaseValue = songs.length > 1 ? 39.99 : 24.99;
@@ -396,7 +403,7 @@ export default function SuccessPage() {
         content_ids: songs.map(s => s.id),
         num_items: songs.length
       });
-      console.log('[Meta Pixel] Purchase event fired:', purchaseValue, 'USD');
+      console.log('[Meta Pixel] Purchase event fired:', purchaseValue, 'USD for session:', sessionId);
     }
   }, [songs]);
 
