@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { createCheckout, supabase, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
+import ExitIntentPopup from '../components/ExitIntentPopup';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -1621,6 +1622,18 @@ export default function ComparisonPage() {
         <p style={{textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.3)', fontSize: '12px'}}>
           RegalosQueCantan © {new Date().getFullYear()}
         </p>
+
+        {/* Exit Intent Popup */}
+        <ExitIntentPopup
+          couponApplied={couponApplied}
+          selectedSongs={songs}
+          purchaseBoth={purchaseBoth}
+          onApplyCoupon={(couponData) => {
+            setCouponCode(couponData.code);
+            setCouponApplied(couponData);
+          }}
+          onClose={() => {}}
+        />
 
         {/* ✅ Song 2 Ready Toast */}
         {song2Ready && (
