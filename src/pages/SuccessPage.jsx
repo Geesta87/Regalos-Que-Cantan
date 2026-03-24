@@ -264,6 +264,7 @@ export default function SuccessPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [downloadComplete, setDownloadComplete] = useState({});
   const [linkCopied, setLinkCopied] = useState(false);
 
   // Template picker + photo upload states
@@ -502,8 +503,10 @@ export default function SuccessPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      setDownloadComplete(prev => ({ ...prev, [target.id]: true }));
     } catch (err) {
       window.open(target.audio_url, '_blank');
+      setDownloadComplete(prev => ({ ...prev, [target.id]: true }));
     } finally {
       setDownloading(false);
     }
@@ -514,6 +517,7 @@ export default function SuccessPage() {
       await handleDownload(song);
     }
   };
+
 
   // ------ Share ------
   // ------ TEMPLATE & PHOTO HANDLERS ------
@@ -1168,22 +1172,49 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== DOWNLOAD BUTTONS ===== */}
+          {/* ===== DOWNLOAD & SHARE SECTION ===== */}
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
+
+            {/* Step indicator header */}
+            <div style={{
+              textAlign: 'center', marginBottom: '16px',
+              padding: '12px 16px',
+              background: isLight ? `rgba(${ts.accentRgb},0.06)` : `rgba(${ts.accentRgb},0.1)`,
+              borderRadius: '14px',
+              border: `1px solid ${isLight ? `rgba(${ts.accentRgb},0.12)` : `rgba(${ts.accentRgb},0.2)`}`
+            }}>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: ts.accent }}>
+                {downloadComplete[currentSong?.id] ? '✅ ¡Canción descargada!' : '👇 Paso 1: Descarga tu canción'}
+              </p>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
+                {downloadComplete[currentSong?.id]
+                  ? 'Revisa tu carpeta de descargas · Ahora envíala por WhatsApp 👇'
+                  : 'Toca el botón para guardar el MP3 en tu teléfono o computadora'}
+              </p>
+            </div>
+
+            {/* Main download button */}
             <button onClick={() => handleDownload(currentSong)} disabled={downloading}
               style={{
-                width: '100%', padding: '18px',
-                background: ts.accentGrad,
-                color: ts.btnText, fontWeight: '800', fontSize: '17px',
+                width: '100%', padding: '20px',
+                background: downloadComplete[currentSong?.id]
+                  ? (isLight ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #22c55e, #16a34a)')
+                  : ts.accentGrad,
+                color: downloadComplete[currentSong?.id] ? 'white' : ts.btnText,
+                fontWeight: '800', fontSize: '18px',
                 border: 'none', borderRadius: '16px', cursor: downloading ? 'wait' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                boxShadow: `0 8px 30px rgba(${ts.accentRgb},0.35)`,
+                boxShadow: downloadComplete[currentSong?.id]
+                  ? '0 8px 30px rgba(34,197,94,0.35)'
+                  : `0 8px 30px rgba(${ts.accentRgb},0.35)`,
                 opacity: downloading ? 0.7 : 1, transition: 'all 0.3s',
-                marginBottom: songs.length > 1 ? '10px' : '0',
+                marginBottom: '10px',
                 fontFamily: ts.font
               }}>
-              {downloading ? '⏳ Descargando...' : '⬇️ Descargar MP3'}
+              {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de Nuevo' : '⬇️ Descargar MP3'}
             </button>
+
+            {/* Download All button for multiple songs */}
             {songs.length > 1 && (
               <button onClick={handleDownloadAll} disabled={downloading}
                 style={{
@@ -1192,11 +1223,52 @@ export default function SuccessPage() {
                   color: ts.textPrimary, fontWeight: '700', fontSize: '15px',
                   border: `1.5px solid ${ts.cardBorder}`, borderRadius: '16px',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  transition: 'all 0.3s', fontFamily: ts.font
+                  transition: 'all 0.3s', fontFamily: ts.font,
+                  marginBottom: '10px'
                 }}>
                 📦 Descargar Todas ({songs.length})
               </button>
             )}
+
+            {/* WhatsApp Share - Step 2 */}
+            <div style={{
+              textAlign: 'center', marginTop: '16px',
+              padding: '12px 16px',
+              background: isLight ? 'rgba(37,211,102,0.06)' : 'rgba(37,211,102,0.1)',
+              borderRadius: '14px',
+              border: `1px solid rgba(37,211,102,${downloadComplete[currentSong?.id] ? '0.35' : '0.15'})`
+            }}>
+              <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: '#25d366' }}>
+                {downloadComplete[currentSong?.id] ? '👇 Paso 2: Envía la canción' : '💬 Paso 2: Envía por WhatsApp'}
+              </p>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 12px 0' }}>
+                Comparte el enlace para que {currentSong?.recipient_name || 'tu ser querido'} escuche su canción
+              </p>
+              <button onClick={handleShareWhatsApp}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: 'linear-gradient(135deg, #25d366, #128c7e)',
+                  color: 'white', fontWeight: '800', fontSize: '16px',
+                  border: 'none', borderRadius: '14px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: '0 6px 25px rgba(37,211,102,0.35)',
+                  transition: 'all 0.3s', fontFamily: ts.font
+                }}>
+                💬 Enviar por WhatsApp
+              </button>
+            </div>
+
+            {/* Helpful tip */}
+            <div style={{
+              textAlign: 'center', marginTop: '14px',
+              padding: '10px 14px',
+              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+              borderRadius: '12px'
+            }}>
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0, lineHeight: '1.5' }}>
+                💡 <strong>¿No encuentras el archivo?</strong> Revisa tu carpeta de <strong>Descargas</strong> o busca "cancion-para-{currentSong?.recipient_name || ''}" en tus archivos. También puedes enviar directamente el enlace por WhatsApp.
+              </p>
+            </div>
           </div>
 
           {/* ===== VIDEO UPSELL SECTION ===== */}
