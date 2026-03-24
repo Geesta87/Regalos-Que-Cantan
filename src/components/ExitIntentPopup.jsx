@@ -5,7 +5,7 @@ const COUPON_CODE = 'VUELVE15';
 const DISCOUNT_PERCENT = 15;
 const SESSION_KEY = 'rqc_exit_intent_shown';
 const ARM_DELAY_MS = 15000;
-const MOBILE_INACTIVITY_MS = 45000;
+const MOBILE_INACTIVITY_MS = 90000;
 const COUNTDOWN_SECONDS = 15 * 60; // 15 minutes
 
 export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied, selectedSongs = [], purchaseBoth = false }) {
