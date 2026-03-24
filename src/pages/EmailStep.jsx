@@ -1,7 +1,12 @@
 import React, { useContext, useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ✅ Safe Meta Pixel helper
 const trackFB = (event, data = {}) => {
@@ -42,7 +47,6 @@ const relationshipNames = {
 export default function EmailStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
   const [email, setEmail] = useState(formData.email || '');
-  const [phone, setPhone] = useState(formData.whatsappPhone || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailError, setEmailError] = useState('');
 
@@ -73,20 +77,25 @@ export default function EmailStep() {
     setEmailError('');
   };
 
-  const handlePhoneChange = (e) => {
-    const value = e.target.value.replace(/[^0-9\s\-()]/g, '');
-    setPhone(value);
-  };
-
   const handleSubmit = async () => {
     if (!validateEmail(email)) {
       setEmailError('Por favor ingresa un email válido');
       return;
     }
-    
+
     setIsSubmitting(true);
     updateFormData('email', email);
-    if (phone) updateFormData('whatsappPhone', phone);
+
+    // Save email lead for marketing (fire-and-forget)
+    try {
+      supabase.rpc('upsert_email_lead', {
+        p_email: email.trim().toLowerCase(),
+        p_source: 'email_step',
+        p_genre: formData.genre || null,
+        p_occasion: formData.occasion || null,
+        p_recipient_name: formData.recipientName || null
+      }).then(() => {});
+    } catch (e) { /* silent */ }
 
     // ✅ META PIXEL: Track Lead when email is captured
     trackFB('Lead', {
@@ -280,22 +289,6 @@ export default function EmailStep() {
                 )}
               </div>
 
-              {/* Phone / WhatsApp Input */}
-              <div className="relative">
-                <div className="border-b-2 border-white/20 focus-within:border-gold/60 transition-all">
-                  <input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={handlePhoneChange}
-                    placeholder="📱 Tu teléfono o WhatsApp (opcional)"
-                    className="w-full bg-transparent border-0 py-4 text-xl md:text-2xl text-center focus:ring-0 text-white placeholder:text-white/20 transition-all font-light"
-                  />
-                </div>
-                <p className="text-white/30 text-[10px] text-center mt-2 leading-relaxed">
-                  Al ingresar tu número, aceptas recibir tu canción y actualizaciones por mensaje. Puedes cancelar en cualquier momento respondiendo ALTO.
-                </p>
-              </div>
             </div>
 
             <button
