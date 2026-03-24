@@ -6,7 +6,7 @@ import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 // Valentine blast email builder
 function buildValentineBlastEmail(recipientName) {
   const hasRecipient = recipientName && recipientName.trim().length > 0;
-  const ctaUrl = 'https://regalosquecantan.com/v2';
+  const ctaUrl = 'https://www.regalosquecantan.com/v2';
   const headline = hasRecipient
     ? `&iquest;A&uacute;n no le diste su regalo a <span style="color:#ff6b8a;">${recipientName}</span>?`
     : `&iquest;A&uacute;n no tienes el regalo perfecto?`;
@@ -183,7 +183,7 @@ export default function AdminDashboard() {
         .from('songs')
         .select('*')
         .order('created_at', { ascending: false })
-        .range(0, 4999);
+        .range(0, 9999);
 
       if (error) throw error;
 
