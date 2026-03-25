@@ -7,7 +7,7 @@ const supabase = import.meta.env.VITE_SUPABASE_URL
 
 // ⏱️ Preview limits
 const PREVIEW_START = 10;
-const PREVIEW_DURATION = 30;
+const PREVIEW_DURATION = 35;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
@@ -392,7 +392,7 @@ export default function ShareablePreviewPage() {
             {' • '}<span style={{color: '#f74da6', fontWeight: '600'}}>{genreName}</span>
           </p>
           <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
-            🎧 Estos son previews de 30 segundos · Tu canción completa dura ~3-4 minutos
+            🎧 Estos son previews de 35 segundos · Tu canción completa dura ~3-4 minutos
           </p>
         </div>
 
@@ -837,7 +837,7 @@ export default function ShareablePreviewPage() {
             animation: isVisible ? 'fadeInUp 0.8s ease-out 0.45s both' : 'none'
           }}>
             <p style={{fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: '0 0 6px 0'}}>
-              🔒 Previews de 30 segundos. Compra para descargar la canción completa (~3 min).
+              🔒 Previews de 35 segundos. Compra para descargar la canción completa (~3 min).
             </p>
             <p style={{fontSize: '12px', color: '#fca5a5', margin: 0, fontWeight: '600'}}>
               ⚠️ Si no compras antes de que expire el tiempo, la canción será eliminada permanentemente.
