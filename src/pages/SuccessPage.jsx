@@ -767,17 +767,22 @@ export default function SuccessPage() {
   };
 
   // ------ VIDEO UPSELL: Download handler ------
+  const [videoDownloading, setVideoDownloading] = useState(false);
   const handleVideoDownload = () => {
     if (!videoOrder?.video_url) return;
-    // Use a direct link — works for both same-origin (Supabase) and cross-origin (Shotstack) URLs
+    setVideoDownloading(true);
+    // Proxy through our edge function to force Content-Disposition: attachment
+    // This auto-saves to the user's device instead of opening in a new tab
+    const filename = `video-para-${recipientName || 'ti'}.mp4`;
+    const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(videoOrder.video_url)}&filename=${encodeURIComponent(filename)}`;
     const a = document.createElement('a');
-    a.href = videoOrder.video_url;
-    a.download = `video-para-${recipientName || 'ti'}.mp4`;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.href = proxyUrl;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    // Reset after a few seconds (download starts in background)
+    setTimeout(() => setVideoDownloading(false), 3000);
   };
 
   // Build share URL — includes ALL song IDs for combos
@@ -1880,18 +1885,24 @@ export default function SuccessPage() {
 
                 {/* Download CTA */}
                 <button onClick={handleVideoDownload}
+                  disabled={videoDownloading}
                   style={{
                     width: '100%', padding: '18px 24px',
-                    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                    background: videoDownloading
+                      ? 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)'
+                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
                     color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
-                    border: 'none', borderRadius: '16px', cursor: 'pointer',
+                    border: 'none', borderRadius: '16px', cursor: videoDownloading ? 'wait' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                    boxShadow: videoDownloading
+                      ? '0 4px 16px rgba(0,0,0,0.3)'
+                      : '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
                     transition: 'all 0.3s', fontFamily: ts.font,
+                    opacity: videoDownloading ? 0.8 : 1,
                   }}>
-                  <span style={{ fontSize: '20px' }}>⬇️</span>
-                  <span>Descargar Video MP4</span>
-                  <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
+                  <span style={{ fontSize: '20px' }}>{videoDownloading ? '⏳' : '⬇️'}</span>
+                  <span>{videoDownloading ? 'Descargando...' : 'Descargar Video MP4'}</span>
+                  {!videoDownloading && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
                 </button>
 
                 {/* Share hint */}
