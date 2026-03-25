@@ -353,6 +353,7 @@ export default function SuccessPage() {
       try {
         console.log('[Payment Verify] Webhook may have failed, verifying payment with Stripe...');
         const songIds = songId.split(',').filter(id => id.trim());
+        let anyVerified = false;
         for (const sid of songIds) {
           const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-payment`, {
             method: 'POST',
@@ -364,6 +365,12 @@ export default function SuccessPage() {
           });
           const result = await res.json();
           console.log('[Payment Verify] Result for', sid, ':', result);
+          if (result.success) anyVerified = true;
+        }
+        // Reload songs from DB so the UI reflects the updated paid status
+        if (anyVerified) {
+          console.log('[Payment Verify] Payment confirmed, reloading songs...');
+          await loadSongs();
         }
       } catch (err) {
         console.error('[Payment Verify] Error:', err);
@@ -2164,41 +2171,6 @@ export default function SuccessPage() {
                 </a>
               </div>
             )}
-          </div>
-
-          {/* ===== HOW TO GIFT ===== */}
-          <div style={{
-            background: ts.cardBg, borderRadius: '24px', padding: '24px',
-            border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
-            backdropFilter: ts.cardBlur,
-            animation: 'fadeInUp 0.7s ease-out 0.6s both'
-          }}>
-            <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '20px', textAlign: 'center', color: ts.textPrimary }}>
-              🎁 ¿Cómo regalarlo?
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {[
-                { icon: '⬇️', title: 'Descarga la canción', desc: 'Toca el botón de descargar arriba' },
-                { icon: '💬', title: 'Envíala por WhatsApp', desc: 'Comparte el archivo o link con un mensaje especial' },
-                { icon: '😭❤️', title: 'Mira su reacción', desc: `¡${recipientName} no lo va a creer!` }
-              ].map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{
-                    width: '46px', height: '46px', minWidth: '46px', borderRadius: '50%',
-                    background: i === 2 ? ts.accentGrad : isLight ? 'white' : 'rgba(255,255,255,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
-                    border: i === 2 ? 'none' : `1.5px solid ${ts.cardBorder}`,
-                    boxShadow: i === 2 ? `0 4px 15px rgba(${ts.accentRgb},0.3)` : 'none'
-                  }}>
-                    {item.icon}
-                  </div>
-                  <div>
-                    <p style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 2px 0', color: ts.textPrimary }}>{item.title}</p>
-                    <p style={{ fontSize: '13px', color: ts.textSecondary, margin: 0 }}>{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* ===== FOOTER ===== */}
