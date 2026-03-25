@@ -767,22 +767,17 @@ export default function SuccessPage() {
   };
 
   // ------ VIDEO UPSELL: Download handler ------
-  const handleVideoDownload = async () => {
+  const handleVideoDownload = () => {
     if (!videoOrder?.video_url) return;
-    try {
-      const response = await fetch(videoOrder.video_url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `video-para-${recipientName || 'ti'}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      window.open(videoOrder.video_url, '_blank');
-    }
+    // Use a direct link — works for both same-origin (Supabase) and cross-origin (Shotstack) URLs
+    const a = document.createElement('a');
+    a.href = videoOrder.video_url;
+    a.download = `video-para-${recipientName || 'ti'}.mp4`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   // Build share URL — includes ALL song IDs for combos
