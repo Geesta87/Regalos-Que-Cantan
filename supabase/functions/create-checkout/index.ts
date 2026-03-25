@@ -73,21 +73,23 @@ serve(async (req) => {
 
     // If FREE coupon, skip Stripe and mark as purchased
     if (priceInCents === 0 && appliedCoupon) {
-      // Mark song as paid
-      await supabase
-        .from('songs')
-        .update({
-          paid: true,
-          payment_status: 'paid',
-          amount_paid: 0,
-          coupon_code: appliedCoupon.code,
-          paid_at: new Date().toISOString(),
-          utm_source: utm_source || null,
-          utm_medium: utm_medium || null,
-          utm_campaign: utm_campaign || null,
-          from_email_campaign: from_email_campaign || null
-        })
-        .eq('id', songId);
+      // Mark ALL songs as paid
+      for (const sid of songIds) {
+        await supabase
+          .from('songs')
+          .update({
+            paid: true,
+            payment_status: 'paid',
+            amount_paid: 0,
+            coupon_code: appliedCoupon.code,
+            paid_at: new Date().toISOString(),
+            utm_source: utm_source || null,
+            utm_medium: utm_medium || null,
+            utm_campaign: utm_campaign || null,
+            from_email_campaign: from_email_campaign || null
+          })
+          .eq('id', sid);
+      }
 
       // Increment coupon usage
       await supabase
@@ -96,10 +98,11 @@ serve(async (req) => {
         .eq('code', appliedCoupon.code);
 
       // Return success URL - goes to /success page
+      const allSongIds = songIds.join(',');
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          url: `${BASE_URL}/success?song_id=${songId}&free=true`,
+        JSON.stringify({
+          success: true,
+          url: `${BASE_URL}/success?song_id=${allSongIds}&free=true`,
           free: true,
           message: '¡Canción gratis!'
         }),
@@ -111,8 +114,11 @@ serve(async (req) => {
     }
 
     // Create Stripe Checkout Session for paid orders
+    const allSongIds = songIds.join(',');
+    // Dynamic payment methods - uses Stripe Dashboard settings
+    // Enables: Apple Pay, Google Pay, Amazon Pay, Cash App Pay, Link, Cards
+    // Do NOT hardcode payment_method_types - let Stripe show the best options per device
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
       customer_email: email,
       line_items: [
         {
@@ -129,27 +135,22 @@ serve(async (req) => {
         },
       ],
       mode: 'payment',
-      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${songId}`,
+      success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${allSongIds}`,
       cancel_url: `${BASE_URL}/preview/${songId}`,
       metadata: {
-        songId: songId,
+        songId: allSongIds,
         email: email,
         couponCode: appliedCoupon?.code || '',
         utm_source: utm_source || '',
         utm_medium: utm_medium || '',
         utm_campaign: utm_campaign || '',
         session_id: session_id || '',
-        from_email_campaign: from_email_campaign || ''
-      },
-      payment_intent_data: {
-        metadata: {
-          songId: songId,
-          email: email
-        }
+        from_email_campaign: from_email_campaign || '',
+        purchaseBoth: purchaseBoth ? 'true' : 'false'
       }
     });
 
-    // Save coupon and UTM attribution to the song
+    // Save coupon and UTM attribution to all songs
     const songUpdate: Record<string, any> = {};
     if (appliedCoupon) songUpdate.coupon_code = appliedCoupon.code;
     if (utm_source) songUpdate.utm_source = utm_source;
@@ -157,7 +158,9 @@ serve(async (req) => {
     if (utm_campaign) songUpdate.utm_campaign = utm_campaign;
     if (from_email_campaign) songUpdate.from_email_campaign = from_email_campaign;
     if (Object.keys(songUpdate).length > 0) {
-      await supabase.from('songs').update(songUpdate).eq('id', songId);
+      for (const sid of songIds) {
+        await supabase.from('songs').update(songUpdate).eq('id', sid);
+      }
     }
 
     return new Response(
