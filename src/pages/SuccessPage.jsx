@@ -587,7 +587,7 @@ export default function SuccessPage() {
     }
   };
 
-  // ------ VIDEO UPSELL: Detect video_paid URL param & check status on load ------
+  // ------ VIDEO: Detect video addon & check status on load ------
   const hasFiredVideoCheck = useRef(false);
   useEffect(() => {
     if (hasFiredVideoCheck.current) return;
@@ -598,16 +598,38 @@ export default function SuccessPage() {
 
     // Check if there's an existing video order for this song
     checkVideoStatus(songId)
-      .then(res => {
+      .then(async (res) => {
         if (res?.videoOrder) {
           setVideoOrder(res.videoOrder);
-          // If processing, start polling
           if (res.videoOrder.status === 'processing') {
             startVideoPolling(songId);
           }
+        } else {
+          // No video order yet — auto-create one if has_video_addon is true
+          const song = songs[selectedVideoSongIdx];
+          if (song?.has_video_addon) {
+            try {
+              const { data: newOrder, error: insertErr } = await supabase
+                .from('video_orders')
+                .insert({
+                  song_id: songId,
+                  paid: true,
+                  paid_at: new Date().toISOString(),
+                  status: 'pending',
+                  amount_cents: 999,
+                })
+                .select()
+                .single();
+              if (!insertErr && newOrder) {
+                setVideoOrder(newOrder);
+              }
+            } catch (e) {
+              console.error('Failed to auto-create video order:', e);
+            }
+          }
         }
       })
-      .catch(() => {}); // No video order yet, that's fine
+      .catch(() => {});
   }, [songs]);
 
   // ------ VIDEO UPSELL: Polling for video render completion ------
