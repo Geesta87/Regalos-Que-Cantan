@@ -591,7 +591,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
+      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth, '', videoAddon);
 
       if (result.url) {
         window.location.href = result.url;

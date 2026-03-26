@@ -311,6 +311,10 @@ serve(async (req) => {
         stripe_session_id: session.id,
         amount_paid: amountPaid
       };
+      // Video addon flag from checkout metadata
+      if (session.metadata?.videoAddon === 'true') {
+        updateData.has_video_addon = true;
+      }
       // Only overwrite UTMs if they exist in metadata (don't null out existing values)
       if (metaUtmSource) updateData.utm_source = metaUtmSource;
       if (metaUtmMedium) updateData.utm_medium = metaUtmMedium;

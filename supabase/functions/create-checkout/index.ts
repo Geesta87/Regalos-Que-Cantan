@@ -26,7 +26,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, fbc, fbp, clientUserAgent } = body;
+    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent } = body;
     // Accept both songIds (array from frontend) and songId (legacy)
     const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
     const songId = songIds[0];
@@ -37,8 +37,9 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Pricing: $24.99 single, $39.99 bundle
+    // Pricing: $24.99 single, $39.99 bundle, +$9.99 video addon
     let priceInCents = purchaseBoth ? 3999 : 2499;
+    const videoAddonCents = videoAddon ? 999 : 0;
     let appliedCoupon = null;
 
     // Validate and apply coupon if provided
@@ -83,6 +84,7 @@ serve(async (req) => {
             amount_paid: 0,
             coupon_code: appliedCoupon.code,
             paid_at: new Date().toISOString(),
+            has_video_addon: videoAddon || false,
             utm_source: utm_source || null,
             utm_medium: utm_medium || null,
             utm_campaign: utm_campaign || null,
@@ -118,22 +120,40 @@ serve(async (req) => {
     // Dynamic payment methods - uses Stripe Dashboard settings
     // Enables: Apple Pay, Google Pay, Amazon Pay, Cash App Pay, Link, Cards
     // Do NOT hardcode payment_method_types - let Stripe show the best options per device
+    // Build line items
+    const lineItems: any[] = [
+      {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: purchaseBoth ? '2 Canciones Personalizadas - RegalosQueCantan' : 'Canción Personalizada - RegalosQueCantan',
+            description: purchaseBoth ? '2 canciones completas en MP3, descarga ilimitada' : 'Canción completa en MP3, descarga ilimitada',
+            images: ['https://regalosquecantan.com/og-image.jpg'],
+          },
+          unit_amount: priceInCents,
+        },
+        quantity: 1,
+      },
+    ];
+
+    // Add video addon as separate line item
+    if (videoAddon && videoAddonCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Video Cinematográfico con Fotos',
+            description: 'Video personalizado con efecto Ken Burns, HD 1080p, MP4 descargable',
+          },
+          unit_amount: videoAddonCents,
+        },
+        quantity: 1,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer_email: email,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: purchaseBoth ? '2 Canciones Personalizadas - RegalosQueCantan' : 'Canción Personalizada - RegalosQueCantan',
-              description: purchaseBoth ? '2 canciones completas en MP3, descarga ilimitada' : 'Canción completa en MP3, descarga ilimitada',
-              images: ['https://regalosquecantan.com/og-image.jpg'],
-            },
-            unit_amount: priceInCents,
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       mode: 'payment',
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${allSongIds}`,
       cancel_url: `${BASE_URL}/preview/${songId}`,
@@ -146,7 +166,8 @@ serve(async (req) => {
         utm_campaign: utm_campaign || '',
         session_id: session_id || '',
         from_email_campaign: from_email_campaign || '',
-        purchaseBoth: purchaseBoth ? 'true' : 'false'
+        purchaseBoth: purchaseBoth ? 'true' : 'false',
+        videoAddon: videoAddon ? 'true' : 'false'
       }
     });
 
