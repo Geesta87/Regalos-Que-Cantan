@@ -132,8 +132,12 @@ export default function ComparisonPage() {
   // Pricing
   const singlePrice = 24.99;
   const bundlePrice = 39.99;
+  const videoAddonPrice = 9.99;
   const bundleSavings = (singlePrice * 2) - bundlePrice;
   const isFree = couponApplied?.free || false;
+
+  // Video add-on toggle
+  const [videoAddon, setVideoAddon] = useState(false);
 
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
@@ -584,7 +588,7 @@ export default function ComparisonPage() {
       }
 
       // 🔥 Meta Pixel: InitiateCheckout when user actually clicks buy and checkout is created
-      const checkoutValue = purchaseBoth ? 39.99 : 24.99;
+      const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
       const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth);
@@ -625,12 +629,19 @@ export default function ComparisonPage() {
   };
 
   const getSelectionLabel = () => {
-    if (purchaseBoth) return '2 Canciones (Ambas versiones)';
+    const videoLabel = videoAddon ? ' + Video' : '';
+    if (purchaseBoth) return `2 Canciones${videoLabel}`;
     if (selectedSongId) {
       const song = songs.find(s => s.id === selectedSongId);
-      return `1 Canción (Versión ${song?.version || 1})`;
+      return `1 Canción (Versión ${song?.version || 1})${videoLabel}`;
     }
     return null;
+  };
+
+  const getCurrentPrice = () => {
+    if (isFree) return 0;
+    const base = purchaseBoth ? bundlePrice : singlePrice;
+    return videoAddon ? base + videoAddonPrice : base;
   };
 
   // ==================== RENDER ====================
@@ -1327,6 +1338,237 @@ export default function ComparisonPage() {
           </>
         )}
 
+        {/* ===== VIDEO ADD-ON CARD ===== */}
+        {hasSelection && (
+          <>
+            <style>{`
+              @keyframes kbSlide1 { 0%{transform:scale(1) translate(0,0);opacity:1} 20%{transform:scale(1.12) translate(-2%,1%);opacity:1} 25%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide2 { 0%{opacity:0} 20%{opacity:0} 25%{transform:scale(1.08) translate(2%,-1%);opacity:1} 45%{transform:scale(1.2) translate(-1%,2%);opacity:1} 50%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide3 { 0%{opacity:0} 45%{opacity:0} 50%{transform:scale(1) translate(-1%,0);opacity:1} 70%{transform:scale(1.15) translate(2%,-2%);opacity:1} 75%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide4 { 0%{opacity:0} 70%{opacity:0} 75%{transform:scale(1.05) translate(0,1%);opacity:1} 95%{transform:scale(1.18) translate(-3%,2%);opacity:1} 100%{opacity:0} }
+              @keyframes videoProgress { 0%{width:0%} 100%{width:100%} }
+              @keyframes softPulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.3)} 50%{box-shadow:0 0 0 8px rgba(139,92,246,0)} }
+            `}</style>
+
+            {/* Social proof */}
+            <div style={{
+              textAlign: 'center', margin: '8px 0 12px',
+              animation: 'fadeInUp 0.5s ease-out',
+            }}>
+              <span style={{
+                fontSize: '13px', color: '#c4b5fd', fontWeight: '600',
+                background: 'rgba(139,92,246,0.1)', padding: '6px 16px',
+                borderRadius: '20px', border: '1px solid rgba(139,92,246,0.15)',
+              }}>
+                🎬 87% de clientes agregan el video
+              </span>
+            </div>
+
+            <div
+              onClick={() => setVideoAddon(!videoAddon)}
+              style={{
+                background: videoAddon
+                  ? 'linear-gradient(160deg, rgba(109,40,217,0.25), rgba(79,70,229,0.15))'
+                  : 'linear-gradient(160deg, rgba(109,40,217,0.08), rgba(0,0,0,0))',
+                border: videoAddon ? '3px solid #8b5cf6' : '2px solid rgba(139,92,246,0.25)',
+                borderRadius: '20px', padding: '0',
+                cursor: 'pointer', marginBottom: '24px',
+                transition: 'all 0.3s',
+                overflow: 'hidden', position: 'relative',
+                animation: videoAddon ? 'none' : 'softPulse 2.5s ease-in-out infinite',
+                boxShadow: videoAddon ? '0 0 30px rgba(109,40,217,0.3)' : '0 4px 20px rgba(109,40,217,0.08)',
+                transform: videoAddon ? 'scale(1.01)' : 'scale(1)',
+              }}
+            >
+              {/* Checkmark indicator (same pattern as song cards) */}
+              <div style={{
+                position: 'absolute', top: '16px', right: '16px', zIndex: 3,
+                width: '32px', height: '32px', borderRadius: '50%',
+                border: videoAddon ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)',
+                background: videoAddon ? '#22c55e' : 'rgba(0,0,0,0.4)',
+                backdropFilter: 'blur(4px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s',
+                boxShadow: videoAddon ? '0 4px 15px rgba(34,197,94,0.4)' : 'none',
+              }}>
+                {videoAddon && <span style={{color: 'white', fontSize: '18px', fontWeight: 'bold'}}>✓</span>}
+              </div>
+
+              {/* Video Preview */}
+              <div style={{
+                position: 'relative', height: '200px', overflow: 'hidden',
+                background: '#000',
+                borderRadius: '18px 18px 0 0',
+              }}>
+                {[
+                  '/images/reactions/reaction1.jpg',
+                  '/images/reactions/reaction3.jpg',
+                  '/images/reactions/reaction6.jpg',
+                  '/images/reactions/reaction9.jpg',
+                ].map((src, i) => (
+                  <img key={i} src={src} alt="" style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    animation: `kbSlide${i + 1} 20s ease-in-out infinite`,
+                    opacity: i === 0 ? 1 : 0,
+                    filter: 'brightness(0.85)',
+                  }} />
+                ))}
+
+                {/* Cinematic gradients */}
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '20px', background: 'linear-gradient(180deg, rgba(0,0,0,0.6), transparent)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60px', background: 'linear-gradient(0deg, rgba(0,0,0,0.8), transparent)', pointerEvents: 'none' }} />
+
+                {/* Album art + song title */}
+                <div style={{ position: 'absolute', bottom: '35px', left: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {(() => {
+                    const genreKey = songs[0]?.genre || formData?.genre;
+                    const imgSrc = genreKey ? `/images/album-art/${genreKey}.jpg` : null;
+                    return imgSrc ? (
+                      <img src={imgSrc} alt="" style={{
+                        width: '36px', height: '36px', borderRadius: '8px',
+                        objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                      }} />
+                    ) : null;
+                  })()}
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'white', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                      Video para {recipientName}
+                    </p>
+                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                      Tus fotos + su canción personalizada
+                    </p>
+                  </div>
+                </div>
+
+                {/* Play button */}
+                <div style={{
+                  position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                  width: '56px', height: '56px', borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  boxShadow: '0 4px 30px rgba(0,0,0,0.4)',
+                }}>
+                  <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
+                </div>
+
+                {/* Progress bar */}
+                <div style={{ position: 'absolute', bottom: '6px', left: '14px', right: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>0:00</span>
+                  <div style={{ flex: 1, height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
+                    <div style={{ width: '35%', height: '100%', borderRadius: '2px', background: 'white', animation: 'videoProgress 20s linear infinite' }} />
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>3:24</span>
+                </div>
+              </div>
+
+              {/* Content Section */}
+              <div style={{padding: '18px 20px'}}>
+                {/* Title + Price anchoring */}
+                <div style={{ marginBottom: '12px' }}>
+                  <h3 style={{fontSize: '18px', fontWeight: '800', margin: '0 0 4px', color: '#e9d5ff'}}>
+                    🎬 Video para {recipientName}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '15px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>$29.99</span>
+                    <span style={{ fontSize: '20px', fontWeight: '800', color: '#a855f7' }}>${videoAddonPrice}</span>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 'bold', color: '#22c55e',
+                      background: 'rgba(34,197,94,0.15)', padding: '2px 8px',
+                      borderRadius: '6px',
+                    }}>
+                      Ahorra 67%
+                    </span>
+                  </div>
+                  <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0, lineHeight: 1.5}}>
+                    Sube tus fotos y creamos un video cinematográfico con la canción
+                  </p>
+                </div>
+
+                {/* Before → After mini comparison */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px',
+                  padding: '12px', borderRadius: '14px',
+                  background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.12)',
+                }}>
+                  {/* Before: just MP3 */}
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{
+                      width: '48px', height: '48px', borderRadius: '12px', margin: '0 auto 6px',
+                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '22px',
+                    }}>🎵</div>
+                    <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Solo audio</p>
+                  </div>
+
+                  {/* Arrow */}
+                  <div style={{ fontSize: '18px', color: '#7c3aed', fontWeight: '900' }}>→</div>
+
+                  {/* After: cinematic video */}
+                  <div style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{
+                      width: '48px', height: '48px', borderRadius: '12px', margin: '0 auto 6px',
+                      background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '22px',
+                      boxShadow: '0 4px 15px rgba(124,58,237,0.3)',
+                    }}>🎬</div>
+                    <p style={{ fontSize: '11px', color: '#c4b5fd', margin: 0, fontWeight: '600' }}>Video + Audio</p>
+                  </div>
+                </div>
+
+                {/* Feature tags */}
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px'}}>
+                  {[
+                    'Efecto Ken Burns',
+                    'Video HD 1080p',
+                    'MP4 descargable',
+                    'Tus fotos favoritas'
+                  ].map((feat, i) => (
+                    <span key={i} style={{
+                      fontSize: '11px', color: 'rgba(255,255,255,0.8)',
+                      background: 'rgba(139,92,246,0.1)', borderRadius: '8px',
+                      padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px',
+                      border: '1px solid rgba(139,92,246,0.15)'
+                    }}>
+                      <span style={{color: '#a78bfa'}}>✓</span> {feat}
+                    </span>
+                  ))}
+                </div>
+
+                {/* CTA button or selected state */}
+                <div style={{
+                  width: '100%', padding: '14px', borderRadius: '14px',
+                  textAlign: 'center', fontWeight: '800', fontSize: '15px',
+                  transition: 'all 0.3s',
+                  background: videoAddon
+                    ? 'linear-gradient(90deg, #22c55e, #16a34a)'
+                    : 'linear-gradient(90deg, #7c3aed, #a855f7)',
+                  color: 'white',
+                  boxShadow: videoAddon
+                    ? '0 4px 20px rgba(34,197,94,0.3)'
+                    : '0 4px 20px rgba(124,58,237,0.3)',
+                }}>
+                  {videoAddon
+                    ? '✓ Video agregado'
+                    : `🎬 ¡Sí, quiero el video para ${recipientName}!`
+                  }
+                </div>
+
+                {/* Urgency */}
+                <p style={{
+                  textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.4)',
+                  margin: '10px 0 0', fontStyle: 'italic',
+                }}>
+                  Solo disponible al momento de la compra
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Selection Summary */}
         {hasSelection && (
           <div style={{
@@ -1345,7 +1587,7 @@ export default function ComparisonPage() {
             </div>
             <div style={{textAlign: 'right'}}>
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
-                {isFree ? '¡GRATIS!' : `$${purchaseBoth ? bundlePrice : singlePrice.toFixed(2)}`}
+                {isFree ? '¡GRATIS!' : `$${getCurrentPrice().toFixed(2)}`}
               </p>
             </div>
           </div>
@@ -1593,7 +1835,7 @@ export default function ComparisonPage() {
             ) : isFree ? (
               <span>🎉 Descargar Gratis</span>
             ) : (
-              <span>💳 {purchaseBoth ? 'Comprar Ambas Canciones' : 'Comprar Canción Seleccionada'}</span>
+              <span>💳 {purchaseBoth ? 'Comprar Ambas Canciones' : 'Comprar Canción'}{videoAddon ? ' + Video' : ''} — ${getCurrentPrice().toFixed(2)}</span>
             )}
           </button>
 
