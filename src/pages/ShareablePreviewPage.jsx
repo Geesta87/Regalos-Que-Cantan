@@ -981,12 +981,12 @@ export default function ShareablePreviewPage() {
                   <h3 style={{fontSize: '18px', fontWeight: '800', margin: '0 0 4px', color: '#e9d5ff'}}>
                     🎬 Video para {recipientName}
                   </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '15px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>$29.99</span>
-                    <span style={{ fontSize: '20px', fontWeight: '800', color: '#a855f7' }}>${VIDEO_ADDON_PRICE}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>$29.99</span>
+                    <span style={{ fontSize: '24px', fontWeight: '900', color: '#a855f7' }}>Solo ${VIDEO_ADDON_PRICE}</span>
                     <span style={{
                       fontSize: '11px', fontWeight: 'bold', color: '#22c55e',
-                      background: 'rgba(34,197,94,0.15)', padding: '2px 8px', borderRadius: '6px',
+                      background: 'rgba(34,197,94,0.15)', padding: '3px 10px', borderRadius: '8px', border: '1px solid rgba(34,197,94,0.2)',
                     }}>Ahorra 67%</span>
                   </div>
                   <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0, lineHeight: 1.5}}>
