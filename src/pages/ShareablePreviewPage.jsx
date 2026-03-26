@@ -902,67 +902,76 @@ export default function ShareablePreviewPage() {
                 {videoAddon && <span style={{color: 'white', fontSize: '18px', fontWeight: 'bold'}}>✓</span>}
               </div>
 
-              {/* Video Preview */}
+              {/* Video Preview — Phone Mockup */}
               <div style={{
-                position: 'relative', height: '280px', overflow: 'hidden',
-                background: '#000', borderRadius: '18px 18px 0 0',
+                display: 'flex', justifyContent: 'center', alignItems: 'center',
+                padding: '24px 20px 16px',
+                background: 'linear-gradient(180deg, rgba(124,58,237,0.08), rgba(0,0,0,0))',
+                borderRadius: '18px 18px 0 0',
               }}>
-                {[
-                  '/images/reactions/reaction1.jpg',
-                  '/images/reactions/reaction3.jpg',
-                  '/images/reactions/reaction6.jpg',
-                  '/images/reactions/reaction9.jpg',
-                ].map((src, i) => (
-                  <img key={i} src={src} alt="" style={{
-                    position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
-                    objectPosition: 'center 20%',
-                    animation: `kbSlide${i + 1} 20s ease-in-out infinite`,
-                    opacity: i === 0 ? 1 : 0,
-                    filter: 'brightness(0.85)',
-                  }} />
-                ))}
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '20px', background: 'linear-gradient(180deg, rgba(0,0,0,0.6), transparent)', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60px', background: 'linear-gradient(0deg, rgba(0,0,0,0.8), transparent)', pointerEvents: 'none' }} />
-
-                <div style={{ position: 'absolute', bottom: '35px', left: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {(() => {
-                    const genreKey = songs[0]?.genre;
-                    const imgSrc = genreKey ? `/images/album-art/${genreKey}.jpg` : null;
-                    return imgSrc ? (
-                      <img src={imgSrc} alt="" style={{
-                        width: '36px', height: '36px', borderRadius: '8px',
-                        objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
-                      }} />
-                    ) : null;
-                  })()}
-                  <div>
-                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'white', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-                      Video para {recipientName}
-                    </p>
-                    <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-                      Tus fotos + su canción personalizada
-                    </p>
-                  </div>
-                </div>
-
                 <div style={{
-                  position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-                  width: '56px', height: '56px', borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  boxShadow: '0 4px 30px rgba(0,0,0,0.4)',
+                  position: 'relative', width: '180px', height: '320px',
+                  borderRadius: '28px', overflow: 'hidden',
+                  border: '4px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(124,58,237,0.15)',
+                  background: '#000',
                 }}>
-                  <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
-                </div>
-
-                <div style={{ position: 'absolute', bottom: '6px', left: '14px', right: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>0:00</span>
-                  <div style={{ flex: 1, height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
-                    <div style={{ width: '35%', height: '100%', borderRadius: '2px', background: 'white', animation: 'videoProgress 20s linear infinite' }} />
+                  <div style={{
+                    position: 'absolute', top: '8px', left: '50%', transform: 'translateX(-50%)',
+                    width: '60px', height: '6px', borderRadius: '3px',
+                    background: 'rgba(255,255,255,0.15)', zIndex: 3,
+                  }} />
+                  {[
+                    '/images/reactions/reaction1.jpg',
+                    '/images/reactions/reaction3.jpg',
+                    '/images/reactions/reaction6.jpg',
+                    '/images/reactions/reaction9.jpg',
+                  ].map((src, i) => (
+                    <img key={i} src={src} alt="" style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                      objectPosition: 'center 30%',
+                      animation: `kbSlide${i + 1} 20s ease-in-out infinite`,
+                      opacity: i === 0 ? 1 : 0,
+                      filter: 'brightness(0.9)',
+                    }} />
+                  ))}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '80px', background: 'linear-gradient(0deg, rgba(0,0,0,0.85), transparent)', pointerEvents: 'none' }} />
+                  <div style={{
+                    position: 'absolute', top: '45%', left: '50%', transform: 'translate(-50%,-50%)',
+                    width: '48px', height: '48px', borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '2px solid rgba(255,255,255,0.3)',
+                  }}>
+                    <span style={{ fontSize: '18px', marginLeft: '3px', color: 'white' }}>▶</span>
                   </div>
-                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>3:24</span>
+                  <div style={{ position: 'absolute', bottom: '28px', left: '10px', right: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {(() => {
+                        const genreKey = songs[0]?.genre;
+                        const imgSrc = genreKey ? `/images/album-art/${genreKey}.jpg` : null;
+                        return imgSrc ? (
+                          <img src={imgSrc} alt="" style={{
+                            width: '28px', height: '28px', borderRadius: '6px',
+                            objectFit: 'cover', border: '1.5px solid rgba(255,255,255,0.3)',
+                          }} />
+                        ) : null;
+                      })()}
+                      <div>
+                        <p style={{ fontSize: '11px', fontWeight: '700', color: 'white', margin: 0, textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                          Para {recipientName}
+                        </p>
+                        <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', margin: 0 }}>Video con fotos</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>0:00</span>
+                    <div style={{ flex: 1, height: '2px', borderRadius: '1px', background: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
+                      <div style={{ width: '35%', height: '100%', background: 'white', animation: 'videoProgress 20s linear infinite' }} />
+                    </div>
+                    <span style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>3:24</span>
+                  </div>
                 </div>
               </div>
 
