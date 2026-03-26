@@ -531,7 +531,7 @@ export default function SuccessPage() {
   const handlePhotoSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert('La foto debe ser menor a 5MB'); return; }
+    if (file.size > 20 * 1024 * 1024) { alert('La foto debe ser menor a 20MB'); return; }
     setPhotoFile(file);
     const reader = new FileReader();
     reader.onload = (ev) => setPhotoPreview(ev.target.result);
@@ -696,8 +696,8 @@ export default function SuccessPage() {
 
     // Validate each file (max 5MB, images only)
     for (const file of files) {
-      if (file.size > 5 * 1024 * 1024) {
-        setVideoError(`"${file.name}" es mayor a 5MB.`);
+      if (file.size > 20 * 1024 * 1024) {
+        setVideoError(`"${file.name}" es mayor a 20MB.`);
         return;
       }
       if (!file.type.startsWith('image/')) {
