@@ -1396,7 +1396,7 @@ export default function ComparisonPage() {
 
               {/* Video Preview */}
               <div style={{
-                position: 'relative', height: '200px', overflow: 'hidden',
+                position: 'relative', height: '280px', overflow: 'hidden',
                 background: '#000',
                 borderRadius: '18px 18px 0 0',
               }}>
@@ -1408,6 +1408,7 @@ export default function ComparisonPage() {
                 ].map((src, i) => (
                   <img key={i} src={src} alt="" style={{
                     position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                    objectPosition: 'center 20%',
                     animation: `kbSlide${i + 1} 20s ease-in-out infinite`,
                     opacity: i === 0 ? 1 : 0,
                     filter: 'brightness(0.85)',
