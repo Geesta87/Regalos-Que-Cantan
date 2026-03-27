@@ -319,7 +319,7 @@ export default function SongPage({ songId: propSongId }) {
 
   const shareUrl = useMemo(() => {
     const ids = allSongs.map(s => s.id).join(',');
-    return `https://regalosquecantan.com/song/${ids}${lang === 'en' ? '?lang=en' : ''}`;
+    return `https://www.regalosquecantan.com/song/${ids}${lang === 'en' ? '?lang=en' : ''}`;
   }, [allSongs, lang]);
 
   const share = (name) => {
@@ -333,12 +333,25 @@ export default function SongPage({ songId: propSongId }) {
     } else { navigator.clipboard.writeText(shareUrl); alert(t.linkCopiado); }
   };
 
-  const download = () => {
+  const download = async () => {
     if (!song?.audio_url) return;
-    const a = document.createElement('a');
-    a.href = song.audio_url;
-    a.download = t.downloadFile(song.recipient_name, isCombo, activeIndex);
-    a.click();
+    const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
+    try {
+      // Fetch as blob to force download (cross-origin URLs ignore download attribute)
+      const res = await fetch(song.audio_url);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback: open in new tab
+      window.open(song.audio_url, '_blank');
+    }
   };
 
   // ═══════════════════════════════════════
