@@ -320,6 +320,7 @@ export default function SuccessPage() {
   const [contentVisible, setContentVisible] = useState(false);
 
   const audioRef = useRef(null);
+  const hasVideoAddonRef = useRef(false);
   const hasTriggeredCountdown = useRef(false);
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -350,6 +351,7 @@ export default function SuccessPage() {
 
       setSongs(data);
       setCurrentSong(data[0]);
+      hasVideoAddonRef.current = data[0]?.has_video_addon || false;
       setSelectedTemplate(data[0]?.template || 'golden_hour');
     } catch (err) {
       setError(err.message);
@@ -463,8 +465,8 @@ export default function SuccessPage() {
     setRevealed(true);
 
     // Try auto-play (skip if video addon — don't play song on photo upload page)
-    const song = songs[0] || currentSong;
-    if (audioRef.current && !(song?.has_video_addon)) {
+    // Use ref to get current value since useCallback closure may be stale
+    if (audioRef.current && !hasVideoAddonRef.current) {
       audioRef.current.volume = 0.8;
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
