@@ -118,10 +118,10 @@ function getAbandonedCheckoutEmailHtml(song: any, listenUrl: string) {
           <table width="100%" cellpadding="0" cellspacing="0" style="border:2px dashed #ff6b35;border-radius:16px;overflow:hidden;">
             <tr><td style="background:rgba(255,107,53,0.08);padding:24px 20px;text-align:center;">
               <p style="color:#ffd23f;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">&#127873; REGALO EXCLUSIVO PARA TI</p>
-              <p style="font-family:'Righteous',cursive;color:#ff6b35;font-size:36px;margin:0 0 4px;font-weight:400;">15% OFF</p>
+              <p style="font-family:'Righteous',cursive;color:#ff6b35;font-size:36px;margin:0 0 4px;font-weight:400;">10% OFF</p>
               <p style="color:#c9b99a;font-size:14px;margin:0 0 12px;">Usa este c&oacute;digo al momento de pagar:</p>
               <div style="display:inline-block;background:#2a1408;border:1px solid #ff6b35;border-radius:8px;padding:10px 24px;">
-                <span style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:4px;font-family:monospace;">VUELVE15</span>
+                <span style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:4px;font-family:monospace;">VUELVE10</span>
               </div>
               <p style="color:#a67c52;font-size:12px;margin:12px 0 0;">V&aacute;lido por 24 horas &middot; Solo para esta canci&oacute;n</p>
             </td></tr>
@@ -405,12 +405,12 @@ serve(async (req) => {
               if (!existingEvent) {
                 const siteUrl = 'https://regalosquecantan.com';
                 const listenUrl = songIds.length > 1
-                  ? `${siteUrl}/listen?song_ids=${songIds.join(',')}&coupon=VUELVE15`
-                  : `${siteUrl}/listen?song_id=${songIds[0]}&coupon=VUELVE15`;
+                  ? `${siteUrl}/listen?song_ids=${songIds.join(',')}&coupon=VUELVE10`
+                  : `${siteUrl}/listen?song_id=${songIds[0]}&coupon=VUELVE10`;
 
                 await sendEmail(
                   email,
-                  `🎵 ${song.recipient_name ? `Tu canción para ${song.recipient_name}` : 'Tu canción'} te espera — 15% OFF`,
+                  `🎵 ${song.recipient_name ? `Tu canción para ${song.recipient_name}` : 'Tu canción'} te espera — 10% OFF`,
                   getAbandonedCheckoutEmailHtml(song, listenUrl),
                   'checkout_recovery'
                 );

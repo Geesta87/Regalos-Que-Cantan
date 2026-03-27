@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { validateCoupon } from '../services/api';
 
-const COUPON_CODE = 'VUELVE15';
-const DISCOUNT_PERCENT = 15;
+const COUPON_CODE = 'VUELVE10';
+const DISCOUNT_PERCENT = 10;
 const SESSION_KEY = 'rqc_exit_intent_shown';
 const ARM_DELAY_MS = 15000;
 const MOBILE_INACTIVITY_MS = 90000;
