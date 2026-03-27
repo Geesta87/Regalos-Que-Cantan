@@ -853,10 +853,13 @@ export default function ShareablePreviewPage() {
         {!allPaid && selectedIds.size > 0 && (
           <>
             <style>{`
-              @keyframes kbSlide1 { 0%{transform:scale(1) translate(0,0);opacity:1} 20%{transform:scale(1.12) translate(-2%,1%);opacity:1} 25%{opacity:0} 100%{opacity:0} }
-              @keyframes kbSlide2 { 0%{opacity:0} 20%{opacity:0} 25%{transform:scale(1.08) translate(2%,-1%);opacity:1} 45%{transform:scale(1.2) translate(-1%,2%);opacity:1} 50%{opacity:0} 100%{opacity:0} }
-              @keyframes kbSlide3 { 0%{opacity:0} 45%{opacity:0} 50%{transform:scale(1) translate(-1%,0);opacity:1} 70%{transform:scale(1.15) translate(2%,-2%);opacity:1} 75%{opacity:0} 100%{opacity:0} }
-              @keyframes kbSlide4 { 0%{opacity:0} 70%{opacity:0} 75%{transform:scale(1.05) translate(0,1%);opacity:1} 95%{transform:scale(1.18) translate(-3%,2%);opacity:1} 100%{opacity:0} }
+              @keyframes kbSlide1 { 0%{transform:scale(1);opacity:1} 12%{transform:scale(1.1) translate(-1%,1%);opacity:1} 14.28%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide2 { 0%{opacity:0} 14.28%{opacity:0} 14.29%{transform:scale(1.05);opacity:1} 26%{transform:scale(1.15) translate(1%,-1%);opacity:1} 28.57%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide3 { 0%{opacity:0} 28.57%{opacity:0} 28.58%{transform:scale(1);opacity:1} 40%{transform:scale(1.12) translate(-2%,1%);opacity:1} 42.86%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide4 { 0%{opacity:0} 42.86%{opacity:0} 42.87%{transform:scale(1.08);opacity:1} 54%{transform:scale(1.18) translate(1%,2%);opacity:1} 57.14%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide5 { 0%{opacity:0} 57.14%{opacity:0} 57.15%{transform:scale(1);opacity:1} 68%{transform:scale(1.1) translate(-1%,-1%);opacity:1} 71.43%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide6 { 0%{opacity:0} 71.43%{opacity:0} 71.44%{transform:scale(1.05);opacity:1} 82%{transform:scale(1.15) translate(2%,1%);opacity:1} 85.71%{opacity:0} 100%{opacity:0} }
+              @keyframes kbSlide7 { 0%{opacity:0} 85.71%{opacity:0} 85.72%{transform:scale(1);opacity:1} 96%{transform:scale(1.12) translate(-1%,2%);opacity:1} 100%{opacity:0} }
               @keyframes videoProgress { 0%{width:0%} 100%{width:100%} }
               @keyframes softPulse { 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.3)} 50%{box-shadow:0 0 0 8px rgba(139,92,246,0)} }
             `}</style>
@@ -921,15 +924,18 @@ export default function ShareablePreviewPage() {
                     background: 'rgba(255,255,255,0.15)', zIndex: 3,
                   }} />
                   {[
-                    '/images/reactions/reaction1.jpg',
-                    '/images/reactions/reaction3.jpg',
-                    '/images/reactions/reaction6.jpg',
-                    '/images/reactions/reaction9.jpg',
+                    '/images/reactions/25f07f4e0a324c9297bec1e7dea4a2f4_1768932502805.jpg',
+                    '/images/reactions/1096b0152a804679bdc5a89467b0e975_1767305014374.jpg',
+                    '/images/reactions/61ac53a945f641e6b8eab58ae4c587b9_1767302003068.jpg',
+                    '/images/reactions/3facfa58430746a08dddac3bd0c8ecea_1767304653133.jpg',
+                    '/images/reactions/7d8b70506a694af8bfa1f10109495bf5_1767302246147.jpg',
+                    '/images/reactions/a61b55d5e427407b83039124c60ce64b_1767304563903.jpg',
+                    '/images/reactions/39b7035b4c88495392e645d0123e1bcd_1767302646323.jpg',
                   ].map((src, i) => (
                     <img key={i} src={src} alt="" style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                       objectPosition: 'center 30%',
-                      animation: `kbSlide${i + 1} 20s ease-in-out infinite`,
+                      animation: `kbSlide${i + 1} 35s ease-in-out infinite`,
                       opacity: i === 0 ? 1 : 0,
                       filter: 'brightness(0.9)',
                     }} />
