@@ -22,11 +22,16 @@ async function checkVideoStatus(songId) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-async function generateVideo(videoOrderId) {
+async function generateVideo(videoOrderId, messageUrl = null, messageDuration = 0) {
+  const body = { videoOrderId };
+  if (messageUrl) {
+    body.messageUrl = messageUrl;
+    body.messageDuration = messageDuration || 15; // fallback to 15 seconds
+  }
   const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-    body: JSON.stringify({ videoOrderId }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -282,6 +287,28 @@ export default function SuccessPage() {
   const [videoGenerating, setVideoGenerating] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [videoPurchasing, setVideoPurchasing] = useState(false);
+
+  // Personal video message states
+  const [showMessageRecorder, setShowMessageRecorder] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedMessage, setRecordedMessage] = useState(null); // { blob, url, duration }
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [messageMode, setMessageMode] = useState(null); // 'video' | 'audio'
+  const [cameraReady, setCameraReady] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const recordingTimerRef = useRef(null);
+  const videoPreviewRef = useRef(null);
+  const streamRef = useRef(null);
+  const MAX_MESSAGE_SECONDS = 30;
+
+  // Attach camera stream to video preview element when camera opens or recording starts
+  useEffect(() => {
+    if ((cameraReady || isRecording) && messageMode === 'video' && streamRef.current && videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = streamRef.current;
+      videoPreviewRef.current.play().catch(() => {});
+    }
+  }, [cameraReady, isRecording, messageMode]);
+
   const [selectedVideoSongIdx, setSelectedVideoSongIdx] = useState(0);
   const videoPhotoInputRef = useRef(null);
   const videoPollingRef = useRef(null);
@@ -430,8 +457,9 @@ export default function SuccessPage() {
     setShowConfetti(true);
     setRevealed(true);
 
-    // Try auto-play
-    if (audioRef.current) {
+    // Try auto-play (skip if video addon — don't play song on photo upload page)
+    const song = songs[0] || currentSong;
+    if (audioRef.current && !(song?.has_video_addon)) {
       audioRef.current.volume = 0.8;
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
@@ -727,6 +755,110 @@ export default function SuccessPage() {
     });
   };
 
+  // ------ PERSONAL VIDEO MESSAGE: Recording handlers ------
+  const openCamera = async (mode) => {
+    try {
+      setMessageMode(mode);
+      const constraints = mode === 'video'
+        ? { video: { facingMode: 'user', width: 720, height: 1280 }, audio: true }
+        : { audio: true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      setCameraReady(true);
+    } catch (err) {
+      console.error('Camera error:', err);
+      setVideoError('No se pudo acceder a la cámara/micrófono. Verifica los permisos.');
+    }
+  };
+
+  const recordingSecondsRef = useRef(0);
+
+  const beginRecording = () => {
+    if (!streamRef.current) return;
+    const stream = streamRef.current;
+    const mode = messageMode;
+    const startTime = Date.now();
+
+    const chunks = [];
+    // Prefer mp4 for Shotstack compatibility, fall back to webm
+    const getVideoMimeType = () => {
+      if (MediaRecorder.isTypeSupported('video/mp4')) return 'video/mp4';
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=h264')) return 'video/webm;codecs=h264';
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) return 'video/webm;codecs=vp8,opus';
+      if (MediaRecorder.isTypeSupported('video/webm')) return 'video/webm';
+      return '';
+    };
+    const getAudioMimeType = () => {
+      if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+      if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+      return '';
+    };
+    const selectedMime = mode === 'video' ? getVideoMimeType() : getAudioMimeType();
+    console.log('Recording with mimeType:', selectedMime);
+    const recorderOptions = selectedMime ? { mimeType: selectedMime } : {};
+    const recorder = new MediaRecorder(stream, recorderOptions);
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const actualDuration = Math.round((Date.now() - startTime) / 1000);
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const url = URL.createObjectURL(blob);
+      console.log('Recording stopped. Actual duration:', actualDuration, 'seconds');
+      setRecordedMessage({ blob, url, duration: actualDuration, mode });
+      setIsRecording(false);
+      setCameraReady(false);
+      clearInterval(recordingTimerRef.current);
+      stream.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+
+    recorder.start();
+    setIsRecording(true);
+    setRecordingTime(0);
+    recordingSecondsRef.current = 0;
+    recordingTimerRef.current = setInterval(() => {
+      recordingSecondsRef.current += 1;
+      setRecordingTime(prev => {
+        if (prev >= MAX_MESSAGE_SECONDS - 1) {
+          mediaRecorderRef.current?.stop();
+          return prev + 1;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+  };
+
+  // For audio mode, start recording immediately (no preview needed)
+  const startAudioRecording = async () => {
+    try {
+      setMessageMode('audio');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      setCameraReady(true);
+      // Auto-start for audio since there's no preview to show
+      setTimeout(() => {
+        beginRecording();
+      }, 100);
+    } catch (err) {
+      console.error('Audio error:', err);
+      setVideoError('No se pudo acceder al micrófono. Verifica los permisos.');
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+  };
+
+  const discardMessage = () => {
+    if (recordedMessage?.url) URL.revokeObjectURL(recordedMessage.url);
+    setRecordedMessage(null);
+    setRecordingTime(0);
+    setShowMessageRecorder(false);
+    setMessageMode(null);
+    setCameraReady(false);
+  };
+
   // ------ VIDEO UPSELL: Upload photos to Supabase & trigger generation ------
   const handleVideoGenerate = async () => {
     if (videoPhotos.length < 3) {
@@ -760,19 +892,53 @@ export default function SuccessPage() {
         photoUrls.push(urlData.publicUrl);
       }
 
-      // Update video_orders with photo URLs and status
+      // Upload personal message if recorded
+      let messageUrl = null;
+      console.log('Recorded message state:', recordedMessage ? { mode: recordedMessage.mode, blobSize: recordedMessage.blob?.size, duration: recordedMessage.duration } : 'null');
+      if (recordedMessage?.blob) {
+        console.log('✅ MESSAGE BLOB EXISTS - size:', recordedMessage.blob.size, 'bytes');
+      } else {
+        console.log('❌ NO MESSAGE BLOB - recordedMessage:', recordedMessage);
+      }
+      if (recordedMessage?.blob) {
+        const blobType = recordedMessage.blob.type || 'video/webm';
+        const msgExt = blobType.includes('mp4') ? 'mp4' : 'webm';
+        const msgPath = `${videoOrder.id}/message_${Date.now()}.${msgExt}`;
+        const contentType = blobType;
+        console.log('Uploading message:', msgPath, 'size:', recordedMessage.blob.size, 'type:', contentType);
+        const { error: msgUploadErr } = await supabase.storage
+          .from('video-photos')
+          .upload(msgPath, recordedMessage.blob, {
+            cacheControl: '31536000',
+            upsert: true,
+            contentType
+          });
+        if (msgUploadErr) {
+          console.error('Message upload error:', msgUploadErr);
+          // Don't block video generation if message upload fails
+        } else {
+          const { data: msgUrlData } = supabase.storage.from('video-photos').getPublicUrl(msgPath);
+          messageUrl = msgUrlData.publicUrl;
+          console.log('Message uploaded successfully:', messageUrl);
+        }
+      }
+
+      // Update video_orders with photo URLs, message URL, and status
+      const updateData = { photo_urls: photoUrls, status: 'photos_uploaded', photo_count: photoUrls.length };
+      if (messageUrl) updateData.message_url = messageUrl;
       const { error: updateErr } = await supabase
         .from('video_orders')
-        .update({ photo_urls: photoUrls, status: 'photos_uploaded', photo_count: photoUrls.length })
+        .update(updateData)
         .eq('id', videoOrder.id);
 
       if (updateErr) throw new Error('Error guardando fotos en la orden');
 
       setUploadingVideoPics(false);
 
-      // Trigger video generation
+      // Trigger video generation (pass message URL + duration if available)
       setVideoGenerating(true);
-      const genRes = await generateVideo(videoOrder.id);
+      const messageDuration = recordedMessage?.duration || 0;
+      const genRes = await generateVideo(videoOrder.id, messageUrl, messageDuration);
 
       // Update local state
       setVideoOrder(prev => ({ ...prev, status: 'processing' }));
@@ -1039,28 +1205,65 @@ export default function SuccessPage() {
               color: isLight ? ts.accent : `rgba(${ts.accentRgb},0.5)`,
               marginBottom: '14px', fontWeight: 500,
             }}>
-              {songs.length > 1 ? `🎵 ${songs.length} canciones listas` : '🎵 Tu regalo está listo'}
+              {currentSong?.has_video_addon && videoOrder?.status === 'completed'
+                ? '🎉 ¡Listo!'
+                : currentSong?.has_video_addon && (!videoOrder || videoOrder.status === 'pending')
+                ? '🎬 Paso 1 de 2'
+                : currentSong?.has_video_addon && videoOrder?.status === 'processing'
+                ? '🎬 Generando tu video...'
+                : currentSong?.has_video_addon && videoOrder?.status === 'photos_uploaded'
+                ? '🎬 Procesando...'
+                : songs.length > 1 ? `🎵 ${songs.length} canciones listas` : '🎵 Tu regalo está listo'
+              }
             </div>
-            <h1 style={{
-              fontSize: 'clamp(28px, 7vw, 40px)', fontWeight: '800',
-              marginBottom: '14px', lineHeight: '1.05',
-            }}>
-              Para{' '}
-              <span style={{
-                color: ts.accent,
-              }}>
-                {recipientName}
-              </span>
-            </h1>
-            <p style={{
-              fontSize: '15px', color: ts.textSecondary,
-              fontStyle: 'italic', lineHeight: '1.5'
-            }}>
-              {recipientName} va a escuchar su nombre en una canción por primera vez. ❤️
-            </p>
+            {currentSong?.has_video_addon && videoOrder ? (
+              <>
+                <h1 style={{
+                  fontSize: 'clamp(24px, 6vw, 34px)', fontWeight: '800',
+                  marginBottom: '14px', lineHeight: '1.15',
+                }}>
+                  {videoOrder.status === 'completed'
+                    ? `¡El video para ${recipientName} está listo!`
+                    : videoOrder.status === 'pending'
+                    ? '¡Ya casi! Solo falta subir tus fotos'
+                    : 'Estamos creando tu video...'
+                  }
+                </h1>
+                <p style={{
+                  fontSize: '15px', color: ts.textSecondary,
+                  lineHeight: '1.5'
+                }}>
+                  {videoOrder.status === 'completed'
+                    ? `Descarga tu video y canción para compartir con ${recipientName}`
+                    : videoOrder.status === 'pending'
+                    ? `Selecciona tus fotos favoritas y creamos un video cinematográfico para ${recipientName}`
+                    : `Espera aquí y tu video aparecerá automáticamente, o te lo enviamos por email`
+                  }
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 style={{
+                  fontSize: 'clamp(28px, 7vw, 40px)', fontWeight: '800',
+                  marginBottom: '14px', lineHeight: '1.05',
+                }}>
+                  Para{' '}
+                  <span style={{ color: ts.accent }}>
+                    {recipientName}
+                  </span>
+                </h1>
+                <p style={{
+                  fontSize: '15px', color: ts.textSecondary,
+                  fontStyle: 'italic', lineHeight: '1.5'
+                }}>
+                  {recipientName} va a escuchar su nombre en una canción por primera vez. ❤️
+                </p>
+              </>
+            )}
           </div>
 
-          {/* ===== PLAYER CARD ===== */}
+          {/* ===== PLAYER CARD — hidden entirely when has_video_addon (video replaces it) ===== */}
+          {!currentSong?.has_video_addon && (<>
           <div style={{
             background: ts.cardBg,
             borderRadius: '24px', padding: '28px 24px',
@@ -1200,8 +1403,10 @@ export default function SuccessPage() {
               </div>
             </div>
           )}
+          </>)}{/* end player card conditional */}
 
-          {/* ===== DOWNLOAD & SHARE SECTION ===== */}
+          {/* ===== DOWNLOAD & SHARE SECTION — hidden entirely when has_video_addon ===== */}
+          {!currentSong?.has_video_addon && (
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
 
             {/* Step indicator header */}
@@ -1299,6 +1504,47 @@ export default function SuccessPage() {
               </p>
             </div>
           </div>
+          )}{/* end download section conditional */}
+
+          {/* Step timeline for video addon flow */}
+          {currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '0', marginBottom: '20px', padding: '0 10px',
+              animation: 'fadeInUp 0.5s ease-out',
+            }}>
+              {[
+                { label: 'Fotos', icon: '📸', active: true },
+                { label: 'Mensaje', icon: '🎤', active: false },
+                { label: 'Video', icon: '🎬', active: false },
+              ].map((step, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && (
+                    <div style={{
+                      width: '40px', height: '2px',
+                      background: step.active ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.1)',
+                    }} />
+                  )}
+                  <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '50%', margin: '0 auto 4px',
+                      background: step.active
+                        ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                        : 'rgba(255,255,255,0.06)',
+                      border: step.active ? 'none' : '1.5px solid rgba(255,255,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '18px',
+                      boxShadow: step.active ? '0 4px 15px rgba(124,58,237,0.4)' : 'none',
+                    }}>{step.icon}</div>
+                    <span style={{
+                      fontSize: '10px', fontWeight: '700',
+                      color: step.active ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                    }}>{step.label}</span>
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
 
           {/* ===== VIDEO UPSELL SECTION ===== */}
           <div style={{
@@ -1721,6 +1967,253 @@ export default function SuccessPage() {
                   }} />
                 </div>
 
+                {/* Personal Video Message — Optional (always visible) */}
+                {(
+                  <div style={{
+                    marginBottom: '16px', borderRadius: '16px', overflow: 'hidden',
+                    border: `1px solid ${recordedMessage ? 'rgba(34,197,94,0.3)' : 'rgba(139,92,246,0.2)'}`,
+                    background: recordedMessage
+                      ? (isLight ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.08)')
+                      : (isLight ? 'rgba(139,92,246,0.04)' : 'rgba(139,92,246,0.06)'),
+                    transition: 'all 0.3s',
+                  }}>
+                    {/* Header — always visible */}
+                    <div
+                      onClick={() => !isRecording && setShowMessageRecorder(!showMessageRecorder)}
+                      style={{
+                        padding: '16px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                      }}
+                    >
+                      <div style={{
+                        width: '44px', height: '44px', minWidth: '44px', borderRadius: '14px',
+                        background: recordedMessage
+                          ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                          : 'linear-gradient(135deg, #ec4899, #db2777)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '22px',
+                        boxShadow: recordedMessage ? '0 4px 16px rgba(34,197,94,0.3)' : '0 4px 16px rgba(236,72,153,0.3)',
+                      }}>
+                        {recordedMessage ? '✓' : '🎤'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 2px', color: ts.textPrimary }}>
+                          {recordedMessage ? 'Mensaje grabado' : '¿Quieres agregar un mensaje personal?'}
+                        </h4>
+                        <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
+                          {recordedMessage
+                            ? `${recordedMessage.mode === 'video' ? 'Video' : 'Audio'} • ${recordedMessage.duration}s`
+                            : 'Graba un mensaje que aparecerá al final del video'
+                          }
+                        </p>
+                      </div>
+                      <span style={{
+                        fontSize: '11px', color: '#ec4899', fontWeight: '700',
+                        background: 'rgba(236,72,153,0.1)', padding: '4px 10px', borderRadius: '8px',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {recordedMessage ? 'Cambiar' : 'Opcional'}
+                      </span>
+                    </div>
+
+                    {/* Expanded recorder */}
+                    {/* Mode selection — before camera opens */}
+                    {showMessageRecorder && !recordedMessage && !isRecording && !cameraReady && (
+                      <div style={{ padding: '0 16px 16px' }}>
+                        <p style={{ fontSize: '13px', color: ts.textSecondary, margin: '0 0 14px', lineHeight: 1.5 }}>
+                          Graba un mensaje de hasta 30 segundos. Aparecerá al final del video después de las fotos.
+                        </p>
+
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                          <button onClick={() => openCamera('video')} style={{
+                            flex: 1, padding: '14px', borderRadius: '14px',
+                            background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                            color: 'white', fontWeight: '700', fontSize: '14px',
+                            border: 'none', cursor: 'pointer', fontFamily: ts.font,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                            boxShadow: '0 4px 20px rgba(236,72,153,0.3)',
+                          }}>
+                            📹 Grabar Video
+                          </button>
+                          <button onClick={() => startAudioRecording()} style={{
+                            flex: 1, padding: '14px', borderRadius: '14px',
+                            background: isLight ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.15)',
+                            color: isLight ? '#7c3aed' : '#c4b5fd', fontWeight: '700', fontSize: '14px',
+                            border: '1.5px solid rgba(139,92,246,0.3)', cursor: 'pointer', fontFamily: ts.font,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          }}>
+                            🎙️ Solo Audio
+                          </button>
+                        </div>
+
+                        <button onClick={() => setShowMessageRecorder(false)} style={{
+                          width: '100%', padding: '10px', background: 'none',
+                          border: 'none', color: ts.textSecondary, fontSize: '13px',
+                          cursor: 'pointer', fontFamily: ts.font,
+                        }}>
+                          No, gracias — continuar sin mensaje
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Camera preview — ready to record (video mode only) */}
+                    {cameraReady && !isRecording && messageMode === 'video' && (
+                      <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
+                        <div style={{
+                          width: '100%', maxWidth: '240px', margin: '0 auto 14px',
+                          aspectRatio: '9/16', borderRadius: '16px', overflow: 'hidden',
+                          background: '#000', position: 'relative',
+                          border: '3px solid #a855f7',
+                          boxShadow: '0 0 20px rgba(168,85,247,0.3)',
+                        }}>
+                          <video ref={videoPreviewRef} muted playsInline style={{
+                            width: '100%', height: '100%', objectFit: 'cover',
+                            transform: 'scaleX(-1)',
+                          }} />
+                        </div>
+
+                        <p style={{ fontSize: '13px', color: ts.textSecondary, marginBottom: '14px' }}>
+                          Acomódate y cuando estés listo toca el botón
+                        </p>
+
+                        <button onClick={beginRecording} style={{
+                          padding: '16px 32px', borderRadius: '50px',
+                          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                          color: 'white', fontWeight: '800', fontSize: '16px',
+                          border: 'none', cursor: 'pointer', fontFamily: ts.font,
+                          boxShadow: '0 4px 20px rgba(239,68,68,0.4)',
+                          display: 'inline-flex', alignItems: 'center', gap: '10px',
+                        }}>
+                          <div style={{
+                            width: '14px', height: '14px', borderRadius: '50%',
+                            background: 'white',
+                          }} />
+                          Comenzar Grabación
+                        </button>
+
+                        <div style={{ marginTop: '12px' }}>
+                          <button onClick={() => {
+                            streamRef.current?.getTracks().forEach(t => t.stop());
+                            streamRef.current = null;
+                            setCameraReady(false);
+                            setMessageMode(null);
+                          }} style={{
+                            background: 'none', border: 'none', color: ts.textSecondary,
+                            fontSize: '13px', cursor: 'pointer', fontFamily: ts.font,
+                          }}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recording in progress */}
+                    {isRecording && (
+                      <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
+                        {messageMode === 'video' && (
+                          <div style={{
+                            width: '100%', maxWidth: '240px', margin: '0 auto 14px',
+                            aspectRatio: '9/16', borderRadius: '16px', overflow: 'hidden',
+                            background: '#000', position: 'relative',
+                            border: '3px solid #ec4899',
+                            boxShadow: '0 0 30px rgba(236,72,153,0.3)',
+                          }}>
+                            <video ref={videoPreviewRef} muted playsInline style={{
+                              width: '100%', height: '100%', objectFit: 'cover',
+                              transform: 'scaleX(-1)',
+                            }} />
+                          </div>
+                        )}
+
+                        {messageMode === 'audio' && (
+                          <div style={{
+                            width: '120px', height: '120px', borderRadius: '50%', margin: '0 auto 14px',
+                            background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(236,72,153,0.2))',
+                            border: '3px solid #ec4899',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '48px',
+                            boxShadow: '0 0 30px rgba(236,72,153,0.3)',
+                            animation: 'pulse 1.5s ease-in-out infinite',
+                          }}>
+                            🎙️
+                          </div>
+                        )}
+
+                        {/* Recording indicator */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '14px' }}>
+                          <div style={{
+                            width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444',
+                            animation: 'pulse 1s ease-in-out infinite',
+                          }} />
+                          <span style={{ fontSize: '20px', fontWeight: '800', color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                            0:{recordingTime.toString().padStart(2, '0')}
+                          </span>
+                          <span style={{ fontSize: '13px', color: ts.textSecondary }}>/ 0:30</span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div style={{
+                          width: '100%', height: '4px', borderRadius: '2px',
+                          background: 'rgba(255,255,255,0.1)', marginBottom: '14px', overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            width: `${(recordingTime / MAX_MESSAGE_SECONDS) * 100}%`,
+                            height: '100%', borderRadius: '2px',
+                            background: recordingTime > 25 ? '#ef4444' : 'linear-gradient(90deg, #ec4899, #a855f7)',
+                            transition: 'width 1s linear',
+                          }} />
+                        </div>
+
+                        <button onClick={stopRecording} style={{
+                          padding: '14px 32px', borderRadius: '14px',
+                          background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                          color: 'white', fontWeight: '800', fontSize: '15px',
+                          border: 'none', cursor: 'pointer', fontFamily: ts.font,
+                          boxShadow: '0 4px 20px rgba(239,68,68,0.4)',
+                        }}>
+                          ⏹ Detener Grabación
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Recorded message preview */}
+                    {recordedMessage && showMessageRecorder && (
+                      <div style={{ padding: '0 16px 16px' }}>
+                        {recordedMessage.mode === 'video' ? (
+                          <video src={recordedMessage.url} controls playsInline style={{
+                            width: '100%', maxWidth: '240px', display: 'block', margin: '0 auto 14px',
+                            borderRadius: '14px', background: '#000',
+                          }} />
+                        ) : (
+                          <audio src={recordedMessage.url} controls style={{
+                            width: '100%', marginBottom: '14px',
+                          }} />
+                        )}
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button onClick={() => { discardMessage(); setShowMessageRecorder(true); }} style={{
+                            flex: 1, padding: '12px', borderRadius: '12px',
+                            background: 'rgba(239,68,68,0.1)', color: '#f87171',
+                            fontWeight: '700', fontSize: '13px', border: '1px solid rgba(239,68,68,0.2)',
+                            cursor: 'pointer', fontFamily: ts.font,
+                          }}>
+                            🔄 Volver a grabar
+                          </button>
+                          <button onClick={() => setShowMessageRecorder(false)} style={{
+                            flex: 1, padding: '12px', borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white',
+                            fontWeight: '700', fontSize: '13px', border: 'none',
+                            cursor: 'pointer', fontFamily: ts.font,
+                            boxShadow: '0 4px 16px rgba(34,197,94,0.3)',
+                          }}>
+                            ✓ Usar este mensaje
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Generate button */}
                 <button
                   onClick={handleVideoGenerate}
@@ -1841,9 +2334,9 @@ export default function SuccessPage() {
                   borderRadius: '12px', padding: '12px 16px',
                   display: 'flex', alignItems: 'center', gap: '10px',
                 }}>
-                  <span style={{ fontSize: '16px' }}>📧</span>
-                  <p style={{ fontSize: '12px', color: '#a78bfa', margin: 0, fontWeight: 600, lineHeight: 1.4 }}>
-                    Te notificaremos por email cuando esté listo — esto puede tomar unos minutos
+                  <span style={{ fontSize: '16px' }}>☕</span>
+                  <p style={{ fontSize: '12px', color: '#a78bfa', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
+                    Puedes esperar aquí sin cerrar esta página y tu video aparecerá automáticamente. También te lo enviaremos por email cuando esté listo.
                   </p>
                 </div>
               </>
@@ -1926,6 +2419,23 @@ export default function SuccessPage() {
                   <span>{videoDownloading ? 'Descargando...' : 'Descargar Video MP4'}</span>
                   {!videoDownloading && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
                 </button>
+
+                {/* MP3 download — also available when video is complete */}
+                {currentSong?.audio_url && (
+                  <a href={currentSong.audio_url} download={`cancion-para-${recipientName}.mp3`}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                      width: '100%', padding: '14px 24px', marginTop: '10px',
+                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
+                      color: '#a78bfa', fontWeight: '700', fontSize: '15px',
+                      border: '1.5px solid rgba(139,92,246,0.2)', borderRadius: '14px',
+                      textDecoration: 'none', fontFamily: ts.font,
+                      transition: 'all 0.3s',
+                    }}>
+                    <span style={{ fontSize: '18px' }}>🎵</span>
+                    <span>Descargar Canción MP3</span>
+                  </a>
+                )}
 
                 {/* Share hint */}
                 <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '12px', fontWeight: 600 }}>
@@ -2021,187 +2531,10 @@ export default function SuccessPage() {
             )}
           </div>
 
-          {/* ===== SHARE SECTION ===== */}
-          <div style={{
-            background: ts.cardBg, borderRadius: '24px', padding: '24px',
-            border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
-            backdropFilter: ts.cardBlur,
-            animation: 'fadeInUp 0.7s ease-out 0.45s both'
-          }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '18px', textAlign: 'center', color: ts.textPrimary }}>
-              💝 Comparte el regalo
-            </h3>
-            {/* Mini preview card */}
-            <div style={{
-              background: isLight ? `rgba(${ts.accentRgb},0.04)` : `rgba(${ts.accentRgb},0.08)`,
-              borderRadius: '16px', padding: '18px', textAlign: 'center', marginBottom: '18px',
-              border: `1.5px solid rgba(${ts.accentRgb},0.15)`,
-            }}>
-              <div style={{
-                width: '64px', height: '64px', margin: '0 auto 10px',
-                borderRadius: '12px', overflow: 'hidden',
-                background: `linear-gradient(135deg, rgba(${ts.accentRgb},0.3), rgba(${ts.accentRgb},0.1))`
-              }}>
-                <img
-                  src={currentSong.image_url || getGenreImage(currentSong?.genre)}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  onError={(e) => {
-                    const fallback = getGenreImage(currentSong?.genre);
-                    if (e.target.src !== window.location.origin + fallback) {
-                      e.target.src = fallback;
-                    } else {
-                      e.target.parentElement.innerHTML = '<span style="font-size:32px;display:flex;align-items:center;justify-content:center;height:100%">🎵</span>';
-                    }
-                  }}
-                />
-              </div>
-              <p style={{ fontSize: '15px', fontWeight: '700', margin: '0 0 4px 0', color: ts.accent }}>
-                🎵 {songs.length > 1 ? `${songs.length} canciones` : 'Una canción'} para {recipientName}
-              </p>
-              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
-                Creada especialmente — hecha con ❤️
-              </p>
-              {songUrl && (
-                <p style={{ fontSize: '10px', color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.25)', margin: '8px 0 0', wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                  {songUrl}
-                </p>
-              )}
-            </div>
-            {/* Share buttons */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={handleShareWhatsApp}
-                style={{
-                  flex: 1, padding: '14px', background: '#25D366', color: 'white',
-                  border: 'none', borderRadius: '14px', fontSize: '15px', fontWeight: '700',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  boxShadow: '0 4px 15px rgba(37,211,102,0.3)', transition: 'all 0.3s', fontFamily: ts.font
-                }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
-                WhatsApp
-              </button>
-              <button onClick={handleCopyLink}
-                style={{
-                  flex: 1, padding: '14px',
-                  background: linkCopied ? 'rgba(34,197,94,0.15)' : isLight ? 'white' : 'rgba(255,255,255,0.06)',
-                  color: linkCopied ? '#4ade80' : ts.textPrimary,
-                  border: `1.5px solid ${linkCopied ? '#22c55e' : ts.cardBorder}`,
-                  borderRadius: '14px', fontSize: '15px', fontWeight: '700',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  transition: 'all 0.3s', fontFamily: ts.font
-                }}>
-                {linkCopied ? '✓ ¡Copiado!' : '🔗 Copiar Link'}
-              </button>
-            </div>
-          </div>
-
-          {/* ===== TEMPLATE DESIGN PICKER (compact strip) ===== */}
-          <div style={{
-            background: ts.cardBg, borderRadius: '20px', padding: '18px',
-            border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
-            backdropFilter: ts.cardBlur,
-            animation: 'fadeInUp 0.7s ease-out 0.55s both'
-          }}>
-            <p style={{ fontSize: '12px', color: ts.textSecondary, textAlign: 'center', marginBottom: '12px', fontWeight: 600 }}>
-              🎨 Cambiar diseño de la página
-            </p>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[
-                { id: 'golden_hour', label: 'Golden Hour', icon: '🌅', color: '#f4c025', bg: 'linear-gradient(160deg, #1a1408, #2a1f10)' },
-                { id: 'lavender_dream', label: 'Lavender Dream', icon: '💜', color: '#9947eb', bg: 'radial-gradient(circle, #fdfbf7, #f0e9f7)' },
-                { id: 'electric_magenta', label: 'Electric Magenta', icon: '⚡', color: '#f20d59', bg: '#0a0507' },
-              ].map((t) => {
-                const isActive = selectedTemplate === t.id;
-                return (
-                  <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
-                    style={{
-                      flex: 1, padding: '10px 6px', borderRadius: '12px', cursor: 'pointer',
-                      border: `2px solid ${isActive ? t.color : 'rgba(128,128,128,0.15)'}`,
-                      background: t.bg, overflow: 'hidden', transition: 'all 0.25s',
-                      opacity: isActive ? 1 : 0.5,
-                      transform: isActive ? 'scale(1.05)' : 'scale(1)',
-                      position: 'relative',
-                    }}>
-                    <div style={{ fontSize: '18px', textAlign: 'center', marginBottom: '3px' }}>{t.icon}</div>
-                    <div style={{ fontSize: '8px', fontWeight: 700, textAlign: 'center', color: isActive ? t.color : 'rgba(200,200,200,0.6)', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</div>
-                    {isActive && <div style={{ position: 'absolute', top: 3, right: 3, width: 12, height: 12, borderRadius: '50%', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, color: 'white' }}>✓</div>}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Photo upload — only for photo templates */}
-            {(selectedTemplate === 'lavender_dream' || selectedTemplate === 'electric_magenta') && (
-              <div style={{
-                background: isLight ? 'rgba(153,71,235,0.04)' : 'rgba(255,255,255,0.04)',
-                border: `1.5px dashed ${isLight ? 'rgba(153,71,235,0.2)' : 'rgba(255,255,255,0.15)'}`,
-                borderRadius: '16px', padding: '18px',
-                textAlign: 'center', marginTop: '14px',
-              }}>
-                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: ts.textPrimary }}>
-                  📸 Agrega una foto (opcional)
-                </p>
-                <p style={{ fontSize: '11px', color: ts.textSecondary, marginBottom: '14px' }}>
-                  Se mostrará en la página cuando {recipientName} abra el link
-                </p>
-                {photoPreview ? (
-                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: '12px' }}>
-                    <img src={photoPreview} alt="" style={{
-                      width: '120px', height: '120px', objectFit: 'cover',
-                      borderRadius: '12px', border: `2px solid rgba(${ts.accentRgb},0.3)`
-                    }} />
-                    <button onClick={() => { setPhotoFile(null); setPhotoPreview(null); }} style={{
-                      position: 'absolute', top: '-8px', right: '-8px',
-                      width: '24px', height: '24px', borderRadius: '50%',
-                      background: '#e11d48', border: 'none', color: 'white',
-                      fontSize: '12px', cursor: 'pointer', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>✕</button>
-                  </div>
-                ) : (
-                  <label style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '8px',
-                    padding: '10px 20px', borderRadius: '12px',
-                    background: isLight ? 'white' : 'rgba(255,255,255,0.08)',
-                    border: `1px solid ${ts.cardBorder}`,
-                    cursor: 'pointer', fontSize: '14px', fontWeight: '600',
-                    color: ts.textSecondary, fontFamily: ts.font,
-                  }}>
-                    📷 Elegir foto
-                    <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
-                  </label>
-                )}
-              </div>
-            )}
-
-            {/* Save button */}
-            <button onClick={handleSaveTemplate} disabled={savingTemplate}
-              style={{
-                width: '100%', padding: '14px', marginTop: '14px',
-                background: templateSaved ? 'rgba(34,197,94,0.2)' : ts.accentGrad,
-                border: templateSaved ? '1.5px solid #22c55e' : 'none',
-                borderRadius: '14px',
-                color: templateSaved ? '#4ade80' : ts.btnText,
-                fontSize: '15px', fontWeight: '700',
-                cursor: savingTemplate ? 'wait' : 'pointer',
-                opacity: savingTemplate ? 0.7 : 1,
-                transition: 'all 0.3s', fontFamily: ts.font,
-              }}>
-              {savingTemplate ? (uploadingPhoto ? '📤 Subiendo foto...' : '💾 Guardando...') : templateSaved ? '✅ ¡Guardado!' : '💾 Guardar diseño'}
-            </button>
-
-            {/* Preview link */}
-            {templateSaved && songUrl && (
-              <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                <a href={songUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ color: ts.accent, fontSize: '13px', fontWeight: '600', textDecoration: 'underline' }}>
-                  👁️ Ver cómo se ve →
-                </a>
-              </div>
-            )}
-          </div>
+          {/* Share + Template sections removed */}
 
           {/* ===== FOOTER ===== */}
+          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{ textAlign: 'center', marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.65s both' }}>
             <p style={{
               fontSize: '15px', color: ts.textSecondary,
@@ -2211,8 +2544,10 @@ export default function SuccessPage() {
               "De todas las cosas que puedes regalar, una canción con su nombre es algo que {recipientName} va a recordar para siempre."
             </p>
           </div>
+          )}
 
-          {/* ===== CREATE ANOTHER SONG CTA ===== */}
+          {/* ===== CREATE ANOTHER SONG CTA — hidden during video upload flow ===== */}
+          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{
             background: ts.cardBg, borderRadius: '24px', padding: '24px',
             border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
@@ -2239,6 +2574,7 @@ export default function SuccessPage() {
               🎤 Crear Otra Canción
             </a>
           </div>
+          )}
 
           <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.2)', fontSize: '10px', lineHeight: 1.6, maxWidth: 340, margin: '30px auto 0' }}>
             Todas las ventas son finales. Al comprar, aceptas que escuchaste la vista previa antes de realizar tu compra. No se ofrecen reembolsos una vez completada la transacción.
