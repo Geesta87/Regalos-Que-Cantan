@@ -1035,18 +1035,72 @@ export default function SuccessPage() {
     return (
       <div style={S.fullScreenCenter}>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <div style={{ textAlign: 'center' }}>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+          @keyframes dotBounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+        `}</style>
+        <div style={{ textAlign: 'center', padding: '24px', maxWidth: '360px' }}>
+          {/* Animated icon */}
+          <div style={{ fontSize: '56px', marginBottom: '20px', animation: 'pulse 2s ease-in-out infinite' }}>
+            🎵
+          </div>
+
+          {/* Main message */}
+          <h2 style={{
+            fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 12px',
+            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.3
+          }}>
+            ¡Pago recibido!
+          </h2>
+
+          <p style={{
+            fontSize: '16px', color: 'rgba(255,255,255,0.8)', margin: '0 0 24px',
+            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.5
+          }}>
+            Estamos preparando todo para ti
+          </p>
+
+          {/* Spinner */}
           <div style={{
-            width: '56px', height: '56px', margin: '0 auto 20px',
+            width: '48px', height: '48px', margin: '0 auto 24px',
             border: '3px solid rgba(255,255,255,0.1)',
             borderTopColor: '#f74da6',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite'
           }} />
-          <p style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', fontFamily: "'Montserrat', sans-serif" }}>
-            Preparando tu canción...
-          </p>
+
+          {/* Warning box */}
+          <div style={{
+            background: 'rgba(251,191,36,0.12)',
+            border: '1px solid rgba(251,191,36,0.3)',
+            borderRadius: '14px', padding: '16px 20px',
+            marginBottom: '16px',
+          }}>
+            <p style={{
+              fontSize: '15px', fontWeight: '700', color: '#fbbf24', margin: '0 0 4px',
+              fontFamily: "'Montserrat', sans-serif",
+            }}>
+              ⚠️ No cierres esta ventana
+            </p>
+            <p style={{
+              fontSize: '13px', color: 'rgba(255,255,255,0.6)', margin: 0,
+              fontFamily: "'Montserrat', sans-serif", lineHeight: 1.4
+            }}>
+              En unos segundos podrás descargar tu canción y compartirla
+            </p>
+          </div>
+
+          {/* Loading dots */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: '#f74da6',
+                animation: `dotBounce 1.4s ease-in-out ${i * 0.16}s infinite`,
+              }} />
+            ))}
+          </div>
         </div>
       </div>
     );
