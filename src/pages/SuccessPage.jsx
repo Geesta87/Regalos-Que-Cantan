@@ -456,40 +456,59 @@ export default function SuccessPage() {
 
   // ------ Start countdown once song + audio are ready ------
   // ------ Redirect to SongPage after payment (song-only buyers) ------
+  const redirectSongIdRef = useRef(null);
   const hasTriggeredRedirect = useRef(false);
+
+  // Store song ID as soon as we have it
   useEffect(() => {
-    if (!currentSong?.id || hasTriggeredRedirect.current) return;
+    if (currentSong?.id) {
+      redirectSongIdRef.current = currentSong.id;
+    }
+  }, [currentSong]);
 
+  // One-time redirect setup on first mount
+  useEffect(() => {
     const sessionId = urlParams.get('session_id');
+    if (!sessionId) return; // Direct visit — handled below
 
-    // Song-only buyers: redirect to SongPage gift reveal after payment
-    if (sessionId && !currentSong.has_video_addon) {
-      hasTriggeredRedirect.current = true;
+    // Wait for song data to load, then redirect/reveal after 4.5s minimum
+    const timer = setTimeout(() => {
+      const songId = redirectSongIdRef.current;
+      if (!songId) {
+        // Song still not loaded after 4.5s — wait a bit more
+        const retryTimer = setTimeout(() => {
+          const id = redirectSongIdRef.current;
+          if (id && !hasVideoAddonRef.current) {
+            const url = `${window.location.origin}/song/${id}`;
+            console.log('[Redirect] Song-only buyer → SongPage:', url);
+            window.location.replace(url);
+          } else if (id && hasVideoAddonRef.current) {
+            setRevealed(true);
+            setContentVisible(true);
+          }
+        }, 3000);
+        return;
+      }
 
-      // Wait minimum 4.5 seconds for the "Pago exitoso" screen to display
-      const minDelay = setTimeout(() => {
-        const songId = currentSong.id;
+      if (!hasVideoAddonRef.current) {
         const url = `${window.location.origin}/song/${songId}`;
         console.log('[Redirect] Song-only buyer → SongPage:', url);
         window.location.replace(url);
-      }, 4500);
-
-      return () => clearTimeout(minDelay);
-    }
-
-    // Video addon buyers: stay on success page, show photo upload
-    if (sessionId && currentSong.has_video_addon) {
-      hasTriggeredRedirect.current = true;
-
-      const minDelay = setTimeout(() => {
+      } else {
         setRevealed(true);
         setContentVisible(true);
-      }, 4500);
+      }
+    }, 4500);
 
-      return () => clearTimeout(minDelay);
-    }
+    hasTriggeredRedirect.current = true;
+    // Do NOT clean up this timer — it must run even if component re-renders
+  }, []); // Empty deps — runs once on mount
 
-    // Direct visit (no session_id) — show content immediately
+  // Direct visit (no session_id) — show content immediately
+  useEffect(() => {
+    const sessionId = urlParams.get('session_id');
+    if (sessionId) return; // Handled by redirect logic above
+    if (!currentSong?.id) return;
     if (!hasTriggeredCountdown.current) {
       hasTriggeredCountdown.current = true;
       setRevealed(true);
