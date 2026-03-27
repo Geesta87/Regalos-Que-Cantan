@@ -264,6 +264,10 @@ export default function SuccessPage() {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Gift reveal flow: loading → gift → flash → ready
+  const [revealPhase, setRevealPhase] = useState('loading');
+  const [giftOpening, setGiftOpening] = useState(false);
   const [currentSong, setCurrentSong] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -451,19 +455,45 @@ export default function SuccessPage() {
   }, [songs]);
 
   // ------ Start countdown once song + audio are ready ------
+  // ------ Redirect to SongPage after payment (song-only buyers) ------
+  const hasTriggeredRedirect = useRef(false);
   useEffect(() => {
-    if (!currentSong?.audio_url || hasTriggeredCountdown.current) return;
-    hasTriggeredCountdown.current = true;
+    if (!currentSong?.id || hasTriggeredRedirect.current) return;
 
-    // Skip countdown for video addon buyers — go straight to content
-    if (currentSong?.has_video_addon) {
-      setRevealed(true);
-      setContentVisible(true);
-      return;
+    const sessionId = urlParams.get('session_id');
+
+    // Song-only buyers: redirect to SongPage gift reveal after payment
+    if (sessionId && !currentSong.has_video_addon) {
+      hasTriggeredRedirect.current = true;
+
+      // Wait minimum 4.5 seconds for the "Pago exitoso" screen to display
+      const minDelay = setTimeout(() => {
+        const songId = currentSong.id;
+        console.log('[Redirect] Song-only buyer → SongPage:', `/song/${songId}`);
+        window.location.href = `/song/${songId}`;
+      }, 4500);
+
+      return () => clearTimeout(minDelay);
     }
 
-    // Small delay so audio element mounts and starts preloading
-    setTimeout(() => setShowCountdown(true), 400);
+    // Video addon buyers: stay on success page, show photo upload
+    if (sessionId && currentSong.has_video_addon) {
+      hasTriggeredRedirect.current = true;
+
+      const minDelay = setTimeout(() => {
+        setRevealed(true);
+        setContentVisible(true);
+      }, 4500);
+
+      return () => clearTimeout(minDelay);
+    }
+
+    // Direct visit (no session_id) — show content immediately
+    if (!hasTriggeredCountdown.current) {
+      hasTriggeredCountdown.current = true;
+      setRevealed(true);
+      setContentVisible(true);
+    }
   }, [currentSong]);
 
   // ------ Countdown complete → reveal ------
@@ -1033,72 +1063,157 @@ export default function SuccessPage() {
   // ==================== LOADING ====================
   if (loading) {
     return (
-      <div style={S.fullScreenCenter}>
+      <div style={{
+        ...S.fullScreenCenter,
+        background: 'radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.15) 0%, #0a0a0a 60%)',
+        overflow: 'hidden', position: 'relative',
+      }}>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-          @keyframes dotBounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+          @keyframes checkPop { 0% { transform: scale(0) rotate(-45deg); opacity: 0; } 60% { transform: scale(1.2) rotate(0deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+          @keyframes ringPulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 70% { box-shadow: 0 0 0 20px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+          @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+          @keyframes progressGrow { 0% { width: 5%; } 40% { width: 45%; } 70% { width: 70%; } 90% { width: 85%; } 100% { width: 95%; } }
+          @keyframes floatNote { 0% { transform: translateY(0) rotate(0deg); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(-120px) rotate(20deg); opacity: 0; } }
+          @keyframes confetti1 { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(60vh) rotate(720deg); opacity: 0; } }
+          @keyframes confetti2 { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(55vh) rotate(-540deg); opacity: 0; } }
+          @keyframes confetti3 { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(65vh) rotate(480deg); opacity: 0; } }
         `}</style>
-        <div style={{ textAlign: 'center', padding: '24px', maxWidth: '360px' }}>
-          {/* Animated icon */}
-          <div style={{ fontSize: '56px', marginBottom: '20px', animation: 'pulse 2s ease-in-out infinite' }}>
-            🎵
+
+        {/* Floating confetti */}
+        {[
+          { left: '10%', color: '#f74da6', delay: '0s', anim: 'confetti1', size: 8 },
+          { left: '25%', color: '#fbbf24', delay: '0.3s', anim: 'confetti2', size: 6 },
+          { left: '40%', color: '#22c55e', delay: '0.1s', anim: 'confetti3', size: 10 },
+          { left: '55%', color: '#8b5cf6', delay: '0.5s', anim: 'confetti1', size: 7 },
+          { left: '70%', color: '#f74da6', delay: '0.2s', anim: 'confetti2', size: 9 },
+          { left: '85%', color: '#fbbf24', delay: '0.4s', anim: 'confetti3', size: 6 },
+          { left: '15%', color: '#3b82f6', delay: '0.6s', anim: 'confetti1', size: 8 },
+          { left: '65%', color: '#22c55e', delay: '0.7s', anim: 'confetti2', size: 7 },
+          { left: '35%', color: '#ef4444', delay: '0.15s', anim: 'confetti3', size: 9 },
+          { left: '80%', color: '#8b5cf6', delay: '0.35s', anim: 'confetti1', size: 6 },
+        ].map((c, i) => (
+          <div key={i} style={{
+            position: 'absolute', top: '-10px', left: c.left,
+            width: `${c.size}px`, height: `${c.size * 1.4}px`,
+            background: c.color, borderRadius: '2px',
+            animation: `${c.anim} ${2.5 + i * 0.2}s ease-in ${c.delay} infinite`,
+            opacity: 0, zIndex: 0,
+          }} />
+        ))}
+
+        <div style={{ textAlign: 'center', padding: '24px', maxWidth: '380px', position: 'relative', zIndex: 1 }}>
+
+          {/* Animated green checkmark circle */}
+          <div style={{
+            width: '90px', height: '90px', margin: '0 auto 24px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'checkPop 0.6s ease-out, ringPulse 2s ease-out 0.6s infinite',
+            boxShadow: '0 8px 30px rgba(34,197,94,0.3)',
+          }}>
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
           </div>
 
-          {/* Main message */}
+          {/* Main heading */}
           <h2 style={{
-            fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 12px',
-            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.3
+            fontSize: '26px', fontWeight: '900', margin: '0 0 8px',
+            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.2,
+            background: 'linear-gradient(90deg, #ffffff, #e2e8f0, #ffffff)',
+            backgroundSize: '200% auto',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            animation: 'slideUp 0.5s ease-out 0.3s both',
           }}>
-            ¡Pago recibido!
+            ¡Pago exitoso!
           </h2>
 
           <p style={{
-            fontSize: '16px', color: 'rgba(255,255,255,0.8)', margin: '0 0 24px',
-            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.5
+            fontSize: '16px', color: 'rgba(255,255,255,0.7)', margin: '0 0 28px',
+            fontFamily: "'Montserrat', sans-serif", lineHeight: 1.5,
+            animation: 'slideUp 0.5s ease-out 0.5s both',
           }}>
-            Estamos preparando todo para ti
+            Tu regalo musical ya casi está listo
           </p>
 
-          {/* Spinner */}
+          {/* Progress bar */}
           <div style={{
-            width: '48px', height: '48px', margin: '0 auto 24px',
-            border: '3px solid rgba(255,255,255,0.1)',
-            borderTopColor: '#f74da6',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite'
-          }} />
-
-          {/* Warning box */}
-          <div style={{
-            background: 'rgba(251,191,36,0.12)',
-            border: '1px solid rgba(251,191,36,0.3)',
-            borderRadius: '14px', padding: '16px 20px',
-            marginBottom: '16px',
+            background: 'rgba(255,255,255,0.08)', borderRadius: '12px',
+            padding: '20px', marginBottom: '20px',
+            border: '1px solid rgba(255,255,255,0.06)',
+            animation: 'slideUp 0.5s ease-out 0.7s both',
           }}>
-            <p style={{
-              fontSize: '15px', fontWeight: '700', color: '#fbbf24', margin: '0 0 4px',
-              fontFamily: "'Montserrat', sans-serif",
-            }}>
-              ⚠️ No cierres esta ventana
-            </p>
-            <p style={{
-              fontSize: '13px', color: 'rgba(255,255,255,0.6)', margin: 0,
-              fontFamily: "'Montserrat', sans-serif", lineHeight: 1.4
-            }}>
-              En unos segundos podrás descargar tu canción y compartirla
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                border: '2px solid rgba(247,77,166,0.3)',
+                borderTopColor: '#f74da6',
+                animation: 'spin 0.8s linear infinite',
+                flexShrink: 0,
+              }} />
+              <div style={{ textAlign: 'left' }}>
+                <p style={{ fontSize: '14px', fontWeight: '700', color: 'white', margin: '0 0 2px', fontFamily: "'Montserrat', sans-serif" }}>
+                  Preparando tu regalo...
+                </p>
+                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', margin: 0, fontFamily: "'Montserrat', sans-serif" }}>
+                  {hasVideoAddonRef.current
+                    ? 'En unos segundos podrás subir tus fotos'
+                    : 'Te llevaremos a tu canción en unos segundos'}
+                </p>
+              </div>
+            </div>
+            {/* Progress bar track */}
+            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: '3px',
+                background: 'linear-gradient(90deg, #f74da6, #8b5cf6, #f74da6)',
+                backgroundSize: '200% 100%',
+                animation: 'progressGrow 4s ease-out forwards, shimmer 2s linear infinite',
+              }} />
+            </div>
           </div>
 
-          {/* Loading dots */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{
-                width: '8px', height: '8px', borderRadius: '50%',
-                background: '#f74da6',
-                animation: `dotBounce 1.4s ease-in-out ${i * 0.16}s infinite`,
-              }} />
+          {/* Don't close warning — glass card */}
+          <div style={{
+            background: 'rgba(251,191,36,0.08)',
+            border: '1px solid rgba(251,191,36,0.2)',
+            borderRadius: '16px', padding: '16px 20px',
+            backdropFilter: 'blur(10px)',
+            animation: 'slideUp 0.5s ease-out 0.9s both',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '24px' }}>🔒</span>
+              <div style={{ textAlign: 'left' }}>
+                <p style={{
+                  fontSize: '14px', fontWeight: '700', color: '#fbbf24', margin: '0 0 2px',
+                  fontFamily: "'Montserrat', sans-serif",
+                }}>
+                  No cierres esta ventana
+                </p>
+                <p style={{
+                  fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: 0,
+                  fontFamily: "'Montserrat', sans-serif", lineHeight: 1.4
+                }}>
+                  En segundos podrás descargar y compartir tu canción
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Floating music notes */}
+          <div style={{ position: 'relative', height: '20px', marginTop: '16px' }}>
+            {['🎵', '🎶', '🎵'].map((note, i) => (
+              <span key={i} style={{
+                position: 'absolute',
+                left: `${30 + i * 20}%`,
+                fontSize: '18px',
+                animation: `floatNote 3s ease-in-out ${i * 0.8}s infinite`,
+                opacity: 0,
+              }}>{note}</span>
             ))}
           </div>
         </div>
