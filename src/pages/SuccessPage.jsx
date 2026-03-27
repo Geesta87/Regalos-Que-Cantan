@@ -767,7 +767,7 @@ export default function SuccessPage() {
     try {
       setMessageMode(mode);
       const constraints = mode === 'video'
-        ? { video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 854 } }, audio: true }
+        ? { video: { facingMode: 'user' }, audio: true }
         : { audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
@@ -2068,13 +2068,13 @@ export default function SuccessPage() {
                       <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
                         <div style={{
                           width: '100%', maxWidth: '300px', margin: '0 auto 14px',
-                          aspectRatio: '9/16', borderRadius: '16px', overflow: 'hidden',
-                          background: '#000', position: 'relative',
+                          borderRadius: '16px', overflow: 'hidden',
+                          background: '#000',
                           border: '3px solid #a855f7',
                           boxShadow: '0 0 20px rgba(168,85,247,0.3)',
                         }}>
                           <video ref={videoPreviewRef} muted playsInline style={{
-                            width: '100%', height: '100%', objectFit: 'cover',
+                            width: '100%', display: 'block',
                           }} />
                         </div>
 
@@ -2118,15 +2118,14 @@ export default function SuccessPage() {
                       <div style={{ padding: '0 16px 16px', textAlign: 'center' }}>
                         {messageMode === 'video' && (
                           <div style={{
-                            width: '100%', maxWidth: '240px', margin: '0 auto 14px',
-                            aspectRatio: '9/16', borderRadius: '16px', overflow: 'hidden',
-                            background: '#000', position: 'relative',
+                            width: '100%', maxWidth: '300px', margin: '0 auto 14px',
+                            borderRadius: '16px', overflow: 'hidden',
+                            background: '#000',
                             border: '3px solid #ec4899',
                             boxShadow: '0 0 30px rgba(236,72,153,0.3)',
                           }}>
                             <video ref={videoPreviewRef} muted playsInline style={{
-                              width: '100%', height: '100%', objectFit: 'cover',
-                              transform: 'scaleX(-1)',
+                              width: '100%', display: 'block',
                             }} />
                           </div>
                         )}
