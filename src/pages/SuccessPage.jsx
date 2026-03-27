@@ -368,35 +368,40 @@ export default function SuccessPage() {
     const songId = urlParams.get('song_id') || urlParams.get('song_ids');
     if (!sessionId || !songId) return;
 
-    // Check if song is already marked as paid
     const firstSong = songs[0];
-    if (firstSong?.paid) return;
-
     hasVerifiedPayment.current = true;
 
-    // Song is not paid but we have a session_id — webhook likely failed
-    // Call verify-payment to confirm with Stripe and update DB
+    // Always verify with Stripe when session_id is present
+    // This handles: webhook delay, has_video_addon not set yet, paid but stale data
     const verifyPayment = async () => {
       try {
-        console.log('[Payment Verify] Webhook may have failed, verifying payment with Stripe...');
         const songIds = songId.split(',').filter(id => id.trim());
         let anyVerified = false;
-        for (const sid of songIds) {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-payment`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({ sessionId, songId: sid })
-          });
-          const result = await res.json();
-          console.log('[Payment Verify] Result for', sid, ':', result);
-          if (result.success) anyVerified = true;
+
+        // If song is not paid, verify payment
+        if (!firstSong?.paid) {
+          console.log('[Payment Verify] Song not paid, verifying with Stripe...');
+          for (const sid of songIds) {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-payment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+              },
+              body: JSON.stringify({ sessionId, songId: sid })
+            });
+            const result = await res.json();
+            console.log('[Payment Verify] Result for', sid, ':', result);
+            if (result.success) anyVerified = true;
+          }
         }
-        // Reload songs from DB so the UI reflects the updated paid status
-        if (anyVerified) {
-          console.log('[Payment Verify] Payment confirmed, reloading songs...');
+
+        // Always reload songs to get fresh has_video_addon status
+        // (webhook may have updated DB after our initial load)
+        if (anyVerified || !firstSong?.has_video_addon) {
+          console.log('[Payment Verify] Reloading songs for fresh state...');
+          // Small delay to let webhook finish if it's in progress
+          await new Promise(r => setTimeout(r, 2000));
           await loadSongs();
         }
       } catch (err) {
