@@ -1543,13 +1543,15 @@ export default function ComparisonPage() {
                     'Efecto Ken Burns',
                     'Video HD 1080p',
                     'MP4 descargable',
-                    'Tus fotos favoritas'
+                    'Tus fotos favoritas',
+                    '🎤 Graba tu mensaje personal — ¡gratis!'
                   ].map((feat, i) => (
                     <span key={i} style={{
-                      fontSize: '11px', color: 'rgba(255,255,255,0.8)',
-                      background: 'rgba(139,92,246,0.1)', borderRadius: '8px',
+                      fontSize: '11px', color: i === 4 ? '#ec4899' : 'rgba(255,255,255,0.8)',
+                      background: i === 4 ? 'rgba(236,72,153,0.1)' : 'rgba(139,92,246,0.1)', borderRadius: '8px',
                       padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px',
-                      border: '1px solid rgba(139,92,246,0.15)'
+                      border: i === 4 ? '1px solid rgba(236,72,153,0.25)' : '1px solid rgba(139,92,246,0.15)',
+                      fontWeight: i === 4 ? '700' : '400'
                     }}>
                       <span style={{color: '#a78bfa'}}>✓</span> {feat}
                     </span>
