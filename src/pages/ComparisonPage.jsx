@@ -44,6 +44,7 @@ export default function ComparisonPage() {
   
   // ✅ NEW: Auto-play state (full sequential preview)
   const [autoPlayed, setAutoPlayed] = useState(false);
+  const [autoPlayBlocked, setAutoPlayBlocked] = useState(false); // true when browser blocked auto-play
   const [autoPlayingIndex, setAutoPlayingIndex] = useState(-1); // -1 = not auto-playing, 0 = song 1, 1 = song 2
   
   // ✅ NEW: Song 2 background generation state
@@ -367,12 +368,14 @@ export default function ComparisonPage() {
             setPlayingId(firstSong.id);
             setAutoPlayingIndex(0);
           }).catch(() => {
-            // Autoplay blocked by browser — that's fine
+            // Autoplay blocked by browser
             setAutoPlayed(true);
+            setAutoPlayBlocked(true);
           });
         }
       } catch (e) {
         setAutoPlayed(true);
+        setAutoPlayBlocked(true);
       }
     }, 1500);
 
@@ -420,6 +423,8 @@ export default function ComparisonPage() {
 
   const handlePlay = (songId) => {
     try {
+      // Dismiss auto-play blocked banner on manual interaction
+      setAutoPlayBlocked(false);
       // If auto-playing, cancel it on manual interaction
       if (autoPlayingIndex >= 0) {
         setAutoPlayingIndex(-1);
@@ -846,6 +851,33 @@ export default function ComparisonPage() {
           )}
         </div>
 
+        {/* ===== AUTO-PLAY BLOCKED BANNER ===== */}
+        {autoPlayBlocked && !playingId && (
+          <div style={{
+            marginBottom: '20px',
+            animation: 'fadeInUp 0.5s ease-out',
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(242,13,128,0.12), rgba(139,92,246,0.12))',
+              border: '1.5px solid rgba(242,13,128,0.25)',
+              borderRadius: '16px', padding: '18px 20px',
+              textAlign: 'center',
+            }}>
+              <p style={{
+                fontSize: '18px', fontWeight: '800', margin: '0 0 6px',
+                color: '#f74da6',
+              }}>
+                👇 Toca el botón para escuchar tu canción
+              </p>
+              <p style={{
+                fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: '0 0 4px',
+              }}>
+                🔊 Asegúrate de tener el volumen arriba
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ===== REC 6: Social proof strip ===== */}
         <div style={{
           display: 'flex',
@@ -1080,8 +1112,7 @@ export default function ComparisonPage() {
                     '--pulse-color': `${vibe.color}50`
                   }}
                 >
-                  <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
-                  {isPlaying ? 'Pausar' : 'Escuchar Preview'}
+                  {isPlaying ? '⏸ Pausar' : '▶ Escuchar Canción'}
                 </button>
 
                 {/* Progress bar */}

@@ -397,7 +397,7 @@ export default function ShareablePreviewPage() {
             {' • '}<span style={{color: '#f74da6', fontWeight: '600'}}>{genreName}</span>
           </p>
           <p style={{color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center'}}>
-            🎧 Estos son previews de 35 segundos · Tu canción completa dura ~3-4 minutos
+            🔊 Sube el volumen y toca el botón para escuchar
           </p>
         </div>
 
@@ -635,8 +635,7 @@ export default function ShareablePreviewPage() {
                     '--pulse-color': `${vibe.color}50`
                   }}
                 >
-                  <span style={{fontSize: '18px'}}>{isPlaying ? '⏸' : '▶'}</span>
-                  {isPlaying ? 'Pausar' : 'Escuchar Preview'}
+                  {isPlaying ? '⏸ Pausar' : '▶ Escuchar Canción'}
                 </button>
 
                 {/* Progress bar */}
