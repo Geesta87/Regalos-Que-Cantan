@@ -469,8 +469,9 @@ export default function SuccessPage() {
       // Wait minimum 4.5 seconds for the "Pago exitoso" screen to display
       const minDelay = setTimeout(() => {
         const songId = currentSong.id;
-        console.log('[Redirect] Song-only buyer → SongPage:', `/song/${songId}`);
-        window.location.href = `/song/${songId}`;
+        const url = `${window.location.origin}/song/${songId}`;
+        console.log('[Redirect] Song-only buyer → SongPage:', url);
+        window.location.replace(url);
       }, 4500);
 
       return () => clearTimeout(minDelay);
