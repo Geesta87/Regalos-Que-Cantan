@@ -990,7 +990,7 @@ export default function ShareablePreviewPage() {
                     }}>Ahorra 67%</span>
                   </div>
                   <p style={{color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0, lineHeight: 1.5}}>
-                    Sube tus fotos y creamos un video cinematográfico con la canción
+                    Sube tus fotos y creamos un video cinematográfico con la canción. También puedes grabar un mensaje personal de video para {recipientName} — ¡gratis y opcional!
                   </p>
                 </div>
 
