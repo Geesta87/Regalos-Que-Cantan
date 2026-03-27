@@ -285,6 +285,7 @@ export default function SuccessPage() {
   const [videoPhotos, setVideoPhotos] = useState([]); // array of { file, preview }
   const [uploadingVideoPics, setUploadingVideoPics] = useState(false);
   const [videoGenerating, setVideoGenerating] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [videoError, setVideoError] = useState(null);
   const [videoPurchasing, setVideoPurchasing] = useState(false);
 
@@ -453,6 +454,13 @@ export default function SuccessPage() {
   useEffect(() => {
     if (!currentSong?.audio_url || hasTriggeredCountdown.current) return;
     hasTriggeredCountdown.current = true;
+
+    // Skip countdown for video addon buyers — go straight to content
+    if (currentSong?.has_video_addon) {
+      setRevealed(true);
+      setContentVisible(true);
+      return;
+    }
 
     // Small delay so audio element mounts and starts preloading
     setTimeout(() => setShowCountdown(true), 400);
@@ -690,6 +698,21 @@ export default function SuccessPage() {
       }
     }, 5000);
   }, []);
+
+  // Simulate video generation progress
+  useEffect(() => {
+    if (!videoGenerating) { setVideoProgress(0); return; }
+    setVideoProgress(5);
+    const interval = setInterval(() => {
+      setVideoProgress(prev => {
+        if (prev >= 92) { clearInterval(interval); return 92; } // Cap at 92%, jump to 100% when done
+        // Slow down as we get higher
+        const increment = prev < 30 ? 3 : prev < 60 ? 2 : prev < 80 ? 1 : 0.5;
+        return Math.min(92, prev + increment);
+      });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [videoGenerating]);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -2289,10 +2312,10 @@ export default function SuccessPage() {
                 {/* Steps progress */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
                   {[
-                    { icon: '✅', label: 'Fotos recibidas', done: true },
-                    { icon: '🎞️', label: 'Aplicando efectos cinematográficos', done: false, active: true },
-                    { icon: '🎵', label: 'Sincronizando con tu canción', done: false },
-                    { icon: '💾', label: 'Renderizando video HD', done: false },
+                    { icon: '✅', label: 'Fotos recibidas', done: videoProgress > 0 },
+                    { icon: '🎞️', label: 'Aplicando efectos cinematográficos', done: videoProgress > 30, active: videoProgress > 0 && videoProgress <= 30 },
+                    { icon: '🎵', label: 'Sincronizando con tu canción', done: videoProgress > 60, active: videoProgress > 30 && videoProgress <= 60 },
+                    { icon: '💾', label: 'Renderizando video HD', done: videoProgress > 90, active: videoProgress > 60 && videoProgress <= 90 },
                   ].map((step, i) => (
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: '10px',
@@ -2318,18 +2341,26 @@ export default function SuccessPage() {
                   ))}
                 </div>
 
-                {/* Progress bar */}
-                <div style={{
-                  width: '100%', height: '6px', borderRadius: '3px',
-                  background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
-                  overflow: 'hidden', marginBottom: '14px',
-                }}>
+                {/* Progress bar with percentage */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
                   <div style={{
-                    width: '60%', height: '100%', borderRadius: '3px',
-                    background: 'linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed)',
-                    backgroundSize: '200% 100%',
-                    animation: 'shimmerAccent 2s linear infinite',
-                  }} />
+                    flex: 1, height: '8px', borderRadius: '4px',
+                    background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: `${videoProgress}%`, height: '100%', borderRadius: '4px',
+                      background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                      transition: 'width 2s ease-out',
+                    }} />
+                  </div>
+                  <span style={{
+                    fontSize: '14px', fontWeight: '800', color: '#a78bfa',
+                    minWidth: '40px', textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    {Math.round(videoProgress)}%
+                  </span>
                 </div>
 
                 {/* Info strip */}
