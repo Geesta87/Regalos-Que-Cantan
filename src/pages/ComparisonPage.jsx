@@ -125,6 +125,7 @@ export default function ComparisonPage() {
   
   const audioRefs = useRef({});
   const checkoutCtaRef = useRef(null);
+  const videoAddonRef = useRef(null);
 
   // Safely get genre display name
   const genreConfig = genres?.[formData?.genre];
@@ -618,7 +619,7 @@ export default function ComparisonPage() {
     trackStep('song_selected', { value: 24.99, content_ids: [songId], num_items: 1 });
     // Auto-scroll to checkout CTA
     setTimeout(() => {
-      checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      videoAddonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 350);
   };
 
@@ -629,7 +630,7 @@ export default function ComparisonPage() {
     trackStep('song_selected', { value: 39.99, content_ids: songs.map(s => s.id), num_items: 2 });
     // Auto-scroll to checkout CTA
     setTimeout(() => {
-      checkoutCtaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      videoAddonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 350);
   };
 
@@ -1370,6 +1371,7 @@ export default function ComparisonPage() {
         )}
 
         {/* ===== VIDEO ADD-ON CARD ===== */}
+        <div ref={videoAddonRef} />
         {hasSelection && (
           <>
             <style>{`
@@ -1644,125 +1646,7 @@ export default function ComparisonPage() {
           </div>
         )}
 
-        {/* Checkout Section */}
-        <div style={{
-
-          /* ===== VIDEO TESTIMONIALS ===== */
-        }}></div>
-        <div style={{
-          marginBottom: '24px',
-          animation: 'fadeInUp 0.5s ease-out'
-        }}>
-          <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '14px', fontWeight: '600' }}>
-            ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
-          </p>
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'center',
-            flexWrap: 'wrap'
-          }}>
-            {[
-              { src: '/videos/testimonial3.mp4', id: 'tc1', name: 'Cliente feliz', poster: '' },
-              { src: '/videos/testimonial1.mp4', id: 'tc2', name: 'Regalo perfecto', poster: '' }
-            ].map((vid) => (
-              <div key={vid.id} style={{
-                width: '200px',
-                height: '280px',
-                borderRadius: '16px',
-                overflow: 'hidden',
-                position: 'relative',
-                border: '2px solid rgba(242,13,128,0.3)',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                cursor: 'pointer',
-                flexShrink: 0
-              }} onClick={() => handleTestimonialToggle(vid.id)}>
-                <video
-                  ref={el => videoTestimonialRefs.current[vid.id] = el}
-                  src={vid.src}
-                  playsInline
-                  preload="metadata"
-                  onEnded={() => setPlayingTestimonial(null)}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
-                  }}
-                />
-                {playingTestimonial !== vid.id && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.7))',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      borderRadius: '50%',
-                      background: 'rgba(201,24,74,0.85)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 15px rgba(201,24,74,0.5)'
-                    }}>
-                      <span style={{ fontSize: '20px', marginLeft: '3px' }}>▶</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <p style={{
-            textAlign: 'center',
-            fontSize: '13px',
-            color: '#f74da6',
-            marginTop: '10px',
-            fontStyle: 'italic'
-          }}>
-            "Mi esposa lloró de felicidad... el mejor regalo que le he dado" ⭐⭐⭐⭐⭐
-          </p>
-        </div>
-
-        {/* ===== LO QUE RECIBES CHECKLIST ===== */}
-        <div style={{
-          background: 'rgba(242,13,128,0.08)',
-          border: '1px solid rgba(242,13,128,0.2)',
-          borderRadius: '14px',
-          padding: '18px 22px',
-          marginBottom: '24px',
-          animation: 'fadeInUp 0.6s ease-out'
-        }}>
-          <p style={{ fontSize: '15px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: '#f74da6' }}>
-            🎁 Lo que recibes con tu compra:
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
-            {[
-              { icon: '🎵', text: 'Canción completa (~2 min)' },
-              { icon: '⚡', text: 'Descarga instantánea MP3' },
-              { icon: '💬', text: 'Envío por teléfono o WhatsApp' },
-              { icon: '♾️', text: 'Tuya para siempre' },
-              { icon: '❤️', text: 'Personalizada con su nombre' },
-              { icon: '🔒', text: 'Pago seguro con Stripe' }
-            ].map((item, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: 'rgba(255,255,255,0.85)'
-              }}>
-                <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                <span>{item.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Actual Checkout Section */}
+        {/* Checkout Section — WhatsApp + CTA */}
         <div style={{
           background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '25px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.7s both' : 'none'
@@ -1909,6 +1793,62 @@ export default function ComparisonPage() {
             <span style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px'}}>
               ✨ Calidad Premium
             </span>
+          </div>
+        </div>
+
+        {/* ===== VIDEO TESTIMONIALS (below checkout) ===== */}
+        <div style={{ marginTop: '30px', marginBottom: '24px', animation: 'fadeInUp 0.5s ease-out' }}>
+          <p style={{ textAlign: 'center', fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '14px', fontWeight: '600' }}>
+            ⭐⭐⭐⭐⭐ Lo que dicen nuestros clientes
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {[
+              { src: '/videos/testimonial3.mp4', id: 'tc1' },
+              { src: '/videos/testimonial1.mp4', id: 'tc2' }
+            ].map((vid) => (
+              <div key={vid.id} style={{
+                width: '200px', height: '280px', borderRadius: '16px', overflow: 'hidden',
+                position: 'relative', border: '2px solid rgba(242,13,128,0.3)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)', cursor: 'pointer', flexShrink: 0
+              }} onClick={() => handleTestimonialToggle(vid.id)}>
+                <video ref={el => videoTestimonialRefs.current[vid.id] = el} src={vid.src} playsInline preload="metadata" onEnded={() => setPlayingTestimonial(null)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {playingTestimonial !== vid.id && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(transparent 40%, rgba(0,0,0,0.7))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(201,24,74,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 15px rgba(201,24,74,0.5)' }}>
+                      <span style={{ fontSize: '20px', marginLeft: '3px' }}>▶</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <p style={{ textAlign: 'center', fontSize: '13px', color: '#f74da6', marginTop: '10px', fontStyle: 'italic' }}>
+            "Mi esposa lloró de felicidad... el mejor regalo que le he dado" ⭐⭐⭐⭐⭐
+          </p>
+        </div>
+
+        {/* ===== LO QUE RECIBES CHECKLIST ===== */}
+        <div style={{
+          background: 'rgba(242,13,128,0.08)', border: '1px solid rgba(242,13,128,0.2)',
+          borderRadius: '14px', padding: '18px 22px', marginBottom: '24px', animation: 'fadeInUp 0.6s ease-out'
+        }}>
+          <p style={{ fontSize: '15px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: '#f74da6' }}>
+            🎁 Lo que recibes con tu compra:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+            {[
+              { icon: '🎵', text: 'Canción completa (~2 min)' },
+              { icon: '⚡', text: 'Descarga instantánea MP3' },
+              { icon: '💬', text: 'Envío por teléfono o WhatsApp' },
+              { icon: '♾️', text: 'Tuya para siempre' },
+              { icon: '❤️', text: 'Personalizada con su nombre' },
+              { icon: '🔒', text: 'Pago seguro con Stripe' }
+            ].map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>
+                <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                <span>{item.text}</span>
+              </div>
+            ))}
           </div>
         </div>
 
