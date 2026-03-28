@@ -353,50 +353,47 @@ export default function SongPage({ songId: propSongId }) {
     } else { navigator.clipboard.writeText(shareUrl); alert(t.linkCopiado); }
   };
 
-  const download = () => {
+  const [dlState, setDlState] = useState(null); // null | 'downloading' | 'done'
+  const download = async () => {
     if (!song?.audio_url) return;
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    setDlState('downloading');
+    try {
+      const res = await fetch(song.audio_url);
+      const blob = await res.blob();
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    if (isMobile) {
-      // Mobile: use a hidden <a> tag with the direct URL, triggered synchronously
-      // This preserves the user gesture chain so Android/iOS won't block it
+      if (isMobile) {
+        // Mobile: always use share API with file — most reliable on Android/iOS
+        const file = new File([blob], filename, { type: 'audio/mpeg' });
+        if (navigator.canShare?.({ files: [file] })) {
+          setDlState(null);
+          await navigator.share({ files: [file], title: `Canción para ${song.recipient_name}` });
+          return;
+        }
+        // If canShare fails, try share with just URL
+        if (navigator.share) {
+          setDlState(null);
+          await navigator.share({ title: `Canción para ${song.recipient_name}`, text: 'Descarga tu canción', url: song.audio_url });
+          return;
+        }
+      }
+
+      // Desktop (or mobile fallback): blob URL download
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = song.audio_url;
+      a.href = url;
       a.download = filename;
-      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-
-      // Also try share API as backup (runs async, OK since we already triggered download)
-      setTimeout(async () => {
-        try {
-          const res = await fetch(song.audio_url);
-          const blob = await res.blob();
-          const file = new File([blob], filename, { type: 'audio/mpeg' });
-          if (navigator.canShare?.({ files: [file] })) {
-            await navigator.share({ files: [file], title: filename });
-          }
-        } catch {}
-      }, 500);
-    } else {
-      // Desktop: fetch as blob then download (reliable on desktop)
-      (async () => {
-        try {
-          const res = await fetch(song.audio_url);
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-        } catch {
-          window.open(song.audio_url, '_blank');
-        }
-      })();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+      setDlState('done');
+      setTimeout(() => setDlState(null), 3000);
+    } catch (err) {
+      console.error('Download error:', err);
+      setDlState(null);
+      // Last resort: open URL directly
+      window.open(song.audio_url, '_blank');
     }
   };
 
