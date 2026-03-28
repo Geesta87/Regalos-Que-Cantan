@@ -306,6 +306,20 @@ export default function SongPage({ songId: propSongId }) {
     return () => Object.entries(h).forEach(([e, fn]) => a.removeEventListener(e, fn));
   }, [song, activeIndex]);
 
+  // Re-load audio when reaching ready phase (audio element may have been remounted)
+  useEffect(() => {
+    if (phase !== 'ready' && phase !== 'flash') return;
+    const a = audioRef.current;
+    if (!a || !song) return;
+    // If audio lost its src during phase transition, reload it
+    if (!a.src || a.readyState === 0) {
+      console.log('Re-loading audio after phase transition to:', phase);
+      a.src = song.audio_url;
+      a.preload = 'auto';
+      a.load();
+    }
+  }, [phase, song]);
+
   // Visualizer
   useEffect(() => {
     if (!isPlaying) return;
@@ -664,19 +678,7 @@ export default function SongPage({ songId: propSongId }) {
     </Helmet>
   );
 
-  // Persistent audio element — survives phase changes
-  useEffect(() => {
-    if (audioRef.current) return; // already created
-    const a = document.createElement('audio');
-    a.preload = 'auto';
-    a.crossOrigin = 'anonymous';
-    a.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none';
-    document.body.appendChild(a);
-    audioRef.current = a;
-    return () => { a.pause(); a.remove(); };
-  }, []);
-
-  const audioEl = null; // no longer rendered in JSX — audio lives in DOM directly
+  const audioEl = <audio ref={audioRef} preload="auto" />;
 
   // ═══════════════════════════════════════
   // REVEAL SCREENS (before template)
@@ -706,7 +708,7 @@ export default function SongPage({ songId: propSongId }) {
   // Screen 1: Mystery — 3D gift box + "Alguien te dedicó algo muy especial"
   if (phase === 'mystery') {
     return (
-      <>{head}
+      <>{head}{audioEl}
         <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 50% 30%, #1a1408 0%, #0a0804 60%, #000 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
           <style>{SHARED_CSS}{REVEAL_CSS}</style>
           {/* Ambient glow */}
@@ -859,7 +861,7 @@ export default function SongPage({ songId: propSongId }) {
     `;
 
     return (
-      <>{head}
+      <>{head}{audioEl}
         <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse at 50% 40%, #1a1408 0%, #0a0804 60%, #000 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
           <style>{SHARED_CSS}{REVEAL_CSS}{ENVELOPE_CSS}</style>
 
@@ -989,7 +991,7 @@ export default function SongPage({ songId: propSongId }) {
   if (phase === 'countdown') {
     const subtitles = { 3: t.countdown3, 2: t.countdown2, 1: t.countdown1 };
     return (
-      <>{head}
+      <>{head}{audioEl}
         <div style={{ minHeight: '100vh', background: '#0a0804', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
           <style>{SHARED_CSS}{REVEAL_CSS}</style>
           {/* Pulsing ring */}
@@ -1015,7 +1017,7 @@ export default function SongPage({ songId: propSongId }) {
   // Screen 4: Flash Burst + Confetti + Particle Explosion + Name Reveal
   if (phase === 'flash') {
     return (
-      <>{head}{confettiOverlay}
+      <>{head}{audioEl}{confettiOverlay}
         <div style={{ minHeight: '100vh', background: '#0a0804', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white', position: 'relative', overflow: 'hidden' }}>
           <style>{SHARED_CSS}{REVEAL_CSS}</style>
           {/* White flash burst */}
@@ -1122,7 +1124,7 @@ export default function SongPage({ songId: propSongId }) {
   // ═══════════════════════════════════════
   if (template === 'golden_hour') {
     return (
-      <>{head}{confettiOverlay}
+      <>{head}{audioEl}{confettiOverlay}
         <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #1a1408 0%, #2a1f10 25%, #1e1508 50%, #0f0c04 100%)', position: 'relative', overflow: 'hidden', fontFamily: "'Plus Jakarta Sans', sans-serif", color: 'white' }}>
           <style>{SHARED_CSS}{T1_CSS}</style>
           <div style={{ position: 'fixed', top: '-15%', right: '-15%', width: '60vw', height: '60vh', background: 'rgba(244,192,37,0.06)', filter: 'blur(140px)', borderRadius: '50%' }} />
@@ -1331,7 +1333,7 @@ export default function SongPage({ songId: propSongId }) {
   // ═══════════════════════════════════════
   if (template === 'lavender_dream') {
     return (
-      <>{head}{confettiOverlay}
+      <>{head}{audioEl}{confettiOverlay}
         <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top right, #fdfbf7 0%, #f0e9f7 100%)', fontFamily: "'Newsreader', serif", color: '#334155', position: 'relative' }}>
           <style>{SHARED_CSS}{T2_CSS}</style>
           <div style={{ position: 'fixed', top: 20, left: 20, width: 256, height: 256, background: 'rgba(153,71,235,0.05)', borderRadius: '50%', filter: 'blur(100px)', pointerEvents: 'none' }} />
@@ -1408,7 +1410,7 @@ export default function SongPage({ songId: propSongId }) {
   // TEMPLATE 3: ELECTRIC MAGENTA (default fallback)
   // ═══════════════════════════════════════
   return (
-    <>{head}{confettiOverlay}
+    <>{head}{audioEl}{confettiOverlay}
       <div style={{ minHeight: '100vh', background: '#0a0507', fontFamily: "'Space Grotesk', sans-serif", color: 'white', overflow: 'hidden' }}>
         <style>{SHARED_CSS}{T3_CSS}</style>
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0.15, zIndex: 60, mixBlendMode: 'overlay', background: 'radial-gradient(circle at center, transparent 0%, #000 100%)' }} />
