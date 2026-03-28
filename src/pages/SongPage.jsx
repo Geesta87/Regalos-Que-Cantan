@@ -138,6 +138,7 @@ export default function SongPage({ songId: propSongId }) {
   const [flashParticles, setFlashParticles] = useState([]);
   const [videoData, setVideoData] = useState(null); // { video_url, status } from video_orders
   const audioRef = useRef(null);
+  const audioSetupRef = useRef(null); // tracks which song URL was last loaded
   const videoPlayerRef = useRef(null);
   const vizRef = useRef(null);
   const sfxRef = useRef(null);
@@ -306,19 +307,6 @@ export default function SongPage({ songId: propSongId }) {
     return () => Object.entries(h).forEach(([e, fn]) => a.removeEventListener(e, fn));
   }, [song, activeIndex]);
 
-  // Re-load audio when reaching ready phase (audio element may have been remounted)
-  useEffect(() => {
-    if (phase !== 'ready' && phase !== 'flash') return;
-    const a = audioRef.current;
-    if (!a || !song) return;
-    // If audio lost its src during phase transition, reload it
-    if (!a.src || a.readyState === 0) {
-      console.log('Re-loading audio after phase transition to:', phase);
-      a.src = song.audio_url;
-      a.preload = 'auto';
-      a.load();
-    }
-  }, [phase, song]);
 
   // Visualizer
   useEffect(() => {
@@ -678,7 +666,20 @@ export default function SongPage({ songId: propSongId }) {
     </Helmet>
   );
 
-  const audioEl = <audio ref={audioRef} preload="auto" />;
+  // Ref callback — fires every time the <audio> element mounts (including after phase transitions)
+  const audioRefCallback = (el) => {
+    audioRef.current = el;
+    if (el && allSongs.length > 0) {
+      const s = allSongs[activeIndex];
+      if (s && s.audio_url && el.getAttribute('data-loaded') !== s.audio_url) {
+        el.src = s.audio_url;
+        el.preload = 'auto';
+        el.setAttribute('data-loaded', s.audio_url);
+        el.load();
+      }
+    }
+  };
+  const audioEl = <audio ref={audioRefCallback} preload="auto" />;
 
   // ═══════════════════════════════════════
   // REVEAL SCREENS (before template)
