@@ -1021,8 +1021,24 @@ export default function SuccessPage() {
       // Trigger video generation (pass message URL + duration if available)
       setVideoGenerating(true);
       const messageDuration = recordedMessage?.duration || 0;
-      // Get actual song duration from audio element or state
-      const actualSongDuration = audioRef.current?.duration || duration || null;
+      // Get actual song duration — probe from audio element, state, or load a hidden audio to measure
+      let actualSongDuration = audioRef.current?.duration || duration || null;
+      if (!actualSongDuration || !isFinite(actualSongDuration) || actualSongDuration < 30) {
+        // Probe the audio file to get real duration
+        try {
+          const songUrl = songs[selectedVideoSongIdx]?.audio_url || songs[0]?.audio_url;
+          if (songUrl) {
+            actualSongDuration = await new Promise((resolve) => {
+              const probe = new Audio();
+              probe.preload = 'metadata';
+              probe.onloadedmetadata = () => resolve(probe.duration && isFinite(probe.duration) ? probe.duration : null);
+              probe.onerror = () => resolve(null);
+              setTimeout(() => resolve(null), 8000); // 8s timeout
+              probe.src = songUrl;
+            });
+          }
+        } catch (e) { console.warn('Could not probe audio duration:', e); }
+      }
       console.log('Song duration for video:', actualSongDuration);
       const genRes = await generateVideo(videoOrder.id, messageUrl, messageDuration, actualSongDuration);
 
