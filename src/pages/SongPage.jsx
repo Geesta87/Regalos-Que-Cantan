@@ -284,10 +284,14 @@ export default function SongPage({ songId: propSongId }) {
     const a = audioRef.current;
     if (!a || !song) return;
     a.src = song.audio_url;
+    a.preload = 'auto';
     a.load();
     const h = {
-      loadedmetadata: () => setDur(a.duration),
-      timeupdate: () => setTime(a.currentTime),
+      loadedmetadata: () => { if (a.duration && isFinite(a.duration)) setDur(a.duration); },
+      canplaythrough: () => { if (a.duration && isFinite(a.duration) && !dur) setDur(a.duration); },
+      durationchange: () => { if (a.duration && isFinite(a.duration)) setDur(a.duration); },
+      timeupdate: () => { setTime(a.currentTime); if (a.duration && isFinite(a.duration) && !dur) setDur(a.duration); },
+      error: (e) => console.error('Audio error:', a.error?.code, a.error?.message),
       ended: () => {
         setIsPlaying(false);
         if (isCombo && activeIndex < allSongs.length - 1) {
