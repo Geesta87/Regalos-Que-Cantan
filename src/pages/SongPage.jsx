@@ -519,12 +519,14 @@ export default function SongPage({ songId: propSongId }) {
         playSFX('drumhit');
         navigator.vibrate?.(50);
 
-        // ── Music teaser: start song very quiet ──
-        const a = audioRef.current;
-        if (a) {
-          a.volume = 0.05;
-          a.currentTime = 0;
-          a.play().catch(() => {});
+        // ── Music teaser: start song very quiet (skip if video exists — video has its own audio) ──
+        if (!videoData?.video_url) {
+          const a = audioRef.current;
+          if (a) {
+            a.volume = 0.05;
+            a.currentTime = 0;
+            a.play().catch(() => {});
+          }
         }
 
         // Beat 2
@@ -532,7 +534,7 @@ export default function SongPage({ songId: propSongId }) {
           setCountdownNum(2);
           playSFX('drumhit');
           navigator.vibrate?.(50);
-          if (audioRef.current) audioRef.current.volume = 0.1;
+          if (!videoData?.video_url && audioRef.current) audioRef.current.volume = 0.1;
         }, 1000);
 
         // Beat 1
@@ -540,13 +542,13 @@ export default function SongPage({ songId: propSongId }) {
           setCountdownNum(1);
           playSFX('drumroll');
           navigator.vibrate?.(100);
-          if (audioRef.current) audioRef.current.volume = 0.15;
+          if (!videoData?.video_url && audioRef.current) audioRef.current.volume = 0.15;
         }, 2000);
 
         // FLASH — full volume blast
         setTimeout(() => {
-          if (audioRef.current) audioRef.current.volume = 1.0;
-          setIsPlaying(true);
+          if (!videoData?.video_url && audioRef.current) audioRef.current.volume = 1.0;
+          if (!videoData?.video_url) setIsPlaying(true);
 
           playSFX('celebration');
           navigator.vibrate?.([100, 50, 100, 50, 200]);
