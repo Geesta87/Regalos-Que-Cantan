@@ -1229,9 +1229,16 @@ export default function SongPage({ songId: propSongId }) {
                       a.click();
                       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
                       if (progressBar) progressBar.style.width = '100%';
+                      if (progressBar) progressBar.style.background = 'rgba(34,197,94,0.3)';
                       if (progressText) progressText.textContent = '✅ ¡Descargado!';
+                      // Show download notification toast
+                      const toast = document.createElement('div');
+                      toast.innerHTML = '✅ <strong>Video guardado</strong><br><span style="font-size:12px;opacity:0.8">Revisa tu carpeta de Descargas o busca "video-para-' + (recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '') + '.mp4"</span>';
+                      toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#166534,#15803d);color:white;padding:16px 24px;border-radius:16px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);text-align:center;max-width:90vw;animation:fadeInUp 0.3s ease-out;border:1px solid rgba(34,197,94,0.4);';
+                      document.body.appendChild(toast);
+                      setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => document.body.removeChild(toast), 500); }, 6000);
                       setTimeout(() => {
-                        if (progressBar) progressBar.style.width = '0%';
+                        if (progressBar) { progressBar.style.width = '0%'; progressBar.style.background = 'rgba(139,92,246,0.3)'; }
                         if (progressText) progressText.textContent = '🎬 Descargar Video';
                         btn.style.pointerEvents = 'auto';
                       }, 3000);
