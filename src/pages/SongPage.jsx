@@ -356,10 +356,19 @@ export default function SongPage({ songId: propSongId }) {
   const download = async () => {
     if (!song?.audio_url) return;
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     try {
-      // Fetch as blob to force download (cross-origin URLs ignore download attribute)
       const res = await fetch(song.audio_url);
       const blob = await res.blob();
+      const file = new File([blob], filename, { type: 'audio/mpeg' });
+
+      // Mobile: use native share API for reliable saving
+      if (isMobile && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      }
+
+      // Desktop: blob download
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
