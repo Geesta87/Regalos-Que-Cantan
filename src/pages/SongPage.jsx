@@ -136,7 +136,9 @@ export default function SongPage({ songId: propSongId }) {
   const [confettiPieces, setConfettiPieces] = useState([]);
   const [giftOpening, setGiftOpening] = useState(false);
   const [flashParticles, setFlashParticles] = useState([]);
+  const [videoData, setVideoData] = useState(null); // { video_url, status } from video_orders
   const audioRef = useRef(null);
+  const videoPlayerRef = useRef(null);
   const vizRef = useRef(null);
   const sfxRef = useRef(null);
 
@@ -235,7 +237,7 @@ export default function SongPage({ songId: propSongId }) {
     return raw.split(',').filter(Boolean);
   }, [propSongId]);
 
-  // Fetch songs
+  // Fetch songs + check for completed video
   useEffect(() => {
     if (!songIds.length) { setError(t.noEncontrada); setLoading(false); return; }
     (async () => {
@@ -247,6 +249,18 @@ export default function SongPage({ songId: propSongId }) {
         if (ordered.length === 0) throw new Error(t.noEncontrada);
         if (!ordered[0].audio_url) throw new Error(t.noLista);
         setAllSongs(ordered);
+
+        // Check if there's a completed video for this song
+        const { data: videoOrders } = await supabase
+          .from('video_orders')
+          .select('video_url, status')
+          .eq('song_id', ordered[0].id)
+          .eq('status', 'completed')
+          .limit(1);
+        if (videoOrders?.length > 0 && videoOrders[0].video_url) {
+          setVideoData(videoOrders[0]);
+        }
+
         setLoading(false);
         setPhase('mystery');
       } catch (err) { setError(err.message); setLoading(false); }
@@ -1128,7 +1142,19 @@ export default function SongPage({ songId: propSongId }) {
                 {genre && <span style={{ color: 'rgba(244,192,37,0.7)', fontSize: 13, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{genre}</span>}
               </p>
               {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" lang={lang} /></div>}
-              {/* Glass player */}
+              {/* Video player OR Glass audio player */}
+              {videoData?.video_url ? (
+                <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, borderRadius: 20, overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24, background: '#000' }}>
+                  <video
+                    ref={videoPlayerRef}
+                    src={videoData.video_url}
+                    controls
+                    playsInline
+                    style={{ width: '100%', display: 'block', borderRadius: 20 }}
+                    poster=""
+                  />
+                </div>
+              ) : (
               <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, padding: 28, borderRadius: 20, boxShadow: '0 25px 50px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24 }}>
                 <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 32, marginBottom: 24 }}>
                   {Array.from({ length: 20 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: isPlaying ? 14 : 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: isPlaying ? 0.85 : 0.3, transition: 'height 0.1s, opacity 0.3s' }} />))}
@@ -1149,8 +1175,22 @@ export default function SongPage({ songId: propSongId }) {
                   </div>
                 </div>
               </div>
+              )}
               {/* Buttons */}
               <div className="t1-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
+                {videoData?.video_url && (
+                  <button onClick={async () => {
+                    try {
+                      const res = await fetch(videoData.video_url);
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url; a.download = `video-para-${recipient || 'ti'}.mp4`;
+                      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch { window.open(videoData.video_url, '_blank'); }
+                  }} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)' }}>🎬 Descargar Video</button>
+                )}
                 {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
                 <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>{"⬇️ " + t.descargar}</button>
                 <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'rgba(37,211,102,0.9)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
