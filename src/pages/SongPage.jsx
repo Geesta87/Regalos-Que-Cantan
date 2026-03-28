@@ -670,8 +670,9 @@ export default function SongPage({ songId: propSongId }) {
 
   // Ref callback — fires every time the <audio> element mounts (including after phase transitions)
   const audioRefCallback = (el) => {
+    if (!el) { audioRef.current = null; return; }
     audioRef.current = el;
-    if (el && allSongs.length > 0) {
+    if (allSongs.length > 0) {
       const s = allSongs[activeIndex];
       if (s && s.audio_url && el.getAttribute('data-loaded') !== s.audio_url) {
         el.src = s.audio_url;
@@ -679,6 +680,16 @@ export default function SongPage({ songId: propSongId }) {
         el.setAttribute('data-loaded', s.audio_url);
         el.load();
       }
+    }
+    // Attach event listeners directly on the element
+    if (!el.getAttribute('data-listeners')) {
+      el.setAttribute('data-listeners', 'true');
+      el.addEventListener('loadedmetadata', () => { if (el.duration && isFinite(el.duration)) setDur(el.duration); });
+      el.addEventListener('canplaythrough', () => { if (el.duration && isFinite(el.duration)) setDur(el.duration); });
+      el.addEventListener('durationchange', () => { if (el.duration && isFinite(el.duration)) setDur(el.duration); });
+      el.addEventListener('timeupdate', () => { setTime(el.currentTime); if (el.duration && isFinite(el.duration)) setDur(el.duration); });
+      el.addEventListener('error', () => console.error('Audio error:', el.error?.code, el.error?.message));
+      el.addEventListener('ended', () => { setIsPlaying(false); });
     }
   };
   const audioEl = <audio ref={audioRefCallback} preload="auto" />;
