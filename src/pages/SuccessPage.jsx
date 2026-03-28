@@ -22,8 +22,11 @@ async function checkVideoStatus(songId) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-async function generateVideo(videoOrderId, messageUrl = null, messageDuration = 0) {
+async function generateVideo(videoOrderId, messageUrl = null, messageDuration = 0, songDuration = null) {
   const body = { videoOrderId };
+  if (songDuration) {
+    body.songDuration = songDuration;
+  }
   if (messageUrl) {
     body.messageUrl = messageUrl;
     body.messageDuration = messageDuration || 15; // fallback to 15 seconds
@@ -1018,7 +1021,10 @@ export default function SuccessPage() {
       // Trigger video generation (pass message URL + duration if available)
       setVideoGenerating(true);
       const messageDuration = recordedMessage?.duration || 0;
-      const genRes = await generateVideo(videoOrder.id, messageUrl, messageDuration);
+      // Get actual song duration from audio element or state
+      const actualSongDuration = audioRef.current?.duration || duration || null;
+      console.log('Song duration for video:', actualSongDuration);
+      const genRes = await generateVideo(videoOrder.id, messageUrl, messageDuration, actualSongDuration);
 
       // Update local state
       setVideoOrder(prev => ({ ...prev, status: 'processing' }));
