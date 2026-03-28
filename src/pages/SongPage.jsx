@@ -353,33 +353,53 @@ export default function SongPage({ songId: propSongId }) {
     } else { navigator.clipboard.writeText(shareUrl); alert(t.linkCopiado); }
   };
 
+  const [dlState, setDlState] = useState(null); // null | 'downloading' | 'done'
   const download = async () => {
     if (!song?.audio_url) return;
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    setDlState('downloading');
     try {
       const res = await fetch(song.audio_url);
       const blob = await res.blob();
-      const file = new File([blob], filename, { type: 'audio/mpeg' });
 
-      // Mobile: use native share API for reliable saving
-      if (isMobile && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: filename });
-        return;
-      }
-
-      // Desktop: blob download
+      // Try blob download first (works on desktop + most mobile)
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+
+      // Small delay before cleanup to let browser process
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      setDlState('done');
+      setTimeout(() => setDlState(null), 3000);
+    } catch {
+      // If fetch fails (CORS), try share API on mobile
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile && navigator.share) {
+        try {
+          const res2 = await fetch(song.audio_url, { mode: 'no-cors' });
+          // no-cors gives opaque response, can't use blob — just share the URL
+          await navigator.share({ title: filename, url: song.audio_url });
+          setDlState(null);
+          return;
+        } catch {}
+      }
+      // Last resort: direct link
+      const a = document.createElement('a');
+      a.href = song.audio_url;
+      a.download = filename;
+      a.target = '_blank';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      // Fallback: open in new tab
-      window.open(song.audio_url, '_blank');
+      setDlState(null);
     }
   };
 
