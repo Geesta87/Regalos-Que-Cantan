@@ -1189,7 +1189,34 @@ export default function SongPage({ songId: propSongId }) {
               {/* Buttons */}
               <div className="t1-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
                 {videoData?.video_url && (
-                  <a href={videoData.video_url} download={`video-para-${recipient || 'ti'}.mp4`} target="_blank" rel="noopener noreferrer" className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)', textDecoration: 'none' }}>🎬 Descargar Video</a>
+                  <button onClick={async (e) => {
+                    const btn = e.currentTarget;
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = '⏳ Descargando...';
+                    btn.style.opacity = '0.6';
+                    btn.style.pointerEvents = 'none';
+                    try {
+                      const res = await fetch(videoData.video_url, { mode: 'cors' });
+                      if (!res.ok) throw new Error('fetch failed');
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `video-para-${recipient || 'ti'}.mp4`;
+                      a.style.display = 'none';
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+                      btn.innerHTML = '✅ ¡Descargado!';
+                      setTimeout(() => { btn.innerHTML = origText; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }, 2000);
+                    } catch {
+                      // Fallback: open in new tab
+                      window.open(videoData.video_url, '_blank');
+                      btn.innerHTML = origText;
+                      btn.style.opacity = '1';
+                      btn.style.pointerEvents = 'auto';
+                    }
+                  }} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)' }}>🎬 Descargar Video</button>
                 )}
                 {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
                 <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>{"⬇️ " + t.descargar}</button>
