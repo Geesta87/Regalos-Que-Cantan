@@ -353,53 +353,50 @@ export default function SongPage({ songId: propSongId }) {
     } else { navigator.clipboard.writeText(shareUrl); alert(t.linkCopiado); }
   };
 
-  const [dlState, setDlState] = useState(null); // null | 'downloading' | 'done'
-  const download = async () => {
+  const download = () => {
     if (!song?.audio_url) return;
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
-    setDlState('downloading');
-    try {
-      const res = await fetch(song.audio_url);
-      const blob = await res.blob();
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      // Try blob download first (works on desktop + most mobile)
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-
-      // Small delay before cleanup to let browser process
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 1000);
-
-      setDlState('done');
-      setTimeout(() => setDlState(null), 3000);
-    } catch {
-      // If fetch fails (CORS), try share API on mobile
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile && navigator.share) {
-        try {
-          const res2 = await fetch(song.audio_url, { mode: 'no-cors' });
-          // no-cors gives opaque response, can't use blob — just share the URL
-          await navigator.share({ title: filename, url: song.audio_url });
-          setDlState(null);
-          return;
-        } catch {}
-      }
-      // Last resort: direct link
+    if (isMobile) {
+      // Mobile: use a hidden <a> tag with the direct URL, triggered synchronously
+      // This preserves the user gesture chain so Android/iOS won't block it
       const a = document.createElement('a');
       a.href = song.audio_url;
       a.download = filename;
-      a.target = '_blank';
+      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setDlState(null);
+
+      // Also try share API as backup (runs async, OK since we already triggered download)
+      setTimeout(async () => {
+        try {
+          const res = await fetch(song.audio_url);
+          const blob = await res.blob();
+          const file = new File([blob], filename, { type: 'audio/mpeg' });
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: filename });
+          }
+        } catch {}
+      }, 500);
+    } else {
+      // Desktop: fetch as blob then download (reliable on desktop)
+      (async () => {
+        try {
+          const res = await fetch(song.audio_url);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+        } catch {
+          window.open(song.audio_url, '_blank');
+        }
+      })();
     }
   };
 
