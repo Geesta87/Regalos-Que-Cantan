@@ -1191,14 +1191,35 @@ export default function SongPage({ songId: propSongId }) {
                 {videoData?.video_url && (
                   <button onClick={async (e) => {
                     const btn = e.currentTarget;
-                    const origText = btn.innerHTML;
-                    btn.innerHTML = '⏳ Descargando...';
-                    btn.style.opacity = '0.6';
                     btn.style.pointerEvents = 'none';
+                    btn.style.minWidth = btn.offsetWidth + 'px';
+                    const progressBar = btn.querySelector('.dl-progress');
+                    const progressText = btn.querySelector('.dl-text');
+                    if (progressBar) progressBar.style.width = '0%';
+                    if (progressText) progressText.textContent = '⏳ 0%';
                     try {
                       const res = await fetch(videoData.video_url, { mode: 'cors' });
                       if (!res.ok) throw new Error('fetch failed');
-                      const blob = await res.blob();
+                      const contentLength = res.headers.get('content-length');
+                      const total = contentLength ? parseInt(contentLength) : 0;
+                      const reader = res.body.getReader();
+                      const chunks = [];
+                      let received = 0;
+                      while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        chunks.push(value);
+                        received += value.length;
+                        if (total > 0) {
+                          const pct = Math.round((received / total) * 100);
+                          if (progressBar) progressBar.style.width = pct + '%';
+                          if (progressText) progressText.textContent = `⏳ ${pct}%`;
+                        } else {
+                          const mb = (received / 1024 / 1024).toFixed(1);
+                          if (progressText) progressText.textContent = `⏳ ${mb}MB`;
+                        }
+                      }
+                      const blob = new Blob(chunks);
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = url;
@@ -1207,16 +1228,23 @@ export default function SongPage({ songId: propSongId }) {
                       document.body.appendChild(a);
                       a.click();
                       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-                      btn.innerHTML = '✅ ¡Descargado!';
-                      setTimeout(() => { btn.innerHTML = origText; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }, 2000);
+                      if (progressBar) progressBar.style.width = '100%';
+                      if (progressText) progressText.textContent = '✅ ¡Descargado!';
+                      setTimeout(() => {
+                        if (progressBar) progressBar.style.width = '0%';
+                        if (progressText) progressText.textContent = '🎬 Descargar Video';
+                        btn.style.pointerEvents = 'auto';
+                      }, 3000);
                     } catch {
-                      // Fallback: open in new tab
                       window.open(videoData.video_url, '_blank');
-                      btn.innerHTML = origText;
-                      btn.style.opacity = '1';
+                      if (progressText) progressText.textContent = '🎬 Descargar Video';
+                      if (progressBar) progressBar.style.width = '0%';
                       btn.style.pointerEvents = 'auto';
                     }
-                  }} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)' }}>🎬 Descargar Video</button>
+                  }} className="t1-glass" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)', overflow: 'hidden' }}>
+                    <div className="dl-progress" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '0%', background: 'rgba(139,92,246,0.3)', borderRadius: 999, transition: 'width 0.2s' }} />
+                    <span className="dl-text" style={{ position: 'relative', zIndex: 1 }}>🎬 Descargar Video</span>
+                  </button>
                 )}
                 {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
                 <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>{"⬇️ " + t.descargar}</button>
