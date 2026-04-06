@@ -7,7 +7,10 @@ const corsHeaders = {
 };
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
+const USEAPI_TOKEN = Deno.env.get('USEAPI_TOKEN');
+const MUREKA_ACCOUNT = Deno.env.get('MUREKA_ACCOUNT');
+const MUREKA_MODEL = Deno.env.get('MUREKA_MODEL') || 'V9';
+const MUREKA_FALLBACK_MODEL = 'V8';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -23,6 +26,7 @@ interface SubGenreData {
   instruments: string;
   vibe: string;
   negative: string;
+  vocalCharacter?: string; // gender-neutral vocal delivery style for Mureka desc
 }
 
 interface GenreData {
@@ -30,6 +34,7 @@ interface GenreData {
   defaultTempo: string;
   instruments: string;
   negativeTags: string;
+  defaultVocalCharacter?: string; // fallback vocal character if sub-genre doesn't specify
   subGenres: Record<string, SubGenreData>;
 }
 
@@ -41,39 +46,53 @@ const genreDNA: Record<string, GenreData> = {
     baseStyle: 'Mexican corrido, regional Mexican music, narrative storytelling song',
     defaultTempo: '90-110 BPM',
     instruments: 'accordion, bajo sexto, tololoche upright bass, drums',
-    negativeTags: 'EDM, dubstep, techno, K-pop, country western, jazz, classical orchestra, pop punk',
+    negativeTags: 'EDM, dubstep, techno, K-pop, country western, jazz, classical orchestra, pop punk, rock guitar distortion',
+    defaultVocalCharacter: 'confident narrative vocal, storytelling delivery, clear diction',
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'traditional corrido, classic Mexican corrido, 1980s 1990s Sinaloa sound, raw authentic recording, narrative ballad, old school corrido',
-        tempo: '90-110 BPM, moderate tempo',
-        instruments: 'accordion, bajo sexto, tololoche upright bass, drums',
-        vibe: 'storytelling, narrative, nostalgic, rural authenticity, raw emotion',
-        negative: 'trap beats, electronic sounds, auto-tune, polished pop production, modern, tumbado, 808'
+        style: 'traditional corrido, classic Mexican norteño corrido, 1980s 1990s conjunto norteño corrido, raw analog recording, narrative ballad, polka rhythm corrido, strophic verse form',
+        tempo: '85-110 BPM, moderate steady polka tempo, storytelling-friendly mid-tempo',
+        instruments: 'diatonic accordion, bajo sexto twelve-string guitar, tololoche upright bass, electric bass, polka drums with snare backbeat, alto saxophone melodic fills',
+        vibe: 'storytelling, narrative, nostalgic, rural authenticity, raw unpolished emotion, cantina feel, nasal vocal harmonies in thirds, accordion interludes between verses',
+        negative: 'trap beats, 808 bass, electronic sounds, auto-tune, polished pop production, tuba, modern tumbado, slide requinto bending effects',
+        vocalCharacter: 'nasal storytelling vocal, raw unpolished delivery, narrative clarity, cantina singer feel'
       },
       tumbados: {
         name: 'Corridos Tumbados',
-        style: 'corridos tumbados, modern Mexican trap corrido, 2020s sound, laid-back flow, melodic trap influence',
-        tempo: '65-85 BPM, SLOW laid-back tempo, relaxed pace',
-        instruments: 'requinto guitar, tololoche, minimal percussion, clean electric guitar',
-        vibe: 'relaxed swagger, melancholic, introspective, modern street vibe, chill',
-        negative: 'fast tempos, brass instruments, banda drums, traditional accordion, old school, uptempo'
+        style: 'corridos tumbados, Mexican trap corrido fusion, 2020s generation, half-time trap feel with regional Mexican melody, laid-back melodic flow, modern sierreño trap hybrid, light Auto-Tune vocals, acoustic-forward mix with subtle trap support, minor key tonality',
+        tempo: '85-105 BPM half-time feel in 4/4, or 140-160 BPM in 3/4 corrido waltz, laid-back groove, relaxed swaying pace',
+        instruments: 'requinto sierreño nylon guitar lead, 12-string rhythm guitar, tololoche upright bass or tuba bass, 808 sub-bass layered underneath, sparse trap hi-hats, half-time clap snare, occasional accordion accents, clean guitar arpeggios',
+        vibe: 'relaxed swagger, melancholic introspection, modern street credibility, sierreño soul with trap attitude, chill melodic, dark tense undertones, minor key sadness',
+        negative: 'dominant accordion lead, polka rhythm, fast tempo, full banda brass, traditional norteño, charcheta snare rolls, uptempo energy, heavy distortion, major key brightness',
+        vocalCharacter: 'laid-back melodic vocal, relaxed flow, light auto-tune, cool effortless delivery, modern melodic'
       },
       belico: {
         name: 'Corrido Bélico',
-        style: 'corrido belico, aggressive corrido, intense dark corrido, street corrido, hard corrido',
-        tempo: '80-100 BPM, aggressive energy, intense',
-        instruments: 'requinto, tuba, heavy bass, snare hits, dark tones',
-        vibe: 'intense, confrontational, dark, street credibility, dangerous, aggressive',
-        negative: 'happy melodies, romantic vibes, soft acoustic sounds, mariachi, cheerful'
+        style: 'corrido belico, dark aggressive corrido, sierreño-based street corrido, minor key brass corrido, propulsive norteño groove, polka-derived 2/4 rhythmic drive',
+        tempo: '95-120 BPM, brisk driving pace, propulsive polka-derived groove, fast norteño pulse',
+        instruments: 'requinto guitar with rapid ornamental runs, rhythm guitar, tololoche slap bass, tuba bass reinforcement, trombones, trumpets, charcheta alto horn, tarola snare, heavy kick drum, subtle trap hi-hats',
+        vibe: 'menacing, confrontational, dark minor key, street danger, propulsive, assertive, epic intensity, raw intimidation, terse and aggressive',
+        negative: 'happy melodies, romantic vibes, soft acoustic sounds, mariachi violins, cheerful major key, accordion, laid-back chill, slow tempo, gentle arpeggios',
+        vocalCharacter: 'assertive aggressive vocal, raw gritty delivery, street attitude, confrontational intensity, terse and sharp'
       },
       alterados: {
         name: 'Corridos Alterados',
-        style: 'corridos alterados, high energy corrido, party corrido, aggressive Sinaloa style, fast corrido',
-        tempo: '100-130 BPM, HIGH ENERGY, FAST tempo, uptempo',
-        instruments: 'banda brass, tuba, snare, accordion, driving rhythm',
-        vibe: 'party energy, bold, unapologetic, celebratory chaos, high energy',
-        negative: 'slow ballads, acoustic intimacy, sad sierreño, romantic softness, slow tempo'
+        style: 'corridos alterados, corridos progresivos, movimiento alterado, high speed banda corrido, fast Sinaloa party corrido, rapid-fire 2/4 polka corrido, adrenaline-fueled narco corrido, loud saturated production',
+        tempo: '115-145 BPM, HIGH ENERGY, FAST 2/4 polka tempo, driving uptempo rush, breakneck speed',
+        instruments: 'brass section trumpets trombones clarinets, tuba bass, tambora, tarola Mexican snare, accordion, bajo sexto, fast polka rhythm section, optional requinto 12-string guitar',
+        vibe: 'party adrenaline, bold unapologetic bravado, celebratory chaos, fast driving intensity, Sinaloa fiesta brava, swagger, loud and bombastic',
+        negative: 'slow ballads, acoustic intimacy, sad sierreño, romantic softness, trap beats, 808 bass, half-time feel, dark brooding, laid-back tempo, corridos tumbados style',
+        vocalCharacter: 'bold loud vocal, rapid-fire delivery, high energy projection, unapologetic bravado, party shouting energy'
+      },
+      romantico: {
+        name: 'Corrido Romántico',
+        style: 'corrido romantico, romantic narrative corrido, norteno-banda romantico, sentimental Mexican corrido, 3/4 waltz feel or gentle polka rhythm, narrative storytelling structure',
+        tempo: '95-120 BPM, moderate flowing tempo, gentle swaying pace, 3/4 waltz or soft polka feel',
+        instruments: 'diatonic accordion, bajo sexto twelve-string guitar, sousaphone or tuba bass, soft trumpets, requinto guitar melodies, tololoche upright bass, light percussion, optional clarinet accents',
+        vibe: 'romantic, sentimental, heartfelt storytelling, tender devotion, amor sincero, nostalgic warmth, earnest sincere male vocals',
+        negative: 'aggressive lyrics, dark tones, trap beats, 808 bass, charcheta rolls, rushed very fast tempo, confrontational energy, corridos tumbados style',
+        vocalCharacter: 'earnest sincere vocal, tender storytelling delivery, warm emotional tone, sentimental and heartfelt'
       }
     }
   },
@@ -86,38 +105,43 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '110-130 BPM',
     instruments: 'accordion, bajo sexto, bass, drums',
     negativeTags: 'EDM, dubstep, techno, K-pop, heavy metal, trap, 808',
+    defaultVocalCharacter: 'bright energetic vocal, festive cantina delivery',
     subGenres: {
       tradicional: {
         name: 'Norteño Tradicional',
-        style: 'traditional norteño, classic conjunto, accordion-driven northern Mexican music, authentic norteño',
-        tempo: '110-130 BPM, upbeat, energetic',
-        instruments: 'accordion, bajo sexto, bass, drums',
-        vibe: 'festive, working-class pride, dance-friendly, cantina energy',
-        negative: 'electronic beats, trap production, urban sounds, reggaeton, modern pop'
+        style: 'traditional norteño, classic conjunto norteño, accordion-driven polka rhythm northern Mexican music, authentic Tex-Mex conjunto, oom-pah bass pattern, two-step dance groove, cantina norteño',
+        tempo: '110-130 BPM, upbeat polka-derived groove, energetic two-step dance tempo',
+        instruments: 'diatonic button accordion with bellows dynamics and melodic runs, bajo sexto twelve-string with percussive downstroke strumming, electric bass walking lines, polka drum pattern with rim shots and backbeat snare, optional alto saxophone fills between verses',
+        vibe: 'festive cantina energy, working-class pride, Friday night dance, beer-drinking celebration, authentic border culture, accordion-forward joyful',
+        negative: 'electronic beats, trap production, urban sounds, reggaeton, modern pop, synthesizers',
+        vocalCharacter: 'bright energetic vocal, festive delivery, sing-along friendly, cantina warmth'
       },
       con_sax: {
         name: 'Norteño con Sax',
-        style: 'norteño with saxophone, norteño-sax fusion, saxophone melody lead, romantic norteño with sax',
-        tempo: '100-120 BPM, smooth energy',
-        instruments: 'saxophone lead, accordion, bajo sexto, drums',
-        vibe: 'romantic yet energetic, classy party vibe, wedding-ready, elegant',
-        negative: 'heavy metal guitars, EDM drops, aggressive trap, rock sounds, harsh'
+        style: 'norteño with saxophone lead melody, norteño-sax fusion, alto saxophone carrying main melody over accordion harmony, romantic norteño with sax, smooth saxophone-forward northern Mexican',
+        tempo: '100-120 BPM, smooth swaying energy, romantic dance groove',
+        instruments: 'alto saxophone melodic lead with vibrato, diatonic accordion harmony and fills, bajo sexto rhythm guitar, electric bass, drums with norteño polka pattern, occasional trumpet accents',
+        vibe: 'romantic yet energetic, classy wedding party, elegant saxophone serenading, sophisticated norteño, couples dancing close',
+        negative: 'heavy metal guitars, EDM drops, aggressive trap, rock sounds, harsh distortion, raw lo-fi',
+        vocalCharacter: 'smooth romantic vocal, elegant delivery, polished and warm'
       },
       nortena_banda: {
         name: 'Norteña-Banda',
-        style: 'norteña-banda hybrid, brass-enhanced norteño, powerful northern Mexican with brass section',
-        tempo: '110-130 BPM, powerful, big sound',
-        instruments: 'brass section, tuba, snare, accordion, bajo sexto',
-        vibe: 'big sound, stadium-ready, maximum energy, celebration, powerful',
-        negative: 'intimate acoustic, solo guitar, quiet ballads, minimalist, soft'
+        style: 'norteña-banda hybrid, brass-enhanced norteño, powerful northern Mexican with full brass section layered over accordion, big band norteño, Sinaloa-Monterrey fusion, maximum instrumentation',
+        tempo: '110-130 BPM, powerful driving groove, big stadium energy, festa brava tempo',
+        instruments: 'brass section trumpets trombones, tuba sousaphone bass, tarola snare with charcheta rolls, tambora bass drum, diatonic accordion, bajo sexto twelve-string, full percussion section',
+        vibe: 'massive stadium sound, maximum celebration energy, fiesta peak moment, powerful and overwhelming, crowd-pumping anthem, rodeo arena',
+        negative: 'intimate acoustic, solo guitar, quiet ballads, minimalist, soft, gentle, lo-fi',
+        vocalCharacter: 'powerful projecting vocal, stadium energy, bold and commanding'
       },
       romantico: {
         name: 'Norteño Romántico',
-        style: 'romantic norteño, soft norteño ballad, gentle northern Mexican love song, tender norteño',
-        tempo: '85-100 BPM, gentle, tender',
-        instruments: 'accordion, bajo sexto, soft drums, occasional strings',
-        vibe: 'tender, heartfelt, dedicated love songs, sentimental, romantic',
-        negative: 'aggressive corridos, party anthems, brass-heavy banda, trap, fast'
+        style: 'romantic norteño ballad, soft gentle northern Mexican love song, tender accordion-driven romance, slow norteño dedication, emotional conjunto ballad',
+        tempo: '85-100 BPM, gentle swaying tempo, tender ballad pace, slow dance groove',
+        instruments: 'accordion with sustained emotional notes and soft bellows, bajo sexto gentle arpeggios, soft brushed drums, electric bass, occasional string pad, light saxophone melody',
+        vibe: 'tender heartfelt dedication, sentimental love confession, slow dancing together, wedding first dance, moonlit serenade with accordion, vulnerable emotion',
+        negative: 'aggressive corridos, party anthems, brass-heavy banda, trap, fast uptempo, dark',
+        vocalCharacter: 'tender emotional vocal, gentle vulnerability, heartfelt soft delivery'
       }
     }
   },
@@ -130,6 +154,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '90-110 BPM',
     instruments: 'full brass section, trumpets, trombones, clarinets, tuba, tambora drum, tarola snare',
     negativeTags: 'electronic, synthesizer, trap, 808, guitar-only, acoustic only, EDM, rock',
+    defaultVocalCharacter: 'powerful projecting vocal, dramatic emotional delivery',
     subGenres: {
       romantica: {
         name: 'Banda Romántica',
@@ -137,7 +162,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '70-90 BPM, SLOW emotional tempo, ballad pace',
         instruments: 'full brass (trumpets, trombones, clarinets), tuba, snare/tarola',
         vibe: 'emotional, heartbreak, dedication songs, tearful confessions, romantic',
-        negative: 'fast quebradita, electronic music, rock guitars, reggaeton, uptempo, FAST, party, dance'
+        negative: 'fast quebradita, electronic music, rock guitars, reggaeton, uptempo, FAST, party, dance',
+        vocalCharacter: 'powerful emotional vocal, dramatic belting, tearful intensity, full vibrato'
       },
       quebradita: {
         name: 'Quebradita',
@@ -145,7 +171,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '130-160 BPM, VERY FAST, HIGH ENERGY, UPTEMPO, QUICK TEMPO, dance tempo',
         instruments: 'brass, tuba, FAST driving snare, tambora, driving percussion, energetic brass',
         vibe: 'dance craze energy, athletic, acrobatic, 90s nostalgia, PARTY, HIGH ENERGY, dancing',
-        negative: 'slow ballads, trap beats, acoustic intimacy, modern corridos, romantic, SLOW tempo, ballad, gentle, soft, emotional'
+        negative: 'slow ballads, trap beats, acoustic intimacy, modern corridos, romantic, SLOW tempo, ballad, gentle, soft, emotional',
+        vocalCharacter: 'high energy party vocal, loud celebratory, dance-calling energy'
       },
       tecnobanda: {
         name: 'Tecnobanda',
@@ -153,7 +180,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '120-140 BPM, FAST electronic-fused, dance tempo',
         instruments: 'synthesizers mixed with brass, electronic drums, tuba',
         vibe: 'retro-futuristic, 90s party, high-energy dance, electronic feel',
-        negative: 'pure acoustic, traditional corridos, modern trap, sad ballads, slow'
+        negative: 'pure acoustic, traditional corridos, modern trap, sad ballads, slow',
+        vocalCharacter: 'bright energetic vocal, retro party delivery, 90s dance energy'
       },
       sinaloense_clasica: {
         name: 'Banda Sinaloense Clásica',
@@ -161,7 +189,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '90-110 BPM, traditional moderate tempo',
         instruments: 'full 15+ piece brass, clarinets, tubas, tarola',
         vibe: 'authentic Sinaloa pride, timeless, festive, classic polish',
-        negative: 'lo-fi production, trap beats, electronic sounds, rock, modern'
+        negative: 'lo-fi production, trap beats, electronic sounds, rock, modern',
+        vocalCharacter: 'polished classic vocal, strong clear projection, traditional authority'
       }
     }
   },
@@ -174,30 +203,34 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '80-100 BPM',
     instruments: 'mariachi ensemble, violins, trumpets, vihuela, guitarrón',
     negativeTags: 'electronic, trap, 808, synthesizer, modern pop, hip-hop, autotune, EDM, rock',
+    defaultVocalCharacter: 'powerful dramatic vocal, vibrato, theatrical emotion',
     subGenres: {
       lenta: {
         name: 'Ranchera Lenta',
-        style: 'slow ranchera ballad, dramatic ranchera, emotional Mexican ballad, crying ranchera',
-        tempo: '50-70 BPM, VERY SLOW, dramatic pauses, ballad',
-        instruments: 'mariachi (violins, trumpets, vihuela, guitarrón)',
-        vibe: 'deep sorrow, dramatic heartbreak, crying-in-your-drink emotion, tearful',
-        negative: 'upbeat rhythms, electronic beats, happy party vibes, trap, fast, dance'
+        style: 'slow dramatic ranchera ballad, emotional Mexican ranchera, crying ranchera with dramatic pauses, Vicente Fernández style slow ranchera, grito de dolor, theatrical vocal delivery with vibrato',
+        tempo: '50-70 BPM, VERY SLOW, dramatic pauses between phrases, rubato vocal phrasing, ballad with breathing room',
+        instruments: 'mariachi violin section with sustained emotional bowing, trumpet fanfare between verses then soft sustained notes, vihuela gentle strumming, guitarrón deep bass notes, harp arpeggios optional',
+        vibe: 'deep sorrow, dramatic heartbreak, crying-in-your-drink cantina emotion, tearful confession, tequila and tears, mariachi at 3am, grito from the soul',
+        negative: 'upbeat rhythms, electronic beats, happy party vibes, trap, fast tempo, dance energy',
+        vocalCharacter: 'powerful dramatic vocal, deep vibrato, tearful belting, theatrical pauses'
       },
       brava: {
         name: 'Ranchera Brava',
-        style: 'fast ranchera, fiery ranchera, energetic mariachi, celebratory ranchera, uptempo',
-        tempo: '120-140 BPM, FAST fiery tempo, energetic',
-        instruments: 'mariachi full ensemble, aggressive trumpet lines',
-        vibe: 'defiant, proud, celebratory machismo, grito-inducing, powerful',
-        negative: 'soft pop, electronic music, slow sad songs, modern urban, gentle'
+        style: 'fast fiery ranchera, energetic celebratory mariachi, uptempo ranchera with grito, powerful defiant ranchera, Mexican pride anthem, Alejandro Fernández style fiery ranchera',
+        tempo: '120-140 BPM, FAST fiery tempo, energetic 3/4 waltz or 2/4 march, driving celebratory pace',
+        instruments: 'mariachi full ensemble, aggressive trumpet fanfares and staccato runs, violin section playing rapid passages in unison, vihuela percussive strumming, guitarrón driving bass line, occasional guitar solo',
+        vibe: 'defiant proud energy, celebratory machismo, grito-inducing power, fist-raising anthem, Mexican independence spirit, fiesta patria, charreada arena energy',
+        negative: 'soft pop, electronic music, slow sad songs, modern urban, gentle, minimalist',
+        vocalCharacter: 'fiery powerful vocal, defiant projection, grito energy, proud and bold'
       },
       moderna: {
         name: 'Ranchera Moderna',
-        style: 'modern ranchera, contemporary mariachi, updated ranchera with modern production',
-        tempo: '80-100 BPM, contemporary',
-        instruments: 'mariachi with modern production, subtle electronic touches',
-        vibe: 'updated classic feel, youthful yet respectful of roots',
-        negative: 'full trap production, reggaeton beats, EDM, rock guitars, heavy electronic'
+        style: 'modern contemporary ranchera, updated mariachi with clean modern production, Christian Nodal style modern ranchera, young ranchera with subtle pop sensibility, traditional soul with modern polish',
+        tempo: '80-100 BPM, contemporary moderate tempo, modern feel with traditional pacing',
+        instruments: 'mariachi ensemble with modern recording clarity, clean trumpet lines, violin section, vihuela, guitarrón, subtle reverb and modern EQ, occasional acoustic guitar, light percussion shaker',
+        vibe: 'updated classic ranchera feel, youthful energy respectful of roots, modern Mexican pride, Instagram-era mariachi, accessible yet authentic, crossover appeal',
+        negative: 'full trap production, reggaeton beats, EDM, rock guitars, heavy electronic, lo-fi raw',
+        vocalCharacter: 'clean modern vocal, accessible emotional delivery, youthful polish'
       }
     }
   },
@@ -210,22 +243,25 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '80-100 BPM',
     instruments: 'requinto guitar, tololoche, guitarrón, minimal drums',
     negativeTags: 'electronic, brass, full band, overproduced, trap, 808, synthesizer, EDM',
+    defaultVocalCharacter: 'intimate acoustic vocal, raw honest delivery',
     subGenres: {
       tradicional: {
         name: 'Sierreño Tradicional',
-        style: 'traditional sierreño, mountain music, raw acoustic storytelling, rural Mexican guitar music',
-        tempo: '90-110 BPM, moderate',
-        instruments: 'requinto, tololoche, guitarrón, minimal drums',
-        vibe: 'mountain authenticity, raw storytelling, rural simplicity',
-        negative: 'brass instruments, electronic beats, polished pop, banda, modern'
+        style: 'traditional sierreño, Sierra Madre mountain music of Mexico, raw acoustic guitar storytelling, rural rancho sound, unplugged regional Mexican, three-guitar ensemble acoustic corrido',
+        tempo: '90-110 BPM, moderate flowing tempo, storytelling pace, natural acoustic rhythm',
+        instruments: 'requinto sierreño nylon guitar with ornamental bending trills and hammer-ons, twelve-string rhythm guitar strumming, tololoche upright bass with slap technique, minimal kick drum or cajón, no electronic instruments',
+        vibe: 'mountain authenticity, raw unpolished storytelling, rural rancho simplicity, acoustic campfire intimacy, Sierra Madre soul, honest and unpretentious',
+        negative: 'brass instruments, electronic beats, polished pop production, banda, modern trap, synthesizers',
+        vocalCharacter: 'raw honest vocal, unpolished storytelling, acoustic intimacy, mountain soul'
       },
       moderno_sad: {
         name: 'Sierreño Sad',
-        style: 'sad sierreño, emotional corridos tumbados, melancholic modern regional, sad boy sierreño',
-        tempo: '60-80 BPM, SLOW melancholic, sad pace',
-        instruments: 'clean requinto, tololoche, soft percussion or none',
-        vibe: 'heartbreak, loneliness, 3am sadness, emotional vulnerability, melancholic',
-        negative: 'happy dance music, brass, fast tempos, party energy, upbeat'
+        style: 'sad sierreño, emotional melancholic sierreño, sad boy regional Mexican, modern sierreño with heartbreak, minor key acoustic requinto ballad, corridos tumbados influence with acoustic soul',
+        tempo: '60-80 BPM, SLOW melancholic pace, breathing room between phrases, heartbreak tempo',
+        instruments: 'clean requinto sierreño with slow expressive bends and vibrato, tololoche deep sustained bass notes, soft brushed percussion or no drums, reverb on guitar, occasional twelve-string arpeggios, ambient room sound',
+        vibe: 'heartbreak at 3am, lonely loneliness, tears falling, emotional vulnerability, sad boy aesthetic, modern sadness with traditional soul, whispered pain, dark room introspection',
+        negative: 'happy dance music, brass instruments, fast tempos, party energy, upbeat celebration, loud production',
+        vocalCharacter: 'vulnerable breathy vocal, emotional cracking, whispered pain, intimate sadness'
       }
     }
   },
@@ -238,38 +274,43 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '90-120 BPM',
     instruments: 'violins, trumpets, vihuela, guitarrón, guitar',
     negativeTags: 'electronic, trap, rock guitars, modern urban beats, EDM, synthesizer, 808',
+    defaultVocalCharacter: 'powerful operatic vocal, vibrato, dramatic projection',
     subGenres: {
       tradicional: {
         name: 'Mariachi Tradicional',
-        style: 'traditional mariachi, classic Mexican mariachi, ceremonial mariachi, authentic mariachi ensemble',
-        tempo: '90-120 BPM, variable classic tempo',
-        instruments: 'violins, trumpets, vihuela, guitarrón, guitar',
-        vibe: 'Mexican pride, elegant, timeless, ceremonial',
-        negative: 'electronic anything, trap, rock guitars, modern urban beats'
+        style: 'traditional classic mariachi, ceremonial Mexican mariachi ensemble, authentic son jalisciense, Jalisco mariachi, formal mariachi with full instrumentation, polished ensemble performance',
+        tempo: '90-120 BPM, variable classic tempo, son rhythm, waltz and march alternating',
+        instruments: 'violin section playing melodic passages in unison and harmony, trumpet duo with fanfare intros and sustained notes, vihuela percussive strumming providing harmonic rhythm, guitarrón deep bass on beats one and three, classical guitar arpeggios, optional harp',
+        vibe: 'Mexican national pride, elegant ceremony, timeless tradition, plaza Garibaldi atmosphere, formal beauty, cultural heritage, wedding ceremony, quinceañera vals',
+        negative: 'electronic production, trap, rock guitars, modern urban beats, synthesizers, lo-fi',
+        vocalCharacter: 'formal powerful vocal, operatic projection, ceremonial grandeur, vibrato'
       },
       ranchero: {
         name: 'Mariachi Ranchero',
-        style: 'ranchero mariachi, energetic mariachi, fiesta mariachi, bold mariachi',
-        tempo: '100-130 BPM, energetic',
-        instruments: 'full mariachi with strong trumpet presence',
-        vibe: 'bold declarations, machismo, fiesta-ready, gritos',
-        negative: 'soft pop, lo-fi, electronic beats, sad trap'
+        style: 'energetic ranchero mariachi, fiesta mariachi with gritos, bold celebratory mariachi, powerful mariachi anthem, uptempo fiesta brava, Pedro Infante style joyful mariachi',
+        tempo: '100-130 BPM, energetic driving tempo, festive and uplifting pace, march-like energy',
+        instruments: 'full mariachi ensemble, aggressive trumpet fanfares with staccato runs, violin section rapid bowing passages, vihuela driving percussive strumming, guitarrón strong rhythmic bass, grito vocal exclamations',
+        vibe: 'bold masculine declarations, celebratory machismo, fiesta-ready energy, grito-inducing moments, rodeo arena power, charreada pride, Mexican Independence party',
+        negative: 'soft gentle pop, lo-fi production, electronic beats, sad trap, slow ballad, minimalist',
+        vocalCharacter: 'bold fiery vocal, grito-inducing power, defiant energy, proud belting'
       },
       romantico: {
         name: 'Mariachi Romántico',
-        style: 'romantic mariachi, serenata mariachi, soft mariachi ballad, love song mariachi',
-        tempo: '60-80 BPM, SLOW tender',
-        instruments: 'violins prominent, soft trumpets, delicate guitarrón',
-        vibe: 'serenata vibes, courtship, deep romance, tearful dedications',
-        negative: 'fast dance rhythms, brass-heavy banda, aggressive sounds, uptempo'
+        style: 'romantic mariachi ballad, serenata mariachi, soft tender mariachi love song, moonlit serenade, violin-led romantic mariachi, intimate courtship mariachi',
+        tempo: '60-80 BPM, SLOW tender pace, breathing room between phrases, serenata tempo',
+        instruments: 'violins prominent with sustained legato bowing and emotional vibrato, soft muted trumpets playing gentle sustained notes, delicate guitarrón bass, vihuela soft arpeggios, classical guitar, optional cello',
+        vibe: 'serenata under the balcony, moonlit courtship, deep vulnerable romance, tearful love dedications, wedding first dance, proposal moment, roses and candles',
+        negative: 'fast dance rhythms, brass-heavy banda, aggressive sounds, uptempo party, electronic',
+        vocalCharacter: 'tender lyrical vocal, soft intimate delivery, serenading sweetness, gentle vibrato'
       },
       moderno: {
         name: 'Mariachi Moderno',
-        style: 'modern mariachi, contemporary mariachi, updated mariachi with modern production',
-        tempo: '85-110 BPM, contemporary',
-        instruments: 'classic mariachi with modern mixing/production',
-        vibe: 'fresh take on classics, appeals to younger generation',
-        negative: 'full electronic production, trap beats, reggaeton rhythm'
+        style: 'modern contemporary mariachi, updated mariachi with clean studio production, young generation mariachi, Christian Nodal Ángela Aguilar style, traditional instruments with modern recording clarity and subtle pop influence',
+        tempo: '85-110 BPM, contemporary moderate tempo, accessible modern pacing',
+        instruments: 'classic mariachi ensemble with modern pristine recording quality, clean trumpet lines with reverb, violin section with studio clarity, vihuela, guitarrón, subtle acoustic guitar, light modern percussion shaker',
+        vibe: 'fresh modern take on mariachi classics, appeals to younger generation, Instagram-era elegance, accessible yet authentic, modern Mexican cultural pride, streaming-friendly',
+        negative: 'full electronic production, trap beats, reggaeton dembow rhythm, heavy distortion, lo-fi raw',
+        vocalCharacter: 'clean modern vocal, youthful accessible delivery, polished emotion'
       }
     }
   },
@@ -282,6 +323,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '95-110 BPM',
     instruments: 'güiro, congas, bass, keyboards',
     negativeTags: 'heavy metal, aggressive, dark, heavy rock, death metal, screaming',
+    defaultVocalCharacter: 'bright festive vocal, dance-friendly delivery',
     subGenres: {
       sonidera: {
         name: 'Cumbia Sonidera',
@@ -289,7 +331,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '95-110 BPM, steady groove, dance tempo',
         instruments: 'synth leads (wepa sounds), güiro, congas, bass',
         vibe: 'barrio party, working-class celebration, nostalgic dance',
-        negative: 'rock guitars, trap beats, slow ballads, banda brass, acoustic only'
+        negative: 'rock guitars, trap beats, slow ballads, banda brass, acoustic only',
+        vocalCharacter: 'bright barrio vocal, party MC energy, call-and-response, festive shouting'
       },
       nortena: {
         name: 'Cumbia Norteña',
@@ -297,7 +340,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '100-120 BPM, bouncy, energetic',
         instruments: 'accordion, bajo sexto, timbales, güiro',
         vibe: 'Tex-Mex fusion, border culture, cantina dance party',
-        negative: 'electronic drops, brass banda, reggaeton dembow, rock, EDM'
+        negative: 'electronic drops, brass banda, reggaeton dembow, rock, EDM',
+        vocalCharacter: 'accordion-friendly vocal, Tex-Mex warmth, working-class authenticity'
       },
       texana: {
         name: 'Cumbia Texana',
@@ -305,7 +349,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '100-115 BPM, polished, clean',
         instruments: 'keyboards, accordion, polished drums, bass',
         vibe: 'Texas pride, crossover appeal, radio-friendly, nostalgic',
-        negative: 'raw lo-fi, aggressive corridos, trap, heavy brass, dark'
+        negative: 'raw lo-fi, aggressive corridos, trap, heavy brass, dark',
+        vocalCharacter: 'smooth bilingual vocal, crossover delivery, Tex-Mex charm'
       },
       grupera: {
         name: 'Cumbia Grupera',
@@ -313,7 +358,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '95-115 BPM, dance-ready',
         instruments: 'keyboards, guitars, drums, occasional accordion',
         vibe: '80s/90s nostalgia, quinceañera vibes, romantic dance',
-        negative: 'modern trap, aggressive lyrics, electronic EDM, rock, dark'
+        negative: 'modern trap, aggressive lyrics, electronic EDM, rock, dark',
+        vocalCharacter: 'warm nostalgic vocal, romantic 90s delivery, keyboard-era smoothness'
       },
       romantica: {
         name: 'Cumbia Romántica',
@@ -321,7 +367,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '90-105 BPM, gentle groove',
         instruments: 'soft synths, güiro, light percussion, strings',
         vibe: 'tender dance, couples slow-dancing, sweet dedications',
-        negative: 'fast party cumbia, aggressive sounds, trap, rock, hard'
+        negative: 'fast party cumbia, aggressive sounds, trap, rock, hard',
+        vocalCharacter: 'sweet tender vocal, gentle romantic delivery, slow-dance intimacy'
       },
       colombiana: {
         name: 'Cumbia Colombiana',
@@ -329,7 +376,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '85-100 BPM, classic swing',
         instruments: 'accordion, güiro, congas, piano, brass accents',
         vibe: 'original cumbia feel, tropical warmth, elegant dance',
-        negative: 'Mexican norteño sound, trap, electronic, fast tempos, modern'
+        negative: 'Mexican norteño sound, trap, electronic, fast tempos, modern',
+        vocalCharacter: 'tropical bright vocal, Caribbean warmth, authentic Colombian flavor'
       }
     }
   },
@@ -342,6 +390,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '160-180 BPM',
     instruments: 'piano, congas, timbales, bongos, bass, trumpets, trombones',
     negativeTags: 'slow ballads, rock guitars, corridos, country, folk, acoustic only',
+    defaultVocalCharacter: 'powerful rhythmic vocal, Caribbean swing, soneo delivery',
     subGenres: {
       clasica_dura: {
         name: 'Salsa Clásica',
@@ -349,7 +398,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '160-200 BPM, FAST intense, high energy',
         instruments: 'piano, congas, timbales, bongos, trumpets, trombones',
         vibe: 'barrio NYC energy, socially conscious, street celebration',
-        negative: 'slow ballads, electronic beats, rock guitars, corridos, gentle'
+        negative: 'slow ballads, electronic beats, rock guitars, corridos, gentle',
+        vocalCharacter: 'powerful soneo vocal, improvisational delivery, street barrio energy, rhythmic precision'
       },
       romantica: {
         name: 'Salsa Romántica',
@@ -357,7 +407,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '140-170 BPM, smooth energy, sensual',
         instruments: 'piano, strings, congas, softer brass, bongos',
         vibe: 'heartfelt love, sensual dance, romantic confessions',
-        negative: 'aggressive brass, political lyrics, rock, trap beats, harsh'
+        negative: 'aggressive brass, political lyrics, rock, trap beats, harsh',
+        vocalCharacter: 'smooth sensual vocal, intimate Latin lover delivery, polished romantic'
       },
       urbana: {
         name: 'Salsa Urbana',
@@ -365,7 +416,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '150-180 BPM, modern fusion',
         instruments: 'traditional percussion + modern beats, synth accents',
         vibe: 'contemporary club appeal, fusion-friendly, crossover',
-        negative: 'pure traditional only, acoustic only, corrido style, rock'
+        negative: 'pure traditional only, acoustic only, corrido style, rock',
+        vocalCharacter: 'modern fresh vocal, contemporary Latin delivery, crossover energy'
       }
     }
   },
@@ -378,30 +430,34 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '125-140 BPM',
     instruments: 'requinto guitar, rhythm guitar, bass, bongos, güira',
     negativeTags: 'electronic EDM, trap, brass band, aggressive, rock, heavy metal, harsh',
+    defaultVocalCharacter: 'smooth romantic vocal, sensual delivery, emotional bending',
     subGenres: {
       tradicional: {
         name: 'Bachata Tradicional',
-        style: 'traditional bachata, Dominican bachata, classic bachata, guitar bachata',
-        tempo: '120-140 BPM, classic rhythm',
-        instruments: 'requinto guitar, bongos, bass, güira',
-        vibe: 'Dominican roots, barrio romance, raw heartbreak',
-        negative: 'electronic production, trap, rock guitars, fast dance, EDM'
+        style: 'traditional Dominican bachata, classic guitar bachata, barrio bachata, raw authentic bachata sound, Aventura early style, acoustic Dominican bachata with street soul',
+        tempo: '120-140 BPM, classic bachata derecho rhythm, syncopated guitar groove, swaying dance beat',
+        instruments: 'requinto lead guitar with bending hammer-on ornaments, rhythm guitar with muted strumming pattern, electric bass guitar syncopated line, bongos with tumbao pattern, güira metal scraper steady rhythm',
+        vibe: 'Dominican barrio romance, raw honest heartbreak, street corner serenade, colmado music, authentic working-class love stories',
+        negative: 'electronic production, trap, rock guitars, fast dance, EDM, polished pop',
+        vocalCharacter: 'raw emotional vocal, barrio authenticity, heartbreak honesty, crying delivery'
       },
       urbana_sensual: {
         name: 'Bachata Sensual',
-        style: 'urban bachata, sensual bachata, modern bachata, R&B influenced bachata',
-        tempo: '125-145 BPM, smooth modern',
-        instruments: 'guitar, R&B production elements, synths, modern drums',
-        vibe: 'sensual, nightclub seduction, polished romance',
-        negative: 'raw traditional sound, corridos, banda, rock guitars, harsh'
+        style: 'urban sensual bachata, modern bachata with R&B influence, Romeo Santos style sensual bachata, Prince Royce polished bachata, nightclub sensual bachata, smooth contemporary Dominican',
+        tempo: '125-145 BPM, smooth modern groove, sensual body movement tempo, hip-swaying rhythm',
+        instruments: 'electric guitar with clean reverb and chorus effect, R&B-style keyboard pads, modern programmed drums blended with bongos, bass guitar groove, subtle synth strings, güira, occasional saxophone solo',
+        vibe: 'sensual seduction, nightclub intimate, polished sophisticated romance, dim lights and cologne, slow grinding dance, modern Latin lover',
+        negative: 'raw traditional lo-fi, corridos, banda brass, rock distortion, aggressive harsh sounds',
+        vocalCharacter: 'smooth sensual vocal, R&B influenced delivery, seductive and polished'
       },
       romantica: {
         name: 'Bachata Romántica',
-        style: 'romantic bachata, emotional bachata, heartbreak bachata, crying bachata',
-        tempo: '115-135 BPM, tender',
-        instruments: 'acoustic guitar prominent, bongos, bass, soft güira',
-        vibe: 'deep emotional pain, crying ballads, heartbreak anthems',
-        negative: 'fast party music, aggressive sounds, electronic drops, hard'
+        style: 'romantic emotional bachata, heartbreak bachata ballad, crying bachata, Frank Reyes style painful bachata, tearful Dominican love song, gut-wrenching romantic bachata',
+        tempo: '115-135 BPM, tender emotional groove, heartbreak swaying, crying-while-dancing tempo',
+        instruments: 'acoustic guitar prominent with emotional bending, requinto lead with crying vibrato, bongos soft, bass guitar sustained, soft güira, occasional piano chords, string pad',
+        vibe: 'deep emotional pain, crying in the dark, heartbreak anthems, love lost, tearful confession, Dominican torch song, broken heart pouring out',
+        negative: 'fast party music, aggressive sounds, electronic drops, happy upbeat, EDM',
+        vocalCharacter: 'deeply emotional vocal, crying heartbreak delivery, gut-wrenching vulnerability'
       }
     }
   },
@@ -414,6 +470,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '140-160 BPM',
     instruments: 'tambora, güira, accordion or saxophone, bass',
     negativeTags: 'slow songs, rock, corrido storytelling, heavy metal, sad ballads, acoustic only',
+    defaultVocalCharacter: 'high energy party vocal, bright Caribbean delivery',
     subGenres: {
       clasico: {
         name: 'Merengue Clásico',
@@ -421,7 +478,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '140-160 BPM, FAST traditional, high energy',
         instruments: 'tambora, güira, accordion/sax, bass',
         vibe: 'Dominican pride, festive, wedding party, high-energy dance',
-        negative: 'slow songs, electronic beats only, rock, corrido storytelling, gentle'
+        negative: 'slow songs, electronic beats only, rock, corrido storytelling, gentle',
+        vocalCharacter: 'bright joyful vocal, party energy, Caribbean warmth, sing-along delivery'
       },
       mambo_merengue: {
         name: 'Merengue Mambo',
@@ -429,7 +487,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '150-170 BPM, VERY FAST energetic, party tempo',
         instruments: 'heavy tambora, güira, brass, synth accents',
         vibe: 'peak party energy, jumping crowds, summer anthems',
-        negative: 'ballads, acoustic intimacy, sad songs, corridos, slow'
+        negative: 'ballads, acoustic intimacy, sad songs, corridos, slow',
+        vocalCharacter: 'powerful brass-matching vocal, big band energy, commanding projection'
       },
       urbano: {
         name: 'Merengue Urbano',
@@ -437,7 +496,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '135-155 BPM, modern fusion',
         instruments: 'traditional drums with modern production, electronic elements',
         vibe: 'contemporary club appeal, reggaeton-influenced',
-        negative: 'pure acoustic, traditional-only sounds, rock, heavy trap'
+        negative: 'pure acoustic, traditional-only sounds, rock, heavy trap',
+        vocalCharacter: 'modern energetic vocal, contemporary party delivery, youthful vibes'
       }
     }
   },
@@ -450,30 +510,34 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '100-120 BPM',
     instruments: 'accordion (caja vallenata), caja drum, guacharaca',
     negativeTags: 'electronic beats, rock guitars, Mexican regional, trap, heavy metal, EDM',
+    defaultVocalCharacter: 'warm storytelling vocal, Colombian romantic delivery',
     subGenres: {
       tradicional: {
         name: 'Vallenato Tradicional',
-        style: 'traditional vallenato, classic Colombian vallenato, accordion storytelling',
-        tempo: '100-120 BPM, classic swing',
-        instruments: 'accordion (caja vallenata), caja drum, guacharaca',
-        vibe: 'Colombian coast, storytelling, romantic narratives, nostalgia',
-        negative: 'electronic beats, rock guitars, Mexican regional, trap, modern'
+        style: 'traditional Colombian vallenato, classic accordion-driven vallenato, Diomedes Díaz style storytelling vallenato, Valledupar sound, son vallenato and merengue vallenato rhythms',
+        tempo: '100-120 BPM, classic swinging groove, paseo rhythm, conversational storytelling pace',
+        instruments: 'diatonic accordion with melodic runs and trills carrying the melody, caja vallenata hand drum with syncopated patterns, guacharaca scraper providing steady rhythm, bass guitar',
+        vibe: 'Colombian Caribbean coast, narrative storytelling tradition, romantic nostalgia, Festival de la Leyenda Vallenata spirit, parrandero joy, riverside memories',
+        negative: 'electronic beats, rock guitars, Mexican regional, trap, heavy modern production',
+        vocalCharacter: 'warm narrative vocal, parrandero storytelling, Caribbean coast soul'
       },
       romantico: {
         name: 'Vallenato Romántico',
-        style: 'romantic vallenato, love song vallenato, emotional vallenato',
-        tempo: '90-110 BPM, tender',
-        instruments: 'accordion, soft percussion, occasional strings',
-        vibe: 'deep love songs, serenata feel, emotional confessions',
-        negative: 'fast party rhythms, aggressive sounds, rock, trap, hard'
+        style: 'romantic vallenato ballad, emotional Colombian love vallenato, Carlos Vives romantic style, tender accordion love song, serenata vallenata, paseo lento vallenato',
+        tempo: '90-110 BPM, tender swaying paseo rhythm, gentle romantic groove, serenata pace',
+        instruments: 'accordion with sustained emotional notes and gentle melodic phrases, caja vallenata soft, guacharaca light, acoustic guitar arpeggios, bass guitar, optional string arrangement',
+        vibe: 'deep Colombian love songs, serenata under the stars, emotional confessions to the beloved, Caribbean moonlight romance, tender devoted love',
+        negative: 'fast party rhythms, aggressive sounds, rock, trap, harsh production',
+        vocalCharacter: 'tender emotional vocal, serenading delivery, devoted romantic'
       },
       moderno: {
         name: 'Vallenato Moderno',
-        style: 'modern vallenato, contemporary vallenato, pop vallenato, updated vallenato',
-        tempo: '100-130 BPM, contemporary',
-        instruments: 'accordion with modern production, pop elements',
-        vibe: 'updated sound, crossover appeal, radio-friendly',
-        negative: 'pure electronic, rock band sound, Mexican corrido style, harsh'
+        style: 'modern contemporary vallenato, pop-vallenato crossover, Silvestre Dangond style modern vallenato, Carlos Vives rock-vallenato fusion, radio-friendly Colombian accordion pop',
+        tempo: '100-130 BPM, contemporary energetic groove, modern production feel with traditional rhythm',
+        instruments: 'accordion with modern clean recording, pop drum kit or programmed drums, electric bass, acoustic guitar, keyboard pads, occasional electric guitar, modern mixing clarity',
+        vibe: 'updated fresh vallenato sound, streaming-friendly crossover appeal, young Colombian energy, modern party with traditional soul, radio hit potential',
+        negative: 'pure electronic EDM, rock band only, Mexican corrido style, harsh aggressive, lo-fi raw',
+        vocalCharacter: 'modern polished vocal, radio-friendly delivery, crossover appeal'
       }
     }
   },
@@ -486,6 +550,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '88-95 BPM',
     instruments: 'dembow beat, 808 bass, hi-hats, synth leads',
     negativeTags: 'acoustic, traditional folk, mariachi, country, rock band, corridos, brass band',
+    defaultVocalCharacter: 'rhythmic urban vocal, confident delivery, modern flow',
     subGenres: {
       clasico_perreo: {
         name: 'Reggaeton Clásico',
@@ -493,7 +558,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '85-95 BPM, dembow rhythm, steady bounce',
         instruments: 'dembow beat, heavy bass, synth stabs, TR-808',
         vibe: 'underground Puerto Rico, perreo culture, raw street energy',
-        negative: 'live instruments, acoustic sounds, corridos, banda brass, folk'
+        negative: 'live instruments, acoustic sounds, corridos, banda brass, folk',
+        vocalCharacter: 'rhythmic perreo vocal, dembow flow, street confidence, party commanding'
       },
       romantico: {
         name: 'Reggaeton Romántico',
@@ -501,7 +567,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '85-95 BPM, smooth dembow, sensual',
         instruments: 'softer synths, dembow, melodic elements, R&B touches',
         vibe: 'sensual, late-night vibes, romantic seduction',
-        negative: 'aggressive lyrics, hard trap, acoustic instruments, rock, harsh'
+        negative: 'aggressive lyrics, hard trap, acoustic instruments, rock, harsh',
+        vocalCharacter: 'melodic smooth vocal, sensual R&B delivery, romantic urban'
       },
       comercial_pop: {
         name: 'Reggaeton Pop',
@@ -509,7 +576,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '90-100 BPM, radio-friendly, polished',
         instruments: 'polished production, pop synths, clean dembow',
         vibe: 'mainstream appeal, global crossover, radio/streaming hit',
-        negative: 'underground raw sound, explicit content, heavy bass only, dark'
+        negative: 'underground raw sound, explicit content, heavy bass only, dark',
+        vocalCharacter: 'versatile modern vocal, melodic trap influence, streaming-era delivery'
       }
     }
   },
@@ -522,6 +590,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '130-150 BPM half-time',
     instruments: 'heavy 808s, hi-hats, dark synths, auto-tune vocals',
     negativeTags: 'acoustic instruments, traditional Latin, rock band, mariachi, happy pop, folk',
+    defaultVocalCharacter: 'dark atmospheric vocal, auto-tune, brooding delivery',
     subGenres: {
       trap_pesado: {
         name: 'Trap Pesado',
@@ -529,7 +598,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '130-160 BPM half-time feel, dark energy',
         instruments: 'heavy 808s, hi-hats, dark synths, distorted bass',
         vibe: 'street credibility, aggressive, dark flexing',
-        negative: 'happy melodies, acoustic instruments, clean pop, banda, bright'
+        negative: 'happy melodies, acoustic instruments, clean pop, banda, bright',
+        vocalCharacter: 'dark aggressive vocal, heavy auto-tune, menacing delivery, bass-heavy energy'
       },
       trap_melodico: {
         name: 'Trap Melódico',
@@ -537,7 +607,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '130-150 BPM half-time, melodic',
         instruments: 'melodic synths, 808s, atmospheric pads, auto-tune',
         vibe: 'emotional yet hard, introspective pain, late-night mood',
-        negative: 'pure happy sounds, acoustic guitar, traditional Latin, rock, bright'
+        negative: 'pure happy sounds, acoustic guitar, traditional Latin, rock, bright',
+        vocalCharacter: 'melodic emotional vocal, singing-rapping hybrid, auto-tune emotional, vulnerable'
       },
       trap_latino: {
         name: 'Trap Latino',
@@ -545,7 +616,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '125-145 BPM, fusion-ready',
         instruments: '808s with Latin percussion hints, modern production',
         vibe: 'crossover appeal, blend of trap and Latin roots',
-        negative: 'pure acoustic, traditional Mexican, rock guitars, banda, folk'
+        negative: 'pure acoustic, traditional Mexican, rock guitars, banda, folk',
+        vocalCharacter: 'smooth melodic vocal, romantic auto-tune, intimate urban, tender trap'
       }
     }
   },
@@ -558,30 +630,34 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '90-120 BPM',
     instruments: 'modern production, synthesizers, guitars, drums, electronic elements',
     negativeTags: 'regional Mexican, folk, traditional acoustic only, lo-fi, heavy metal, screaming',
+    defaultVocalCharacter: 'clean polished vocal, radio-friendly delivery',
     subGenres: {
       pop_balada: {
         name: 'Pop Balada',
-        style: 'Latin pop ballad, slow pop, emotional pop, radio ballad',
-        tempo: '70-90 BPM, SLOW emotional',
-        instruments: 'piano, strings, soft drums, acoustic guitar',
-        vibe: 'radio ballad, emotional but polished, tearful dedication',
-        negative: 'aggressive trap, rock guitars, fast dance music, corridos, hard'
+        style: 'Latin pop ballad, emotional slow pop en español, Luis Miguel style pop ballad, Reik soft pop, radio-friendly emotional slow song, polished studio ballad with orchestral touches',
+        tempo: '70-90 BPM, SLOW emotional, breathing room, dramatic pop ballad pacing',
+        instruments: 'grand piano chords and arpeggios, string orchestra arrangement, acoustic guitar fingerpicking, soft brushed drums, bass guitar, subtle synth pad warmth, optional choir on chorus',
+        vibe: 'radio ballad elegance, emotional but polished, tearful dedication, wedding reception slow dance, telenovela soundtrack, beautiful sadness',
+        negative: 'aggressive trap, rock distortion, fast dance music, corridos, regional Mexican, harsh',
+        vocalCharacter: 'emotional polished vocal, tearful elegance, radio ballad delivery'
       },
       pop_bailable: {
         name: 'Pop Bailable',
-        style: 'dance pop Latino, upbeat Latin pop, party pop, summer pop',
-        tempo: '110-130 BPM, dance-friendly, upbeat',
-        instruments: 'electronic beats, synths, Latin percussion, polished production',
-        vibe: 'dance floor ready, summer hit vibes, global appeal',
-        negative: 'raw acoustic, sad ballads, traditional folk, heavy rock, dark'
+        style: 'upbeat danceable Latin pop, summer Latin pop hit, Shakira Ricky Martin party pop, catchy Latin dance pop, feel-good uptempo pop en español, global Latin pop sound',
+        tempo: '110-130 BPM, dance-friendly upbeat, infectious groove, summer anthem tempo',
+        instruments: 'electronic programmed beats with Latin percussion, synthesizers, congas and timbales accents, bass synth, electric guitar riffs, handclaps, brass stabs, polished maximalist production',
+        vibe: 'dance floor anthem, summer hit energy, global appeal, party starter, positive vibes, viral TikTok energy, feel-good celebration',
+        negative: 'raw acoustic only, sad slow ballads, traditional folk, heavy rock, dark moody, lo-fi',
+        vocalCharacter: 'bright energetic vocal, party anthem delivery, infectious positivity'
       },
       pop_urbano: {
         name: 'Pop Urbano',
-        style: 'urban pop, modern Latin pop, pop-reggaeton fusion, streaming pop',
-        tempo: '90-110 BPM, modern fusion',
-        instruments: 'modern production, blend of reggaeton and pop, trap elements',
-        vibe: 'contemporary radio, streaming-friendly, youthful energy',
-        negative: 'traditional-only sounds, pure acoustic, rock band, ballads only'
+        style: 'urban Latin pop, modern pop-reggaeton fusion, streaming era Latin pop, Sebastián Yatra Camilo style contemporary, melodic urban pop, radio-friendly pop with subtle dembow or trap influence',
+        tempo: '90-110 BPM, modern mid-tempo groove, relaxed but groovy, streaming-friendly pace',
+        instruments: 'modern programmed drums with subtle dembow hint, synth pads, electric guitar clean, bass synth, vocal processing with light effects, acoustic guitar layer, finger snaps, minimal percussion',
+        vibe: 'contemporary streaming hit, youthful fresh energy, Instagram aesthetic, modern Latin romance, accessible global sound, TikTok viral potential',
+        negative: 'pure traditional acoustic, rock band heavy, aggressive trap only, regional Mexican, harsh distorted',
+        vocalCharacter: 'modern smooth vocal, streaming-era delivery, youthful fresh'
       }
     }
   },
@@ -594,30 +670,34 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '65-80 BPM',
     instruments: 'piano, acoustic guitar, strings, soft percussion',
     negativeTags: 'uptempo dance, party, aggressive, trap, 808, EDM, rock, fast rhythms, hard',
+    defaultVocalCharacter: 'emotional powerful vocal, dramatic ballad delivery',
     subGenres: {
       balada_clasica: {
         name: 'Balada Clásica',
-        style: 'classic Latin ballad, orchestral ballad, grand romantic ballad, 70s-80s ballad',
-        tempo: '60-80 BPM, VERY SLOW, dramatic',
-        instruments: 'orchestra, piano, strings, soft drums',
-        vibe: 'grand romantic gestures, theatrical emotion, tearjerker',
-        negative: 'fast rhythms, electronic beats, rock, trap, party music, uptempo'
+        style: 'classic orchestral Latin ballad, grand romantic 1970s 1980s ballad en español, José José style dramatic ballad, Rocío Dúrcal classical ballad, theatrical emotional Latin ballad with full orchestra, cinematic love song',
+        tempo: '60-80 BPM, VERY SLOW, dramatic pauses, rubato phrasing, grand theatrical pacing',
+        instruments: 'full string orchestra with sweeping arrangements, grand piano, soft timpani, harp arpeggios, french horn warmth, flute melody, brushed drums, orchestral crescendo builds, choir on final chorus',
+        vibe: 'grand romantic gestures, theatrical tearjerker emotion, telenovela climax moment, standing ovation performance, goosebumps crescendo, classic Latin drama',
+        negative: 'fast rhythms, electronic beats, rock, trap, party music, uptempo, modern urban, lo-fi',
+        vocalCharacter: 'dramatic theatrical vocal, orchestral-matching power, grand emotional belting'
       },
       balada_pop: {
         name: 'Balada Pop',
-        style: 'pop ballad, contemporary ballad, radio ballad, modern slow song',
-        tempo: '70-90 BPM, contemporary slow',
-        instruments: 'acoustic guitar, piano, modern soft production',
-        vibe: 'modern radio ballad, emotional but accessible',
-        negative: 'heavy electronic, trap beats, aggressive sounds, banda, fast'
+        style: 'contemporary Latin pop ballad, modern radio ballad en español, Sin Bandera Reik style pop ballad, clean modern emotional slow song, polished studio production ballad',
+        tempo: '70-90 BPM, contemporary slow, modern pacing, accessible emotional tempo',
+        instruments: 'acoustic guitar fingerpicking, piano chords, modern soft programmed drums, electric bass, subtle synth pad, string section accents on chorus, clean guitar arpeggios',
+        vibe: 'modern radio ballad, emotional but accessible and polished, Spotify playlist ballad, contemporary heartfelt, young love dedication, relatable modern emotion',
+        negative: 'heavy electronic, trap beats, aggressive sounds, banda brass, fast uptempo, rock distortion',
+        vocalCharacter: 'polished emotional vocal, modern radio delivery, accessible heartfelt'
       },
       balada_romantica: {
         name: 'Balada Romántica',
-        style: 'romantic ballad, love ballad, wedding song ballad, dedication ballad',
-        tempo: '65-85 BPM, intimate, tender',
-        instruments: 'guitar, piano, soft strings, minimal percussion',
-        vibe: 'deep romantic confession, wedding song, eternal love',
-        negative: 'party music, fast dance, aggressive sounds, electronic, hard'
+        style: 'romantic love ballad, intimate dedication ballad, wedding song ballad en español, tender love confession, acoustic-forward romantic Latin ballad, timeless love song',
+        tempo: '65-85 BPM, intimate tender, breathing room between phrases, heartbeat tempo',
+        instruments: 'acoustic guitar primary with fingerpicking, soft piano accompaniment, gentle string quartet, minimal soft percussion or no drums, bass guitar sustained notes, optional flute or oboe melody',
+        vibe: 'deep romantic confession, wedding ceremony song, eternal love vow, intimate two-people-in-the-world feeling, candlelight dinner, proposal moment, forever love',
+        negative: 'party music, fast dance, aggressive sounds, electronic production, harsh, loud brass',
+        vocalCharacter: 'intimate tender vocal, whispered confession, gentle vulnerable delivery'
       }
     }
   },
@@ -630,6 +710,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '55-75 BPM',
     instruments: 'requinto guitar, soft percussion, bass, strings',
     negativeTags: 'modern production, electronic, fast rhythms, rock, trap, EDM, aggressive, loud',
+    defaultVocalCharacter: 'smooth crooning vocal, intimate vintage delivery',
     subGenres: {
       bolero_clasico: {
         name: 'Bolero Clásico',
@@ -637,7 +718,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '50-70 BPM, VERY SLOW, intimate',
         instruments: 'requinto guitar, soft percussion, bass, occasional strings',
         vibe: 'old-school romance, elegant seduction, timeless love',
-        negative: 'any modern production, electronic, fast rhythms, rock, loud'
+        negative: 'any modern production, electronic, fast rhythms, rock, loud',
+        vocalCharacter: 'intimate crooning vocal, 1950s suave delivery, warm vintage baritone feel'
       },
       bolero_ranchero: {
         name: 'Bolero Ranchero',
@@ -645,7 +727,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '55-75 BPM, slow dramatic',
         instruments: 'mariachi elements (soft trumpets, violins), guitarrón',
         vibe: 'Mexican romantic drama, cantina nostalgia, serenata',
-        negative: 'electronic beats, fast tempos, modern urban, trap, loud'
+        negative: 'electronic beats, fast tempos, modern urban, trap, loud',
+        vocalCharacter: 'cantina intimate vocal, nostalgic delivery, tequila-warmed emotion'
       },
       bolero_moderno: {
         name: 'Bolero Moderno',
@@ -653,7 +736,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '60-80 BPM, updated classic',
         instruments: 'modern soft production, strings, piano, subtle updates',
         vibe: 'classic feel with contemporary polish, sophisticated romance',
-        negative: 'trap, reggaeton, rock guitars, fast electronic music, hard'
+        negative: 'trap, reggaeton, rock guitars, fast electronic music, hard',
+        vocalCharacter: 'smooth contemporary vocal, updated classic delivery, elegant modern'
       }
     }
   },
@@ -666,6 +750,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '90-110 BPM',
     instruments: 'keyboards, electric guitar, drums, bass, occasional accordion',
     negativeTags: 'modern trap, aggressive corridos, electronic EDM, rock, heavy metal, screaming',
+    defaultVocalCharacter: 'warm nostalgic vocal, 80s-90s romantic delivery',
     subGenres: {
       grupera_clasica: {
         name: 'Grupera Clásica',
@@ -673,7 +758,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '90-110 BPM, nostalgic',
         instruments: 'keyboards, electric guitar, drums, bass',
         vibe: '80s/90s nostalgia, quinceañera memories, romantic era',
-        negative: 'modern trap, aggressive corridos, electronic EDM, rock, harsh'
+        negative: 'modern trap, aggressive corridos, electronic EDM, rock, harsh',
+        vocalCharacter: 'nostalgic warm vocal, 80s-era sincerity, keyboard-accompanied delivery'
       },
       grupera_romantica: {
         name: 'Grupera Romántica',
@@ -681,7 +767,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '75-95 BPM, SLOW tender',
         instruments: 'keyboards, soft guitar, strings, gentle drums',
         vibe: 'deep romance, dedication songs, tearful confessions',
-        negative: 'fast party music, aggressive sounds, trap, modern urban, hard'
+        negative: 'fast party music, aggressive sounds, trap, modern urban, hard',
+        vocalCharacter: 'deeply romantic vocal, tearful ballad delivery, sentimental 90s style'
       },
       grupera_bailable: {
         name: 'Grupera Bailable',
@@ -689,7 +776,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '110-130 BPM, FAST dance party',
         instruments: 'keyboards, drums, bass, accordion occasionally',
         vibe: 'wedding reception energy, party classics, dancing couples',
-        negative: 'slow ballads, trap, modern electronic, rock guitars, sad'
+        negative: 'slow ballads, trap, modern electronic, rock guitars, sad',
+        vocalCharacter: 'energetic party vocal, dance-friendly delivery, festive 90s energy'
       }
     }
   },
@@ -702,6 +790,7 @@ const genreDNA: Record<string, GenreData> = {
     defaultTempo: '100-120 BPM',
     instruments: 'accordion, bajo sexto, keyboards, drums, bass',
     negativeTags: 'modern trap, electronic beats, rock guitars, urban, pure electronic, EDM',
+    defaultVocalCharacter: 'warm bilingual vocal, Texas border delivery',
     subGenres: {
       tejano_clasico: {
         name: 'Tejano Clásico',
@@ -709,7 +798,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '100-120 BPM, traditional',
         instruments: 'accordion, bajo sexto, drums, bass',
         vibe: 'Texas Mexican pride, conjunto roots, classic border sound',
-        negative: 'modern trap, electronic beats, rock guitars, urban, EDM'
+        negative: 'modern trap, electronic beats, rock guitars, urban, EDM',
+        vocalCharacter: 'warm bilingual vocal, Tex-Mex sincerity, border town authenticity'
       },
       tejano_romantico: {
         name: 'Tejano Romántico',
@@ -717,7 +807,8 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '80-100 BPM, emotional, tender',
         instruments: 'keyboards, soft accordion, polished drums, strings',
         vibe: 'crossover romance, radio ballad, sophisticated Tex-Mex',
-        negative: 'aggressive sounds, fast party, trap beats, pure rock, harsh'
+        negative: 'aggressive sounds, fast party, trap beats, pure rock, harsh',
+        vocalCharacter: 'tender emotional vocal, heartfelt ballad delivery, border romance'
       },
       tejano_cumbia: {
         name: 'Tejano Cumbia',
@@ -725,7 +816,204 @@ const genreDNA: Record<string, GenreData> = {
         tempo: '100-115 BPM, dance groove',
         instruments: 'keyboards, bass, drums, accordion accents',
         vibe: 'Texas dance hall, cumbia with Tejano polish, party ready',
-        negative: 'raw lo-fi, aggressive corridos, trap, pure electronic, dark'
+        negative: 'raw lo-fi, aggressive corridos, trap, pure electronic, dark',
+        vocalCharacter: 'bright dance vocal, Texas dance hall energy, cumbia-polka groove delivery'
+      }
+    }
+  },
+
+  // ===========================================================================
+  // DURANGUENSE
+  // ===========================================================================
+  duranguense: {
+    baseStyle: 'duranguense, techno-banda from Durango Mexico, electronic polka fusion',
+    defaultTempo: '130-150 BPM',
+    instruments: 'synthesizer accordion, electronic drums, keyboard bass, tambora',
+    negativeTags: 'acoustic only, slow ballad, trap, 808, hip-hop, rock guitar, jazz',
+    defaultVocalCharacter: 'bright energetic vocal, electronic-polka delivery',
+    subGenres: {
+      pasito: {
+        name: 'Pasito Duranguense',
+        style: 'pasito duranguense, fast electronic polka, techno-banda dance music, Montéz de Durango style, driving synthesizer accordion, electronic dance polka, high energy party duranguense',
+        tempo: '140-160 BPM, VERY FAST, HIGH ENERGY, electronic dance tempo, driving polka beat',
+        instruments: 'synthesizer accordion lead melody, electronic drum kit with fast polka pattern, keyboard bass synth, tambora electronic, snare rolls, cymbal crashes, electronic fills',
+        vibe: 'infectious dance energy, quinceañera party, wedding reception, feet-moving pulse, celebratory adrenaline, crowd-pumping, pasito dance craze',
+        negative: 'slow tempo, acoustic instruments, sad ballad, romantic gentle, corridos, trap beats, lo-fi',
+        vocalCharacter: 'high energy party vocal, dance-calling delivery, quinceañera MC energy'
+      },
+      romantico: {
+        name: 'Duranguense Romántico',
+        style: 'romantic duranguense ballad, slow techno-banda love song, Alacranes Musical style romantic duranguense, emotional synthesizer ballad, keyboard-driven Mexican ballad',
+        tempo: '85-105 BPM, moderate emotional tempo, swaying ballad pace',
+        instruments: 'synthesizer accordion with sustained emotional notes, electronic piano, keyboard strings pad, soft electronic drums, bass synth, occasional trumpet accents',
+        vibe: 'emotional dedication, slow dance romance, tearful love confession, sentimental, heartfelt, quinceañera vals, prom night',
+        negative: 'fast party tempo, aggressive, dark, trap, rock, pasito dance energy, uptempo',
+        vocalCharacter: 'emotional tender vocal, synthesizer-ballad delivery, sentimental'
+      },
+      norteno_duranguense: {
+        name: 'Norteño-Duranguense',
+        style: 'norteño-duranguense fusion, accordion-forward duranguense with norteño elements, K-Paz de la Sierra style, hybrid techno-norteño, polka rhythm with electronic production',
+        tempo: '115-135 BPM, energetic, driving polka groove with electronic backbone',
+        instruments: 'diatonic accordion AND synthesizer accordion layered, bajo sexto rhythm guitar, electronic drums with polka pattern, keyboard bass, tambora, snare hits',
+        vibe: 'border fusion energy, modern yet traditional, dance floor ready, norteño soul with duranguense power, crossover appeal',
+        negative: 'pure acoustic, slow ballad, trap, 808 bass, sad sierreño, rock guitars',
+        vocalCharacter: 'energetic crossover vocal, norteño-electronic fusion delivery'
+      }
+    }
+  },
+
+  // ===========================================================================
+  // ROMÁNTICA (Cross-genre romantic)
+  // ===========================================================================
+  romantica: {
+    baseStyle: 'romantic Latin ballad, love song, emotional vocal performance, intimate production',
+    defaultTempo: '70-95 BPM',
+    instruments: 'piano, acoustic guitar, strings, soft percussion',
+    negativeTags: 'aggressive, trap, 808, EDM, rock distortion, fast dance, reggaeton dembow',
+    defaultVocalCharacter: 'tender emotional vocal, intimate romantic delivery',
+    subGenres: {
+      romantica_suave: {
+        name: 'Romántica Suave y Tierna',
+        style: 'soft tender romantic ballad, intimate love song, gentle Latin pop ballad, whispered vocal intimacy, delicate acoustic production, bedroom acoustic feel',
+        tempo: '65-80 BPM, SLOW gentle, intimate whisper pace, breathing tempo',
+        instruments: 'fingerpicked acoustic guitar, soft piano chords, light string quartet, brushed drums or no drums, subtle bass, occasional celeste or music box',
+        vibe: 'intimate tenderness, pillow talk, soft devotion, vulnerability, gentle caress, first dance, whispered love',
+        negative: 'loud brass, aggressive drums, fast tempo, EDM, trap, rock, party energy, power vocals',
+        vocalCharacter: 'whispered intimate vocal, gentle breath, delicate tender delivery'
+      },
+      romantica_apasionada: {
+        name: 'Romántica Apasionada',
+        style: 'passionate dramatic love ballad, power ballad Latin style, building emotional crescendo, dramatic string arrangement, soaring vocal climax',
+        tempo: '75-95 BPM, building from slow to powerful, dramatic crescendo pacing',
+        instruments: 'grand piano, full string orchestra, electric guitar clean arpeggios building to sustained chords, powerful drum build, bass guitar, choir backing vocals on climax',
+        vibe: 'dramatic passion, emotional explosion, theatrical love declaration, goosebumps, tears of joy, wedding ceremony peak moment, overwhelming devotion',
+        negative: 'subtle quiet, minimalist, trap, reggaeton, fast dance, lo-fi, casual feel',
+        vocalCharacter: 'passionate soaring vocal, dramatic crescendo delivery, powerful building emotion'
+      },
+      romantica_alegre: {
+        name: 'Romántica Alegre y Bailable',
+        style: 'upbeat romantic Latin, happy love celebration, danceable romantic pop, feel-good love anthem, romantic cumbia-pop crossover',
+        tempo: '100-120 BPM, upbeat, happy groove, danceable romantic energy',
+        instruments: 'acoustic guitar strumming, congas, light brass accents, piano, bass guitar groove, shaker percussion, hand claps, tambourine',
+        vibe: 'joyful love celebration, dancing with your partner, infectious smile, sunny romance, anniversary party, happy couple energy',
+        negative: 'sad ballad, dark tones, slow tempo, heavy production, aggressive, trap, melancholic',
+        vocalCharacter: 'joyful bright vocal, happy celebration delivery, infectious love energy'
+      },
+      romantica_nostalgica: {
+        name: 'Romántica Nostálgica',
+        style: 'nostalgic romantic ballad, bittersweet love memory, melancholic Latin ballad, remembering love past, wistful emotional vocal, minor key tenderness',
+        tempo: '70-85 BPM, slow reflective, wistful pacing, gentle melancholy',
+        instruments: 'piano with reverb, acoustic guitar fingerpicking, cello solo, soft strings, minimal percussion, ambient pad, occasional violin melody',
+        vibe: 'bittersweet memories, looking at old photos, love that was, gentle heartache, rainy window nostalgia, beautiful sadness, longing',
+        negative: 'happy upbeat, party, fast dance, aggressive, brass, loud drums, EDM, modern trap',
+        vocalCharacter: 'wistful melancholic vocal, gentle sadness, bittersweet reflective delivery'
+      },
+      romantica_serenata: {
+        name: 'Serenata Romántica',
+        style: 'traditional serenata, Mexican serenade style, balcony love song, trio romántico feel, bolero-influenced serenade, classic Latin courtship song',
+        tempo: '75-90 BPM, gentle serenade pace, moonlight tempo, traditional flowing rhythm',
+        instruments: 'requinto guitar lead melody, rhythm guitar, bass guitar or guitarrón, soft maracas, optional violin duo, occasional soft trumpet',
+        vibe: 'moonlit serenade, under the balcony romance, old-fashioned courtship, timeless devotion, classic gentleman, roses and candles, traditional romance',
+        negative: 'electronic production, modern pop, trap, drums heavy, fast tempo, aggressive, urban sound',
+        vocalCharacter: 'classic serenading vocal, formal courtship delivery, moonlit tenderness'
+      }
+    }
+  },
+
+  // ===========================================================================
+  // ROCK EN ESPAÑOL
+  // ===========================================================================
+  rock_espanol: {
+    baseStyle: 'rock en español, Latin rock, Spanish language rock band sound',
+    defaultTempo: '100-130 BPM',
+    instruments: 'electric guitar, bass guitar, drum kit, keyboards',
+    negativeTags: 'regional Mexican, accordion, tuba, mariachi, cumbia, reggaeton dembow, trap 808',
+    defaultVocalCharacter: 'powerful rock vocal, raw authentic delivery',
+    subGenres: {
+      clasico: {
+        name: 'Rock en Español Clásico',
+        style: 'classic rock en español, 1980s 1990s Latin rock, Maná style melodic rock, Caifanes dark rock, Soda Stereo new wave rock, arena rock Latino, powerful guitar riffs with melodic hooks',
+        tempo: '110-130 BPM, driving rock tempo, energetic band groove',
+        instruments: 'electric guitar with overdrive riffs and clean arpeggios, bass guitar driving eighth notes, full drum kit with rock beat, keyboards pad, occasional acoustic guitar bridge',
+        vibe: 'stadium energy, fist-pumping anthem, 90s nostalgia, rock revolution, passionate defiance, arena singalong, generational anthem',
+        negative: 'acoustic only, gentle ballad, electronic dance, regional Mexican, trap, lo-fi bedroom',
+        vocalCharacter: 'powerful arena rock vocal, anthemic delivery, fist-pumping energy, raw passion'
+      },
+      balada_rock: {
+        name: 'Balada de Rock',
+        style: 'rock power ballad in Spanish, emotional rock ballad, Enrique Bunbury style dramatic rock, soft verse building to heavy chorus, lighter-waving slow rock anthem',
+        tempo: '70-85 BPM verses building to 90-100 BPM chorus, dynamic tempo, soft-loud contrast',
+        instruments: 'clean electric guitar arpeggios verse, distorted power chords chorus, piano ballad foundation, bass guitar, drums building from brushes to full kit, string section optional',
+        vibe: 'emotional crescendo, vulnerable confession building to powerful declaration, goosebumps, concert lighter moment, dramatic arc, raw vocal emotion',
+        negative: 'fast punk, party dance, electronic beats, happy pop, reggaeton, constant heavy distortion',
+        vocalCharacter: 'emotional dynamic vocal, soft verse to powerful chorus, dramatic range'
+      },
+      alternativo: {
+        name: 'Rock Alternativo',
+        style: 'alternative rock en español, indie rock Latino, Zoé atmospheric rock, Café Tacvba experimental, dreamy shoegaze-influenced Latin rock, textural guitar layers, atmospheric production',
+        tempo: '95-120 BPM, mid-tempo atmospheric, spacious groove, dreamy floating rhythm',
+        instruments: 'electric guitar with delay and reverb effects, jangly clean guitars, synthesizer textures, bass guitar melodic lines, drum kit with ride cymbal feel, ambient layers',
+        vibe: 'dreamy introspection, artistic depth, atmospheric beauty, indie cinema soundtrack, poetic melancholy, sophisticated cool, underground credibility',
+        negative: 'mainstream pop, happy commercial, heavy metal, regional Mexican, accordion, brass, reggaeton',
+        vocalCharacter: 'dreamy atmospheric vocal, indie cool delivery, artistic and introspective'
+      },
+      pop_rock: {
+        name: 'Pop Rock Latino',
+        style: 'Latin pop rock, radio-friendly rock en español, Juanes style upbeat rock, La Oreja de Van Gogh pop rock, catchy melodic hooks with rock energy, polished rock production',
+        tempo: '105-125 BPM, upbeat radio tempo, catchy groove, singalong pace',
+        instruments: 'electric guitar catchy riffs, acoustic guitar strumming, bass guitar, full drum kit, keyboards and piano, occasional horn accents, handclaps',
+        vibe: 'radio hit energy, singalong chorus, feel-good anthem, summer soundtrack, positive energy, youth spirit, commercial appeal with rock credibility',
+        negative: 'dark heavy metal, experimental noise, slow ballad only, trap, regional Mexican, lo-fi production',
+        vocalCharacter: 'catchy bright vocal, radio-friendly rock delivery, singalong energy'
+      },
+      romantico: {
+        name: 'Rock Romántico',
+        style: 'romantic rock en español, soft rock love song, dedicated rock ballad, acoustic-leaning romantic rock, gentle rock for dedication',
+        tempo: '80-100 BPM, gentle rock groove, swaying mid-tempo, dedication pace',
+        instruments: 'acoustic guitar primary, clean electric guitar accents, soft bass guitar, brushed drums or light kit, piano chords, optional cello',
+        vibe: 'heartfelt rock dedication, mature love, wedding rock song, acoustic intimacy with rock backbone, sincere vulnerability, unplugged feeling',
+        negative: 'heavy distortion, aggressive punk, fast tempo, electronic dance, trap, brass instruments',
+        vocalCharacter: 'tender acoustic vocal, intimate rock delivery, gentle sincerity'
+      }
+    }
+  },
+
+  // ===========================================================================
+  // VALS (Waltz)
+  // ===========================================================================
+  vals: {
+    baseStyle: 'vals, waltz, elegant 3/4 time, Latin waltz, quinceañera vals',
+    defaultTempo: '90-110 BPM',
+    instruments: 'strings, piano, orchestral arrangement',
+    negativeTags: 'trap, 808, reggaeton, EDM, rock distortion, aggressive, fast dance',
+    defaultVocalCharacter: 'elegant graceful vocal, formal waltz delivery, ceremonial beauty',
+    subGenres: {
+      vals_mexicano: {
+        name: 'Vals Mexicano',
+        style: 'traditional Mexican quinceañera waltz, elegant 3/4 time orchestral vals, classic quinceañera ceremony music, formal Mexican waltz with full orchestra, princess moment vals',
+        tempo: '90-110 BPM, elegant flowing 3/4 waltz tempo, graceful swaying, one-two-three count',
+        instruments: 'full string orchestra with sweeping waltz arrangement, piano arpeggios in 3/4, soft trumpets, harp glissandos, celeste, light timpani, flute melody, classical guitar',
+        vibe: 'quinceañera princess moment, formal elegance, coming-of-age ceremony, ballroom beauty, tiara and gown, family pride, tearful father-daughter dance',
+        negative: 'fast dance, trap, electronic, rock, aggressive, casual, modern pop, urban',
+        vocalCharacter: 'elegant formal vocal, ceremonial grandeur, princess-crowning beauty, graceful delivery'
+      },
+      vals_romantico: {
+        name: 'Vals Romántico',
+        style: 'romantic waltz, wedding first dance vals, intimate 3/4 love waltz, elegant couple waltz, tender orchestral romance waltz',
+        tempo: '85-105 BPM, slow romantic 3/4 waltz, intimate swaying tempo, breathing room',
+        instruments: 'string quartet with legato bowing, piano soft chords, acoustic guitar arpeggios, soft flute, optional harp, minimal percussion, cello solo passages',
+        vibe: 'wedding first dance, intimate couple moment, eternal vows, romantic elegance, candlelit ballroom, timeless love, floating together',
+        negative: 'fast tempo, party energy, brass heavy, electronic, trap, aggressive, loud',
+        vocalCharacter: 'tender intimate vocal, romantic floating delivery, gentle wedding vow sincerity'
+      },
+      vals_moderno: {
+        name: 'Vals Moderno',
+        style: 'modern contemporary waltz, updated vals with pop sensibility, cinematic modern waltz, 3/4 time with modern production, young generation vals',
+        tempo: '90-110 BPM, modern waltz groove, accessible 3/4 feel, contemporary elegance',
+        instruments: 'strings with modern recording clarity, piano, acoustic guitar, subtle modern percussion, synth pad warmth, bass guitar, light electronic textures blended with orchestral',
+        vibe: 'modern fairy tale, updated elegance, Instagram-worthy moment, cinematic beauty, contemporary ceremony, accessible yet formal',
+        negative: 'heavy electronic, trap beats, reggaeton dembow, aggressive rock, raw lo-fi, fast party',
+        vocalCharacter: 'clean modern vocal, cinematic delivery, youthful elegance, accessible beauty'
       }
     }
   }
@@ -844,7 +1132,7 @@ const artistDNA: Record<string, ArtistData> = {
   bukis: {
     name: 'Los Bukis',
     genre: 'Grupera',
-    signatureSound: 'grupera legends, romantic ballads, 80s-90s nostalgia, Marco Antonio Solís voice',
+    signatureSound: 'grupera legends, romantic ballads, 80s-90s nostalgia, smooth emotional tenor voice',
     keyElements: 'keyboards, soft guitars, emotional ballads, 80-100 BPM, romantic lyrics',
     keywords: ['bukis', 'los bukis', 'marco antonio solis', 'marco antonio']
   }
@@ -902,22 +1190,24 @@ function buildStylePrompt(
     styleParts.push(genreData.instruments);
   }
 
-  // Secondary: Artist signature (if specified)
+  // Secondary: Artist sonic signature (if specified) — NO artist names sent to API
   if (artistData) {
-    styleParts.push(`style of ${artistData.name}`);
     styleParts.push(artistData.signatureSound);
     styleParts.push(artistData.keyElements);
   }
 
-  // Voice type
+  // Voice type (male or female only — duet not supported by Mureka API)
   const vocalGender = voiceType === 'female' ? 'f' : 'm';
-  if (voiceType === 'duet') {
-    styleParts.push('male and female duet, two voices harmonizing, dueto romántico');
-  }
+
+  // Vocal character: gender-neutral delivery style (gender handled by vocal_gender API param)
+  const vocalCharacter = subGenreData?.vocalCharacter || genreData.defaultVocalCharacter || '';
 
   return {
-    stylePrompt: styleParts.join(', ').substring(0, 950),
-    negativeTags: [...new Set(negativeParts.join(', ').split(', '))].join(', ').substring(0, 500),
+    vocalCharacter,
+    stylePrompt: styleParts.join(', ').substring(0, 980),
+    // Note: negativeTags are not sent to Mureka (API has no negative prompt field)
+    // Kept for documentation/logging purposes only
+    negativeTags: [...new Set(negativeParts.join(', ').split(', '))].join(', ').substring(0, 200),
     vocalGender
   };
 }
@@ -942,7 +1232,7 @@ serve(async (req) => {
     } = body;
 
     if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
-    if (!KIE_API_KEY) throw new Error('KIE_API_KEY not configured');
+    if (!USEAPI_TOKEN || !MUREKA_ACCOUNT) throw new Error('USEAPI_TOKEN and MUREKA_ACCOUNT must be configured');
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const currentSessionId = sessionId || crypto.randomUUID();
@@ -952,17 +1242,19 @@ serve(async (req) => {
     console.log('Artist:', artistInspiration || 'None');
 
     // Build context strings
-    const occasionDesc = occasion === 'otro' && customOccasion 
-      ? customOccasion : (occasionPrompt || occasion);
-    const relationshipDesc = relationship === 'otro' && customRelationship
-      ? customRelationship : (relationshipContext || relationship);
-    const voiceDesc = voiceType === 'female' ? 'voz femenina' 
-      : voiceType === 'duet' ? 'dueto hombre y mujer' : 'voz masculina';
+    const isForSelf = relationship === 'yo_mismo' || occasion === 'para_mi';
+    const occasionDesc = occasion === 'para_mi' ? 'canción personal, himno propio'
+      : occasion === 'otro' && customOccasion ? customOccasion
+      : (occasionPrompt || occasion);
+    const relationshipDesc = relationship === 'yo_mismo' ? 'para mí mismo'
+      : relationship === 'otro' && customRelationship ? customRelationship
+      : (relationshipContext || relationship);
+    const voiceDesc = voiceType === 'female' ? 'voz femenina' : 'voz masculina';
 
     // ==========================================================================
     // STEP 1: Build DNA-based style prompt
     // ==========================================================================
-    const { stylePrompt, negativeTags, vocalGender } = buildStylePrompt(
+    const { stylePrompt, negativeTags, vocalGender, vocalCharacter } = buildStylePrompt(
       genre, subGenre, artistInspiration, voiceType
     );
 
@@ -975,29 +1267,178 @@ serve(async (req) => {
     // STEP 2: Claude generates LYRICS + emotional modifiers
     // ==========================================================================
     const displayGenre = subGenreName || genreName || genre;
-    
-    const claudePrompt = `Eres un compositor experto de música ${displayGenre} mexicana/latina.
+
+    // Extract genre vibe so Claude can align emotional modifiers with genre character
+    const genreDNAData = genreDNA[genre];
+    const subGenreDNAData = subGenre && genreDNAData ? genreDNAData.subGenres[subGenre] : null;
+    const genreVibe = subGenreDNAData?.vibe || '';
+
+    const nameInstruction = isForSelf
+      ? `Menciona "${recipientName}" como protagonista 1-2 veces de forma natural. Tono principal en primera persona: "yo soy", "mi vida", "este soy yo". NO escribir como regalo para otra persona.`
+      : `Menciona "${recipientName}" 2-3 veces de forma NATURAL — como gancho del coro, apertura de verso, o cierre emotivo. NUNCA forzar el nombre donde no fluye rítmicamente.`;
+
+    const perspectiveInstruction = isForSelf
+      ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
+      : '';
+
+    const claudePrompt = `Eres un compositor experto de música ${displayGenre} mexicana/latina. Escribes letras que la gente CANTA, no que solo lee.
 
 INFORMACIÓN:
 - GÉNERO: ${displayGenre}
 ${artistInspiration ? `- INSPIRACIÓN: Estilo de ${artistInspiration}` : ''}
-- DESTINATARIO: ${recipientName}
-- REMITENTE: ${senderName}
+${isForSelf ? `- PROTAGONISTA: ${recipientName} (la canción es para sí mismo)` : `- DESTINATARIO: ${recipientName}\n- REMITENTE: ${senderName}`}
 - RELACIÓN: ${relationshipDesc}
 - OCASIÓN: ${occasionDesc}
 - VOZ: ${voiceDesc}
+${genreVibe ? `- CARÁCTER SONORO DEL GÉNERO: ${genreVibe}` : ''}
 
 DETALLES PERSONALES:
-${details || 'Crear contenido emotivo apropiado para la ocasión.'}
+${details || 'No se proporcionaron detalles específicos. Inventa momentos y recuerdos verosímiles basados en la relación y ocasión — hazlo sentir personal aunque no tengas datos reales.'}
+
+REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
+
+1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4-6 líneas max), y fácil de cantar. Usa repetición intencional. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
+
+2. CONTRASTE VERSO vs CORO. Los versos CUENTAN la historia (narrativos, específicos, íntimos). El coro EXPLOTA la emoción (universal, repetible, intenso). Que se sientan como secciones DISTINTAS en energía y tono.
+
+3. DETALLES ESPECÍFICOS > FRASES GENÉRICAS.
+   PROHIBIDO: "eres la luz de mi vida", "sin ti no puedo vivir", "eres mi todo", "mi corazón late por ti", "eres mi sol y mi luna", "eres el amor de mi vida", "contigo soy feliz".
+   EN VEZ usa los detalles personales del usuario para crear imágenes ÚNICAS y concretas. Un recuerdo específico vale más que 10 frases bonitas genéricas.
+
+4. ${nameInstruction}
+
+5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
+
+6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
+
+7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
+
+8. NO empezar múltiples versos con la misma palabra. Varía las aperturas de cada línea.
+
+${perspectiveInstruction}
+
+${(() => {
+  // Genre-specific spoken word sections — culturally authentic placements
+  const spokenWordConfig: Record<string, { condition: boolean; instruction: string; placement: string; sectionDesc: string }> = {
+    ranchera_lenta: {
+      condition: genre === 'ranchera' && subGenre === 'lenta',
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS (no cantadas) — una dedicatoria emocional directa a ${recipientName}. Estilo Vicente Fernández: íntimo, con pausa dramática, como si le hablaras al oído. Ejemplo: "Escúchame bien, ${recipientName}... esto que siento no cabe en una canción... pero aquí va, con todo mi corazón."`,
+      placement: 'before_coro_final',
+      sectionDesc: `- [Hablado]: Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.`
+    },
+    bolero_clasico: {
+      condition: genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico'),
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS en voz baja, íntima — una confesión romántica susurrada. Estilo trío romántico de los años 50: como si le hablaras al oído en la oscuridad. Ejemplo: "${recipientName}... si supieras lo que siento cada vez que te veo... estas palabras no alcanzan, pero mi corazón no se calla."`,
+      placement: 'before_coro_final',
+      sectionDesc: `- [Hablado]: Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas, en voz baja.`
+    },
+    corrido_tradicional: {
+      condition: genre === 'corrido' && subGenre === 'tradicional',
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. Son 2-3 líneas HABLADAS — el narrador presenta la historia al estilo corrido clásico. Ejemplo: "Señores, les voy a contar la historia de ${recipientName}... pongan atención, que esta es de las buenas."`,
+      placement: 'intro',
+      sectionDesc: `- [Hablado]: Narrador presenta la historia (NO cantado). 2-3 líneas al estilo "Señores, les voy a contar..."`
+    },
+    cumbia_sonidera: {
+      condition: genre === 'cumbia' && subGenre === 'sonidera',
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. Son 2-3 líneas HABLADAS al estilo MC sonidero — saludos y dedicatorias con energía de fiesta. Ejemplo: "¡Wepa! ¡Este saludo va dedicado para ${recipientName}! ¡Que se prenda la fiesta! ¡Desde el barrio con todo el corazón!"`,
+      placement: 'intro',
+      sectionDesc: `- [Hablado]: Saludo de sonidero MC (NO cantado). 2-3 líneas con energía de fiesta, saludos, "¡Wepa!"`
+    },
+    balada_clasica: {
+      condition: genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'),
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS en tono vulnerable — un momento íntimo donde el cantante baja la guardia y confiesa algo que no pudo cantar. Ejemplo: "${recipientName}... sé que las palabras nunca son suficientes... pero necesitaba que supieras esto..."`,
+      placement: 'before_coro_final',
+      sectionDesc: `- [Hablado]: Confesión vulnerable (NO cantada). 2-3 líneas en tono íntimo, bajando la guardia.`
+    },
+    banda_romantica: {
+      condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'),
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria dramática con la banda de fondo suave. Estilo Banda MS/El Recodo romántico. Ejemplo: "Esto va para ti, ${recipientName}... porque no hay canción que alcance para decirte lo que significas..."`,
+      placement: 'before_coro_final',
+      sectionDesc: `- [Hablado]: Dedicatoria dramática (NO cantada). 2-3 líneas emotivas con banda suave de fondo.`
+    },
+    norteno_romantico: {
+      condition: genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'),
+      instruction: `SECCIÓN HABLADA (OBLIGATORIA):
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria sincera y directa, con el acordeón suave de fondo. Estilo norteño de corazón. Ejemplo: "Con el corazón en la mano, ${recipientName}... esta canción la escribí pensando en ti... va con todo lo que soy."`,
+      placement: 'before_coro_final',
+      sectionDesc: `- [Hablado]: Dedicatoria sincera (NO cantada). 2-3 líneas directas, de corazón.`
+    }
+  };
+
+  const active = Object.values(spokenWordConfig).find(c => c.condition);
+  if (!active) return '';
+  return active.instruction + '\n';
+})()}FUNCIÓN DE CADA SECCIÓN:
+${(() => {
+  const isCorridoTrad = genre === 'corrido' && subGenre === 'tradicional';
+  const isCumbiaSonidera = genre === 'cumbia' && subGenre === 'sonidera';
+  const isIntroSpoken = isCorridoTrad || isCumbiaSonidera;
+
+  const spokenConfigs: Record<string, { condition: boolean; sectionDesc: string }> = {
+    ranchera_lenta: { condition: genre === 'ranchera' && subGenre === 'lenta', sectionDesc: `- [Hablado]: Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.` },
+    bolero_clasico: { condition: genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico'), sectionDesc: '- [Hablado]: Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas.' },
+    balada_clasica: { condition: genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'), sectionDesc: '- [Hablado]: Confesión vulnerable (NO cantada). 2-3 líneas íntimas.' },
+    banda_romantica: { condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'), sectionDesc: '- [Hablado]: Dedicatoria dramática (NO cantada). 2-3 líneas emotivas.' },
+    norteno_romantico: { condition: genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'), sectionDesc: '- [Hablado]: Dedicatoria sincera (NO cantada). 2-3 líneas directas.' },
+    corrido_trad: { condition: isCorridoTrad, sectionDesc: '- [Hablado]: Narrador presenta la historia (NO cantado). 2-3 líneas.' },
+    cumbia_sonidera: { condition: isCumbiaSonidera, sectionDesc: '- [Hablado]: Saludo de sonidero MC (NO cantado). 2-3 líneas con energía.' },
+  };
+
+  const active = Object.values(spokenConfigs).find(c => c.condition);
+  const habladoLine = active?.sectionDesc || '';
+
+  if (isIntroSpoken && habladoLine) {
+    // Corrido trad & Cumbia sonidera: [Hablado] IS the intro, just add [Outro]
+    return `${habladoLine}
+- [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
+- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+- [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
+- [Coro]: Repetición del coro (misma letra).
+- [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
+- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+  }
+
+  if (habladoLine) {
+    // Genres with spoken dedication before final chorus
+    return `- [Intro]: Apertura instrumental. NO escribir letra — solo poner "[Intro]" para que Mureka cree una entrada musical.
+- [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
+- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+- [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
+- [Coro]: Repetición del coro (misma letra).
+- [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
+${habladoLine}
+- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+  }
+
+  // All other genres: standard structure with Intro and Outro
+  return `- [Intro]: Apertura instrumental. NO escribir letra — solo poner "[Intro]" para que Mureka cree una entrada musical.
+- [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
+- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+- [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
+- [Coro]: Repetición del coro (misma letra).
+- [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
+- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+})()}
 
 GENERA JSON con:
-1. "lyrics": Letra completa en español mexicano. Menciona "${recipientName}" 2-3 veces. Estructura: [Verso 1], [Coro], [Verso 2], [Coro], [Puente], [Coro Final]
+1. "lyrics": Letra completa siguiendo las reglas anteriores.
 2. "emotionalModifiers": Máximo 25 palabras en INGLÉS describiendo la emoción/atmósfera única (NO género/instrumentos/tempo)
 
-Ejemplos de emotionalModifiers:
-- "warm nostalgic family celebration, joyful gathering, grateful tribute"
-- "passionate romantic confession, heart racing anticipation, intimate devotion"
-- "bittersweet farewell, cherished memories, hopeful goodbye"
+REGLA CRÍTICA para emotionalModifiers:
+Los modifiers DEBEN ser compatibles con el carácter sonoro del género. Expresa la emoción A TRAVÉS del lente del género, nunca en contra.
+- Género agresivo/oscuro (bélico, trap, alterados): emociones con fuerza — "fierce unbreakable loyalty, defiant pride, raw respect" NO "warm heartfelt tender"
+- Género melancólico (sad sierreño, bolero): emociones con peso — "aching longing, bittersweet devotion, haunting memory"
+- Género festivo/bailable (cumbia, quebradita): emociones con energía — "euphoric celebration, infectious joy, vibrant tribute"
+- Género romántico/suave: calidez — "tender intimacy, warm embrace, gentle devotion"
 
 RESPONDE SOLO JSON:
 {"lyrics": "[Verso 1]\\n...", "emotionalModifiers": "..."}`;
@@ -1056,7 +1497,8 @@ RESPONDE SOLO JSON:
     if (emotionalModifiers) {
       finalStyle = `${stylePrompt}, ${emotionalModifiers}`;
     }
-    finalStyle = finalStyle.substring(0, 980);
+    // Keep generous limit — final truncation happens in desc construction below
+    finalStyle = finalStyle.substring(0, 1000);
 
     console.log('=== FINAL STYLE (length: ' + finalStyle.length + ') ===');
 
@@ -1081,7 +1523,11 @@ RESPONDE SOLO JSON:
       balada: 'Piano candlelight, romantic roses',
       bolero: 'Vintage microphone, 1950s noir',
       grupera: '80s-90s aesthetic, keyboard nostalgic',
-      tejano: 'Texas star, accordion, border aesthetic'
+      tejano: 'Texas star, accordion, border aesthetic',
+      duranguense: 'Synthesizer keyboard, Durango desert, electronic polka lights, dance floor',
+      romantica: 'Red roses, candlelight, moonlit couple silhouette, romantic sunset',
+      rock_espanol: 'Electric guitar silhouette, concert stage lights, Latin rock energy',
+      vals: 'Elegant ballroom, chandelier, quinceañera tiara silhouette, golden waltz'
     };
     
     const imagePrompt = `album cover art, digital illustration, ${genreVisuals[genre] || 'Latin music aesthetic'}, vibrant colors, no text, no human faces, square format, professional`;
@@ -1125,71 +1571,167 @@ RESPONDE SOLO JSON:
     console.log('Song saved:', songId);
 
     // ==========================================================================
-    // STEP 6: Call Kie.ai
+    // STEP 6: Call Mureka via useapi.net
     // ==========================================================================
-    const callBackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-    
-    const kiePayload = {
-      prompt: lyrics,
-      customMode: true,
-      style: finalStyle,
-      title: `Canción para ${recipientName}`,
-      instrumental: false,
-      model: 'V4_5',
-      callBackUrl: callBackUrl,
-      negativeTags: negativeTags,
-      vocalGender: vocalGender,
-      styleWeight: 0.85 // Stricter style enforcement
+    // Build callback URL for instant completion notifications
+    const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
+    const callbackBase = `${SUPABASE_URL}/functions/v1/mureka-useapi-callback`;
+    const replyUrl = USEAPI_WEBHOOK_SECRET
+      ? `${callbackBase}?token=${USEAPI_WEBHOOK_SECRET}`
+      : callbackBase;
+
+    const apiVocalGender = vocalGender === 'f' ? 'female' : 'male';
+    // Voice instruction at the BEGINNING of desc for maximum Mureka attention
+    // Combines explicit gender + vocal character style
+    const genderLabel = vocalGender === 'f' ? 'female vocalist only, no male voice' : 'male vocalist only, no female voice';
+    const vocalStyle = vocalCharacter || 'expressive vocal';
+    const voicePrefix = `${genderLabel}, ${vocalStyle}`;
+    // Place voice FIRST in desc, then genre style after
+    const maxStyleChars = 1000 - voicePrefix.length - 2;
+    const descWithVoice = `${voicePrefix}, ${finalStyle.substring(0, maxStyleChars)}`;
+
+    const songTitle = (isForSelf ? `Mi canción — ${recipientName}` : `Canción para ${recipientName}`).substring(0, 50);
+
+    const murekaPayload: Record<string, unknown> = {
+      account: MUREKA_ACCOUNT,
+      lyrics: lyrics.substring(0, 5000),
+      title: songTitle,
+      desc: descWithVoice.substring(0, 1000),
+      model: MUREKA_MODEL,
+      vocal_gender: apiVocalGender,
+      replyUrl,
     };
 
-    console.log('=== CALLING KIE.AI ===');
-    console.log('StyleWeight: 0.85');
-    
-    const musicResponse = await fetch('https://api.kie.ai/api/v1/generate', {
+    console.log('=== CALLING MUREKA VIA USEAPI.NET ===');
+    console.log(`Model: ${MUREKA_MODEL} (fallback: ${MUREKA_FALLBACK_MODEL})`);
+    console.log(`Vocal gender: ${apiVocalGender}`);
+    console.log(`Desc length: ${descWithVoice.length}`);
+
+    let musicResponse = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${USEAPI_TOKEN}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${KIE_API_KEY}`
       },
-      body: JSON.stringify(kiePayload)
+      body: JSON.stringify(murekaPayload),
     });
 
-    if (!musicResponse.ok) {
-      const errorText = await musicResponse.text();
-      console.error(`Kie.ai API error: ${musicResponse.status} - ${errorText.substring(0, 500)}`);
+    // Fallback: if primary model fails with a model-related error, retry with V7.6
+    let modelUsed = MUREKA_MODEL;
+    let cachedErrData: any = null; // avoid double-consuming response body
+    if (!musicResponse.ok && MUREKA_MODEL !== MUREKA_FALLBACK_MODEL) {
+      cachedErrData = await musicResponse.json().catch(() => ({ error: 'Unknown error' }));
+      const fallbackStr = JSON.stringify(cachedErrData);
+      const isModelError = fallbackStr.includes('model') || fallbackStr.includes('not supported') || fallbackStr.includes('invalid') || musicResponse.status === 400;
+      const isAuthOrRateLimit = cachedErrData.code === 'REFRESH_FAILED' || fallbackStr.includes('REFRESH_FAILED') || fallbackStr.includes('exceed limit') || cachedErrData.code === 9008 || fallbackStr.includes('Too frequently');
 
-      // Save the Kie payload so we can retry later, and mark as queued_retry
+      if (isModelError && !isAuthOrRateLimit) {
+        console.warn(`Model ${MUREKA_MODEL} failed (${musicResponse.status}), retrying with ${MUREKA_FALLBACK_MODEL}: ${fallbackStr.substring(0, 200)}`);
+        murekaPayload.model = MUREKA_FALLBACK_MODEL;
+        modelUsed = MUREKA_FALLBACK_MODEL;
+        cachedErrData = null; // reset — new response will be read fresh
+        musicResponse = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${USEAPI_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(murekaPayload),
+        });
+      }
+    }
+
+    if (!musicResponse.ok) {
+      const errData = cachedErrData || await musicResponse.json().catch(() => ({ error: 'Unknown error' }));
+      const errStr = JSON.stringify(errData);
+      console.error(`useapi.net error: ${musicResponse.status} - ${errStr.substring(0, 500)}`);
+
+      // Check for specific retryable errors
+      const isRetryable = errStr.includes('exceed limit') || errData.code === 9008 || errStr.includes('Too frequently');
+
       await supabase.from('songs').update({
-        status: 'queued_retry',
-        error_message: `Kie.ai ${musicResponse.status}: service temporarily unavailable`,
-        kie_payload: JSON.stringify(kiePayload)
+        status: isRetryable ? 'queued_retry' : 'failed',
+        error_message: `useapi.net ${musicResponse.status}: ${errStr.substring(0, 200)}`,
+        mureka_payload: JSON.stringify(murekaPayload),
+        provider: 'mureka-useapi',
       }).eq('id', songId);
 
-      console.log(`Song ${songId} queued for retry — Kie.ai is down`);
+      if (isRetryable) {
+        console.log(`Song ${songId} queued for retry — useapi.net rate limited`);
+        return new Response(JSON.stringify({
+          success: true,
+          song: { id: songId, status: 'queued_retry', imageUrl },
+          sessionId: currentSessionId,
+          queued: true
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
+      }
 
-      // Return success with queued_retry status so frontend shows friendly message
-      return new Response(JSON.stringify({
-        success: true,
-        song: { id: songId, status: 'queued_retry', imageUrl },
-        sessionId: currentSessionId,
-        queued: true
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
+      throw new Error(`useapi.net create-advanced failed (${musicResponse.status}): ${errStr}`);
     }
 
     const musicData = await musicResponse.json();
-    const taskId = musicData.data?.taskId;
-    
-    if (!taskId) {
-      await supabase.from('songs').update({ status: 'failed' }).eq('id', songId);
-      throw new Error('No taskId from Kie.ai: ' + JSON.stringify(musicData));
+    const jobid = musicData.jobid;
+
+    if (!jobid) {
+      await supabase.from('songs').update({ status: 'failed', provider: 'mureka-useapi' }).eq('id', songId);
+      throw new Error('No jobid from useapi.net: ' + JSON.stringify(musicData));
     }
 
-    await supabase.from('songs').update({ task_id: taskId }).eq('id', songId);
-    console.log('TaskId:', taskId);
+    // Store jobid and mureka_payload so poll-processing-songs JOB 0 picks it up
+    // JOB 0 queries mureka_job_id (not task_id) so we must set both
+    await supabase.from('songs').update({
+      task_id: jobid,
+      mureka_job_id: jobid,
+      mureka_payload: JSON.stringify(murekaPayload),
+      provider: 'mureka-useapi',
+    }).eq('id', songId);
+    console.log(`useapi.net jobid: ${jobid} (model: ${modelUsed})`);
+
+    // Mureka creates 2 songs per job. Insert a second DB row (version 2)
+    // linked to the same session and mureka_job_id so poll-processing-songs
+    // JOB 0 maps apiSongs[1] → version 2.
+    const { data: song2Record, error: song2Err } = await supabase.from('songs').insert({
+      session_id: currentSessionId,
+      version: 2,
+      recipient_name: recipientName,
+      sender_name: senderName,
+      relationship: relationship,
+      relationship_custom: customRelationship || null,
+      genre: genre,
+      genre_name: genreName || null,
+      sub_genre: subGenre || null,
+      sub_genre_name: subGenreName || null,
+      occasion: occasion,
+      occasion_custom: customOccasion || null,
+      emotional_tone: emotionalTone || null,
+      details: details,
+      email: email,
+      lyrics: lyrics,
+      audio_url: null,
+      preview_url: null,
+      image_url: imageUrl,
+      status: 'processing',
+      paid: false,
+      selected: false,
+      voice_type: voiceType || 'male',
+      artist_inspiration: artistInspiration || null,
+      style_used: finalStyle,
+      task_id: jobid,
+      mureka_job_id: jobid,
+      mureka_payload: JSON.stringify(murekaPayload),
+      provider: 'mureka-useapi',
+    }).select().single();
+
+    const song2Id = song2Record?.id || null;
+    if (song2Err) {
+      console.error('Failed to insert Song 2 row:', song2Err.message);
+    } else {
+      console.log('Song 2 (version 2) saved:', song2Id);
+    }
 
     return new Response(JSON.stringify({
       success: true,
-      song: { id: songId, status: 'processing', imageUrl },
+      song: { id: songId, status: 'processing', imageUrl, song2PendingId: song2Id },
       sessionId: currentSessionId
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 

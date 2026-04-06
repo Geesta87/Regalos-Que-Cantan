@@ -20,14 +20,6 @@ const voiceOptions = [
     gradient: 'from-blue-500 to-indigo-500',
     bgGradient: 'from-blue-500/20 to-indigo-500/20'
   },
-  {
-    id: 'duet',
-    name: 'Dueto',
-    emoji: '👫',
-    description: 'Voces masculina y femenina juntas',
-    gradient: 'from-purple-500 to-pink-500',
-    bgGradient: 'from-purple-500/20 to-pink-500/20'
-  }
 ];
 
 export default function VoiceStep() {

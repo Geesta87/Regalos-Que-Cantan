@@ -29,6 +29,7 @@ const occasionNames = {
   amistad: 'Amistad',
   agradecimiento: 'Agradecimiento',
   navidad: 'Navidad / Reyes',
+  para_mi: 'Para Mí Mismo',
   otro: 'Ocasión Personalizada'
 };
 
@@ -41,6 +42,7 @@ const relationshipNames = {
   abuelo: 'Abuelo/a',
   amigo: 'Amigo/a',
   jefe: 'Jefe/Colega',
+  yo_mismo: 'Para Mí',
   otro: 'Otra relación'
 };
 
@@ -318,7 +320,7 @@ export default function EmailStep() {
             </button>
 
             <p className="text-white/40 text-[10px] uppercase tracking-tighter text-center">
-              Al hacer clic, aceptas nuestros términos de servicio y política de privacidad.
+              Al hacer clic, aceptas nuestros <a href="/terminos-de-servicio" className="underline hover:text-white/60">términos de servicio</a> y <a href="/politica-de-privacidad" className="underline hover:text-white/60">política de privacidad</a>.
             </p>
 
             <button
@@ -358,8 +360,8 @@ export default function EmailStep() {
           <div className="font-display text-white/30 text-lg tracking-wider uppercase">RegalosQueCantan</div>
           <div className="flex gap-8">
             <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Ayuda</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Términos</a>
+            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/politica-de-privacidad">Privacidad</a>
+            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/terminos-de-servicio">Términos</a>
           </div>
           <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2026 RegalosQueCantan</p>
         </div>

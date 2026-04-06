@@ -23,6 +23,7 @@ const occasions = [
   { id: 'amistad', name: 'Amistad', icon: 'diversity_3' },
   { id: 'agradecimiento', name: 'Agradecimiento', icon: 'redeem' },
   { id: 'navidad', name: 'Navidad / Reyes', icon: 'auto_awesome' },
+  { id: 'para_mi', name: 'Para Mí Mismo', icon: 'person' },
   { id: 'otro', name: 'Otra Ocasión', icon: 'more_horiz' }
 ];
 

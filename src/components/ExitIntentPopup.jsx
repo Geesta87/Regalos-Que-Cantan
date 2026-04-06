@@ -4,8 +4,8 @@ import { validateCoupon } from '../services/api';
 const COUPON_CODE = 'VUELVE10';
 const DISCOUNT_PERCENT = 10;
 const SESSION_KEY = 'rqc_exit_intent_shown';
-const ARM_DELAY_MS = 15000;
-const MOBILE_INACTIVITY_MS = 90000;
+const ARM_DELAY_MS = 8000;       // Armed after 8s (was 15s — too long, users leave before it arms)
+const MOBILE_INACTIVITY_MS = 45000; // 45s inactivity on mobile (was 90s — most users leave within 60s)
 const COUNTDOWN_SECONDS = 15 * 60; // 15 minutes
 
 export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied, selectedSongs = [], purchaseBoth = false }) {
@@ -50,7 +50,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
     return () => clearTimeout(armTimer);
   }, [couponApplied]);
 
-  // Desktop: mouseleave toward top
+  // Desktop: mouseleave toward top + inactivity fallback
   useEffect(() => {
     if (couponApplied) return;
 
@@ -62,6 +62,29 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
     };
 
     document.addEventListener('mouseleave', handleMouseLeave);
+
+    // Desktop inactivity fallback: if user hasn't interacted for 60s after arming
+    let desktopInactivityTimer = null;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!isMobile) {
+      const resetDesktopInactivity = () => {
+        clearTimeout(desktopInactivityTimer);
+        if (!armed.current || shown.current) return;
+        desktopInactivityTimer = setTimeout(() => {
+          showPopup();
+        }, 60000); // 60s inactivity on desktop
+      };
+      resetDesktopInactivity();
+      const desktopEvents = ['mousemove', 'scroll', 'click', 'keydown'];
+      desktopEvents.forEach(evt => document.addEventListener(evt, resetDesktopInactivity, { passive: true }));
+
+      return () => {
+        document.removeEventListener('mouseleave', handleMouseLeave);
+        desktopEvents.forEach(evt => document.removeEventListener(evt, resetDesktopInactivity));
+        clearTimeout(desktopInactivityTimer);
+      };
+    }
+
     return () => document.removeEventListener('mouseleave', handleMouseLeave);
   }, [couponApplied, showPopup]);
 
@@ -127,6 +150,9 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [applySuccess, setApplySuccess] = useState(false);
+
   const handleApply = async () => {
     setIsApplying(true);
     try {
@@ -135,10 +161,15 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
         onApplyCoupon(result);
       }
     } catch (err) {
-      // Even if validation fails, still apply the code - create-checkout does its own validation
       onApplyCoupon({ valid: true, code: COUPON_CODE, type: 'percentage', discount: DISCOUNT_PERCENT, free: false });
     } finally {
       setIsApplying(false);
+      // Show confetti celebration, then auto-close
+      setApplySuccess(true);
+      setShowConfetti(true);
+      setTimeout(() => {
+        handleClose();
+      }, 1800);
     }
   };
 
@@ -166,7 +197,37 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.05); }
         }
+        @keyframes confettiFall {
+          0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+        @keyframes successScale {
+          0% { transform: scale(0.5); opacity: 0; }
+          50% { transform: scale(1.2); }
+          100% { transform: scale(1); opacity: 1; }
+        }
       `}</style>
+
+      {/* Confetti overlay */}
+      {showConfetti && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10001, pointerEvents: 'none', overflow: 'hidden' }}>
+          {Array.from({ length: 40 }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: `${Math.random() * 100}%`,
+                top: '-20px',
+                width: `${8 + Math.random() * 8}px`,
+                height: `${8 + Math.random() * 8}px`,
+                borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+                background: ['#f74da6', '#4ade80', '#fbbf24', '#60a5fa', '#c084fc', '#f43f5e', '#22d3ee'][i % 7],
+                animation: `confettiFall ${1.2 + Math.random() * 1.5}s ease-out ${Math.random() * 0.5}s forwards`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Overlay */}
       <div
@@ -212,6 +273,44 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
             transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease',
           }}
         >
+          {/* Success state — shown after coupon applied */}
+          {applySuccess ? (
+            <div style={{
+              padding: '50px 30px',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: '60px',
+                animation: 'successScale 0.5s ease-out forwards',
+                marginBottom: '16px',
+              }}>
+                🎉
+              </div>
+              <h2 style={{
+                color: 'white',
+                fontSize: '24px',
+                fontWeight: '900',
+                margin: '0 0 8px',
+              }}>
+                ¡Descuento Aplicado!
+              </h2>
+              <p style={{
+                color: '#4ade80',
+                fontSize: '32px',
+                fontWeight: '900',
+                margin: '0 0 8px',
+              }}>
+                {DISCOUNT_PERCENT}% OFF
+              </p>
+              <p style={{
+                color: 'rgba(255,255,255,0.6)',
+                fontSize: '14px',
+                margin: 0,
+              }}>
+                Mira los nuevos precios...
+              </p>
+            </div>
+          ) : (<>
           {/* Urgency bar */}
           <div style={{
             background: 'linear-gradient(90deg, #e11d74, #c026d3)',
@@ -495,6 +594,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
               </span>
             </div>
           </div>
+          </>)}
         </div>
       </div>
     </>

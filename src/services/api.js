@@ -32,6 +32,7 @@ export const occasionPrompts = {
   padre: "una canción de admiración y cariño para un padre",
   amistad: "una canción celebrando una amistad verdadera",
   motivacion: "una canción motivacional e inspiradora",
+  para_mi: "una canción personal para uno mismo, un himno propio de empoderamiento, celebración o reflexión",
   otro: "una canción personalizada y emotiva"
 };
 
@@ -112,6 +113,7 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       fbc,
       fbp,
       clientUserAgent: navigator.userAgent,
+      affiliateCode: sessionStorage.getItem('rqc_affiliate') || null,
       // UTM attribution passthrough
       ...(() => {
         try {

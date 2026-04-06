@@ -11,18 +11,21 @@ const relationships = [
   { id: 'abuelo', name: 'Abuelo / Abuela', icon: 'elderly' },
   { id: 'amigo', name: 'Amigo / Amiga', icon: 'diversity_3' },
   { id: 'jefe', name: 'Jefe / Colega', icon: 'work' },
+  { id: 'yo_mismo', name: 'Para Mí', icon: 'person' },
   { id: 'otro', name: 'Otra relación', icon: 'more_horiz' }
 ];
 
 export default function NamesStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
+  const isParaMi = formData.occasion === 'para_mi';
   const [recipientName, setRecipientName] = useState(formData.recipientName || '');
   const [senderName, setSenderName] = useState(formData.senderName || '');
-  const [relationship, setRelationship] = useState(formData.relationship || '');
+  const [relationship, setRelationship] = useState(isParaMi ? 'yo_mismo' : (formData.relationship || ''));
   const [customRelationship, setCustomRelationship] = useState(formData.customRelationship || '');
   const [showOtroModal, setShowOtroModal] = useState(false);
   const [errors, setErrors] = useState({});
   const continueButtonRef = useRef(null);
+  const isForSelf = relationship === 'yo_mismo';
 
   // Track page view
   useEffect(() => {
@@ -60,31 +63,32 @@ export default function NamesStep() {
 
   const validateFields = () => {
     const newErrors = {};
-    
-    if (!recipientName || recipientName.trim().length < 2) {
+
+    if (!isForSelf && (!recipientName || recipientName.trim().length < 2)) {
       newErrors.recipientName = 'Mínimo 2 caracteres';
     }
-    
+
     if (!senderName || senderName.trim().length < 2) {
       newErrors.senderName = 'Mínimo 2 caracteres';
     }
-    
+
     if (!relationship) {
       newErrors.relationship = 'Selecciona una relación';
     }
-    
+
     if (relationship === 'otro' && (!customRelationship || customRelationship.length < 3)) {
       newErrors.customRelationship = 'Describe la relación';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleContinue = () => {
     if (validateFields()) {
-      updateFormData('recipientName', recipientName.trim());
-      updateFormData('senderName', senderName.trim());
+      const finalSenderName = senderName.trim();
+      updateFormData('recipientName', isForSelf ? finalSenderName : recipientName.trim());
+      updateFormData('senderName', finalSenderName);
       updateFormData('relationship', relationship);
       if (relationship === 'otro') {
         updateFormData('customRelationship', customRelationship);
@@ -98,7 +102,7 @@ export default function NamesStep() {
   };
 
   const isOtroValid = relationship !== 'otro' || (customRelationship && customRelationship.length >= 3);
-  const isValid = recipientName.trim().length >= 2 && senderName.trim().length >= 2 && relationship && isOtroValid;
+  const isValid = (isForSelf || recipientName.trim().length >= 2) && senderName.trim().length >= 2 && relationship && isOtroValid;
 
   return (
     <div className="bg-forest text-white antialiased min-h-screen flex flex-col">
@@ -149,38 +153,46 @@ export default function NamesStep() {
           {/* Title */}
           <div className="text-center mb-10">
             <h1 className="font-display text-white text-5xl md:text-6xl font-black mb-4 leading-tight">
-              ¿A quién va <br/><span className="italic text-gold">dedicada?</span>
+              {isForSelf ? (
+                <>Personaliza <br/><span className="italic text-gold">tu canción</span></>
+              ) : (
+                <>¿A quién va <br/><span className="italic text-gold">dedicada?</span></>
+              )}
             </h1>
-            <p className="text-gold text-sm font-medium tracking-widest uppercase">Personaliza los nombres del regalo</p>
+            <p className="text-gold text-sm font-medium tracking-widest uppercase">
+              {isForSelf ? 'Tu canción, tu historia' : 'Personaliza los nombres del regalo'}
+            </p>
           </div>
 
           {/* Form */}
           <div className="space-y-6">
-            {/* Recipient Name */}
-            <div className="group">
-              <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-2 ml-1" htmlFor="recipient">
-                Nombre del destinatario *
-              </label>
-              <input
-                id="recipient"
-                type="text"
-                value={recipientName}
-                onChange={(e) => {
-                  setRecipientName(e.target.value);
-                  if (errors.recipientName) setErrors({...errors, recipientName: null});
-                }}
-                placeholder="Ej: María Elena"
-                className={`w-full bg-background-dark/40 border-0 border-b ${errors.recipientName ? 'border-red-400' : 'border-gold/40'} focus:border-gold focus:ring-0 text-white text-lg py-4 px-1 transition-all placeholder:text-white/20`}
-              />
-              {errors.recipientName && (
-                <p className="text-red-400 text-xs mt-1 ml-1">{errors.recipientName}</p>
-              )}
-            </div>
+            {/* Recipient Name — hidden when song is for self */}
+            {!isForSelf && (
+              <div className="group">
+                <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-2 ml-1" htmlFor="recipient">
+                  Nombre del destinatario *
+                </label>
+                <input
+                  id="recipient"
+                  type="text"
+                  value={recipientName}
+                  onChange={(e) => {
+                    setRecipientName(e.target.value);
+                    if (errors.recipientName) setErrors({...errors, recipientName: null});
+                  }}
+                  placeholder="Ej: María Elena"
+                  className={`w-full bg-background-dark/40 border-0 border-b ${errors.recipientName ? 'border-red-400' : 'border-gold/40'} focus:border-gold focus:ring-0 text-white text-lg py-4 px-1 transition-all placeholder:text-white/20`}
+                />
+                {errors.recipientName && (
+                  <p className="text-red-400 text-xs mt-1 ml-1">{errors.recipientName}</p>
+                )}
+              </div>
+            )}
 
             {/* Sender Name */}
             <div className="group">
               <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-2 ml-1" htmlFor="sender">
-                Tu nombre *
+                {isForSelf ? 'Tu nombre *' : 'Tu nombre *'}
               </label>
               <input
                 id="sender"
@@ -198,7 +210,8 @@ export default function NamesStep() {
               )}
             </div>
 
-            {/* Relationship */}
+            {/* Relationship — hidden when occasion is para_mi (already yo_mismo) */}
+            {!isParaMi && (
             <div className="group">
               <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-3 ml-1">
                 Relación *
@@ -228,6 +241,7 @@ export default function NamesStep() {
                 <p className="text-red-400 text-xs mt-2 ml-1">{errors.relationship}</p>
               )}
             </div>
+            )}
 
             {/* Buttons */}
             <div ref={continueButtonRef} className="pt-8 flex flex-col items-center gap-6">

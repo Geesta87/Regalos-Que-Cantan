@@ -129,8 +129,7 @@ export default function DetailsPage() {
                 <div className="flex flex-wrap gap-3">
                   {[
                     { id: 'male', label: 'Masculina', icon: 'man' },
-                    { id: 'female', label: 'Femenina', icon: 'woman' },
-                    { id: 'duet', label: 'Dueto', icon: 'group' }
+                    { id: 'female', label: 'Femenina', icon: 'woman' }
                   ].map(voice => (
                     <button
                       key={voice.id}
@@ -238,8 +237,8 @@ export default function DetailsPage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="font-display text-white/50 text-xl">RegalosQueCantan</div>
           <div className="flex gap-10">
-            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">Términos</a>
+            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="/politica-de-privacidad">Privacidad</a>
+            <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="/terminos-de-servicio">Términos</a>
             <a className="text-white/30 hover:text-gold transition-colors text-xs uppercase tracking-widest" href="#">FAQ</a>
           </div>
           <p className="text-white/20 text-xs">© 2026 RegalosQueCantan.</p>
