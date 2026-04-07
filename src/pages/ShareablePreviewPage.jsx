@@ -141,8 +141,8 @@ export default function ShareablePreviewPage() {
   // Video addon
   const [videoAddon, setVideoAddon] = useState(false);
 
-  // Coupon from URL param (e.g. ?coupon=CORRIDO5)
-  const urlCoupon = urlParams.get('coupon');
+  // Coupon from URL param or sessionStorage (e.g. /corridos → CORRIDO5)
+  const urlCoupon = urlParams.get('coupon') || sessionStorage.getItem('rqc_coupon');
   const [couponCode, setCouponCode] = useState(urlCoupon || '');
   const [couponApplied, setCouponApplied] = useState(null);
 

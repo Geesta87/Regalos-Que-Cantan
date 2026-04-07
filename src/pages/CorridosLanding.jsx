@@ -154,6 +154,8 @@ export default function CorridosLanding() {
       genreName: 'Corrido',
       ...(selectedStyle ? { subGenre: selectedStyle.id, subGenreName: selectedStyle.name } : {})
     }));
+    // Persist coupon so checkout pages auto-apply the $24.99 ad price
+    sessionStorage.setItem('rqc_coupon', 'CORRIDO5');
     navigateTo('occasion');
   };
 

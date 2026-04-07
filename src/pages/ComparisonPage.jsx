@@ -120,9 +120,9 @@ export default function ComparisonPage() {
     return () => clearTimeout(whatsappSaveTimer.current);
   }, [whatsappPhone, songs]);
 
-  // Auto-apply coupon from URL param (e.g. ?coupon=CORRIDO5)
+  // Auto-apply coupon from URL param or sessionStorage (e.g. /corridos → CORRIDO5)
   useEffect(() => {
-    const urlCoupon = new URLSearchParams(window.location.search).get('coupon');
+    const urlCoupon = new URLSearchParams(window.location.search).get('coupon') || sessionStorage.getItem('rqc_coupon');
     if (urlCoupon && !couponApplied) {
       validateCoupon(urlCoupon).then(data => {
         if (data.valid) {
