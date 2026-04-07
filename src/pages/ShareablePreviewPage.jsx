@@ -141,11 +141,6 @@ export default function ShareablePreviewPage() {
   // Video addon
   const [videoAddon, setVideoAddon] = useState(false);
 
-  // Coupon from URL param or sessionStorage (e.g. /corridos → CORRIDO5)
-  const urlCoupon = urlParams.get('coupon') || sessionStorage.getItem('rqc_coupon');
-  const [couponCode, setCouponCode] = useState(urlCoupon || '');
-  const [couponApplied, setCouponApplied] = useState(null);
-
   // Social proof
   const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120);
 
@@ -153,6 +148,11 @@ export default function ShareablePreviewPage() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const songIdsParam = urlParams.get('song_ids') || urlParams.get('song_id') || urlParams.get('id');
+
+  // Coupon from URL param or sessionStorage (e.g. /corridos → CORRIDO5)
+  const urlCoupon = urlParams.get('coupon') || sessionStorage.getItem('rqc_coupon');
+  const [couponCode, setCouponCode] = useState(urlCoupon || '');
+  const [couponApplied, setCouponApplied] = useState(null);
 
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 100);
