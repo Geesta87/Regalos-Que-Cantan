@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { validateCoupon } from '../services/api';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -140,6 +141,11 @@ export default function ShareablePreviewPage() {
   // Video addon
   const [videoAddon, setVideoAddon] = useState(false);
 
+  // Coupon from URL param (e.g. ?coupon=CORRIDO5)
+  const urlCoupon = urlParams.get('coupon');
+  const [couponCode, setCouponCode] = useState(urlCoupon || '');
+  const [couponApplied, setCouponApplied] = useState(null);
+
   // Social proof
   const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120);
 
@@ -160,6 +166,18 @@ export default function ShareablePreviewPage() {
       setLoading(false);
     }
   }, [songIdsParam]);
+
+  // Auto-validate coupon from URL param
+  useEffect(() => {
+    if (urlCoupon) {
+      validateCoupon(urlCoupon).then(data => {
+        if (data.valid) {
+          setCouponCode(data.code);
+          setCouponApplied(data);
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   const loadSongs = async () => {
     try {
@@ -254,7 +272,7 @@ export default function ShareablePreviewPage() {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon })
+        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, couponCode: couponApplied?.code || null })
       });
       const data = await res.json();
       if (!data.success || !data.url) throw new Error(data.error || 'Error al crear checkout.');
@@ -265,7 +283,14 @@ export default function ShareablePreviewPage() {
     }
   };
 
-  const basePrice = purchaseMode === 'bundle' ? BUNDLE_PRICE : SINGLE_PRICE;
+  const rawPrice = purchaseMode === 'bundle' ? BUNDLE_PRICE : SINGLE_PRICE;
+  const discountedPrice = couponApplied
+    ? couponApplied.free ? 0
+    : couponApplied.type === 'percentage' ? parseFloat((rawPrice * (1 - couponApplied.discount / 100)).toFixed(2))
+    : couponApplied.type === 'fixed' ? Math.max(0, rawPrice - couponApplied.discount)
+    : rawPrice
+    : rawPrice;
+  const basePrice = discountedPrice;
   const currentPrice = basePrice + (videoAddon ? VIDEO_ADDON_PRICE : 0);
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
@@ -827,9 +852,19 @@ export default function ShareablePreviewPage() {
               </div>
             </div>
             <div style={{textAlign: 'right'}}>
+              {couponApplied && rawPrice !== discountedPrice && (
+                <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
+                  ${(rawPrice + (videoAddon ? VIDEO_ADDON_PRICE : 0)).toFixed(2)}
+                </p>
+              )}
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
                 ${currentPrice.toFixed(2)}
               </p>
+              {couponApplied && (
+                <p style={{margin: 0, fontSize: '11px', color: '#4ade80'}}>
+                  {couponApplied.code} aplicado
+                </p>
+              )}
             </div>
           </div>
         )}

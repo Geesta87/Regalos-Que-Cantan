@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
-import { createCheckout, supabase, checkSongStatus } from '../services/api';
+import { createCheckout, supabase, checkSongStatus, validateCoupon } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import ExitIntentPopup from '../components/ExitIntentPopup';
@@ -119,6 +119,19 @@ export default function ComparisonPage() {
     }
     return () => clearTimeout(whatsappSaveTimer.current);
   }, [whatsappPhone, songs]);
+
+  // Auto-apply coupon from URL param (e.g. ?coupon=CORRIDO5)
+  useEffect(() => {
+    const urlCoupon = new URLSearchParams(window.location.search).get('coupon');
+    if (urlCoupon && !couponApplied) {
+      validateCoupon(urlCoupon).then(data => {
+        if (data.valid) {
+          setCouponCode(data.code);
+          setCouponApplied(data);
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   // Checkout state
   const [isCheckingOut, setIsCheckingOut] = useState(false);
