@@ -84,8 +84,8 @@ export const trackStep = async (step, metadata = {}) => {
         'generating': { event: 'ViewContent', params: { content_name: 'Song Generating', content_category: 'funnel' }},
         'preview': { event: 'ViewContent', params: { content_name: 'Song Preview', content_category: 'product', content_type: 'product' }},
         'comparison': { event: 'ViewContent', params: { content_name: 'Song Comparison', content_category: 'product', content_type: 'product' }},
-        'song_selected': { event: 'AddToCart', params: { content_name: 'Song Selected', currency: 'USD', value: metadata.value || 24.99 }},
-        'checkout_clicked': { event: 'InitiateCheckout', params: { content_name: 'Checkout Started', currency: 'USD', value: metadata.value || 24.99, num_items: metadata.num_items || 1 }}
+        'song_selected': { event: 'AddToCart', params: { content_name: 'Song Selected', currency: 'USD', value: metadata.value || 29.99 }},
+        'checkout_clicked': { event: 'InitiateCheckout', params: { content_name: 'Checkout Started', currency: 'USD', value: metadata.value || 29.99, num_items: metadata.num_items || 1 }}
         // Purchase event is fired directly on SuccessPage after Stripe confirms payment
       };
       

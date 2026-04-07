@@ -46,7 +46,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
   // SEO metadata
   const comboTitle = `${genre.name} para ${occasion.name}`;
   const pageTitle = `${comboTitle} — Cancion Personalizada | RegalosQueCantan`;
-  const pageDescription = `Crea una cancion de ${genre.name.toLowerCase()} personalizada para ${occasion.name.toLowerCase()}. ${genre.description} El regalo perfecto para ${occasion.name.toLowerCase()} desde $24.99.`;
+  const pageDescription = `Crea una cancion de ${genre.name.toLowerCase()} personalizada para ${occasion.name.toLowerCase()}. ${genre.description} El regalo perfecto para ${occasion.name.toLowerCase()} desde $29.99.`;
   const pageKeywords = [
     ...(genre.keywords ? genre.keywords.split(', ') : []),
     ...(occasion.keywords ? occasion.keywords.split(', ') : []),
@@ -63,7 +63,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
   ];
 
   // Definition block text
-  const definitionText = `Un ${genre.name.toLowerCase()} de ${occasion.name.toLowerCase()} personalizado es una cancion original en el estilo de ${genre.name.toLowerCase()}, creada exclusivamente para celebrar ${occasion.name.toLowerCase()}. ${genre.artists && genre.artists.length > 0 ? `Con el estilo de artistas como ${genre.artists.slice(0, 3).join(', ')}, ` : ''}esta cancion incluye el nombre de tu ser querido y detalles especiales que tu proporcionas. Lista en minutos desde $24.99.`;
+  const definitionText = `Un ${genre.name.toLowerCase()} de ${occasion.name.toLowerCase()} personalizado es una cancion original en el estilo de ${genre.name.toLowerCase()}, creada exclusivamente para celebrar ${occasion.name.toLowerCase()}. ${genre.artists && genre.artists.length > 0 ? `Con el estilo de artistas como ${genre.artists.slice(0, 3).join(', ')}, ` : ''}esta cancion incluye el nombre de tu ser querido y detalles especiales que tu proporcionas. Lista en minutos desde $29.99.`;
 
   // Why this combo works
   const whyComboWorks = [
@@ -98,7 +98,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
     "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -190,7 +190,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
 
             {/* Price Badge */}
             <p className="mt-5 text-white/50">
-              Desde <span className="font-bold text-white">$24.99</span> - Listo en minutos
+              Desde <span className="font-bold text-white">$29.99</span> - Listo en minutos
             </p>
           </div>
         </section>

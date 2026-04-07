@@ -132,7 +132,7 @@ export default function ComparisonPage() {
   const genreName = genreConfig?.name || formData?.genre || 'Género';
 
   // Pricing
-  const baseSinglePrice = 24.99;
+  const baseSinglePrice = 29.99;
   const baseBundlePrice = 39.99;
   const videoAddonPrice = 9.99;
   const isFree = couponApplied?.free || false;
@@ -620,7 +620,7 @@ export default function ComparisonPage() {
     setSelectedSongId(songId);
     setPurchaseBoth(false);
     // 🔥 Meta Pixel: AddToCart when user selects a song
-    trackStep('song_selected', { value: 24.99, content_ids: [songId], num_items: 1 });
+    trackStep('song_selected', { value: 29.99, content_ids: [songId], num_items: 1 });
     // Auto-scroll to checkout CTA
     setTimeout(() => {
       videoAddonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });

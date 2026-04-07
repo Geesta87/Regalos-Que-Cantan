@@ -543,7 +543,7 @@ export default function AdminDashboard() {
     }
     if (song.coupon_code === 'GRATIS100' || song.is_free) return 0;
     if (song.is_bundle) return 34.99;
-    return 24.99;
+    return 29.99;
   };
 
   const getVoiceLabel = (song) => {
@@ -1678,7 +1678,7 @@ export default function AdminDashboard() {
                   {/* Potential revenue */}
                   <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
                     <div className="flex-1 text-center">
-                      <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 24.99)}</p>
+                      <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 29.99)}</p>
                       <p className="text-xs text-gray-500">Ingreso potencial</p>
                     </div>
                     <div className="flex-1 text-center">

@@ -441,7 +441,7 @@ export default function SuccessPage() {
     sessionStorage.setItem(storageKey, Date.now().toString());
 
     // Determine purchase value based on number of songs
-    const purchaseValue = songs.length > 1 ? 39.99 : 24.99;
+    const purchaseValue = songs.length > 1 ? 39.99 : 29.99;
 
     // Fire Meta Pixel Purchase event
     if (typeof window.fbq === 'function') {
@@ -2071,7 +2071,7 @@ export default function SuccessPage() {
                   ) : (
                     <>
                       <span style={{ fontSize: '20px' }}>🎬</span>
-                      <span>Quiero sorprenderlo con un video — <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '14px' }}>$29.99</span> $9.99</span>
+                      <span>Quiero sorprenderlo con un video — <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '14px' }}>$19.99</span> $9.99</span>
                       <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>
                     </>
                   )}

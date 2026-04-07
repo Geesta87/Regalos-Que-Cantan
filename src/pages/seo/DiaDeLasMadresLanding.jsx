@@ -41,7 +41,7 @@ export default function DiaDeLasMadresLanding() {
     "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -56,7 +56,7 @@ export default function DiaDeLasMadresLanding() {
     { question: '¿Puedo crear la canción el mismo 10 de Mayo?', answer: 'Sí, tu canción estará lista en 2-4 minutos. Puedes crearla el mismo día y enviarla por WhatsApp al instante.' },
     { question: '¿Qué género es mejor para mamá?', answer: 'Depende de sus gustos. Mariachi y ranchera son los más populares para mamás tradicionales. Bolero para las románticas. Cumbia para las fiesteras. Tú conoces a tu mamá mejor que nadie.' },
     { question: '¿Puedo incluir su apodo cariñoso?', answer: 'Claro que sí. "Mami", "Jefa", "Madre", "Ma" — cualquier nombre cariñoso se incorpora naturalmente en la letra.' },
-    { question: '¿Cuánto cuesta la canción para mamá?', answer: 'Una canción individual cuesta $24.99 USD. Sin suscripción, pago único. Recibes 2 versiones para elegir tu favorita.' },
+    { question: '¿Cuánto cuesta la canción para mamá?', answer: 'Una canción individual cuesta $29.99 USD. Sin suscripción, pago único. Recibes 2 versiones para elegir tu favorita.' },
     { question: '¿Cómo se la envío a mamá?', answer: 'Descargas el MP3 al instante y lo envías por WhatsApp, mensaje de texto, email o redes sociales. También puedes reproducirla en una bocina durante la celebración.' },
     { question: '¿La canción menciona el nombre de mamá?', answer: 'Sí, la letra incluye su nombre, apodo, y los detalles personales que tú proporciones. Es una canción 100% única creada solo para ella.' }
   ];
@@ -105,7 +105,7 @@ export default function DiaDeLasMadresLanding() {
     <>
       <SEOHead
         title="Canción para Mamá este 10 de Mayo | RegalosQueCantan"
-        description="Sorprende a mamá con una canción personalizada este Día de las Madres. Con su nombre, en mariachi, bolero o ranchera. Lista en minutos desde $24.99."
+        description="Sorprende a mamá con una canción personalizada este Día de las Madres. Con su nombre, en mariachi, bolero o ranchera. Lista en minutos desde $29.99."
         canonical="/dia-de-las-madres"
         keywords="regalo día de las madres, canción para mamá, 10 de mayo, regalo mamá original, serenata mamá, canción personalizada mamá"
         structuredData={structuredData}
@@ -182,7 +182,7 @@ export default function DiaDeLasMadresLanding() {
 
             <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-white/50">
               <span>✅ Lista en 2-4 minutos</span>
-              <span>✅ Desde $24.99</span>
+              <span>✅ Desde $29.99</span>
               <span>✅ Envía por WhatsApp al instante</span>
             </div>
           </div>
@@ -508,7 +508,7 @@ export default function DiaDeLasMadresLanding() {
             </button>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-white/40">
-              <span>✓ Desde $24.99</span>
+              <span>✓ Desde $29.99</span>
               <span>✓ 2-4 minutos</span>
               <span>✓ Envía por WhatsApp</span>
               <span>✓ Satisfacción garantizada</span>

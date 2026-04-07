@@ -32,7 +32,7 @@ export default function PreviewPage() {
   const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Calculate price
-  const basePrice = 24.99;
+  const basePrice = 29.99;
   const discount = couponApplied?.discount || 0;
   const finalPrice = (basePrice * (1 - discount / 100)).toFixed(2);
 

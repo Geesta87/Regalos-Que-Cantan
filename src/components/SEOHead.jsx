@@ -30,7 +30,7 @@ export default function SEOHead({
   const fullCanonical = canonical ? `${baseUrl}${canonical}` : baseUrl;
   const fullOgImage = ogImage.startsWith('http') ? ogImage : `${baseUrl}${ogImage}`;
   
-  const defaultDescription = 'Crea canciones personalizadas únicas para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $24.99.';
+  const defaultDescription = 'Crea canciones personalizadas únicas para cumpleaños, día de las madres, aniversarios y más. Corridos, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Desde $29.99.';
   const finalDescription = description || defaultDescription;
 
   return (
@@ -98,7 +98,7 @@ export function generateGenreStructuredData(genre) {
     },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -126,7 +126,7 @@ export function generateOccasionStructuredData(occasion) {
     },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },

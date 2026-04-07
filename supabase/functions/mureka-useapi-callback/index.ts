@@ -129,7 +129,7 @@ function getPreviewReadyEmailHtml(song: any, previewLink: string) {
 
         <!-- Price Section -->
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#c9b99a;font-size:15px;margin:0;">&iquest;Te gusta? Compra la canci&oacute;n completa por solo <strong style="color:#ff6b35;">$24.99 USD</strong></p>
+          <p style="color:#c9b99a;font-size:15px;margin:0;">&iquest;Te gusta? Compra la canci&oacute;n completa por solo <strong style="color:#ff6b35;">$29.99 USD</strong></p>
         </td></tr>
 
         <!-- Gradient Divider -->

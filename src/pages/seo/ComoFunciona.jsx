@@ -66,7 +66,7 @@ export default function ComoFunciona() {
     <>
       <SEOHead
         title="Cómo Funciona — Crea tu Canción Personalizada"
-        description="Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99."
+        description="Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $29.99."
         canonical="/como-funciona"
         keywords="cómo funciona regalos que cantan, crear canción personalizada, canción personalizada pasos, tutorial canción personalizada"
         structuredData={structuredData}
@@ -99,7 +99,7 @@ export default function ComoFunciona() {
             <p className="text-xl text-white/60 mb-6 max-w-2xl mx-auto leading-relaxed">
               Crea una canción personalizada en 6 pasos simples. Sin conocimientos musicales necesarios.
             </p>
-            <p className="text-white/40">Listo en menos de 5 minutos • Desde $24.99</p>
+            <p className="text-white/40">Listo en menos de 5 minutos • Desde $29.99</p>
           </div>
         </section>
 
@@ -108,7 +108,7 @@ export default function ComoFunciona() {
           <div className="max-w-3xl mx-auto">
             <div className="glass-morphism rounded-2xl p-6 md:p-8 border border-white/10" style={{ borderLeftWidth: '4px', borderLeftColor: '#c9184a' }}>
               <p className="text-white/80 leading-relaxed text-lg">
-                RegalosQueCantan es un servicio que crea canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nosotros componemos la letra y generamos la música en minutos. El resultado es una canción única que nadie más tendrá, lista para descargar y compartir desde $24.99.
+                RegalosQueCantan es un servicio que crea canciones personalizadas en más de 20 géneros latinos. Tú proporcionas los detalles — nombre, ocasión, mensaje — y nosotros componemos la letra y generamos la música en minutos. El resultado es una canción única que nadie más tendrá, lista para descargar y compartir desde $29.99.
               </p>
             </div>
           </div>
@@ -152,7 +152,7 @@ export default function ComoFunciona() {
             <div className="grid md:grid-cols-3 gap-6">
               <div className="glass-morphism rounded-2xl p-8 text-center genre-card">
                 <div className="text-4xl mb-4">🎵</div>
-                <h3 className="font-bold text-2xl mb-2">$24.99</h3>
+                <h3 className="font-bold text-2xl mb-2">$29.99</h3>
                 <p className="text-white/50 text-sm mb-4">1 Canción</p>
                 <p className="text-white/40 text-xs">Una versión de tu canción personalizada</p>
               </div>

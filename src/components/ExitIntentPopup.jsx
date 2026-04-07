@@ -19,7 +19,7 @@ export default function ExitIntentPopup({ onApplyCoupon, onClose, couponApplied,
   const countdownInterval = useRef(null);
 
   // Pricing calculation
-  const singlePrice = 24.99;
+  const singlePrice = 29.99;
   const bundlePrice = 39.99;
   const originalPrice = purchaseBoth ? bundlePrice : singlePrice;
   const discountedPrice = (originalPrice * (1 - DISCOUNT_PERCENT / 100)).toFixed(2);

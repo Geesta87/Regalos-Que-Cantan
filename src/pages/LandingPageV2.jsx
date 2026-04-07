@@ -244,7 +244,7 @@ export default function LandingPageV2() {
 
       {/* URGENCY BAR */}
       <div className="bg-gradient-to-r from-gold/90 via-gold to-gold/90 text-white text-center py-3 px-4 font-bold text-sm md:text-base sticky top-0 z-50 shadow-lg">
-        ⚡ Tu canción personalizada lista en ~3 minutos · Desde $24.99
+        ⚡ Tu canción personalizada lista en ~3 minutos · Desde $29.99
       </div>
 
       {/* SOCIAL PROOF TOAST */}
@@ -325,7 +325,7 @@ export default function LandingPageV2() {
           </div>
           
           <p className="mt-3 text-white/60 text-sm">
-            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$49.99</span> <span className="text-gold font-bold">$24.99</span>
+            ✓ Preview gratis antes de pagar • ✓ Desde <span className="line-through text-white/40">$59.99</span> <span className="text-gold font-bold">$29.99</span>
           </p>
         </div>
       </section>
@@ -472,8 +472,8 @@ export default function LandingPageV2() {
             </div>
 
             <div className="mb-6">
-              <span className="text-white/40 line-through text-lg">Precio normal $49.99</span>
-              <div className="text-white text-5xl font-black">$24.99</div>
+              <span className="text-white/40 line-through text-lg">Precio normal $59.99</span>
+              <div className="text-white text-5xl font-black">$29.99</div>
               <span className="text-gold text-sm font-semibold">Pago único • Acceso de por vida</span>
             </div>
 

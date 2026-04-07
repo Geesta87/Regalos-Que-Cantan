@@ -137,7 +137,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </button>
 
             <p className="mt-5 text-white/50">
-              Desde <span className="font-bold text-white">$24.99</span> • Listo en minutos
+              Desde <span className="font-bold text-white">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -345,7 +345,7 @@ export default function OccasionLanding({ occasionSlug }) {
                       <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
                         {c.genre.name} para {occasion.name}
                       </h3>
-                      <p className="text-sm text-white/40">Canción personalizada desde $24.99</p>
+                      <p className="text-sm text-white/40">Canción personalizada desde $29.99</p>
                     </div>
                     <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
                   </SEOLink>
@@ -405,7 +405,7 @@ export default function OccasionLanding({ occasionSlug }) {
             </button>
 
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
-              <span>✓ Desde $24.99</span>
+              <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
             </div>

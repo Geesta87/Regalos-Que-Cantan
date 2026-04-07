@@ -130,7 +130,7 @@ export default function GenreLanding({ genreSlug }) {
 
             {/* Price Badge */}
             <p className="mt-5 text-white/50">
-              Desde <span className="font-bold text-white">$24.99</span> • Listo en minutos
+              Desde <span className="font-bold text-white">$29.99</span> • Listo en minutos
             </p>
           </div>
         </section>
@@ -310,7 +310,7 @@ export default function GenreLanding({ genreSlug }) {
                       <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
                         {genre.name} para {c.occasion.name}
                       </h3>
-                      <p className="text-sm text-white/40">Canción personalizada desde $24.99</p>
+                      <p className="text-sm text-white/40">Canción personalizada desde $29.99</p>
                     </div>
                     <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
                   </SEOLink>

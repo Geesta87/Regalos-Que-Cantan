@@ -155,7 +155,7 @@ export default function LandingPage() {
             </div>
             <p className="text-landing-primary text-sm font-semibold flex items-center gap-2 bg-landing-primary/10 px-4 py-1.5 rounded-full border border-landing-primary/20">
               <span>✨</span>
-              Desde <span className="line-through text-white/40 mx-1">$49.99</span> <span className="font-bold">$24.99</span> · Preview gratis
+              Desde <span className="line-through text-white/40 mx-1">$59.99</span> <span className="font-bold">$29.99</span> · Preview gratis
               <span>✨</span>
             </p>
           </div>

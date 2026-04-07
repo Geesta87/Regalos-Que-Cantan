@@ -30,7 +30,7 @@ const FAQ_CATEGORIES = [
     faqs: [
       {
         question: '¿Cuánto cuesta una canción personalizada?',
-        answer: 'Las canciones empiezan desde $24.99. Ofrecemos diferentes planes: 1 canción ($24.99), 2 canciones ($39.99) y Premium ($49.99) que incluye ambas versiones más extras.'
+        answer: 'Las canciones empiezan desde $29.99. Ofrecemos diferentes planes: 1 canción ($29.99) o 2 canciones ($39.99) para que tengas más opciones.'
       },
       {
         question: '¿Qué métodos de pago aceptan?',
@@ -205,7 +205,7 @@ export default function PreguntasFrecuentes() {
               🎤 Crear Mi Canción Ahora
             </button>
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
-              <span>✓ Desde $24.99</span>
+              <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
             </div>

@@ -37,8 +37,8 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Pricing: $24.99 single, $39.99 bundle, +$9.99 video addon
-    let priceInCents = purchaseBoth ? 3999 : 2499;
+    // Pricing: $29.99 single, $39.99 bundle, +$9.99 video addon
+    let priceInCents = purchaseBoth ? 3999 : 2999;
     const videoAddonCents = videoAddon ? 999 : 0;
     let appliedCoupon = null;
 
