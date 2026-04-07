@@ -35,6 +35,7 @@ import DiaDeLasMadresLanding from './pages/seo/DiaDeLasMadresLanding';
 import ComboLanding from './pages/seo/ComboLanding';
 import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
+import CorridosLanding from './pages/CorridosLanding';
 
 // App State Context
 export const AppContext = React.createContext();
@@ -75,7 +76,8 @@ const pathToPage = {
   '/como-funciona': 'comoFunciona',
   '/preguntas-frecuentes': 'preguntasFrecuentes',
   '/sobre-nosotros': 'sobreNosotros',
-  '/dia-de-las-madres': 'diaDeLasMadres'
+  '/dia-de-las-madres': 'diaDeLasMadres',
+  '/corridos': 'corridos'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -248,9 +250,10 @@ export default function App() {
       comoFunciona: '/como-funciona',
       preguntasFrecuentes: '/preguntas-frecuentes',
       sobreNosotros: '/sobre-nosotros',
-      diaDeLasMadres: '/dia-de-las-madres'
+      diaDeLasMadres: '/dia-de-las-madres',
+      corridos: '/corridos'
     };
-    
+
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
     let url = pageUrls[page];
     if (!url) {
@@ -343,7 +346,8 @@ export default function App() {
           {currentPage === 'preguntasFrecuentes' && <PreguntasFrecuentes />}
           {currentPage === 'sobreNosotros' && <SobreNosotros />}
           {currentPage === 'diaDeLasMadres' && <DiaDeLasMadresLanding />}
-          
+          {currentPage === 'corridos' && <CorridosLanding />}
+
           {/* SEO Dynamic Genre pages */}
           {currentPage.startsWith('generos/') && (
             <GenreLanding genreSlug={getSlugFromPage(currentPage, 'generos/')} />
