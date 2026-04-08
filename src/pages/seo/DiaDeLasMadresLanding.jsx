@@ -176,13 +176,27 @@ export default function DiaDeLasMadresLanding() {
         </div>
 
         {/* ─── HERO SECTION ─── */}
-        <section className="relative px-6 pt-16 pb-20 md:pt-24 md:pb-28">
+        <section className="relative px-6 pt-16 pb-20 md:pt-24 md:pb-28 overflow-hidden">
           {/* Background glow */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-[120px]"></div>
           </div>
 
-          <div className="relative max-w-3xl mx-auto text-center">
+          {/* Scattered reaction photos behind hero */}
+          <div className="absolute inset-0 z-0 pointer-events-none select-none overflow-hidden opacity-30 md:opacity-40">
+            {[
+              { src: '/images/reactions/reaction9.jpg', style: 'top-[5%] left-[-2%] md:left-[3%] w-32 md:w-44 rotate-[-8deg]' },
+              { src: '/images/reactions/reaction2.jpg', style: 'top-[8%] right-[-2%] md:right-[3%] w-28 md:w-40 rotate-[6deg]' },
+              { src: '/images/reactions/reaction6.jpg', style: 'bottom-[10%] left-[0%] md:left-[5%] w-28 md:w-40 rotate-[10deg]' },
+              { src: '/images/reactions/reaction7.jpg', style: 'bottom-[5%] right-[0%] md:right-[5%] w-32 md:w-44 rotate-[-6deg]' },
+            ].map((photo, i) => (
+              <div key={i} className={`absolute ${photo.style} rounded-2xl overflow-hidden shadow-2xl`}>
+                <img src={photo.src} alt="" className="w-full h-auto object-cover" loading="lazy" />
+              </div>
+            ))}
+          </div>
+
+          <div className="relative z-10 max-w-3xl mx-auto text-center">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-pink-500/10 border border-pink-500/20 rounded-full px-5 py-2 mb-8">
               <span className="text-pink-400 text-sm font-bold">&#127801; Dia de las Madres 2026</span>
@@ -248,33 +262,6 @@ export default function DiaDeLasMadresLanding() {
               <TestimonialVideo src="/videos/testimonial3.mp4" />
               <TestimonialVideo src="/videos/testimonial1.mp4" />
               <TestimonialVideo src="/videos/testimonial2.mp4" />
-            </div>
-          </div>
-        </section>
-
-        {/* ─── REACTION PHOTOS ─── */}
-        <section className="px-6 pb-20">
-          <div className="max-w-4xl mx-auto">
-            <p className="text-center text-white/30 text-xs font-bold tracking-widest uppercase mb-8">Asi reaccionan las mamas</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { src: '/images/reactions/reaction9.jpg', caption: '"No paraba de llorar"' },
-                { src: '/images/reactions/reaction2.jpg', caption: '"El mejor regalo de mi vida"' },
-                { src: '/images/reactions/reaction6.jpg', caption: '"Song for Mama"' },
-                { src: '/images/reactions/reaction7.jpg', caption: '"La escucha todos los dias"' },
-              ].map((photo, i) => (
-                <div key={i} className="relative rounded-2xl overflow-hidden group">
-                  <img
-                    src={photo.src}
-                    alt="Mama reaccionando a su cancion personalizada"
-                    className="w-full aspect-[3/4] object-cover"
-                    loading="lazy"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-                    <p className="text-white text-xs font-semibold italic">{photo.caption}</p>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         </section>
