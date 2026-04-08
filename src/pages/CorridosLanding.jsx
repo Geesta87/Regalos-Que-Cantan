@@ -273,7 +273,22 @@ export default function CorridosLanding() {
             {corridoStyles.map((style) => (
               <button
                 key={style.id}
-                onClick={() => { setSelectedStyle(selectedStyle?.id === style.id ? null : style); setStyleError(false); }}
+                onClick={() => {
+                  const newStyle = selectedStyle?.id === style.id ? null : style;
+                  setSelectedStyle(newStyle);
+                  setStyleError(false);
+                  if (newStyle) {
+                    setFormData(prev => ({
+                      ...prev,
+                      genre: 'corrido',
+                      genreName: 'Corrido',
+                      subGenre: newStyle.id,
+                      subGenreName: newStyle.name
+                    }));
+                    sessionStorage.setItem('rqc_coupon', 'CORRIDO5');
+                    setTimeout(() => navigateTo('occasion'), 300);
+                  }
+                }}
                 className={`relative rounded-2xl p-5 text-center transition-all duration-300 border-2 ${
                   selectedStyle?.id === style.id
                     ? 'border-emerald-400 bg-emerald-500/15 scale-[1.03] shadow-xl shadow-emerald-500/25 ring-2 ring-emerald-400/30'
