@@ -204,19 +204,17 @@ export default function DiaDeLasMadresLanding() {
 
             {/* Headline */}
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-black leading-[0.95] tracking-tight mb-6">
-              Hazla{' '}
+              No le regales{' '}
               <span className="bg-gradient-to-r from-pink-400 via-rose-400 to-pink-300 bg-clip-text text-transparent">
-                llorar de emocion
+                lo mismo de siempre
               </span>
-              <br />
-              este 10 de Mayo
             </h1>
 
             {/* Subheadline */}
             <p className="text-lg md:text-xl text-white/50 max-w-xl mx-auto mb-8 leading-relaxed">
-              Una cancion con su nombre, sus memorias y todo tu amor.
+              Este 10 de Mayo, regalale algo que nunca ha recibido.
               <br className="hidden md:block" />
-              Lista en minutos. Unica en el mundo.
+              Una cancion con su nombre, unica en el mundo.
             </p>
 
             {/* Countdown */}
