@@ -69,6 +69,12 @@ export async function generateSong(formData) {
   });
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const data = await response.json().catch(() => ({}));
+      const err = new Error(data.message || 'Has alcanzado el límite de canciones. Vuelve en 24 horas.');
+      err.code = 'RATE_LIMIT_EXCEEDED';
+      throw err;
+    }
     const errorText = await response.text();
     throw new Error(`Failed to generate song: ${response.status} - ${errorText}`);
   }

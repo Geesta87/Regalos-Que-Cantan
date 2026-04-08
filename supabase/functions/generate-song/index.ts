@@ -1237,6 +1237,44 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const currentSessionId = sessionId || crypto.randomUUID();
 
+    // =========================================================================
+    // RATE LIMIT: Max 4 sessions (8 songs) per email per 24 hours
+    // =========================================================================
+    const MAX_SONGS_PER_24H = 8; // 4 sessions × 2 songs each
+    if (email) {
+      const normalizedEmail = email.toLowerCase();
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Only count unpaid songs — paying customers get unlimited generation
+      const { count: paidCount } = await supabase
+        .from('songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('email', normalizedEmail)
+        .eq('paid', true);
+
+      if (!paidCount || paidCount === 0) {
+        const { count, error: countError } = await supabase
+          .from('songs')
+          .select('id', { count: 'exact', head: true })
+          .eq('email', normalizedEmail)
+          .gte('created_at', twentyFourHoursAgo);
+
+        if (!countError && count !== null && count >= MAX_SONGS_PER_24H) {
+          console.warn(`RATE LIMIT: ${email} has ${count} songs in last 24h (max ${MAX_SONGS_PER_24H})`);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: 'RATE_LIMIT_EXCEEDED',
+              message: 'Has alcanzado el límite de canciones gratuitas (4 sesiones). Vuelve en 24 horas o compra una canción para desbloquear más.',
+              songsCreated: count,
+              maxAllowed: MAX_SONGS_PER_24H,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+          );
+        }
+      }
+    }
+
     console.log('=== GENERATE SONG (DNA V2) ===');
     console.log('Genre:', genre, subGenre ? `> ${subGenre}` : '');
     console.log('Artist:', artistInspiration || 'None');

@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
-import { generateSong, checkSongStatus } from '../services/api';
+import { generateSong, checkSongStatus, supabase } from '../services/api';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 
@@ -71,6 +71,7 @@ export default function GeneratingPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [factIndex, setFactIndex] = useState(0);
   const [error, setError] = useState(null);
+  const [rateLimitSongs, setRateLimitSongs] = useState([]);
   
   // Song generation state
   const [song1Id, setSong1Id] = useState(null);
@@ -294,7 +295,22 @@ export default function GeneratingPage() {
         if (import.meta.env.DEV) {
           console.error('❌ Generation error:', err);
         }
-        setError(err.message);
+        if (err.code === 'RATE_LIMIT_EXCEEDED') {
+          setError('RATE_LIMIT');
+          // Fetch their recent songs so they can pick one to buy
+          if (formData?.email) {
+            const { data } = await supabase
+              .from('songs')
+              .select('id, recipient_name, genre_name, occasion, image_url, audio_url, status, created_at')
+              .eq('email', formData.email.toLowerCase())
+              .eq('status', 'completed')
+              .order('created_at', { ascending: false })
+              .limit(8);
+            if (data) setRateLimitSongs(data);
+          }
+        } else {
+          setError(err.message);
+        }
       }
     }
 
@@ -486,6 +502,57 @@ export default function GeneratingPage() {
               Volver al inicio
             </a>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Rate limit error state — show their created songs so they can buy
+  if (error === 'RATE_LIMIT') {
+    return (
+      <div className="bg-forest min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="bg-white/10 border border-gold/30 rounded-2xl p-8 max-w-lg w-full text-center">
+          <span className="material-symbols-outlined text-gold text-5xl mb-4">timer</span>
+          <h2 className="text-white text-2xl font-bold mb-2">Límite alcanzado</h2>
+          <p className="text-white/70 mb-6">
+            Ya creaste el máximo de canciones gratuitas por hoy (4 sesiones). Escucha tus canciones y elige tu favorita:
+          </p>
+
+          {rateLimitSongs.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {rateLimitSongs.map((song) => (
+                <a
+                  key={song.id}
+                  href={`/song/${song.id}`}
+                  className="bg-white/5 border border-white/10 rounded-xl p-3 hover:border-gold/50 hover:bg-white/10 transition group text-left"
+                >
+                  {song.image_url && (
+                    <img
+                      src={song.image_url}
+                      alt=""
+                      className="w-full aspect-square rounded-lg object-cover mb-2"
+                    />
+                  )}
+                  <p className="text-white text-sm font-semibold truncate">
+                    {song.recipient_name}
+                  </p>
+                  <p className="text-white/50 text-xs truncate">
+                    {song.genre_name || song.occasion}
+                  </p>
+                  <span className="text-gold text-xs font-bold mt-1 inline-block group-hover:underline">
+                    Escuchar &rarr;
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => navigateTo('landing')}
+            className="px-8 py-3 bg-white/10 text-white/70 font-bold rounded-full hover:bg-white/20 transition text-sm"
+          >
+            Volver al inicio
+          </button>
         </div>
       </div>
     );
