@@ -226,9 +226,16 @@ export default function DiaDeLasMadresLanding() {
             </div>
 
             {/* CTA */}
+            <style>{`
+              @keyframes ctaGlow {
+                0%, 100% { box-shadow: 0 0 20px rgba(236,72,153,0.4), 0 0 60px rgba(236,72,153,0.1); }
+                50% { box-shadow: 0 0 30px rgba(236,72,153,0.6), 0 0 80px rgba(236,72,153,0.2); }
+              }
+            `}</style>
             <button
               onClick={handleCreateSong}
-              className="inline-flex items-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg md:text-xl px-10 py-5 rounded-full transition-all duration-300 hover:scale-105 active:scale-95 shadow-2xl shadow-pink-500/30"
+              className="inline-flex items-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg md:text-xl px-10 py-5 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
+              style={{ animation: 'ctaGlow 2s ease-in-out infinite' }}
             >
               <span className="text-2xl">&#127908;</span>
               Crear la Cancion para Mama
@@ -279,7 +286,8 @@ export default function DiaDeLasMadresLanding() {
 
               <button
                 onClick={handleCreateSong}
-                className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg px-8 py-5 rounded-full transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-2xl shadow-pink-500/30"
+                className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg px-8 py-5 rounded-full transition-all duration-300 hover:scale-[1.02] active:scale-95"
+                style={{ animation: 'ctaGlow 2s ease-in-out infinite' }}
               >
                 <span className="text-xl">&#127801;</span>
                 Sorprender a Mama Ahora

@@ -10,6 +10,14 @@ const isValentineSeason = () => {
   return (month === 0 && day >= 15) || (month === 1 && day <= 14);
 };
 
+// Show Mother's Day badge Apr 1 - May 10
+const isMadresSeason = () => {
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed
+  const day = now.getDate();
+  return (month === 3) || (month === 4 && day <= 10); // April or May 1-10
+};
+
 const occasions = [
   { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
   { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
@@ -175,6 +183,10 @@ export default function OccasionStep() {
                     ? selectedOccasion === occasion.id
                       ? 'border-2 border-red-500 bg-red-500/30 ring-2 ring-red-400 shadow-lg shadow-red-500/40'
                       : 'border-2 border-red-500/70 bg-red-500/20 hover:bg-red-500/30 hover:border-red-400 shadow-md shadow-red-500/30'
+                    : occasion.id === 'dia_madre' && isMadresSeason()
+                    ? selectedOccasion === occasion.id
+                      ? 'border-2 border-pink-500 bg-pink-500/30 ring-2 ring-pink-400 shadow-lg shadow-pink-500/40'
+                      : 'border-2 border-pink-500/70 bg-pink-500/20 hover:bg-pink-500/30 hover:border-pink-400 shadow-md shadow-pink-500/30'
                     : selectedOccasion === occasion.id
                       ? 'border-gold bg-white/20 ring-1 ring-gold border'
                       : 'border border-white/10 hover:border-gold/50 hover:bg-white/10 bg-white/5'}
@@ -183,14 +195,23 @@ export default function OccasionStep() {
                 {occasion.id === 'san_valentin' && isValentineSeason() && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">¡14 FEB!</span>
                 )}
+                {occasion.id === 'dia_madre' && isMadresSeason() && (
+                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">10 MAYO</span>
+                )}
                 <span className={`material-symbols-outlined text-4xl mb-3 transition-transform ${
                   occasion.id === 'san_valentin' && isValentineSeason()
                     ? 'text-red-400'
+                    : occasion.id === 'dia_madre' && isMadresSeason()
+                    ? 'text-pink-400'
                     : 'text-gold'
                 } ${selectedOccasion === occasion.id ? 'scale-110' : 'group-hover:scale-110'}`}>
                   {occasion.icon}
                 </span>
-                <span className={`text-sm font-medium tracking-wide ${occasion.id === 'san_valentin' && isValentineSeason() ? 'text-red-200' : ''}`}>{occasion.name}</span>
+                <span className={`text-sm font-medium tracking-wide ${
+                  occasion.id === 'san_valentin' && isValentineSeason() ? 'text-red-200'
+                  : occasion.id === 'dia_madre' && isMadresSeason() ? 'text-pink-200'
+                  : ''
+                }`}>{occasion.id === 'dia_madre' && isMadresSeason() ? 'Dia de la Madre 🌷' : occasion.name}</span>
                 {occasion.id === 'otro' && selectedOccasion === 'otro' && customOccasion.length >= 20 && emotionalTone && (
                   <span className="absolute top-2 right-2 material-symbols-outlined text-gold text-sm">check_circle</span>
                 )}
