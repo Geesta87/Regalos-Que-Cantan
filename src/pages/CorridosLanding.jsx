@@ -112,7 +112,9 @@ export default function CorridosLanding() {
   const [duration, setDuration] = useState(0);
   const [openFAQ, setOpenFAQ] = useState(null);
   const [selectedStyle, setSelectedStyle] = useState(null);
+  const [styleError, setStyleError] = useState(false);
   const audioRef = useRef(null);
+  const styleRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -148,11 +150,18 @@ export default function CorridosLanding() {
   };
 
   const handleCreateCorrido = () => {
+    // Require sub-genre selection before entering the funnel
+    if (!selectedStyle) {
+      setStyleError(true);
+      styleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       genre: 'corrido',
       genreName: 'Corrido',
-      ...(selectedStyle ? { subGenre: selectedStyle.id, subGenreName: selectedStyle.name } : {})
+      subGenre: selectedStyle.id,
+      subGenreName: selectedStyle.name
     }));
     // Persist coupon so checkout pages auto-apply the $24.99 ad price
     sessionStorage.setItem('rqc_coupon', 'CORRIDO5');
@@ -240,17 +249,20 @@ export default function CorridosLanding() {
       <section className="py-16 px-6 bg-[#0f0f0f]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">🔥 Elige Tu Estilo</span>
+            <span ref={styleRef} className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">🔥 Elige Tu Estilo</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">
               ¿Qué Tipo de Corrido Quieres?
             </h2>
+            {styleError && !selectedStyle && (
+              <p className="text-red-400 text-sm mt-2 animate-pulse">👆 Selecciona un estilo para continuar</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {corridoStyles.map((style) => (
               <button
                 key={style.id}
-                onClick={() => setSelectedStyle(selectedStyle?.id === style.id ? null : style)}
+                onClick={() => { setSelectedStyle(selectedStyle?.id === style.id ? null : style); setStyleError(false); }}
                 className={`relative rounded-2xl p-4 text-center transition-all duration-300 border-2 ${
                   selectedStyle?.id === style.id
                     ? 'border-emerald-400 bg-emerald-500/15 scale-105 shadow-lg shadow-emerald-500/20'
