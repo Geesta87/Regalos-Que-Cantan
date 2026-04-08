@@ -252,6 +252,33 @@ export default function DiaDeLasMadresLanding() {
           </div>
         </section>
 
+        {/* ─── REACTION PHOTOS ─── */}
+        <section className="px-6 pb-20">
+          <div className="max-w-4xl mx-auto">
+            <p className="text-center text-white/30 text-xs font-bold tracking-widest uppercase mb-8">Asi reaccionan las mamas</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { src: '/images/reactions/reaction9.jpg', caption: '"No paraba de llorar"' },
+                { src: '/images/reactions/reaction2.jpg', caption: '"El mejor regalo de mi vida"' },
+                { src: '/images/reactions/reaction6.jpg', caption: '"Song for Mama"' },
+                { src: '/images/reactions/reaction7.jpg', caption: '"La escucha todos los dias"' },
+              ].map((photo, i) => (
+                <div key={i} className="relative rounded-2xl overflow-hidden group">
+                  <img
+                    src={photo.src}
+                    alt="Mama reaccionando a su cancion personalizada"
+                    className="w-full aspect-[3/4] object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+                    <p className="text-white text-xs font-semibold italic">{photo.caption}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ─── SECOND CTA ─── */}
         <section className="px-6 pb-20">
           <div className="max-w-xl mx-auto text-center">
