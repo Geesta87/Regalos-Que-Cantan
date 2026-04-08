@@ -455,8 +455,8 @@ export default function ShareablePreviewPage() {
         {/* ===== SONG CARDS (ComparisonPage style) ===== */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
+          gridTemplateColumns: songs.length === 2 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: songs.length === 2 ? 'clamp(8px, 2vw, 20px)' : '20px',
           marginBottom: '20px',
           animation: isVisible ? 'fadeInUp 0.8s ease-out 0.3s both' : 'none'
         }}>
@@ -481,7 +481,7 @@ export default function ShareablePreviewPage() {
                     ? `3px solid #f74da6`
                     : `2px solid ${vibe.color}35`,
                   borderRadius: '20px',
-                  padding: '24px',
+                  padding: songs.length === 2 ? 'clamp(12px, 3vw, 24px)' : '24px',
                   cursor: songs.length > 1 ? 'pointer' : 'default',
                   transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
                   opacity: isOtherSelected ? 0.55 : 1,
@@ -508,12 +508,12 @@ export default function ShareablePreviewPage() {
                 )}
 
                 {/* Version badge */}
-                <div style={{marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px'}}>
+                <div style={{marginBottom: songs.length === 2 ? 'clamp(8px, 2vw, 15px)' : '15px', display: 'flex', alignItems: 'center', gap: songs.length === 2 ? '6px' : '10px', flexWrap: 'wrap'}}>
                   <span style={{
                     background: vibe.gradient,
-                    padding: '7px 16px',
+                    padding: songs.length === 2 ? '5px 10px' : '7px 16px',
                     borderRadius: '20px',
-                    fontSize: '13px',
+                    fontSize: songs.length === 2 ? 'clamp(10px, 2.8vw, 13px)' : '13px',
                     fontWeight: 'bold',
                     boxShadow: `0 3px 12px ${vibe.color}50`,
                     letterSpacing: '0.3px'
@@ -527,7 +527,7 @@ export default function ShareablePreviewPage() {
 
                 {/* Album art with glow */}
                 <div style={{
-                  height: '280px',
+                  height: songs.length === 2 ? 'clamp(140px, 35vw, 280px)' : '280px',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -595,7 +595,7 @@ export default function ShareablePreviewPage() {
                 </div>
 
                 {/* Song info */}
-                <h3 style={{fontSize: '18px', marginBottom: '4px', fontWeight: 'bold'}}>
+                <h3 style={{fontSize: songs.length === 2 ? 'clamp(13px, 3.5vw, 18px)' : '18px', marginBottom: '4px', fontWeight: 'bold'}}>
                   Para {recipientName}
                 </h3>
                 <p style={{color: '#f74da6', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>
@@ -646,13 +646,13 @@ export default function ShareablePreviewPage() {
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePlay(song.id); }}
                   style={{
-                    width: '100%', padding: '16px',
+                    width: '100%', padding: songs.length === 2 ? 'clamp(10px, 2.5vw, 16px)' : '16px',
                     background: isPlaying
                       ? 'linear-gradient(90deg, #f74da6, #f20d80)'
                       : vibe.gradient,
                     color: isPlaying ? '#181114' : 'white',
                     border: 'none', borderRadius: '12px',
-                    cursor: 'pointer', fontWeight: 'bold', fontSize: '15px',
+                    cursor: 'pointer', fontWeight: 'bold', fontSize: songs.length === 2 ? 'clamp(11px, 3vw, 15px)' : '15px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                     transition: 'all 0.3s',
                     boxShadow: isPlaying ? '0 4px 20px rgba(242,13,128,0.5)' : `0 4px 18px ${vibe.color}40`,
@@ -1150,6 +1150,64 @@ export default function ShareablePreviewPage() {
                   />
                 </div>
               )}
+
+              {/* Coupon code input */}
+              {!allPaid && (!couponApplied ? (
+                <div style={{ marginBottom: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.6)', margin: '0 0 8px' }}>🏷️ ¿Tienes un código de descuento? Ingrésalo aquí:</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={couponCode}
+                      onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder="Ej: MARIA10"
+                      style={{
+                        flex: 1, padding: '12px 16px', borderRadius: '10px',
+                        border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)',
+                        color: '#fff', fontSize: '15px', fontWeight: 600, letterSpacing: '1px',
+                        outline: 'none', fontFamily: 'inherit'
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!couponCode.trim()) return;
+                        try {
+                          const data = await validateCoupon(couponCode.trim());
+                          if (data.valid) {
+                            setCouponCode(data.code);
+                            setCouponApplied(data);
+                          } else {
+                            setCheckoutError('Código no válido o expirado');
+                            setTimeout(() => setCheckoutError(null), 3000);
+                          }
+                        } catch {
+                          setCheckoutError('Código no válido');
+                          setTimeout(() => setCheckoutError(null), 3000);
+                        }
+                      }}
+                      style={{
+                        padding: '12px 24px', borderRadius: '10px', border: 'none',
+                        background: 'linear-gradient(90deg, #e11d74, #c026d3)', color: '#fff', fontSize: '14px',
+                        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Aplicar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: '14px', background: 'rgba(74,222,128,0.08)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(74,222,128,0.2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#4ade80', margin: '0 0 2px' }}>✅ Código {couponApplied.code} aplicado</p>
+                      <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                        {couponApplied.free ? 'Canción gratis' : `${couponApplied.discount}% de descuento — Nuevo precio: $${discountedPrice.toFixed(2)}`}
+                      </p>
+                    </div>
+                    <button onClick={() => { setCouponApplied(null); setCouponCode(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>✕</button>
+                  </div>
+                </div>
+              ))}
 
               {checkoutError && (
                 <div style={{
