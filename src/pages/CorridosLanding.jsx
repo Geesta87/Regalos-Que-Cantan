@@ -246,56 +246,76 @@ export default function CorridosLanding() {
       </section>
 
       {/* ==================== 2. CORRIDO STYLES PICKER ==================== */}
-      <section className="py-16 px-6 bg-[#0f0f0f]">
+      <section ref={styleRef} className="py-16 px-6 bg-[#0f0f0f]">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-10">
-            <span ref={styleRef} className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">🔥 Elige Tu Estilo</span>
-            <h2 className="text-white text-3xl md:text-4xl font-black mt-3">
-              ¿Qué Tipo de Corrido Quieres?
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 text-black font-black text-lg">1</div>
+            <div className="h-[2px] w-12 bg-white/10"></div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">2</div>
+            <div className="h-[2px] w-12 bg-white/10"></div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">3</div>
+          </div>
+
+          <div className={`text-center mb-8 transition-all duration-300 ${styleError && !selectedStyle ? 'animate-pulse' : ''}`}>
+            <h2 className="text-white text-3xl md:text-4xl font-black">
+              Paso 1: Elige Tu Estilo de Corrido
             </h2>
+            <p className="text-white/50 text-base mt-2">Cada estilo tiene su propio sonido y vibra</p>
             {styleError && !selectedStyle && (
-              <p className="text-red-400 text-sm mt-2 animate-pulse">👆 Selecciona un estilo para continuar</p>
+              <div className="inline-flex items-center gap-2 mt-3 bg-red-500/20 border border-red-500/40 rounded-full px-5 py-2">
+                <span className="text-red-400 text-sm font-bold">Selecciona un estilo para continuar</span>
+              </div>
             )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             {corridoStyles.map((style) => (
               <button
                 key={style.id}
                 onClick={() => { setSelectedStyle(selectedStyle?.id === style.id ? null : style); setStyleError(false); }}
-                className={`relative rounded-2xl p-4 text-center transition-all duration-300 border-2 ${
+                className={`relative rounded-2xl p-5 text-center transition-all duration-300 border-2 ${
                   selectedStyle?.id === style.id
-                    ? 'border-emerald-400 bg-emerald-500/15 scale-105 shadow-lg shadow-emerald-500/20'
+                    ? 'border-emerald-400 bg-emerald-500/15 scale-[1.03] shadow-xl shadow-emerald-500/25 ring-2 ring-emerald-400/30'
+                    : styleError && !selectedStyle
+                    ? 'border-red-500/40 bg-white/[0.03] hover:border-emerald-500/40 hover:bg-white/[0.06]'
                     : 'border-white/10 bg-white/[0.03] hover:border-emerald-500/40 hover:bg-white/[0.06]'
                 }`}
               >
                 {style.popular && (
-                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-black px-2 py-0.5 rounded-full">
-                    🔥 POPULAR
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">
+                    POPULAR
                   </div>
                 )}
-                <div className="text-3xl mb-2">{style.emoji}</div>
-                <div className="text-white font-bold text-sm">{style.name}</div>
-                <div className="text-white/50 text-[11px] mt-1 leading-tight">{style.desc}</div>
-                {selectedStyle?.id === style.id && (
-                  <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-400 rounded-full flex items-center justify-center">
-                    <span className="text-black text-xs font-bold">✓</span>
+                <div className="text-4xl mb-2">{style.emoji}</div>
+                <div className="text-white font-bold text-base">{style.name}</div>
+                <div className="text-white/40 text-xs mt-1 leading-tight">{style.desc}</div>
+                {selectedStyle?.id === style.id ? (
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-emerald-400 rounded-full flex items-center justify-center shadow-lg">
+                    <span className="text-black text-sm font-bold">✓</span>
                   </div>
+                ) : (
+                  <div className="absolute top-2 right-2 w-6 h-6 border-2 border-white/20 rounded-full"></div>
                 )}
               </button>
             ))}
           </div>
 
-          {selectedStyle && (
-            <div className="text-center mt-8 animate-fadeIn">
-              <button
-                onClick={handleCreateCorrido}
-                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-8 py-4 rounded-full text-lg transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/30"
-              >
-                🎺 Crear Corrido {selectedStyle.name} — $24.99
-              </button>
-            </div>
-          )}
+          <div className="text-center mt-8">
+            <button
+              onClick={handleCreateCorrido}
+              className={`inline-flex items-center gap-2 font-bold px-10 py-4 rounded-full text-lg transition-all shadow-lg ${
+                selectedStyle
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black hover:scale-105 active:scale-95 shadow-emerald-500/30'
+                  : 'bg-white/10 text-white/40 cursor-default'
+              }`}
+            >
+              {selectedStyle
+                ? `🎺 Crear Corrido ${selectedStyle.name} — $24.99`
+                : '👆 Selecciona un estilo arriba'
+              }
+            </button>
+          </div>
         </div>
       </section>
 
