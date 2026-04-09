@@ -434,11 +434,11 @@ export default function SuccessPage() {
 
     // Deduplicate: check if we already fired for this exact checkout
     const storageKey = `rqc_purchase_fired_${sessionId}`;
-    if (sessionStorage.getItem(storageKey)) {
+    if (localStorage.getItem(storageKey)) {
       console.log('[Meta Pixel] Purchase already fired for session:', sessionId, '— skipped');
       return;
     }
-    sessionStorage.setItem(storageKey, Date.now().toString());
+    localStorage.setItem(storageKey, Date.now().toString());
 
     // Determine purchase value based on number of songs
     const purchaseValue = songs.length > 1 ? 39.99 : 29.99;
@@ -452,7 +452,7 @@ export default function SuccessPage() {
         content_name: `Canción para ${songs[0]?.recipient_name || 'regalo'}`,
         content_ids: songs.map(s => s.id),
         num_items: songs.length
-      });
+      }, { eventID: sessionId });
       console.log('[Meta Pixel] Purchase event fired:', purchaseValue, 'USD for session:', sessionId);
     }
   }, [songs]);
