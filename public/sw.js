@@ -1,6 +1,6 @@
 // RegalosQueCantan Service Worker
 // ✅ IMPORTANT: Bump this version string on every deploy to bust old caches
-const CACHE_VERSION = 'rqc-v2.0.4';
+const CACHE_VERSION = 'rqc-v3.2.0';
 const CACHE_NAME = `rqc-static-${CACHE_VERSION}`;
 
 // Only cache fonts and the shell - NOT JS bundles (Vite hashes those already)
@@ -61,18 +61,12 @@ self.addEventListener('fetch', (event) => {
   // Skip non-http
   if (!url.protocol.startsWith('http')) return;
 
-  // ===== HTML navigation - ALWAYS network first =====
+  // ===== HTML navigation - ALWAYS network, never cache =====
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
+      fetch(request, { cache: 'no-cache' })
         .catch(() => {
-          return caches.match(request)
-            .then((cached) => cached || caches.match('/') || new Response('Offline', { status: 503 }));
+          return caches.match('/') || new Response('Offline', { status: 503 });
         })
     );
     return;
@@ -113,18 +107,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ===== Everything else (JS/CSS bundles) - network first with cache fallback =====
+  // ===== Everything else (JS/CSS bundles) - network first, no stale cache =====
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
         return response;
       })
       .catch(() => {
-        // ✅ FIX: Always return a valid Response, never undefined
         return caches.match(request)
           .then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' }));
       })
