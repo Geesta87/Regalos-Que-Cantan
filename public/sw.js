@@ -1,123 +1,44 @@
-// RegalosQueCantan Service Worker
-// ✅ IMPORTANT: Bump this version string on every deploy to bust old caches
-const CACHE_VERSION = 'rqc-v3.2.0';
-const CACHE_NAME = `rqc-static-${CACHE_VERSION}`;
+// SELF-DESTRUCTING SERVICE WORKER
+// This SW's only job is to uninstall itself and clear all caches.
+// Browsers re-fetch /sw.js on every navigation, so any client that
+// previously had a stale SW will pick this up and auto-uninstall.
+//
+// Once we're confident every visitor has been hit (a few weeks),
+// this file can be deleted entirely.
 
-// Only cache fonts and the shell - NOT JS bundles (Vite hashes those already)
-const STATIC_ASSETS = [
-  'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap',
-  'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap'
-];
-
-// Install - cache fonts only, skip waiting immediately
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing', CACHE_VERSION);
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch((err) => console.log('[SW] Install cache error:', err))
-  );
+  // Skip waiting so we can activate immediately on next load
+  self.skipWaiting();
 });
 
-// Activate - delete ALL old caches, claim clients immediately
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating', CACHE_VERSION);
   event.waitUntil(
-    caches.keys().then((names) => {
-      return Promise.all(
-        names
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
+    (async () => {
+      // 1. Delete every cache this origin has
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (e) {}
 
-// Fetch - NETWORK FIRST for everything
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
+      // 2. Unregister ourselves
+      try {
+        await self.registration.unregister();
+      } catch (e) {}
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-
-  // ===== BYPASS LIST - let these go straight to network, SW does NOT touch them =====
-  if (url.hostname.includes('supabase')) return;
-  if (url.hostname.includes('stripe')) return;
-  if (url.hostname.includes('sendgrid')) return;
-  if (url.hostname.includes('facebook')) return;
-  if (url.hostname.includes('fbcdn')) return;
-  if (url.hostname.includes('clarity')) return;
-  if (url.hostname.includes('google-analytics')) return;
-  if (url.hostname.includes('googletagmanager')) return;
-  // ✅ FIX: Bypass Kie.ai / aiquickdraw temp files (audio, images)
-  if (url.hostname.includes('aiquickdraw')) return;
-  if (url.hostname.includes('kie.ai')) return;
-  if (url.hostname.includes('tempfile')) return;
-  // Skip non-http
-  if (!url.protocol.startsWith('http')) return;
-
-  // ===== HTML navigation - ALWAYS network, never cache =====
-  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(
-      fetch(request, { cache: 'no-cache' })
-        .catch(() => {
-          return caches.match('/') || new Response('Offline', { status: 503 });
-        })
-    );
-    return;
-  }
-
-  // ===== Fonts - cache first (they never change) =====
-  if (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        return cached || fetch(request).then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        }).catch(() => new Response('', { status: 503 }));
-      })
-    );
-    return;
-  }
-
-  // ===== Images in /images/ or /icons/ - network first, cache-bust with version =====
-  // This ensures updated photos with the same filename always show the new version
-  if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|ico)$/i)) {
-    event.respondWith(
-      fetch(request, { cache: 'no-cache' })
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+      // 3. Force-reload every open tab so they drop the SW controller
+      try {
+        const clientsList = await self.clients.matchAll({ type: 'window' });
+        clientsList.forEach((client) => {
+          if ('navigate' in client) {
+            client.navigate(client.url);
           }
-          return response;
-        })
-        .catch(() => {
-          // ✅ FIX: Always return a valid Response, never undefined
-          return caches.match(request)
-            .then((cached) => cached || new Response('', { status: 404, statusText: 'Not Found' }));
-        })
-    );
-    return;
-  }
-
-  // ===== Everything else (JS/CSS bundles) - network first, no stale cache =====
-  event.respondWith(
-    fetch(request, { cache: 'no-cache' })
-      .then((response) => {
-        return response;
-      })
-      .catch(() => {
-        return caches.match(request)
-          .then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' }));
-      })
+        });
+      } catch (e) {}
+    })()
   );
 });
 
-console.log('[SW] RegalosQueCantan service worker loaded');
+// Fetch handler: pass everything straight to network, touch nothing
+self.addEventListener('fetch', (event) => {
+  // No-op — let the browser handle it normally
+});
