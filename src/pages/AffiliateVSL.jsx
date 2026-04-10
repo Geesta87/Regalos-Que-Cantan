@@ -111,7 +111,7 @@ export default function AffiliateVSL() {
             animation: 'fadeUp 0.8s ease-out 0.1s both',
           }}>
             <iframe
-              src="https://www.youtube.com/embed/MK8XSTK_a_0?rel=0&modestbranding=1&start=2"
+              src="https://www.youtube.com/embed/MK8XSTK_a_0?rel=0&modestbranding=1&start=2&autoplay=1&mute=1&playsinline=1"
               title="Mensaje personal de Gerardo"
               style={{ width: '100%', height: '100%', border: 'none' }}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
