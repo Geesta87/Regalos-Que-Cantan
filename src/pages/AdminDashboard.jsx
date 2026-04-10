@@ -183,7 +183,7 @@ export default function AdminDashboard() {
         .from('songs')
         .select('*')
         .order('created_at', { ascending: false })
-        .range(0, 9999);
+        .range(0, 19999);
 
       if (error) throw error;
 
