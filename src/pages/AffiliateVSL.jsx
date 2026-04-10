@@ -40,6 +40,26 @@ export default function AffiliateVSL() {
         @media (max-width: 640px) {
           .vsl-hero-title { font-size: 1.6rem !important; }
           .vsl-contact-grid { grid-template-columns: 1fr !important; }
+          .vsl-section { padding: 24px 16px 60px !important; }
+          .vsl-contact-btn { padding: 18px 16px !important; }
+          .vsl-phone-display { font-size: 22px !important; }
+          .vsl-rewards-card { padding: 18px 14px !important; }
+          .vsl-selling-card { padding: 14px !important; gap: 12px !important; }
+          .vsl-selling-icon { width: 40px !important; height: 40px !important; font-size: 20px !important; }
+          .vsl-selling-title { font-size: 14px !important; }
+          .vsl-selling-desc { font-size: 12.5px !important; }
+          .vsl-reward-row { padding: 10px 12px !important; }
+          .vsl-reward-title { font-size: 12.5px !important; white-space: normal !important; }
+          .vsl-reward-amount { font-size: 14px !important; }
+          .vsl-rewards-total { font-size: 20px !important; }
+          .vsl-heading { font-size: 19px !important; }
+          .vsl-subheading { font-size: 18px !important; }
+        }
+        @media (max-width: 380px) {
+          .vsl-section { padding: 20px 14px 50px !important; }
+          .vsl-contact-grid { gap: 10px !important; }
+          .vsl-phone-label { font-size: 10px !important; }
+          .vsl-phone-value { font-size: 13px !important; }
         }
       `}</style>
 
@@ -55,7 +75,7 @@ export default function AffiliateVSL() {
         </nav>
 
         {/* ============ MAIN CONTENT ============ */}
-        <section style={{ maxWidth: '680px', margin: '0 auto', padding: '30px 24px 80px' }}>
+        <section className="vsl-section" style={{ maxWidth: '680px', margin: '0 auto', padding: '30px 24px 80px' }}>
           {/* Personal greeting */}
           <div style={{ textAlign: 'center', marginBottom: '28px', animation: 'fadeUp 0.6s ease-out' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
@@ -101,7 +121,7 @@ export default function AffiliateVSL() {
 
           {/* ============ CONTACT SECTION ============ */}
           <div style={{ textAlign: 'center', animation: 'fadeUp 0.8s ease-out 0.2s both' }}>
-            <h2 style={{ fontFamily: font, fontSize: '22px', fontWeight: 800, color: '#1c1917', marginBottom: '8px', letterSpacing: '-0.01em' }}>
+            <h2 className="vsl-heading" style={{ fontFamily: font, fontSize: '22px', fontWeight: 800, color: '#1c1917', marginBottom: '8px', letterSpacing: '-0.01em' }}>
               ¿Te interesa? Contáctame directamente
             </h2>
             <p style={{ fontSize: '14px', color: '#78716c', marginBottom: '28px' }}>
@@ -136,8 +156,8 @@ export default function AffiliateVSL() {
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>WhatsApp</div>
-                  <div style={{ fontSize: '15px', fontWeight: 700 }}>Enviar mensaje</div>
+                  <div className="vsl-phone-label" style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>WhatsApp</div>
+                  <div className="vsl-phone-value" style={{ fontSize: '15px', fontWeight: 700 }}>Enviar mensaje</div>
                 </div>
               </a>
 
@@ -160,8 +180,8 @@ export default function AffiliateVSL() {
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
                 </svg>
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Llámame</div>
-                  <div style={{ fontSize: '15px', fontWeight: 700 }}>(213) 666-6619</div>
+                  <div className="vsl-phone-label" style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Llámame</div>
+                  <div className="vsl-phone-value" style={{ fontSize: '15px', fontWeight: 700 }}>(213) 666-6619</div>
                 </div>
               </a>
             </div>
@@ -177,7 +197,7 @@ export default function AffiliateVSL() {
               <p style={{ fontSize: '12px', color: '#a8a29e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
                 📞 Mi número directo
               </p>
-              <a href={`tel:+1${phoneNumber}`} style={{ fontFamily: font, fontSize: '26px', fontWeight: 800, color: '#1c1917', textDecoration: 'none', letterSpacing: '-0.5px' }}>
+              <a href={`tel:+1${phoneNumber}`} className="vsl-phone-display" style={{ fontFamily: font, fontSize: '26px', fontWeight: 800, color: '#1c1917', textDecoration: 'none', letterSpacing: '-0.5px' }}>
                 (213) 666-6619
               </a>
               <p style={{ fontSize: '13px', color: '#78716c', marginTop: '6px' }}>
@@ -187,7 +207,7 @@ export default function AffiliateVSL() {
 
             {/* ============ STRONG SELLING POINTS ============ */}
             <div style={{ marginBottom: '36px' }}>
-              <h3 style={{ fontFamily: font, fontSize: '20px', fontWeight: 800, color: '#1c1917', marginBottom: '20px', letterSpacing: '-0.01em' }}>
+              <h3 className="vsl-subheading" style={{ fontFamily: font, fontSize: '20px', fontWeight: 800, color: '#1c1917', marginBottom: '20px', letterSpacing: '-0.01em' }}>
                 ¿Por qué deberías considerarlo?
               </h3>
 
@@ -198,7 +218,7 @@ export default function AffiliateVSL() {
                   { icon: '🤝', title: 'Nosotros nos encargamos de TODO', desc: 'Creamos la canción, cobramos al cliente, damos soporte, manejamos reembolsos.' },
                   { icon: '💵', title: 'Tú solo ganas dinero', desc: 'Cada venta = 20% para ti. Pago mensual. Sin letra chica.' },
                 ].map((item, i) => (
-                  <div key={i} style={{
+                  <div key={i} className="vsl-selling-card" style={{
                     background: '#fff',
                     borderRadius: '14px',
                     padding: '16px 18px',
@@ -208,7 +228,7 @@ export default function AffiliateVSL() {
                     gap: '14px',
                     boxShadow: '0 2px 8px rgba(225,110,73,0.04)',
                   }}>
-                    <div style={{
+                    <div className="vsl-selling-icon" style={{
                       width: '44px', height: '44px',
                       borderRadius: '12px',
                       background: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
@@ -218,9 +238,9 @@ export default function AffiliateVSL() {
                     }}>
                       {item.icon}
                     </div>
-                    <div>
-                      <div style={{ fontFamily: font, fontSize: '15px', fontWeight: 700, color: '#1c1917', marginBottom: '2px' }}>{item.title}</div>
-                      <div style={{ fontSize: '13px', color: '#78716c', lineHeight: 1.5 }}>{item.desc}</div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="vsl-selling-title" style={{ fontFamily: font, fontSize: '15px', fontWeight: 700, color: '#1c1917', marginBottom: '2px' }}>{item.title}</div>
+                      <div className="vsl-selling-desc" style={{ fontSize: '13px', color: '#78716c', lineHeight: 1.5 }}>{item.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -228,7 +248,7 @@ export default function AffiliateVSL() {
             </div>
 
             {/* ============ DAILY REWARDS VISUAL ============ */}
-            <div style={{
+            <div className="vsl-rewards-card" style={{
               background: '#fff',
               borderRadius: '20px',
               padding: '24px',
@@ -245,7 +265,7 @@ export default function AffiliateVSL() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <p style={{ fontSize: '11px', color: '#a8a29e', fontWeight: 600, marginBottom: '2px' }}>Total ganado</p>
-                  <p style={{ fontFamily: font, fontSize: '22px', fontWeight: 800, color: '#059669', letterSpacing: '-0.5px' }}>+$56.00</p>
+                  <p className="vsl-rewards-total" style={{ fontFamily: font, fontSize: '22px', fontWeight: 800, color: '#059669', letterSpacing: '-0.5px' }}>+$56.00</p>
                 </div>
               </div>
 
@@ -260,7 +280,7 @@ export default function AffiliateVSL() {
                   { time: '4:17 PM', type: 'Bundle de quinceañera', amount: '+$8.00', icon: '🎶' },
                   { time: '6:48 PM', type: 'Canción romántica', amount: '+$12.00', icon: '🎵', highlight: true },
                 ].map((r, i) => (
-                  <div key={i} style={{
+                  <div key={i} className="vsl-reward-row" style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -268,21 +288,21 @@ export default function AffiliateVSL() {
                     borderRadius: '12px',
                     background: r.highlight ? '#f0fdf4' : '#fef6ed',
                     border: `1px solid ${r.highlight ? '#bbf7d0' : '#fde8d4'}`,
+                    gap: '10px',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                       <span style={{ fontSize: '18px', flexShrink: 0 }}>{r.icon}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#1c1917', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.type}</p>
-                        <p style={{ fontSize: '11px', color: '#a8a29e' }}>{r.time}</p>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p className="vsl-reward-title" style={{ fontSize: '13px', fontWeight: 600, color: '#1c1917', lineHeight: 1.3 }}>{r.type}</p>
+                        <p style={{ fontSize: '11px', color: '#a8a29e', marginTop: '2px' }}>{r.time}</p>
                       </div>
                     </div>
-                    <span style={{
+                    <span className="vsl-reward-amount" style={{
                       fontFamily: font,
                       fontSize: '15px',
                       fontWeight: 800,
                       color: r.highlight ? '#059669' : '#e11d48',
                       flexShrink: 0,
-                      marginLeft: '12px',
                     }}>
                       {r.amount}
                     </span>
