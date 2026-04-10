@@ -68,9 +68,43 @@ export default function ComparisonPage() {
   const [selectedSongId, setSelectedSongId] = useState(null);
   const [purchaseBoth, setPurchaseBoth] = useState(false);
   
-  // Coupon state (kept for deep-link/URL coupon support)
+  // Coupon state (auto-applied via URL/sessionStorage AND manually entered)
   const [couponCode, setCouponCode] = useState('');
   const [couponApplied, setCouponApplied] = useState(null);
+  // Manual coupon input UI state
+  const [couponInput, setCouponInput] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const [couponValidating, setCouponValidating] = useState(false);
+
+  const handleApplyCoupon = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+    setCouponError('');
+    setCouponValidating(true);
+    try {
+      const data = await validateCoupon(code);
+      if (data && data.valid) {
+        setCouponCode(data.code);
+        setCouponApplied(data);
+        setCouponInput('');
+      } else {
+        setCouponError(data?.error || 'Código inválido');
+      }
+    } catch (err) {
+      setCouponError('Código inválido o expirado');
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode('');
+    setCouponApplied(null);
+    setCouponInput('');
+    setCouponError('');
+    try { sessionStorage.removeItem('rqc_coupon'); } catch { /* ignore */ }
+  };
   
   // Removed Valentine countdown
   const videoTestimonialRefs = useRef({});
@@ -1331,6 +1365,86 @@ export default function ComparisonPage() {
                   {isFree ? '¡GRATIS!' : `$${getCurrentPrice().toFixed(2)}`}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Coupon code input */}
+          {!couponApplied ? (
+            <div style={{marginBottom: '12px'}}>
+              <form onSubmit={handleApplyCoupon} style={{display: 'flex', gap: '8px'}}>
+                <input
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => { setCouponInput(e.target.value); if (couponError) setCouponError(''); }}
+                  placeholder="¿Tienes un código de descuento?"
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{
+                    flex: 1, padding: '14px 16px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${couponError ? 'rgba(248,113,113,0.5)' : 'rgba(255,255,255,0.12)'}`,
+                    borderRadius: '12px',
+                    color: 'white', fontSize: '14px',
+                    textTransform: 'uppercase', letterSpacing: '1px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={couponValidating || !couponInput.trim()}
+                  style={{
+                    padding: '14px 22px',
+                    background: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.06)' : 'rgba(74,222,128,0.15)',
+                    color: (couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.3)' : '#4ade80',
+                    border: `1px solid ${(couponValidating || !couponInput.trim()) ? 'rgba(255,255,255,0.08)' : 'rgba(74,222,128,0.35)'}`,
+                    borderRadius: '12px',
+                    fontSize: '14px', fontWeight: '700',
+                    cursor: (couponValidating || !couponInput.trim()) ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {couponValidating ? '...' : 'Aplicar'}
+                </button>
+              </form>
+              {couponError && (
+                <p style={{margin: '8px 4px 0', color: '#f87171', fontSize: '12px'}}>
+                  ❌ {couponError}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 16px', marginBottom: '12px',
+              background: 'rgba(74,222,128,0.08)', borderRadius: '12px',
+              border: '1px solid rgba(74,222,128,0.25)'
+            }}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                <span style={{fontSize: '16px'}}>✅</span>
+                <div>
+                  <p style={{margin: 0, color: '#4ade80', fontSize: '13px', fontWeight: '700', letterSpacing: '1px'}}>
+                    {couponApplied.code}
+                  </p>
+                  <p style={{margin: '2px 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '11px'}}>
+                    {couponApplied.free ? 'Gratis aplicado' : `${couponApplied.discount}% de descuento aplicado`}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveCoupon}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: 'rgba(255,255,255,0.6)',
+                  padding: '6px 12px', borderRadius: '8px',
+                  fontSize: '11px', cursor: 'pointer'
+                }}
+              >
+                Quitar
+              </button>
             </div>
           )}
 
