@@ -36,6 +36,12 @@ import ComboLanding from './pages/seo/ComboLanding';
 import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
 import CorridosLanding from './pages/CorridosLanding';
+import AffiliateLogin from './pages/AffiliateLogin';
+import AffiliateOnboarding from './pages/AffiliateOnboarding';
+import AffiliateDashboard from './pages/AffiliateDashboard';
+import AffiliateTerms from './pages/AffiliateTerms';
+import AffiliateLanding from './pages/AffiliateLanding';
+import AffiliateVSL from './pages/AffiliateVSL';
 
 // App State Context
 export const AppContext = React.createContext();
@@ -77,7 +83,13 @@ const pathToPage = {
   '/preguntas-frecuentes': 'preguntasFrecuentes',
   '/sobre-nosotros': 'sobreNosotros',
   '/dia-de-las-madres': 'diaDeLasMadres',
-  '/corridos': 'corridos'
+  '/corridos': 'corridos',
+  '/afiliados': 'affiliateLanding',
+  '/partners': 'affiliateVSL',
+  '/afiliado': 'affiliateLogin',
+  '/afiliado/bienvenida': 'affiliateOnboarding',
+  '/afiliado/dashboard': 'affiliateDashboard',
+  '/afiliado/terminos': 'affiliateTerms'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -107,6 +119,11 @@ function getInitialPage() {
     }
   }
   
+  // Check pathToPage mapping first (includes affiliate routes, admin, etc.)
+  if (pathToPage[path]) {
+    return pathToPage[path];
+  }
+
   // Check for dynamic SEO routes
   if (path.startsWith('/generos/') && path !== '/generos/') {
     return path.substring(1);
@@ -116,11 +133,6 @@ function getInitialPage() {
   }
   if (path.startsWith('/canciones/') && path !== '/canciones/') {
     return path.substring(1);
-  }
-  
-  // Check pathToPage mapping
-  if (pathToPage[path]) {
-    return pathToPage[path];
   }
 
   // Root path fallback
@@ -251,7 +263,13 @@ export default function App() {
       preguntasFrecuentes: '/preguntas-frecuentes',
       sobreNosotros: '/sobre-nosotros',
       diaDeLasMadres: '/dia-de-las-madres',
-      corridos: '/corridos'
+      corridos: '/corridos',
+      affiliateLanding: '/afiliados',
+      affiliateVSL: '/partners',
+      affiliateLogin: '/afiliado',
+      affiliateOnboarding: '/afiliado/bienvenida',
+      affiliateDashboard: '/afiliado/dashboard',
+      affiliateTerms: '/afiliado/terminos'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -338,6 +356,14 @@ export default function App() {
           {/* Admin pages */}
           {currentPage === 'adminLogin' && <AdminLogin />}
           {currentPage === 'adminDashboard' && <AdminDashboard />}
+
+          {/* Affiliate portal pages */}
+          {currentPage === 'affiliateLanding' && <AffiliateLanding />}
+          {currentPage === 'affiliateVSL' && <AffiliateVSL />}
+          {currentPage === 'affiliateLogin' && <AffiliateLogin />}
+          {currentPage === 'affiliateOnboarding' && <AffiliateOnboarding />}
+          {currentPage === 'affiliateDashboard' && <AffiliateDashboard />}
+          {currentPage === 'affiliateTerms' && <AffiliateTerms />}
           
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}
