@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
+
 const css = `
 @keyframes aff-fade-up {
   from { opacity: 0; transform: translateY(24px); }
@@ -140,12 +143,24 @@ export default function AffiliateOnboarding() {
     setTimeout(() => setCopied(''), 2000);
   };
 
-  const completeOnboarding = () => {
+  const completeOnboarding = async () => {
+    // Persist server-side first so future logins skip onboarding even from a new device
     try {
       const auth = JSON.parse(localStorage.getItem('rqc_affiliate_auth'));
+      if (auth?.token) {
+        await fetch(`${SUPABASE_URL}/functions/v1/affiliate-complete-onboarding`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${auth.token}`,
+            'apikey': SUPABASE_ANON_KEY
+          }
+        });
+      }
+      // Mirror locally so the redirect on this device skips onboarding immediately
       auth.affiliate.onboarded = true;
       localStorage.setItem('rqc_affiliate_auth', JSON.stringify(auth));
-    } catch { /* ignore */ }
+    } catch { /* ignore — local mirror still updated below */ }
     navigateTo('affiliateDashboard');
   };
 

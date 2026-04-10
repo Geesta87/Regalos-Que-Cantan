@@ -42,6 +42,7 @@ import AffiliateDashboard from './pages/AffiliateDashboard';
 import AffiliateTerms from './pages/AffiliateTerms';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
+import { captureAffiliateRef } from './services/tracking';
 
 // App State Context
 export const AppContext = React.createContext();
@@ -191,6 +192,9 @@ export default function App() {
     if (songId) {
       setDirectSongId(songId);
     }
+
+    // Capture affiliate ref code from URL and log a visit (one per session)
+    captureAffiliateRef();
 
     // Load form data from localStorage if not a direct URL navigation
     const savedFormData = localStorage.getItem(STORAGE_KEYS.FORM_DATA);

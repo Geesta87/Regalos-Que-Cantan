@@ -26,7 +26,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent } = body;
+    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
     // Accept both songIds (array from frontend) and songId (legacy)
     const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
     const songId = songIds[0];
@@ -72,6 +72,58 @@ serve(async (req) => {
       }
     }
 
+    // Resolve affiliate: from explicit ref param OR from coupon code ownership
+    let resolvedAffiliate = affiliateCode ? affiliateCode.toLowerCase().trim() : null;
+    if (!resolvedAffiliate && appliedCoupon) {
+      // Check if this coupon belongs to an affiliate
+      const { data: couponAffiliate } = await supabase
+        .from('affiliates')
+        .select('code')
+        .eq('coupon_code', appliedCoupon.code)
+        .eq('active', true)
+        .single();
+      if (couponAffiliate) {
+        resolvedAffiliate = couponAffiliate.code;
+      }
+    }
+
+    // If we have a resolved affiliate, validate it actually exists & is active
+    // (so a malicious caller can't poison affiliate_events with random codes)
+    if (resolvedAffiliate) {
+      const { data: validAffiliate } = await supabase
+        .from('affiliates')
+        .select('code')
+        .eq('code', resolvedAffiliate)
+        .eq('active', true)
+        .single();
+      if (!validAffiliate) {
+        resolvedAffiliate = null;
+      }
+    }
+
+    // Log a `checkout` event for this affiliate (real-time dashboard signal).
+    // Idempotent per song so refreshes don't double-count.
+    if (resolvedAffiliate) {
+      const { data: existingCheckout } = await supabase
+        .from('affiliate_events')
+        .select('id')
+        .eq('affiliate_code', resolvedAffiliate)
+        .eq('event_type', 'checkout')
+        .eq('song_id', songId)
+        .maybeSingle();
+
+      if (!existingCheckout) {
+        await supabase.from('affiliate_events').insert({
+          affiliate_code: resolvedAffiliate,
+          event_type: 'checkout',
+          song_id: songId,
+          amount: null
+        });
+      }
+    }
+
+    // Purchase event is logged in stripe-webhook when payment completes
+
     // If FREE coupon, skip Stripe and mark as purchased
     if (priceInCents === 0 && appliedCoupon) {
       // Mark ALL songs as paid
@@ -88,7 +140,8 @@ serve(async (req) => {
             utm_source: utm_source || null,
             utm_medium: utm_medium || null,
             utm_campaign: utm_campaign || null,
-            from_email_campaign: from_email_campaign || null
+            from_email_campaign: from_email_campaign || null,
+            affiliate_code: resolvedAffiliate || null
           })
           .eq('id', sid);
       }
@@ -99,6 +152,16 @@ serve(async (req) => {
         .update({ times_used: appliedCoupon.times_used + 1 })
         .eq('code', appliedCoupon.code);
 
+      // Log a `purchase` event for free orders too (commission is $0 but the count matters)
+      if (resolvedAffiliate) {
+        await supabase.from('affiliate_events').insert({
+          affiliate_code: resolvedAffiliate,
+          event_type: 'purchase',
+          song_id: songId,
+          amount: 0
+        });
+      }
+
       // Return success URL - goes to /success page
       const allSongIds = songIds.join(',');
       return new Response(
@@ -108,9 +171,9 @@ serve(async (req) => {
           free: true,
           message: '¡Canción gratis!'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
+          status: 200
         }
       );
     }
@@ -167,7 +230,8 @@ serve(async (req) => {
         session_id: session_id || '',
         from_email_campaign: from_email_campaign || '',
         purchaseBoth: purchaseBoth ? 'true' : 'false',
-        videoAddon: videoAddon ? 'true' : 'false'
+        videoAddon: videoAddon ? 'true' : 'false',
+        affiliateCode: resolvedAffiliate || ''
       }
     });
 
@@ -178,6 +242,7 @@ serve(async (req) => {
     if (utm_medium) songUpdate.utm_medium = utm_medium;
     if (utm_campaign) songUpdate.utm_campaign = utm_campaign;
     if (from_email_campaign) songUpdate.from_email_campaign = from_email_campaign;
+    if (resolvedAffiliate) songUpdate.affiliate_code = resolvedAffiliate;
     if (Object.keys(songUpdate).length > 0) {
       for (const sid of songIds) {
         await supabase.from('songs').update(songUpdate).eq('id', sid);
@@ -185,16 +250,16 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         sessionId: session.id,
         url: session.url,
         discounted: !!appliedCoupon,
         finalPrice: priceInCents / 100
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200
       }
     );
 
@@ -202,9 +267,9 @@ serve(async (req) => {
     console.error('Checkout error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500
       }
     );
   }

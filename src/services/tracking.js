@@ -3,6 +3,9 @@
 
 import { supabase } from './api';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
+
 // Generate or retrieve session ID
 const getSessionId = () => {
   let sessionId = sessionStorage.getItem('rqc_session_id');
@@ -43,6 +46,59 @@ const storeUtmParams = () => {
     if (utm.utm_source === 'email' && utm.utm_campaign) {
       sessionStorage.setItem('rqc_from_email', utm.utm_campaign);
     }
+  }
+};
+
+/**
+ * Capture affiliate ref code from URL (?ref=code) and persist it to sessionStorage.
+ * Logs a single visit event to affiliate_events the first time we see the code in this session.
+ * Safe to call on every page load — dedupes via sessionStorage flags.
+ */
+export const captureAffiliateRef = async () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const refFromUrl = (params.get('ref') || '').toLowerCase().trim();
+
+    // Update stored code if URL has a fresh one (last-touch attribution)
+    if (refFromUrl) {
+      const previous = sessionStorage.getItem('rqc_affiliate');
+      if (previous !== refFromUrl) {
+        sessionStorage.setItem('rqc_affiliate', refFromUrl);
+        // New affiliate this session — clear the visit-logged flag so we log it
+        sessionStorage.removeItem('rqc_affiliate_visit_logged');
+      }
+    }
+
+    const affiliateCode = sessionStorage.getItem('rqc_affiliate');
+    if (!affiliateCode) return;
+
+    // Only log one visit per session per affiliate code
+    if (sessionStorage.getItem('rqc_affiliate_visit_logged') === affiliateCode) return;
+
+    // Optimistically mark as logged so we don't double-fire on re-renders
+    sessionStorage.setItem('rqc_affiliate_visit_logged', affiliateCode);
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/log-affiliate-visit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({ affiliateCode })
+    });
+
+    // If the code is invalid, drop it so we don't keep sending bad attribution
+    if (res.status === 404) {
+      sessionStorage.removeItem('rqc_affiliate');
+      sessionStorage.removeItem('rqc_affiliate_visit_logged');
+    } else if (!res.ok) {
+      // Network/server error — allow retry next page load
+      sessionStorage.removeItem('rqc_affiliate_visit_logged');
+    }
+  } catch (err) {
+    // Never block the app on tracking failures, but allow retry next time
+    sessionStorage.removeItem('rqc_affiliate_visit_logged');
+    if (import.meta.env.DEV) console.warn('Affiliate visit tracking failed:', err);
   }
 };
 
@@ -161,5 +217,6 @@ export default {
   trackStep,
   trackPurchase,
   FUNNEL_STEPS,
-  getSessionId
+  getSessionId,
+  captureAffiliateRef
 };
