@@ -224,18 +224,19 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     
-    <!-- Service Worker Registration -->
+    <!-- Service Worker kill-switch: unregister any existing SW + clear caches.
+         Old SWs were causing stale HTML on production. Run on every page load
+         until enough time has passed that we're confident every visitor was hit. -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('SW registered:', registration.scope);
-            })
-            .catch((error) => {
-              console.log('SW registration failed:', error);
-            });
-        });
+        navigator.serviceWorker.getRegistrations()
+          .then((regs) => regs.forEach((reg) => reg.unregister()))
+          .catch(() => {});
+      }
+      if (window.caches) {
+        caches.keys()
+          .then((keys) => keys.forEach((k) => caches.delete(k)))
+          .catch(() => {});
       }
     </script>
   </body>
