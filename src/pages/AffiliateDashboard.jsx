@@ -310,15 +310,71 @@ const css = `
 }
 `;
 
+// ───────────────────────────────────────────────────────────────────
+// Sparkline — tiny SVG line + dot showing the last 14 days of a metric
+// ───────────────────────────────────────────────────────────────────
+function Sparkline({ data, color = '#2563eb', height = 28 }) {
+  if (!data || data.length === 0) {
+    return <div style={{ height, opacity: 0.3, fontSize: 10, color: '#94a3b8' }}>—</div>;
+  }
+  const width = 110;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const step = data.length > 1 ? width / (data.length - 1) : 0;
+  const points = data.map((v, i) => {
+    const x = i * step;
+    const y = height - 4 - ((v - min) / range) * (height - 8);
+    return `${x},${y}`;
+  }).join(' ');
+  const last = data[data.length - 1];
+  const lastX = (data.length - 1) * step;
+  const lastY = height - 4 - ((last - min) / range) * (height - 8);
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.85"
+      />
+      <circle cx={lastX} cy={lastY} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
+// Build the last N days of a metric from dailyStats, padding zeros for missing days
+function buildSparklineSeries(dailyStats, key, days = 14) {
+  if (!dailyStats) return [];
+  const result = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const iso = d.toISOString().split('T')[0];
+    result.push(dailyStats[iso]?.[key] || 0);
+  }
+  return result;
+}
+
 export default function AffiliateDashboard() {
   const { navigateTo } = useContext(AppContext);
   const [affiliate, setAffiliate] = useState(null);
   const [token, setToken] = useState('');
   const [stats, setStats] = useState(null);
   const [recentPurchases, setRecentPurchases] = useState([]);
+  const [recentPayouts, setRecentPayouts] = useState([]);
+  const [dailyStats, setDailyStats] = useState({});
+  const [attribution, setAttribution] = useState({ couponSales: 0, linkSales: 0, couponRevenue: 0, linkRevenue: 0 });
+  const [utmBreakdown, setUtmBreakdown] = useState([]);
+  const [weeklyGoal, setWeeklyGoal] = useState({ target: 10, current: 0, lastWeek: 0 });
+  const [refundWindowDays, setRefundWindowDays] = useState(14);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(30);
   const [copied, setCopied] = useState('');
+  const [toast, setToast] = useState(null); // { commission, when }
+  const lastSeenPurchasesRef = React.useRef(0);
 
   useEffect(() => {
     const auth = localStorage.getItem('rqc_affiliate_auth');
@@ -339,24 +395,48 @@ export default function AffiliateDashboard() {
     }
   }, []);
 
-  useEffect(() => { if (token) fetchData(); }, [token, dateRange]);
+  useEffect(() => {
+    if (!token) return;
+    fetchData({ initial: true });
+    // Poll every 30 seconds so the dashboard feels live without realtime infra
+    const interval = setInterval(() => fetchData({ initial: false }), 30000);
+    return () => clearInterval(interval);
+  }, [token, dateRange]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async ({ initial }) => {
+    if (initial) setLoading(true);
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-data?days=${dateRange}`, {
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
       const data = await response.json();
       if (data.success) {
+        // Toast on new sale: compare current totalPurchases against last seen
+        if (!initial && data.stats?.totalPurchases > lastSeenPurchasesRef.current) {
+          // The most recent purchase is at the top of recentPurchases (already sorted desc)
+          const newest = (data.recentPurchases || []).find(p => p.type === 'purchase');
+          if (newest) {
+            setToast({ commission: newest.commission, when: Date.now() });
+            // Auto-dismiss after 6 seconds
+            setTimeout(() => setToast(null), 6000);
+          }
+        }
+        lastSeenPurchasesRef.current = data.stats?.totalPurchases || 0;
+
         setStats(data.stats);
         setRecentPurchases(data.recentPurchases || []);
+        setRecentPayouts(data.recentPayouts || []);
+        setDailyStats(data.dailyStats || {});
+        setAttribution(data.attribution || { couponSales: 0, linkSales: 0, couponRevenue: 0, linkRevenue: 0 });
+        setUtmBreakdown(data.utmBreakdown || []);
+        setWeeklyGoal(data.weeklyGoal || { target: 10, current: 0, lastWeek: 0 });
+        setRefundWindowDays(data.refundWindowDays || 14);
       } else if (response.status === 401) {
         localStorage.removeItem('rqc_affiliate_auth');
         navigateTo('affiliateLogin');
       }
     } catch (err) { console.error('Failed to fetch affiliate data:', err); }
-    finally { setLoading(false); }
+    finally { if (initial) setLoading(false); }
   };
 
   const copyToClipboard = (text, label) => {
@@ -392,6 +472,45 @@ export default function AffiliateDashboard() {
   return (
     <>
       <style>{css}</style>
+      {/* Real-time commission toast (fires when polling detects a new sale) */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 24, right: 24, zIndex: 1000,
+          background: '#ffffff',
+          border: '1px solid #a7f3d0',
+          borderLeft: '4px solid #059669',
+          borderRadius: 14,
+          padding: '16px 22px',
+          boxShadow: '0 16px 40px rgba(5,150,105,0.18), 0 4px 12px rgba(0,0,0,0.06)',
+          display: 'flex', alignItems: 'center', gap: 14,
+          animation: 'aff-fade-up 0.4s ease-out',
+          maxWidth: 360
+        }}>
+          <div style={{
+            fontSize: 28, width: 44, height: 44, borderRadius: 12,
+            background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0
+          }}>🎉</div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: 1.5, margin: '0 0 4px' }}>
+              ¡Nueva venta!
+            </p>
+            <p style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              +${(toast.commission || 0).toFixed(2)} <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>de comision</span>
+            </p>
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            style={{
+              background: 'transparent', border: 'none',
+              color: '#94a3b8', cursor: 'pointer',
+              fontSize: 18, padding: 4, lineHeight: 1
+            }}
+            aria-label="Cerrar"
+          >×</button>
+        </div>
+      )}
       <div className="aff-dash">
 
         {/* -------- HEADER -------- */}
@@ -551,17 +670,20 @@ export default function AffiliateDashboard() {
                   {
                     label: 'Visitantes', value: stats.visits,
                     icon: '👁️', iconBg: '#eff6ff', iconColor: '#2563eb',
-                    sub: 'Clicks en tu link', delay: '0s', cls: ''
+                    sub: 'Clicks en tu link', delay: '0s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#2563eb'
                   },
                   {
                     label: 'Checkouts', value: stats.checkouts,
                     icon: '🛒', iconBg: '#fef3c7', iconColor: '#d97706',
-                    sub: 'Iniciaron compra', delay: '0.06s', cls: ''
+                    sub: 'Iniciaron compra', delay: '0.06s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'checkouts'), sparkColor: '#d97706'
                   },
                   {
                     label: 'Ventas', value: stats.totalPurchases,
                     icon: '✅', iconBg: '#ecfdf5', iconColor: '#059669',
-                    sub: 'Completadas', delay: '0.12s', cls: ''
+                    sub: 'Completadas', delay: '0.12s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#059669'
                   },
                   {
                     label: 'Conversion', value: `${stats.conversionRate}%`,
@@ -569,16 +691,23 @@ export default function AffiliateDashboard() {
                     sub: 'Visitantes → Ventas', delay: '0.18s', cls: ''
                   },
                   {
+                    label: 'Ticket promedio', value: `$${(stats.aov || 0).toFixed(2)}`,
+                    icon: '🧾', iconBg: '#fef9c3', iconColor: '#ca8a04',
+                    sub: 'Por venta', delay: '0.21s', cls: ''
+                  },
+                  {
                     label: 'Ingresos', value: `$${stats.totalRevenue.toFixed(2)}`,
                     icon: '💵', iconBg: '#dbeafe', iconColor: '#2563eb',
                     sub: 'Total generado', delay: '0.24s', cls: 'highlight',
-                    valueColor: '#2563eb', labelColor: '#2563eb'
+                    valueColor: '#2563eb', labelColor: '#2563eb',
+                    series: buildSparklineSeries(dailyStats, 'revenue'), sparkColor: '#2563eb'
                   },
                   {
                     label: 'Tu Comision', value: `$${stats.totalCommission.toFixed(2)}`,
                     icon: '🏆', iconBg: '#d1fae5', iconColor: '#059669',
                     sub: `${stats.commissionPct}% de ingresos`, delay: '0.30s', cls: 'accent',
-                    valueColor: '#059669', labelColor: '#059669'
+                    valueColor: '#059669', labelColor: '#059669',
+                    series: buildSparklineSeries(dailyStats, 'commission'), sparkColor: '#059669'
                   },
                 ].map((s, i) => (
                   <div
@@ -610,8 +739,265 @@ export default function AffiliateDashboard() {
                       {s.value}
                     </div>
                     <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{s.sub}</p>
+                    {s.series && (
+                      <div style={{ marginTop: 10 }}>
+                        <Sparkline data={s.series} color={s.sparkColor} />
+                      </div>
+                    )}
                   </div>
                 ))}
+              </div>
+
+              {/* -------- COMMISSION SPLIT (Available / Pending / Paid) -------- */}
+              <div style={{
+                background: '#ffffff', borderRadius: 20,
+                border: '1px solid #e8ecf1', padding: '24px 28px',
+                marginBottom: 28,
+                animation: 'aff-fade-up 0.5s ease-out 0.32s both'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                  <span style={{ fontSize: 18 }}>💸</span>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Tus comisiones</h3>
+                </div>
+                <div className="aff-stats-grid" style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 14
+                }}>
+                  {[
+                    {
+                      label: 'Disponible para pagar', value: stats.availableCommission ?? 0,
+                      sub: `Listo despues del periodo de ${refundWindowDays} dias`,
+                      color: '#059669', bg: '#ecfdf5', border: '#a7f3d0'
+                    },
+                    {
+                      label: 'Pendiente', value: stats.pendingCommission ?? 0,
+                      sub: `Dentro de ${refundWindowDays} dias de la venta`,
+                      color: '#d97706', bg: '#fffbeb', border: '#fde68a'
+                    },
+                    {
+                      label: 'Pagado a la fecha', value: stats.paidCommission ?? 0,
+                      sub: 'Total enviado a tu cuenta',
+                      color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe'
+                    },
+                  ].map((c, i) => (
+                    <div key={i} style={{
+                      background: c.bg, borderRadius: 14, padding: '18px 20px',
+                      border: `1px solid ${c.border}`
+                    }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, color: c.color,
+                        textTransform: 'uppercase', letterSpacing: 1.5,
+                        display: 'block', marginBottom: 8
+                      }}>
+                        {c.label}
+                      </span>
+                      <div style={{
+                        fontSize: 28, fontWeight: 800, color: c.color,
+                        letterSpacing: -0.5, lineHeight: 1.1, marginBottom: 4
+                      }}>
+                        ${(Number(c.value) || 0).toFixed(2)}
+                      </div>
+                      <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.4 }}>{c.sub}</p>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '14px 0 0', textAlign: 'center' }}>
+                  Las comisiones pasan de <strong style={{ color: '#d97706' }}>Pendiente</strong> a <strong style={{ color: '#059669' }}>Disponible</strong> automaticamente despues de {refundWindowDays} dias (periodo de reembolso).
+                </p>
+              </div>
+
+              {/* -------- WEEKLY GOAL -------- */}
+              {(() => {
+                const pct = Math.min(100, weeklyGoal.target > 0 ? (weeklyGoal.current / weeklyGoal.target) * 100 : 0);
+                const remaining = Math.max(0, weeklyGoal.target - weeklyGoal.current);
+                return (
+                  <div style={{
+                    background: '#ffffff', borderRadius: 20,
+                    border: '1px solid #e8ecf1', padding: '22px 28px',
+                    marginBottom: 28,
+                    animation: 'aff-fade-up 0.5s ease-out 0.34s both'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 18 }}>🎯</span>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Meta semanal</h3>
+                      </div>
+                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                        <span style={{ color: '#0f172a', fontWeight: 800 }}>{weeklyGoal.current}</span> / {weeklyGoal.target} ventas
+                      </span>
+                    </div>
+                    <div style={{
+                      height: 10, background: '#f1f5f9', borderRadius: 10, overflow: 'hidden',
+                      marginBottom: 10
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: pct >= 100
+                          ? 'linear-gradient(90deg, #059669, #10b981)'
+                          : 'linear-gradient(90deg, #2563eb, #7c3aed)',
+                        borderRadius: 10,
+                        transition: 'width 0.6s ease-out'
+                      }} />
+                    </div>
+                    <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+                      {pct >= 100
+                        ? '🔥 ¡Meta alcanzada esta semana! Sigue asi.'
+                        : remaining === 1
+                          ? 'Te falta 1 venta para llegar a la meta de esta semana.'
+                          : `Te faltan ${remaining} ventas para llegar a la meta de esta semana.`
+                      }
+                      {weeklyGoal.lastWeek > 0 && (
+                        <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                          · La semana pasada: {weeklyGoal.lastWeek} ventas
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* -------- COUPON vs LINK BREAKDOWN -------- */}
+              {(attribution.couponSales + attribution.linkSales) > 0 && (
+                <div style={{
+                  background: '#ffffff', borderRadius: 20,
+                  border: '1px solid #e8ecf1', padding: '22px 28px',
+                  marginBottom: 28,
+                  animation: 'aff-fade-up 0.5s ease-out 0.36s both'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <span style={{ fontSize: 18 }}>🔀</span>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Codigo vs Link</h3>
+                  </div>
+                  {(() => {
+                    const total = attribution.couponSales + attribution.linkSales;
+                    const couponPct = total > 0 ? (attribution.couponSales / total) * 100 : 0;
+                    const linkPct = 100 - couponPct;
+                    return (
+                      <>
+                        <div style={{
+                          display: 'flex', height: 12, borderRadius: 10, overflow: 'hidden',
+                          marginBottom: 14, background: '#f1f5f9'
+                        }}>
+                          {couponPct > 0 && <div style={{ width: `${couponPct}%`, background: '#a855f7' }} />}
+                          {linkPct > 0 && <div style={{ width: `${linkPct}%`, background: '#2563eb' }} />}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                          <div style={{ background: '#faf5ff', borderRadius: 12, padding: '14px 16px', border: '1px solid #e9d5ff' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#a855f7' }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 1 }}>Por codigo</span>
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{attribution.couponSales} <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ventas</span></div>
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>${attribution.couponRevenue.toFixed(2)} en ingresos</div>
+                          </div>
+                          <div style={{ background: '#eff6ff', borderRadius: 12, padding: '14px 16px', border: '1px solid #bfdbfe' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#2563eb' }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: 1 }}>Por link</span>
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{attribution.linkSales} <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ventas</span></div>
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>${attribution.linkRevenue.toFixed(2)} en ingresos</div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* -------- PER-CHANNEL UTM BREAKDOWN -------- */}
+              {utmBreakdown.length > 0 && (
+                <div style={{
+                  background: '#ffffff', borderRadius: 20,
+                  border: '1px solid #e8ecf1', padding: '22px 28px',
+                  marginBottom: 28,
+                  animation: 'aff-fade-up 0.5s ease-out 0.38s both'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <span style={{ fontSize: 18 }}>📡</span>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Por plataforma</h3>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {utmBreakdown.map((row) => {
+                      const max = Math.max(...utmBreakdown.map(r => r.sales), 1);
+                      const pct = (row.sales / max) * 100;
+                      const platformIcons = { tiktok: '🎵', instagram: '📷', youtube: '▶️', email: '📧', whatsapp: '💬', facebook: '👥', twitter: '🐦', directo: '🔗' };
+                      const icon = platformIcons[row.source] || '🌐';
+                      return (
+                        <div key={row.source}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, textTransform: 'capitalize' }}>
+                              {icon} {row.source}
+                            </span>
+                            <span style={{ fontSize: 12, color: '#64748b' }}>
+                              <strong style={{ color: '#0f172a' }}>{row.sales}</strong> ventas · ${row.revenue.toFixed(2)} · <strong style={{ color: '#059669' }}>${row.commission.toFixed(2)} comision</strong>
+                            </span>
+                          </div>
+                          <div style={{ height: 6, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: 6 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* -------- PER-CHANNEL LINK GENERATOR -------- */}
+              <div style={{
+                background: '#ffffff', borderRadius: 20,
+                border: '1px solid #e8ecf1', padding: '22px 28px',
+                marginBottom: 28,
+                animation: 'aff-fade-up 0.5s ease-out 0.40s both'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>🔗</span>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Links por plataforma</h3>
+                </div>
+                <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>
+                  Usa un link diferente en cada red para saber cual te genera mas ventas.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { source: 'tiktok', label: 'TikTok', icon: '🎵' },
+                    { source: 'instagram', label: 'Instagram', icon: '📷' },
+                    { source: 'youtube', label: 'YouTube', icon: '▶️' },
+                    { source: 'whatsapp', label: 'WhatsApp', icon: '💬' },
+                  ].map(({ source, label, icon }) => {
+                    const link = `https://regalosquecantan.com/?ref=${affiliate.code}&utm_source=${source}`;
+                    const copyKey = `link_${source}`;
+                    return (
+                      <div key={source} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '12px 14px', background: '#f8fafc',
+                        borderRadius: 12, border: '1px solid #e2e8f0'
+                      }}>
+                        <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{icon}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', minWidth: 80 }}>{label}</span>
+                        <code style={{
+                          flex: 1, fontSize: 11, color: '#64748b',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          fontFamily: 'ui-monospace, monospace'
+                        }}>{link}</code>
+                        <button
+                          onClick={() => copyToClipboard(link, copyKey)}
+                          style={{
+                            padding: '6px 12px',
+                            background: copied === copyKey ? '#dcfce7' : '#eff6ff',
+                            color: copied === copyKey ? '#059669' : '#2563eb',
+                            border: `1px solid ${copied === copyKey ? '#86efac' : '#bfdbfe'}`,
+                            borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {copied === copyKey ? '✓ Copiado' : 'Copiar'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* -------- TRANSPARENCY BANNER -------- */}
