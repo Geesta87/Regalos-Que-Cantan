@@ -5,7 +5,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqc
 
 const css = `
 @keyframes aff-fade-up {
-  from { opacity: 0; transform: translateY(18px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes aff-shimmer {
@@ -17,42 +17,33 @@ const css = `
   50% { transform: scale(1.2); }
   100% { transform: scale(1); opacity: 1; }
 }
-@keyframes aff-gradient-slide {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
 
 .aff-dash {
   min-height: 100vh;
-  background: #f0f5ff;
+  background: #fafafa;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: #0f172a;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+  color: #0a0a0a;
   position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.aff-dash::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #2563eb, #7c3aed, #2563eb);
-  background-size: 200% 100%;
-  animation: aff-gradient-slide 4s ease infinite;
-  z-index: 100;
+/* Tabular numbers throughout — keeps stat cards/tables aligned */
+.aff-dash *,
+.aff-dash :where(td, th, .aff-num) {
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01', 'tnum';
 }
 
 /* Header */
 .aff-dash-header {
   position: sticky;
-  top: 2px;
+  top: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid rgba(232, 236, 241, 0.7);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid #ececec;
   padding: 0 28px;
 }
 .aff-dash-header-inner {
@@ -61,76 +52,89 @@ const css = `
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 64px;
+  height: 60px;
 }
 
 /* Main */
 .aff-dash-main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 28px 80px;
+  padding: 36px 28px 96px;
+}
+
+/* Section card — used for commission split, goal, attribution, etc */
+.aff-section-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 22px 26px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04);
 }
 
 /* Stat cards */
 .aff-stat-card {
   background: #ffffff;
-  border-radius: 18px;
-  padding: 26px 28px;
-  border: 1px solid #e8ecf1;
-  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s cubic-bezier(0.22,1,0.36,1);
-  animation: aff-fade-up 0.5s ease-out both;
+  border-radius: 14px;
+  padding: 22px 24px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04);
+  transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.2s cubic-bezier(0.22,1,0.36,1), border-color 0.2s;
+  animation: aff-fade-up 0.4s ease-out both;
   cursor: default;
 }
 .aff-stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(37,99,235,0.08), 0 2px 8px rgba(0,0,0,0.04);
+  transform: translateY(-1px);
+  border-color: #d4d4d4;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04), 0 8px 24px -8px rgba(10,10,10,0.08);
 }
 .aff-stat-card.highlight {
-  background: linear-gradient(135deg, #f0f6ff 0%, #e8f0fe 100%);
-  border-color: #bfdbfe;
+  background: #ffffff;
+  border-color: #ececec;
 }
 .aff-stat-card.accent {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: #a7f3d0;
+  background: #ffffff;
+  border-color: #ececec;
+}
+.aff-stat-card .aff-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  background: #f5f5f5;
+  color: #525252;
 }
 
 /* Tool cards */
 .aff-tool-card {
   background: #ffffff;
-  border-radius: 18px;
-  padding: 24px 28px;
-  border: 1px solid #e8ecf1;
+  border-radius: 14px;
+  padding: 22px 26px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04);
   position: relative;
-  overflow: hidden;
-  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s cubic-bezier(0.22,1,0.36,1);
-}
-.aff-tool-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #2563eb, #7c3aed);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .aff-tool-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(37,99,235,0.06);
+  border-color: #d4d4d4;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04), 0 8px 24px -8px rgba(10,10,10,0.08);
 }
 
 /* Copy button */
 .aff-copy-btn {
-  padding: 10px 22px;
-  border-radius: 12px;
-  border: 1.5px solid #2563eb;
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid #d4d4d4;
   background: #ffffff;
-  color: #2563eb;
+  color: #0a0a0a;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
+  transition: all 0.15s ease;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -139,9 +143,9 @@ const css = `
   justify-content: center;
 }
 .aff-copy-btn:hover {
-  background: #2563eb;
+  border-color: #0a0a0a;
+  background: #0a0a0a;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(37,99,235,0.25);
 }
 .aff-copy-btn.copied {
   background: #059669;
@@ -152,35 +156,36 @@ const css = `
 /* Date filter segmented control */
 .aff-date-control {
   display: flex;
-  gap: 4px;
-  background: #f1f5f9;
-  border-radius: 14px;
-  padding: 4px;
+  gap: 2px;
+  background: #f5f5f5;
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid #ececec;
 }
 .aff-date-btn {
-  padding: 8px 18px;
-  border-radius: 10px;
+  padding: 7px 16px;
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
+  transition: all 0.15s ease;
   font-family: inherit;
   border: none;
   outline: none;
   user-select: none;
 }
 .aff-date-btn.active {
-  background: #2563eb;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+  background: #ffffff;
+  color: #0a0a0a;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.06), 0 0 0 1px #ececec;
+  font-weight: 600;
 }
 .aff-date-btn.inactive {
   background: transparent;
-  color: #64748b;
+  color: #737373;
 }
 .aff-date-btn.inactive:hover {
-  color: #2563eb;
-  background: rgba(37,99,235,0.06);
+  color: #0a0a0a;
 }
 
 /* Table */
@@ -191,68 +196,68 @@ const css = `
 }
 .aff-table th {
   text-align: left;
-  padding: 14px 24px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #94a3b8;
+  padding: 12px 24px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #737373;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  border-bottom: 1px solid #f1f5f9;
-  background: #fafbfd;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #ececec;
+  background: #fafafa;
 }
 .aff-table th:first-child { border-radius: 12px 0 0 0; }
 .aff-table th:last-child { border-radius: 0 12px 0 0; }
 .aff-table td {
-  padding: 16px 24px;
-  font-size: 14px;
-  color: #475569;
-  border-bottom: 1px solid #f8fafc;
+  padding: 14px 24px;
+  font-size: 13px;
+  color: #404040;
+  border-bottom: 1px solid #f5f5f5;
 }
-.aff-table tr:nth-child(even) td { background: #fafbfd; }
-.aff-table tr:hover td { background: #f1f5f9; }
+.aff-table tr:hover td { background: #fafafa; }
 .aff-table tr:last-child td { border-bottom: none; }
 
 /* Logout button */
 .aff-logout-btn {
-  padding: 8px 18px;
-  border-radius: 10px;
-  border: 1px solid #e8ecf1;
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid #ececec;
   background: transparent;
-  color: #64748b;
+  color: #525252;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   font-family: inherit;
 }
 .aff-logout-btn:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: #fef2f2;
+  border-color: #d4d4d4;
+  color: #0a0a0a;
+  background: #f5f5f5;
 }
 
 /* Loading skeleton */
 .aff-loading {
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background: linear-gradient(90deg, #f5f5f5 25%, #ececec 50%, #f5f5f5 75%);
   background-size: 200% 100%;
   animation: aff-shimmer 1.5s infinite;
-  border-radius: 18px;
+  border-radius: 14px;
   height: 140px;
 }
 
 /* Tip cards */
 .aff-tip-card {
   background: #ffffff;
-  border-radius: 18px;
-  padding: 24px;
-  border: 1px solid #e8ecf1;
-  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s cubic-bezier(0.22,1,0.36,1);
+  border-radius: 14px;
+  padding: 22px;
+  border: 1px solid #ececec;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04);
+  transition: border-color 0.2s, box-shadow 0.2s;
   cursor: default;
-  animation: aff-fade-up 0.5s ease-out both;
+  animation: aff-fade-up 0.4s ease-out both;
 }
 .aff-tip-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(37,99,235,0.08), 0 2px 8px rgba(0,0,0,0.04);
+  border-color: #d4d4d4;
+  box-shadow: 0 1px 2px rgba(10,10,10,0.04), 0 8px 24px -8px rgba(10,10,10,0.08);
 }
 
 /* Badge pills */
@@ -260,21 +265,47 @@ const css = `
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .aff-badge-green {
   background: #ecfdf5;
-  color: #059669;
+  color: #047857;
   border: 1px solid #a7f3d0;
 }
 .aff-badge-red {
   background: #fef2f2;
-  color: #ef4444;
+  color: #b91c1c;
   border: 1px solid #fecaca;
+}
+
+/* Section header (icon + title) */
+.aff-section-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+.aff-section-h h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0a0a0a;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.aff-section-h .aff-section-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #f5f5f5;
+  color: #525252;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 /* Responsive */
@@ -309,6 +340,155 @@ const css = `
   .aff-stat-card { padding: 16px 14px; }
 }
 `;
+
+// ───────────────────────────────────────────────────────────────────
+// Icon library — inline SVG, Lucide-style 1.75 stroke, currentColor
+// ───────────────────────────────────────────────────────────────────
+const svgProps = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.75,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round'
+};
+const Icon = {
+  Eye: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  ),
+  Cart: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="9" cy="21" r="1"/>
+      <circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>
+    </svg>
+  ),
+  Check: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+  ),
+  TrendingUp: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+      <polyline points="16 7 22 7 22 13"/>
+    </svg>
+  ),
+  Receipt: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/>
+      <path d="M16 8H8"/>
+      <path d="M16 12H8"/>
+      <path d="M13 16H8"/>
+    </svg>
+  ),
+  Dollar: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <line x1="12" y1="2" x2="12" y2="22"/>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  ),
+  Award: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="8" r="6"/>
+      <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+    </svg>
+  ),
+  Wallet: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+      <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+    </svg>
+  ),
+  Target: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="12" r="10"/>
+      <circle cx="12" cy="12" r="6"/>
+      <circle cx="12" cy="12" r="2"/>
+    </svg>
+  ),
+  Split: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <line x1="6" y1="3" x2="6" y2="15"/>
+      <circle cx="18" cy="6" r="3"/>
+      <circle cx="6" cy="18" r="3"/>
+      <path d="M18 9a9 9 0 0 1-9 9"/>
+    </svg>
+  ),
+  Activity: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+  ),
+  Link: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  ),
+  Sparkles: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
+      <path d="M5 3v4"/>
+      <path d="M19 17v4"/>
+      <path d="M3 5h4"/>
+      <path d="M17 19h4"/>
+    </svg>
+  ),
+  Music: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M9 18V5l12-2v13"/>
+      <circle cx="6" cy="18" r="3"/>
+      <circle cx="18" cy="16" r="3"/>
+    </svg>
+  ),
+  Camera: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/>
+      <circle cx="12" cy="13" r="3"/>
+    </svg>
+  ),
+  Play: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <polygon points="6 3 20 12 6 21 6 3"/>
+    </svg>
+  ),
+  Message: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>
+    </svg>
+  ),
+  Globe: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/>
+    </svg>
+  ),
+  X: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  ),
+  Logo: ({ size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13"/>
+      <circle cx="6" cy="18" r="3"/>
+      <circle cx="18" cy="16" r="3"/>
+    </svg>
+  )
+};
+
+// Map a UTM source label to a platform icon
+const platformIconFor = (source) => {
+  const m = { tiktok: Icon.Music, instagram: Icon.Camera, youtube: Icon.Play, whatsapp: Icon.Message, email: Icon.Message, facebook: Icon.Globe, twitter: Icon.Globe };
+  return m[source] || Icon.Globe;
+};
 
 // ───────────────────────────────────────────────────────────────────
 // Sparkline — tiny SVG line + dot showing the last 14 days of a metric
@@ -475,40 +655,44 @@ export default function AffiliateDashboard() {
       {/* Real-time commission toast (fires when polling detects a new sale) */}
       {toast && (
         <div style={{
-          position: 'fixed', top: 24, right: 24, zIndex: 1000,
+          position: 'fixed', top: 20, right: 20, zIndex: 1000,
           background: '#ffffff',
-          border: '1px solid #a7f3d0',
-          borderLeft: '4px solid #059669',
-          borderRadius: 14,
-          padding: '16px 22px',
-          boxShadow: '0 16px 40px rgba(5,150,105,0.18), 0 4px 12px rgba(0,0,0,0.06)',
+          border: '1px solid #ececec',
+          borderRadius: 12,
+          padding: '14px 18px',
+          boxShadow: '0 0 0 1px rgba(10,10,10,0.04), 0 12px 32px -8px rgba(10,10,10,0.16), 0 4px 12px -4px rgba(10,10,10,0.06)',
           display: 'flex', alignItems: 'center', gap: 14,
-          animation: 'aff-fade-up 0.4s ease-out',
-          maxWidth: 360
+          animation: 'aff-fade-up 0.3s ease-out',
+          maxWidth: 360,
+          fontFamily: 'Inter, -apple-system, sans-serif'
         }}>
           <div style={{
-            fontSize: 28, width: 44, height: 44, borderRadius: 12,
-            background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
+            width: 38, height: 38, borderRadius: 9,
+            background: '#ecfdf5',
+            color: '#059669',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0
-          }}>🎉</div>
+          }}>
+            <Icon.Sparkles size={18} />
+          </div>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: 1.5, margin: '0 0 4px' }}>
-              ¡Nueva venta!
+            <p style={{ fontSize: 11, fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 3px' }}>
+              Nueva venta
             </p>
-            <p style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', margin: 0 }}>
-              +${(toast.commission || 0).toFixed(2)} <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>de comision</span>
+            <p style={{ fontSize: 16, fontWeight: 600, color: '#0a0a0a', margin: 0, letterSpacing: '-0.01em' }}>
+              +${(toast.commission || 0).toFixed(2)} <span style={{ fontSize: 13, color: '#737373', fontWeight: 500 }}>de comisión</span>
             </p>
           </div>
           <button
             onClick={() => setToast(null)}
             style={{
               background: 'transparent', border: 'none',
-              color: '#94a3b8', cursor: 'pointer',
-              fontSize: 18, padding: 4, lineHeight: 1
+              color: '#a3a3a3', cursor: 'pointer',
+              padding: 4, lineHeight: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}
             aria-label="Cerrar"
-          >×</button>
+          ><Icon.X size={16} /></button>
         </div>
       )}
       <div className="aff-dash">
@@ -518,34 +702,33 @@ export default function AffiliateDashboard() {
           <div className="aff-dash-header-inner">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{
-                width: 38, height: 38, borderRadius: 12,
-                background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+                width: 32, height: 32, borderRadius: 8,
+                background: '#0a0a0a',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, color: '#fff', flexShrink: 0
+                color: '#ffffff', flexShrink: 0
               }}>
-                <span role="img" aria-label="music">🎵</span>
+                <Icon.Logo size={16} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="aff-header-brand" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', letterSpacing: -0.3 }}>RegalosQueCantan</span>
+                <span className="aff-header-brand" style={{ fontSize: 15, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.01em' }}>RegalosQueCantan</span>
                 <span className="aff-header-badge" style={{
-                  fontSize: 10, fontWeight: 700, color: '#2563eb', letterSpacing: 1.2,
-                  textTransform: 'uppercase', background: '#eff6ff', padding: '4px 10px',
-                  borderRadius: 8, border: '1px solid #dbeafe'
+                  fontSize: 10, fontWeight: 500, color: '#525252', letterSpacing: 0.3,
+                  background: '#f5f5f5', padding: '3px 9px',
+                  borderRadius: 6, border: '1px solid #ececec'
                 }}>Partner Portal</span>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                  width: 30, height: 30, borderRadius: '50%',
+                  background: '#0a0a0a',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 800, color: '#ffffff',
-                  boxShadow: '0 2px 8px rgba(37,99,235,0.25)'
+                  fontSize: 12, fontWeight: 600, color: '#ffffff'
                 }}>
                   {firstName[0]}
                 </div>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', display: 'none' }} className="aff-name-desktop">{firstName}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#0a0a0a', display: 'none' }} className="aff-name-desktop">{firstName}</span>
               </div>
               <button
                 onClick={() => { localStorage.removeItem('rqc_affiliate_auth'); navigateTo('affiliateLogin'); }}
@@ -562,14 +745,14 @@ export default function AffiliateDashboard() {
           {/* -------- WELCOME BAR -------- */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: 28, flexWrap: 'wrap', gap: 16,
+            marginBottom: 32, flexWrap: 'wrap', gap: 16,
             animation: 'aff-fade-up 0.4s ease-out both'
           }} className="aff-welcome-row">
             <div>
-              <h2 className="aff-welcome-title" style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', margin: '0 0 4px', letterSpacing: -0.5 }}>
-                Bienvenido, {firstName} <span role="img" aria-label="wave" style={{ fontSize: 26 }}>👋</span>
+              <h2 className="aff-welcome-title" style={{ fontSize: 26, fontWeight: 600, color: '#0a0a0a', margin: '0 0 4px', letterSpacing: '-0.025em' }}>
+                Bienvenido, {firstName}
               </h2>
-              <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>Aqui esta tu resumen de actividad</p>
+              <p style={{ fontSize: 14, color: '#737373', margin: 0 }}>Aquí está tu resumen de actividad</p>
             </div>
             <div className="aff-date-control">
               {dateOptions.map(({ d, l }) => (
@@ -593,19 +776,17 @@ export default function AffiliateDashboard() {
             {/* Link card */}
             <div className="aff-tool-card">
               <label style={{
-                fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase',
-                letterSpacing: 2, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6
+                fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase',
+                letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8
               }}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: '#2563eb' }}>
-                  <path d="M6 8L8 6M5.5 9.5L3.35 11.65C2.56 12.44 1.27 12.44 0.48 11.65V11.65C-0.31 10.86-0.31 9.57 0.48 8.78L2.64 6.62M11.36 7.38L13.52 5.22C14.31 4.43 14.31 3.14 13.52 2.35V2.35C12.73 1.56 11.44 1.56 10.65 2.35L8.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                Tu Link
+                <Icon.Link size={14} />
+                Tu link
               </label>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{
-                  flex: 1, padding: '12px 16px', background: '#f8fafc', borderRadius: 12,
-                  border: '1px solid #e8ecf1', fontSize: 13, color: '#475569',
-                  wordBreak: 'break-all', fontFamily: "'SF Mono', 'Fira Code', monospace",
+                  flex: 1, padding: '11px 14px', background: '#fafafa', borderRadius: 9,
+                  border: '1px solid #ececec', fontSize: 13, color: '#404040',
+                  wordBreak: 'break-all', fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace",
                   lineHeight: 1.5
                 }}>
                   {affiliateLink}
@@ -624,20 +805,18 @@ export default function AffiliateDashboard() {
             {affiliate.coupon_code && (
               <div className="aff-tool-card">
                 <label style={{
-                  fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase',
-                  letterSpacing: 2, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6
+                  fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase',
+                  letterSpacing: 0.5, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8
                 }}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: '#7c3aed' }}>
-                    <path d="M1 5V2C1 1.45 1.45 1 2 1H12C12.55 1 13 1.45 13 2V5C11.9 5 11 5.9 11 7C11 8.1 11.9 9 13 9V12C13 12.55 12.55 13 12 13H2C1.45 13 1 12.55 1 12V9C2.1 9 3 8.1 3 7C3 5.9 2.1 5 1 5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Tu Codigo
+                  <Icon.Receipt size={14} />
+                  Tu código
                 </label>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   <div style={{
-                    flex: 1, padding: '12px 16px', background: '#f8fafc', borderRadius: 12,
-                    border: '1px solid #e8ecf1', fontSize: 22, fontWeight: 800,
-                    color: '#0f172a', letterSpacing: 4,
-                    fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    flex: 1, padding: '11px 14px', background: '#fafafa', borderRadius: 9,
+                    border: '1px solid #ececec', fontSize: 20, fontWeight: 600,
+                    color: '#0a0a0a', letterSpacing: 3,
+                    fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace",
                     textAlign: 'center'
                   }}>
                     {affiliate.coupon_code}
@@ -664,146 +843,142 @@ export default function AffiliateDashboard() {
               <div className="aff-stats-grid" style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 16, marginBottom: 28
+                gap: 14, marginBottom: 28
               }}>
                 {[
                   {
                     label: 'Visitantes', value: stats.visits,
-                    icon: '👁️', iconBg: '#eff6ff', iconColor: '#2563eb',
+                    Icon: Icon.Eye,
                     sub: 'Clicks en tu link', delay: '0s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#2563eb'
+                    series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#0a0a0a'
                   },
                   {
                     label: 'Checkouts', value: stats.checkouts,
-                    icon: '🛒', iconBg: '#fef3c7', iconColor: '#d97706',
-                    sub: 'Iniciaron compra', delay: '0.06s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'checkouts'), sparkColor: '#d97706'
+                    Icon: Icon.Cart,
+                    sub: 'Iniciaron compra', delay: '0.04s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'checkouts'), sparkColor: '#0a0a0a'
                   },
                   {
                     label: 'Ventas', value: stats.totalPurchases,
-                    icon: '✅', iconBg: '#ecfdf5', iconColor: '#059669',
-                    sub: 'Completadas', delay: '0.12s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#059669'
+                    Icon: Icon.Check,
+                    sub: 'Completadas', delay: '0.08s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#0a0a0a'
                   },
                   {
-                    label: 'Conversion', value: `${stats.conversionRate}%`,
-                    icon: '📈', iconBg: '#fdf4ff', iconColor: '#a855f7',
-                    sub: 'Visitantes → Ventas', delay: '0.18s', cls: ''
+                    label: 'Conversión', value: `${stats.conversionRate}%`,
+                    Icon: Icon.TrendingUp,
+                    sub: 'Visitantes → Ventas', delay: '0.12s', cls: ''
                   },
                   {
                     label: 'Ticket promedio', value: `$${(stats.aov || 0).toFixed(2)}`,
-                    icon: '🧾', iconBg: '#fef9c3', iconColor: '#ca8a04',
-                    sub: 'Por venta', delay: '0.21s', cls: ''
+                    Icon: Icon.Receipt,
+                    sub: 'Por venta', delay: '0.16s', cls: ''
                   },
                   {
                     label: 'Ingresos', value: `$${stats.totalRevenue.toFixed(2)}`,
-                    icon: '💵', iconBg: '#dbeafe', iconColor: '#2563eb',
-                    sub: 'Total generado', delay: '0.24s', cls: 'highlight',
-                    valueColor: '#2563eb', labelColor: '#2563eb',
-                    series: buildSparklineSeries(dailyStats, 'revenue'), sparkColor: '#2563eb'
+                    Icon: Icon.Dollar,
+                    sub: 'Total generado', delay: '0.20s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'revenue'), sparkColor: '#0a0a0a'
                   },
                   {
-                    label: 'Tu Comision', value: `$${stats.totalCommission.toFixed(2)}`,
-                    icon: '🏆', iconBg: '#d1fae5', iconColor: '#059669',
-                    sub: `${stats.commissionPct}% de ingresos`, delay: '0.30s', cls: 'accent',
-                    valueColor: '#059669', labelColor: '#059669',
+                    label: 'Tu comisión', value: `$${stats.totalCommission.toFixed(2)}`,
+                    Icon: Icon.Award,
+                    sub: `${stats.commissionPct}% de ingresos`, delay: '0.24s', cls: '',
+                    valueColor: '#059669',
                     series: buildSparklineSeries(dailyStats, 'commission'), sparkColor: '#059669'
                   },
-                ].map((s, i) => (
+                ].map((s, i) => {
+                  const StatIcon = s.Icon;
+                  return (
                   <div
                     key={i}
                     className={`aff-stat-card ${s.cls}`}
                     style={{ animationDelay: s.delay }}
                   >
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12,
-                      background: s.iconBg,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 18, marginBottom: 16
-                    }}>
-                      {s.icon}
+                    <div className="aff-stat-icon">
+                      <StatIcon size={16} />
                     </div>
                     <span style={{
-                      fontSize: 10, fontWeight: 700,
-                      color: s.labelColor || '#94a3b8',
-                      textTransform: 'uppercase', letterSpacing: 1.5,
-                      display: 'block', marginBottom: 6
+                      fontSize: 11, fontWeight: 500,
+                      color: '#737373',
+                      textTransform: 'uppercase', letterSpacing: 0.5,
+                      display: 'block', marginBottom: 8
                     }}>
                       {s.label}
                     </span>
-                    <div className="aff-stat-value" style={{
-                      fontSize: 32, fontWeight: 800,
-                      color: s.valueColor || '#0f172a',
-                      letterSpacing: -0.5, lineHeight: 1.1, marginBottom: 6
+                    <div className="aff-stat-value aff-num" style={{
+                      fontSize: 28, fontWeight: 600,
+                      color: s.valueColor || '#0a0a0a',
+                      letterSpacing: '-0.025em', lineHeight: 1.1, marginBottom: 4
                     }}>
                       {s.value}
                     </div>
-                    <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>{s.sub}</p>
+                    <p style={{ fontSize: 12, color: '#a3a3a3', margin: 0, fontWeight: 400 }}>{s.sub}</p>
                     {s.series && (
-                      <div style={{ marginTop: 10 }}>
+                      <div style={{ marginTop: 12 }}>
                         <Sparkline data={s.series} color={s.sparkColor} />
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* -------- COMMISSION SPLIT (Available / Pending / Paid) -------- */}
-              <div style={{
-                background: '#ffffff', borderRadius: 20,
-                border: '1px solid #e8ecf1', padding: '24px 28px',
-                marginBottom: 28,
-                animation: 'aff-fade-up 0.5s ease-out 0.32s both'
+              <div className="aff-section-card" style={{
+                marginBottom: 16,
+                animation: 'aff-fade-up 0.4s ease-out 0.28s both'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                  <span style={{ fontSize: 18 }}>💸</span>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Tus comisiones</h3>
+                <div className="aff-section-h">
+                  <div className="aff-section-icon"><Icon.Wallet size={15} /></div>
+                  <h3>Tus comisiones</h3>
                 </div>
                 <div className="aff-stats-grid" style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: 14
+                  gap: 12
                 }}>
                   {[
                     {
-                      label: 'Disponible para pagar', value: stats.availableCommission ?? 0,
-                      sub: `Listo despues del periodo de ${refundWindowDays} dias`,
-                      color: '#059669', bg: '#ecfdf5', border: '#a7f3d0'
+                      label: 'Disponible', value: stats.availableCommission ?? 0,
+                      sub: `Listo después del período de ${refundWindowDays} días`,
+                      color: '#059669', accent: '#a7f3d0'
                     },
                     {
                       label: 'Pendiente', value: stats.pendingCommission ?? 0,
-                      sub: `Dentro de ${refundWindowDays} dias de la venta`,
-                      color: '#d97706', bg: '#fffbeb', border: '#fde68a'
+                      sub: `Dentro de ${refundWindowDays} días de la venta`,
+                      color: '#d97706', accent: '#fde68a'
                     },
                     {
-                      label: 'Pagado a la fecha', value: stats.paidCommission ?? 0,
+                      label: 'Pagado', value: stats.paidCommission ?? 0,
                       sub: 'Total enviado a tu cuenta',
-                      color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe'
+                      color: '#0a0a0a', accent: '#ececec'
                     },
                   ].map((c, i) => (
                     <div key={i} style={{
-                      background: c.bg, borderRadius: 14, padding: '18px 20px',
-                      border: `1px solid ${c.border}`
+                      background: '#ffffff', borderRadius: 11, padding: '16px 18px',
+                      border: '1px solid #ececec',
+                      borderLeft: `2px solid ${c.color}`,
                     }}>
                       <span style={{
-                        fontSize: 10, fontWeight: 700, color: c.color,
-                        textTransform: 'uppercase', letterSpacing: 1.5,
+                        fontSize: 11, fontWeight: 500, color: '#737373',
+                        textTransform: 'uppercase', letterSpacing: 0.5,
                         display: 'block', marginBottom: 8
                       }}>
                         {c.label}
                       </span>
-                      <div style={{
-                        fontSize: 28, fontWeight: 800, color: c.color,
-                        letterSpacing: -0.5, lineHeight: 1.1, marginBottom: 4
+                      <div className="aff-num" style={{
+                        fontSize: 24, fontWeight: 600, color: c.color,
+                        letterSpacing: '-0.025em', lineHeight: 1.1, marginBottom: 4
                       }}>
                         ${(Number(c.value) || 0).toFixed(2)}
                       </div>
-                      <p style={{ fontSize: 11, color: '#64748b', margin: 0, lineHeight: 1.4 }}>{c.sub}</p>
+                      <p style={{ fontSize: 11, color: '#a3a3a3', margin: 0, lineHeight: 1.4 }}>{c.sub}</p>
                     </div>
                   ))}
                 </div>
-                <p style={{ fontSize: 11, color: '#94a3b8', margin: '14px 0 0', textAlign: 'center' }}>
-                  Las comisiones pasan de <strong style={{ color: '#d97706' }}>Pendiente</strong> a <strong style={{ color: '#059669' }}>Disponible</strong> automaticamente despues de {refundWindowDays} dias (periodo de reembolso).
+                <p style={{ fontSize: 11, color: '#a3a3a3', margin: '16px 0 0', textAlign: 'center' }}>
+                  Las comisiones pasan de <span style={{ color: '#d97706', fontWeight: 500 }}>Pendiente</span> a <span style={{ color: '#059669', fontWeight: 500 }}>Disponible</span> automáticamente después de {refundWindowDays} días.
                 </p>
               </div>
 
@@ -812,44 +987,40 @@ export default function AffiliateDashboard() {
                 const pct = Math.min(100, weeklyGoal.target > 0 ? (weeklyGoal.current / weeklyGoal.target) * 100 : 0);
                 const remaining = Math.max(0, weeklyGoal.target - weeklyGoal.current);
                 return (
-                  <div style={{
-                    background: '#ffffff', borderRadius: 20,
-                    border: '1px solid #e8ecf1', padding: '22px 28px',
-                    marginBottom: 28,
-                    animation: 'aff-fade-up 0.5s ease-out 0.34s both'
+                  <div className="aff-section-card" style={{
+                    marginBottom: 16,
+                    animation: 'aff-fade-up 0.4s ease-out 0.32s both'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 18 }}>🎯</span>
-                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Meta semanal</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <div className="aff-section-h" style={{ margin: 0 }}>
+                        <div className="aff-section-icon"><Icon.Target size={15} /></div>
+                        <h3>Meta semanal</h3>
                       </div>
-                      <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>
-                        <span style={{ color: '#0f172a', fontWeight: 800 }}>{weeklyGoal.current}</span> / {weeklyGoal.target} ventas
+                      <span className="aff-num" style={{ fontSize: 13, color: '#737373', fontWeight: 500 }}>
+                        <span style={{ color: '#0a0a0a', fontWeight: 600 }}>{weeklyGoal.current}</span> / {weeklyGoal.target} ventas
                       </span>
                     </div>
                     <div style={{
-                      height: 10, background: '#f1f5f9', borderRadius: 10, overflow: 'hidden',
-                      marginBottom: 10
+                      height: 6, background: '#f5f5f5', borderRadius: 6, overflow: 'hidden',
+                      marginBottom: 12, border: '1px solid #ececec'
                     }}>
                       <div style={{
                         height: '100%',
                         width: `${pct}%`,
-                        background: pct >= 100
-                          ? 'linear-gradient(90deg, #059669, #10b981)'
-                          : 'linear-gradient(90deg, #2563eb, #7c3aed)',
-                        borderRadius: 10,
+                        background: pct >= 100 ? '#059669' : '#0a0a0a',
+                        borderRadius: 6,
                         transition: 'width 0.6s ease-out'
                       }} />
                     </div>
-                    <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+                    <p style={{ fontSize: 12, color: '#737373', margin: 0 }}>
                       {pct >= 100
-                        ? '🔥 ¡Meta alcanzada esta semana! Sigue asi.'
+                        ? 'Meta alcanzada esta semana. Sigue así.'
                         : remaining === 1
-                          ? 'Te falta 1 venta para llegar a la meta de esta semana.'
-                          : `Te faltan ${remaining} ventas para llegar a la meta de esta semana.`
+                          ? 'Te falta 1 venta para llegar a la meta.'
+                          : `Te faltan ${remaining} ventas para llegar a la meta.`
                       }
                       {weeklyGoal.lastWeek > 0 && (
-                        <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                        <span style={{ marginLeft: 8, color: '#a3a3a3' }}>
                           · La semana pasada: {weeklyGoal.lastWeek} ventas
                         </span>
                       )}
@@ -860,15 +1031,13 @@ export default function AffiliateDashboard() {
 
               {/* -------- COUPON vs LINK BREAKDOWN -------- */}
               {(attribution.couponSales + attribution.linkSales) > 0 && (
-                <div style={{
-                  background: '#ffffff', borderRadius: 20,
-                  border: '1px solid #e8ecf1', padding: '22px 28px',
-                  marginBottom: 28,
-                  animation: 'aff-fade-up 0.5s ease-out 0.36s both'
+                <div className="aff-section-card" style={{
+                  marginBottom: 16,
+                  animation: 'aff-fade-up 0.4s ease-out 0.36s both'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                    <span style={{ fontSize: 18 }}>🔀</span>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Codigo vs Link</h3>
+                  <div className="aff-section-h">
+                    <div className="aff-section-icon"><Icon.Split size={15} /></div>
+                    <h3>Código vs Link</h3>
                   </div>
                   {(() => {
                     const total = attribution.couponSales + attribution.linkSales;
@@ -877,28 +1046,26 @@ export default function AffiliateDashboard() {
                     return (
                       <>
                         <div style={{
-                          display: 'flex', height: 12, borderRadius: 10, overflow: 'hidden',
-                          marginBottom: 14, background: '#f1f5f9'
+                          display: 'flex', height: 8, borderRadius: 6, overflow: 'hidden',
+                          marginBottom: 16, background: '#f5f5f5', border: '1px solid #ececec'
                         }}>
-                          {couponPct > 0 && <div style={{ width: `${couponPct}%`, background: '#a855f7' }} />}
-                          {linkPct > 0 && <div style={{ width: `${linkPct}%`, background: '#2563eb' }} />}
+                          {couponPct > 0 && <div style={{ width: `${couponPct}%`, background: '#7c3aed' }} />}
+                          {linkPct > 0 && <div style={{ width: `${linkPct}%`, background: '#0a0a0a' }} />}
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                          <div style={{ background: '#faf5ff', borderRadius: 12, padding: '14px 16px', border: '1px solid #e9d5ff' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#a855f7' }} />
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 1 }}>Por codigo</span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #7c3aed' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase', letterSpacing: 0.5 }}>Por código</span>
                             </div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{attribution.couponSales} <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ventas</span></div>
-                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>${attribution.couponRevenue.toFixed(2)} en ingresos</div>
+                            <div className="aff-num" style={{ fontSize: 18, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.02em' }}>{attribution.couponSales} <span style={{ fontSize: 12, color: '#a3a3a3', fontWeight: 500 }}>ventas</span></div>
+                            <div className="aff-num" style={{ fontSize: 12, color: '#737373', marginTop: 4 }}>${attribution.couponRevenue.toFixed(2)} en ingresos</div>
                           </div>
-                          <div style={{ background: '#eff6ff', borderRadius: 12, padding: '14px 16px', border: '1px solid #bfdbfe' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: 2, background: '#2563eb' }} />
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: 1 }}>Por link</span>
+                          <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #0a0a0a' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase', letterSpacing: 0.5 }}>Por link</span>
                             </div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{attribution.linkSales} <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ventas</span></div>
-                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>${attribution.linkRevenue.toFixed(2)} en ingresos</div>
+                            <div className="aff-num" style={{ fontSize: 18, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.02em' }}>{attribution.linkSales} <span style={{ fontSize: 12, color: '#a3a3a3', fontWeight: 500 }}>ventas</span></div>
+                            <div className="aff-num" style={{ fontSize: 12, color: '#737373', marginTop: 4 }}>${attribution.linkRevenue.toFixed(2)} en ingresos</div>
                           </div>
                         </div>
                       </>
@@ -909,34 +1076,32 @@ export default function AffiliateDashboard() {
 
               {/* -------- PER-CHANNEL UTM BREAKDOWN -------- */}
               {utmBreakdown.length > 0 && (
-                <div style={{
-                  background: '#ffffff', borderRadius: 20,
-                  border: '1px solid #e8ecf1', padding: '22px 28px',
-                  marginBottom: 28,
-                  animation: 'aff-fade-up 0.5s ease-out 0.38s both'
+                <div className="aff-section-card" style={{
+                  marginBottom: 16,
+                  animation: 'aff-fade-up 0.4s ease-out 0.40s both'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                    <span style={{ fontSize: 18 }}>📡</span>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Por plataforma</h3>
+                  <div className="aff-section-h">
+                    <div className="aff-section-icon"><Icon.Activity size={15} /></div>
+                    <h3>Por plataforma</h3>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {utmBreakdown.map((row) => {
                       const max = Math.max(...utmBreakdown.map(r => r.sales), 1);
                       const pct = (row.sales / max) * 100;
-                      const platformIcons = { tiktok: '🎵', instagram: '📷', youtube: '▶️', email: '📧', whatsapp: '💬', facebook: '👥', twitter: '🐦', directo: '🔗' };
-                      const icon = platformIcons[row.source] || '🌐';
+                      const PIcon = platformIconFor(row.source);
                       return (
                         <div key={row.source}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, textTransform: 'capitalize' }}>
-                              {icon} {row.source}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <span style={{ fontSize: 13, color: '#0a0a0a', fontWeight: 500, textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ color: '#525252' }}><PIcon size={14} /></span>
+                              {row.source}
                             </span>
-                            <span style={{ fontSize: 12, color: '#64748b' }}>
-                              <strong style={{ color: '#0f172a' }}>{row.sales}</strong> ventas · ${row.revenue.toFixed(2)} · <strong style={{ color: '#059669' }}>${row.commission.toFixed(2)} comision</strong>
+                            <span className="aff-num" style={{ fontSize: 12, color: '#737373' }}>
+                              <span style={{ color: '#0a0a0a', fontWeight: 500 }}>{row.sales}</span> ventas · ${row.revenue.toFixed(2)} · <span style={{ color: '#059669', fontWeight: 500 }}>${row.commission.toFixed(2)}</span>
                             </span>
                           </div>
-                          <div style={{ height: 6, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: 6 }} />
+                          <div style={{ height: 4, background: '#f5f5f5', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: '#0a0a0a', borderRadius: 4 }} />
                           </div>
                         </div>
                       );
@@ -946,53 +1111,54 @@ export default function AffiliateDashboard() {
               )}
 
               {/* -------- PER-CHANNEL LINK GENERATOR -------- */}
-              <div style={{
-                background: '#ffffff', borderRadius: 20,
-                border: '1px solid #e8ecf1', padding: '22px 28px',
-                marginBottom: 28,
-                animation: 'aff-fade-up 0.5s ease-out 0.40s both'
+              <div className="aff-section-card" style={{
+                marginBottom: 16,
+                animation: 'aff-fade-up 0.4s ease-out 0.44s both'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 18 }}>🔗</span>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Links por plataforma</h3>
+                <div className="aff-section-h" style={{ marginBottom: 6 }}>
+                  <div className="aff-section-icon"><Icon.Link size={15} /></div>
+                  <h3>Links por plataforma</h3>
                 </div>
-                <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 16px' }}>
-                  Usa un link diferente en cada red para saber cual te genera mas ventas.
+                <p style={{ fontSize: 12, color: '#737373', margin: '0 0 16px 38px' }}>
+                  Usa un link diferente en cada red para saber cuál te genera más ventas.
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {[
-                    { source: 'tiktok', label: 'TikTok', icon: '🎵' },
-                    { source: 'instagram', label: 'Instagram', icon: '📷' },
-                    { source: 'youtube', label: 'YouTube', icon: '▶️' },
-                    { source: 'whatsapp', label: 'WhatsApp', icon: '💬' },
-                  ].map(({ source, label, icon }) => {
+                    { source: 'tiktok', label: 'TikTok', PIcon: Icon.Music },
+                    { source: 'instagram', label: 'Instagram', PIcon: Icon.Camera },
+                    { source: 'youtube', label: 'YouTube', PIcon: Icon.Play },
+                    { source: 'whatsapp', label: 'WhatsApp', PIcon: Icon.Message },
+                  ].map(({ source, label, PIcon }) => {
                     const link = `https://regalosquecantan.com/?ref=${affiliate.code}&utm_source=${source}`;
                     const copyKey = `link_${source}`;
+                    const isCopied = copied === copyKey;
                     return (
                       <div key={source} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '12px 14px', background: '#f8fafc',
-                        borderRadius: 12, border: '1px solid #e2e8f0'
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '11px 14px', background: '#fafafa',
+                        borderRadius: 9, border: '1px solid #ececec'
                       }}>
-                        <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{icon}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', minWidth: 80 }}>{label}</span>
+                        <span style={{ width: 18, height: 18, color: '#525252', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PIcon size={16} /></span>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#0a0a0a', minWidth: 84 }}>{label}</span>
                         <code style={{
-                          flex: 1, fontSize: 11, color: '#64748b',
+                          flex: 1, fontSize: 12, color: '#737373',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          fontFamily: 'ui-monospace, monospace'
+                          fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace"
                         }}>{link}</code>
                         <button
                           onClick={() => copyToClipboard(link, copyKey)}
                           style={{
                             padding: '6px 12px',
-                            background: copied === copyKey ? '#dcfce7' : '#eff6ff',
-                            color: copied === copyKey ? '#059669' : '#2563eb',
-                            border: `1px solid ${copied === copyKey ? '#86efac' : '#bfdbfe'}`,
-                            borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                            whiteSpace: 'nowrap'
+                            background: isCopied ? '#0a0a0a' : '#ffffff',
+                            color: isCopied ? '#ffffff' : '#0a0a0a',
+                            border: '1px solid ' + (isCopied ? '#0a0a0a' : '#d4d4d4'),
+                            borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            fontFamily: 'inherit',
+                            transition: 'all 0.15s ease'
                           }}
                         >
-                          {copied === copyKey ? '✓ Copiado' : 'Copiar'}
+                          {isCopied ? 'Copiado' : 'Copiar'}
                         </button>
                       </div>
                     );
@@ -1002,78 +1168,73 @@ export default function AffiliateDashboard() {
 
               {/* -------- TRANSPARENCY BANNER -------- */}
               <div style={{
-                display: 'flex', gap: 14, alignItems: 'center',
-                background: 'linear-gradient(135deg, #f0f7ff, #eff6ff)',
-                borderRadius: 16, padding: '14px 22px', marginBottom: 28,
-                border: '1px solid #dbeafe',
-                animation: 'aff-fade-up 0.5s ease-out 0.35s both'
-              }}>
+                display: 'flex', gap: 12, alignItems: 'center',
+                background: '#fafafa',
+                borderRadius: 11, padding: '12px 18px', marginBottom: 16,
+                border: '1px solid #ececec',
+                animation: 'aff-fade-up 0.4s ease-out 0.48s both'
+              }} className="aff-transparency-bar">
                 <div style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: '#dbeafe',
+                  width: 28, height: 28, borderRadius: 7,
+                  background: '#ffffff',
+                  border: '1px solid #ececec',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, flexShrink: 0
+                  color: '#525252', flexShrink: 0
                 }}>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <path d="M9 3C5 3 1.73 5.48 0.5 9C1.73 12.52 5 15 9 15C13 15 16.27 12.52 17.5 9C16.27 5.48 13 3 9 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="9" cy="9" r="2.5" stroke="#2563eb" strokeWidth="1.5"/>
-                  </svg>
+                  <Icon.Eye size={14} />
                 </div>
-                <p style={{ fontSize: 13, color: '#475569', margin: 0, lineHeight: 1.6 }}>
-                  <strong style={{ color: '#0f172a' }}>Transparencia total</strong> — Datos actualizados en tiempo real. Ves exactamente lo que generan tu link y tu codigo.
+                <p style={{ fontSize: 13, color: '#525252', margin: 0, lineHeight: 1.5 }}>
+                  <span style={{ color: '#0a0a0a', fontWeight: 500 }}>Transparencia total</span> — Datos actualizados en tiempo real. Ves exactamente lo que generan tu link y tu código.
                 </p>
               </div>
 
               {/* -------- RECENT ACTIVITY TABLE -------- */}
-              <div style={{
-                background: '#ffffff', borderRadius: 20,
-                border: '1px solid #e8ecf1', overflow: 'hidden',
-                animation: 'aff-fade-up 0.5s ease-out 0.38s both',
-                marginBottom: 28
+              <div className="aff-section-card" style={{
+                padding: 0,
+                overflow: 'hidden',
+                animation: 'aff-fade-up 0.4s ease-out 0.52s both',
+                marginBottom: 16
               }}>
                 <div style={{
-                  padding: '22px 28px 0',
+                  padding: '20px 24px 16px',
                   display: 'flex', alignItems: 'center', gap: 10
                 }}>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <path d="M9 1V9L13 13" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="9" cy="9" r="8" stroke="#2563eb" strokeWidth="1.5"/>
-                  </svg>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Actividad reciente</h3>
+                  <div className="aff-section-icon"><Icon.Activity size={15} /></div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0a0a0a', margin: 0, letterSpacing: '-0.01em' }}>Actividad reciente</h3>
                 </div>
                 {recentPurchases.length > 0 ? (
-                  <div style={{ overflowX: 'auto', padding: '16px 0 0' }}>
+                  <div style={{ overflowX: 'auto' }}>
                     <table className="aff-table">
                       <thead>
                         <tr>
                           <th>Fecha</th>
                           <th>Tipo</th>
                           <th>Monto</th>
-                          <th>Tu comision</th>
+                          <th>Tu comisión</th>
                         </tr>
                       </thead>
                       <tbody>
                         {recentPurchases.map((p, i) => (
                           <tr key={i}>
-                            <td style={{ fontWeight: 500 }}>
+                            <td className="aff-num">
                               {new Date(p.date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td>
                               {p.type === 'refund' ? (
-                                <span className="aff-badge aff-badge-red">❌ Reembolso</span>
+                                <span className="aff-badge aff-badge-red">Reembolso</span>
                               ) : (
-                                <span className="aff-badge aff-badge-green">✅ Venta</span>
+                                <span className="aff-badge aff-badge-green">Venta</span>
                               )}
                             </td>
-                            <td style={{
-                              color: p.type === 'refund' ? '#ef4444' : '#0f172a',
-                              fontWeight: 600
+                            <td className="aff-num" style={{
+                              color: p.type === 'refund' ? '#b91c1c' : '#0a0a0a',
+                              fontWeight: 500
                             }}>
                               {p.type === 'refund' ? `-$${Math.abs(p.amount).toFixed(2)}` : `$${p.amount.toFixed(2)}`}
                             </td>
-                            <td style={{
-                              color: p.type === 'refund' ? '#ef4444' : '#059669',
-                              fontWeight: 700
+                            <td className="aff-num" style={{
+                              color: p.type === 'refund' ? '#b91c1c' : '#059669',
+                              fontWeight: 600
                             }}>
                               {p.type === 'refund' ? `-$${Math.abs(p.commission).toFixed(2)}` : `+$${p.commission.toFixed(2)}`}
                             </td>
@@ -1083,170 +1244,166 @@ export default function AffiliateDashboard() {
                     </table>
                   </div>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: '48px 24px 56px' }}>
-                    <div style={{ fontSize: 52, marginBottom: 16, opacity: 0.6 }}>📭</div>
-                    <p style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>Aun no hay ventas</p>
-                    <p style={{ fontSize: 14, color: '#64748b', margin: 0, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7 }}>
-                      Comparte tu link o codigo con tu audiencia para empezar a generar comisiones.
+                  <div style={{ textAlign: 'center', padding: '40px 24px 48px' }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 11,
+                      background: '#fafafa', border: '1px solid #ececec',
+                      color: '#a3a3a3',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      margin: '0 auto 16px'
+                    }}>
+                      <Icon.Activity size={20} />
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#0a0a0a', margin: '0 0 6px' }}>Aún no hay ventas</p>
+                    <p style={{ fontSize: 13, color: '#737373', margin: 0, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
+                      Comparte tu link o código con tu audiencia para empezar a generar comisiones.
                     </p>
                   </div>
                 )}
               </div>
 
               {/* -------- PAYOUT HISTORY -------- */}
-              <div style={{
-                background: '#ffffff', borderRadius: 20,
-                border: '1px solid #e8ecf1', overflow: 'hidden',
-                animation: 'aff-fade-up 0.5s ease-out 0.42s both',
-                marginBottom: 28
+              <div className="aff-section-card" style={{
+                padding: 0,
+                overflow: 'hidden',
+                animation: 'aff-fade-up 0.4s ease-out 0.56s both',
+                marginBottom: 16
               }}>
                 <div style={{
-                  padding: '22px 28px',
+                  padding: '20px 24px',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  flexWrap: 'wrap', gap: 12
+                  flexWrap: 'wrap', gap: 12,
+                  borderBottom: '1px solid #f5f5f5'
                 }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                        <rect x="1" y="3" width="16" height="12" rx="2" stroke="#059669" strokeWidth="1.5"/>
-                        <path d="M1 7H17" stroke="#059669" strokeWidth="1.5"/>
-                      </svg>
-                      <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Historial de pagos</h3>
+                      <div className="aff-section-icon"><Icon.Wallet size={15} /></div>
+                      <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0a0a0a', margin: 0, letterSpacing: '-0.01em' }}>Historial de pagos</h3>
                     </div>
-                    <p style={{ fontSize: 12, color: '#64748b', margin: 0, paddingLeft: 28 }}>Pagos mensuales via Zelle, Venmo o PayPal</p>
+                    <p style={{ fontSize: 12, color: '#737373', margin: 0, paddingLeft: 38 }}>Pagos mensuales vía Zelle, Venmo o PayPal</p>
                   </div>
                   <div style={{
-                    padding: '8px 16px', borderRadius: 12,
-                    background: '#ecfdf5', border: '1px solid #a7f3d0'
+                    padding: '6px 12px', borderRadius: 7,
+                    background: '#fafafa', border: '1px solid #ececec'
                   }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>
+                    <span className="aff-num" style={{ fontSize: 12, fontWeight: 500, color: '#0a0a0a' }}>
                       Pendiente: ${stats.totalCommission.toFixed(2)}
                     </span>
                   </div>
                 </div>
-                <div style={{ padding: '0 28px 28px' }}>
+                <div style={{ padding: '24px' }}>
                   <div style={{
-                    background: '#fafbfd', borderRadius: 16,
-                    border: '1px solid #e8ecf1', padding: '36px 24px',
+                    background: '#fafafa', borderRadius: 11,
+                    border: '1px solid #ececec', padding: '32px 24px',
                     textAlign: 'center'
                   }}>
-                    <div style={{ fontSize: 36, marginBottom: 14, opacity: 0.5 }}>💸</div>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>Aun no hay pagos registrados</p>
-                    <p style={{
-                      fontSize: 13, color: '#94a3b8', margin: 0, maxWidth: 380,
-                      marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7
+                    <div style={{
+                      width: 44, height: 44, borderRadius: 11,
+                      background: '#ffffff', border: '1px solid #ececec',
+                      color: '#a3a3a3',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      margin: '0 auto 14px'
                     }}>
-                      Los pagos se procesan mensualmente. Cuando alcances el minimo de <strong style={{ color: '#475569' }}>$20 USD</strong>, recibiras tu primer pago.
+                      <Icon.Wallet size={20} />
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#0a0a0a', margin: '0 0 6px' }}>Aún no hay pagos registrados</p>
+                    <p style={{
+                      fontSize: 12, color: '#737373', margin: 0, maxWidth: 380,
+                      marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6
+                    }}>
+                      Los pagos se procesan mensualmente. Cuando alcances el mínimo de <span style={{ color: '#0a0a0a', fontWeight: 500 }}>$20 USD</span>, recibirás tu primer pago.
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* -------- PROMOTION TIPS -------- */}
-              <div style={{ marginBottom: 28, animation: 'aff-fade-up 0.5s ease-out 0.46s both' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M10 1L12.47 6.6L18.6 7.35L14.05 11.4L15.35 17.4L10 14.27L4.65 17.4L5.95 11.4L1.4 7.35L7.53 6.6L10 1Z" stroke="#2563eb" strokeWidth="1.5" strokeLinejoin="round"/>
-                  </svg>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>Ideas para promover</h3>
+              <div style={{ marginBottom: 16, animation: 'aff-fade-up 0.4s ease-out 0.60s both' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <div className="aff-section-icon"><Icon.Sparkles size={15} /></div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0a0a0a', margin: 0, letterSpacing: '-0.01em' }}>Ideas para promover</h3>
                 </div>
                 <div className="aff-tips-grid" style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                  gap: 14
+                  gap: 12
                 }}>
                   {[
-                    { icon: '🎬', title: 'Graba la reaccion', desc: 'Filma a alguien recibiendo su cancion personalizada. Los videos de reaccion son el contenido que mas convierte.', tag: 'TikTok / Reels', delay: '0.48s' },
-                    { icon: '🔗', title: 'Link en tu bio', desc: 'Agrega tu link de afiliado a tu bio de Instagram, TikTok o YouTube. Trafico pasivo 24/7.', tag: 'Todas las redes', delay: '0.52s' },
-                    { icon: '📖', title: 'Cuenta una historia', desc: '"Le regale una cancion a mi mama y lloro de felicidad" — las historias personales venden mas que cualquier anuncio.', tag: 'Stories / Posts', delay: '0.56s' },
-                    { icon: '🎁', title: 'Fechas especiales', desc: 'Antes del Dia de las Madres, San Valentin, cumpleanos... recuerda a tu audiencia que este es el regalo perfecto.', tag: 'Contenido estacional', delay: '0.60s' },
-                    { icon: '💬', title: 'Comparte tu codigo', desc: 'Menciona tu codigo de descuento en tus videos: "Usen mi codigo [TU_CODIGO] para un descuento especial."', tag: 'Videos / Lives', delay: '0.64s' },
-                    { icon: '🎵', title: 'Reproduce la cancion', desc: 'Pon una cancion de ejemplo en tu story o video. Que tu audiencia escuche la calidad. El producto se vende solo.', tag: 'Audio / Video', delay: '0.68s' },
-                  ].map((tip, i) => (
+                    { Icon: Icon.Play, title: 'Graba la reacción', desc: 'Filma a alguien recibiendo su canción personalizada. Los videos de reacción son el contenido que más convierte.', tag: 'TikTok / Reels', delay: '0.62s' },
+                    { Icon: Icon.Link, title: 'Link en tu bio', desc: 'Agrega tu link de afiliado a tu bio de Instagram, TikTok o YouTube. Tráfico pasivo 24/7.', tag: 'Todas las redes', delay: '0.66s' },
+                    { Icon: Icon.Message, title: 'Cuenta una historia', desc: '"Le regalé una canción a mi mamá y lloró de felicidad" — las historias personales venden más que cualquier anuncio.', tag: 'Stories / Posts', delay: '0.70s' },
+                    { Icon: Icon.Target, title: 'Fechas especiales', desc: 'Antes del Día de las Madres, San Valentín, cumpleaños... recuerda a tu audiencia que este es el regalo perfecto.', tag: 'Contenido estacional', delay: '0.74s' },
+                    { Icon: Icon.Receipt, title: 'Comparte tu código', desc: 'Menciona tu código de descuento en tus videos: "Usen mi código [TU_CODIGO] para un descuento especial."', tag: 'Videos / Lives', delay: '0.78s' },
+                    { Icon: Icon.Music, title: 'Reproduce la canción', desc: 'Pon una canción de ejemplo en tu story o video. Que tu audiencia escuche la calidad. El producto se vende solo.', tag: 'Audio / Video', delay: '0.82s' },
+                  ].map((tip, i) => {
+                    const TIcon = tip.Icon;
+                    return (
                     <div key={i} className="aff-tip-card" style={{ animationDelay: tip.delay }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                         <div style={{
-                          width: 44, height: 44, borderRadius: 14,
-                          background: '#f8fafc', border: '1px solid #e8ecf1',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 22
+                          width: 36, height: 36, borderRadius: 9,
+                          background: '#fafafa', border: '1px solid #ececec',
+                          color: '#525252',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }}>
-                          {tip.icon}
+                          <TIcon size={16} />
                         </div>
                         <span style={{
-                          fontSize: 10, fontWeight: 700, color: '#2563eb',
-                          textTransform: 'uppercase', letterSpacing: 1,
-                          padding: '5px 12px', background: '#eff6ff',
-                          borderRadius: 8, border: '1px solid #dbeafe'
+                          fontSize: 10, fontWeight: 500, color: '#737373',
+                          textTransform: 'uppercase', letterSpacing: 0.5,
+                          padding: '4px 10px', background: '#fafafa',
+                          borderRadius: 6, border: '1px solid #ececec'
                         }}>
                           {tip.tag}
                         </span>
                       </div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: '0 0 8px' }}>{tip.title}</h4>
-                      <p style={{ fontSize: 13, color: '#64748b', margin: 0, lineHeight: 1.7 }}>{tip.desc}</p>
+                      <h4 style={{ fontSize: 14, fontWeight: 600, color: '#0a0a0a', margin: '0 0 6px', letterSpacing: '-0.01em' }}>{tip.title}</h4>
+                      <p style={{ fontSize: 13, color: '#737373', margin: 0, lineHeight: 1.6 }}>{tip.desc}</p>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
 
               {/* -------- SAMPLE SCRIPT -------- */}
-              <div style={{
-                background: '#ffffff', borderRadius: 20,
-                border: '1px solid #e8ecf1', overflow: 'hidden',
-                animation: 'aff-fade-up 0.5s ease-out 0.72s both',
-                position: 'relative'
+              <div className="aff-section-card" style={{
+                animation: 'aff-fade-up 0.4s ease-out 0.86s both',
               }}>
+                <div className="aff-section-h">
+                  <div className="aff-section-icon"><Icon.Message size={15} /></div>
+                  <h3>Guión de ejemplo para tu contenido</h3>
+                </div>
                 <div style={{
-                  position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-                  background: 'linear-gradient(90deg, #7c3aed, #2563eb)',
-                  borderRadius: '20px 20px 0 0'
-                }} />
-                <div style={{ padding: '28px 32px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12,
-                      background: 'linear-gradient(135deg, #ede9fe, #f0f0ff)',
-                      border: '1px solid #ddd6fe',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 18
-                    }}>
-                      🎤
-                    </div>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0 }}>Guion de ejemplo para tu contenido</h3>
-                  </div>
-                  <div style={{
-                    background: '#fafaff', borderRadius: 16,
-                    padding: '24px 28px', border: '1px solid #ede9fe'
-                  }}>
-                    <p style={{
-                      fontSize: 15, color: '#475569', margin: 0, lineHeight: 1.9,
-                      fontStyle: 'italic'
-                    }}>
-                      "¿Quieres darle a alguien un regalo que NUNCA va a olvidar? Imaginate regalarle una cancion con SU nombre, contando SU historia, en el genero que mas le gusta — corrido, cumbia, bachata, lo que quieras. Asi funciona RegalosQueCantan. Tu eliges todo, y en minutos tienes una cancion unica que no existe en ningun otro lugar del mundo. Usa mi codigo <strong style={{ color: '#2563eb', fontStyle: 'normal', background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>{affiliate.coupon_code || '[TU_CODIGO]'}</strong> para un descuento especial. El link esta en mi bio."
-                    </p>
-                  </div>
+                  background: '#fafafa', borderRadius: 11,
+                  padding: '20px 24px', border: '1px solid #ececec'
+                }}>
                   <p style={{
-                    fontSize: 12, color: '#94a3b8', margin: '16px 0 0',
-                    textAlign: 'center'
+                    fontSize: 14, color: '#404040', margin: 0, lineHeight: 1.8,
                   }}>
-                    Adaptalo a tu estilo — lo importante es que sea autentico y tuyo
+                    "¿Quieres darle a alguien un regalo que NUNCA va a olvidar? Imagínate regalarle una canción con SU nombre, contando SU historia, en el género que más le gusta — corrido, cumbia, bachata, lo que quieras. Así funciona RegalosQueCantan. Tú eliges todo, y en minutos tienes una canción única que no existe en ningún otro lugar del mundo. Usa mi código <span style={{ color: '#0a0a0a', fontWeight: 600, background: '#ffffff', padding: '2px 8px', borderRadius: 5, border: '1px solid #ececec', fontFamily: "'SF Mono', 'Menlo', monospace", fontSize: 13 }}>{affiliate.coupon_code || '[TU_CODIGO]'}</span> para un descuento especial. El link está en mi bio."
                   </p>
                 </div>
+                <p style={{
+                  fontSize: 12, color: '#a3a3a3', margin: '14px 0 0',
+                  textAlign: 'center'
+                }}>
+                  Adáptalo a tu estilo — lo importante es que sea auténtico y tuyo.
+                </p>
               </div>
             </>
           ) : null}
 
-          {/* -------- FLOATING WHATSAPP BUTTON -------- */}
+          {/* -------- FLOATING SUPPORT BUTTON -------- */}
           <a
             href="https://wa.me/12136666619?text=Hola%2C%20soy%20afiliado%20de%20RegalosQueCantan%20y%20tengo%20una%20pregunta"
             target="_blank"
             rel="noopener noreferrer"
             className="aff-support-btn"
-            style={{ position: 'fixed', bottom: 28, right: 28, display: 'flex', alignItems: 'center', gap: 10, padding: '14px 22px', borderRadius: 50, background: 'linear-gradient(135deg, #25d366, #128c7e)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(37,211,102,0.3)', transition: 'transform 0.2s, box-shadow 0.2s', zIndex: 50, fontFamily: 'inherit' }}
-            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(37,211,102,0.4)'; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(37,211,102,0.3)'; }}
+            style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 50, background: '#0a0a0a', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 500, boxShadow: '0 0 0 1px rgba(10,10,10,0.04), 0 12px 32px -8px rgba(10,10,10,0.24)', transition: 'transform 0.15s, box-shadow 0.15s', zIndex: 50, fontFamily: 'inherit' }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
           >
-            <span style={{ fontSize: 20 }}>💬</span>
+            <Icon.Message size={15} />
             ¿Necesitas ayuda?
           </a>
         </main>
