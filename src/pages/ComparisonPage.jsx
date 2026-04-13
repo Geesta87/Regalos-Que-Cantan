@@ -7,7 +7,7 @@ import ExitIntentPopup from '../components/ExitIntentPopup';
 
 // Preview settings
 const PREVIEW_START = 10;
-const PREVIEW_DURATION = 35;
+const PREVIEW_DURATION = 40;
 const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // Helper to get static genre image path

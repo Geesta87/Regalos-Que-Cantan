@@ -1251,6 +1251,37 @@ serve(async (req) => {
       : (relationshipContext || relationship);
     const voiceDesc = voiceType === 'female' ? 'voz femenina' : 'voz masculina';
 
+    // Relationship-specific emotional guidance
+    const relationshipGuide: Record<string, string> = {
+      pareja: 'Tono romántico e íntimo. Complicidad de pareja, momentos a solas, amor profundo. Usa "tú y yo", recuerdos de citas, noches juntos, planes de futuro.',
+      madre: 'Tono de gratitud y admiración. Sacrificios, recuerdos de infancia, sus manos, su cocina, sus consejos. El amor más incondicional. Hazla llorar de emoción.',
+      padre: 'Tono de respeto y orgullo. Su ejemplo, su fuerza, lo que enseñó sin palabras. Momentos padre-hijo/a. Reconocer lo que no siempre se dice en voz alta.',
+      hijo: 'Tono de orgullo y protección. Verlos crecer, sus logros, promesas de siempre estar ahí. El amor que cambia la vida. Desde el día que nacieron.',
+      hermano: 'Tono de complicidad y lealtad. Travesuras de niños, peleas y reconciliaciones, crecer juntos. "Mi sangre, mi cómplice." Humor y ternura mezclados.',
+      abuelo: 'Tono de ternura y nostalgia. Sabiduría, historias del pasado, su casa, sus costumbres. Gratitud por las raíces. El legado que dejan.',
+      amigo: 'Tono de lealtad y aventura. Anécdotas compartidas, "en las buenas y en las malas", humor, noches memorables. Celebrar la hermandad elegida.',
+      jefe: 'Tono de reconocimiento profesional con calidez. Liderazgo, mentoría, impacto en la carrera. Respeto genuino sin ser formal ni frío.',
+    };
+    const relationshipContext2 = relationshipGuide[relationship] || '';
+
+    // Occasion-specific songwriting guidance
+    const occasionGuide: Record<string, string> = {
+      cumpleanos: 'ENERGÍA: Celebración alegre. Mencionar la edad o etapa si se proporcionó. Celebrar quién es la persona HOY, no solo desear felicidad. Incluir logros del año, crecimiento personal. El coro debe sentirse como un brindis.',
+      aniversario: 'ENERGÍA: Romántica y reflexiva. Celebrar el viaje juntos — el primer encuentro, obstáculos superados, cómo el amor creció. Números de años juntos si se mencionaron. El coro debe sentirse como una renovación de votos.',
+      declaracion: 'ENERGÍA: Apasionada y vulnerable. El momento de confesar lo que se siente. Nervios, valentía, "ya no puedo callar". El coro es la declaración misma — directa, sin rodeos.',
+      disculpa: 'ENERGÍA: Vulnerable y sincera. Reconocer el error específico, no genérico. Mostrar que entiende el daño. NO minimizar. El puente es la promesa de cambio. El coro pide perdón sin exigir que lo den.',
+      graduacion: 'ENERGÍA: Orgullo y emoción. Celebrar el esfuerzo, las noches de estudio, los sacrificios. Mirar hacia el futuro con esperanza. Si son padres dedicándola, incluir "siempre supe que lo lograrías".',
+      quinceanera: 'ENERGÍA: Emotiva y festiva. La transición de niña a mujer. Recuerdos de infancia, orgullo de los padres, el vestido, el vals. Mezcla de nostalgia y celebración.',
+      boda: 'ENERGÍA: Solemne y romántica. La promesa de para siempre. El camino al altar, los nervios, "elegirte cada día". El coro debe funcionar como voto matrimonial cantado.',
+      madre: 'ENERGÍA: Emotiva y agradecida. Día de las Madres — sus sacrificios, su fuerza, momentos específicos de cuidado. "Gracias" es el sentimiento central. Hacerla sentir vista y valorada.',
+      padre: 'ENERGÍA: Respetuosa y emotiva. Día del Padre — su ejemplo silencioso, su trabajo duro, momentos de conexión. Los padres suelen no escuchar estas palabras — esta canción se las dice.',
+      amistad: 'ENERGÍA: Alegre y leal. Celebrar la hermandad. Anécdotas específicas, humor compartido, "contigo hasta el fin". Tono de fiesta pero con profundidad emocional.',
+      para_mi: 'ENERGÍA: Empoderamiento personal. Himno propio — celebrar logros, resiliencia, identidad. "Este soy yo" sin disculpas. El coro es un mantra de autoafirmación.',
+      motivacion: 'ENERGÍA: Inspiradora y poderosa. Superar obstáculos, no rendirse, levantarse después de caer. Reconocer la lucha pero enfocarse en la fuerza. El coro debe ser un grito de guerra — algo que repites cuando necesitas fuerza.',
+      otro: 'ENERGÍA: Adaptar el tono a los detalles proporcionados. Leer los detalles personales con atención para captar la emoción correcta — puede ser celebración, gratitud, amor, humor, o nostalgia. Seguir las pistas del usuario.',
+    };
+    const occasionContext = occasionGuide[occasion] || '';
+
     // ==========================================================================
     // STEP 1: Build DNA-based style prompt
     // ==========================================================================
@@ -1275,7 +1306,7 @@ serve(async (req) => {
 
     const nameInstruction = isForSelf
       ? `Menciona "${recipientName}" como protagonista 1-2 veces de forma natural. Tono principal en primera persona: "yo soy", "mi vida", "este soy yo". NO escribir como regalo para otra persona.`
-      : `Menciona "${recipientName}" 2-3 veces de forma NATURAL — como gancho del coro, apertura de verso, o cierre emotivo. NUNCA forzar el nombre donde no fluye rítmicamente.`;
+      : `REGLA CRÍTICA DEL NOMBRE: "${recipientName}" DEBE aparecer en las primeras 4 líneas del [Verso 1] — el comprador necesita escuchar el nombre desde el inicio para sentir la personalización. Luego menciona el nombre 2-3 veces más en el coro y/o versos posteriores (4+ menciones totales). NUNCA forzar el nombre donde no fluye rítmicamente — si el nombre es difícil de rimar, úsalo al INICIO de la línea.`;
 
     const perspectiveInstruction = isForSelf
       ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
@@ -1288,7 +1319,9 @@ INFORMACIÓN:
 ${artistInspiration ? `- INSPIRACIÓN: Estilo de ${artistInspiration}` : ''}
 ${isForSelf ? `- PROTAGONISTA: ${recipientName} (la canción es para sí mismo)` : `- DESTINATARIO: ${recipientName}\n- REMITENTE: ${senderName}`}
 - RELACIÓN: ${relationshipDesc}
+${relationshipContext2 ? `- GUÍA EMOCIONAL DE LA RELACIÓN: ${relationshipContext2}` : ''}
 - OCASIÓN: ${occasionDesc}
+${occasionContext ? `- GUÍA DE LA OCASIÓN: ${occasionContext}` : ''}
 - VOZ: ${voiceDesc}
 ${genreVibe ? `- CARÁCTER SONORO DEL GÉNERO: ${genreVibe}` : ''}
 
@@ -1304,6 +1337,7 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 3. DETALLES ESPECÍFICOS > FRASES GENÉRICAS.
    PROHIBIDO: "eres la luz de mi vida", "sin ti no puedo vivir", "eres mi todo", "mi corazón late por ti", "eres mi sol y mi luna", "eres el amor de mi vida", "contigo soy feliz".
    EN VEZ usa los detalles personales del usuario para crear imágenes ÚNICAS y concretas. Un recuerdo específico vale más que 10 frases bonitas genéricas.
+   REGLA CRÍTICA: Si el usuario mencionó FECHAS, LUGARES, EVENTOS, APODOS, o ANÉCDOTAS en los detalles, DEBES incluir CADA UNO en la letra. Distribúyelos así: Verso 1 = contexto/origen de la historia, Verso 2 = momentos específicos y recuerdos, Puente = lo más íntimo/vulnerable. NO ignores ningún detalle que el usuario proporcionó — es lo que hace ÚNICA esta canción y por lo que PAGARON.
 
 4. ${nameInstruction}
 
@@ -1444,26 +1478,55 @@ RESPONDE SOLO JSON:
 {"lyrics": "[Verso 1]\\n...", "emotionalModifiers": "..."}`;
 
     console.log('Calling Claude...');
-    
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'x-api-key': ANTHROPIC_API_KEY!, 
-        'anthropic-version': '2023-06-01' 
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: claudePrompt }]
-      })
-    });
-    
-    const claudeData = await claudeResponse.json();
-    
-    if (!claudeResponse.ok || !claudeData.content?.[0]?.text) {
-      throw new Error('Claude API failed: ' + JSON.stringify(claudeData));
+
+    const claudeModels = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+    const claudeHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01'
+    };
+    const maxRetries = 3;
+
+    let claudeResponse: Response | null = null;
+    let claudeData: any = null;
+    let modelUsedForLyrics = claudeModels[0];
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // After all Sonnet retries fail, fall back to Haiku on last attempt
+      const model = attempt === maxRetries ? claudeModels[1] : claudeModels[0];
+
+      claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: claudeHeaders,
+        body: JSON.stringify({
+          model,
+          max_tokens: 2000,
+          messages: [{ role: 'user', content: claudePrompt }]
+        }),
+      });
+
+      claudeData = await claudeResponse.json();
+
+      if (claudeResponse.ok && claudeData.content?.[0]?.text) {
+        modelUsedForLyrics = model;
+        if (attempt > 1) console.log(`Claude succeeded on attempt ${attempt} with ${model}`);
+        break;
+      }
+
+      const isOverloaded = claudeData?.error?.type === 'overloaded_error' || claudeResponse.status === 529;
+      if (isOverloaded && attempt < maxRetries) {
+        const delay = attempt * 5000; // 5s, 10s
+        console.warn(`Claude overloaded (attempt ${attempt}/${maxRetries}), retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      if (attempt === maxRetries) {
+        throw new Error('Claude API failed after retries: ' + JSON.stringify(claudeData));
+      }
     }
+
+    console.log(`Lyrics generated with ${modelUsedForLyrics}`);
 
     let lyrics: string;
     let emotionalModifiers: string = '';
@@ -1583,12 +1646,17 @@ RESPONDE SOLO JSON:
     const apiVocalGender = vocalGender === 'f' ? 'female' : 'male';
     // Voice instruction at the BEGINNING of desc for maximum Mureka attention
     // Combines explicit gender + vocal character style
-    const genderLabel = vocalGender === 'f' ? 'female vocalist only, no male voice' : 'male vocalist only, no female voice';
+    const genderLabel = vocalGender === 'f'
+      ? 'solo female vocalist, single female singer only, NO male voice, NO duet, NO male harmony, NO male backing vocals'
+      : 'solo male vocalist, single male singer only, NO female voice, NO duet, NO female harmony, NO female backing vocals';
     const vocalStyle = vocalCharacter || 'expressive vocal';
     const voicePrefix = `${genderLabel}, ${vocalStyle}`;
-    // Place voice FIRST in desc, then genre style after
-    const maxStyleChars = 1000 - voicePrefix.length - 2;
-    const descWithVoice = `${voicePrefix}, ${finalStyle.substring(0, maxStyleChars)}`;
+    // Place voice FIRST and LAST in desc for maximum Mureka enforcement
+    const noVoiceSuffix = vocalGender === 'f'
+      ? ', absolutely no male vocals no duet'
+      : ', absolutely no female vocals no duet';
+    const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
+    const descWithVoice = `${voicePrefix}, ${finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
 
     const songTitle = (isForSelf ? `Mi canción — ${recipientName}` : `Canción para ${recipientName}`).substring(0, 50);
 
