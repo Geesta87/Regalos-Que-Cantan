@@ -1633,22 +1633,22 @@ export default function AdminDashboard() {
               const recipientName = song?.recipient_name || 'tu ser querido';
               const senderName = lead.senderName || 'amigo';
               const genreDisplay = song?.genre_name || song?.genre || 'personalizada';
-              
+
               // Get songs that have audio ready
               const readySongs = lead.songs.filter(s => s.audio_url);
-              
+
               let msg = `Hola ${senderName} 👋 Soy de RegalosQueCantan. Vi que creaste una canción increíble de ${genreDisplay} para ${recipientName} pero no completaste tu compra.\n\nTu canción todavía está guardada y lista para ti 🎵`;
-              
+
               if (readySongs.length > 0) {
-                msg += `\n\nEscúchala aquí y completa tu compra 👇`;
-                readySongs.forEach((s, i) => {
-                  msg += `\n🎧 ${readySongs.length > 1 ? `Canción ${i + 1}: ` : ''}${window.location.origin}/listen?song_id=${s.id}`;
-                });
-                msg += `\n\nSan Valentín es este sábado 💝 ¡Todavía llegas a tiempo!`;
+                // Single link to comparison page with both songs side by side
+                const songIds = readySongs.map(s => s.id).join(',');
+                const comparisonUrl = `${window.location.origin}/comparison?song_ids=${songIds}`;
+                msg += `\n\nEscúchala aquí y completa tu compra 👇\n🎧 ${comparisonUrl}`;
+                msg += `\n\n¡No dejes pasar este regalo único! 🎁`;
               } else {
                 msg += `\n\n¿Quieres que te mande el link para escucharla otra vez?`;
               }
-              
+
               return msg;
             };
 
