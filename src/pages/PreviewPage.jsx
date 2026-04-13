@@ -6,8 +6,8 @@ import { trackStep } from '../services/tracking';
 
 // Preview settings - skip intro, play 30 seconds of vocals
 const PREVIEW_START = 10;  // Skip 10s intro
-const PREVIEW_DURATION = 30;  // Play 30 seconds
-const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 40s
+const PREVIEW_DURATION = 40;  // Play 40 seconds
+const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;  // Stop at 50s
 
 export default function PreviewPage() {
   const { formData, songData, setSongData, navigateTo } = useContext(AppContext);
