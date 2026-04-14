@@ -36,6 +36,7 @@ export default function ComparisonPage() {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dbRecipientName, setDbRecipientName] = useState(null);
   
   // Audio state
   const [playingId, setPlayingId] = useState(null);
@@ -217,6 +218,12 @@ export default function ComparisonPage() {
       if (error) throw error;
       
       if (data && data.length > 0) {
+        // Extract recipient name from the first song's DB record
+        const nameFromDb = data[0]?.recipient_name;
+        if (nameFromDb) {
+          setDbRecipientName(nameFromDb);
+        }
+
         const loadedSongs = data.map((song, index) => ({
           id: song.id,
           version: song.version || index + 1,
@@ -728,7 +735,7 @@ export default function ComparisonPage() {
     );
   }
 
-  const recipientName = formData?.recipientName || 'ti';
+  const recipientName = dbRecipientName || formData?.recipientName || 'ti';
 
   return (
     <div style={{background: '#0f0b0e', color: 'white', minHeight: '100vh', padding: '0 0 100px 0', overflow: 'hidden'}}>
