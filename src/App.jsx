@@ -40,6 +40,8 @@ import AffiliateLogin from './pages/AffiliateLogin';
 import AffiliateOnboarding from './pages/AffiliateOnboarding';
 import AffiliateDashboard from './pages/AffiliateDashboard';
 import AffiliateTerms from './pages/AffiliateTerms';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import { captureAffiliateRef } from './services/tracking';
@@ -90,7 +92,9 @@ const pathToPage = {
   '/afiliado': 'affiliateLogin',
   '/afiliado/bienvenida': 'affiliateOnboarding',
   '/afiliado/dashboard': 'affiliateDashboard',
-  '/afiliado/terminos': 'affiliateTerms'
+  '/afiliado/terminos': 'affiliateTerms',
+  '/politica-de-privacidad': 'privacyPolicy',
+  '/terminos-de-servicio': 'termsOfService'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -273,7 +277,9 @@ export default function App() {
       affiliateLogin: '/afiliado',
       affiliateOnboarding: '/afiliado/bienvenida',
       affiliateDashboard: '/afiliado/dashboard',
-      affiliateTerms: '/afiliado/terminos'
+      affiliateTerms: '/afiliado/terminos',
+      privacyPolicy: '/politica-de-privacidad',
+      termsOfService: '/terminos-de-servicio'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -368,7 +374,11 @@ export default function App() {
           {currentPage === 'affiliateOnboarding' && <AffiliateOnboarding />}
           {currentPage === 'affiliateDashboard' && <AffiliateDashboard />}
           {currentPage === 'affiliateTerms' && <AffiliateTerms />}
-          
+
+          {/* Legal pages */}
+          {currentPage === 'privacyPolicy' && <PrivacyPolicy />}
+          {currentPage === 'termsOfService' && <TermsOfService />}
+
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}
           {currentPage === 'ocasiones' && <OcasionesHub />}
