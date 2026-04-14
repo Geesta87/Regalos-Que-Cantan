@@ -1,7 +1,17 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AppContext } from '../App';
 import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
+
+// Debounce hook for search inputs
+function useDebounce(value, delay = 350) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
 
 // Valentine blast email builder
 function buildValentineBlastEmail(recipientName) {
@@ -89,6 +99,12 @@ export default function AdminDashboard() {
   const [copiedLinkId, setCopiedLinkId] = useState(null);
   const [hotLeadSort, setHotLeadSort] = useState('recent'); // 'recent', 'oldest'
   const [copiedMessageId, setCopiedMessageId] = useState(null);
+  const [ordersPage, setOrdersPage] = useState(0);
+  const [lookupPage, setLookupPage] = useState(0);
+  const ORDERS_PER_PAGE = 50;
+  const LOOKUP_PER_PAGE = 50;
+  const debouncedSearchTerm = useDebounce(searchTerm);
+  const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
     totalSongs: 0,
     totalRevenue: 0,
@@ -176,12 +192,22 @@ export default function AdminDashboard() {
     return false;
   };
 
+  // Fetch full song details on demand (for detail modal)
+  const fetchSongDetails = async (songId) => {
+    const { data } = await supabase.from('songs').select('*').eq('id', songId).single();
+    if (data) {
+      setSongs(prev => prev.map(s => s.id === songId ? { ...s, ...data, _fullLoaded: true } : s));
+      setSelectedSong(prev => prev?.id === songId ? { ...prev, ...data, _fullLoaded: true } : prev);
+    }
+  };
+
   const fetchSongs = async () => {
     setIsLoading(true);
     try {
+      // Select only columns needed for list display, filtering, and stats — excludes heavy text like lyrics
       const { data, error } = await supabase
         .from('songs')
-        .select('*')
+        .select('id, created_at, recipient_name, sender_name, email, whatsapp_phone, genre, genre_name, sub_genre, occasion, voice_type, voiceType, paid, is_paid, payment_status, stripe_payment_id, stripe_session_id, session_id, paid_at, amount_paid, coupon_code, is_free, is_bundle, audio_url, downloaded, download_count, last_downloaded_at, relationship, details')
         .order('created_at', { ascending: false })
         .range(0, 19999);
 
@@ -513,18 +539,25 @@ export default function AdminDashboard() {
     window.location.href = '/';
   };
 
-  const filteredSongs = songs.filter(song => {
-    const matchesSearch = 
-      song.recipient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.sender_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.whatsapp_phone?.includes(searchTerm);
-    const matchesFilter = 
-      filterStatus === 'all' ||
-      (filterStatus === 'paid' && isPaid(song)) ||
-      (filterStatus === 'pending' && !isPaid(song));
-    return matchesSearch && matchesFilter;
-  });
+  // Reset page when filters change
+  useEffect(() => { setOrdersPage(0); }, [debouncedSearchTerm, filterStatus]);
+  useEffect(() => { setLookupPage(0); }, [debouncedLookupSearch, lookupSearchType]);
+
+  const filteredSongs = useMemo(() => {
+    const term = debouncedSearchTerm.toLowerCase();
+    return songs.filter(song => {
+      const matchesSearch = !term ||
+        song.recipient_name?.toLowerCase().includes(term) ||
+        song.sender_name?.toLowerCase().includes(term) ||
+        song.email?.toLowerCase().includes(term) ||
+        song.whatsapp_phone?.includes(debouncedSearchTerm);
+      const matchesFilter =
+        filterStatus === 'all' ||
+        (filterStatus === 'paid' && isPaid(song)) ||
+        (filterStatus === 'pending' && !isPaid(song));
+      return matchesSearch && matchesFilter;
+    });
+  }, [songs, debouncedSearchTerm, filterStatus]);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -841,7 +874,7 @@ export default function AdminDashboard() {
                         </td>
                       </tr>
                     ) : (
-                      filteredSongs.map((song) => (
+                      filteredSongs.slice(ordersPage * ORDERS_PER_PAGE, (ordersPage + 1) * ORDERS_PER_PAGE).map((song) => (
                         <tr key={song.id} className="hover:bg-white/5 transition">
                           <td className="px-4 py-3">
                             <span className="text-sm text-gray-300">{formatDate(song.created_at)}</span>
@@ -917,7 +950,7 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-1">
                               <button 
-                                onClick={() => setSelectedSong(song)} 
+                                onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }} 
                                 className="p-2 rounded-lg hover:bg-white/10 transition"
                                 title="Ver detalles"
                               >
@@ -981,11 +1014,40 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-3 bg-white/5 text-center">
-                <span className="text-sm text-gray-500">
-                  Mostrando {filteredSongs.length} de {songs.length} órdenes
-                </span>
-              </div>
+              {/* Pagination Controls */}
+              {(() => {
+                const totalPages = Math.ceil(filteredSongs.length / ORDERS_PER_PAGE);
+                const start = ordersPage * ORDERS_PER_PAGE + 1;
+                const end = Math.min((ordersPage + 1) * ORDERS_PER_PAGE, filteredSongs.length);
+                return (
+                  <div className="px-4 py-3 bg-white/5 flex items-center justify-between">
+                    <span className="text-sm text-gray-500">
+                      {filteredSongs.length > 0 ? `${start}–${end} de ${filteredSongs.length} órdenes` : '0 órdenes'}
+                    </span>
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setOrdersPage(p => Math.max(0, p - 1))}
+                          disabled={ordersPage === 0}
+                          className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                        >
+                          ← Anterior
+                        </button>
+                        <span className="text-sm text-gray-400">
+                          Pág {ordersPage + 1} / {totalPages}
+                        </span>
+                        <button
+                          onClick={() => setOrdersPage(p => Math.min(totalPages - 1, p + 1))}
+                          disabled={ordersPage >= totalPages - 1}
+                          className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                        >
+                          Siguiente →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </>
         ) : activeTab === 'funnel' ? (
@@ -1355,35 +1417,36 @@ export default function AdminDashboard() {
 
             {/* Results count */}
             {(() => {
-              const lookupFiltered = songs.filter(song => {
-                if (!lookupSearch.trim()) return true;
-                const q = lookupSearch.toLowerCase().trim();
-                if (lookupSearchType === 'email') return (song.email || '').toLowerCase().includes(q);
-                if (lookupSearchType === 'name') return (song.recipient_name || '').toLowerCase().includes(q) || (song.sender_name || '').toLowerCase().includes(q);
-                if (lookupSearchType === 'phone') return (song.whatsapp_phone || '').includes(q);
-                // 'all' — search everything
-                return (
-                  (song.email || '').toLowerCase().includes(q) ||
-                  (song.recipient_name || '').toLowerCase().includes(q) ||
-                  (song.sender_name || '').toLowerCase().includes(q) ||
-                  (song.id || '').toLowerCase().includes(q) ||
-                  (song.genre || '').toLowerCase().includes(q) ||
-                  (song.whatsapp_phone || '').includes(q)
-                );
-              });
+              const lookupFiltered = (() => {
+                if (!debouncedLookupSearch.trim()) return songs;
+                const q = debouncedLookupSearch.toLowerCase().trim();
+                return songs.filter(song => {
+                  if (lookupSearchType === 'email') return (song.email || '').toLowerCase().includes(q);
+                  if (lookupSearchType === 'name') return (song.recipient_name || '').toLowerCase().includes(q) || (song.sender_name || '').toLowerCase().includes(q);
+                  if (lookupSearchType === 'phone') return (song.whatsapp_phone || '').includes(q);
+                  return (
+                    (song.email || '').toLowerCase().includes(q) ||
+                    (song.recipient_name || '').toLowerCase().includes(q) ||
+                    (song.sender_name || '').toLowerCase().includes(q) ||
+                    (song.id || '').toLowerCase().includes(q) ||
+                    (song.genre || '').toLowerCase().includes(q) ||
+                    (song.whatsapp_phone || '').includes(q)
+                  );
+                });
+              })();
 
               return (
                 <>
                   <p className="text-sm text-gray-500">
-                    {lookupSearch
-                      ? `${lookupFiltered.length} resultado${lookupFiltered.length !== 1 ? 's' : ''} para "${lookupSearch}"`
+                    {debouncedLookupSearch
+                      ? `${lookupFiltered.length} resultado${lookupFiltered.length !== 1 ? 's' : ''} para "${debouncedLookupSearch}"`
                       : `${lookupFiltered.length} canciones totales`
                     }
                   </p>
 
                   {/* Song List */}
                   <div className="space-y-3">
-                    {lookupFiltered.slice(0, 50).map(song => {
+                    {lookupFiltered.slice(lookupPage * LOOKUP_PER_PAGE, (lookupPage + 1) * LOOKUP_PER_PAGE).map(song => {
                       const paid = isPaid(song);
                       const hasAudio = !!song.audio_url;
                       const previewLink = `${window.location.origin}/listen?song_id=${song.id}`;
@@ -1537,7 +1600,7 @@ export default function AdminDashboard() {
                               </div>
                             )}
                             <button
-                              onClick={() => setSelectedSong(song)}
+                              onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                               className="text-xs text-gray-500 hover:text-white underline ml-auto"
                             >
                               Ver detalles
@@ -1546,15 +1609,39 @@ export default function AdminDashboard() {
                         </div>
                       );
                     })}
-                    {lookupFiltered.length > 50 && (
-                      <p className="text-center text-sm text-gray-500 py-3">
-                        Mostrando 50 de {lookupFiltered.length} — usa el buscador para filtrar más
-                      </p>
-                    )}
+                    {/* Lookup Pagination */}
+                    {(() => {
+                      const totalLookupPages = Math.ceil(lookupFiltered.length / LOOKUP_PER_PAGE);
+                      if (totalLookupPages <= 1) return null;
+                      const lStart = lookupPage * LOOKUP_PER_PAGE + 1;
+                      const lEnd = Math.min((lookupPage + 1) * LOOKUP_PER_PAGE, lookupFiltered.length);
+                      return (
+                        <div className="flex items-center justify-between py-3">
+                          <span className="text-sm text-gray-500">{lStart}–{lEnd} de {lookupFiltered.length}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setLookupPage(p => Math.max(0, p - 1))}
+                              disabled={lookupPage === 0}
+                              className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              ← Anterior
+                            </button>
+                            <span className="text-sm text-gray-400">Pág {lookupPage + 1} / {totalLookupPages}</span>
+                            <button
+                              onClick={() => setLookupPage(p => Math.min(totalLookupPages - 1, p + 1))}
+                              disabled={lookupPage >= totalLookupPages - 1}
+                              className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                            >
+                              Siguiente →
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {lookupFiltered.length === 0 && (
                       <div className="text-center py-12 bg-[#1a1f26] rounded-2xl">
                         <p className="text-3xl mb-3">🔍</p>
-                        <p className="text-gray-500">No se encontraron canciones{lookupSearch ? ` para "${lookupSearch}"` : ''}</p>
+                        <p className="text-gray-500">No se encontraron canciones{debouncedLookupSearch ? ` para "${debouncedLookupSearch}"` : ''}</p>
                       </div>
                     )}
                   </div>
