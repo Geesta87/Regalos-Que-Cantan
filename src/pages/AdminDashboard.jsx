@@ -204,10 +204,9 @@ export default function AdminDashboard() {
   const fetchSongs = async () => {
     setIsLoading(true);
     try {
-      // Select only columns needed for list display, filtering, and stats — excludes heavy text like lyrics
       const { data, error } = await supabase
         .from('songs')
-        .select('id, created_at, recipient_name, sender_name, email, whatsapp_phone, genre, genre_name, sub_genre, occasion, voice_type, voiceType, paid, is_paid, payment_status, stripe_payment_id, stripe_session_id, session_id, paid_at, amount_paid, coupon_code, is_free, is_bundle, audio_url, downloaded, download_count, last_downloaded_at, relationship, details')
+        .select('*')
         .order('created_at', { ascending: false })
         .range(0, 19999);
 
