@@ -913,28 +913,31 @@ export default function AdminDashboard() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {song.utm_source ? (
-                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                                song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
-                                song.utm_source === 'facebook' || song.utm_source === 'fb' || song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                song.utm_source === 'email' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                                song.utm_source === 'google' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                              }`}>
-                                {song.utm_source === 'tiktok' ? '🎵' :
-                                 song.utm_source === 'facebook' || song.utm_source === 'fb' ? '📘' :
-                                 song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷' :
-                                 song.utm_source === 'email' ? '📧' :
-                                 song.utm_source === 'google' ? '🔍' : '🔗'}
-                                {' '}{song.utm_source}
-                              </span>
-                            ) : song.affiliate_code ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/30">
-                                🤝 {song.affiliate_code}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-600">directo</span>
-                            )}
+                            <div className="flex flex-col items-center gap-1">
+                              {song.utm_source ? (
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                  song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                                  song.utm_source === 'fb' || song.utm_source === 'facebook' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                  song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                                  song.utm_source === 'email' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                  song.utm_source === 'google' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                  'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                                }`}>
+                                  {song.utm_source === 'tiktok' ? '🎵 TikTok' :
+                                   song.utm_source === 'fb' || song.utm_source === 'facebook' ? '📘 Facebook' :
+                                   song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷 Instagram' :
+                                   song.utm_source === 'email' ? '📧 Email' :
+                                   song.utm_source === 'google' ? '🔍 Google' : `🔗 ${song.utm_source}`}
+                                </span>
+                              ) : !song.affiliate_code ? (
+                                <span className="text-xs text-gray-600">directo</span>
+                              ) : null}
+                              {song.affiliate_code && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/30">
+                                  🤝 {song.affiliate_code}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-right">
                             {isPaid(song) ? (
