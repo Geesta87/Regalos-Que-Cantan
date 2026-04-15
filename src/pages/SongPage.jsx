@@ -347,6 +347,10 @@ export default function SongPage({ songId: propSongId }) {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  const shareFacebook = () => {
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'width=600,height=400');
+  };
+
   const nativeShare = (name) => {
     if (navigator.share) {
       navigator.share({ title: t.shareTitle(isCombo, name), url: shareUrl }).catch(() => {});
@@ -1333,6 +1337,7 @@ export default function SongPage({ songId: propSongId }) {
                 {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
                 <button onClick={download} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontWeight: 600 }}>{"⬇️ " + t.descargar}</button>
                 <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'rgba(37,211,102,0.9)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
+                <button onClick={shareFacebook} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'rgba(24,119,242,0.9)', color: 'white', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 16px rgba(24,119,242,0.2)' }}>📘 Facebook</button>
               </div>
             </div>
             {/* Lyrics */}
@@ -1420,6 +1425,7 @@ export default function SongPage({ songId: propSongId }) {
               {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>📝 {showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
               <button onClick={download} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: 'white', border: '1px solid rgba(153,71,235,0.2)', color: '#475569', cursor: 'pointer', fontSize: 14, fontWeight: 500, fontFamily: "'Newsreader', serif" }}>{"⬇️ " + t.descargar}</button>
               <button onClick={() => share(recipient)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: '#25D366', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'Newsreader', serif", boxShadow: '0 4px 12px rgba(37,211,102,0.2)' }}>💬 WhatsApp</button>
+              <button onClick={shareFacebook} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 999, background: '#1877F2', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'Newsreader', serif", boxShadow: '0 4px 12px rgba(24,119,242,0.2)' }}>📘 Facebook</button>
             </div>
             <div style={{ width: '100%', maxWidth: 500, marginTop: 8, display: 'flex', justifyContent: 'center' }}>
               {lyricsBlock('#475569', { background: 'linear-gradient(135deg, #fff 0%, #fdfbf7 50%, #f7f2fb 100%)', border: '1px solid rgba(153,71,235,0.08)' }, 'rgba(153,71,235,0.5)')}
@@ -1499,6 +1505,7 @@ export default function SongPage({ songId: propSongId }) {
               {song.lyrics && <button onClick={() => setShowLyrics(!showLyrics)} style={{ padding: '10px 24px', border: '1px solid rgba(242,13,89,0.3)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>{showLyrics ? 'Cerrar Letra' : 'Ver Letra'}</button>}
               <button onClick={download} style={{ padding: '10px 24px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.7)', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>{t.descargar}</button>
               <button onClick={() => share(recipient)} style={{ padding: '10px 24px', border: 'none', background: '#25D366', color: 'white', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>💬 WhatsApp</button>
+              <button onClick={shareFacebook} style={{ padding: '10px 24px', border: 'none', background: '#1877F2', color: 'white', borderRadius: 4, fontSize: 12, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.1em', cursor: 'pointer', fontFamily: "'Space Grotesk'" }}>📘 Facebook</button>
             </div>
             {/* Lyrics */}
             <div style={{ width: '100%', maxWidth: 500, marginTop: 8 }}>
