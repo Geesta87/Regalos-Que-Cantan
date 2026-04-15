@@ -99,6 +99,12 @@ export default function AdminDashboard() {
   const [copiedLinkId, setCopiedLinkId] = useState(null);
   const [hotLeadSort, setHotLeadSort] = useState('recent'); // 'recent', 'oldest'
   const [copiedMessageId, setCopiedMessageId] = useState(null);
+  // Affiliate tab state
+  const [affiliates, setAffiliates] = useState([]);
+  const [affiliatesLoaded, setAffiliatesLoaded] = useState(false);
+  const [newAffiliate, setNewAffiliate] = useState({ name: '', email: '', code: '', couponCode: '', password: '' });
+  const [creatingAffiliate, setCreatingAffiliate] = useState(false);
+  const [affiliateMsg, setAffiliateMsg] = useState(null);
   const [ordersPage, setOrdersPage] = useState(0);
   const [lookupPage, setLookupPage] = useState(0);
   const ORDERS_PER_PAGE = 50;
@@ -305,6 +311,44 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error('Error fetching funnel data:', err);
     }
+  };
+
+  const fetchAffiliates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('affiliates')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) setAffiliates(data);
+      setAffiliatesLoaded(true);
+    } catch (err) { console.error('Failed to fetch affiliates:', err); }
+  };
+
+  const createAffiliate = async () => {
+    const { name, email, code, password, couponCode } = newAffiliate;
+    if (!name || !email || !code || !password) {
+      setAffiliateMsg({ type: 'error', text: 'Nombre, email, código y contraseña son requeridos' });
+      return;
+    }
+    setCreatingAffiliate(true);
+    setAffiliateMsg(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, code, couponCode: couponCode || undefined, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAffiliateMsg({ type: 'success', text: `Afiliado ${data.affiliate.name} creado. Email de bienvenida enviado a ${data.affiliate.email}` });
+        setNewAffiliate({ name: '', email: '', code: '', couponCode: '', password: '' });
+        fetchAffiliates();
+      } else {
+        setAffiliateMsg({ type: 'error', text: data.error || 'Error al crear afiliado' });
+      }
+    } catch (err) {
+      setAffiliateMsg({ type: 'error', text: err.message });
+    } finally { setCreatingAffiliate(false); }
   };
 
   const fetchEmailLogs = async () => {
@@ -808,6 +852,16 @@ export default function AdminDashboard() {
             }`}
           >
             💘 Valentine Blast
+          </button>
+          <button
+            onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }}
+            className={`px-5 py-2.5 rounded-xl font-medium transition ${
+              activeTab === 'affiliates'
+                ? 'bg-blue-500 text-white'
+                : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30'
+            }`}
+          >
+            🤝 Afiliados ({affiliates.length})
           </button>
         </div>
 
@@ -2157,6 +2211,138 @@ export default function AdminDashboard() {
                 Subject: "💘 San Valentín es MAÑANA — ¿Ya tienes el regalo perfecto?" • 
                 CTA links to /v2 (standard pricing) • Personalized with recipient name when available.
               </p>
+            </div>
+          </div>
+        ) : activeTab === 'affiliates' ? (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-2xl p-6 border border-blue-500/20">
+              <h2 className="text-2xl font-bold text-white mb-2">🤝 Programa de Afiliados</h2>
+              <p className="text-gray-400">Agrega afiliados y les llega un email de bienvenida con sus credenciales y link.</p>
+            </div>
+
+            {/* Add New Affiliate Form */}
+            <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
+              <h3 className="text-white font-semibold mb-4">Agregar nuevo afiliado</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Nombre completo *</label>
+                  <input
+                    type="text"
+                    placeholder="Maria Garcia"
+                    value={newAffiliate.name}
+                    onChange={e => setNewAffiliate(p => ({ ...p, name: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Email *</label>
+                  <input
+                    type="email"
+                    placeholder="maria@example.com"
+                    value={newAffiliate.email}
+                    onChange={e => setNewAffiliate(p => ({ ...p, email: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Código de afiliado * <span className="text-gray-600">(se usa en ?ref=CODE)</span></label>
+                  <input
+                    type="text"
+                    placeholder="maria20"
+                    value={newAffiliate.code}
+                    onChange={e => setNewAffiliate(p => ({ ...p, code: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '') }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm font-mono focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Contraseña * <span className="text-gray-600">(para su portal)</span></label>
+                  <input
+                    type="text"
+                    placeholder="password123"
+                    value={newAffiliate.password}
+                    onChange={e => setNewAffiliate(p => ({ ...p, password: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Código de descuento <span className="text-gray-600">(opcional, se crea automático)</span></label>
+                  <input
+                    type="text"
+                    placeholder="MARIA10"
+                    value={newAffiliate.couponCode}
+                    onChange={e => setNewAffiliate(p => ({ ...p, couponCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm font-mono focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {affiliateMsg && (
+                <div className={`rounded-xl p-3 mb-4 text-sm ${affiliateMsg.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                  {affiliateMsg.type === 'success' ? '✅' : '❌'} {affiliateMsg.text}
+                </div>
+              )}
+
+              <button
+                onClick={createAffiliate}
+                disabled={creatingAffiliate}
+                className="px-6 py-2.5 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-400 transition disabled:opacity-50"
+              >
+                {creatingAffiliate ? '⏳ Creando...' : '➕ Crear afiliado y enviar email'}
+              </button>
+            </div>
+
+            {/* Affiliates List */}
+            <div className="bg-[#1a1f26] rounded-2xl border border-white/5 overflow-hidden">
+              <div className="p-4 border-b border-white/5">
+                <h3 className="text-white font-semibold">Afiliados registrados ({affiliates.length})</h3>
+              </div>
+              {affiliates.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  {affiliatesLoaded ? 'No hay afiliados registrados todavía' : 'Cargando...'}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs uppercase border-b border-white/5">
+                        <th className="text-left px-4 py-3">Nombre</th>
+                        <th className="text-left px-4 py-3">Email</th>
+                        <th className="text-left px-4 py-3">Código</th>
+                        <th className="text-left px-4 py-3">Cupón</th>
+                        <th className="text-left px-4 py-3">Comisión</th>
+                        <th className="text-left px-4 py-3">Estado</th>
+                        <th className="text-left px-4 py-3">Creado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {affiliates.map(a => (
+                        <tr key={a.id} className="border-b border-white/5 hover:bg-white/3">
+                          <td className="px-4 py-3 text-white font-medium">{a.name}</td>
+                          <td className="px-4 py-3 text-gray-300">{a.email}</td>
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">{a.code}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {a.coupon_code ? (
+                              <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded text-xs">{a.coupon_code}</span>
+                            ) : <span className="text-gray-600">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-green-400">{a.commission_pct || 20}%</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                              {a.active ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">
+                            {new Date(a.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         ) : null}
