@@ -859,6 +859,7 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Canción</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ocasión</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voz</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Fuente</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Descarga</th>
@@ -868,7 +869,7 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-white/5">
                     {filteredSongs.length === 0 ? (
                       <tr>
-                        <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
+                        <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
                           No se encontraron órdenes
                         </td>
                       </tr>
@@ -910,6 +911,30 @@ export default function AdminDashboard() {
                             <span className="text-lg" title={song.voice_type === 'female' ? 'Femenina' : 'Masculina'}>
                               {getVoiceLabel(song)}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {song.utm_source ? (
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                                song.utm_source === 'facebook' || song.utm_source === 'fb' || song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                song.utm_source === 'email' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                                song.utm_source === 'google' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                              }`}>
+                                {song.utm_source === 'tiktok' ? '🎵' :
+                                 song.utm_source === 'facebook' || song.utm_source === 'fb' ? '📘' :
+                                 song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷' :
+                                 song.utm_source === 'email' ? '📧' :
+                                 song.utm_source === 'google' ? '🔍' : '🔗'}
+                                {' '}{song.utm_source}
+                              </span>
+                            ) : song.affiliate_code ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/30">
+                                🤝 {song.affiliate_code}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-600">directo</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right">
                             {isPaid(song) ? (
