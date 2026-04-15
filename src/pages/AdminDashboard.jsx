@@ -315,13 +315,47 @@ export default function AdminDashboard() {
 
   const fetchAffiliates = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: affData, error } = await supabase
         .from('affiliates')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!error && data) setAffiliates(data);
+      if (error || !affData) { setAffiliatesLoaded(true); return; }
+
+      // Pull all affiliate events + payouts in bulk for performance stats
+      const codes = affData.map(a => a.code);
+      const [{ data: events }, { data: payouts }] = await Promise.all([
+        supabase.from('affiliate_events').select('affiliate_code, event_type, amount, created_at').in('affiliate_code', codes),
+        supabase.from('affiliate_payouts').select('affiliate_code, amount').in('affiliate_code', codes)
+      ]);
+
+      // Build per-affiliate stats
+      const statsMap = {};
+      for (const a of affData) {
+        statsMap[a.code] = { visits: 0, checkouts: 0, sales: 0, revenue: 0, commission: 0, paidOut: 0, lastSale: null };
+      }
+      for (const e of (events || [])) {
+        const s = statsMap[e.affiliate_code];
+        if (!s) continue;
+        if (e.event_type === 'visit') s.visits++;
+        else if (e.event_type === 'checkout') s.checkouts++;
+        else if (e.event_type === 'purchase') {
+          s.sales++;
+          const amt = parseFloat(e.amount) || 0;
+          s.revenue += amt;
+          const pct = affData.find(a => a.code === e.affiliate_code)?.commission_pct || 20;
+          s.commission += amt * (pct / 100);
+          const d = new Date(e.created_at);
+          if (!s.lastSale || d > s.lastSale) s.lastSale = d;
+        }
+      }
+      for (const p of (payouts || [])) {
+        const s = statsMap[p.affiliate_code];
+        if (s) s.paidOut += parseFloat(p.amount) || 0;
+      }
+
+      setAffiliates(affData.map(a => ({ ...a, _stats: statsMap[a.code] })));
       setAffiliatesLoaded(true);
-    } catch (err) { console.error('Failed to fetch affiliates:', err); }
+    } catch (err) { console.error('Failed to fetch affiliates:', err); setAffiliatesLoaded(true); }
   };
 
   const createAffiliate = async () => {
@@ -2292,53 +2326,110 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Affiliates List */}
+            {/* Summary Stats */}
+            {affiliates.length > 0 && (() => {
+              const totals = affiliates.reduce((acc, a) => {
+                const s = a._stats || {};
+                acc.visits += s.visits || 0;
+                acc.sales += s.sales || 0;
+                acc.commission += s.commission || 0;
+                acc.paidOut += s.paidOut || 0;
+                return acc;
+              }, { visits: 0, sales: 0, commission: 0, paidOut: 0 });
+              const owed = Math.max(0, totals.commission - totals.paidOut);
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    { label: 'Afiliados', value: affiliates.length, color: 'blue' },
+                    { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
+                    { label: 'Ventas totales', value: totals.sales, color: 'green' },
+                    { label: 'Comisión total', value: `$${totals.commission.toFixed(2)}`, color: 'emerald' },
+                    { label: 'Por pagar', value: `$${owed.toFixed(2)}`, color: owed > 0 ? 'amber' : 'gray' },
+                  ].map((s, i) => (
+                    <div key={i} className={`bg-${s.color}-500/10 rounded-xl p-4 border border-${s.color}-500/20 text-center`}>
+                      <p className={`text-2xl font-bold text-${s.color}-400`}>{s.value}</p>
+                      <p className="text-gray-400 text-xs mt-1">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Affiliates Table */}
             <div className="bg-[#1a1f26] rounded-2xl border border-white/5 overflow-hidden">
-              <div className="p-4 border-b border-white/5">
-                <h3 className="text-white font-semibold">Afiliados registrados ({affiliates.length})</h3>
+              <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-white font-semibold">Afiliados ({affiliates.length})</h3>
+                <button onClick={fetchAffiliates} className="text-xs text-gray-400 hover:text-white transition">🔄 Refrescar</button>
               </div>
               {affiliates.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  {affiliatesLoaded ? 'No hay afiliados registrados todavía' : 'Cargando...'}
+                  {affiliatesLoaded ? 'No hay afiliados registrados todavía' : '⏳ Cargando...'}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-gray-400 text-xs uppercase border-b border-white/5">
-                        <th className="text-left px-4 py-3">Nombre</th>
-                        <th className="text-left px-4 py-3">Email</th>
-                        <th className="text-left px-4 py-3">Código</th>
-                        <th className="text-left px-4 py-3">Cupón</th>
-                        <th className="text-left px-4 py-3">Comisión</th>
+                        <th className="text-left px-4 py-3">Afiliado</th>
+                        <th className="text-left px-4 py-3">Código / Cupón</th>
+                        <th className="text-right px-4 py-3">Clicks</th>
+                        <th className="text-right px-4 py-3">Ventas</th>
+                        <th className="text-right px-4 py-3">Conv.</th>
+                        <th className="text-right px-4 py-3">Comisión</th>
+                        <th className="text-right px-4 py-3">Pagado</th>
+                        <th className="text-right px-4 py-3">Por pagar</th>
+                        <th className="text-left px-4 py-3">Última venta</th>
                         <th className="text-left px-4 py-3">Estado</th>
-                        <th className="text-left px-4 py-3">Creado</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {affiliates.map(a => (
-                        <tr key={a.id} className="border-b border-white/5 hover:bg-white/3">
-                          <td className="px-4 py-3 text-white font-medium">{a.name}</td>
-                          <td className="px-4 py-3 text-gray-300">{a.email}</td>
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">{a.code}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {a.coupon_code ? (
-                              <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded text-xs">{a.coupon_code}</span>
-                            ) : <span className="text-gray-600">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-green-400">{a.commission_pct || 20}%</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                              {a.active ? 'Activo' : 'Inactivo'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">
-                            {new Date(a.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </td>
-                        </tr>
-                      ))}
+                      {affiliates.map(a => {
+                        const s = a._stats || {};
+                        const conv = s.visits > 0 ? ((s.sales / s.visits) * 100).toFixed(1) : '0.0';
+                        const owed = Math.max(0, (s.commission || 0) - (s.paidOut || 0));
+                        const daysSinceLastSale = s.lastSale ? Math.floor((Date.now() - s.lastSale.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                        return (
+                          <tr key={a.id} className="border-b border-white/5 hover:bg-white/3">
+                            <td className="px-4 py-3">
+                              <div className="text-white font-medium">{a.name}</div>
+                              <div className="text-gray-500 text-xs">{a.email}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">{a.code}</span>
+                              {a.coupon_code && (
+                                <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded text-xs ml-1">{a.coupon_code}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-300 font-mono">{(s.visits || 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-mono">
+                              <span className={s.sales > 0 ? 'text-green-400 font-semibold' : 'text-gray-600'}>{s.sales || 0}</span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono">
+                              <span className={parseFloat(conv) >= 5 ? 'text-green-400' : parseFloat(conv) > 0 ? 'text-amber-400' : 'text-gray-600'}>{conv}%</span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">${(s.commission || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-mono text-gray-400">${(s.paidOut || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-mono">
+                              <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
+                            </td>
+                            <td className="px-4 py-3 text-xs">
+                              {s.lastSale ? (
+                                <div>
+                                  <div className="text-gray-300">{s.lastSale.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</div>
+                                  <div className={`text-xs ${daysSinceLastSale > 30 ? 'text-red-400' : daysSinceLastSale > 14 ? 'text-amber-400' : 'text-green-400'}`}>
+                                    {daysSinceLastSale === 0 ? 'Hoy' : daysSinceLastSale === 1 ? 'Ayer' : `hace ${daysSinceLastSale}d`}
+                                  </div>
+                                </div>
+                              ) : <span className="text-gray-600">—</span>}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                                {a.active ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
