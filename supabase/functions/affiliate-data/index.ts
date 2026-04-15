@@ -133,17 +133,6 @@ serve(async (req) => {
     const paidCommission = (payouts || []).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     const availableCommission = Math.max(0, eligibleCommission - paidCommission);
 
-    // ===== Recent activity (purchases + refunds — no customer PII) =====
-    const recentActivity = [...purchases, ...refunds].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    const recentPurchases = recentActivity.slice(0, 50).map(e => ({
-      date: e.created_at,
-      amount: parseFloat(e.amount) || 0,
-      commission: (parseFloat(e.amount) || 0) * (commissionPct / 100),
-      type: e.event_type
-    }));
-
     // ===== Daily breakdown for sparklines =====
     const dailyStats: Record<string, { visits: number; checkouts: number; purchases: number; revenue: number; commission: number }> = {};
     for (const event of (events || [])) {
@@ -165,33 +154,54 @@ serve(async (req) => {
     const purchaseSongIds = purchases.map(p => p.song_id).filter(Boolean);
     let couponSales = 0;
     let linkSales = 0;
-    let couponRevenue = 0;
-    let linkRevenue = 0;
-    if (purchaseSongIds.length > 0 && affiliate?.coupon_code) {
+    let couponCommission = 0;
+    let linkCommission = 0;
+    // Map song_id → discount info for the activity table
+    const songDiscountMap: Record<string, { discount_code: string | null }> = {};
+    if (purchaseSongIds.length > 0) {
       const { data: songs } = await supabase
         .from('songs')
         .select('id, coupon_code, amount_paid')
         .in('id', purchaseSongIds);
       for (const s of (songs || [])) {
         const amt = parseFloat(s.amount_paid) || 0;
-        if (s.coupon_code === affiliate.coupon_code) {
+        const comm = amt * (commissionPct / 100);
+        // Store discount code for activity table (coupon_code on the song = discount applied)
+        songDiscountMap[s.id] = {
+          discount_code: s.coupon_code || null,
+        };
+        if (affiliate?.coupon_code && s.coupon_code === affiliate.coupon_code) {
           couponSales++;
-          couponRevenue += amt;
+          couponCommission += comm;
         } else {
           linkSales++;
-          linkRevenue += amt;
+          linkCommission += comm;
         }
       }
-    } else {
+    } else if (!affiliate?.coupon_code) {
       // No coupon assigned — all sales are link-attributed
       linkSales = totalPurchases;
-      linkRevenue = totalRevenue;
+      linkCommission = totalCommission;
     }
+
+    // ===== Recent activity (purchases + refunds — no customer PII) =====
+    const recentActivity = [...purchases, ...refunds].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    const recentPurchases = recentActivity.slice(0, 50).map(e => {
+      const disc = e.song_id ? songDiscountMap[e.song_id] : null;
+      return {
+        date: e.created_at,
+        commission: (parseFloat(e.amount) || 0) * (commissionPct / 100),
+        type: e.event_type,
+        discount_code: disc?.discount_code || null,
+      };
+    });
 
     // ===== UTM / per-channel breakdown =====
     // Group purchases by songs.utm_source so the affiliate can see which platform
     // (tiktok, instagram, youtube, email, ...) actually drives sales.
-    const utmBreakdown: Record<string, { sales: number; revenue: number; commission: number }> = {};
+    const utmBreakdown: Record<string, { sales: number; commission: number }> = {};
     if (purchaseSongIds.length > 0) {
       const { data: utmSongs } = await supabase
         .from('songs')
@@ -199,10 +209,9 @@ serve(async (req) => {
         .in('id', purchaseSongIds);
       for (const s of (utmSongs || [])) {
         const source = (s.utm_source || 'directo').toLowerCase();
-        if (!utmBreakdown[source]) utmBreakdown[source] = { sales: 0, revenue: 0, commission: 0 };
+        if (!utmBreakdown[source]) utmBreakdown[source] = { sales: 0, commission: 0 };
         const amt = parseFloat(s.amount_paid) || 0;
         utmBreakdown[source].sales++;
-        utmBreakdown[source].revenue += amt;
         utmBreakdown[source].commission += amt * (commissionPct / 100);
       }
     }
@@ -227,13 +236,10 @@ serve(async (req) => {
           checkouts,
           totalPurchases,
           totalRefunds,
-          totalRevenue: Math.round(netRevenue * 100) / 100,
-          totalRefundAmount: Math.round(totalRefundAmount * 100) / 100,
           totalCommission: Math.round(totalCommission * 100) / 100,
           commissionPct,
           conversionRate,
-          aov: Math.round(aov * 100) / 100,
-          // New: pending / available / paid commission split
+          // Commission breakdown
           pendingCommission: Math.round(pendingCommission * 100) / 100,
           availableCommission: Math.round(availableCommission * 100) / 100,
           paidCommission: Math.round(paidCommission * 100) / 100,
@@ -242,15 +248,14 @@ serve(async (req) => {
         attribution: {
           couponSales,
           linkSales,
-          couponRevenue: Math.round(couponRevenue * 100) / 100,
-          linkRevenue: Math.round(linkRevenue * 100) / 100,
+          couponCommission: Math.round(couponCommission * 100) / 100,
+          linkCommission: Math.round(linkCommission * 100) / 100,
         },
         // Per-platform UTM breakdown — sorted by sales desc
         utmBreakdown: Object.entries(utmBreakdown)
           .map(([source, v]) => ({
             source,
             sales: v.sales,
-            revenue: Math.round(v.revenue * 100) / 100,
             commission: Math.round(v.commission * 100) / 100,
           }))
           .sort((a, b) => b.sales - a.sales),

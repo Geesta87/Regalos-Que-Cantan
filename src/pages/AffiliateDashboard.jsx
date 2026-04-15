@@ -546,7 +546,7 @@ export default function AffiliateDashboard() {
   const [recentPurchases, setRecentPurchases] = useState([]);
   const [recentPayouts, setRecentPayouts] = useState([]);
   const [dailyStats, setDailyStats] = useState({});
-  const [attribution, setAttribution] = useState({ couponSales: 0, linkSales: 0, couponRevenue: 0, linkRevenue: 0 });
+  const [attribution, setAttribution] = useState({ couponSales: 0, linkSales: 0, couponCommission: 0, linkCommission: 0 });
   const [utmBreakdown, setUtmBreakdown] = useState([]);
   const [weeklyGoal, setWeeklyGoal] = useState({ target: 10, current: 0, lastWeek: 0 });
   const [refundWindowDays, setRefundWindowDays] = useState(14);
@@ -607,7 +607,7 @@ export default function AffiliateDashboard() {
         setRecentPurchases(data.recentPurchases || []);
         setRecentPayouts(data.recentPayouts || []);
         setDailyStats(data.dailyStats || {});
-        setAttribution(data.attribution || { couponSales: 0, linkSales: 0, couponRevenue: 0, linkRevenue: 0 });
+        setAttribution(data.attribution || { couponSales: 0, linkSales: 0, couponCommission: 0, linkCommission: 0 });
         setUtmBreakdown(data.utmBreakdown || []);
         setWeeklyGoal(data.weeklyGoal || { target: 10, current: 0, lastWeek: 0 });
         setRefundWindowDays(data.refundWindowDays || 14);
@@ -870,20 +870,9 @@ export default function AffiliateDashboard() {
                     sub: 'Visitantes → Ventas', delay: '0.12s', cls: ''
                   },
                   {
-                    label: 'Ticket promedio', value: `$${(stats.aov || 0).toFixed(2)}`,
-                    Icon: Icon.Receipt,
-                    sub: 'Por venta', delay: '0.16s', cls: ''
-                  },
-                  {
-                    label: 'Ingresos', value: `$${stats.totalRevenue.toFixed(2)}`,
-                    Icon: Icon.Dollar,
-                    sub: 'Total generado', delay: '0.20s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'revenue'), sparkColor: '#0a0a0a'
-                  },
-                  {
                     label: 'Tu comisión', value: `$${stats.totalCommission.toFixed(2)}`,
                     Icon: Icon.Award,
-                    sub: `${stats.commissionPct}% de ingresos`, delay: '0.24s', cls: '',
+                    sub: 'Total ganado', delay: '0.16s', cls: '',
                     valueColor: '#059669',
                     series: buildSparklineSeries(dailyStats, 'commission'), sparkColor: '#059669'
                   },
@@ -1058,14 +1047,14 @@ export default function AffiliateDashboard() {
                               <span style={{ fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase', letterSpacing: 0.5 }}>Por código</span>
                             </div>
                             <div className="aff-num" style={{ fontSize: 18, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.02em' }}>{attribution.couponSales} <span style={{ fontSize: 12, color: '#a3a3a3', fontWeight: 500 }}>ventas</span></div>
-                            <div className="aff-num" style={{ fontSize: 12, color: '#737373', marginTop: 4 }}>${attribution.couponRevenue.toFixed(2)} en ingresos</div>
+                            <div className="aff-num" style={{ fontSize: 12, color: '#059669', marginTop: 4 }}>${(attribution.couponCommission ?? 0).toFixed(2)} comisión</div>
                           </div>
                           <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #0a0a0a' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                               <span style={{ fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase', letterSpacing: 0.5 }}>Por link</span>
                             </div>
                             <div className="aff-num" style={{ fontSize: 18, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.02em' }}>{attribution.linkSales} <span style={{ fontSize: 12, color: '#a3a3a3', fontWeight: 500 }}>ventas</span></div>
-                            <div className="aff-num" style={{ fontSize: 12, color: '#737373', marginTop: 4 }}>${attribution.linkRevenue.toFixed(2)} en ingresos</div>
+                            <div className="aff-num" style={{ fontSize: 12, color: '#059669', marginTop: 4 }}>${(attribution.linkCommission ?? 0).toFixed(2)} comisión</div>
                           </div>
                         </div>
                       </>
@@ -1097,7 +1086,7 @@ export default function AffiliateDashboard() {
                               {row.source}
                             </span>
                             <span className="aff-num" style={{ fontSize: 12, color: '#737373' }}>
-                              <span style={{ color: '#0a0a0a', fontWeight: 500 }}>{row.sales}</span> ventas · ${row.revenue.toFixed(2)} · <span style={{ color: '#059669', fontWeight: 500 }}>${row.commission.toFixed(2)}</span>
+                              <span style={{ color: '#0a0a0a', fontWeight: 500 }}>{row.sales}</span> ventas · <span style={{ color: '#059669', fontWeight: 500 }}>${row.commission.toFixed(2)}</span>
                             </span>
                           </div>
                           <div style={{ height: 4, background: '#f5f5f5', borderRadius: 4, overflow: 'hidden' }}>
@@ -1209,7 +1198,7 @@ export default function AffiliateDashboard() {
                         <tr>
                           <th>Fecha</th>
                           <th>Tipo</th>
-                          <th>Monto</th>
+                          <th>Descuento</th>
                           <th>Tu comisión</th>
                         </tr>
                       </thead>
@@ -1226,11 +1215,19 @@ export default function AffiliateDashboard() {
                                 <span className="aff-badge aff-badge-green">Venta</span>
                               )}
                             </td>
-                            <td className="aff-num" style={{
-                              color: p.type === 'refund' ? '#b91c1c' : '#0a0a0a',
-                              fontWeight: 500
-                            }}>
-                              {p.type === 'refund' ? `-$${Math.abs(p.amount).toFixed(2)}` : `$${p.amount.toFixed(2)}`}
+                            <td style={{ fontSize: 12 }}>
+                              {p.discount_code ? (
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  padding: '2px 8px', borderRadius: 5,
+                                  background: '#fef3c7', color: '#92400e',
+                                  fontSize: 11, fontWeight: 500
+                                }}>
+                                  {p.discount_code}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#d4d4d4' }}>—</span>
+                              )}
                             </td>
                             <td className="aff-num" style={{
                               color: p.type === 'refund' ? '#b91c1c' : '#059669',
