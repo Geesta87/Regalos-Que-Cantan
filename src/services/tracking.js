@@ -158,7 +158,33 @@ export const trackStep = async (step, metadata = {}) => {
       }
     }
     // ========== END META PIXEL ==========
-    
+
+    // ========== TIKTOK PIXEL TRACKING ==========
+    if (window.ttq) {
+      const ttEventMap = {
+        'landing': 'ViewContent',
+        'landing_v2': 'ViewContent',
+        'preview': 'ViewContent',
+        'comparison': 'ViewContent',
+        'song_selected': 'AddToCart',
+        'checkout_clicked': 'InitiateCheckout'
+        // CompletePayment is fired directly on SuccessPage after Stripe confirms payment
+      };
+      const ttEvent = ttEventMap[step];
+      if (ttEvent) {
+        window.ttq.track(ttEvent, {
+          content_type: 'product',
+          content_id: metadata.song_id || 'cancion-personalizada',
+          content_name: `Canción Personalizada - ${step}`,
+          quantity: metadata.num_items || 1,
+          value: metadata.value || 29.99,
+          currency: 'USD'
+        });
+        console.log(`[TikTok Pixel] ${ttEvent}:`, step);
+      }
+    }
+    // ========== END TIKTOK PIXEL ==========
+
     const eventData = {
       session_id: sessionId,
       step: step,

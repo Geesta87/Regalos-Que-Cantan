@@ -455,6 +455,19 @@ export default function SuccessPage() {
       }, { eventID: sessionId });
       console.log('[Meta Pixel] Purchase event fired:', purchaseValue, 'USD for session:', sessionId);
     }
+
+    // Fire TikTok Pixel CompletePayment event
+    if (typeof window.ttq?.track === 'function') {
+      window.ttq.track('CompletePayment', {
+        content_type: 'product',
+        content_id: songs.map(s => s.id).join(','),
+        content_name: `Canción para ${songs[0]?.recipient_name || 'regalo'}`,
+        quantity: songs.length,
+        value: purchaseValue,
+        currency: 'USD'
+      });
+      console.log('[TikTok Pixel] CompletePayment fired:', purchaseValue, 'USD for session:', sessionId);
+    }
   }, [songs]);
 
   // ------ Start countdown once song + audio are ready ------
