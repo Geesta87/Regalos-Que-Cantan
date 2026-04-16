@@ -7,7 +7,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-affiliate-token',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -49,8 +49,8 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization') || '';
-    const token = authHeader.replace('Bearer ', '');
+    // Read affiliate token from custom header (Authorization is consumed by Supabase gateway)
+    const token = req.headers.get('x-affiliate-token') || '';
 
     const payload = await verifyToken(token);
     if (!payload) {

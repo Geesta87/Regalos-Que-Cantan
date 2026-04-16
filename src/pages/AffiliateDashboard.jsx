@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../App';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 
 const css = `
 @keyframes aff-fade-up {
@@ -587,7 +588,7 @@ export default function AffiliateDashboard() {
     if (initial) setLoading(true);
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-data?days=${dateRange}`, {
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, 'x-affiliate-token': token, 'Content-Type': 'application/json' }
       });
       const data = await response.json();
       if (data.success) {
