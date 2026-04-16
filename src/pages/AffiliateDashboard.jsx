@@ -104,8 +104,8 @@ const css = `
   align-items: center;
   justify-content: center;
   margin-bottom: 18px;
-  background: #f5f5f5;
-  color: #525252;
+  background: #fdf2f4;
+  color: #c9184a;
 }
 
 /* Tool cards */
@@ -144,8 +144,8 @@ const css = `
   justify-content: center;
 }
 .aff-copy-btn:hover {
-  border-color: #0a0a0a;
-  background: #0a0a0a;
+  border-color: #c9184a;
+  background: #c9184a;
   color: #ffffff;
 }
 .aff-copy-btn.copied {
@@ -301,8 +301,8 @@ const css = `
   width: 28px;
   height: 28px;
   border-radius: 7px;
-  background: #f5f5f5;
-  color: #525252;
+  background: #fdf2f4;
+  color: #c9184a;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -704,7 +704,7 @@ export default function AffiliateDashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{
                 width: 32, height: 32, borderRadius: 8,
-                background: '#0a0a0a',
+                background: '#c9184a',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#ffffff', flexShrink: 0
               }}>
@@ -723,7 +723,7 @@ export default function AffiliateDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 30, height: 30, borderRadius: '50%',
-                  background: '#0a0a0a',
+                  background: '#c9184a',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 12, fontWeight: 600, color: '#ffffff'
                 }}>
@@ -851,19 +851,19 @@ export default function AffiliateDashboard() {
                     label: 'Visitantes', value: stats.visits,
                     Icon: Icon.Eye,
                     sub: 'Clicks en tu link', delay: '0s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#0a0a0a'
+                    series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#c9184a'
                   },
                   {
                     label: 'Checkouts', value: stats.checkouts,
                     Icon: Icon.Cart,
                     sub: 'Iniciaron compra', delay: '0.04s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'checkouts'), sparkColor: '#0a0a0a'
+                    series: buildSparklineSeries(dailyStats, 'checkouts'), sparkColor: '#c9184a'
                   },
                   {
                     label: 'Ventas', value: stats.totalPurchases,
                     Icon: Icon.Check,
                     sub: 'Completadas', delay: '0.08s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#0a0a0a'
+                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#c9184a'
                   },
                   {
                     label: 'Conversión', value: `${stats.conversionRate}%`,
@@ -997,7 +997,7 @@ export default function AffiliateDashboard() {
                       <div style={{
                         height: '100%',
                         width: `${pct}%`,
-                        background: pct >= 100 ? '#059669' : '#0a0a0a',
+                        background: pct >= 100 ? '#059669' : '#c9184a',
                         borderRadius: 6,
                         transition: 'width 0.6s ease-out'
                       }} />
@@ -1040,7 +1040,7 @@ export default function AffiliateDashboard() {
                           marginBottom: 16, background: '#f5f5f5', border: '1px solid #ececec'
                         }}>
                           {couponPct > 0 && <div style={{ width: `${couponPct}%`, background: '#7c3aed' }} />}
-                          {linkPct > 0 && <div style={{ width: `${linkPct}%`, background: '#0a0a0a' }} />}
+                          {linkPct > 0 && <div style={{ width: `${linkPct}%`, background: '#1a1a2e' }} />}
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                           <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #7c3aed' }}>
@@ -1050,7 +1050,7 @@ export default function AffiliateDashboard() {
                             <div className="aff-num" style={{ fontSize: 18, fontWeight: 600, color: '#0a0a0a', letterSpacing: '-0.02em' }}>{attribution.couponSales} <span style={{ fontSize: 12, color: '#a3a3a3', fontWeight: 500 }}>ventas</span></div>
                             <div className="aff-num" style={{ fontSize: 12, color: '#059669', marginTop: 4 }}>${(attribution.couponCommission ?? 0).toFixed(2)} comisión</div>
                           </div>
-                          <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #0a0a0a' }}>
+                          <div style={{ background: '#ffffff', borderRadius: 11, padding: '14px 16px', border: '1px solid #ececec', borderLeft: '2px solid #1a1a2e' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                               <span style={{ fontSize: 11, fontWeight: 500, color: '#737373', textTransform: 'uppercase', letterSpacing: 0.5 }}>Por link</span>
                             </div>
@@ -1091,7 +1091,7 @@ export default function AffiliateDashboard() {
                             </span>
                           </div>
                           <div style={{ height: 4, background: '#f5f5f5', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: '#0a0a0a', borderRadius: 4 }} />
+                            <div style={{ width: `${pct}%`, height: '100%', background: '#c9184a', borderRadius: 4 }} />
                           </div>
                         </div>
                       );
@@ -1139,9 +1139,9 @@ export default function AffiliateDashboard() {
                           onClick={() => copyToClipboard(link, copyKey)}
                           style={{
                             padding: '6px 12px',
-                            background: isCopied ? '#0a0a0a' : '#ffffff',
-                            color: isCopied ? '#ffffff' : '#0a0a0a',
-                            border: '1px solid ' + (isCopied ? '#0a0a0a' : '#d4d4d4'),
+                            background: isCopied ? '#c9184a' : '#ffffff',
+                            color: isCopied ? '#ffffff' : '#525252',
+                            border: '1px solid ' + (isCopied ? '#c9184a' : '#d4d4d4'),
                             borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
                             whiteSpace: 'nowrap',
                             fontFamily: 'inherit',
@@ -1397,7 +1397,7 @@ export default function AffiliateDashboard() {
             target="_blank"
             rel="noopener noreferrer"
             className="aff-support-btn"
-            style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 50, background: '#0a0a0a', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 500, boxShadow: '0 0 0 1px rgba(10,10,10,0.04), 0 12px 32px -8px rgba(10,10,10,0.24)', transition: 'transform 0.15s, box-shadow 0.15s', zIndex: 50, fontFamily: 'inherit' }}
+            style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 50, background: '#c9184a', color: '#fff', textDecoration: 'none', fontSize: 13, fontWeight: 500, boxShadow: '0 0 0 1px rgba(201,24,74,0.1), 0 12px 32px -8px rgba(201,24,74,0.3)', transition: 'transform 0.15s, box-shadow 0.15s', zIndex: 50, fontFamily: 'inherit' }}
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
           >
