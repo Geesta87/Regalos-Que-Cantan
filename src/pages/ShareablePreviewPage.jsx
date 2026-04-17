@@ -452,6 +452,30 @@ export default function ShareablePreviewPage() {
           ))}
         </div>
 
+        {/* ===== 40-SECOND SAMPLE NOTICE ===== */}
+        <div style={{
+          textAlign: 'center',
+          padding: '20px 22px',
+          margin: '0 auto 20px',
+          maxWidth: '760px',
+          background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
+          border: '2px solid #BE185D',
+          borderRadius: '14px',
+          fontSize: '16px',
+          lineHeight: '1.55',
+          color: '#fff',
+          fontWeight: 600,
+          boxShadow: '0 6px 24px rgba(236, 72, 153, 0.45)',
+          animation: isVisible ? 'fadeInUp 0.8s ease-out 0.2s both' : 'none'
+        }}>
+          <div style={{fontSize: '20px', fontWeight: 800, marginBottom: '6px', letterSpacing: '0.3px'}}>
+            🎧 Muestras de 40 segundos
+          </div>
+          <div>
+            Escucha el sonido, la voz y el estilo de la letra. Las canciones completas duran <strong style={{textDecoration:'underline'}}>3–4 minutos</strong> y podrás descargarlas y compartirlas al completar el proceso.
+          </div>
+        </div>
+
         {/* ===== SONG CARDS (ComparisonPage style) ===== */}
         <div style={{
           display: 'grid',
