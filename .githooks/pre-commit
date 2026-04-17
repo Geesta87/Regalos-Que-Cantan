@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Pre-commit guard for Regalos Que Cantan.
+#
+# Blocks commits that would reintroduce the 2026-04-17 stripe-webhook outages:
+#   1. Synchronous stripe.webhooks.constructEvent(...) in any edge function
+#      (Deno requires constructEventAsync).
+#   2. A new supabase/functions/<name>/index.ts without a matching
+#      [functions.<name>] block in supabase/config.toml (forgetting this
+#      flips verify_jwt back to true and 401s the function).
+#
+# Install: handled automatically by `npm install` via the postinstall script
+# in package.json, which runs `git config core.hooksPath .githooks`.
+# Manual install: `git config core.hooksPath .githooks`
+
+set -e
+
+fail() {
+  echo ""
+  echo "  pre-commit blocked: $1"
+  echo ""
+  echo "  Why this rule exists: see CLAUDE.md §2–§3 (2026-04-17 incident)."
+  echo ""
+  exit 1
+}
+
+STAGED_EDGE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^supabase/functions/.*\.ts$' || true)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Check 1 — no sync constructEvent in staged edge functions
+# ─────────────────────────────────────────────────────────────────────────────
+if [ -n "$STAGED_EDGE_FILES" ]; then
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    # Flag any call that is NOT constructEventAsync.
+    # Pattern: `.constructEvent(` with no trailing "Async".
+    if git show ":$file" 2>/dev/null | grep -nE '\bwebhooks\.constructEvent\s*\(' | grep -v 'constructEventAsync' >/dev/null; then
+      echo ""
+      echo "  File: $file"
+      git show ":$file" | grep -nE '\bwebhooks\.constructEvent\s*\(' | grep -v 'constructEventAsync' | head -5
+      fail "Uses synchronous stripe.webhooks.constructEvent(...). Use 'await stripe.webhooks.constructEventAsync(...)' instead — sync crypto throws in Deno."
+    fi
+  done <<< "$STAGED_EDGE_FILES"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Check 2 — newly added edge functions must have a config.toml entry
+# ─────────────────────────────────────────────────────────────────────────────
+NEW_FUNCTIONS=$(git diff --cached --name-only --diff-filter=A | grep -E '^supabase/functions/[^/]+/index\.ts$' | sed -E 's|^supabase/functions/([^/]+)/index\.ts$|\1|' | sort -u || true)
+
+if [ -n "$NEW_FUNCTIONS" ]; then
+  # Get the version of config.toml that WILL be committed (staged or HEAD fallback).
+  CONFIG_CONTENT=""
+  if git diff --cached --name-only | grep -qx 'supabase/config.toml'; then
+    CONFIG_CONTENT=$(git show ':supabase/config.toml' 2>/dev/null || true)
+  elif [ -f supabase/config.toml ]; then
+    CONFIG_CONTENT=$(cat supabase/config.toml)
+  fi
+
+  while IFS= read -r fn; do
+    [ -z "$fn" ] && continue
+    if ! echo "$CONFIG_CONTENT" | grep -qE "^\[functions\.${fn}\]"; then
+      echo ""
+      echo "  New edge function detected: supabase/functions/${fn}/index.ts"
+      echo ""
+      echo "  Every new edge function must be declared in supabase/config.toml so"
+      echo "  its verify_jwt setting survives deploys. Decide which category this"
+      echo "  function falls into:"
+      echo ""
+      echo "    • External webhook / pg_cron / server-to-server → add:"
+      echo "        [functions.${fn}]"
+      echo "        verify_jwt = false"
+      echo ""
+      echo "    • Called by the frontend with Supabase anon key → add:"
+      echo "        [functions.${fn}]"
+      echo "        verify_jwt = true"
+      echo ""
+      echo "  Stage both files together and re-commit."
+      fail "Missing [functions.${fn}] block in supabase/config.toml."
+    fi
+  done <<< "$NEW_FUNCTIONS"
+fi
+
+exit 0
