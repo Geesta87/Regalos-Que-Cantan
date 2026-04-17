@@ -849,6 +849,27 @@ export default function ComparisonPage() {
             SECTION 2: Song Cards — Play, listen, select
             ══════════════════════════════════════════════════════ */}
         <div style={{
+          textAlign: 'center',
+          padding: '20px 22px',
+          marginBottom: '20px',
+          background: 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
+          border: '2px solid #BE185D',
+          borderRadius: '14px',
+          fontSize: '17px',
+          lineHeight: '1.55',
+          color: '#fff',
+          fontWeight: 600,
+          boxShadow: '0 6px 20px rgba(236, 72, 153, 0.35)',
+          animation: 'fadeIn 0.6s ease-out 0.1s both'
+        }}>
+          <div style={{fontSize: '20px', fontWeight: 800, marginBottom: '6px', letterSpacing: '0.3px'}}>
+            🎧 Muestras de 40 segundos
+          </div>
+          <div>
+            Escucha el sonido, la voz y el estilo de la letra. Las canciones completas duran <strong style={{textDecoration:'underline'}}>3–4 minutos</strong> y podrás descargarlas y compartirlas al completar el proceso.
+          </div>
+        </div>
+        <div style={{
           display: 'grid',
           gridTemplateColumns: songs.length >= 2 ? 'repeat(2, 1fr)' : '1fr',
           gap: '14px',
