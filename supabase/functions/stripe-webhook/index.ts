@@ -256,8 +256,11 @@ serve(async (req) => {
   try {
     const body = await req.text();
     
-    // Verify webhook signature
-    const event = stripe.webhooks.constructEvent(
+    // Verify webhook signature.
+    // IMPORTANT: must use constructEventAsync in Deno — constructEvent uses
+    // Node's sync crypto which is not available in the Edge Functions runtime
+    // and throws "use constructEventAsync()" → 400 on every webhook.
+    const event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
       STRIPE_WEBHOOK_SECRET
