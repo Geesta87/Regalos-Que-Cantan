@@ -1,0 +1,65 @@
+# Supabase project configuration
+# Persists per-function settings so CLI deploys don't silently reset them.
+#
+# Background (2026-04-17): stripe-webhook and video-callback were accidentally
+# redeployed WITHOUT --no-verify-jwt, causing Supabase to reject all incoming
+# Stripe and Shotstack webhooks with 401 Unauthorized. 16+ customer payments
+# were received by Stripe but never marked paid in the songs table because
+# the webhook could not reach the handler.
+#
+# Any function below is invoked by an EXTERNAL service that cannot attach a
+# Supabase JWT (Stripe, Shotstack, Kie.ai, useapi.net) or by pg_cron from
+# inside Postgres. All of them must stay verify_jwt = false.
+#
+# To deploy from CLI use: supabase functions deploy <name> --project-ref yzbvajungshqcpusfiia
+# (the CLI will read verify_jwt from this file — do NOT pass --no-verify-jwt anymore).
+
+project_id = "yzbvajungshqcpusfiia"
+
+# ---------------------------------------------------------------------------
+# External webhook receivers — MUST be verify_jwt = false
+# ---------------------------------------------------------------------------
+
+[functions.stripe-webhook]
+# Stripe sends webhooks with its own signature header (Stripe-Signature),
+# validated inside the function against STRIPE_WEBHOOK_SECRET. Stripe cannot
+# attach a Supabase JWT, so JWT verification must be OFF.
+verify_jwt = false
+
+[functions.video-callback]
+# Shotstack render-completion webhook. No JWT available.
+verify_jwt = false
+
+[functions.mureka-useapi-callback]
+# useapi.net webhook when a Mureka music job finishes. Validated internally
+# via USEAPI_WEBHOOK_SECRET. No JWT available.
+verify_jwt = false
+
+[functions.song-callback]
+# Kie.ai song-generation callback. No JWT available.
+verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# pg_cron / internal schedulers — invoked from inside Postgres without a JWT
+# ---------------------------------------------------------------------------
+
+[functions.health-check]
+# Runs every 10 minutes via pg_cron — no JWT context.
+verify_jwt = false
+
+[functions.poll-processing-songs]
+# Runs every 2 minutes via pg_cron.
+verify_jwt = false
+
+[functions.recover-temp-videos]
+# Cron-driven recovery job.
+verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# Internal generators invoked server-to-server from other edge functions
+# ---------------------------------------------------------------------------
+
+[functions.generate-song-mureka]
+# Called server-to-server from generate-song with service-role context, not
+# from a user session. Historically deployed with --no-verify-jwt.
+verify_jwt = false
