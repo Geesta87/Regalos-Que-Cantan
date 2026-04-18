@@ -37,22 +37,18 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Pricing — two regimes:
-    //   1 song        → $29.99
-    //   2 songs       → $39.99 flat (legacy bundle, unchanged)
-    //   3+ songs      → $29.99 + $9.99 × extras, e.g. 3=$49.97, 4=$59.96, 16=$179.84
-    // The 2-song regime is preserved bit-exactly because >95% of customers
-    // fall in that bucket and any drift would show up as a penny difference
-    // vs. historical orders.
+    // Pricing — framed as a growable bundle, base = 2 songs:
+    //   1 song   → $29.99 (single, no bundle)
+    //   2 songs  → $39.99 (default bundle — unchanged vs. legacy)
+    //   3+ songs → $39.99 + $9.99 per song past the default bundle size
+    //              (3=$49.98, 4=$59.97, 16=$179.85)
     // Integer cents throughout — Stripe expects cents, no FP rounding.
     const songCount = Math.max(1, songIds.length);
     let priceInCents;
     if (songCount === 1) {
       priceInCents = 2999;
-    } else if (songCount === 2) {
-      priceInCents = 3999;                                 // legacy bundle
     } else {
-      priceInCents = 2999 + (songCount - 1) * 999;         // 3+ songs
+      priceInCents = 3999 + Math.max(0, songCount - 2) * 999;
     }
     const videoAddonCents = videoAddon ? 999 : 0;
     let appliedCoupon = null;
