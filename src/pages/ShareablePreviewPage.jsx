@@ -251,10 +251,19 @@ export default function ShareablePreviewPage() {
   };
 
   // ========== SELECTION ==========
-  // Toggle a single song in/out of the cart. If there's only 1 song total,
-  // it must stay selected (no point in "deselecting" your only option).
+  // Multi-select (toggle in/out) only kicks in at 3+ songs. For 1-2 songs we
+  // keep the legacy radio UX ("pick one OR pick the bundle") — most customers
+  // have 2 songs and the radio feel is clearer for them.
+  const isMultiSelectMode = songs.length >= 3;
+
   const handleSelectSong = (songId) => {
     if (songs.length === 1) return;
+    if (!isMultiSelectMode) {
+      // Legacy 2-song radio: picking a card replaces the selection
+      setSelectedIds(new Set([songId]));
+      return;
+    }
+    // 3+ songs: toggle in/out like a shopping cart
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(songId)) next.delete(songId);
@@ -263,8 +272,13 @@ export default function ShareablePreviewPage() {
     });
   };
 
-  // "Select all" shortcut — toggles between all-selected and none-selected.
   const handleSelectBoth = () => {
+    if (!isMultiSelectMode) {
+      // Legacy: bundle card always selects all songs
+      setSelectedIds(new Set(songs.map(s => s.id)));
+      return;
+    }
+    // 3+ songs: "Select all" toggles between all and none
     setSelectedIds(prev => {
       if (prev.size === songs.length) return new Set();
       return new Set(songs.map(s => s.id));
@@ -295,7 +309,14 @@ export default function ShareablePreviewPage() {
   };
 
   const selectedCount = selectedIds.size;
-  const rawPrice = priceForCount(selectedCount);
+  // Pricing:
+  //   1 song        → $29.99
+  //   2 songs       → $29.99 single OR $39.99 bundle (legacy)
+  //   3+ songs      → $29.99 + $9.99 × extras (multi-select)
+  const isBundleSelectedNow = songs.length >= 2 && selectedCount === songs.length;
+  const rawPrice = !isMultiSelectMode
+    ? (isBundleSelectedNow ? BUNDLE_PRICE : selectedCount >= 1 ? SINGLE_PRICE : 0)
+    : priceForCount(selectedCount);
   const discountedPrice = couponApplied
     ? couponApplied.free ? 0
     : couponApplied.type === 'percentage' ? parseFloat((rawPrice * (1 - couponApplied.discount / 100)).toFixed(2))
@@ -307,9 +328,12 @@ export default function ShareablePreviewPage() {
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
-  // "Bundle" now means: every song in the list is selected (any count ≥ 2)
-  const isBundleSelected = songs.length >= 2 && selectedCount === songs.length;
-  const allSongsPrice = priceForCount(songs.length);
+  // "Bundle" means: every song in the list is selected (any count ≥ 2)
+  const isBundleSelected = isBundleSelectedNow;
+  // Price shown on the "bundle / select-all" card itself
+  const allSongsPrice = !isMultiSelectMode
+    ? (songs.length === 2 ? BUNDLE_PRICE : SINGLE_PRICE)
+    : priceForCount(songs.length);
 
   // ==================== LOADING ====================
   if (loading) {
@@ -501,8 +525,9 @@ export default function ShareablePreviewPage() {
           {songs.map((song, index) => {
             if (!song.audio_url) return null;
             const isSelected = selectedIds.has(song.id);
-            // Multi-select: don't dim unselected songs — user may still want to add them.
-            const isOtherSelected = false;
+            // Legacy 2-song radio: dim the unselected card to reinforce the "pick one"
+            // UX. In multi-select mode (3+ songs) we never dim — cards are checkboxes.
+            const isOtherSelected = !isMultiSelectMode && selectedIds.size > 0 && !isSelected && !isBundleSelected;
             const isPlaying = playingId === song.id;
             const vibe = VERSION_VIBES[index] || VERSION_VIBES[0];
             const lyricsPreview = getLyricsPreview(song.lyrics);
@@ -753,7 +778,7 @@ export default function ShareablePreviewPage() {
                 padding: '8px 20px', background: 'rgba(242,13,128,0.15)',
                 borderRadius: '20px', border: '1px solid rgba(242,13,128,0.4)'
               }}>
-                O LLÉVATE TODAS
+                {isMultiSelectMode ? 'O LLÉVATE TODAS' : 'O MEJOR AÚN'}
               </span>
               <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(242,13,128,0.5), transparent)'}} />
             </div>
@@ -786,7 +811,9 @@ export default function ShareablePreviewPage() {
                 animation: 'ribbonFloat 3s ease-in-out infinite',
                 whiteSpace: 'nowrap'
               }}>
-                🎁 LAS {songs.length} CANCIONES POR ${allSongsPrice.toFixed(2)}
+                {isMultiSelectMode
+                  ? `🎁 LAS ${songs.length} CANCIONES POR $${allSongsPrice.toFixed(2)}`
+                  : `🎁 2 CANCIONES POR SOLO $${BUNDLE_PRICE}`}
               </div>
 
               {/* Radio indicator */}
@@ -838,8 +865,8 @@ export default function ShareablePreviewPage() {
                       })()}
                     </div>
                   ))}
-                  {/* "+N" chip when the user has more songs than we can stack visually */}
-                  {songs.length > 4 && (
+                  {/* "+N" chip only applies in multi-select mode when stacking more than 4 */}
+                  {isMultiSelectMode && songs.length > 4 && (
                     <div style={{
                       width: '110px', height: '110px', borderRadius: '14px',
                       overflow: 'hidden', border: '3px solid #181114',
@@ -868,10 +895,18 @@ export default function ShareablePreviewPage() {
                         : `Regala las ${songs.length} versiones — ${recipientName} tendrá todas`}
                     </p>
                     <p style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', margin: 0}}>
-                      Descarga instantánea • Todas las versiones para siempre
+                      {songs.length === 2
+                        ? '💫 Emotiva + 🔥 Enérgica • Descarga instantánea'
+                        : 'Descarga instantánea • Todas las versiones para siempre'}
                     </p>
                   </div>
                   <div style={{textAlign: 'right'}}>
+                    {/* Legacy 2-song flow had a "$59.98 crossed out" deal framing — keep it */}
+                    {!isMultiSelectMode && songs.length === 2 && (
+                      <p style={{color: 'rgba(255,255,255,0.45)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
+                        ${(SINGLE_PRICE * 2).toFixed(2)}
+                      </p>
+                    )}
                     <p style={{
                       color: isBundleSelected ? '#22c55e' : '#f74da6',
                       fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
@@ -1311,7 +1346,11 @@ export default function ShareablePreviewPage() {
                 ) : selectedIds.size === 0 ? (
                   '👆 Elige una canción arriba'
                 ) : (
-                  `🎁 Comprar ${selectedCount === 1 ? 'Canción' : `${selectedCount} Canciones`}${videoAddon ? ' + Video' : ''} — $${currentPrice.toFixed(2)}`
+                  `🎁 Comprar ${
+                    !isMultiSelectMode
+                      ? (isBundleSelected ? 'Ambas' : 'Canción')
+                      : (selectedCount === 1 ? 'Canción' : `${selectedCount} Canciones`)
+                  }${videoAddon ? ' + Video' : ''} — $${currentPrice.toFixed(2)}`
                 )}
               </button>
 

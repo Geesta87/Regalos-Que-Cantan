@@ -37,13 +37,23 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Pricing: first song $29.99, each additional song +$9.99.
-    // 1 = $29.99, 2 = $39.98, 3 = $49.97, 4 = $59.96, 16 = $179.84.
-    // We work in integer cents to stay bit-exact with Stripe (no FP rounding).
-    // The legacy `purchaseBoth` flag is ignored for pricing — we trust songIds.length —
-    // but it's still forwarded to metadata below for downstream compatibility.
+    // Pricing — two regimes:
+    //   1 song        → $29.99
+    //   2 songs       → $39.99 flat (legacy bundle, unchanged)
+    //   3+ songs      → $29.99 + $9.99 × extras, e.g. 3=$49.97, 4=$59.96, 16=$179.84
+    // The 2-song regime is preserved bit-exactly because >95% of customers
+    // fall in that bucket and any drift would show up as a penny difference
+    // vs. historical orders.
+    // Integer cents throughout — Stripe expects cents, no FP rounding.
     const songCount = Math.max(1, songIds.length);
-    let priceInCents = 2999 + Math.max(0, songCount - 1) * 999;
+    let priceInCents;
+    if (songCount === 1) {
+      priceInCents = 2999;
+    } else if (songCount === 2) {
+      priceInCents = 3999;                                 // legacy bundle
+    } else {
+      priceInCents = 2999 + (songCount - 1) * 999;         // 3+ songs
+    }
     const videoAddonCents = videoAddon ? 999 : 0;
     let appliedCoupon = null;
 
