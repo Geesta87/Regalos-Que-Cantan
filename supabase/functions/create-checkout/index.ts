@@ -37,8 +37,13 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Pricing: $29.99 single, $39.99 bundle, +$9.99 video addon
-    let priceInCents = purchaseBoth ? 3999 : 2999;
+    // Pricing: first song $29.99, each additional song +$9.99.
+    // 1 = $29.99, 2 = $39.98, 3 = $49.97, 4 = $59.96, 16 = $179.84.
+    // We work in integer cents to stay bit-exact with Stripe (no FP rounding).
+    // The legacy `purchaseBoth` flag is ignored for pricing — we trust songIds.length —
+    // but it's still forwarded to metadata below for downstream compatibility.
+    const songCount = Math.max(1, songIds.length);
+    let priceInCents = 2999 + Math.max(0, songCount - 1) * 999;
     const videoAddonCents = videoAddon ? 999 : 0;
     let appliedCoupon = null;
 
@@ -189,8 +194,12 @@ serve(async (req) => {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: purchaseBoth ? '2 Canciones Personalizadas - RegalosQueCantan' : 'Canción Personalizada - RegalosQueCantan',
-            description: purchaseBoth ? '2 canciones completas en MP3, descarga ilimitada' : 'Canción completa en MP3, descarga ilimitada',
+            name: songCount > 1
+              ? `${songCount} Canciones Personalizadas - RegalosQueCantan`
+              : 'Canción Personalizada - RegalosQueCantan',
+            description: songCount > 1
+              ? `${songCount} canciones completas en MP3, descarga ilimitada`
+              : 'Canción completa en MP3, descarga ilimitada',
             images: ['https://regalosquecantan.com/og-image.jpg'],
           },
           unit_amount: priceInCents,
@@ -229,7 +238,8 @@ serve(async (req) => {
         utm_campaign: utm_campaign || '',
         session_id: session_id || '',
         from_email_campaign: from_email_campaign || '',
-        purchaseBoth: purchaseBoth ? 'true' : 'false',
+        purchaseBoth: (purchaseBoth || songCount >= 2) ? 'true' : 'false',
+        songCount: String(songCount),
         videoAddon: videoAddon ? 'true' : 'false',
         affiliateCode: resolvedAffiliate || ''
       }

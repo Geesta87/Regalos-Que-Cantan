@@ -13,8 +13,13 @@ const PREVIEW_END = PREVIEW_START + PREVIEW_DURATION;
 
 // 💰 Pricing
 const SINGLE_PRICE = 29.99;
-const BUNDLE_PRICE = 39.99;
+const EXTRA_SONG_PRICE = 9.99;         // +$9.99 for each additional song past the first
+const BUNDLE_PRICE = 39.99;            // legacy constant, no longer used in pricing math
 const VIDEO_ADDON_PRICE = 9.99;
+
+// N-song price: 1=$29.99, 2=$39.98, 3=$49.97, 4=$59.96, 16=$179.84, ...
+// Rounded to 2 decimals to avoid JS float artifacts like $59.96000000000001.
+const priceForCount = (count) => count < 1 ? 0 : parseFloat((SINGLE_PRICE + (count - 1) * EXTRA_SONG_PRICE).toFixed(2));
 
 // Helper to get static genre image path
 const getGenreImagePath = (genre) => {
@@ -124,9 +129,8 @@ export default function ShareablePreviewPage() {
   const [previewEnded, setPreviewEnded] = useState({});
   const [playCounts, setPlayCounts] = useState({});
 
-  // Selection state
+  // Selection state — multi-select: user can pick any subset of their songs
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [purchaseMode, setPurchaseMode] = useState(null);
 
   // Lyrics expand state
   const [expandedLyrics, setExpandedLyrics] = useState({});
@@ -191,7 +195,6 @@ export default function ShareablePreviewPage() {
       if (email) setEmailInput(email);
       if (data.length === 1) {
         setSelectedIds(new Set([data[0].id]));
-        setPurchaseMode('single');
       }
 
       // Track email campaign attribution
@@ -248,16 +251,24 @@ export default function ShareablePreviewPage() {
   };
 
   // ========== SELECTION ==========
+  // Toggle a single song in/out of the cart. If there's only 1 song total,
+  // it must stay selected (no point in "deselecting" your only option).
   const handleSelectSong = (songId) => {
     if (songs.length === 1) return;
-    const n = new Set([songId]);
-    setSelectedIds(n);
-    setPurchaseMode('single');
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(songId)) next.delete(songId);
+      else next.add(songId);
+      return next;
+    });
   };
 
+  // "Select all" shortcut — toggles between all-selected and none-selected.
   const handleSelectBoth = () => {
-    setSelectedIds(new Set(songs.map(s => s.id)));
-    setPurchaseMode('bundle');
+    setSelectedIds(prev => {
+      if (prev.size === songs.length) return new Set();
+      return new Set(songs.map(s => s.id));
+    });
   };
 
   // ========== CHECKOUT ==========
@@ -283,7 +294,8 @@ export default function ShareablePreviewPage() {
     }
   };
 
-  const rawPrice = purchaseMode === 'bundle' ? BUNDLE_PRICE : SINGLE_PRICE;
+  const selectedCount = selectedIds.size;
+  const rawPrice = priceForCount(selectedCount);
   const discountedPrice = couponApplied
     ? couponApplied.free ? 0
     : couponApplied.type === 'percentage' ? parseFloat((rawPrice * (1 - couponApplied.discount / 100)).toFixed(2))
@@ -295,7 +307,9 @@ export default function ShareablePreviewPage() {
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
-  const isBundleSelected = purchaseMode === 'bundle';
+  // "Bundle" now means: every song in the list is selected (any count ≥ 2)
+  const isBundleSelected = songs.length >= 2 && selectedCount === songs.length;
+  const allSongsPrice = priceForCount(songs.length);
 
   // ==================== LOADING ====================
   if (loading) {
@@ -487,7 +501,8 @@ export default function ShareablePreviewPage() {
           {songs.map((song, index) => {
             if (!song.audio_url) return null;
             const isSelected = selectedIds.has(song.id);
-            const isOtherSelected = (selectedIds.size > 0 && !isSelected && !isBundleSelected);
+            // Multi-select: don't dim unselected songs — user may still want to add them.
+            const isOtherSelected = false;
             const isPlaying = playingId === song.id;
             const vibe = VERSION_VIBES[index] || VERSION_VIBES[0];
             const lyricsPreview = getLyricsPreview(song.lyrics);
@@ -738,7 +753,7 @@ export default function ShareablePreviewPage() {
                 padding: '8px 20px', background: 'rgba(242,13,128,0.15)',
                 borderRadius: '20px', border: '1px solid rgba(242,13,128,0.4)'
               }}>
-                O MEJOR AÚN
+                O LLÉVATE TODAS
               </span>
               <div style={{flex: 1, height: '2px', background: 'linear-gradient(90deg, rgba(242,13,128,0.5), transparent)'}} />
             </div>
@@ -771,7 +786,7 @@ export default function ShareablePreviewPage() {
                 animation: 'ribbonFloat 3s ease-in-out infinite',
                 whiteSpace: 'nowrap'
               }}>
-                🎁 2 CANCIONES POR SOLO ${BUNDLE_PRICE}
+                🎁 LAS {songs.length} CANCIONES POR ${allSongsPrice.toFixed(2)}
               </div>
 
               {/* Radio indicator */}
@@ -786,12 +801,12 @@ export default function ShareablePreviewPage() {
                 {isBundleSelected && <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>}
               </div>
 
-              {/* Overlapping album arts */}
+              {/* Overlapping album arts (show up to 4, enough for any realistic count) */}
               <div style={{marginTop: '10px'}}>
                 <div style={{
                   display: 'flex', justifyContent: 'center', gap: '0px', marginBottom: '18px'
                 }}>
-                  {songs.slice(0, 2).map((song, i) => (
+                  {songs.slice(0, 4).map((song, i) => (
                     <div key={song.id} style={{
                       width: '110px', height: '110px', borderRadius: '14px',
                       overflow: 'hidden', border: '3px solid #181114',
@@ -823,6 +838,20 @@ export default function ShareablePreviewPage() {
                       })()}
                     </div>
                   ))}
+                  {/* "+N" chip when the user has more songs than we can stack visually */}
+                  {songs.length > 4 && (
+                    <div style={{
+                      width: '110px', height: '110px', borderRadius: '14px',
+                      overflow: 'hidden', border: '3px solid #181114',
+                      marginLeft: '-20px', position: 'relative', zIndex: 0,
+                      background: 'linear-gradient(135deg, rgba(242,13,128,0.25), rgba(225,29,116,0.15))',
+                      boxShadow: '0 6px 20px rgba(242,13,128,0.25)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '24px', fontWeight: '800', color: '#fff',
+                    }}>
+                      +{songs.length - 4}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{
@@ -831,24 +860,23 @@ export default function ShareablePreviewPage() {
                 }}>
                   <div>
                     <h3 style={{fontSize: '20px', marginBottom: '8px', fontWeight: 'bold'}}>
-                      🎁 ¡Llévate AMBAS versiones!
+                      🎁 ¡Llévate {songs.length === 2 ? 'AMBAS versiones' : `las ${songs.length} versiones`}!
                     </h3>
                     <p style={{color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 4px 0'}}>
-                      Regala 2 versiones — deja que {recipientName} elija su favorita
+                      {songs.length === 2
+                        ? `Regala 2 versiones — deja que ${recipientName} elija su favorita`
+                        : `Regala las ${songs.length} versiones — ${recipientName} tendrá todas`}
                     </p>
                     <p style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', margin: 0}}>
-                      💫 Emotiva + 🔥 Enérgica • Descarga instantánea
+                      Descarga instantánea • Todas las versiones para siempre
                     </p>
                   </div>
                   <div style={{textAlign: 'right'}}>
-                    <p style={{color: 'rgba(255,255,255,0.45)', textDecoration: 'line-through', fontSize: '16px', margin: '0 0 5px 0'}}>
-                      ${(SINGLE_PRICE * 2).toFixed(2)}
-                    </p>
                     <p style={{
                       color: isBundleSelected ? '#22c55e' : '#f74da6',
                       fontSize: '36px', fontWeight: 'bold', margin: 0, lineHeight: 1
                     }}>
-                      ${BUNDLE_PRICE}
+                      ${allSongsPrice.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -871,7 +899,20 @@ export default function ShareablePreviewPage() {
               <div>
                 <p style={{margin: 0, fontWeight: 'bold', color: '#f74da6'}}>Seleccionado:</p>
                 <p style={{margin: 0, fontSize: '14px'}}>
-                  {isBundleSelected ? '2 Canciones (Ambas versiones)' : `1 Canción (Versión ${songs.findIndex(s => selectedIds.has(s.id)) + 1})`}
+                  {(() => {
+                    if (isBundleSelected) {
+                      return songs.length === 2
+                        ? '2 Canciones (Ambas versiones)'
+                        : `${songs.length} Canciones (Todas las versiones)`;
+                    }
+                    if (selectedCount === 1) {
+                      return `1 Canción (Versión ${songs.findIndex(s => selectedIds.has(s.id)) + 1})`;
+                    }
+                    // Show up to 6 version numbers, then "…" so the line doesn't wrap forever
+                    const picked = songs.map((s, i) => selectedIds.has(s.id) ? (i + 1) : null).filter(n => n !== null);
+                    const shown = picked.slice(0, 6).join(', ') + (picked.length > 6 ? `… +${picked.length - 6}` : '');
+                    return `${selectedCount} Canciones (Versiones ${shown})`;
+                  })()}
                 </p>
               </div>
             </div>
@@ -1270,7 +1311,7 @@ export default function ShareablePreviewPage() {
                 ) : selectedIds.size === 0 ? (
                   '👆 Elige una canción arriba'
                 ) : (
-                  `🎁 Comprar ${isBundleSelected ? 'Ambas' : 'Canción'}${videoAddon ? ' + Video' : ''} — $${currentPrice.toFixed(2)}`
+                  `🎁 Comprar ${selectedCount === 1 ? 'Canción' : `${selectedCount} Canciones`}${videoAddon ? ' + Video' : ''} — $${currentPrice.toFixed(2)}`
                 )}
               </button>
 
@@ -1328,7 +1369,7 @@ export default function ShareablePreviewPage() {
           </h3>
           <div style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
             {[
-              { icon: '🎵', title: 'Canción completa', desc: `~3 minutos de música personalizada${isBundleSelected ? ' (x2)' : ''}` },
+              { icon: '🎵', title: 'Canción completa', desc: `~3 minutos de música personalizada${selectedCount > 1 ? ` (x${selectedCount})` : ''}` },
               { icon: '📥', title: 'Descarga MP3', desc: 'Descarga ilimitada para siempre' },
               { icon: '💌', title: 'Comparte fácil', desc: 'Envía por WhatsApp con un tap' },
               { icon: '🎁', title: 'Regalo único', desc: `${recipientName} va a escuchar su nombre en la canción` }
