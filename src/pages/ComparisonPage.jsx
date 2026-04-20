@@ -601,19 +601,24 @@ export default function ComparisonPage() {
       
       // ✅ FIX: Verify songs have actual customer data before checkout
       // This prevents paying for ghost/empty records
+      // Also captures the DB email — the frontend formData can be empty when
+      // the user lands on /comparison via a shared/WhatsApp link without
+      // repopulating React state, which used to cause a 500 on create-checkout.
+      let checkoutEmail = null;
       for (const songId of songIdsToCheckout) {
         const { data: dbSong, error: verifyError } = await supabase
           .from('songs')
           .select('recipient_name, email')
           .eq('id', songId)
           .single();
-        
+
         if (verifyError || !dbSong?.recipient_name || !dbSong?.email) {
           console.error('❌ Song missing data, blocking checkout:', songId, dbSong);
           alert('Error: Esta canción no tiene datos completos. Por favor genera una nueva canción desde el inicio.');
           setIsCheckingOut(false);
           return;
         }
+        if (!checkoutEmail) checkoutEmail = dbSong.email;
       }
 
       const codeToSend = couponApplied?.code || couponCode.trim().toUpperCase() || null;
@@ -655,7 +660,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email, codeToSend, purchaseBoth, '', videoAddon);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon);
 
       if (result.url) {
         window.location.href = result.url;

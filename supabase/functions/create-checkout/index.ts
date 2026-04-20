@@ -26,16 +26,34 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { email, couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    let { email } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
     // Accept both songIds (array from frontend) and songId (legacy)
     const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
     const songId = songIds[0];
 
-    if (!songId || !email) {
-      throw new Error('Missing songId or email');
+    if (!songId) {
+      throw new Error('Missing songId');
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Defense in depth: if the frontend didn't send an email (e.g. the user
+    // landed on /comparison via a shared link and React state was empty),
+    // fall back to the email stored on the song record in the DB. Without
+    // this, customers saw "Error al procesar el pago" and could not pay.
+    if (!email) {
+      const { data: songRow } = await supabase
+        .from('songs')
+        .select('email')
+        .eq('id', songId)
+        .single();
+      email = songRow?.email;
+      if (!email) {
+        throw new Error('Missing email');
+      }
+      console.log('[create-checkout] Recovered email from song record', { songId });
+    }
 
     // Pricing — framed as a growable bundle, base = 2 songs:
     //   1 song   → $29.99 (single, no bundle)
