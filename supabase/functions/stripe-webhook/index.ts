@@ -173,14 +173,14 @@ function getPurchaseEmailHtml(song: any) {
         <!-- Dark Hero Section -->
         <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
           <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA</p>
-          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, \${firstName}...</h1>
+          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
           <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">Tu canci&oacute;n ya es <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">tuya.</span></h2>
-          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">\${song.recipient_name || 'tu ser querido'}</strong>.</p>
+          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${song.recipient_name || 'tu ser querido'}</strong>.</p>
         </td></tr>
 
         <!-- Download CTA Button -->
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <a href="\${song.audio_url}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
+          <a href="${song.audio_url}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
             &#128229; Descargar Mi Canci&oacute;n
           </a>
         </td></tr>
@@ -210,8 +210,8 @@ function getPurchaseEmailHtml(song: any) {
               <!-- Song Info Column -->
               <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
                 <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">TU CANCI&Oacute;N PERSONALIZADA</p>
-                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">\${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">\${song.recipient_name || 'tu ser querido'}</strong> &middot; De: \${song.sender_name || 'An&oacute;nimo'}<br>Estilo: <span style="text-transform:capitalize;">\${song.genre || 'Musical'}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">\${song.occasion || 'Especial'}</span></p>
+                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
+                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${song.recipient_name || 'tu ser querido'}</strong> &middot; De: ${song.sender_name || 'An&oacute;nimo'}<br>Estilo: <span style="text-transform:capitalize;">${song.genre || 'Musical'}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${song.occasion || 'Especial'}</span></p>
                 <!-- Mini Waveform -->
                 <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
                 <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>
