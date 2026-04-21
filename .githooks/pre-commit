@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Pre-commit guard for Regalos Que Cantan.
 #
-# Blocks commits that would reintroduce the 2026-04-17 stripe-webhook outages:
+# Blocks commits that would reintroduce known production outages:
 #   1. Synchronous stripe.webhooks.constructEvent(...) in any edge function
-#      (Deno requires constructEventAsync).
+#      (Deno requires constructEventAsync). [2026-04-17 stripe-webhook 400 outage]
 #   2. A new supabase/functions/<name>/index.ts without a matching
 #      [functions.<name>] block in supabase/config.toml (forgetting this
-#      flips verify_jwt back to true and 401s the function).
+#      flips verify_jwt back to true and 401s the function). [2026-04-17 401 outage]
+#   3. Backslash-escaped template literal placeholders (\${...}) in edge
+#      function code. These emit literal "${...}" text instead of interpolating,
+#      which broke every Descargar button in purchase emails. [2026-04-21]
 #
 # Install: handled automatically by `npm install` via the postinstall script
 # in package.json, which runs `git config core.hooksPath .githooks`.
@@ -78,6 +81,24 @@ if [ -n "$NEW_FUNCTIONS" ]; then
       fail "Missing [functions.${fn}] block in supabase/config.toml."
     fi
   done <<< "$NEW_FUNCTIONS"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Check 3 — no backslash-escaped template placeholders in edge functions
+# ─────────────────────────────────────────────────────────────────────────────
+# `\${foo}` inside a template literal emits the LITERAL string "${foo}" — it
+# does NOT interpolate. This broke every Descargar button in the purchase
+# confirmation email for 4 days (2026-04-17 → 2026-04-21).
+if [ -n "$STAGED_EDGE_FILES" ]; then
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    if git show ":$file" 2>/dev/null | grep -nE '\\\$\{' >/dev/null; then
+      echo ""
+      echo "  File: $file"
+      git show ":$file" | grep -nE '\\\$\{' | head -5
+      fail "Contains backslash-escaped template placeholder(s) (\\\${...}). These emit literal \"\${...}\" text instead of interpolating values. Remove the backslash — use \${...} to interpolate."
+    fi
+  done <<< "$STAGED_EDGE_FILES"
 fi
 
 exit 0

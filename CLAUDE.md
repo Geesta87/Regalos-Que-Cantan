@@ -97,5 +97,5 @@ Functions that should be added to the list as work on `claude/eloquent-stonebrak
 
 ## 5. Safeguards enforced by this repo
 
-- `.githooks/pre-commit` blocks commits that (a) use sync `stripe.webhooks.constructEvent(`, or (b) add a new `supabase/functions/<name>/index.ts` without a matching entry in `supabase/config.toml`. The hook auto-installs on `npm install` via the `postinstall` script.
+- `.githooks/pre-commit` blocks commits that (a) use sync `stripe.webhooks.constructEvent(`, (b) add a new `supabase/functions/<name>/index.ts` without a matching entry in `supabase/config.toml`, or (c) contain a backslash-escaped template placeholder `\${...}` in any edge function file — this emits literal `${...}` text instead of interpolating values, and was the cause of the 2026-04-21 "Descargar button does nothing" outage in purchase confirmation emails. The hook auto-installs on `npm install` via the `postinstall` script.
 - If the hook fires on a commit, read the message — it points at the exact rule that's being violated. Do not bypass with `--no-verify` without fixing the underlying issue.
