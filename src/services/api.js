@@ -69,8 +69,12 @@ export async function generateSong(formData) {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to generate song: ${response.status} - ${errorText}`);
+    let errorBody = null;
+    try { errorBody = await response.json(); } catch { /* non-JSON body */ }
+    if (response.status === 429 && errorBody?.error) {
+      throw new Error(errorBody.error);
+    }
+    throw new Error(`Failed to generate song: ${response.status} - ${errorBody?.error || 'Unknown error'}`);
   }
 
   return response.json();
