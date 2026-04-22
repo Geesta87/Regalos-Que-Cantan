@@ -1237,6 +1237,35 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const currentSessionId = sessionId || crypto.randomUUID();
 
+    // Anti-abuse cap: limit unpaid songs per email per 24h. Each Mureka call
+    // creates 2 rows, so 10 rows = 5 generation attempts. Failed rows are
+    // excluded so provider errors don't penalize legit customers.
+    const UNPAID_LIMIT_PER_EMAIL_24H = 10;
+    if (email && typeof email === 'string' && email.trim()) {
+      const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count: unpaidCount, error: countError } = await supabase
+        .from('songs')
+        .select('id', { count: 'exact', head: true })
+        .ilike('email', email.trim())
+        .eq('paid', false)
+        .neq('status', 'failed')
+        .gte('created_at', windowStart);
+
+      if (countError) {
+        console.warn(`Unpaid-quota check failed for ${email}: ${countError.message} — allowing through`);
+      } else if ((unpaidCount ?? 0) >= UNPAID_LIMIT_PER_EMAIL_24H) {
+        console.log(`RATE_LIMIT_UNPAID: ${email} has ${unpaidCount} unpaid songs in last 24h (cap ${UNPAID_LIMIT_PER_EMAIL_24H})`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: 'RATE_LIMIT_UNPAID',
+            error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+        );
+      }
+    }
+
     console.log('=== GENERATE SONG (DNA V2) ===');
     console.log('Genre:', genre, subGenre ? `> ${subGenre}` : '');
     console.log('Artist:', artistInspiration || 'None');
