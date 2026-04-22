@@ -42,6 +42,7 @@ import AffiliateDashboard from './pages/AffiliateDashboard';
 import AffiliateTerms from './pages/AffiliateTerms';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
+import SmsConsentPreview from './pages/SmsConsentPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import { captureAffiliateRef } from './services/tracking';
@@ -94,7 +95,8 @@ const pathToPage = {
   '/afiliado/dashboard': 'affiliateDashboard',
   '/afiliado/terminos': 'affiliateTerms',
   '/politica-de-privacidad': 'privacyPolicy',
-  '/terminos-de-servicio': 'termsOfService'
+  '/terminos-de-servicio': 'termsOfService',
+  '/sms-consent-preview': 'smsConsentPreview'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -279,7 +281,8 @@ export default function App() {
       affiliateDashboard: '/afiliado/dashboard',
       affiliateTerms: '/afiliado/terminos',
       privacyPolicy: '/politica-de-privacidad',
-      termsOfService: '/terminos-de-servicio'
+      termsOfService: '/terminos-de-servicio',
+      smsConsentPreview: '/sms-consent-preview'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -378,6 +381,7 @@ export default function App() {
           {/* Legal pages */}
           {currentPage === 'privacyPolicy' && <PrivacyPolicy />}
           {currentPage === 'termsOfService' && <TermsOfService />}
+          {currentPage === 'smsConsentPreview' && <SmsConsentPreview />}
 
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}

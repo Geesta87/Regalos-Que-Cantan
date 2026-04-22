@@ -168,6 +168,13 @@ export default function PrivacyPolicy() {
             <li><strong>Reply STOP to any message to opt out at any time</strong></li>
             <li>Reply HELP for assistance</li>
           </ul>
+          <p>
+            <strong>No mobile information will be shared with third parties or affiliates
+            for marketing or promotional purposes.</strong> Information sharing to
+            subcontractors in support services, such as customer service, is permitted.
+            All other categories exclude text messaging originator opt-in data and
+            consent; this information will not be shared with any third parties.
+          </p>
 
           <h2>6. Data Security</h2>
           <p>
@@ -238,6 +245,14 @@ export default function PrivacyPolicy() {
             <li><strong>Responde STOP a cualquier mensaje para cancelar en cualquier momento</strong></li>
             <li>Responde HELP para obtener ayuda</li>
           </ul>
+          <p>
+            <strong>Ninguna información móvil será compartida con terceros o afiliados
+            con fines de marketing o promocionales.</strong> Se permite compartir
+            información con subcontratistas de servicios de soporte, como atención al
+            cliente. Todas las demás categorías excluyen los datos de consentimiento
+            y suscripción de mensajes de texto; esta información no será compartida
+            con ningún tercero.
+          </p>
 
           <h2>6. Seguridad de Datos</h2>
           <p>
