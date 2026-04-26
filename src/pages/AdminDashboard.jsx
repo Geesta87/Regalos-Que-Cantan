@@ -207,18 +207,31 @@ export default function AdminDashboard() {
     }
   };
 
+  const SONG_LIST_COLUMNS = [
+    'id', 'created_at', 'email', 'recipient_name', 'sender_name',
+    'genre', 'genre_name', 'sub_genre', 'occasion', 'voice_type',
+    'session_id', 'stripe_session_id', 'stripe_payment_id', 'payment_status',
+    'paid', 'paid_at', 'amount_paid',
+    'coupon_code', 'affiliate_code', 'utm_source',
+    'audio_url', 'whatsapp_phone', 'download_count', 'downloaded',
+    'has_video_addon'
+  ].join(',');
+
   const fetchSongs = async () => {
     setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('songs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(0, 19999);
+    setError(null);
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { data, error } = await supabase
+          .from('songs')
+          .select(SONG_LIST_COLUMNS)
+          .order('created_at', { ascending: false })
+          .range(0, 19999);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      setSongs(data || []);
+        setSongs(data || []);
       
       // Calculate stats using robust isPaid check
       const totalSongs = data?.length || 0;
@@ -253,22 +266,28 @@ export default function AdminDashboard() {
         data?.filter(s => s.whatsapp_phone).map(s => s.whatsapp_phone)
       ).size;
 
-      setStats({ 
-        totalSongs, 
-        totalRevenue, 
-        paidOrders, 
-        pendingOrders, 
+      setStats({
+        totalSongs,
+        totalRevenue,
+        paidOrders,
+        pendingOrders,
         freeOrders,
         todayRevenue,
         todayOrders,
         whatsappContacts
       });
-    } catch (err) {
-      console.error('Error fetching songs:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+        setIsLoading(false);
+        return;
+      } catch (err) {
+        lastErr = err;
+        console.error(`Error fetching songs (attempt ${attempt + 1}/2):`, err);
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 800));
+        }
+      }
     }
+    setError(lastErr?.message || 'No se pudieron cargar los datos');
+    setIsLoading(false);
   };
 
   const fetchFunnelData = async () => {
@@ -724,6 +743,25 @@ export default function AdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-red-400">error</span>
+              <div>
+                <p className="font-semibold text-red-300">No se pudieron cargar los datos</p>
+                <p className="text-sm text-red-200/80 mt-1">
+                  Las estadísticas mostradas pueden no reflejar la realidad. Detalle: {error}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={fetchSongs}
+              className="px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm font-medium whitespace-nowrap"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-2xl p-5 border border-blue-500/20">
