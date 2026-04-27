@@ -51,6 +51,10 @@ verify_jwt = false
 # Runs every 2 minutes via pg_cron.
 verify_jwt = false
 
+[functions.send-scheduled-emails]
+# Runs every 15 minutes via pg_cron — abandoned-cart + 30-min purchase reminders.
+verify_jwt = false
+
 [functions.recover-temp-videos]
 # Cron-driven recovery job.
 verify_jwt = false
