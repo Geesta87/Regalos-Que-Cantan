@@ -348,6 +348,31 @@ serve(async (req) => {
 
         console.log('Song marked as paid:', song.id);
         if (!firstSong) firstSong = song;
+
+        // Fire-and-forget: render a 60s social media clip for this paid song.
+        // render-social-clip is idempotent (UNIQUE index on social_posts.song_id)
+        // and gated by SOCIAL_CLIPS_ENABLED env var. Failures here MUST NOT
+        // block the payment flow — wrapped in try/catch + 3s race timeout so
+        // even a hung edge-function call can never delay the webhook response.
+        try {
+          const clipPromise = fetch(`${SUPABASE_URL}/functions/v1/render-social-clip`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({ songId: sid }),
+          });
+          const timeoutPromise = new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('render-social-clip trigger timeout')), 3000)
+          );
+          const clipResponse = await Promise.race([clipPromise, timeoutPromise]);
+          if (!clipResponse.ok) {
+            console.warn(`[render-social-clip] non-2xx for ${sid}: ${clipResponse.status}`);
+          }
+        } catch (clipErr: any) {
+          console.warn(`[render-social-clip] trigger failed for ${sid}:`, clipErr?.message || clipErr);
+        }
       }
 
       // Send email with download link via SendGrid (use first song for template).

@@ -39,6 +39,10 @@ verify_jwt = false
 # Kie.ai song-generation callback. No JWT available.
 verify_jwt = false
 
+[functions.social-clip-callback]
+# Shotstack render-completion webhook for social clips. No JWT available.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # pg_cron / internal schedulers — invoked from inside Postgres without a JWT
 # ---------------------------------------------------------------------------
@@ -66,4 +70,14 @@ verify_jwt = false
 [functions.generate-song-mureka]
 # Called server-to-server from generate-song with service-role context, not
 # from a user session. Historically deployed with --no-verify-jwt.
+verify_jwt = false
+
+[functions.render-social-clip]
+# Called server-to-server from stripe-webhook (and verify-payment fallback)
+# the moment a song is marked paid. No user JWT context.
+verify_jwt = false
+
+[functions.post-to-ghl]
+# Called server-to-server from social-clip-callback once the Shotstack render
+# completes. No user JWT context.
 verify_jwt = false
