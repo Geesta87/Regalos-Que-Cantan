@@ -86,14 +86,14 @@ function getPreviewReadyEmailHtml(song: any, previewLink: string) {
         <!-- Dark Hero Section -->
         <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
           <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#10024; TU REGALO TE EST&Aacute; ESPERANDO &#10024;</p>
-          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, \${firstName}...</h1>
+          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
           <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">Tu canci&oacute;n ya <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">est&aacute; viva.</span></h2>
           <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo est&aacute; listo. Solo<br>falta <em>un paso</em> para que llegue al coraz&oacute;n de quien amas.</p>
         </td></tr>
 
         <!-- CTA Button -->
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <a href="\${previewLink}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
+          <a href="${previewLink}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
             &#127925; Terminar Mi Canci&oacute;n
           </a>
         </td></tr>
@@ -123,8 +123,8 @@ function getPreviewReadyEmailHtml(song: any, previewLink: string) {
               <!-- Song Info Column -->
               <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
                 <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">TU CANCI&Oacute;N PERSONALIZADA</p>
-                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">\${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Hecha con amor para <strong style="color:#ffd23f;">\${song.recipient_name || 'tu ser querido'}</strong> &middot; Estilo: <span style="text-transform:capitalize;">\${song.genre || 'Musical'}</span></p>
+                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
+                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Hecha con amor para <strong style="color:#ffd23f;">${song.recipient_name || 'tu ser querido'}</strong> &middot; Estilo: <span style="text-transform:capitalize;">${song.genre || 'Musical'}</span></p>
                 <!-- Mini Waveform -->
                 <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
                 <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>

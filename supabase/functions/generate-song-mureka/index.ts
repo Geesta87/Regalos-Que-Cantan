@@ -19,6 +19,79 @@ const MUREKA_FALLBACK_MODEL = 'V8';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Alerting (Twilio WhatsApp + SendGrid email — same envs as health-check)
+const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
+const ALERT_EMAIL = Deno.env.get('ALERT_EMAIL') || 'hola@regalosquecantan.com';
+const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM');
+const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO');
+
+// Throttle: don't spam the owner — at most one credit alert every 30 minutes
+let lastCreditAlertAt = 0;
+const ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+
+async function sendCreditOutageAlert(reason: string, errStr: string) {
+  const now = Date.now();
+  if (now - lastCreditAlertAt < ALERT_COOLDOWN_MS) {
+    console.log('🟡 Credit alert throttled (sent recently)');
+    return;
+  }
+  lastCreditAlertAt = now;
+
+  const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
+  const subject = '🔴 CRITICAL: Mureka credits depleted — songs failing';
+  const body = `Mureka via useapi.net rejected a song request.\n\nReason: ${reason}\nError: ${errStr.substring(0, 500)}\n\n⏰ ${timestamp}\n\nACTION: Top up credits at useapi.net immediately. Customers' songs are failing.`;
+
+  await Promise.allSettled([
+    // WhatsApp
+    (async () => {
+      if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM || !ALERT_WHATSAPP_TO) return;
+      try {
+        const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
+          method: 'POST',
+          headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: ALERT_WHATSAPP_TO, Body: `🔴 ${subject}\n\n${body}` }).toString(),
+        });
+        console.log('📱 WhatsApp credit alert sent');
+      } catch (e: any) { console.error('WhatsApp alert error:', e.message); }
+    })(),
+    // Email
+    (async () => {
+      if (!SENDGRID_API_KEY) return;
+      try {
+        await fetch('https://api.sendgrid.com/v3/mail/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SENDGRID_API_KEY}` },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: ALERT_EMAIL }] }],
+            from: { email: 'hola@regalosquecantan.com', name: 'RQC Critical Alert' },
+            subject,
+            content: [{ type: 'text/plain', value: body }],
+            categories: ['critical_alert', 'mureka_credits'],
+          }),
+        });
+        console.log('📧 Email credit alert sent');
+      } catch (e: any) { console.error('Email alert error:', e.message); }
+    })(),
+  ]);
+}
+
+function isCreditOutageError(status: number, errStr: string, errData: any): boolean {
+  // 402 Payment Required is the canonical signal
+  if (status === 402) return true;
+  const lower = errStr.toLowerCase();
+  return (
+    lower.includes('insufficient') ||
+    lower.includes('credit') && (lower.includes('out') || lower.includes('depleted') || lower.includes('balance')) ||
+    lower.includes('payment required') ||
+    lower.includes('quota exceeded') ||
+    errData?.code === 'INSUFFICIENT_CREDITS' ||
+    errData?.code === 'INSUFFICIENT_BALANCE'
+  );
+}
+
 // =============================================================================
 // useapi.net Mureka API helpers
 // =============================================================================
@@ -100,6 +173,15 @@ async function createMurekaJob(lyrics: string, title: string, desc: string, voca
   if (!response.ok) {
     const errData = cachedErrData || await response.json().catch(() => ({ error: 'Unknown error' }));
     const errStr = JSON.stringify(errData);
+
+    // CRITICAL: detect credit/balance depletion and alert the owner immediately.
+    // Without this, the platform silently fails for every customer until manually noticed.
+    if (isCreditOutageError(response.status, errStr, errData)) {
+      console.error(`🔴 MUREKA CREDITS DEPLETED (HTTP ${response.status}): ${errStr}`);
+      // Fire-and-forget alert (don't block error response)
+      sendCreditOutageAlert(`HTTP ${response.status}`, errStr).catch(() => {});
+      throw new Error(`INSUFFICIENT_CREDITS: Mureka/useapi.net out of credits — ${errStr}`);
+    }
 
     if (errData.code === 'REFRESH_FAILED' || errStr.includes('REFRESH_FAILED')) {
       throw new Error(`REFRESH_FAILED: Mureka cookie expired, manual re-configuration needed in useapi.net`);
