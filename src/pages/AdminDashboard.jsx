@@ -227,7 +227,7 @@ export default function AdminDashboard() {
           .from('songs')
           .select(SONG_LIST_COLUMNS)
           .order('created_at', { ascending: false })
-          .range(0, 19999);
+          .range(0, 49999);
 
         if (error) throw error;
 
