@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
+import { checkEmail } from '../services/emailValidation';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -68,10 +69,7 @@ export default function EmailStep() {
     ? formData.customRelationship
     : relationshipNames[formData.relationship] || formData.relationship;
 
-  const validateEmail = (emailValue) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(emailValue);
-  };
+  const validateEmail = (emailValue) => checkEmail(emailValue).ok;
 
   const handleEmailChange = (e) => {
     const value = e.target.value;
@@ -79,9 +77,18 @@ export default function EmailStep() {
     setEmailError('');
   };
 
+  // Run typo detection when the user leaves the field, so they see the
+  // suggestion immediately instead of after clicking the disabled button.
+  const handleEmailBlur = () => {
+    if (!email) return;
+    const result = checkEmail(email);
+    if (!result.ok) setEmailError(result.message);
+  };
+
   const handleSubmit = async () => {
-    if (!validateEmail(email)) {
-      setEmailError('Por favor ingresa un email válido');
+    const result = checkEmail(email);
+    if (!result.ok) {
+      setEmailError(result.message);
       return;
     }
 
@@ -279,6 +286,7 @@ export default function EmailStep() {
                   type="email"
                   value={email}
                   onChange={handleEmailChange}
+                  onBlur={handleEmailBlur}
                   placeholder="📧 tu@email.com"
                   className={`
                     w-full bg-transparent border-0 border-b-2 py-4 text-xl md:text-2xl text-center

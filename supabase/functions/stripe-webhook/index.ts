@@ -290,16 +290,70 @@ serve(async (req) => {
       // Support comma-separated song IDs for bundle purchases
       const songIds = songIdMeta.split(',').map((id: string) => id.trim()).filter(Boolean);
 
-      // ✅ IDEMPOTENCY CHECK: Skip if this session was already processed
+      // ✅ IDEMPOTENCY CHECK: if song already paid AND email already sent, skip.
+      // If song already paid but email NOT sent (e.g. verify-payment marked it
+      // paid first but its SendGrid call failed), fall through and send now.
       const { data: existingPaid } = await supabase
         .from('songs')
-        .select('id, paid, stripe_session_id')
+        .select('*')
         .eq('id', songIds[0])
         .single();
 
       if (existingPaid?.paid && existingPaid?.stripe_session_id === session.id) {
-        console.log('⏭️ Already processed session:', session.id, '- skipping');
-        return new Response(JSON.stringify({ received: true, status: 'already_processed' }), {
+        const { data: emailEvent } = await supabase
+          .from('funnel_events')
+          .select('id')
+          .eq('step', 'purchase_email_sent')
+          .contains('metadata', { stripe_session_id: session.id })
+          .maybeSingle();
+
+        if (emailEvent) {
+          console.log('⏭️ Already processed (paid + email sent):', session.id);
+          return new Response(JSON.stringify({ received: true, status: 'already_processed' }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 200
+          });
+        }
+
+        // Paid but email not sent — recover by sending email now and returning.
+        console.log('🟡 Already paid but no purchase_email_sent — sending email now for session:', session.id);
+        const recoveryEmail = session.metadata?.email || session.customer_email || existingPaid.email;
+        if (recoveryEmail) {
+          let emailOk = false;
+          let emailErr: string | null = null;
+          try {
+            await sendEmail(
+              recoveryEmail,
+              `🎵 Tu canción para ${existingPaid.recipient_name} está lista!`,
+              getPurchaseEmailHtml(existingPaid),
+              'purchase_confirmation'
+            );
+            emailOk = true;
+            console.log('📧 Purchase email sent (recovery) to:', recoveryEmail, 'song:', existingPaid.id);
+          } catch (emailError: any) {
+            emailErr = emailError?.message || String(emailError);
+            console.error('🔴 Failed to send recovery purchase email:', emailErr);
+          }
+          try {
+            await supabase.from('funnel_events').insert([{
+              session_id: session.id,
+              step: emailOk ? 'purchase_email_sent' : 'purchase_email_failed',
+              metadata: {
+                stripe_session_id: session.id,
+                song_ids: songIds,
+                email: recoveryEmail,
+                error: emailErr,
+                attempted_at: new Date().toISOString(),
+                source: 'stripe-webhook-recovery',
+              },
+            }]);
+          } catch (logErr) {
+            console.error('Failed to log recovery purchase email status:', logErr);
+          }
+        } else {
+          console.warn('🟡 Already-paid recovery: no email available for song', existingPaid.id);
+        }
+        return new Response(JSON.stringify({ received: true, status: 'paid_email_recovered' }), {
           headers: { 'Content-Type': 'application/json' },
           status: 200
         });
@@ -376,42 +430,56 @@ serve(async (req) => {
       }
 
       // Send email with download link via SendGrid (use first song for template).
-      // Log success/failure to funnel_events so admin + health-check can detect unsent emails and retry.
+      // De-dup against funnel_events so verify-payment + webhook can't both
+      // send. Log success/failure so admin + health-check can detect issues.
       if (email && firstSong) {
-        let emailOk = false;
-        let emailErr: string | null = null;
-        try {
-          await sendEmail(
-            email,
-            `🎵 Tu canción para ${firstSong.recipient_name} está lista!`,
-            getPurchaseEmailHtml(firstSong),
-            'purchase_confirmation'
-          );
-          emailOk = true;
-          console.log('📧 Purchase email sent to:', email, 'for songs:', songIds);
-        } catch (emailError: any) {
-          emailErr = emailError?.message || String(emailError);
-          console.error('🔴 Failed to send purchase email:', emailErr, 'songId:', firstSong.id, 'email:', email);
-        }
-        // Audit trail (non-fatal — wrapped in try so a logging error never breaks the webhook)
-        try {
-          await supabase.from('funnel_events').insert([{
-            step: emailOk ? 'purchase_email_sent' : 'purchase_email_failed',
-            metadata: {
-              stripe_session_id: session.id,
-              song_ids: songIds,
+        const { data: existingEmailEvent } = await supabase
+          .from('funnel_events')
+          .select('id')
+          .eq('step', 'purchase_email_sent')
+          .contains('metadata', { stripe_session_id: session.id })
+          .maybeSingle();
+
+        if (existingEmailEvent) {
+          console.log('⏭️ purchase email already sent for session', session.id, '- skipping');
+        } else {
+          let emailOk = false;
+          let emailErr: string | null = null;
+          try {
+            await sendEmail(
               email,
-              error: emailErr,
-              attempted_at: new Date().toISOString(),
-            },
-          }]);
-        } catch (logErr) {
-          console.error('Failed to log purchase email status:', logErr);
+              `🎵 Tu canción para ${firstSong.recipient_name} está lista!`,
+              getPurchaseEmailHtml(firstSong),
+              'purchase_confirmation'
+            );
+            emailOk = true;
+            console.log('📧 Purchase email sent to:', email, 'for songs:', songIds);
+          } catch (emailError: any) {
+            emailErr = emailError?.message || String(emailError);
+            console.error('🔴 Failed to send purchase email:', emailErr, 'songId:', firstSong.id, 'email:', email);
+          }
+          try {
+            await supabase.from('funnel_events').insert([{
+              session_id: session.id,
+              step: emailOk ? 'purchase_email_sent' : 'purchase_email_failed',
+              metadata: {
+                stripe_session_id: session.id,
+                song_ids: songIds,
+                email,
+                error: emailErr,
+                attempted_at: new Date().toISOString(),
+                source: 'stripe-webhook',
+              },
+            }]);
+          } catch (logErr) {
+            console.error('Failed to log purchase email status:', logErr);
+          }
         }
       } else if (firstSong && !email) {
         console.warn('🟡 No email on session for songId:', firstSong.id);
         try {
           await supabase.from('funnel_events').insert([{
+            session_id: session.id,
             step: 'purchase_email_skipped_no_email',
             metadata: { stripe_session_id: session.id, song_ids: songIds },
           }]);
@@ -434,6 +502,7 @@ serve(async (req) => {
         await supabase
           .from('funnel_events')
           .insert([{
+            session_id: session.id,
             step: 'checkout_expired',
             metadata: {
               stripe_session_id: session.id,
@@ -482,6 +551,7 @@ serve(async (req) => {
                 await supabase
                   .from('funnel_events')
                   .insert([{
+                    session_id: session.id,
                     step: 'checkout_recovery_email_sent',
                     metadata: {
                       stripe_session_id: session.id,
@@ -519,6 +589,7 @@ serve(async (req) => {
         await supabase
           .from('funnel_events')
           .insert([{
+            session_id: session.id,
             step: 'payment_failed',
             metadata: {
               stripe_session_id: session.id,
