@@ -909,8 +909,8 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Today's Stats Banner */}
-        {stats.todayOrders > 0 && (
+        {/* Today's Stats Banner — admin only (hidden from assistant role) */}
+        {userRole === 'admin' && stats.todayOrders > 0 && (
           <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-4 mb-6 border border-purple-500/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
