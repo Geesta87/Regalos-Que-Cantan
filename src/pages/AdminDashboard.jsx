@@ -849,7 +849,11 @@ export default function AdminDashboard() {
               <span className="text-green-400 text-2xl">💰</span>
               <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
             </div>
-            <p className="text-3xl font-bold">{userRole === 'admin' ? formatCurrency(stats.totalRevenue) : '—'}</p>
+            <p className="text-3xl font-bold">
+              {userRole === 'admin'
+                ? formatCurrency(stats.totalRevenue)
+                : <span className="text-green-400 animate-pulse">Calculating...</span>}
+            </p>
             <p className="text-sm text-gray-400">
               {userRole === 'admin'
                 ? (stats.freeOrders > 0 && `${stats.freeOrders} gratis`)
@@ -918,7 +922,9 @@ export default function AdminDashboard() {
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-green-400">
-                  {userRole === 'admin' ? formatCurrency(stats.todayRevenue) : '—'}
+                  {userRole === 'admin'
+                    ? formatCurrency(stats.todayRevenue)
+                    : <span className="animate-pulse">Calculating...</span>}
                 </p>
               </div>
             </div>
@@ -1146,13 +1152,13 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {userRole === 'admin' ? (
-                              isPaid(song) ? (
+                            {isPaid(song) ? (
+                              userRole === 'admin' ? (
                                 <span className="font-semibold text-green-400">
                                   {formatCurrency(getSongPrice(song))}
                                 </span>
                               ) : (
-                                <span className="text-gray-500">—</span>
+                                <span className="font-semibold text-green-400 animate-pulse">Calculating...</span>
                               )
                             ) : (
                               <span className="text-gray-500">—</span>
@@ -2003,7 +2009,9 @@ export default function AdminDashboard() {
                   <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
                     <div className="flex-1 text-center">
                       <p className="text-lg font-bold text-green-400">
-                        {userRole === 'admin' ? formatCurrency(leads.length * 29.99) : '—'}
+                        {userRole === 'admin'
+                          ? formatCurrency(leads.length * 29.99)
+                          : <span className="animate-pulse">Calculating...</span>}
                       </p>
                       <p className="text-xs text-gray-500">Ingreso potencial</p>
                     </div>
@@ -2462,12 +2470,13 @@ export default function AdminDashboard() {
               }, { visits: 0, sales: 0, commission: 0, paidOut: 0 });
               const owed = Math.max(0, totals.commission - totals.paidOut);
               const isAdmin = userRole === 'admin';
+              const calculating = <span className="text-green-400 animate-pulse">Calculating...</span>;
               const summaryCards = [
                 { label: 'Afiliados', value: affiliates.length, color: 'blue' },
                 { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
                 { label: 'Ventas totales', value: totals.sales, color: 'green' },
-                { label: 'Comisión total', value: isAdmin ? `$${totals.commission.toFixed(2)}` : '—', color: 'emerald' },
-                { label: 'Por pagar', value: isAdmin ? `$${owed.toFixed(2)}` : '—', color: isAdmin && owed > 0 ? 'amber' : 'gray' },
+                { label: 'Comisión total', value: isAdmin ? `$${totals.commission.toFixed(2)}` : calculating, color: 'emerald' },
+                { label: 'Por pagar', value: isAdmin ? `$${owed.toFixed(2)}` : calculating, color: isAdmin && owed > 0 ? 'amber' : 'gray' },
               ];
               return (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -2534,16 +2543,20 @@ export default function AdminDashboard() {
                               <span className={parseFloat(conv) >= 5 ? 'text-green-400' : parseFloat(conv) > 0 ? 'text-amber-400' : 'text-gray-600'}>{conv}%</span>
                             </td>
                             <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">
-                              {userRole === 'admin' ? `$${(s.commission || 0).toFixed(2)}` : '—'}
+                              {userRole === 'admin'
+                                ? `$${(s.commission || 0).toFixed(2)}`
+                                : <span className="animate-pulse">Calculating...</span>}
                             </td>
                             <td className="px-4 py-3 text-right font-mono text-gray-400">
-                              {userRole === 'admin' ? `$${(s.paidOut || 0).toFixed(2)}` : '—'}
+                              {userRole === 'admin'
+                                ? `$${(s.paidOut || 0).toFixed(2)}`
+                                : <span className="text-green-400 animate-pulse">Calculating...</span>}
                             </td>
                             <td className="px-4 py-3 text-right font-mono">
                               {userRole === 'admin' ? (
                                 <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
                               ) : (
-                                <span className="text-gray-600">—</span>
+                                <span className="text-green-400 animate-pulse">Calculating...</span>
                               )}
                             </td>
                             <td className="px-4 py-3 text-xs">
@@ -2742,7 +2755,9 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    ✓ Pagado — {userRole === 'admin' ? formatCurrency(getSongPrice(selectedSong)) : '—'}
+                    ✓ Pagado — {userRole === 'admin'
+                      ? formatCurrency(getSongPrice(selectedSong))
+                      : <span className="animate-pulse">Calculating...</span>}
                   </span>
                 ) : (
                   <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
