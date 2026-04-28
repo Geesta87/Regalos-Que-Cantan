@@ -81,3 +81,13 @@ verify_jwt = false
 # Called server-to-server from social-clip-callback once the Shotstack render
 # completes. No user JWT context.
 verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# Frontend-authenticated functions — verify_jwt = true (default, explicit)
+# ---------------------------------------------------------------------------
+
+[functions.admin-songs]
+# Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
+# The platform gateway verifies the JWT before our handler runs; the handler
+# then looks up the caller's role in admin_users to decide what to return.
+verify_jwt = true

@@ -1,38 +1,56 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
+import { supabase } from '../services/api';
 
-// Admin credentials from environment variables
-const ADMIN_CREDENTIALS = {
-  username: import.meta.env.VITE_ADMIN_USERNAME || '',
-  password: import.meta.env.VITE_ADMIN_PASSWORD || ''
-};
+// Login is backed by Supabase Auth. Users are created in Supabase Dashboard
+// (Authentication → Users) and granted dashboard access by inserting a row
+// into the `admin_users` table with role 'admin' or 'assistant'. There are
+// no admin credentials in the JS bundle.
 
 export default function AdminLogin() {
   const { navigateTo } = useContext(AppContext);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    // Simulate network delay
-    setTimeout(() => {
-      if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-        // Store auth token
-        localStorage.setItem('rqc_admin_auth', JSON.stringify({
-          authenticated: true,
-          timestamp: Date.now()
-        }));
-        navigateTo('adminDashboard');
-      } else {
-        setError('Usuario o contraseña incorrectos');
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (signInError || !data?.user) {
+        setError('Email o contraseña incorrectos');
+        setIsLoading(false);
+        return;
       }
+
+      // Confirm this user is registered in admin_users (RLS will only return
+      // their own row — if no row exists they have no dashboard access).
+      const { data: roleRow, error: roleError } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', data.user.id)
+        .single();
+
+      if (roleError || !roleRow) {
+        await supabase.auth.signOut();
+        setError('Este usuario no tiene acceso al panel');
+        setIsLoading(false);
+        return;
+      }
+
+      navigateTo('adminDashboard');
+    } catch (err) {
+      setError('No se pudo iniciar sesión. Inténtalo de nuevo.');
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (
@@ -51,14 +69,15 @@ export default function AdminLogin() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Usuario
+              Email
             </label>
             <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-[#171612] dark:text-white focus:ring-2 focus:ring-gold focus:border-transparent"
-              placeholder="admin"
+              placeholder="tu@email.com"
+              autoComplete="email"
               required
             />
           </div>
@@ -73,6 +92,7 @@ export default function AdminLogin() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-[#171612] dark:text-white focus:ring-2 focus:ring-gold focus:border-transparent"
               placeholder="••••••••"
+              autoComplete="current-password"
               required
             />
           </div>

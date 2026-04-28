@@ -74,6 +74,8 @@ function buildValentineBlastEmail(recipientName) {
 
 export default function AdminDashboard() {
   const { navigateTo } = useContext(AppContext);
+  const [userRole, setUserRole] = useState(null); // 'admin' | 'assistant' | null
+  const [accessToken, setAccessToken] = useState(null);
   const [songs, setSongs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -122,50 +124,64 @@ export default function AdminDashboard() {
     whatsappContacts: 0
   });
 
-  // Check auth on mount
+  // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
-    const auth = localStorage.getItem('rqc_admin_auth');
-    if (!auth) {
-      navigateTo('adminLogin');
-      return;
-    }
-    
-    try {
-      const authData = JSON.parse(auth);
-      if (Date.now() - authData.timestamp > 24 * 60 * 60 * 1000) {
-        localStorage.removeItem('rqc_admin_auth');
+    let cancelled = false;
+    let emailSubscription = null;
+    let campaignSubscription = null;
+
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+
+      if (!session?.user) {
         navigateTo('adminLogin');
         return;
       }
-    } catch {
-      navigateTo('adminLogin');
-      return;
-    }
 
-    fetchSongs();
-    fetchFunnelData();
-    fetchEmailLogs();
-    fetchEmailCampaigns();
-    
-    // Set up real-time subscription for emails
-    const emailSubscription = supabase
-      .channel('email_logs_changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_logs' }, (payload) => {
-        setEmailLogs(prev => [payload.new, ...prev]);
-      })
-      .subscribe();
-    
-    // Set up real-time subscription for campaigns
-    const campaignSubscription = supabase
-      .channel('email_campaigns_changes')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'email_campaigns' }, (payload) => {
-        setEmailCampaigns(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
-      })
-      .subscribe();
-    
+      const { data: roleRow, error: roleErr } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (roleErr || !roleRow) {
+        await supabase.auth.signOut();
+        navigateTo('adminLogin');
+        return;
+      }
+
+      if (cancelled) return;
+
+      setUserRole(roleRow.role);
+      setAccessToken(session.access_token);
+
+      // Pass the token directly into the first fetch so we don't race with
+      // setAccessToken's async state commit.
+      fetchSongs(session.access_token);
+      fetchFunnelData();
+      fetchEmailLogs();
+      fetchEmailCampaigns();
+
+      emailSubscription = supabase
+        .channel('email_logs_changes')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_logs' }, (payload) => {
+          setEmailLogs(prev => [payload.new, ...prev]);
+        })
+        .subscribe();
+
+      campaignSubscription = supabase
+        .channel('email_campaigns_changes')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'email_campaigns' }, (payload) => {
+          setEmailCampaigns(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
+        })
+        .subscribe();
+    })();
+
     return () => {
-      emailSubscription.unsubscribe();
-      campaignSubscription.unsubscribe();
+      cancelled = true;
+      if (emailSubscription) emailSubscription.unsubscribe();
+      if (campaignSubscription) campaignSubscription.unsubscribe();
     };
   }, [dateRange]);
 
@@ -198,12 +214,33 @@ export default function AdminDashboard() {
     return false;
   };
 
-  // Fetch full song details on demand (for detail modal)
+  // Fetch full song details on demand (for detail modal). Goes through the
+  // admin-songs edge function so the assistant role still gets the row with
+  // amount_paid stripped server-side.
   const fetchSongDetails = async (songId) => {
-    const { data } = await supabase.from('songs').select('*').eq('id', songId).single();
-    if (data) {
-      setSongs(prev => prev.map(s => s.id === songId ? { ...s, ...data, _fullLoaded: true } : s));
-      setSelectedSong(prev => prev?.id === songId ? { ...prev, ...data, _fullLoaded: true } : prev);
+    if (!accessToken) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'detail', songId }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) return;
+      const data = result.song;
+      if (data) {
+        setSongs(prev => prev.map(s => s.id === songId ? { ...s, ...data, _fullLoaded: true } : s));
+        setSelectedSong(prev => prev?.id === songId ? { ...prev, ...data, _fullLoaded: true } : prev);
+      }
+    } catch (err) {
+      console.error('fetchSongDetails error:', err);
     }
   };
 
@@ -217,19 +254,38 @@ export default function AdminDashboard() {
     'has_video_addon'
   ].join(',');
 
-  const fetchSongs = async () => {
+  const fetchSongs = async (tokenOverride) => {
     setIsLoading(true);
     setError(null);
     let lastErr = null;
+    const token = tokenOverride || accessToken;
+    if (!token) {
+      // No session — bail out; the auth effect will redirect.
+      setIsLoading(false);
+      return;
+    }
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const { data, error } = await supabase
-          .from('songs')
-          .select(SONG_LIST_COLUMNS)
-          .order('created_at', { ascending: false })
-          .range(0, 49999);
-
-        if (error) throw error;
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'list' }),
+          }
+        );
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        const data = result.songs;
+        // Server told us the role; keep our state in sync (covers role
+        // changes between login and refresh).
+        if (result.role) setUserRole(result.role);
 
         setSongs(data || []);
       
@@ -633,8 +689,12 @@ export default function AdminDashboard() {
     return colors[type] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('rqc_admin_auth');
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignore — we still want to leave the page even if sign-out errored
+    }
     window.location.href = '/';
   };
 
@@ -725,7 +785,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <button 
-              onClick={fetchSongs}
+              onClick={() => fetchSongs()}
               className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
               title="Refrescar"
             >
@@ -755,7 +815,7 @@ export default function AdminDashboard() {
               </div>
             </div>
             <button
-              onClick={fetchSongs}
+              onClick={() => fetchSongs()}
               className="px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm font-medium whitespace-nowrap"
             >
               Reintentar
@@ -763,7 +823,7 @@ export default function AdminDashboard() {
           </div>
         )}
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className={`grid grid-cols-2 ${userRole === 'admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 mb-6`}>
           <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-2xl p-5 border border-blue-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-blue-400 text-2xl">🎵</span>
@@ -772,16 +832,18 @@ export default function AdminDashboard() {
             <p className="text-3xl font-bold">{stats.totalSongs}</p>
             <p className="text-sm text-gray-400">Canciones</p>
           </div>
-          
-          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-green-400 text-2xl">💰</span>
-              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
+
+          {userRole === 'admin' && (
+            <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-green-400 text-2xl">💰</span>
+                <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
+              </div>
+              <p className="text-3xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
+              <p className="text-sm text-gray-400">{stats.freeOrders > 0 && `${stats.freeOrders} gratis`}</p>
             </div>
-            <p className="text-3xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
-            <p className="text-sm text-gray-400">{stats.freeOrders > 0 && `${stats.freeOrders} gratis`}</p>
-          </div>
-          
+          )}
+
           <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-2xl p-5 border border-emerald-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-emerald-400 text-2xl">✅</span>
@@ -841,9 +903,11 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-400">{stats.todayOrders} órdenes</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold text-green-400">{formatCurrency(stats.todayRevenue)}</p>
-              </div>
+              {userRole === 'admin' && (
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-green-400">{formatCurrency(stats.todayRevenue)}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -989,7 +1053,9 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ocasión</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voz</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Fuente</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
+                      {userRole === 'admin' && (
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
+                      )}
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Descarga</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Acciones</th>
@@ -1068,15 +1134,17 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            {isPaid(song) ? (
-                              <span className="font-semibold text-green-400">
-                                {formatCurrency(getSongPrice(song))}
-                              </span>
-                            ) : (
-                              <span className="text-gray-500">—</span>
-                            )}
-                          </td>
+                          {userRole === 'admin' && (
+                            <td className="px-4 py-3 text-right">
+                              {isPaid(song) ? (
+                                <span className="font-semibold text-green-400">
+                                  {formatCurrency(getSongPrice(song))}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">—</span>
+                              )}
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-center">
                             {isPaid(song) ? (
                               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
@@ -1918,12 +1986,14 @@ export default function AdminDashboard() {
                       <p className="text-xs text-gray-500">leads sin convertir</p>
                     </div>
                   </div>
-                  {/* Potential revenue */}
+                  {/* Potential revenue (admin only) */}
                   <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
-                    <div className="flex-1 text-center">
-                      <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 29.99)}</p>
-                      <p className="text-xs text-gray-500">Ingreso potencial</p>
-                    </div>
+                    {userRole === 'admin' && (
+                      <div className="flex-1 text-center">
+                        <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 29.99)}</p>
+                        <p className="text-xs text-gray-500">Ingreso potencial</p>
+                      </div>
+                    )}
                     <div className="flex-1 text-center">
                       <p className="text-lg font-bold text-yellow-400">{leads.reduce((sum, l) => sum + l.songs.length, 0)}</p>
                       <p className="text-xs text-gray-500">Canciones generadas</p>
@@ -2378,15 +2448,18 @@ export default function AdminDashboard() {
                 return acc;
               }, { visits: 0, sales: 0, commission: 0, paidOut: 0 });
               const owed = Math.max(0, totals.commission - totals.paidOut);
+              const summaryCards = [
+                { label: 'Afiliados', value: affiliates.length, color: 'blue' },
+                { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
+                { label: 'Ventas totales', value: totals.sales, color: 'green' },
+                ...(userRole === 'admin' ? [
+                  { label: 'Comisión total', value: `$${totals.commission.toFixed(2)}`, color: 'emerald' },
+                  { label: 'Por pagar', value: `$${owed.toFixed(2)}`, color: owed > 0 ? 'amber' : 'gray' },
+                ] : []),
+              ];
               return (
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {[
-                    { label: 'Afiliados', value: affiliates.length, color: 'blue' },
-                    { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
-                    { label: 'Ventas totales', value: totals.sales, color: 'green' },
-                    { label: 'Comisión total', value: `$${totals.commission.toFixed(2)}`, color: 'emerald' },
-                    { label: 'Por pagar', value: `$${owed.toFixed(2)}`, color: owed > 0 ? 'amber' : 'gray' },
-                  ].map((s, i) => (
+                <div className={`grid grid-cols-2 ${userRole === 'admin' ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
+                  {summaryCards.map((s, i) => (
                     <div key={i} className={`bg-${s.color}-500/10 rounded-xl p-4 border border-${s.color}-500/20 text-center`}>
                       <p className={`text-2xl font-bold text-${s.color}-400`}>{s.value}</p>
                       <p className="text-gray-400 text-xs mt-1">{s.label}</p>
@@ -2416,9 +2489,13 @@ export default function AdminDashboard() {
                         <th className="text-right px-4 py-3">Clicks</th>
                         <th className="text-right px-4 py-3">Ventas</th>
                         <th className="text-right px-4 py-3">Conv.</th>
-                        <th className="text-right px-4 py-3">Comisión</th>
-                        <th className="text-right px-4 py-3">Pagado</th>
-                        <th className="text-right px-4 py-3">Por pagar</th>
+                        {userRole === 'admin' && (
+                          <>
+                            <th className="text-right px-4 py-3">Comisión</th>
+                            <th className="text-right px-4 py-3">Pagado</th>
+                            <th className="text-right px-4 py-3">Por pagar</th>
+                          </>
+                        )}
                         <th className="text-left px-4 py-3">Última venta</th>
                         <th className="text-left px-4 py-3">Estado</th>
                       </tr>
@@ -2448,11 +2525,15 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-right font-mono">
                               <span className={parseFloat(conv) >= 5 ? 'text-green-400' : parseFloat(conv) > 0 ? 'text-amber-400' : 'text-gray-600'}>{conv}%</span>
                             </td>
-                            <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">${(s.commission || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 text-right font-mono text-gray-400">${(s.paidOut || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 text-right font-mono">
-                              <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
-                            </td>
+                            {userRole === 'admin' && (
+                              <>
+                                <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">${(s.commission || 0).toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right font-mono text-gray-400">${(s.paidOut || 0).toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right font-mono">
+                                  <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
+                                </td>
+                              </>
+                            )}
                             <td className="px-4 py-3 text-xs">
                               {s.lastSale ? (
                                 <div>
@@ -2649,7 +2730,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    ✓ Pagado — {formatCurrency(getSongPrice(selectedSong))}
+                    ✓ Pagado{userRole === 'admin' ? ` — ${formatCurrency(getSongPrice(selectedSong))}` : ''}
                   </span>
                 ) : (
                   <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
