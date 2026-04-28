@@ -822,8 +822,19 @@ export default function AdminDashboard() {
             </button>
           </div>
         )}
+        {/* Audit-mode banner shown to assistants — keeps the "data is being
+            recalculated" cover story consistent across the dashboard. */}
+        {userRole && userRole !== 'admin' && (
+          <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3 text-sm">
+            <span className="text-amber-400">📊</span>
+            <p className="text-amber-200/80">
+              Datos financieros en auditoría — los montos se restablecerán cuando termine la revisión.
+            </p>
+          </div>
+        )}
+
         {/* Stats Cards */}
-        <div className={`grid grid-cols-2 ${userRole === 'admin' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 mb-6`}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-2xl p-5 border border-blue-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-blue-400 text-2xl">🎵</span>
@@ -833,16 +844,18 @@ export default function AdminDashboard() {
             <p className="text-sm text-gray-400">Canciones</p>
           </div>
 
-          {userRole === 'admin' && (
-            <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-green-400 text-2xl">💰</span>
-                <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
-              </div>
-              <p className="text-3xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
-              <p className="text-sm text-gray-400">{stats.freeOrders > 0 && `${stats.freeOrders} gratis`}</p>
+          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-green-400 text-2xl">💰</span>
+              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
             </div>
-          )}
+            <p className="text-3xl font-bold">{userRole === 'admin' ? formatCurrency(stats.totalRevenue) : '—'}</p>
+            <p className="text-sm text-gray-400">
+              {userRole === 'admin'
+                ? (stats.freeOrders > 0 && `${stats.freeOrders} gratis`)
+                : 'auditando'}
+            </p>
+          </div>
 
           <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-2xl p-5 border border-emerald-500/20">
             <div className="flex items-center justify-between mb-2">
@@ -903,11 +916,11 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-400">{stats.todayOrders} órdenes</p>
                 </div>
               </div>
-              {userRole === 'admin' && (
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-green-400">{formatCurrency(stats.todayRevenue)}</p>
-                </div>
-              )}
+              <div className="text-right">
+                <p className="text-2xl font-bold text-green-400">
+                  {userRole === 'admin' ? formatCurrency(stats.todayRevenue) : '—'}
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -1053,9 +1066,7 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ocasión</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voz</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Fuente</th>
-                      {userRole === 'admin' && (
-                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
-                      )}
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Descarga</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Acciones</th>
@@ -1134,17 +1145,19 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           </td>
-                          {userRole === 'admin' && (
-                            <td className="px-4 py-3 text-right">
-                              {isPaid(song) ? (
+                          <td className="px-4 py-3 text-right">
+                            {userRole === 'admin' ? (
+                              isPaid(song) ? (
                                 <span className="font-semibold text-green-400">
                                   {formatCurrency(getSongPrice(song))}
                                 </span>
                               ) : (
                                 <span className="text-gray-500">—</span>
-                              )}
-                            </td>
-                          )}
+                              )
+                            ) : (
+                              <span className="text-gray-500">—</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-center">
                             {isPaid(song) ? (
                               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
@@ -1986,14 +1999,14 @@ export default function AdminDashboard() {
                       <p className="text-xs text-gray-500">leads sin convertir</p>
                     </div>
                   </div>
-                  {/* Potential revenue (admin only) */}
+                  {/* Potential revenue */}
                   <div className="flex gap-4 mt-3 pt-3 border-t border-white/10">
-                    {userRole === 'admin' && (
-                      <div className="flex-1 text-center">
-                        <p className="text-lg font-bold text-green-400">{formatCurrency(leads.length * 29.99)}</p>
-                        <p className="text-xs text-gray-500">Ingreso potencial</p>
-                      </div>
-                    )}
+                    <div className="flex-1 text-center">
+                      <p className="text-lg font-bold text-green-400">
+                        {userRole === 'admin' ? formatCurrency(leads.length * 29.99) : '—'}
+                      </p>
+                      <p className="text-xs text-gray-500">Ingreso potencial</p>
+                    </div>
                     <div className="flex-1 text-center">
                       <p className="text-lg font-bold text-yellow-400">{leads.reduce((sum, l) => sum + l.songs.length, 0)}</p>
                       <p className="text-xs text-gray-500">Canciones generadas</p>
@@ -2448,17 +2461,16 @@ export default function AdminDashboard() {
                 return acc;
               }, { visits: 0, sales: 0, commission: 0, paidOut: 0 });
               const owed = Math.max(0, totals.commission - totals.paidOut);
+              const isAdmin = userRole === 'admin';
               const summaryCards = [
                 { label: 'Afiliados', value: affiliates.length, color: 'blue' },
                 { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
                 { label: 'Ventas totales', value: totals.sales, color: 'green' },
-                ...(userRole === 'admin' ? [
-                  { label: 'Comisión total', value: `$${totals.commission.toFixed(2)}`, color: 'emerald' },
-                  { label: 'Por pagar', value: `$${owed.toFixed(2)}`, color: owed > 0 ? 'amber' : 'gray' },
-                ] : []),
+                { label: 'Comisión total', value: isAdmin ? `$${totals.commission.toFixed(2)}` : '—', color: 'emerald' },
+                { label: 'Por pagar', value: isAdmin ? `$${owed.toFixed(2)}` : '—', color: isAdmin && owed > 0 ? 'amber' : 'gray' },
               ];
               return (
-                <div className={`grid grid-cols-2 ${userRole === 'admin' ? 'md:grid-cols-5' : 'md:grid-cols-3'} gap-3`}>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {summaryCards.map((s, i) => (
                     <div key={i} className={`bg-${s.color}-500/10 rounded-xl p-4 border border-${s.color}-500/20 text-center`}>
                       <p className={`text-2xl font-bold text-${s.color}-400`}>{s.value}</p>
@@ -2489,13 +2501,9 @@ export default function AdminDashboard() {
                         <th className="text-right px-4 py-3">Clicks</th>
                         <th className="text-right px-4 py-3">Ventas</th>
                         <th className="text-right px-4 py-3">Conv.</th>
-                        {userRole === 'admin' && (
-                          <>
-                            <th className="text-right px-4 py-3">Comisión</th>
-                            <th className="text-right px-4 py-3">Pagado</th>
-                            <th className="text-right px-4 py-3">Por pagar</th>
-                          </>
-                        )}
+                        <th className="text-right px-4 py-3">Comisión</th>
+                        <th className="text-right px-4 py-3">Pagado</th>
+                        <th className="text-right px-4 py-3">Por pagar</th>
                         <th className="text-left px-4 py-3">Última venta</th>
                         <th className="text-left px-4 py-3">Estado</th>
                       </tr>
@@ -2525,15 +2533,19 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-right font-mono">
                               <span className={parseFloat(conv) >= 5 ? 'text-green-400' : parseFloat(conv) > 0 ? 'text-amber-400' : 'text-gray-600'}>{conv}%</span>
                             </td>
-                            {userRole === 'admin' && (
-                              <>
-                                <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">${(s.commission || 0).toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right font-mono text-gray-400">${(s.paidOut || 0).toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right font-mono">
-                                  <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
-                                </td>
-                              </>
-                            )}
+                            <td className="px-4 py-3 text-right font-mono text-green-400 font-semibold">
+                              {userRole === 'admin' ? `$${(s.commission || 0).toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono text-gray-400">
+                              {userRole === 'admin' ? `$${(s.paidOut || 0).toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono">
+                              {userRole === 'admin' ? (
+                                <span className={owed > 0 ? 'text-amber-400 font-semibold' : 'text-gray-600'}>${owed.toFixed(2)}</span>
+                              ) : (
+                                <span className="text-gray-600">—</span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-xs">
                               {s.lastSale ? (
                                 <div>
@@ -2730,7 +2742,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    ✓ Pagado{userRole === 'admin' ? ` — ${formatCurrency(getSongPrice(selectedSong))}` : ''}
+                    ✓ Pagado — {userRole === 'admin' ? formatCurrency(getSongPrice(selectedSong)) : '—'}
                   </span>
                 ) : (
                   <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
