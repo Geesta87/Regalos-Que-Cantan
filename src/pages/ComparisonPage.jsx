@@ -1350,7 +1350,7 @@ export default function ComparisonPage() {
             )}
           </div>
           <p style={{margin: '8px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: '12px', lineHeight: 1.6}}>
-            By providing your phone number, you agree to receive transactional text messages about your order from Regalos Que Cantan. Message and data rates may apply. Reply STOP to cancel. See our <a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{color: '#25D366', textDecoration: 'underline'}}>Privacy Policy</a> and <a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{color: '#25D366', textDecoration: 'underline'}}>Terms of Service</a>.
+            By providing your phone number, you agree to receive transactional text messages about your order from Regalos Que Cantan. Message frequency varies. Message and data rates may apply. Reply STOP to cancel or HELP for help. See our <a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{color: '#25D366', textDecoration: 'underline'}}>Privacy Policy</a> and <a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{color: '#25D366', textDecoration: 'underline'}}>Terms of Service</a>.
           </p>
         </div>
 
