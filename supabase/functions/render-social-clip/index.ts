@@ -831,14 +831,29 @@ serve(async (req) => {
   }
 
   try {
-    // Global pause switch. Set the Supabase secret
-    //   SOCIAL_CLIPS_ENABLED=false
-    // to halt ALL video rendering + Whisper calls for new songs. Any value
-    // other than the literal string "false" keeps the pipeline running.
-    // Flip back on with: SOCIAL_CLIPS_ENABLED=true
-    const enabled = Deno.env.get('SOCIAL_CLIPS_ENABLED') !== 'false';
-    if (!enabled) {
-      console.log('[render-social-clip] SOCIAL_CLIPS_ENABLED=false — pipeline paused, skipping');
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Two-layer pause switch. Either being false halts the pipeline:
+    //   1. SOCIAL_CLIPS_ENABLED=false (Supabase secret) — emergency kill that
+    //      survives even if the DB is unreachable.
+    //   2. social_pipeline_state.enabled = false — admin-controlled toggle
+    //      from the dashboard, flipped via the social-pipeline-config edge
+    //      function. No redeploy needed.
+    // If the DB read fails for any reason we default to "enabled" so a
+    // transient Supabase blip doesn't silently halt every paid render.
+    const envEnabled = Deno.env.get('SOCIAL_CLIPS_ENABLED') !== 'false';
+    let dbEnabled = true;
+    try {
+      const { data: pipelineState } = await supabase
+        .from('social_pipeline_state')
+        .select('enabled')
+        .eq('id', 1)
+        .single();
+      if (pipelineState) dbEnabled = !!pipelineState.enabled;
+    } catch (_) { /* default to enabled on read failure */ }
+
+    if (!envEnabled || !dbEnabled) {
+      console.log(`[render-social-clip] paused (env=${envEnabled}, db=${dbEnabled}) — skipping`);
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: 'pipeline_paused' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
@@ -847,8 +862,6 @@ serve(async (req) => {
 
     const { songId } = await req.json();
     if (!songId) throw new Error('Missing songId');
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Idempotency: skip if a social clip already exists for this song.
     const { data: existing } = await supabase

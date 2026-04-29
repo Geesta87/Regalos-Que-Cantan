@@ -105,6 +105,9 @@ export default function AdminDashboard() {
   const [murekaModalOpen, setMurekaModalOpen] = useState(false);
   const [murekaSaving, setMurekaSaving] = useState(false);
   const [murekaForm, setMurekaForm] = useState({ balance: '', low_threshold: '', critical_threshold: '', credits_per_generation: '' });
+  // Social posting pipeline toggle (FB · IG · TikTok · YT via GHL)
+  const [socialPipeline, setSocialPipeline] = useState(null); // { enabled, updated_at, role }
+  const [socialToggling, setSocialToggling] = useState(false);
   const [lookupSearch, setLookupSearch] = useState('');
   const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name', 'phone'
   const [copiedLinkId, setCopiedLinkId] = useState(null);
@@ -179,6 +182,8 @@ export default function AdminDashboard() {
       // Credit balance banner is visible to both roles. The edit button +
       // modal stay admin-only (the edge function rejects writes from assistants).
       fetchMurekaCredits(session.access_token);
+      // Social-pipeline toggle is visible to both roles; only admins can flip it.
+      fetchSocialPipeline(session.access_token);
 
       emailSubscription = supabase
         .channel('email_logs_changes')
@@ -592,6 +597,61 @@ export default function AdminDashboard() {
       credits_per_generation: murekaCredits?.credits_per_generation != null ? String(murekaCredits.credits_per_generation) : '1',
     });
     setMurekaModalOpen(true);
+  };
+
+  const fetchSocialPipeline = async (tokenOverride) => {
+    const token = tokenOverride || accessToken;
+    if (!token) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/social-pipeline-config`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'get' }),
+        }
+      );
+      const result = await response.json();
+      if (result.success) setSocialPipeline(result);
+    } catch (err) {
+      console.error('Error fetching social pipeline state:', err);
+    }
+  };
+
+  const toggleSocialPipeline = async () => {
+    const token = accessToken;
+    if (!token || !socialPipeline) return;
+    if (socialPipeline.role !== 'admin') return; // assistants can't flip
+    const next = !socialPipeline.enabled;
+    setSocialToggling(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/social-pipeline-config`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'set_enabled', enabled: next }),
+        }
+      );
+      const result = await response.json();
+      if (!result.success) {
+        alert(`Error: ${result.error || 'no se pudo cambiar el estado'}`);
+      } else {
+        setSocialPipeline(result);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setSocialToggling(false);
+    }
   };
 
   const fetchEmailCampaigns = async () => {
@@ -1029,6 +1089,67 @@ export default function AdminDashboard() {
                     </button>
                   )}
                 </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Social posting pipeline toggle. Admin-controlled pause for the
+            FB · IG · TikTok · YT auto-posting flow (render-social-clip →
+            social-clip-callback → post-to-ghl). Both roles see the state;
+            only admins can flip it (the edge function rejects assistant
+            writes regardless). */}
+        {socialPipeline && (() => {
+          const enabled = !!socialPipeline.enabled;
+          const isAdmin = socialPipeline.role === 'admin';
+          const cardBg = enabled
+            ? 'from-emerald-500/15 to-green-600/10 border-emerald-500/30'
+            : 'from-rose-500/15 to-red-600/10 border-rose-500/30';
+          const updatedLabel = socialPipeline.updated_at
+            ? new Date(socialPipeline.updated_at).toLocaleString()
+            : null;
+          return (
+            <div className={`mb-6 rounded-2xl bg-gradient-to-br ${cardBg} border p-5`}>
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <span className="text-3xl">{enabled ? '📣' : '⏸️'}</span>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">
+                      Publicación en redes (FB · IG · TikTok · YT)
+                    </p>
+                    <p className={`text-2xl font-bold ${enabled ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {enabled ? 'Activa' : 'Pausada'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {enabled
+                        ? 'Cada canción pagada se publica automáticamente como reel + historia.'
+                        : 'No se está publicando nada nuevo. Las canciones se siguen generando y entregando como siempre.'}
+                      {updatedLabel && (
+                        <> {' • '}Última actualización: {updatedLabel}</>
+                      )}
+                    </p>
+                    {!isAdmin && (
+                      <p className="text-xs text-gray-500 mt-1 italic">
+                        Solo un admin puede cambiar este estado.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={toggleSocialPipeline}
+                  disabled={socialToggling || !isAdmin}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                    enabled
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30'
+                      : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {socialToggling
+                    ? '⏳ ...'
+                    : enabled
+                      ? '✓ Posteo activo · pausar'
+                      : '○ Posteo pausado · activar'}
+                </button>
               </div>
             </div>
           );

@@ -97,3 +97,9 @@ verify_jwt = true
 # Reads + updates the manual Mureka credit anchor and computes the estimated
 # remaining balance from songs.mureka_job_id counts.
 verify_jwt = true
+
+[functions.social-pipeline-config]
+# Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
+# Reads + flips social_pipeline_state.enabled, the dashboard-controlled
+# pause switch for render-social-clip + post-to-ghl.
+verify_jwt = true

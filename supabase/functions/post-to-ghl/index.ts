@@ -337,13 +337,26 @@ serve(async (req) => {
   }
 
   try {
-    // Global pause switch (same env var as render-social-clip). Set
-    //   SOCIAL_CLIPS_ENABLED=false
-    // to stop all GHL posting. Safety net — even if the render function
-    // somehow produces a clip while paused, nothing will get posted.
-    const enabled = Deno.env.get('SOCIAL_CLIPS_ENABLED') !== 'false';
-    if (!enabled) {
-      console.log('[post-to-ghl] SOCIAL_CLIPS_ENABLED=false — posting paused, skipping');
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Two-layer pause switch (same shape as render-social-clip):
+    //   1. SOCIAL_CLIPS_ENABLED=false (secret) — emergency kill.
+    //   2. social_pipeline_state.enabled = false — dashboard toggle.
+    // Either being false halts. DB read failure defaults to enabled so a
+    // transient blip doesn't silently swallow scheduled posts.
+    const envEnabled = Deno.env.get('SOCIAL_CLIPS_ENABLED') !== 'false';
+    let dbEnabled = true;
+    try {
+      const { data: pipelineState } = await supabase
+        .from('social_pipeline_state')
+        .select('enabled')
+        .eq('id', 1)
+        .single();
+      if (pipelineState) dbEnabled = !!pipelineState.enabled;
+    } catch (_) { /* default to enabled on read failure */ }
+
+    if (!envEnabled || !dbEnabled) {
+      console.log(`[post-to-ghl] paused (env=${envEnabled}, db=${dbEnabled}) — skipping`);
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: 'pipeline_paused' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
@@ -356,8 +369,6 @@ serve(async (req) => {
 
     const { socialPostId } = await req.json();
     if (!socialPostId) throw new Error('Missing socialPostId');
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Load social_post + JOIN song for caption context.
     const { data: post, error: postErr } = await supabase
