@@ -176,10 +176,9 @@ export default function AdminDashboard() {
       fetchFunnelData();
       fetchEmailLogs();
       fetchEmailCampaigns();
-      // Mureka credits banner is admin-only; only fetch when role === 'admin'
-      if (roleRow.role === 'admin') {
-        fetchMurekaCredits(session.access_token);
-      }
+      // Credit balance banner is visible to both roles. The edit button +
+      // modal stay admin-only (the edge function rejects writes from assistants).
+      fetchMurekaCredits(session.access_token);
 
       emailSubscription = supabase
         .channel('email_logs_changes')
@@ -960,9 +959,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Mureka credits banner — admin only. Estimated balance based on a
-            manual anchor + automatic deduction of generations since anchor. */}
-        {userRole === 'admin' && murekaCredits && (() => {
+        {/* Song-credits banner. Visible to both admin + assistant roles so
+            anyone can spot a low balance. Only admins see the "Actualizar
+            saldo" edit button (the edge function rejects writes from
+            assistants regardless). The provider name is intentionally omitted
+            from the UI. */}
+        {murekaCredits && (() => {
           const c = murekaCredits;
           const bg =
             c.status === 'critical' ? 'from-red-500/20 to-red-600/10 border-red-500/40' :
@@ -983,12 +985,12 @@ export default function AdminDashboard() {
                   <span className={`text-3xl ${pulse}`}>🎵</span>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-400">
-                      Mureka Gold (estimado)
+                      Créditos de canción (estimado)
                     </p>
                     <p className={`text-3xl font-bold ${numColor}`}>
                       {c.estimated_remaining.toLocaleString()}
                       <span className="text-sm font-normal text-gray-500 ml-2">
-                        / {c.balance.toLocaleString()} Gold
+                        / {c.balance.toLocaleString()} créditos
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
@@ -996,16 +998,16 @@ export default function AdminDashboard() {
                       {' • '}
                       {c.generations_since_anchor.toLocaleString()} generadas desde el último ajuste
                       {daysSinceAnchor !== null && ` (hace ${daysSinceAnchor === 0 ? 'hoy' : daysSinceAnchor + 'd'})`}
-                      {' • '}{c.credits_per_generation} Gold/canción
+                      {' • '}{c.credits_per_generation} créditos/canción
                     </p>
                     {c.status === 'critical' && (
                       <p className="text-xs text-red-300 font-semibold mt-2">
-                        ⚠ Gold en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
+                        ⚠ Créditos en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
                       </p>
                     )}
                     {c.status === 'low' && (
                       <p className="text-xs text-amber-300 mt-2">
-                        Gold bajo — considera recargar pronto.
+                        Créditos bajos — considera recargar pronto.
                       </p>
                     )}
                   </div>
@@ -1018,12 +1020,14 @@ export default function AdminDashboard() {
                   >
                     <span className="material-symbols-outlined text-gray-400 text-base">refresh</span>
                   </button>
-                  <button
-                    onClick={openMurekaModal}
-                    className="px-4 py-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-sm font-medium border border-violet-500/30"
-                  >
-                    🔧 Actualizar saldo
-                  </button>
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={openMurekaModal}
+                      className="px-4 py-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-sm font-medium border border-violet-500/30"
+                    >
+                      🔧 Actualizar saldo
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2796,7 +2800,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🎵</span>
-                <h3 className="font-semibold text-white">Actualizar Gold de Mureka</h3>
+                <h3 className="font-semibold text-white">Actualizar saldo de créditos</h3>
               </div>
               <button
                 onClick={() => !murekaSaving && setMurekaModalOpen(false)}
@@ -2808,7 +2812,7 @@ export default function AdminDashboard() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Saldo actual (Gold)
+                  Saldo actual (créditos)
                 </label>
                 <input
                   type="number"
@@ -2821,8 +2825,7 @@ export default function AdminDashboard() {
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  El número de Gold que ves en mureka.ai (o useapi.net) después de recargar.
-                  Suscripción Premier = 20,000 Gold/mes, paquetes Add Gold de 4,000 a 16,000.
+                  El número de créditos que ves en el panel del proveedor de música después de recargar.
                   Reinicia el contador de generaciones.
                 </p>
               </div>
@@ -2831,7 +2834,7 @@ export default function AdminDashboard() {
                 <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/5">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">
-                      Gold por canción
+                      Créditos por canción
                     </label>
                     <input
                       type="number"
