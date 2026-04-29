@@ -983,27 +983,29 @@ export default function AdminDashboard() {
                   <span className={`text-3xl ${pulse}`}>🎵</span>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-400">
-                      Mureka credits (estimado)
+                      Mureka Gold (estimado)
                     </p>
                     <p className={`text-3xl font-bold ${numColor}`}>
                       {c.estimated_remaining.toLocaleString()}
                       <span className="text-sm font-normal text-gray-500 ml-2">
-                        / {c.balance.toLocaleString()}
+                        / {c.balance.toLocaleString()} Gold
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {c.generations_since_anchor.toLocaleString()} generaciones desde el último ajuste
+                      ≈ {Math.floor(c.estimated_remaining / Math.max(c.credits_per_generation, 1)).toLocaleString()} canciones restantes
+                      {' • '}
+                      {c.generations_since_anchor.toLocaleString()} generadas desde el último ajuste
                       {daysSinceAnchor !== null && ` (hace ${daysSinceAnchor === 0 ? 'hoy' : daysSinceAnchor + 'd'})`}
-                      {' • '}{c.credits_per_generation} crédito{c.credits_per_generation === 1 ? '' : 's'}/gen
+                      {' • '}{c.credits_per_generation} Gold/canción
                     </p>
                     {c.status === 'critical' && (
                       <p className="text-xs text-red-300 font-semibold mt-2">
-                        ⚠ Créditos en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
+                        ⚠ Gold en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
                       </p>
                     )}
                     {c.status === 'low' && (
                       <p className="text-xs text-amber-300 mt-2">
-                        Créditos bajos — considera recargar pronto.
+                        Gold bajo — considera recargar pronto.
                       </p>
                     )}
                   </div>
@@ -2794,7 +2796,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🎵</span>
-                <h3 className="font-semibold text-white">Actualizar créditos Mureka</h3>
+                <h3 className="font-semibold text-white">Actualizar Gold de Mureka</h3>
               </div>
               <button
                 onClick={() => !murekaSaving && setMurekaModalOpen(false)}
@@ -2806,7 +2808,7 @@ export default function AdminDashboard() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Saldo actual (créditos)
+                  Saldo actual (Gold)
                 </label>
                 <input
                   type="number"
@@ -2815,11 +2817,13 @@ export default function AdminDashboard() {
                   value={murekaForm.balance}
                   onChange={(e) => setMurekaForm({ ...murekaForm, balance: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:ring-2 focus:ring-violet-400 focus:border-transparent"
-                  placeholder="ej. 5000"
+                  placeholder="ej. 20000"
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Lo que ves en useapi.net después de recargar. Reinicia el contador de generaciones.
+                  El número de Gold que ves en mureka.ai (o useapi.net) después de recargar.
+                  Suscripción Premier = 20,000 Gold/mes, paquetes Add Gold de 4,000 a 16,000.
+                  Reinicia el contador de generaciones.
                 </p>
               </div>
               <details className="text-sm">
@@ -2827,7 +2831,7 @@ export default function AdminDashboard() {
                 <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/5">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">
-                      Créditos por generación
+                      Gold por canción
                     </label>
                     <input
                       type="number"
