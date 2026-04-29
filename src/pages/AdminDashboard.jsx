@@ -100,6 +100,11 @@ export default function AdminDashboard() {
   const [emailFilter, setEmailFilter] = useState('all'); // all, purchase_confirmation, abandoned_1hr, abandoned_24hr, failed
   const [previewingCampaign, setPreviewingCampaign] = useState(null);
   const [resendingEmail, setResendingEmail] = useState(null);
+  // Mureka credits (admin-only banner)
+  const [murekaCredits, setMurekaCredits] = useState(null); // { balance, estimated_remaining, anchored_at, status, ... }
+  const [murekaModalOpen, setMurekaModalOpen] = useState(false);
+  const [murekaSaving, setMurekaSaving] = useState(false);
+  const [murekaForm, setMurekaForm] = useState({ balance: '', low_threshold: '', critical_threshold: '', credits_per_generation: '' });
   const [lookupSearch, setLookupSearch] = useState('');
   const [lookupSearchType, setLookupSearchType] = useState('all'); // 'all', 'email', 'name', 'phone'
   const [copiedLinkId, setCopiedLinkId] = useState(null);
@@ -171,6 +176,10 @@ export default function AdminDashboard() {
       fetchFunnelData();
       fetchEmailLogs();
       fetchEmailCampaigns();
+      // Mureka credits banner is admin-only; only fetch when role === 'admin'
+      if (roleRow.role === 'admin') {
+        fetchMurekaCredits(session.access_token);
+      }
 
       emailSubscription = supabase
         .channel('email_logs_changes')
@@ -485,6 +494,105 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error('Error fetching email logs:', err);
     }
+  };
+
+  const fetchMurekaCredits = async (tokenOverride) => {
+    const token = tokenOverride || accessToken;
+    if (!token) return;
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mureka-credits`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'get' }),
+        }
+      );
+      const result = await response.json();
+      if (result.success) setMurekaCredits(result);
+    } catch (err) {
+      console.error('Error fetching Mureka credits:', err);
+    }
+  };
+
+  const saveMurekaBalance = async () => {
+    const token = accessToken;
+    if (!token) return;
+    const balance = parseInt(murekaForm.balance, 10);
+    if (!Number.isFinite(balance) || balance < 0) {
+      alert('Por favor ingresa un número válido de créditos');
+      return;
+    }
+    setMurekaSaving(true);
+    try {
+      const payload = { action: 'set_balance', balance };
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mureka-credits`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const result = await response.json();
+      if (!result.success) {
+        alert(`Error: ${result.error || 'no se pudo guardar'}`);
+      } else {
+        setMurekaCredits(result);
+        // Optionally update thresholds / per-gen if user changed them
+        const extras = {};
+        const lo = parseInt(murekaForm.low_threshold, 10);
+        const cr = parseInt(murekaForm.critical_threshold, 10);
+        if (Number.isFinite(lo) && lo >= 0 && lo !== result.low_threshold) extras.low_threshold = lo;
+        if (Number.isFinite(cr) && cr >= 0 && cr !== result.critical_threshold) extras.critical_threshold = cr;
+        if (Object.keys(extras).length) {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mureka-credits`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'set_thresholds', ...extras }),
+          }).then(r => r.json()).then(r => { if (r.success) setMurekaCredits(r); }).catch(() => {});
+        }
+        const perGen = parseFloat(murekaForm.credits_per_generation);
+        if (Number.isFinite(perGen) && perGen > 0 && perGen !== result.credits_per_generation) {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mureka-credits`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'set_per_gen', credits_per_generation: perGen }),
+          }).then(r => r.json()).then(r => { if (r.success) setMurekaCredits(r); }).catch(() => {});
+        }
+        setMurekaModalOpen(false);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setMurekaSaving(false);
+    }
+  };
+
+  const openMurekaModal = () => {
+    setMurekaForm({
+      balance: murekaCredits?.balance != null ? String(murekaCredits.balance) : '',
+      low_threshold: murekaCredits?.low_threshold != null ? String(murekaCredits.low_threshold) : '500',
+      critical_threshold: murekaCredits?.critical_threshold != null ? String(murekaCredits.critical_threshold) : '100',
+      credits_per_generation: murekaCredits?.credits_per_generation != null ? String(murekaCredits.credits_per_generation) : '1',
+    });
+    setMurekaModalOpen(true);
   };
 
   const fetchEmailCampaigns = async () => {
@@ -851,6 +959,74 @@ export default function AdminDashboard() {
             </p>
           </div>
         )}
+
+        {/* Mureka credits banner — admin only. Estimated balance based on a
+            manual anchor + automatic deduction of generations since anchor. */}
+        {userRole === 'admin' && murekaCredits && (() => {
+          const c = murekaCredits;
+          const bg =
+            c.status === 'critical' ? 'from-red-500/20 to-red-600/10 border-red-500/40' :
+            c.status === 'low' ? 'from-amber-500/20 to-amber-600/10 border-amber-500/40' :
+            'from-violet-500/15 to-purple-600/10 border-violet-500/30';
+          const numColor =
+            c.status === 'critical' ? 'text-red-400' :
+            c.status === 'low' ? 'text-amber-400' :
+            'text-violet-300';
+          const pulse = c.status !== 'healthy' ? 'animate-pulse' : '';
+          const daysSinceAnchor = c.anchored_at
+            ? Math.max(0, Math.floor((Date.now() - new Date(c.anchored_at).getTime()) / 86400000))
+            : null;
+          return (
+            <div className={`mb-6 rounded-2xl bg-gradient-to-br ${bg} border p-5`}>
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <span className={`text-3xl ${pulse}`}>🎵</span>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">
+                      Mureka credits (estimado)
+                    </p>
+                    <p className={`text-3xl font-bold ${numColor}`}>
+                      {c.estimated_remaining.toLocaleString()}
+                      <span className="text-sm font-normal text-gray-500 ml-2">
+                        / {c.balance.toLocaleString()}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {c.generations_since_anchor.toLocaleString()} generaciones desde el último ajuste
+                      {daysSinceAnchor !== null && ` (hace ${daysSinceAnchor === 0 ? 'hoy' : daysSinceAnchor + 'd'})`}
+                      {' • '}{c.credits_per_generation} crédito{c.credits_per_generation === 1 ? '' : 's'}/gen
+                    </p>
+                    {c.status === 'critical' && (
+                      <p className="text-xs text-red-300 font-semibold mt-2">
+                        ⚠ Créditos en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
+                      </p>
+                    )}
+                    {c.status === 'low' && (
+                      <p className="text-xs text-amber-300 mt-2">
+                        Créditos bajos — considera recargar pronto.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => fetchMurekaCredits()}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
+                    title="Recalcular"
+                  >
+                    <span className="material-symbols-outlined text-gray-400 text-base">refresh</span>
+                  </button>
+                  <button
+                    onClick={openMurekaModal}
+                    className="px-4 py-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-sm font-medium border border-violet-500/30"
+                  >
+                    🔧 Actualizar saldo
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -2604,6 +2780,111 @@ export default function AdminDashboard() {
           </div>
         ) : null}
       </main>
+
+      {/* Mureka Credits Update Modal — admin only */}
+      {murekaModalOpen && userRole === 'admin' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => !murekaSaving && setMurekaModalOpen(false)}
+        >
+          <div
+            className="bg-[#1a1f26] rounded-2xl max-w-md w-full overflow-hidden border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🎵</span>
+                <h3 className="font-semibold text-white">Actualizar créditos Mureka</h3>
+              </div>
+              <button
+                onClick={() => !murekaSaving && setMurekaModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-white/10 transition"
+              >
+                <span className="material-symbols-outlined text-gray-400">close</span>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Saldo actual (créditos)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={murekaForm.balance}
+                  onChange={(e) => setMurekaForm({ ...murekaForm, balance: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                  placeholder="ej. 5000"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Lo que ves en useapi.net después de recargar. Reinicia el contador de generaciones.
+                </p>
+              </div>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-gray-400 hover:text-white">Configuración avanzada</summary>
+                <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/5">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                      Créditos por generación
+                    </label>
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={murekaForm.credits_per_generation}
+                      onChange={(e) => setMurekaForm({ ...murekaForm, credits_per_generation: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">
+                        Umbral amarillo
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={murekaForm.low_threshold}
+                        onChange={(e) => setMurekaForm({ ...murekaForm, low_threshold: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">
+                        Umbral rojo
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={murekaForm.critical_threshold}
+                        onChange={(e) => setMurekaForm({ ...murekaForm, critical_threshold: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </details>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => !murekaSaving && setMurekaModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-medium"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveMurekaBalance}
+                  disabled={murekaSaving || !murekaForm.balance}
+                  className="flex-1 py-3 rounded-xl bg-violet-500 hover:bg-violet-400 text-white font-medium disabled:opacity-50"
+                >
+                  {murekaSaving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Email Preview Modal */}
       {previewingCampaign && (

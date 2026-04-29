@@ -91,3 +91,9 @@ verify_jwt = false
 # The platform gateway verifies the JWT before our handler runs; the handler
 # then looks up the caller's role in admin_users to decide what to return.
 verify_jwt = true
+
+[functions.mureka-credits]
+# Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
+# Reads + updates the manual Mureka credit anchor and computes the estimated
+# remaining balance from songs.mureka_job_id counts.
+verify_jwt = true
