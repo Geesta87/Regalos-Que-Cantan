@@ -76,8 +76,12 @@ export default function AdminDashboard() {
   const { navigateTo } = useContext(AppContext);
   const [userRole, setUserRole] = useState(null); // 'admin' | 'assistant' | null
   const [accessToken, setAccessToken] = useState(null);
+  // isAuthChecking gates the full-page spinner. Once auth is verified the
+  // dashboard renders even if the songs fetch is still in flight (the songs
+  // payload is multi-MB and used to wedge the whole UI behind it).
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [songs, setSongs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // songs-fetch indicator only
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -135,6 +139,7 @@ export default function AdminDashboard() {
       const session = sessionData?.session;
 
       if (!session?.user) {
+        setIsAuthChecking(false);
         navigateTo('adminLogin');
         return;
       }
@@ -147,6 +152,7 @@ export default function AdminDashboard() {
 
       if (roleErr || !roleRow) {
         await supabase.auth.signOut();
+        setIsAuthChecking(false);
         navigateTo('adminLogin');
         return;
       }
@@ -155,6 +161,9 @@ export default function AdminDashboard() {
 
       setUserRole(roleRow.role);
       setAccessToken(session.access_token);
+      // Auth is good — let the dashboard render now. Data fetches continue
+      // in the background; their loading state is shown inline, not full-page.
+      setIsAuthChecking(false);
 
       // Pass the token directly into the first fetch so we don't race with
       // setAccessToken's async state commit.
@@ -758,12 +767,16 @@ export default function AdminDashboard() {
     return map[occasion] || occasion.replace(/_/g, ' ');
   };
 
-  if (isLoading) {
+  // Full-page spinner only while we're verifying who's logged in. Once auth
+  // resolves the dashboard mounts; songs/funnel/email data fill in as their
+  // own fetches return. This avoids wedging the whole UI behind the multi-MB
+  // songs payload.
+  if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Cargando datos...</p>
+          <p className="text-gray-400">Verificando acceso...</p>
         </div>
       </div>
     );
@@ -784,7 +797,13 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button 
+            {isLoading && (
+              <span className="hidden md:inline-flex items-center gap-2 text-xs text-gray-400">
+                <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                Cargando datos...
+              </span>
+            )}
+            <button
               onClick={() => fetchSongs()}
               className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
               title="Refrescar"
