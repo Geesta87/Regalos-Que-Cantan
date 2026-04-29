@@ -18,11 +18,15 @@ CREATE TABLE IF NOT EXISTS mureka_credit_state (
   id                     INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   balance                INT NOT NULL DEFAULT 0,
   anchored_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- Mureka pricing: 10 Gold = 1 song (verified 2026-04-28 from useapi.net
-  -- "Add Gold" packs: 4000/400, 8000/800, 16000/1600, and Premier
-  -- subscription 20000/2000 — all converge on 10 Gold per song.
-  credits_per_generation NUMERIC NOT NULL DEFAULT 10,
-  -- Thresholds in Gold. 2000 Gold ≈ 200 songs left. 500 Gold ≈ 50 songs.
+  -- Mureka pricing: 10 Gold = 1 song. One useapi.net generation produces
+  -- TWO song variations, so it deducts 20 Gold per generation (verified
+  -- live on 2026-04-28: balance went from 12864 → 12844 after one
+  -- successful create-advanced call). Pricing references on Mureka's site:
+  -- Add Gold packs (4000/400, 8000/800, 16000/1600), Premier subscription
+  -- (20000/2000) — all converge on 10 Gold per song = 20 Gold per generation.
+  credits_per_generation NUMERIC NOT NULL DEFAULT 20,
+  -- Thresholds in Gold. 2000 Gold = 100 generations left = 200 songs.
+  -- 500 Gold = 25 generations = 50 songs.
   low_threshold          INT NOT NULL DEFAULT 2000,
   critical_threshold     INT NOT NULL DEFAULT 500,
   updated_by             UUID REFERENCES auth.users(id) ON DELETE SET NULL,
