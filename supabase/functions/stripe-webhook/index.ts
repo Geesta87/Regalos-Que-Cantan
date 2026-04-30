@@ -61,6 +61,82 @@ async function sendEmail(to: string, subject: string, htmlContent: string, categ
   return response;
 }
 
+// ─── Affiliate attribution helpers ───────────────────────────────────────
+// These run at the moment a song flips to paid. They are intentionally
+// idempotent against webhook retries: Stripe will redeliver checkout.session
+// .completed if our handler ever returns non-2xx, and verify-payment can
+// also reach us in parallel from the success page.
+//
+// Idempotency model: there is exactly one `purchase` event per song. We
+// SELECT-then-INSERT under that invariant. Coupon usage is incremented only
+// when the INSERT actually creates a new row, so a redelivery is a no-op.
+
+async function recordAffiliatePurchase(
+  supabase: any,
+  song: { id: string; affiliate_code: string | null; coupon_code: string | null; amount_paid: number | string | null },
+  fallbackAffiliateCode: string | null
+): Promise<void> {
+  const affiliateCode = (song.affiliate_code || fallbackAffiliateCode || '').toString().toLowerCase().trim();
+  if (!affiliateCode) {
+    return; // not an affiliate-attributed sale
+  }
+
+  // Verify the affiliate exists & is active. Guards against stale codes
+  // surviving on a song row after the affiliate was deactivated.
+  const { data: validAffiliate } = await supabase
+    .from('affiliates')
+    .select('code')
+    .eq('code', affiliateCode)
+    .eq('active', true)
+    .maybeSingle();
+  if (!validAffiliate) {
+    console.warn(`[affiliate] purchase event skipped — code ${affiliateCode} is not an active affiliate`);
+    return;
+  }
+
+  // Idempotency check (one purchase event per song)
+  const { data: existing } = await supabase
+    .from('affiliate_events')
+    .select('id')
+    .eq('song_id', song.id)
+    .eq('event_type', 'purchase')
+    .maybeSingle();
+  if (existing) {
+    return;
+  }
+
+  const amount = parseFloat(String(song.amount_paid ?? '0')) || 0;
+  const { error: insertErr } = await supabase
+    .from('affiliate_events')
+    .insert({
+      affiliate_code: affiliateCode,
+      event_type: 'purchase',
+      song_id: song.id,
+      amount,
+    });
+  if (insertErr) {
+    console.error(`[affiliate] failed to insert purchase event for song ${song.id}:`, insertErr.message);
+    return;
+  }
+  console.log(`[affiliate] purchase event recorded — code=${affiliateCode} song=${song.id} amount=${amount}`);
+
+  // Bump coupon usage ONCE per song. Safe even if multiple webhooks race —
+  // the SELECT above gates this whole branch behind a successful INSERT.
+  if (song.coupon_code) {
+    const { data: coupon } = await supabase
+      .from('coupons')
+      .select('times_used')
+      .eq('code', song.coupon_code)
+      .maybeSingle();
+    if (coupon) {
+      await supabase
+        .from('coupons')
+        .update({ times_used: (coupon.times_used || 0) + 1 })
+        .eq('code', song.coupon_code);
+    }
+  }
+}
+
 // Email template for checkout abandonment recovery
 function getAbandonedCheckoutEmailHtml(song: any, listenUrl: string) {
   const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
@@ -300,6 +376,16 @@ serve(async (req) => {
         .single();
 
       if (existingPaid?.paid && existingPaid?.stripe_session_id === session.id) {
+        // Self-heal affiliate attribution if a previous run (verify-payment
+        // or an earlier deploy) marked the song paid without recording the
+        // purchase event. recordAffiliatePurchase is idempotent — no-op if
+        // the event already exists.
+        try {
+          await recordAffiliatePurchase(supabase, existingPaid, session.metadata?.affiliateCode || null);
+        } catch (affErr: any) {
+          console.error(`[affiliate] self-heal failed for already-paid song ${existingPaid.id}:`, affErr?.message || affErr);
+        }
+
         const { data: emailEvent } = await supabase
           .from('funnel_events')
           .select('id')
@@ -402,6 +488,16 @@ serve(async (req) => {
 
         console.log('Song marked as paid:', song.id);
         if (!firstSong) firstSong = song;
+
+        // Affiliate attribution: record the purchase event + bump coupon
+        // usage. Idempotent against webhook retries. Wrapped so a failure
+        // never blocks the payment flow — the customer has paid and
+        // everything downstream (email, social clip) must still run.
+        try {
+          await recordAffiliatePurchase(supabase, song, session.metadata?.affiliateCode || null);
+        } catch (affErr: any) {
+          console.error(`[affiliate] recordAffiliatePurchase threw for song ${sid}:`, affErr?.message || affErr);
+        }
 
         // Fire-and-forget: render a 60s social media clip for this paid song.
         // render-social-clip is idempotent (UNIQUE index on social_posts.song_id)
@@ -598,6 +694,106 @@ serve(async (req) => {
               failed_at: new Date().toISOString()
             }
           }]);
+      }
+    }
+
+    // ========== HANDLE REFUNDS (affiliate commission reversal) ==========
+    // Subscribe to `charge.refunded` in the Stripe Dashboard for this to fire.
+    // We log a negative-amount `refund` event scoped to the original song so
+    // affiliate-data subtracts it from commission. Idempotent per (song_id,
+    // refund_id) — Stripe may redeliver the event.
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId = typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id || null;
+
+      if (!paymentIntentId) {
+        console.warn('[refund] charge.refunded with no payment_intent — skipping');
+      } else {
+        // Find the affected songs. stripe_payment_id is set by verify-payment
+        // when it wins the race; if only stripe-webhook ran, we need to
+        // resolve via the checkout session.
+        let { data: refundedSongs } = await supabase
+          .from('songs')
+          .select('id, affiliate_code, coupon_code, amount_paid, stripe_session_id')
+          .eq('stripe_payment_id', paymentIntentId);
+
+        if (!refundedSongs || refundedSongs.length === 0) {
+          // Fall back: ask Stripe which session this PI belongs to, then
+          // look up the song(s) by stripe_session_id.
+          try {
+            const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 });
+            const session = sessions.data[0];
+            if (session) {
+              const { data: viaSession } = await supabase
+                .from('songs')
+                .select('id, affiliate_code, coupon_code, amount_paid, stripe_session_id')
+                .eq('stripe_session_id', session.id);
+              refundedSongs = viaSession || [];
+            }
+          } catch (lookupErr: any) {
+            console.error('[refund] session lookup failed for PI', paymentIntentId, lookupErr?.message || lookupErr);
+          }
+        }
+
+        if (!refundedSongs || refundedSongs.length === 0) {
+          console.warn('[refund] no song found for charge', charge.id, 'PI', paymentIntentId);
+        } else {
+          // Total refunded so far on this charge in dollars.
+          const refundedTotal = (charge.amount_refunded || 0) / 100;
+          // Use the latest refund in the charge as the de-dup key.
+          const latestRefund = (charge.refunds?.data || [])[0];
+          const refundIdKey = latestRefund?.id || `charge_${charge.id}`;
+
+          for (const song of refundedSongs) {
+            if (!song.affiliate_code) continue; // not affiliate-attributed
+
+            // Idempotency: one refund event per (song, refund-id).
+            const { data: existing } = await supabase
+              .from('affiliate_events')
+              .select('id, amount, created_at')
+              .eq('song_id', song.id)
+              .eq('event_type', 'refund');
+
+            // If we've already logged a refund event for this exact refund_id
+            // (encoded in created_at-tagged metadata isn't available, so we
+            // gate on absolute total), skip. Simplest: only one refund event
+            // per song. If the customer is partially refunded multiple times
+            // we use the cumulative total for the latest entry.
+            const refundAmount = Math.min(refundedTotal, parseFloat(String(song.amount_paid || '0')) || refundedTotal);
+
+            if (existing && existing.length > 0) {
+              // Already have a refund event — update if the cumulative
+              // amount changed (e.g. second partial refund).
+              const prevAmount = Math.abs(parseFloat(String(existing[0].amount || '0')) || 0);
+              if (Math.abs(refundAmount - prevAmount) < 0.005) {
+                continue; // no change
+              }
+              await supabase
+                .from('affiliate_events')
+                .update({ amount: -refundAmount })
+                .eq('id', existing[0].id);
+              console.log(`[refund] updated existing refund event for song ${song.id} → -${refundAmount}`);
+            } else {
+              await supabase.from('affiliate_events').insert({
+                affiliate_code: song.affiliate_code,
+                event_type: 'refund',
+                song_id: song.id,
+                amount: -refundAmount,
+              });
+              console.log(`[refund] recorded refund event — code=${song.affiliate_code} song=${song.id} amount=-${refundAmount} refund=${refundIdKey}`);
+            }
+          }
+
+          // Mark the song(s) as refunded so the admin dashboard reflects it.
+          for (const song of refundedSongs) {
+            await supabase
+              .from('songs')
+              .update({ payment_status: 'refunded' })
+              .eq('id', song.id);
+          }
+        }
       }
     }
 

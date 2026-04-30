@@ -410,47 +410,33 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchAffiliates = async () => {
+  // Reads via the admin-affiliates edge function. Direct table reads from the
+  // browser don't work — `affiliates`, `affiliate_events`, and
+  // `affiliate_payouts` have RLS enabled with no policies, so the anon-key
+  // client returns 0 rows. The edge function uses service-role behind an
+  // admin_users role check.
+  const fetchAffiliates = async (tokenOverride) => {
+    const token = tokenOverride || accessToken;
+    if (!token) return;
     try {
-      const { data: affData, error } = await supabase
-        .from('affiliates')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error || !affData) { setAffiliatesLoaded(true); return; }
-
-      // Pull all affiliate events + payouts in bulk for performance stats
-      const codes = affData.map(a => a.code);
-      const [{ data: events }, { data: payouts }] = await Promise.all([
-        supabase.from('affiliate_events').select('affiliate_code, event_type, amount, created_at').in('affiliate_code', codes),
-        supabase.from('affiliate_payouts').select('affiliate_code, amount').in('affiliate_code', codes)
-      ]);
-
-      // Build per-affiliate stats
-      const statsMap = {};
-      for (const a of affData) {
-        statsMap[a.code] = { visits: 0, checkouts: 0, sales: 0, revenue: 0, commission: 0, paidOut: 0, lastSale: null };
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-affiliates`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.success) {
+        // Server returns lastSale as ISO string; normalize back to Date for
+        // existing rendering code that may compare/format it.
+        const list = (data.affiliates || []).map(a => ({
+          ...a,
+          _stats: a._stats
+            ? { ...a._stats, lastSale: a._stats.lastSale ? new Date(a._stats.lastSale) : null }
+            : a._stats,
+        }));
+        setAffiliates(list);
+      } else {
+        console.error('admin-affiliates error:', data.error);
       }
-      for (const e of (events || [])) {
-        const s = statsMap[e.affiliate_code];
-        if (!s) continue;
-        if (e.event_type === 'visit') s.visits++;
-        else if (e.event_type === 'checkout') s.checkouts++;
-        else if (e.event_type === 'purchase') {
-          s.sales++;
-          const amt = parseFloat(e.amount) || 0;
-          s.revenue += amt;
-          const pct = affData.find(a => a.code === e.affiliate_code)?.commission_pct || 20;
-          s.commission += amt * (pct / 100);
-          const d = new Date(e.created_at);
-          if (!s.lastSale || d > s.lastSale) s.lastSale = d;
-        }
-      }
-      for (const p of (payouts || [])) {
-        const s = statsMap[p.affiliate_code];
-        if (s) s.paidOut += parseFloat(p.amount) || 0;
-      }
-
-      setAffiliates(affData.map(a => ({ ...a, _stats: statsMap[a.code] })));
       setAffiliatesLoaded(true);
     } catch (err) { console.error('Failed to fetch affiliates:', err); setAffiliatesLoaded(true); }
   };
@@ -464,11 +450,13 @@ export default function AdminDashboard() {
     setCreatingAffiliate(true);
     setAffiliateMsg(null);
     try {
+      // Auth: pass the admin user's JWT (not the anon key). The function
+      // verifies the caller has admin_users.role = 'admin' before inserting.
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-affiliate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({ name, email, code, couponCode: couponCode || undefined, password })
       });
@@ -2816,7 +2804,7 @@ export default function AdminDashboard() {
             <div className="bg-[#1a1f26] rounded-2xl border border-white/5 overflow-hidden">
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <h3 className="text-white font-semibold">Afiliados ({affiliates.length})</h3>
-                <button onClick={fetchAffiliates} className="text-xs text-gray-400 hover:text-white transition">🔄 Refrescar</button>
+                <button onClick={() => fetchAffiliates()} className="text-xs text-gray-400 hover:text-white transition">🔄 Refrescar</button>
               </div>
               {affiliates.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">

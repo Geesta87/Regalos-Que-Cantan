@@ -83,6 +83,19 @@ verify_jwt = false
 verify_jwt = false
 
 # ---------------------------------------------------------------------------
+# Affiliate dashboard auth — uses an HMAC token in Authorization, NOT a
+# Supabase JWT. The function verifies the token internally; the gateway
+# must NOT try to verify it as a Supabase JWT or every call will 401.
+# ---------------------------------------------------------------------------
+
+[functions.affiliate-complete-onboarding]
+# Frontend posts with `Authorization: Bearer <hmac-token>` from
+# localStorage['rqc_affiliate_auth'].token. That token is signed with
+# AFFILIATE_JWT_SECRET, not with Supabase's JWT secret, so the gateway
+# can't verify it. Internal verifyToken() does the real check.
+verify_jwt = false
+
+# ---------------------------------------------------------------------------
 # Frontend-authenticated functions — verify_jwt = true (default, explicit)
 # ---------------------------------------------------------------------------
 
@@ -90,6 +103,18 @@ verify_jwt = false
 # Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
 # The platform gateway verifies the JWT before our handler runs; the handler
 # then looks up the caller's role in admin_users to decide what to return.
+verify_jwt = true
+
+[functions.admin-affiliates]
+# Admin-gated reader for affiliates / affiliate_events / affiliate_payouts.
+# Same pattern as admin-songs: gateway validates the user JWT, handler
+# requires a row in admin_users.
+verify_jwt = true
+
+[functions.create-affiliate]
+# Admin-only writer that creates an affiliate, optional matching coupon, and
+# emails credentials. Handler requires admin_users.role = 'admin'. Gateway
+# verifies the JWT first so the role lookup runs against a real user.
 verify_jwt = true
 
 [functions.mureka-credits]

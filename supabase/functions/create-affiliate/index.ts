@@ -1,5 +1,10 @@
 // supabase/functions/create-affiliate/index.ts
 // Admin endpoint: creates a new affiliate row, optional matching coupon, and emails credentials.
+//
+// AUTHORIZATION: requires a Supabase Auth user JWT whose user_id maps to a
+// row in admin_users with role = 'admin'. Same gate pattern as admin-songs.
+// (Originally this function was called with only the public anon key, which
+// meant anyone with the bundle URL could spam-create affiliates.)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -11,6 +16,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const HASH_SALT = Deno.env.get('AFFILIATE_JWT_SECRET') || 'rqc-affiliate-secret-2026';
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
@@ -21,9 +27,28 @@ async function hashPassword(password: string): Promise<string> {
   return new TextDecoder().decode(hexEncode(new Uint8Array(hash)));
 }
 
+// HTML-escape user-controlled values before interpolating into the email
+// template. Without this an admin (or attacker who later bypasses the gate)
+// could ship arbitrary HTML/links to a partner inbox.
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getWelcomeEmailHtml(name: string, email: string, password: string, code: string, couponCode: string | null): string {
-  const firstName = name.split(' ')[0];
-  const affiliateLink = `https://regalosquecantan.com/?ref=${code}`;
+  // All four interpolated user values are HTML-escaped to prevent any caller
+  // (or future regression) from injecting markup into the partner inbox.
+  const firstNameEsc = esc(name.split(' ')[0]);
+  const nameEsc = esc(name);
+  const emailEsc = esc(email);
+  const passwordEsc = esc(password);
+  const codeEsc = esc(code);
+  const couponCodeEsc = couponCode ? esc(couponCode) : null;
+  const affiliateLink = `https://regalosquecantan.com/?ref=${encodeURIComponent(code)}`;
   const loginUrl = 'https://regalosquecantan.com/afiliado';
 
   return `<!DOCTYPE html>
@@ -43,7 +68,7 @@ function getWelcomeEmailHtml(name: string, email: string, password: string, code
           <p style="color:rgba(255,255,255,0.6);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0;">Partner Portal</p>
         </td></tr>
         <tr><td style="padding:40px 40px 24px;text-align:center;">
-          <h2 style="font-size:28px;font-weight:800;color:#1e3a5f;margin:0 0 12px;">¡Bienvenido, ${firstName}!</h2>
+          <h2 style="font-size:28px;font-weight:800;color:#1e3a5f;margin:0 0 12px;">¡Bienvenido, ${firstNameEsc}!</h2>
           <p style="font-size:16px;color:#64748b;line-height:1.7;margin:0;">Tu cuenta de afiliado ha sido creada. Estas listo para empezar a ganar <strong style="color:#1e3a5f;">20% de comision</strong> por cada venta que generes.</p>
         </td></tr>
         <tr><td style="padding:0 40px 24px;">
@@ -53,9 +78,9 @@ function getWelcomeEmailHtml(name: string, email: string, password: string, code
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr><td style="padding:8px 0;color:#64748b;font-size:14px;font-weight:600;">Portal:</td><td style="padding:8px 0;text-align:right;"><a href="${loginUrl}" style="color:#2563eb;font-weight:700;text-decoration:none;font-size:14px;">${loginUrl}</a></td></tr>
                 <tr><td colspan="2" style="border-bottom:1px solid #e2e8f0;"></td></tr>
-                <tr><td style="padding:8px 0;color:#64748b;font-size:14px;font-weight:600;">Email:</td><td style="padding:8px 0;text-align:right;color:#1e3a5f;font-weight:700;font-size:14px;">${email}</td></tr>
+                <tr><td style="padding:8px 0;color:#64748b;font-size:14px;font-weight:600;">Email:</td><td style="padding:8px 0;text-align:right;color:#1e3a5f;font-weight:700;font-size:14px;">${emailEsc}</td></tr>
                 <tr><td colspan="2" style="border-bottom:1px solid #e2e8f0;"></td></tr>
-                <tr><td style="padding:8px 0;color:#64748b;font-size:14px;font-weight:600;">Contrasena:</td><td style="padding:8px 0;text-align:right;color:#1e3a5f;font-weight:700;font-size:14px;font-family:monospace;">${password}</td></tr>
+                <tr><td style="padding:8px 0;color:#64748b;font-size:14px;font-weight:600;">Contrasena:</td><td style="padding:8px 0;text-align:right;color:#1e3a5f;font-weight:700;font-size:14px;font-family:monospace;">${passwordEsc}</td></tr>
               </table>
             </td></tr>
           </table>
@@ -65,7 +90,7 @@ function getWelcomeEmailHtml(name: string, email: string, password: string, code
         <tr><td style="padding:24px 40px;">
           <p style="font-size:12px;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:2px;margin:0 0 16px;">Tus herramientas</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:12px;"><tr><td style="padding:16px 20px;"><p style="font-size:11px;color:#2563eb;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Tu link de afiliado</p><p style="font-size:14px;color:#1e3a5f;font-weight:600;margin:0;word-break:break-all;">${affiliateLink}</p></td></tr></table>
-          ${couponCode ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;"><tr><td style="padding:16px 20px;"><p style="font-size:11px;color:#1d4ed8;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Tu codigo de descuento</p><p style="font-size:20px;color:#1e3a5f;font-weight:800;letter-spacing:4px;margin:0;">${couponCode}</p></td></tr></table>` : ''}
+          ${couponCodeEsc ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;"><tr><td style="padding:16px 20px;"><p style="font-size:11px;color:#1d4ed8;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Tu codigo de descuento</p><p style="font-size:20px;color:#1e3a5f;font-weight:800;letter-spacing:4px;margin:0;">${couponCodeEsc}</p></td></tr></table>` : ''}
         </td></tr>
         <tr><td style="padding:0 40px 32px;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border-radius:16px;border:1px solid #a7f3d0;"><tr><td style="padding:24px 28px;text-align:center;"><p style="font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;">¿Como funciona?</p><p style="font-size:14px;color:#475569;line-height:1.7;margin:0;">Comparte tu link o codigo con tu audiencia. Cada vez que alguien compre una cancion a traves de ti, ganas <strong style="color:#059669;">20% de comision</strong>. Ves todo en tiempo real desde tu dashboard.</p></td></tr></table></td></tr>
         <tr><td style="background:#f8fafc;padding:28px 40px;text-align:center;border-top:1px solid #e2e8f0;"><p style="color:#2563eb;font-size:14px;font-weight:800;margin:0 0 8px;">🎵 RegalosQueCantan</p><p style="color:#94a3b8;font-size:12px;margin:0 0 12px;"><a href="mailto:hola@regalosquecantan.com" style="color:#64748b;text-decoration:none;">hola@regalosquecantan.com</a></p><p style="color:#cbd5e1;font-size:10px;margin:0;">© 2026 Regalos Que Cantan</p></td></tr>
@@ -82,6 +107,41 @@ serve(async (req) => {
   }
 
   try {
+    // ── ADMIN AUTHORIZATION ──────────────────────────────────────────────
+    // Require a real Supabase Auth user JWT and verify the caller is in
+    // admin_users with role = 'admin'. Same pattern as admin-songs.
+    // (Assistants can read affiliates but cannot create them.)
+    const authHeader = req.headers.get('Authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing Authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userData?.user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid session' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: roleRow, error: roleErr } = await supabase
+      .from('admin_users')
+      .select('role')
+      .eq('user_id', userData.user.id)
+      .single();
+    if (roleErr || !roleRow || roleRow.role !== 'admin') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Admin access required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
+    // ── END AUTH ─────────────────────────────────────────────────────────
+
     const { name, email, code, couponCode, password } = await req.json();
 
     if (!name || !email || !code || !password) {
@@ -90,8 +150,6 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const passwordHash = await hashPassword(password);
 
     const { data: affiliate, error: affError } = await supabase

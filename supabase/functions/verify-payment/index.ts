@@ -153,6 +153,66 @@ function getPurchaseEmailHtml(song: any) {
 </html>`;
 }
 
+// ─── Affiliate attribution helper ────────────────────────────────────────
+// Mirrors stripe-webhook's helper. Idempotent — safe to call from both
+// paths; whichever runs first records the purchase event, the other no-ops.
+async function recordAffiliatePurchase(
+  supabase: any,
+  song: { id: string; affiliate_code: string | null; coupon_code: string | null; amount_paid: number | string | null },
+  fallbackAffiliateCode: string | null
+): Promise<void> {
+  const affiliateCode = (song.affiliate_code || fallbackAffiliateCode || '').toString().toLowerCase().trim();
+  if (!affiliateCode) return;
+
+  const { data: validAffiliate } = await supabase
+    .from('affiliates')
+    .select('code')
+    .eq('code', affiliateCode)
+    .eq('active', true)
+    .maybeSingle();
+  if (!validAffiliate) {
+    console.warn(`[affiliate] purchase event skipped — code ${affiliateCode} is not an active affiliate`);
+    return;
+  }
+
+  const { data: existing } = await supabase
+    .from('affiliate_events')
+    .select('id')
+    .eq('song_id', song.id)
+    .eq('event_type', 'purchase')
+    .maybeSingle();
+  if (existing) return;
+
+  const amount = parseFloat(String(song.amount_paid ?? '0')) || 0;
+  const { error: insertErr } = await supabase
+    .from('affiliate_events')
+    .insert({
+      affiliate_code: affiliateCode,
+      event_type: 'purchase',
+      song_id: song.id,
+      amount,
+    });
+  if (insertErr) {
+    console.error(`[affiliate] failed to insert purchase event for song ${song.id}:`, insertErr.message);
+    return;
+  }
+  console.log(`[affiliate] purchase event recorded — code=${affiliateCode} song=${song.id} amount=${amount}`);
+
+  if (song.coupon_code) {
+    const { data: coupon } = await supabase
+      .from('coupons')
+      .select('times_used')
+      .eq('code', song.coupon_code)
+      .maybeSingle();
+    if (coupon) {
+      await supabase
+        .from('coupons')
+        .update({ times_used: (coupon.times_used || 0) + 1 })
+        .eq('code', song.coupon_code);
+    }
+  }
+}
+
 // Send the purchase confirmation email if it hasn't been sent yet for this
 // Stripe session. funnel_events.purchase_email_sent (with stripe_session_id in
 // metadata) is the cross-function de-dup gate — both verify-payment and
@@ -246,6 +306,12 @@ serve(async (req) => {
         if (email) {
           await sendPurchaseEmailIfNotSent(supabase, existingSong, email, sessionId, 'verify-payment-already-paid');
         }
+        // Self-heal affiliate attribution if a previous run never logged it.
+        try {
+          await recordAffiliatePurchase(supabase, existingSong, session.metadata?.affiliateCode || null);
+        } catch (affErr: any) {
+          console.error(`[affiliate] self-heal failed for already-paid song ${existingSong.id}:`, affErr?.message || affErr);
+        }
       } catch (recoveryErr) {
         console.error('Already-paid email recovery failed (non-fatal):', recoveryErr);
       }
@@ -294,6 +360,15 @@ serve(async (req) => {
     }
 
     console.log('Payment verified and song marked as paid via fallback:', songId);
+
+    // Affiliate attribution: record the purchase event + bump coupon usage.
+    // Idempotent — stripe-webhook will also call this and one of them will
+    // be a no-op. Wrapped so a failure never breaks the success page.
+    try {
+      await recordAffiliatePurchase(supabase, song, session.metadata?.affiliateCode || null);
+    } catch (affErr: any) {
+      console.error(`[affiliate] recordAffiliatePurchase threw for song ${song.id}:`, affErr?.message || affErr);
+    }
 
     // Send the purchase confirmation email. Wrapped so a SendGrid failure
     // never causes verify-payment to return non-200 — the user has already
