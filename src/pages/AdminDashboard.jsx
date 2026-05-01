@@ -13,6 +13,27 @@ function useDebounce(value, delay = 350) {
   return debouncedValue;
 }
 
+// ✅ STRICT: Check if a song row is actually paid. Pure function — kept at
+// module scope so any hook/effect/useMemo inside the component can call it
+// without worrying about temporal-dead-zone (referencing a const defined
+// later in the function body throws and unmounts the dashboard).
+function isPaid(song) {
+  if (!song) return false;
+  if (song.paid === true) return true;
+  if (song.paid === 'true') return true;
+  if (song.paid === 1) return true;
+  if (song.is_paid === true) return true;
+  if (song.payment_status === 'paid') return true;
+  if (song.payment_status === 'completed') return true;
+  if (song.payment_status === 'succeeded') return true;
+  if (song.stripe_payment_id) return true;
+  if (song.paid_at) return true;
+  if (song.amount_paid && parseFloat(song.amount_paid) > 0) return true;
+  // NOTE: stripe_session_id alone does NOT mean paid — it's created when
+  // checkout starts.
+  return false;
+}
+
 // Valentine blast email builder
 function buildValentineBlastEmail(recipientName) {
   const hasRecipient = recipientName && recipientName.trim().length > 0;
@@ -167,6 +188,69 @@ export default function AdminDashboard() {
     whatsappContacts: 0
   });
 
+  // ─── Live payment-alert helpers ─────────────────────────────────────────
+  // Declared HERE (above the auth useEffect + songs-watcher useEffect) so
+  // that any effect referencing them has a value to read when it runs.
+  // Moving them lower in the file caused a temporal-dead-zone ReferenceError
+  // and a fully-blank dashboard.
+  const playPaymentSound = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      [
+        { freq: 880, start: 0, dur: 0.18 },
+        { freq: 1320, start: 0.12, dur: 0.25 },
+      ].forEach(({ freq, start, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.35, now + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + dur + 0.02);
+      });
+    } catch {
+      // Audio failed (no permission, no audio device, autoplay blocked).
+    }
+  }, []);
+
+  const fireDesktopNotification = useCallback((song) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    try {
+      new Notification('💰 New paid song!', {
+        body: song.recipient_name
+          ? `For ${song.recipient_name}${song.sender_name ? ' — from ' + song.sender_name : ''}`
+          : 'A new payment just came in.',
+        tag: song.id,
+        icon: '/favicon.png',
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const triggerPaymentAlert = useCallback((song) => {
+    if (!song || !song.id) return;
+    if (seenPaymentIdsRef.current.has(song.id)) return;
+    seenPaymentIdsRef.current.add(song.id);
+    if (!paymentAlertsEnabled) return;
+
+    const toastId = `${song.id}:${Date.now()}`;
+    setPaymentToasts(prev => [...prev, { id: toastId, song, at: Date.now() }]);
+    setTimeout(() => {
+      setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
+    }, 12000);
+    playPaymentSound();
+    fireDesktopNotification(song);
+  }, [paymentAlertsEnabled, playPaymentSound, fireDesktopNotification]);
+
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
     let cancelled = false;
@@ -284,34 +368,9 @@ export default function AdminDashboard() {
     paymentHighWaterRef.current = newMax;
   }, [songs, triggerPaymentAlert]);
 
-  // ✅ STRICT: Check if song is actually paid
-  const isPaid = (song) => {
-    // Primary check: the paid boolean field
-    if (song.paid === true) return true;
-    if (song.paid === 'true') return true;
-    if (song.paid === 1) return true;
-    
-    // Check is_paid field
-    if (song.is_paid === true) return true;
-    
-    // Check payment_status field
-    if (song.payment_status === 'paid') return true;
-    if (song.payment_status === 'completed') return true;
-    if (song.payment_status === 'succeeded') return true;
-    
-    // Check if has stripe_payment_id (indicates successful payment capture)
-    if (song.stripe_payment_id) return true;
-    
-    // Check if paid_at timestamp exists (set only after successful payment)
-    if (song.paid_at) return true;
-    
-    // Check amount_paid > 0 (should only be set after real payment)
-    if (song.amount_paid && parseFloat(song.amount_paid) > 0) return true;
-    
-    // NOTE: stripe_session_id alone does NOT mean paid - it's created when checkout starts
-    
-    return false;
-  };
+  // (isPaid is now defined at module scope above the component — no need
+  // to redeclare here. Doing so caused a temporal-dead-zone ReferenceError
+  // because earlier hooks already referenced it.)
 
   // Fetch full song details on demand (for detail modal). Goes through the
   // admin-songs edge function so the assistant role still gets the row with
@@ -962,80 +1021,6 @@ export default function AdminDashboard() {
     return () => window.removeEventListener('keydown', handler);
   }, [activeTab]);
 
-  // ─── Live payment-alert helpers ─────────────────────────────────────────
-  // Plays a short two-tone "cha-ching" via the Web Audio API. No audio file
-  // to ship; the tone is generated in-browser. Browsers block autoplay
-  // before any user interaction with the page — once the admin has clicked
-  // anything, subsequent plays succeed.
-  const playPaymentSound = useCallback(() => {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const now = ctx.currentTime;
-      // Two ascending sine pings — bright, noticeable, ~0.4s total.
-      [
-        { freq: 880, start: 0,    dur: 0.18 },
-        { freq: 1320, start: 0.12, dur: 0.25 },
-      ].forEach(({ freq, start, dur }) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, now + start);
-        gain.gain.exponentialRampToValueAtTime(0.35, now + start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + start);
-        osc.stop(now + start + dur + 0.02);
-      });
-    } catch {
-      // Audio failed (no permission, no audio device, autoplay blocked) —
-      // toast still fires, so the alert isn't lost.
-    }
-  }, []);
-
-  // Fires a desktop browser notification IF the user has granted permission.
-  // Tagged by song id so duplicate fires (e.g. webhook + UPDATE event) don't
-  // stack. Works even when the dashboard tab isn't focused.
-  const fireDesktopNotification = useCallback((song) => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    if (Notification.permission !== 'granted') return;
-    try {
-      new Notification('💰 New paid song!', {
-        body: song.recipient_name
-          ? `For ${song.recipient_name}${song.sender_name ? ' — from ' + song.sender_name : ''}`
-          : 'A new payment just came in.',
-        tag: song.id,
-        icon: '/favicon.png',
-      });
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Drives the toast UI + sound + desktop notification for a single payment.
-  // Idempotent on song id so the same row never alerts twice in one session.
-  const triggerPaymentAlert = useCallback((song) => {
-    if (!song || !song.id) return;
-    if (seenPaymentIdsRef.current.has(song.id)) return;
-    seenPaymentIdsRef.current.add(song.id);
-    if (!paymentAlertsEnabled) return;
-
-    const toastId = `${song.id}:${Date.now()}`;
-    setPaymentToasts(prev => [
-      ...prev,
-      { id: toastId, song, at: Date.now() },
-    ]);
-    // Auto-dismiss after 12s.
-    setTimeout(() => {
-      setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
-    }, 12000);
-    playPaymentSound();
-    fireDesktopNotification(song);
-  }, [paymentAlertsEnabled, playPaymentSound, fireDesktopNotification]);
-
   // ─── Delivery / age helpers (used by Por Enviar tab + Órdenes table) ──
   // Declared BEFORE the useMemo blocks below — useMemo factories run on the
   // first render, so anything they reference must already be initialized.
@@ -1485,10 +1470,15 @@ export default function AdminDashboard() {
                   For <strong>{t.song.recipient_name || '—'}</strong>
                   {t.song.sender_name && <> from <strong>{t.song.sender_name}</strong></>}
                 </p>
-                {userRole === 'admin' && t.song.amount_paid && (
-                  <p className="text-xs opacity-90">
-                    {formatCurrency(parseFloat(t.song.amount_paid) || 0)}
-                    {t.song.genre && <> · {t.song.genre}</>}
+                {/* Genre is shown to everyone (not financial info).
+                    Amount is admin-only — assistant role NEVER sees it,
+                    matching the rest of the dashboard's revenue redaction. */}
+                {(t.song.genre || (userRole === 'admin' && t.song.amount_paid)) && (
+                  <p className="text-xs opacity-90 capitalize">
+                    {userRole === 'admin' && t.song.amount_paid && (
+                      <>{formatCurrency(parseFloat(t.song.amount_paid) || 0)}{t.song.genre && ' · '}</>
+                    )}
+                    {t.song.genre}
                   </p>
                 )}
                 <div className="flex gap-2 mt-2">
