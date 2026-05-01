@@ -1213,6 +1213,223 @@ function buildStylePrompt(
 }
 
 // =============================================================================
+// MUSIC PROVIDER HELPERS — primary + automatic failover
+// =============================================================================
+// Two providers wrapped behind a uniform interface so STEP 6 can try one,
+// classify the failure, and (if appropriate) fall back to the other.
+//
+// Set on Supabase secrets:
+//   MUSIC_PROVIDER          = 'kie' | 'mureka'  (primary; default 'mureka')
+//   MUSIC_PROVIDER_FALLBACK = 'kie' | 'mureka'  (optional; if unset, no failover)
+// =============================================================================
+
+type ProviderName = 'mureka' | 'kie';
+type ProviderCanonical = 'mureka-useapi' | 'kie';
+
+type ProviderErrorClass =
+  | 'provider_broken'    // upstream down, weird HTTP, state-4 etc → fallback
+  | 'credits_depleted'   // 402, 412 balance not enough → fallback + alert
+  | 'auth_broken'        // 401, REFRESH_FAILED, missing key → fallback + alert
+  | 'rate_limit'         // 429, exceed limit, 9008 too frequently → SAME provider, queued retry
+  | 'content_rejection'  // SENSITIVE_WORD_ERROR, content filter → DO NOT fallback (would fail again)
+  | 'unknown';           // default → fallback (safer for the customer)
+
+interface ProviderCtx {
+  lyrics: string;
+  finalStyle: string;
+  vocalGender: 'm' | 'f';
+  vocalCharacter?: string;
+  isForSelf: boolean;
+  recipientName: string;
+  supabaseUrl: string;
+}
+
+type ProviderResult =
+  | { ok: true; provider: ProviderCanonical; taskId: string; payload: Record<string, unknown> }
+  | { ok: false; provider: ProviderCanonical; classification: ProviderErrorClass; errorMessage: string; payload?: Record<string, unknown> };
+
+function providerNameToCanonical(name: ProviderName): ProviderCanonical {
+  return name === 'kie' ? 'kie' : 'mureka-useapi';
+}
+
+async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
+  const USEAPI_TOKEN = Deno.env.get('USEAPI_TOKEN');
+  const MUREKA_ACCOUNT = Deno.env.get('MUREKA_ACCOUNT');
+  const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
+
+  if (!USEAPI_TOKEN || !MUREKA_ACCOUNT) {
+    return { ok: false, provider: 'mureka-useapi', classification: 'auth_broken', errorMessage: 'USEAPI_TOKEN or MUREKA_ACCOUNT env var missing' };
+  }
+
+  const genderLabel = ctx.vocalGender === 'f'
+    ? 'solo female vocalist, single female singer only, NO male voice, NO duet, NO male harmony, NO male backing vocals'
+    : 'solo male vocalist, single male singer only, NO female voice, NO duet, NO female harmony, NO female backing vocals';
+  const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
+  const voicePrefix = `${genderLabel}, ${vocalStyle}`;
+  const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
+  const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
+  const descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+  const songTitle = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 50);
+
+  const callbackBase = `${ctx.supabaseUrl}/functions/v1/mureka-useapi-callback`;
+  const replyUrl = USEAPI_WEBHOOK_SECRET ? `${callbackBase}?token=${USEAPI_WEBHOOK_SECRET}` : callbackBase;
+  const apiVocalGender = ctx.vocalGender === 'f' ? 'female' : 'male';
+
+  const payload: Record<string, unknown> = {
+    account: MUREKA_ACCOUNT,
+    lyrics: ctx.lyrics.substring(0, 5000),
+    title: songTitle,
+    desc: descWithVoice.substring(0, 1000),
+    model: MUREKA_MODEL,
+    vocal_gender: apiVocalGender,
+    replyUrl,
+  };
+
+  console.log(`[callMureka] POST useapi.net (model=${MUREKA_MODEL}, gender=${apiVocalGender})`);
+
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${USEAPI_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (e: any) {
+    return { ok: false, provider: 'mureka-useapi', classification: 'provider_broken', errorMessage: `useapi.net network: ${e.message}`, payload };
+  }
+
+  // Try V8 fallback model on model-specific 400s (existing behavior preserved)
+  let cachedErrData: any = null;
+  if (!resp.ok && MUREKA_MODEL !== MUREKA_FALLBACK_MODEL) {
+    cachedErrData = await resp.json().catch(() => ({ error: 'Unknown error' }));
+    const errStr = JSON.stringify(cachedErrData);
+    const isModelError = errStr.includes('model') || errStr.includes('not supported') || errStr.includes('invalid') || resp.status === 400;
+    const hasOtherIssue = cachedErrData.code === 'REFRESH_FAILED'
+      || errStr.includes('REFRESH_FAILED')
+      || errStr.includes('exceed limit')
+      || cachedErrData.code === 9008
+      || errStr.includes('Too frequently')
+      || errStr.includes('Unexpected state')
+      || errStr.includes('balance is not enough');
+    if (isModelError && !hasOtherIssue) {
+      console.warn(`[callMureka] Model ${MUREKA_MODEL} failed (${resp.status}), retrying with ${MUREKA_FALLBACK_MODEL}`);
+      payload.model = MUREKA_FALLBACK_MODEL;
+      cachedErrData = null;
+      try {
+        resp = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${USEAPI_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (e: any) {
+        return { ok: false, provider: 'mureka-useapi', classification: 'provider_broken', errorMessage: `useapi.net (${MUREKA_FALLBACK_MODEL}) network: ${e.message}`, payload };
+      }
+    }
+  }
+
+  if (!resp.ok) {
+    const errData = cachedErrData || await resp.json().catch(() => ({ error: 'Unknown error' }));
+    const errStr = JSON.stringify(errData);
+    const errStrLower = errStr.toLowerCase();
+    let classification: ProviderErrorClass;
+    if (resp.status === 412 || errStrLower.includes('balance is not enough')) classification = 'credits_depleted';
+    else if (resp.status === 401 || errStrLower.includes('refresh_failed')) classification = 'auth_broken';
+    else if (errStrLower.includes('exceed limit') || errData.code === 9008 || errStrLower.includes('too frequently')) classification = 'rate_limit';
+    else if (errStrLower.includes('unexpected state')) classification = 'provider_broken';
+    else if (resp.status >= 400) classification = 'provider_broken';
+    else classification = 'unknown';
+    return { ok: false, provider: 'mureka-useapi', classification, errorMessage: `useapi.net ${resp.status}: ${errStr.substring(0, 200)}`, payload };
+  }
+
+  const data = await resp.json();
+  if (!data.jobid) {
+    return { ok: false, provider: 'mureka-useapi', classification: 'provider_broken', errorMessage: `useapi.net no jobid: ${JSON.stringify(data).substring(0, 200)}`, payload };
+  }
+  return { ok: true, provider: 'mureka-useapi', taskId: data.jobid, payload };
+}
+
+async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
+  const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
+  const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
+
+  if (!KIE_API_KEY) {
+    return { ok: false, provider: 'kie', classification: 'auth_broken', errorMessage: 'KIE_API_KEY env var missing' };
+  }
+
+  const genderLabel = ctx.vocalGender === 'f'
+    ? 'solo female vocalist, single female singer only, NO male voice, NO duet'
+    : 'solo male vocalist, single male singer only, NO female voice, NO duet';
+  const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
+  const voicePrefix = `${genderLabel}, ${vocalStyle}`;
+  const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
+  const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
+  const styleWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+  const title = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 80);
+
+  const payload: Record<string, unknown> = {
+    prompt: ctx.lyrics.substring(0, 5000),
+    customMode: true,
+    instrumental: false,
+    model: KIE_MODEL,
+    callBackUrl: `${ctx.supabaseUrl}/functions/v1/song-callback`,
+    style: styleWithVoice.substring(0, 1000),
+    title,
+    vocalGender: ctx.vocalGender,
+  };
+
+  console.log(`[callKie] POST api.kie.ai (model=${KIE_MODEL}, gender=${ctx.vocalGender})`);
+
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.kie.ai/api/v1/generate', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (e: any) {
+    return { ok: false, provider: 'kie', classification: 'provider_broken', errorMessage: `kie.ai network: ${e.message}`, payload };
+  }
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => 'unknown');
+    let classification: ProviderErrorClass;
+    if (resp.status === 401) classification = 'auth_broken';
+    else if (resp.status === 402) classification = 'credits_depleted';
+    else if (resp.status === 429) classification = 'rate_limit';
+    else if (resp.status >= 400) classification = 'provider_broken';
+    else classification = 'unknown';
+    return { ok: false, provider: 'kie', classification, errorMessage: `kie.ai ${resp.status}: ${errText.substring(0, 200)}`, payload };
+  }
+
+  const data = await resp.json().catch(() => ({}));
+  if (data.code !== 200 || !data.data?.taskId) {
+    const msgRaw = (data.msg || `code=${data.code}`).toString();
+    const msgLower = msgRaw.toLowerCase();
+    let classification: ProviderErrorClass;
+    if (msgLower.includes('sensitive') || msgLower.includes('content') || msgLower.includes('filter')) classification = 'content_rejection';
+    else if (data.code === 401) classification = 'auth_broken';
+    else if (data.code === 402) classification = 'credits_depleted';
+    else if (data.code === 429) classification = 'rate_limit';
+    else classification = 'provider_broken';
+    return { ok: false, provider: 'kie', classification, errorMessage: `kie.ai code=${data.code}: ${msgRaw}`.substring(0, 200), payload };
+  }
+
+  return { ok: true, provider: 'kie', taskId: data.data.taskId, payload };
+}
+
+async function callMusicProvider(name: ProviderName, ctx: ProviderCtx): Promise<ProviderResult> {
+  return name === 'kie' ? await callKieProvider(ctx) : await callMurekaProvider(ctx);
+}
+
+// Whether a failure on the primary should trigger a fallback to the other provider.
+function shouldFallback(classification: ProviderErrorClass): boolean {
+  return classification === 'provider_broken'
+    || classification === 'credits_depleted'
+    || classification === 'auth_broken'
+    || classification === 'unknown';
+}
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 serve(async (req) => {
@@ -1663,273 +1880,129 @@ RESPONDE SOLO JSON:
     console.log('Song saved:', songId);
 
     // ==========================================================================
-    // STEP 6: Call music provider (Mureka via useapi.net OR Kie.ai)
-    // Set MUSIC_PROVIDER=kie on Supabase to route through Kie.ai/Suno instead.
+    // STEP 6: Call music provider with automatic failover
+    // Primary set via MUSIC_PROVIDER env. Optional fallback via MUSIC_PROVIDER_FALLBACK.
+    // If primary fails with a class that suggests it's broken (provider_broken,
+    // credits_depleted, auth_broken, unknown), try the fallback in the same request.
+    // Customer never sees the failure — they get 'processing' as if nothing happened.
     // ==========================================================================
-    const MUSIC_PROVIDER = (Deno.env.get('MUSIC_PROVIDER') || 'mureka').toLowerCase();
+    const MUSIC_PROVIDER_PRIMARY = ((Deno.env.get('MUSIC_PROVIDER') || 'mureka').toLowerCase()) as ProviderName;
+    const _fallbackRaw = (Deno.env.get('MUSIC_PROVIDER_FALLBACK') || '').toLowerCase();
+    const MUSIC_PROVIDER_FALLBACK: ProviderName | null =
+      (_fallbackRaw === 'kie' || _fallbackRaw === 'mureka') && _fallbackRaw !== MUSIC_PROVIDER_PRIMARY
+        ? (_fallbackRaw as ProviderName)
+        : null;
 
-    if (MUSIC_PROVIDER === 'kie') {
-      // ====================================================================
-      // KIE.AI BRANCH — Suno via api.kie.ai
-      // Used as a manual fallback when Mureka/useapi.net is unavailable.
-      // Flip back to Mureka by unsetting MUSIC_PROVIDER (or setting to 'mureka').
-      // ====================================================================
-      const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
-      const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
-      if (!KIE_API_KEY) {
-        await supabase.from('songs').update({
-          status: 'failed',
-          error_message: 'KIE_API_KEY env var missing on Supabase',
-          provider: 'kie',
-        }).eq('id', songId);
-        throw new Error('KIE_API_KEY env var missing — cannot use Kie.ai provider');
-      }
-
-      // Same gender-reinforced style description we use for Mureka
-      const kieGender = vocalGender === 'f' ? 'f' : 'm';
-      const genderLabelKie = vocalGender === 'f'
-        ? 'solo female vocalist, single female singer only, NO male voice, NO duet'
-        : 'solo male vocalist, single male singer only, NO female voice, NO duet';
-      const vocalStyleKie = vocalCharacter || 'expressive vocal';
-      const voicePrefixKie = `${genderLabelKie}, ${vocalStyleKie}`;
-      const noVoiceSuffixKie = vocalGender === 'f'
-        ? ', absolutely no male vocals no duet'
-        : ', absolutely no female vocals no duet';
-      const maxStyleCharsKie = 1000 - voicePrefixKie.length - noVoiceSuffixKie.length - 4;
-      const styleWithVoiceKie = `${voicePrefixKie}, ${finalStyle.substring(0, maxStyleCharsKie)}${noVoiceSuffixKie}`;
-
-      // Title cap is 80 on Kie (50 on Mureka). We use 80 here.
-      const titleKie = (isForSelf ? `Mi canción — ${recipientName}` : `Canción para ${recipientName}`).substring(0, 80);
-
-      const callBackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-
-      const kiePayload: Record<string, unknown> = {
-        prompt: lyrics.substring(0, 5000),
-        customMode: true,
-        instrumental: false,
-        model: KIE_MODEL,
-        callBackUrl,
-        style: styleWithVoiceKie.substring(0, 1000),
-        title: titleKie,
-        vocalGender: kieGender,
-      };
-
-      console.log('=== CALLING KIE.AI ===');
-      console.log(`Model: ${KIE_MODEL}`);
-      console.log(`Style length: ${(kiePayload.style as string).length}`);
-      console.log(`Vocal gender: ${kieGender}`);
-
-      const kieResp = await fetch('https://api.kie.ai/api/v1/generate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${KIE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(kiePayload),
-      });
-
-      if (!kieResp.ok) {
-        const errText = await kieResp.text().catch(() => 'unknown');
-        console.error(`kie.ai error: ${kieResp.status} - ${errText.substring(0, 500)}`);
-        await supabase.from('songs').update({
-          status: 'failed',
-          error_message: `kie.ai ${kieResp.status}: ${errText.substring(0, 200)}`,
-          kie_payload: JSON.stringify(kiePayload),
-          provider: 'kie',
-        }).eq('id', songId);
-        throw new Error(`kie.ai generate failed (${kieResp.status}): ${errText.substring(0, 200)}`);
-      }
-
-      const kieData = await kieResp.json();
-      if (kieData.code !== 200 || !kieData.data?.taskId) {
-        const errMsg = kieData.msg || 'no taskId';
-        await supabase.from('songs').update({
-          status: 'failed',
-          error_message: `kie.ai code=${kieData.code}: ${errMsg}`.substring(0, 200),
-          kie_payload: JSON.stringify(kiePayload),
-          provider: 'kie',
-        }).eq('id', songId);
-        throw new Error(`kie.ai returned code=${kieData.code}: ${errMsg}`);
-      }
-
-      const taskId = kieData.data.taskId;
-
-      await supabase.from('songs').update({
-        task_id: taskId,
-        kie_task_id: taskId,
-        kie_payload: JSON.stringify(kiePayload),
-        provider: 'kie',
-      }).eq('id', songId);
-      console.log(`kie.ai taskId: ${taskId} (model: ${KIE_MODEL})`);
-
-      // Kie.ai returns 2 tracks per task — insert v2 sibling so song-callback
-      // can fan out to both rows by kie_task_id.
-      const { data: song2Record, error: song2Err } = await supabase.from('songs').insert({
-        session_id: currentSessionId,
-        version: 2,
-        recipient_name: recipientName,
-        sender_name: senderName,
-        relationship: relationship,
-        relationship_custom: customRelationship || null,
-        genre: genre,
-        genre_name: genreName || null,
-        sub_genre: subGenre || null,
-        sub_genre_name: subGenreName || null,
-        occasion: occasion,
-        occasion_custom: customOccasion || null,
-        emotional_tone: emotionalTone || null,
-        details: details,
-        email: email,
-        lyrics: lyrics,
-        audio_url: null,
-        preview_url: null,
-        image_url: imageUrl,
-        status: 'processing',
-        paid: false,
-        selected: false,
-        voice_type: voiceType || 'male',
-        artist_inspiration: artistInspiration || null,
-        style_used: finalStyle,
-        task_id: taskId,
-        kie_task_id: taskId,
-        kie_payload: JSON.stringify(kiePayload),
-        provider: 'kie',
-      }).select().single();
-
-      const song2IdKie = song2Record?.id || null;
-      if (song2Err) console.error('Failed to insert Song 2 row (kie):', song2Err.message);
-      else console.log('Song 2 (version 2, kie) saved:', song2IdKie);
-
-      return new Response(JSON.stringify({
-        success: true,
-        song: { id: songId, status: 'processing', imageUrl, song2PendingId: song2IdKie },
-        sessionId: currentSessionId
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
-    }
-
-    // Build callback URL for instant completion notifications
-    const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
-    const callbackBase = `${SUPABASE_URL}/functions/v1/mureka-useapi-callback`;
-    const replyUrl = USEAPI_WEBHOOK_SECRET
-      ? `${callbackBase}?token=${USEAPI_WEBHOOK_SECRET}`
-      : callbackBase;
-
-    const apiVocalGender = vocalGender === 'f' ? 'female' : 'male';
-    // Voice instruction at the BEGINNING of desc for maximum Mureka attention
-    // Combines explicit gender + vocal character style
-    const genderLabel = vocalGender === 'f'
-      ? 'solo female vocalist, single female singer only, NO male voice, NO duet, NO male harmony, NO male backing vocals'
-      : 'solo male vocalist, single male singer only, NO female voice, NO duet, NO female harmony, NO female backing vocals';
-    const vocalStyle = vocalCharacter || 'expressive vocal';
-    const voicePrefix = `${genderLabel}, ${vocalStyle}`;
-    // Place voice FIRST and LAST in desc for maximum Mureka enforcement
-    const noVoiceSuffix = vocalGender === 'f'
-      ? ', absolutely no male vocals no duet'
-      : ', absolutely no female vocals no duet';
-    const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
-    const descWithVoice = `${voicePrefix}, ${finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
-
-    const songTitle = (isForSelf ? `Mi canción — ${recipientName}` : `Canción para ${recipientName}`).substring(0, 50);
-
-    const murekaPayload: Record<string, unknown> = {
-      account: MUREKA_ACCOUNT,
-      lyrics: lyrics.substring(0, 5000),
-      title: songTitle,
-      desc: descWithVoice.substring(0, 1000),
-      model: MUREKA_MODEL,
-      vocal_gender: apiVocalGender,
-      replyUrl,
+    const providerCtx: ProviderCtx = {
+      lyrics,
+      finalStyle,
+      vocalGender: (vocalGender === 'f' ? 'f' : 'm'),
+      vocalCharacter,
+      isForSelf,
+      recipientName,
+      supabaseUrl: SUPABASE_URL!,
     };
 
-    console.log('=== CALLING MUREKA VIA USEAPI.NET ===');
-    console.log(`Model: ${MUREKA_MODEL} (fallback: ${MUREKA_FALLBACK_MODEL})`);
-    console.log(`Vocal gender: ${apiVocalGender}`);
-    console.log(`Desc length: ${descWithVoice.length}`);
+    console.log(`[STEP 6] primary=${MUSIC_PROVIDER_PRIMARY} fallback=${MUSIC_PROVIDER_FALLBACK ?? 'NONE'}`);
 
-    let musicResponse = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${USEAPI_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(murekaPayload),
-    });
+    let result = await callMusicProvider(MUSIC_PROVIDER_PRIMARY, providerCtx);
+    let usedFallback = false;
 
-    // Fallback: if primary model fails with a model-related error, retry with V7.6
-    let modelUsed = MUREKA_MODEL;
-    let cachedErrData: any = null; // avoid double-consuming response body
-    if (!musicResponse.ok && MUREKA_MODEL !== MUREKA_FALLBACK_MODEL) {
-      cachedErrData = await musicResponse.json().catch(() => ({ error: 'Unknown error' }));
-      const fallbackStr = JSON.stringify(cachedErrData);
-      const isModelError = fallbackStr.includes('model') || fallbackStr.includes('not supported') || fallbackStr.includes('invalid') || musicResponse.status === 400;
-      const isAuthOrRateLimit = cachedErrData.code === 'REFRESH_FAILED' || fallbackStr.includes('REFRESH_FAILED') || fallbackStr.includes('exceed limit') || cachedErrData.code === 9008 || fallbackStr.includes('Too frequently');
+    if (!result.ok) {
+      console.warn(`[STEP 6] Primary ${MUSIC_PROVIDER_PRIMARY} failed (${result.classification}): ${result.errorMessage}`);
 
-      if (isModelError && !isAuthOrRateLimit) {
-        console.warn(`Model ${MUREKA_MODEL} failed (${musicResponse.status}), retrying with ${MUREKA_FALLBACK_MODEL}: ${fallbackStr.substring(0, 200)}`);
-        murekaPayload.model = MUREKA_FALLBACK_MODEL;
-        modelUsed = MUREKA_FALLBACK_MODEL;
-        cachedErrData = null; // reset — new response will be read fresh
-        musicResponse = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${USEAPI_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(murekaPayload),
-        });
-      }
-    }
-
-    if (!musicResponse.ok) {
-      const errData = cachedErrData || await musicResponse.json().catch(() => ({ error: 'Unknown error' }));
-      const errStr = JSON.stringify(errData);
-      console.error(`useapi.net error: ${musicResponse.status} - ${errStr.substring(0, 500)}`);
-
-      // Check for specific retryable errors
-      const isRetryable = errStr.includes('exceed limit') || errData.code === 9008 || errStr.includes('Too frequently');
-
-      await supabase.from('songs').update({
-        status: isRetryable ? 'queued_retry' : 'failed',
-        error_message: `useapi.net ${musicResponse.status}: ${errStr.substring(0, 200)}`,
-        mureka_payload: JSON.stringify(murekaPayload),
-        provider: 'mureka-useapi',
-      }).eq('id', songId);
-
-      if (isRetryable) {
-        console.log(`Song ${songId} queued for retry — useapi.net rate limited`);
+      // Rate limit on primary → queue for in-place retry by the existing retry-queued-songs cron.
+      // Don't fall over to the other provider for a transient throttle.
+      if (result.classification === 'rate_limit') {
+        const v1Update: any = {
+          status: 'queued_retry',
+          error_message: result.errorMessage.substring(0, 200),
+          provider: providerNameToCanonical(MUSIC_PROVIDER_PRIMARY),
+        };
+        if (result.payload) {
+          if (MUSIC_PROVIDER_PRIMARY === 'mureka') v1Update.mureka_payload = JSON.stringify(result.payload);
+          else v1Update.kie_payload = JSON.stringify(result.payload);
+        }
+        await supabase.from('songs').update(v1Update).eq('id', songId);
+        console.log(`Song ${songId} queued for retry — ${MUSIC_PROVIDER_PRIMARY} rate limited`);
         return new Response(JSON.stringify({
           success: true,
           song: { id: songId, status: 'queued_retry', imageUrl },
           sessionId: currentSessionId,
-          queued: true
+          queued: true,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
       }
 
-      throw new Error(`useapi.net create-advanced failed (${musicResponse.status}): ${errStr}`);
+      // Try fallback if (a) one is configured and (b) the failure class warrants it.
+      const primaryError = result.errorMessage;
+      const primaryClass = result.classification;
+      const primaryPayload = result.payload;
+
+      if (MUSIC_PROVIDER_FALLBACK && shouldFallback(primaryClass)) {
+        console.warn(`[STEP 6] Falling back to ${MUSIC_PROVIDER_FALLBACK} (primary ${MUSIC_PROVIDER_PRIMARY} failure class: ${primaryClass})`);
+        result = await callMusicProvider(MUSIC_PROVIDER_FALLBACK, providerCtx);
+        usedFallback = true;
+        if (!result.ok) {
+          console.error(`[STEP 6] BOTH providers failed. primary=${MUSIC_PROVIDER_PRIMARY}(${primaryClass}): ${primaryError} | fallback=${MUSIC_PROVIDER_FALLBACK}(${result.classification}): ${result.errorMessage}`);
+          const combinedMsg = `Both providers failed. ${MUSIC_PROVIDER_PRIMARY}: ${primaryError} | ${MUSIC_PROVIDER_FALLBACK}: ${result.errorMessage}`;
+          const failedUpdate: any = {
+            status: 'failed',
+            error_message: combinedMsg.substring(0, 500),
+            provider: providerNameToCanonical(MUSIC_PROVIDER_FALLBACK),
+          };
+          if (primaryPayload) {
+            if (MUSIC_PROVIDER_PRIMARY === 'mureka') failedUpdate.mureka_payload = JSON.stringify(primaryPayload);
+            else failedUpdate.kie_payload = JSON.stringify(primaryPayload);
+          }
+          if (result.payload) {
+            if (MUSIC_PROVIDER_FALLBACK === 'mureka') failedUpdate.mureka_payload = JSON.stringify(result.payload);
+            else failedUpdate.kie_payload = JSON.stringify(result.payload);
+          }
+          await supabase.from('songs').update(failedUpdate).eq('id', songId);
+          throw new Error(combinedMsg);
+        }
+      } else {
+        // No fallback configured, OR failure class says don't fall back (e.g. content_rejection)
+        const reason = !MUSIC_PROVIDER_FALLBACK ? 'no MUSIC_PROVIDER_FALLBACK configured' : `class=${primaryClass} not eligible for failover`;
+        console.error(`[STEP 6] Marking failed — ${reason}`);
+        const failedUpdate: any = {
+          status: 'failed',
+          error_message: primaryError.substring(0, 500),
+          provider: providerNameToCanonical(MUSIC_PROVIDER_PRIMARY),
+        };
+        if (primaryPayload) {
+          if (MUSIC_PROVIDER_PRIMARY === 'mureka') failedUpdate.mureka_payload = JSON.stringify(primaryPayload);
+          else failedUpdate.kie_payload = JSON.stringify(primaryPayload);
+        }
+        await supabase.from('songs').update(failedUpdate).eq('id', songId);
+        throw new Error(`${MUSIC_PROVIDER_PRIMARY} ${primaryClass}: ${primaryError}`);
+      }
     }
 
-    const musicData = await musicResponse.json();
-    const jobid = musicData.jobid;
+    // SUCCESS — `result` is the winning provider (primary or fallback)
+    const winningProvider = result.provider; // 'mureka-useapi' | 'kie'
+    const taskId = result.taskId;
+    const winningPayload = result.payload;
+    console.log(`[STEP 6] ✓ ${winningProvider} taskId=${taskId}${usedFallback ? ' (via fallback)' : ''}`);
 
-    if (!jobid) {
-      await supabase.from('songs').update({ status: 'failed', provider: 'mureka-useapi' }).eq('id', songId);
-      throw new Error('No jobid from useapi.net: ' + JSON.stringify(musicData));
+    // Update v1 row with provider-specific fields
+    const v1Update: any = {
+      task_id: taskId,
+      provider: winningProvider,
+      error_message: null,
+    };
+    if (winningProvider === 'mureka-useapi') {
+      v1Update.mureka_job_id = taskId;
+      v1Update.mureka_payload = JSON.stringify(winningPayload);
+    } else {
+      v1Update.kie_task_id = taskId;
+      v1Update.kie_payload = JSON.stringify(winningPayload);
     }
+    await supabase.from('songs').update(v1Update).eq('id', songId);
 
-    // Store jobid and mureka_payload so poll-processing-songs JOB 0 picks it up
-    // JOB 0 queries mureka_job_id (not task_id) so we must set both
-    await supabase.from('songs').update({
-      task_id: jobid,
-      mureka_job_id: jobid,
-      mureka_payload: JSON.stringify(murekaPayload),
-      provider: 'mureka-useapi',
-    }).eq('id', songId);
-    console.log(`useapi.net jobid: ${jobid} (model: ${modelUsed})`);
-
-    // Mureka creates 2 songs per job. Insert a second DB row (version 2)
-    // linked to the same session and mureka_job_id so poll-processing-songs
-    // JOB 0 maps apiSongs[1] → version 2.
-    const { data: song2Record, error: song2Err } = await supabase.from('songs').insert({
+    // Insert v2 sibling so the callback can fan out to both rows by task id.
+    // Both providers return 2 tracks per job.
+    const v2Base: any = {
       session_id: currentSessionId,
       version: 2,
       recipient_name: recipientName,
@@ -1955,23 +2028,26 @@ RESPONDE SOLO JSON:
       voice_type: voiceType || 'male',
       artist_inspiration: artistInspiration || null,
       style_used: finalStyle,
-      task_id: jobid,
-      mureka_job_id: jobid,
-      mureka_payload: JSON.stringify(murekaPayload),
-      provider: 'mureka-useapi',
-    }).select().single();
-
-    const song2Id = song2Record?.id || null;
-    if (song2Err) {
-      console.error('Failed to insert Song 2 row:', song2Err.message);
+      task_id: taskId,
+      provider: winningProvider,
+    };
+    if (winningProvider === 'mureka-useapi') {
+      v2Base.mureka_job_id = taskId;
+      v2Base.mureka_payload = JSON.stringify(winningPayload);
     } else {
-      console.log('Song 2 (version 2) saved:', song2Id);
+      v2Base.kie_task_id = taskId;
+      v2Base.kie_payload = JSON.stringify(winningPayload);
     }
+
+    const { data: song2Record, error: song2Err } = await supabase.from('songs').insert(v2Base).select().single();
+    const song2Id = song2Record?.id || null;
+    if (song2Err) console.error('Failed to insert Song 2 row:', song2Err.message);
+    else console.log(`Song 2 (version 2, ${winningProvider}) saved:`, song2Id);
 
     return new Response(JSON.stringify({
       success: true,
       song: { id: songId, status: 'processing', imageUrl, song2PendingId: song2Id },
-      sessionId: currentSessionId
+      sessionId: currentSessionId,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 
   } catch (error) {
