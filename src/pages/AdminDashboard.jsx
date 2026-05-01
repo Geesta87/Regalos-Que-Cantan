@@ -1992,10 +1992,14 @@ export default function AdminDashboard() {
                                   </a>
                                 </>
                               )}
-                              {/* WhatsApp delivery button - for paid songs with WhatsApp number.
-                                  Auto-marks the song as sent on click when the global toggle
-                                  is on AND the user is admin AND it isn't already marked. */}
-                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (() => {
+                              {/* WhatsApp button — visible whenever the customer left a phone
+                                  number AND a song is ready, regardless of paid status. For
+                                  paid orders it's the delivery action; for unpaid leads it's
+                                  the recovery outreach. Either way, clicking auto-marks the
+                                  row as contacted (toggle, default on, admin only) so it
+                                  drops out of the Pending to Send queue and the Hot Leads
+                                  list. */}
+                              {song.whatsapp_phone && song.audio_url && (() => {
                                 const delivery = buildWhatsAppDelivery(song, songs);
                                 if (!delivery) return null;
                                 const alreadySent = !!song.whatsapp_sent_at;
@@ -2074,7 +2078,9 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 filteredSongs.slice(ordersPage * ORDERS_PER_PAGE, (ordersPage + 1) * ORDERS_PER_PAGE).map((song) => {
-                  const delivery = (isPaid(song) && song.whatsapp_phone && song.audio_url)
+                  // Same as desktop: WhatsApp button shows whenever there's a phone
+                  // and audio, paid or not. Paid → delivery; unpaid → recovery outreach.
+                  const delivery = (song.whatsapp_phone && song.audio_url)
                     ? buildWhatsAppDelivery(song, songs)
                     : null;
                   return (
