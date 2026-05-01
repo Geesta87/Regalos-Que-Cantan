@@ -19,6 +19,111 @@ const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const SENDER_EMAIL = 'hola@regalosquecantan.com';
 const SENDER_NAME = 'RegalosQueCantan';
 
+// Meta Conversions API — server-side fallback for the browser pixel.
+// Both pixel + token must be set for CAPI to fire. If either is missing
+// the helper logs and skips, so this whole block is a no-op in
+// environments that haven't been configured yet (safe to deploy without
+// secrets). Token name accepts any of three historical conventions —
+// whichever the project has set first wins.
+const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '';
+const META_CAPI_ACCESS_TOKEN =
+  Deno.env.get('META_CAPI_ACCESS_TOKEN') ||
+  Deno.env.get('META_ACCESS_TOKEN') ||
+  Deno.env.get('META_CONVERSIONS_API_TOKEN') ||
+  '';
+const META_TEST_EVENT_CODE = Deno.env.get('META_TEST_EVENT_CODE') || '';
+
+// SHA-256 lowercase-trim hash for Meta user_data fields. Meta rejects
+// PII in cleartext — every match field except fbc/fbp/IP/UA must be hashed.
+async function metaHash(value: string): Promise<string> {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return '';
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Fire a server-side Purchase event to Meta CAPI. NEVER throws — every
+// failure mode is caught and logged so the webhook still returns 200 to
+// Stripe. Dedup with the browser pixel via event_id = stripe session.id
+// (matches eventID passed in SuccessPage.jsx fbq('track','Purchase',...)).
+async function sendMetaCAPIPurchase(args: {
+  sessionId: string;
+  email: string | null | undefined;
+  amountUsd: number | null;
+  songIds: string[];
+  fbc: string;
+  fbp: string;
+  clientIp: string;
+  clientUserAgent: string;
+  recipientName?: string | null;
+}): Promise<void> {
+  if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
+    console.log('[meta-capi] skipped — META_PIXEL_ID or META_CAPI_ACCESS_TOKEN not set');
+    return;
+  }
+  try {
+    const userData: Record<string, any> = {};
+    if (args.email) userData.em = [await metaHash(args.email)];
+    if (args.fbc) userData.fbc = args.fbc;
+    if (args.fbp) userData.fbp = args.fbp;
+    if (args.clientIp) userData.client_ip_address = args.clientIp;
+    if (args.clientUserAgent) userData.client_user_agent = args.clientUserAgent;
+
+    const payload: Record<string, any> = {
+      data: [{
+        event_name: 'Purchase',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: args.sessionId, // dedup key with browser pixel
+        action_source: 'website',
+        event_source_url: 'https://regalosquecantan.com/success',
+        user_data: userData,
+        custom_data: {
+          currency: 'USD',
+          value: args.amountUsd ?? 0,
+          content_type: 'product',
+          content_ids: args.songIds,
+          num_items: args.songIds.length,
+          content_name: args.recipientName
+            ? `Canción para ${args.recipientName}`
+            : 'Canción personalizada'
+        }
+      }]
+    };
+    if (META_TEST_EVENT_CODE) payload.test_event_code = META_TEST_EVENT_CODE;
+
+    // 5s hard timeout — a hung Meta endpoint must NEVER block the webhook.
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `https://graph.facebook.com/v19.0/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(META_CAPI_ACCESS_TOKEN)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal
+        }
+      );
+    } finally {
+      clearTimeout(t);
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`[meta-capi] non-2xx ${resp.status} for session ${args.sessionId}: ${errText.slice(0, 500)}`);
+      return;
+    }
+    const json = await resp.json().catch(() => ({}));
+    console.log(`[meta-capi] Purchase sent — session=${args.sessionId} value=${args.amountUsd} events_received=${json?.events_received ?? '?'} fbtrace=${json?.fbtrace_id ?? '?'}`);
+  } catch (err: any) {
+    console.error(`[meta-capi] threw for session ${args.sessionId}:`, err?.message || err);
+  }
+}
+
 // Helper function to send emails via SendGrid (with tracking + deliverability)
 async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'transactional') {
   if (!SENDGRID_API_KEY) {
@@ -523,6 +628,27 @@ serve(async (req) => {
         } catch (clipErr: any) {
           console.warn(`[render-social-clip] trigger failed for ${sid}:`, clipErr?.message || clipErr);
         }
+      }
+
+      // Meta Conversions API — server-side Purchase event. Dedupes with the
+      // browser pixel via event_id = session.id (the SuccessPage pixel passes
+      // {eventID: session_id}). Wrapped + gated on env vars; never throws.
+      try {
+        await sendMetaCAPIPurchase({
+          sessionId: session.id,
+          email: email || null,
+          amountUsd: amountPaid,
+          songIds,
+          fbc: session.metadata?.fbc || '',
+          fbp: session.metadata?.fbp || '',
+          clientIp: session.metadata?.client_ip || '',
+          clientUserAgent: session.metadata?.client_user_agent || '',
+          recipientName: firstSong?.recipient_name || null
+        });
+      } catch (capiErr: any) {
+        // Defensive: sendMetaCAPIPurchase already swallows everything, but
+        // re-catch here so a future refactor can never block the email path.
+        console.error('[meta-capi] outer guard caught:', capiErr?.message || capiErr);
       }
 
       // Send email with download link via SendGrid (use first song for template).

@@ -28,6 +28,10 @@ serve(async (req) => {
     const body = await req.json();
     let { email } = body;
     const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    // Client IP for Meta Conversions API. Cloudflare/Vercel/Supabase set
+    // x-forwarded-for to "<client>, <proxy>, ..." — first hop is the user.
+    const xfwd = req.headers.get('x-forwarded-for') || '';
+    const clientIp = xfwd.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || '';
     // Accept both songIds (array from frontend) and songId (legacy)
     const songIds: string[] = body.songIds || (body.songId ? [body.songId] : []);
     const songId = songIds[0];
@@ -265,7 +269,13 @@ serve(async (req) => {
         purchaseBoth: (purchaseBoth || songCount >= 2) ? 'true' : 'false',
         songCount: String(songCount),
         videoAddon: videoAddon ? 'true' : 'false',
-        affiliateCode: resolvedAffiliate || ''
+        affiliateCode: resolvedAffiliate || '',
+        // Meta Conversions API identifiers — read by stripe-webhook on
+        // checkout.session.completed. Stripe metadata cap is 500 chars/value.
+        fbc: (fbc || '').slice(0, 500),
+        fbp: (fbp || '').slice(0, 500),
+        client_ip: (clientIp || '').slice(0, 100),
+        client_user_agent: (clientUserAgent || '').slice(0, 500)
       }
     });
 
