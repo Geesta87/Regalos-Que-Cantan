@@ -1992,13 +1992,13 @@ export default function AdminDashboard() {
                                   </a>
                                 </>
                               )}
-                              {/* WhatsApp button — visible whenever the customer left a phone
-                                  number AND a song is ready, regardless of paid status. For
-                                  paid orders it's the delivery action; for unpaid leads it's
-                                  the recovery outreach. Either way, clicking auto-marks the
-                                  row as contacted (toggle, default on, admin only) so it
-                                  drops out of the Pending to Send queue and the Hot Leads
-                                  list. */}
+                              {/* WhatsApp send button — visible whenever the customer left a
+                                  phone number AND a song is ready. Paid → delivery action;
+                                  unpaid → recovery outreach. Auto-marks as contacted on
+                                  click (toggle, admin only) so the row drops out of the
+                                  Pending to Send queue / Hot Leads list.
+                                  Uses the official WhatsApp green (#25D366) so it's clearly
+                                  identifiable as a WhatsApp button, not an email button. */}
                               {song.whatsapp_phone && song.audio_url && (() => {
                                 const delivery = buildWhatsAppDelivery(song, songs);
                                 if (!delivery) return null;
@@ -2013,16 +2013,17 @@ export default function AdminDashboard() {
                                         markSongAsSent(song.id);
                                       }
                                     }}
-                                    className={`p-2 rounded-lg transition ${
+                                    className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition ${
                                       alreadySent
-                                        ? 'hover:bg-white/10'
-                                        : 'hover:bg-green-500/20'
+                                        ? 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                        : 'bg-[#25D366] text-white hover:bg-[#20bd5a]'
                                     }`}
                                     title={alreadySent
                                       ? `Already sent ${formatDate(song.whatsapp_sent_at)} — click to resend`
                                       : `Send via WhatsApp to ${song.whatsapp_phone}`}
+                                    aria-label="Send via WhatsApp"
                                   >
-                                    <span className={`material-symbols-outlined text-xl ${alreadySent ? 'text-gray-400' : 'text-green-400'}`}>mail</span>
+                                    <span className="text-base leading-none">💬</span>
                                   </a>
                                 );
                               })()}
@@ -2139,13 +2140,13 @@ export default function AdminDashboard() {
                                 markSongAsSent(song.id);
                               }
                             }}
-                            className={`px-3 py-1.5 rounded-lg text-xs ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
                               song.whatsapp_sent_at
                                 ? 'bg-white/5 text-gray-300 hover:bg-white/10'
-                                : 'bg-green-500/15 text-green-300 hover:bg-green-500/25'
+                                : 'bg-[#25D366] text-white hover:bg-[#20bd5a]'
                             }`}
                           >
-                            {song.whatsapp_sent_at ? `✓ Sent ${timeAgo(song.whatsapp_sent_at)}` : '📱 Send'}
+                            {song.whatsapp_sent_at ? `✓ Sent ${timeAgo(song.whatsapp_sent_at)}` : '💬 WhatsApp'}
                           </a>
                         )}
                       </div>
