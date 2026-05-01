@@ -207,7 +207,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       lenta: {
         name: 'Ranchera Lenta',
-        style: 'slow dramatic ranchera ballad, emotional Mexican ranchera, crying ranchera with dramatic pauses, Vicente Fernández style slow ranchera, grito de dolor, theatrical vocal delivery with vibrato',
+        style: 'slow dramatic ranchera ballad, emotional Mexican ranchera, crying ranchera with dramatic pauses, golden-age ranchera tradition, grito de dolor, theatrical vocal delivery with vibrato',
         tempo: '50-70 BPM, VERY SLOW, dramatic pauses between phrases, rubato vocal phrasing, ballad with breathing room',
         instruments: 'mariachi violin section with sustained emotional bowing, trumpet fanfare between verses then soft sustained notes, vihuela gentle strumming, guitarrón deep bass notes, harp arpeggios optional',
         vibe: 'deep sorrow, dramatic heartbreak, crying-in-your-drink cantina emotion, tearful confession, tequila and tears, mariachi at 3am, grito from the soul',
@@ -225,7 +225,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       moderna: {
         name: 'Ranchera Moderna',
-        style: 'modern contemporary ranchera, updated mariachi with clean modern production, Christian Nodal style modern ranchera, young ranchera with subtle pop sensibility, traditional soul with modern polish',
+        style: 'modern contemporary ranchera, updated mariachi with clean modern production, modern young romantic ranchera style, young ranchera with subtle pop sensibility, traditional soul with modern polish',
         tempo: '80-100 BPM, contemporary moderate tempo, modern feel with traditional pacing',
         instruments: 'mariachi ensemble with modern recording clarity, clean trumpet lines, violin section, vihuela, guitarrón, subtle reverb and modern EQ, occasional acoustic guitar, light percussion shaker',
         vibe: 'updated classic ranchera feel, youthful energy respectful of roots, modern Mexican pride, Instagram-era mariachi, accessible yet authentic, crossover appeal',
@@ -305,7 +305,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       moderno: {
         name: 'Mariachi Moderno',
-        style: 'modern contemporary mariachi, updated mariachi with clean studio production, young generation mariachi, Christian Nodal Ángela Aguilar style, traditional instruments with modern recording clarity and subtle pop influence',
+        style: 'modern contemporary mariachi, updated mariachi with clean studio production, young generation mariachi, contemporary romantic mariachi style with subtle pop influence, traditional instruments with modern recording clarity',
         tempo: '85-110 BPM, contemporary moderate tempo, accessible modern pacing',
         instruments: 'classic mariachi ensemble with modern pristine recording quality, clean trumpet lines with reverb, violin section with studio clarity, vihuela, guitarrón, subtle acoustic guitar, light modern percussion shaker',
         vibe: 'fresh modern take on mariachi classics, appeals to younger generation, Instagram-era elegance, accessible yet authentic, modern Mexican cultural pride, streaming-friendly',
@@ -443,7 +443,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       urbana_sensual: {
         name: 'Bachata Sensual',
-        style: 'urban sensual bachata, modern bachata with R&B influence, Romeo Santos style sensual bachata, Prince Royce polished bachata, nightclub sensual bachata, smooth contemporary Dominican',
+        style: 'urban sensual bachata, modern bachata with R&B influence, contemporary urban bachata with sensual romantic vibe, polished crossover bachata production, nightclub sensual bachata, smooth contemporary Dominican',
         tempo: '125-145 BPM, smooth modern groove, sensual body movement tempo, hip-swaying rhythm',
         instruments: 'electric guitar with clean reverb and chorus effect, R&B-style keyboard pads, modern programmed drums blended with bongos, bass guitar groove, subtle synth strings, güira, occasional saxophone solo',
         vibe: 'sensual seduction, nightclub intimate, polished sophisticated romance, dim lights and cologne, slow grinding dance, modern Latin lover',
