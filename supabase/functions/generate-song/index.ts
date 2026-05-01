@@ -1725,7 +1725,10 @@ RESPONDE SOLO JSON:
 
     console.log('Calling Claude...');
 
-    const claudeModels = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+    // claude-sonnet-4-6 = Sonnet 4.6 (current production Sonnet, replaced
+    // claude-sonnet-4-20250514 which is being retired by Anthropic on 2026-06-15;
+    // soft throttling begins 2026-05-14). Haiku 4.5 fallback is still current.
+    const claudeModels = ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
     const claudeHeaders = {
       'Content-Type': 'application/json',
       'x-api-key': ANTHROPIC_API_KEY!,
