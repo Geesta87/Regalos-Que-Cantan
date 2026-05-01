@@ -989,22 +989,51 @@ export default function AdminDashboard() {
     });
   }, [songs, debouncedSearchTerm, filterStatus, todayOnly]);
 
-  // Songs queued for WhatsApp delivery — paid + has phone + has audio + not
-  // yet marked sent. Sorted oldest-first by default so admins handle the
-  // longest-waiting buyers first.
-  const pendingSendSongs = useMemo(() => {
-    const list = songs.filter(needsWhatsAppDelivery);
+  // Pending WhatsApp deliveries — grouped by purchase so a customer who
+  // bought 2 songs at once shows up as ONE row, not two. Same Stripe
+  // session = same group; if both fields are missing we fall back to the
+  // song id so the row at least appears.
+  //
+  // Each group exposes:
+  //   - primary: the song to render in headline cells (oldest paid_at wins)
+  //   - songs[]: every paid+phone+audio+unsent sibling, in oldest-first order
+  //   - songCount: songs.length (used to render "WhatsApp (2 songs)")
+  //   - recipients[]: unique recipient names (deduped, may differ if the
+  //     same buyer made two songs for two different people in one cart)
+  //   - groupKey: stable key for React + selection state
+  const pendingSendGroups = useMemo(() => {
+    const candidates = songs.filter(needsWhatsAppDelivery);
+    const map = new Map();
+    for (const s of candidates) {
+      const key = s.stripe_session_id || s.session_id || `solo:${s.id}`;
+      if (!map.has(key)) {
+        map.set(key, { key, songs: [s] });
+      } else {
+        map.get(key).songs.push(s);
+      }
+    }
+    const list = Array.from(map.values());
+    for (const g of list) {
+      g.songs.sort((a, b) =>
+        new Date(a.paid_at || a.created_at).getTime() -
+        new Date(b.paid_at || b.created_at).getTime()
+      );
+      g.primary = g.songs[0];
+      g.songCount = g.songs.length;
+      g.recipients = [...new Set(g.songs.map(s => s.recipient_name).filter(Boolean))];
+      g.songIds = g.songs.map(s => s.id);
+      g.groupKey = g.key;
+    }
     list.sort((a, b) => {
-      const ta = new Date(a.paid_at || a.created_at).getTime();
-      const tb = new Date(b.paid_at || b.created_at).getTime();
+      const ta = new Date(a.primary.paid_at || a.primary.created_at).getTime();
+      const tb = new Date(b.primary.paid_at || b.primary.created_at).getTime();
       return pendingSendSort === 'oldest' ? ta - tb : tb - ta;
     });
     return list;
   }, [songs, pendingSendSort]);
 
-  // Number of paid songs with a phone we've never marked sent — used as the
-  // red badge on the "Por Enviar" tab and in the top attention summary.
-  const pendingSendCount = pendingSendSongs.length;
+  // Number of pending PURCHASES (not songs) — what the badge should show.
+  const pendingSendCount = pendingSendGroups.length;
 
   // Stuck / failed songs = generation was attempted but never completed
   // within 10 minutes. Has nothing to do with payment status.
@@ -1163,6 +1192,46 @@ export default function AdminDashboard() {
       setSongs(previous);
     }
   }, [accessToken, userRole, songs]);
+
+  // Mark a group of song ids as sent in one bulk request. Used by the
+  // "✓ Mark sent" button on a Pending to Send row that covers multiple
+  // songs (one customer paid for both at once → both get stamped together).
+  // Falls back to the single-song path when only one id is passed.
+  const markGroupAsSent = useCallback(async (ids) => {
+    if (!accessToken || userRole !== 'admin') return;
+    const cleanIds = (Array.isArray(ids) ? ids : []).filter(Boolean);
+    if (cleanIds.length === 0) return;
+    if (cleanIds.length === 1) return markSongAsSent(cleanIds[0]);
+
+    setBulkSendBusy(true);
+    const previous = songs;
+    const optimisticTime = new Date().toISOString();
+    setSongs(prev => prev.map(s =>
+      cleanIds.includes(s.id) ? { ...s, whatsapp_sent_at: s.whatsapp_sent_at || optimisticTime } : s
+    ));
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'bulk-mark-sent', songIds: cleanIds }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+    } catch (err) {
+      console.error('markGroupAsSent error:', err);
+      alert(`Error: ${err.message}`);
+      setSongs(previous);
+    } finally {
+      setBulkSendBusy(false);
+    }
+  }, [accessToken, userRole, songs, markSongAsSent]);
 
   // Mark every selected song as sent in one request.
   const bulkMarkAsSent = useCallback(async () => {
@@ -2246,25 +2315,38 @@ export default function AdminDashboard() {
                 </label>
                 {selectedPendingIds.size > 0 && userRole === 'admin' && (
                   <div className="flex gap-2 ml-auto">
-                    <button
-                      onClick={() => {
-                        // Open up to 5 wa.me tabs at once. Browsers block more
-                        // than ~5 simultaneous popups so we cap deliberately.
-                        const ids = Array.from(selectedPendingIds).slice(0, 5);
-                        ids.forEach(id => {
-                          const s = songs.find(x => x.id === id);
-                          if (!s) return;
-                          const d = buildWhatsAppDelivery(s, songs);
-                          if (d) window.open(d.waHref, '_blank', 'noopener');
-                        });
-                        if (selectedPendingIds.size > 5) {
-                          alert(`Opened 5 chats. Select fewer to open them all at once (browsers block more).`);
+                    {(() => {
+                      // Dedupe by phone — multiple selected songs from the same
+                      // customer should open ONE chat, not several. The wa.me
+                      // link buildWhatsAppDelivery() builds already includes
+                      // every sibling song, so one chat covers them all.
+                      const phones = new Set();
+                      const opens = [];
+                      Array.from(selectedPendingIds).forEach(id => {
+                        const s = songs.find(x => x.id === id);
+                        if (!s || !s.whatsapp_phone) return;
+                        if (phones.has(s.whatsapp_phone)) return;
+                        const d = buildWhatsAppDelivery(s, songs);
+                        if (d) {
+                          phones.add(s.whatsapp_phone);
+                          opens.push(d.waHref);
                         }
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-300 text-xs font-medium hover:bg-green-500/25 border border-green-500/30"
-                    >
-                      📱 Open {Math.min(selectedPendingIds.size, 5)} chats
-                    </button>
+                      });
+                      const cap = Math.min(opens.length, 5);
+                      return (
+                        <button
+                          onClick={() => {
+                            opens.slice(0, 5).forEach(href => window.open(href, '_blank', 'noopener'));
+                            if (opens.length > 5) {
+                              alert(`Opened 5 chats. Select fewer customers to open them all at once (browsers block more).`);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-300 text-xs font-medium hover:bg-green-500/25 border border-green-500/30"
+                        >
+                          📱 Open {cap} chat{cap === 1 ? '' : 's'}
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={bulkMarkAsSent}
                       disabled={bulkSendBusy}
@@ -2304,12 +2386,14 @@ export default function AdminDashboard() {
                             type="checkbox"
                             disabled={userRole !== 'admin'}
                             checked={
-                              pendingSendSongs.length > 0 &&
-                              pendingSendSongs.every(s => selectedPendingIds.has(s.id))
+                              pendingSendGroups.length > 0 &&
+                              pendingSendGroups.every(g => g.songIds.every(id => selectedPendingIds.has(id)))
                             }
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedPendingIds(new Set(pendingSendSongs.map(s => s.id)));
+                                const all = new Set();
+                                pendingSendGroups.forEach(g => g.songIds.forEach(id => all.add(id)));
+                                setSelectedPendingIds(all);
                               } else {
                                 setSelectedPendingIds(new Set());
                               }
@@ -2322,11 +2406,13 @@ export default function AdminDashboard() {
                         <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Customer</th>
                         <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">For</th>
                         <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">WhatsApp</th>
-                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Actions</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center w-[260px]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {pendingSendSongs.map((song) => {
+                      {pendingSendGroups.map((group) => {
+                        const song = group.primary;
+                        const songCount = group.songCount;
                         const since = song.paid_at || song.created_at;
                         const hours = (Date.now() - new Date(since).getTime()) / 3600000;
                         const urgencyColor =
@@ -2335,18 +2421,23 @@ export default function AdminDashboard() {
                           hours > 1 ? 'text-amber-400' :
                           'text-green-400';
                         const delivery = buildWhatsAppDelivery(song, songs);
-                        const isSelected = selectedPendingIds.has(song.id);
+                        const isGroupSelected = group.songIds.every(id => selectedPendingIds.has(id));
+                        const groupBusy = group.songIds.some(id => markSendBusy === id);
+                        const recipientLabel = group.recipients.length > 0
+                          ? group.recipients.join(', ')
+                          : '—';
                         return (
-                          <tr key={song.id} className="hover:bg-white/5">
+                          <tr key={group.groupKey} className="hover:bg-white/5">
                             <td className="px-4 py-3">
                               <input
                                 type="checkbox"
                                 disabled={userRole !== 'admin'}
-                                checked={isSelected}
+                                checked={isGroupSelected}
                                 onChange={(e) => {
                                   setSelectedPendingIds(prev => {
                                     const next = new Set(prev);
-                                    if (e.target.checked) next.add(song.id); else next.delete(song.id);
+                                    if (e.target.checked) group.songIds.forEach(id => next.add(id));
+                                    else group.songIds.forEach(id => next.delete(id));
                                     return next;
                                   });
                                 }}
@@ -2362,16 +2453,24 @@ export default function AdminDashboard() {
                               <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
                             </td>
                             <td className="px-4 py-3">
-                              <p className="font-medium text-amber-400">{song.recipient_name || '—'}</p>
-                              <p className="text-xs text-gray-500 capitalize">{song.genre || ''} · {formatOccasion(song.occasion)}</p>
+                              <p className="font-medium text-amber-400">{recipientLabel}</p>
+                              <p className="text-xs text-gray-500 capitalize">
+                                {songCount > 1
+                                  ? `${songCount} songs in this purchase`
+                                  : `${song.genre || ''} · ${formatOccasion(song.occasion)}`}
+                              </p>
                             </td>
                             <td className="px-4 py-3">
                               <span className="text-sm text-green-400">
                                 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
                               </span>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-center gap-2">
+                            <td className="px-4 py-3 w-[260px]">
+                              <div className="flex items-center justify-end gap-2 flex-nowrap">
+                                {/* Same WhatsApp pill as the Orders tab — clearly green +
+                                    labeled. When the purchase has multiple songs, the
+                                    label shows the count so admins know one click sends
+                                    the entire bundle (link covers all sibling song ids). */}
                                 {delivery && (
                                   <a
                                     href={delivery.waHref}
@@ -2379,27 +2478,46 @@ export default function AdminDashboard() {
                                     rel="noopener noreferrer"
                                     onClick={() => {
                                       if (autoMarkOnSend && userRole === 'admin') {
-                                        markSongAsSent(song.id);
+                                        markGroupAsSent(group.songIds);
                                       }
                                     }}
-                                    className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-400"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#25D366] hover:bg-[#20bd5a] shadow-md shadow-green-500/30 transition whitespace-nowrap flex-shrink-0"
+                                    title={songCount > 1
+                                      ? `Send WhatsApp with ${songCount} songs to ${song.whatsapp_phone}`
+                                      : `Send via WhatsApp to ${song.whatsapp_phone}`}
                                   >
-                                    📱 Send
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                    </svg>
+                                    {songCount > 1 ? `WhatsApp · ${songCount} songs` : 'WhatsApp'}
                                   </a>
                                 )}
+                                {/* Manual "I already sent this from the Orders tab — clear
+                                    it from the queue" checkmark. Distinct green-outlined
+                                    pill so it reads as a confirmation control, not just
+                                    another grey utility button. */}
                                 {userRole === 'admin' && (
                                   <button
-                                    onClick={() => markSongAsSent(song.id)}
-                                    disabled={markSendBusy === song.id}
-                                    className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs font-medium hover:bg-white/10 disabled:opacity-50"
-                                    title="Only mark as sent (without opening WhatsApp)"
+                                    onClick={() => markGroupAsSent(group.songIds)}
+                                    disabled={groupBusy || bulkSendBusy}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 hover:bg-emerald-500/20 disabled:opacity-50 transition whitespace-nowrap flex-shrink-0"
+                                    title={songCount > 1
+                                      ? `Mark all ${songCount} songs as sent (already sent manually)`
+                                      : 'Mark as sent (already sent manually)'}
                                   >
-                                    {markSendBusy === song.id ? '…' : '✓ Mark'}
+                                    {groupBusy ? '…' : (
+                                      <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                        Sent
+                                      </>
+                                    )}
                                   </button>
                                 )}
                                 <button
                                   onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
-                                  className="p-1.5 rounded-lg hover:bg-white/10"
+                                  className="p-1.5 rounded-lg hover:bg-white/10 flex-shrink-0"
                                   title="View details"
                                 >
                                   <span className="material-symbols-outlined text-gray-400 text-base">visibility</span>
@@ -2415,7 +2533,9 @@ export default function AdminDashboard() {
 
                 {/* Mobile card view */}
                 <div className="md:hidden space-y-3">
-                  {pendingSendSongs.map((song) => {
+                  {pendingSendGroups.map((group) => {
+                    const song = group.primary;
+                    const songCount = group.songCount;
                     const since = song.paid_at || song.created_at;
                     const hours = (Date.now() - new Date(since).getTime()) / 3600000;
                     const urgencyColor =
@@ -2424,18 +2544,23 @@ export default function AdminDashboard() {
                       hours > 1 ? 'text-amber-400' :
                       'text-green-400';
                     const delivery = buildWhatsAppDelivery(song, songs);
-                    const isSelected = selectedPendingIds.has(song.id);
+                    const isGroupSelected = group.songIds.every(id => selectedPendingIds.has(id));
+                    const groupBusy = group.songIds.some(id => markSendBusy === id);
+                    const recipientLabel = group.recipients.length > 0
+                      ? group.recipients.join(', ')
+                      : '—';
                     return (
-                      <div key={song.id} className="bg-[#1a1f26] rounded-2xl p-4 border border-white/5">
+                      <div key={group.groupKey} className="bg-[#1a1f26] rounded-2xl p-4 border border-white/5">
                         <div className="flex items-start gap-3 mb-3">
                           {userRole === 'admin' && (
                             <input
                               type="checkbox"
-                              checked={isSelected}
+                              checked={isGroupSelected}
                               onChange={(e) => {
                                 setSelectedPendingIds(prev => {
                                   const next = new Set(prev);
-                                  if (e.target.checked) next.add(song.id); else next.delete(song.id);
+                                  if (e.target.checked) group.songIds.forEach(id => next.add(id));
+                                  else group.songIds.forEach(id => next.delete(id));
                                   return next;
                                 });
                               }}
@@ -2443,8 +2568,11 @@ export default function AdminDashboard() {
                             />
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-white">For {song.recipient_name || '—'}</p>
+                            <p className="font-semibold text-white">For {recipientLabel}</p>
                             <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
+                            {songCount > 1 && (
+                              <p className="text-[10px] text-emerald-300 mt-0.5">📦 {songCount} songs in this purchase</p>
+                            )}
                           </div>
                           <p className={`text-xs font-semibold whitespace-nowrap ${urgencyColor}`}>{timeAgo(since)}</p>
                         </div>
@@ -2456,21 +2584,31 @@ export default function AdminDashboard() {
                               rel="noopener noreferrer"
                               onClick={() => {
                                 if (autoMarkOnSend && userRole === 'admin') {
-                                  markSongAsSent(song.id);
+                                  markGroupAsSent(group.songIds);
                                 }
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#25D366] hover:bg-[#20bd5a]"
                             >
-                              📱 Send
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                              </svg>
+                              {songCount > 1 ? `WhatsApp · ${songCount}` : 'WhatsApp'}
                             </a>
                           )}
                           {userRole === 'admin' && (
                             <button
-                              onClick={() => markSongAsSent(song.id)}
-                              disabled={markSendBusy === song.id}
-                              className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs hover:bg-white/10 disabled:opacity-50"
+                              onClick={() => markGroupAsSent(group.songIds)}
+                              disabled={groupBusy || bulkSendBusy}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/40 hover:bg-emerald-500/20 disabled:opacity-50"
                             >
-                              {markSendBusy === song.id ? '…' : '✓ Mark'}
+                              {groupBusy ? '…' : (
+                                <>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                  Sent
+                                </>
+                              )}
                             </button>
                           )}
                           <button
