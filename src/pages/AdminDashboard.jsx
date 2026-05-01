@@ -175,6 +175,11 @@ export default function AdminDashboard() {
   // fetch so we don't toast every historical row on page load.
   const paymentHighWaterRef = useRef(0);
   const seenPaymentIdsRef = useRef(new Set());
+  // Running count of alerts fired since this dashboard tab was opened. Lets
+  // admins verify "yes, the system is working — 3 payments came in today
+  // and the bell rang each time" without needing to remember if the toast
+  // already auto-dismissed.
+  const [paymentAlertCount, setPaymentAlertCount] = useState(0);
   const debouncedSearchTerm = useDebounce(searchTerm);
   const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
@@ -249,7 +254,33 @@ export default function AdminDashboard() {
     }, 12000);
     playPaymentSound();
     fireDesktopNotification(song);
+    setPaymentAlertCount(c => c + 1);
   }, [paymentAlertsEnabled, playPaymentSound, fireDesktopNotification]);
+
+  // Bypasses the seen-id dedupe and the alerts-enabled toggle so admins can
+  // verify the full toast + sound + desktop-notification pipeline is wired
+  // up without waiting for a real payment to land. Built from the most
+  // recent paid song so the toast is realistic; if there are no paid songs
+  // (fresh DB) we fall back to a placeholder.
+  const fireTestPaymentAlert = useCallback(() => {
+    const fakeSong = {
+      id: `test-${Date.now()}`,
+      recipient_name: 'María González',
+      sender_name: 'Roberto',
+      amount_paid: 29.99,
+      genre: 'mariachi',
+      paid_at: new Date().toISOString(),
+    };
+    const toastId = `${fakeSong.id}`;
+    setPaymentToasts(prev => [...prev, { id: toastId, song: fakeSong, at: Date.now() }]);
+    setTimeout(() => {
+      setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
+    }, 12000);
+    playPaymentSound();
+    fireDesktopNotification(fakeSong);
+    // We deliberately do NOT bump paymentAlertCount on test fires so the
+    // header counter reflects only real payments.
+  }, [playPaymentSound, fireDesktopNotification]);
 
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
@@ -1540,9 +1571,23 @@ export default function AdminDashboard() {
                 Loading data...
               </span>
             )}
+            {/* Test alert button — fires a fake toast + sound + desktop
+                notification so admins can verify the wiring without waiting
+                for a real payment. Bypasses the seen-id dedupe. */}
+            <button
+              onClick={fireTestPaymentAlert}
+              className="p-2 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition"
+              title="Fire a test payment alert (verify sound + popup are working)"
+              aria-label="Test payment alert"
+            >
+              <span className="material-symbols-outlined">science</span>
+            </button>
             {/* Live payment-alert toggle. Default on. When clicked, also asks
                 for desktop-notification permission so toasts surface even if
-                the dashboard tab is in the background. */}
+                the dashboard tab is in the background. The badge shows the
+                count of real payments alerted since this tab was opened so
+                admins can confirm the system fired even if the toast already
+                auto-dismissed. */}
             <button
               onClick={() => {
                 const next = !paymentAlertsEnabled;
@@ -1558,13 +1603,18 @@ export default function AdminDashboard() {
                   : 'bg-white/5 hover:bg-white/10 text-gray-500'
               }`}
               title={paymentAlertsEnabled
-                ? 'Payment alerts ON — click to mute'
+                ? `Payment alerts ON — ${paymentAlertCount} fired this session. Click to mute.`
                 : 'Payment alerts OFF — click to enable'}
               aria-label={paymentAlertsEnabled ? 'Mute payment alerts' : 'Enable payment alerts'}
             >
               <span className="material-symbols-outlined">
                 {paymentAlertsEnabled ? 'notifications_active' : 'notifications_off'}
               </span>
+              {paymentAlertCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                  {paymentAlertCount}
+                </span>
+              )}
             </button>
             <button
               onClick={() => fetchSongs()}
