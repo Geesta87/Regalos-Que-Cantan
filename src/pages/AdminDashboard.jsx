@@ -291,7 +291,7 @@ export default function AdminDashboard() {
     'paid', 'paid_at', 'amount_paid',
     'coupon_code', 'affiliate_code', 'utm_source',
     'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
-    'has_video_addon'
+    'has_video_addon', 'admin_dismissed_at'
   ].join(',');
 
   const fetchSongs = async (tokenOverride) => {
@@ -1008,10 +1008,13 @@ export default function AdminDashboard() {
 
   // Stuck / failed songs are the third "needs my attention" signal next to
   // pending deliveries and hot leads. We count payment_status = 'failed' and
-  // anything still 'processing' for >2h.
+  // anything still 'processing' for >2h. Rows that an admin has explicitly
+  // dismissed (admin_dismissed_at set) are skipped so old historical
+  // abandoned signups don't keep flagging the badge.
   const stuckSongsCount = useMemo(() => {
     const twoHoursAgo = Date.now() - 2 * 3600 * 1000;
     return songs.filter(s => {
+      if (s.admin_dismissed_at) return false;
       if (s.payment_status === 'failed') return true;
       if (!s.audio_url && !isPaid(s)) {
         const ts = new Date(s.created_at).getTime();

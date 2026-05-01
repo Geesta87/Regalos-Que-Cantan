@@ -36,8 +36,7 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Same column set the dashboard previously requested, plus whatsapp_sent_at
-// so the dashboard can render the "Enviado" column and "Por Enviar" tab
-// without an extra round-trip.
+// (Pending to Send tab) and admin_dismissed_at (Stuck/failed counter).
 const SONG_LIST_COLUMNS = [
   'id', 'created_at', 'email', 'recipient_name', 'sender_name',
   'genre', 'genre_name', 'sub_genre', 'occasion', 'voice_type',
@@ -45,7 +44,7 @@ const SONG_LIST_COLUMNS = [
   'paid', 'paid_at', 'amount_paid',
   'coupon_code', 'affiliate_code', 'utm_source',
   'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
-  'has_video_addon',
+  'has_video_addon', 'admin_dismissed_at',
 ].join(',');
 
 // Fields that reveal payment amounts. Wiped out for the assistant role.
