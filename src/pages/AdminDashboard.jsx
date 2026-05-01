@@ -903,6 +903,72 @@ export default function AdminDashboard() {
     return () => window.removeEventListener('keydown', handler);
   }, [activeTab]);
 
+  // ─── Delivery / age helpers (used by Por Enviar tab + Órdenes table) ──
+  // Declared BEFORE the useMemo blocks below — useMemo factories run on the
+  // first render, so anything they reference must already be initialized.
+  // (Putting these after the useMemos triggers a temporal-dead-zone
+  // ReferenceError that wipes the entire dashboard to a blank page.)
+
+  // A song "needs WhatsApp delivery" when it's paid, has a phone number,
+  // has the audio URL ready (otherwise there's nothing to send), and has
+  // never been marked sent.
+  const needsWhatsAppDelivery = (song) =>
+    isPaid(song) &&
+    !!song.whatsapp_phone &&
+    !!song.audio_url &&
+    !song.whatsapp_sent_at;
+
+  // "2h ago", "3d ago", "now" — short relative time used in tables.
+  const timeAgo = (dateString) => {
+    if (!dateString) return '';
+    const ms = Date.now() - new Date(dateString).getTime();
+    if (ms < 0) return 'now';
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return 'now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
+  };
+
+  // Subtle left-border color used on Órdenes rows so admins can spot a
+  // fresh order at a glance without reading the timestamp column.
+  const ageBorderClass = (dateString) => {
+    if (!dateString) return '';
+    const hours = (Date.now() - new Date(dateString).getTime()) / 3600000;
+    if (hours < 1) return 'border-l-4 border-l-green-400';     // hot — last hour
+    if (hours < 24) return 'border-l-4 border-l-amber-400';    // today
+    if (hours < 72) return 'border-l-4 border-l-amber-400/40'; // last 3 days
+    return '';
+  };
+
+  // Build the WhatsApp message + wa.me url for a paid song. Same logic that
+  // already lives inline in the Órdenes table — extracted so the new Pending
+  // to Send tab and the bulk "open all" helper can reuse it. The customer
+  // message body stays in Spanish on purpose; admin labels are English.
+  const buildWhatsAppDelivery = (song, allSongs) => {
+    if (!song.whatsapp_phone) return null;
+    const phone = song.whatsapp_phone.startsWith('1')
+      ? song.whatsapp_phone
+      : '1' + song.whatsapp_phone;
+    // Group sibling songs from same Stripe session so a single link covers
+    // bundled purchases.
+    const siblings = (allSongs || []).filter(s =>
+      s.id !== song.id &&
+      isPaid(s) &&
+      s.audio_url &&
+      ((song.session_id && s.session_id === song.session_id) ||
+       (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id))
+    );
+    const ids = [song.id, ...siblings.map(s => s.id)].join(',');
+    const url = `${window.location.origin}/song/${ids}`;
+    const msg = `¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${url}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
+    return { phone, url, msg, waHref: `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` };
+  };
+
   const filteredSongs = useMemo(() => {
     const term = debouncedSearchTerm.toLowerCase();
     const todayStart = new Date();
@@ -1008,66 +1074,6 @@ export default function AdminDashboard() {
       'otro': '🎁 Otro'
     };
     return map[occasion] || occasion.replace(/_/g, ' ');
-  };
-
-  // ─── Delivery / age helpers (used by Por Enviar tab + Órdenes table) ──
-  // A song "needs WhatsApp delivery" when it's paid, has a phone number,
-  // has the audio URL ready (otherwise there's nothing to send), and has
-  // never been marked sent.
-  const needsWhatsAppDelivery = (song) =>
-    isPaid(song) &&
-    !!song.whatsapp_phone &&
-    !!song.audio_url &&
-    !song.whatsapp_sent_at;
-
-  // "hace 2h", "hace 3d", "ahora" — short Spanish relative time.
-  const timeAgo = (dateString) => {
-    if (!dateString) return '';
-    const ms = Date.now() - new Date(dateString).getTime();
-    if (ms < 0) return 'ahora';
-    const mins = Math.floor(ms / 60000);
-    if (mins < 1) return 'ahora';
-    if (mins < 60) return `hace ${mins}m`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `hace ${hours}h`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `hace ${days}d`;
-    const months = Math.floor(days / 30);
-    return `hace ${months}mes${months > 1 ? 'es' : ''}`;
-  };
-
-  // Subtle left-border color used on Órdenes rows so admins can spot a
-  // fresh order at a glance without reading the timestamp column.
-  const ageBorderClass = (dateString) => {
-    if (!dateString) return '';
-    const hours = (Date.now() - new Date(dateString).getTime()) / 3600000;
-    if (hours < 1) return 'border-l-4 border-l-green-400';     // hot — last hour
-    if (hours < 24) return 'border-l-4 border-l-amber-400';    // today
-    if (hours < 72) return 'border-l-4 border-l-amber-400/40'; // last 3 days
-    return '';
-  };
-
-  // Build the WhatsApp message + wa.me url for a paid song. Same logic that
-  // already lives inline in the Órdenes table — extracted so the new Por
-  // Enviar tab and the bulk "open all" helper can reuse it.
-  const buildWhatsAppDelivery = (song, allSongs) => {
-    if (!song.whatsapp_phone) return null;
-    const phone = song.whatsapp_phone.startsWith('1')
-      ? song.whatsapp_phone
-      : '1' + song.whatsapp_phone;
-    // Group sibling songs from same Stripe session so a single link covers
-    // bundled purchases.
-    const siblings = (allSongs || []).filter(s =>
-      s.id !== song.id &&
-      isPaid(s) &&
-      s.audio_url &&
-      ((song.session_id && s.session_id === song.session_id) ||
-       (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id))
-    );
-    const ids = [song.id, ...siblings.map(s => s.id)].join(',');
-    const url = `${window.location.origin}/song/${ids}`;
-    const msg = `¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${url}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
-    return { phone, url, msg, waHref: `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` };
   };
 
   // Mark a single song as sent. Optimistic update + rollback on error.
