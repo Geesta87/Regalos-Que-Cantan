@@ -1023,6 +1023,9 @@ export default function AdminDashboard() {
 
   // Hot leads count (matches the existing tab-badge logic) — extracted so the
   // attention summary row can reuse it without duplicating the inline math.
+  // We treat whatsapp_sent_at as the "we already reached out" flag for unpaid
+  // leads too, so the admin can mark a hot lead as handled and have it drop
+  // out of the queue without losing the row.
   const hotLeadsCount = useMemo(() => {
     const paidEmails = new Set(
       songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase())
@@ -1031,6 +1034,7 @@ export default function AdminDashboard() {
     songs.forEach(s => {
       if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
       if (paidEmails.has(s.email.toLowerCase())) return;
+      if (s.whatsapp_sent_at) return; // already contacted via WhatsApp
       phones.add(s.whatsapp_phone);
     });
     return phones.size;
@@ -3075,6 +3079,10 @@ export default function AdminDashboard() {
               // Skip if this person has paid (by email OR phone)
               if (paidEmails.has(s.email.toLowerCase())) return;
               if (paidPhones.has(s.whatsapp_phone)) return;
+              // Skip if we've already reached out via WhatsApp (whatsapp_sent_at
+              // doubles as the "contacted" flag for unpaid leads — same column
+              // that marks paid songs as delivered).
+              if (s.whatsapp_sent_at) return;
 
               const key = s.whatsapp_phone;
               if (!leadsMap[key]) {
