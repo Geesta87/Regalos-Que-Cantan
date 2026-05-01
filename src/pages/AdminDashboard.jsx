@@ -141,6 +141,19 @@ export default function AdminDashboard() {
   const [todayOnly, setTodayOnly] = useState(false);
   // Search input ref so the "/" keyboard shortcut can focus it
   const searchInputRef = useRef(null);
+  // Live payment notifications — toast queue + opt-in toggle stored in
+  // localStorage so each admin gets to keep their own preference. Default ON
+  // so admins are alerted out of the box; they can mute via the bell button.
+  const [paymentToasts, setPaymentToasts] = useState([]);
+  const [paymentAlertsEnabled, setPaymentAlertsEnabled] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const v = window.localStorage.getItem('rqc_admin_payment_alerts');
+    return v === null ? true : v === 'true';
+  });
+  // High-water-mark of paid_at we've already seen — set after the first
+  // fetch so we don't toast every historical row on page load.
+  const paymentHighWaterRef = useRef(0);
+  const seenPaymentIdsRef = useRef(new Set());
   const debouncedSearchTerm = useDebounce(searchTerm);
   const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
@@ -218,12 +231,58 @@ export default function AdminDashboard() {
         .subscribe();
     })();
 
+    // Poll for new payments every 30s so the dashboard catches new orders
+    // even when the tab has been open for hours without manual refresh.
+    // The fetch is also what feeds the toast-alert effect below.
+    const pollHandle = setInterval(() => {
+      // accessToken state may not be set on first tick — fetchSongs reads
+      // its own state, so we just call it. Cheap when nothing changed
+      // because Supabase serves through the edge function quickly.
+      fetchSongs();
+    }, 30000);
+
     return () => {
       cancelled = true;
       if (emailSubscription) emailSubscription.unsubscribe();
       if (campaignSubscription) campaignSubscription.unsubscribe();
+      clearInterval(pollHandle);
     };
   }, [dateRange]);
+
+  // Watch the songs list for newly-paid rows and fire a toast + sound for
+  // each one. The first time songs lands we just record a high-water-mark
+  // so existing paid orders don't all toast at once on page load. After
+  // that, any paid_at newer than the watermark triggers an alert.
+  useEffect(() => {
+    if (!songs || songs.length === 0) return;
+
+    // First load: capture every paid song id as "already seen" so we don't
+    // alert on history.
+    if (paymentHighWaterRef.current === 0) {
+      let max = 0;
+      for (const s of songs) {
+        if (isPaid(s)) {
+          seenPaymentIdsRef.current.add(s.id);
+          const t = s.paid_at ? new Date(s.paid_at).getTime() : 0;
+          if (t > max) max = t;
+        }
+      }
+      paymentHighWaterRef.current = max || Date.now();
+      return;
+    }
+
+    // Subsequent loads: anything newer than the watermark is a new payment.
+    let newMax = paymentHighWaterRef.current;
+    for (const s of songs) {
+      if (!isPaid(s)) continue;
+      const paidAtMs = s.paid_at ? new Date(s.paid_at).getTime() : 0;
+      if (paidAtMs > paymentHighWaterRef.current) {
+        triggerPaymentAlert(s);
+        if (paidAtMs > newMax) newMax = paidAtMs;
+      }
+    }
+    paymentHighWaterRef.current = newMax;
+  }, [songs, triggerPaymentAlert]);
 
   // ✅ STRICT: Check if song is actually paid
   const isPaid = (song) => {
@@ -903,6 +962,80 @@ export default function AdminDashboard() {
     return () => window.removeEventListener('keydown', handler);
   }, [activeTab]);
 
+  // ─── Live payment-alert helpers ─────────────────────────────────────────
+  // Plays a short two-tone "cha-ching" via the Web Audio API. No audio file
+  // to ship; the tone is generated in-browser. Browsers block autoplay
+  // before any user interaction with the page — once the admin has clicked
+  // anything, subsequent plays succeed.
+  const playPaymentSound = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      // Two ascending sine pings — bright, noticeable, ~0.4s total.
+      [
+        { freq: 880, start: 0,    dur: 0.18 },
+        { freq: 1320, start: 0.12, dur: 0.25 },
+      ].forEach(({ freq, start, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.35, now + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + dur + 0.02);
+      });
+    } catch {
+      // Audio failed (no permission, no audio device, autoplay blocked) —
+      // toast still fires, so the alert isn't lost.
+    }
+  }, []);
+
+  // Fires a desktop browser notification IF the user has granted permission.
+  // Tagged by song id so duplicate fires (e.g. webhook + UPDATE event) don't
+  // stack. Works even when the dashboard tab isn't focused.
+  const fireDesktopNotification = useCallback((song) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    try {
+      new Notification('💰 New paid song!', {
+        body: song.recipient_name
+          ? `For ${song.recipient_name}${song.sender_name ? ' — from ' + song.sender_name : ''}`
+          : 'A new payment just came in.',
+        tag: song.id,
+        icon: '/favicon.png',
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Drives the toast UI + sound + desktop notification for a single payment.
+  // Idempotent on song id so the same row never alerts twice in one session.
+  const triggerPaymentAlert = useCallback((song) => {
+    if (!song || !song.id) return;
+    if (seenPaymentIdsRef.current.has(song.id)) return;
+    seenPaymentIdsRef.current.add(song.id);
+    if (!paymentAlertsEnabled) return;
+
+    const toastId = `${song.id}:${Date.now()}`;
+    setPaymentToasts(prev => [
+      ...prev,
+      { id: toastId, song, at: Date.now() },
+    ]);
+    // Auto-dismiss after 12s.
+    setTimeout(() => {
+      setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
+    }, 12000);
+    playPaymentSound();
+    fireDesktopNotification(song);
+  }, [paymentAlertsEnabled, playPaymentSound, fireDesktopNotification]);
+
   // ─── Delivery / age helpers (used by Por Enviar tab + Órdenes table) ──
   // Declared BEFORE the useMemo blocks below — useMemo factories run on the
   // first render, so anything they reference must already be initialized.
@@ -1334,6 +1467,54 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#0f1419] text-white">
+      {/* Live payment-alert toasts. Stack in the top-right; admin can
+          dismiss each individually. Auto-dismiss after 12s. Tapping the
+          toast jumps to the song detail panel for one-click follow-up. */}
+      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
+        {paymentToasts.map((t) => (
+          <div
+            key={t.id}
+            className="pointer-events-auto bg-gradient-to-br from-emerald-500 to-green-600 text-white rounded-2xl shadow-2xl shadow-emerald-500/40 p-4 border border-emerald-300/40 animate-slide-in"
+            role="alert"
+          >
+            <div className="flex items-start gap-3">
+              <div className="text-3xl leading-none">💰</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold">New paid song!</p>
+                <p className="text-xs opacity-90 mt-0.5">
+                  For <strong>{t.song.recipient_name || '—'}</strong>
+                  {t.song.sender_name && <> from <strong>{t.song.sender_name}</strong></>}
+                </p>
+                {userRole === 'admin' && t.song.amount_paid && (
+                  <p className="text-xs opacity-90">
+                    {formatCurrency(parseFloat(t.song.amount_paid) || 0)}
+                    {t.song.genre && <> · {t.song.genre}</>}
+                  </p>
+                )}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setSelectedSong(t.song);
+                      if (!t.song._fullLoaded) fetchSongDetails(t.song.id);
+                      setPaymentToasts(prev => prev.filter(x => x.id !== t.id));
+                    }}
+                    className="text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                  >
+                    View order
+                  </button>
+                  <button
+                    onClick={() => setPaymentToasts(prev => prev.filter(x => x.id !== t.id))}
+                    className="text-xs opacity-70 hover:opacity-100 ml-auto"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Header */}
       <header className="bg-[#1a1f26] border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -1369,6 +1550,32 @@ export default function AdminDashboard() {
                 Loading data...
               </span>
             )}
+            {/* Live payment-alert toggle. Default on. When clicked, also asks
+                for desktop-notification permission so toasts surface even if
+                the dashboard tab is in the background. */}
+            <button
+              onClick={() => {
+                const next = !paymentAlertsEnabled;
+                setPaymentAlertsEnabled(next);
+                window.localStorage.setItem('rqc_admin_payment_alerts', String(next));
+                if (next && 'Notification' in window && Notification.permission === 'default') {
+                  Notification.requestPermission();
+                }
+              }}
+              className={`p-2 rounded-lg transition relative ${
+                paymentAlertsEnabled
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300'
+                  : 'bg-white/5 hover:bg-white/10 text-gray-500'
+              }`}
+              title={paymentAlertsEnabled
+                ? 'Payment alerts ON — click to mute'
+                : 'Payment alerts OFF — click to enable'}
+              aria-label={paymentAlertsEnabled ? 'Mute payment alerts' : 'Enable payment alerts'}
+            >
+              <span className="material-symbols-outlined">
+                {paymentAlertsEnabled ? 'notifications_active' : 'notifications_off'}
+              </span>
+            </button>
             <button
               onClick={() => fetchSongs()}
               className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"

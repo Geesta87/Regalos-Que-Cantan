@@ -31,6 +31,13 @@ export default {
       animation: {
         'bounce-slow': 'bounce 2s ease-in-out infinite',
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+        'slide-in': 'slideIn 0.3s ease-out',
+      },
+      keyframes: {
+        slideIn: {
+          '0%': { transform: 'translateX(120%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
       }
     },
   },
