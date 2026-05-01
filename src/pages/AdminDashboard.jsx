@@ -1821,19 +1821,17 @@ export default function AdminDashboard() {
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Customer</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Song</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Occasion</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voice</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Source</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Amount</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Status</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Download</th>
                       <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Sent</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Actions</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center w-[220px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {filteredSongs.length === 0 ? (
                       <tr>
-                        <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                        <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
                           No orders found
                         </td>
                       </tr>
@@ -1863,46 +1861,46 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3">
                             <div>
-                              <p className="font-medium text-amber-400 capitalize">{song.genre || '—'}</p>
+                              <p className="font-medium text-amber-400 capitalize flex items-center gap-1.5">
+                                <span>{song.genre || '—'}</span>
+                                <span className="text-xs opacity-70" title={song.voice_type === 'female' ? 'Female voice' : 'Male voice'}>
+                                  {getVoiceLabel(song)}
+                                </span>
+                              </p>
                               {song.sub_genre && (
                                 <p className="text-xs text-gray-500">{song.sub_genre}</p>
+                              )}
+                              {/* Source / affiliate badge — moved here so the dedicated columns
+                                  could be removed and the Actions column gets more breathing room. */}
+                              {(song.utm_source || song.affiliate_code) && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {song.utm_source && (
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                      song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400' :
+                                      song.utm_source === 'fb' || song.utm_source === 'facebook' ? 'bg-blue-500/20 text-blue-400' :
+                                      song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-purple-500/20 text-purple-400' :
+                                      song.utm_source === 'email' ? 'bg-amber-500/20 text-amber-400' :
+                                      song.utm_source === 'google' ? 'bg-red-500/20 text-red-400' :
+                                      'bg-gray-500/20 text-gray-400'
+                                    }`}>
+                                      {song.utm_source === 'tiktok' ? '🎵' :
+                                       song.utm_source === 'fb' || song.utm_source === 'facebook' ? '📘' :
+                                       song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷' :
+                                       song.utm_source === 'email' ? '📧' :
+                                       song.utm_source === 'google' ? '🔍' : '🔗'} {song.utm_source}
+                                    </span>
+                                  )}
+                                  {song.affiliate_code && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-500/20 text-pink-400">
+                                      🤝 {song.affiliate_code}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <span className="text-sm">{formatOccasion(song.occasion)}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="text-lg" title={song.voice_type === 'female' ? 'Femenina' : 'Masculina'}>
-                              {getVoiceLabel(song)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex flex-col items-center gap-1">
-                              {song.utm_source ? (
-                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                                  song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
-                                  song.utm_source === 'fb' || song.utm_source === 'facebook' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                  song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                                  song.utm_source === 'email' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                  song.utm_source === 'google' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                  'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                                }`}>
-                                  {song.utm_source === 'tiktok' ? '🎵 TikTok' :
-                                   song.utm_source === 'fb' || song.utm_source === 'facebook' ? '📘 Facebook' :
-                                   song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷 Instagram' :
-                                   song.utm_source === 'email' ? '📧 Email' :
-                                   song.utm_source === 'google' ? '🔍 Google' : `🔗 ${song.utm_source}`}
-                                </span>
-                              ) : !song.affiliate_code ? (
-                                <span className="text-xs text-gray-600">direct</span>
-                              ) : null}
-                              {song.affiliate_code && (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/30">
-                                  🤝 {song.affiliate_code}
-                                </span>
-                              )}
-                            </div>
                           </td>
                           <td className="px-4 py-3 text-right">
                             {isPaid(song) ? (
@@ -1962,11 +1960,11 @@ export default function AdminDashboard() {
                               <span className="text-gray-600">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-1">
+                          <td className="px-4 py-3 w-[220px]">
+                            <div className="flex items-center justify-end gap-1 flex-nowrap">
                               <button
                                 onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
-                                className="p-2 rounded-lg hover:bg-white/10 transition"
+                                className="p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0"
                                 title="View details"
                               >
                                 <span className="material-symbols-outlined text-gray-400 text-xl">visibility</span>
@@ -1977,7 +1975,7 @@ export default function AdminDashboard() {
                                     href={song.audio_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-2 rounded-lg hover:bg-white/10 transition"
+                                    className="p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0"
                                     title="Play"
                                   >
                                     <span className="material-symbols-outlined text-amber-400 text-xl">play_circle</span>
@@ -1985,7 +1983,7 @@ export default function AdminDashboard() {
                                   <a
                                     href={song.audio_url}
                                     download
-                                    className="p-2 rounded-lg hover:bg-white/10 transition"
+                                    className="p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0"
                                     title="Download"
                                   >
                                     <span className="material-symbols-outlined text-blue-400 text-xl">download</span>
@@ -2013,7 +2011,7 @@ export default function AdminDashboard() {
                                         markSongAsSent(song.id);
                                       }
                                     }}
-                                    className={`ml-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                                    className={`ml-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap flex-shrink-0 ${
                                       alreadySent
                                         ? 'bg-white/5 text-gray-400 hover:bg-white/10'
                                         : 'bg-[#25D366] text-white hover:bg-[#20bd5a] shadow-md shadow-green-500/30'
