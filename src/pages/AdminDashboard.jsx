@@ -291,7 +291,7 @@ export default function AdminDashboard() {
     'paid', 'paid_at', 'amount_paid',
     'coupon_code', 'affiliate_code', 'utm_source',
     'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
-    'has_video_addon', 'admin_dismissed_at'
+    'has_video_addon', 'admin_dismissed_at', 'status'
   ].join(',');
 
   const fetchSongs = async (tokenOverride) => {
@@ -1006,41 +1006,28 @@ export default function AdminDashboard() {
   // red badge on the "Por Enviar" tab and in the top attention summary.
   const pendingSendCount = pendingSendSongs.length;
 
-  // Stuck / failed songs are the third "needs my attention" signal next to
-  // pending deliveries and hot leads. The bar for "stuck" is intentionally
-  // narrow so the badge only fires on REAL problems an admin must act on:
+  // Stuck / failed songs = generation was attempted but never completed
+  // within 10 minutes. Has nothing to do with payment status.
   //
-  //   1) payment_status = 'failed' — Stripe explicitly said the charge
-  //      failed. These customers walked away with a broken cart and may
-  //      need a manual outreach.
+  // A song is flagged when:
+  //   - status is set (so generation was at least queued — NULL status means
+  //     no attempt was made and there's nothing to be stuck on), AND
+  //   - status is anything other than 'completed' (i.e. 'failed',
+  //     'processing', 'pending', 'pending_upload', 'pending_manual'), AND
+  //   - more than 10 minutes have passed since the row was created — gives
+  //     the upstream Mureka pipeline plenty of time to finish (it usually
+  //     delivers in ~3 minutes), AND
+  //   - the admin hasn't already dismissed the row.
   //
-  //   2) Paid customer never received their song. The Mureka pipeline
-  //      usually delivers in ~3 minutes; allowing 30 minutes is generous.
-  //      Anything past that with no audio means the upstream job died and
-  //      the customer is waiting on a song they paid for — a real support
-  //      case.
-  //
-  // We deliberately do NOT flag:
-  //   - Unpaid signups with no audio yet (those are in-flight generations
-  //     or abandoned carts; "abandoned cart" is what Hot Leads handles).
-  //   - Recently-paid orders whose song is still rendering (give Mureka
-  //     time to finish; flagging those would falsely alarm on every new
-  //     sale).
-  //
-  // Rows the admin has explicitly dismissed (admin_dismissed_at set) are
-  // also skipped so already-handled cases don't keep flagging the badge.
+  // Successful generations (status = 'completed') don't trip the badge;
+  // neither do songs currently rendering inside the 10-minute window.
   const stuckSongsCount = useMemo(() => {
-    const halfHourAgo = Date.now() - 30 * 60 * 1000;
+    const tenMinAgo = Date.now() - 10 * 60 * 1000;
     return songs.filter(s => {
       if (s.admin_dismissed_at) return false;
-      if (s.payment_status === 'failed') return true;
-      if (isPaid(s) && !s.audio_url) {
-        const paidAtMs = s.paid_at
-          ? new Date(s.paid_at).getTime()
-          : new Date(s.created_at).getTime();
-        if (paidAtMs < halfHourAgo) return true;
-      }
-      return false;
+      if (!s.status || s.status === 'completed') return false;
+      const createdMs = new Date(s.created_at).getTime();
+      return createdMs < tenMinAgo;
     }).length;
   }, [songs]);
 
@@ -1647,7 +1634,7 @@ export default function AdminDashboard() {
                 <span className="text-3xl font-bold text-red-400">{stuckSongsCount}</span>
               </div>
               <p className="text-sm text-gray-300 mt-1">Stuck or failed songs</p>
-              <p className="text-xs text-gray-500">Payment failed, or paid &gt; 30m with no song delivered</p>
+              <p className="text-xs text-gray-500">Generation attempted but never completed after 10 min</p>
             </button>
           </div>
         )}

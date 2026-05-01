@@ -44,7 +44,7 @@ const SONG_LIST_COLUMNS = [
   'paid', 'paid_at', 'amount_paid',
   'coupon_code', 'affiliate_code', 'utm_source',
   'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
-  'has_video_addon', 'admin_dismissed_at',
+  'has_video_addon', 'admin_dismissed_at', 'status',
 ].join(',');
 
 // Fields that reveal payment amounts. Wiped out for the assistant role.
