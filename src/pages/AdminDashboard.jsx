@@ -1007,18 +1007,38 @@ export default function AdminDashboard() {
   const pendingSendCount = pendingSendSongs.length;
 
   // Stuck / failed songs are the third "needs my attention" signal next to
-  // pending deliveries and hot leads. We count payment_status = 'failed' and
-  // anything still 'processing' for >2h. Rows that an admin has explicitly
-  // dismissed (admin_dismissed_at set) are skipped so old historical
-  // abandoned signups don't keep flagging the badge.
+  // pending deliveries and hot leads. The bar for "stuck" is intentionally
+  // narrow so the badge only fires on REAL problems an admin must act on:
+  //
+  //   1) payment_status = 'failed' — Stripe explicitly said the charge
+  //      failed. These customers walked away with a broken cart and may
+  //      need a manual outreach.
+  //
+  //   2) Paid customer never received their song. The Mureka pipeline
+  //      usually delivers in ~3 minutes; allowing 30 minutes is generous.
+  //      Anything past that with no audio means the upstream job died and
+  //      the customer is waiting on a song they paid for — a real support
+  //      case.
+  //
+  // We deliberately do NOT flag:
+  //   - Unpaid signups with no audio yet (those are in-flight generations
+  //     or abandoned carts; "abandoned cart" is what Hot Leads handles).
+  //   - Recently-paid orders whose song is still rendering (give Mureka
+  //     time to finish; flagging those would falsely alarm on every new
+  //     sale).
+  //
+  // Rows the admin has explicitly dismissed (admin_dismissed_at set) are
+  // also skipped so already-handled cases don't keep flagging the badge.
   const stuckSongsCount = useMemo(() => {
-    const twoHoursAgo = Date.now() - 2 * 3600 * 1000;
+    const halfHourAgo = Date.now() - 30 * 60 * 1000;
     return songs.filter(s => {
       if (s.admin_dismissed_at) return false;
       if (s.payment_status === 'failed') return true;
-      if (!s.audio_url && !isPaid(s)) {
-        const ts = new Date(s.created_at).getTime();
-        if (ts < twoHoursAgo && s.payment_status !== 'paid') return true;
+      if (isPaid(s) && !s.audio_url) {
+        const paidAtMs = s.paid_at
+          ? new Date(s.paid_at).getTime()
+          : new Date(s.created_at).getTime();
+        if (paidAtMs < halfHourAgo) return true;
       }
       return false;
     }).length;
@@ -1627,7 +1647,7 @@ export default function AdminDashboard() {
                 <span className="text-3xl font-bold text-red-400">{stuckSongsCount}</span>
               </div>
               <p className="text-sm text-gray-300 mt-1">Stuck or failed songs</p>
-              <p className="text-xs text-gray-500">Unpaid &gt; 2h or payment failed</p>
+              <p className="text-xs text-gray-500">Payment failed, or paid &gt; 30m with no song delivered</p>
             </button>
           </div>
         )}
