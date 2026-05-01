@@ -1,5 +1,5 @@
 // supabase/functions/admin-songs/index.ts
-// Authenticated reader for the admin dashboard.
+// Authenticated reader + delivery-tracker for the admin dashboard.
 //
 // Why this exists: the dashboard used to read `songs` directly from the
 // browser with the anon key. That meant anyone with the URL could see
@@ -12,6 +12,14 @@
 //   3. For role = 'assistant', strips price / payment-amount fields from
 //      every row before returning. The numbers never reach their browser,
 //      so DevTools can't reveal them.
+//
+// As of 2026-04-30 also handles WhatsApp-delivery tracking:
+//   - action: 'mark-sent'         → set songs.whatsapp_sent_at = now() for one song
+//   - action: 'unmark-sent'       → clear it (admin mistake recovery)
+//   - action: 'bulk-mark-sent'    → set it for an array of song ids
+//   - action: 'backfill-sent'     → set it for every paid+phone song with
+//                                    created_at <= cutoff that's currently NULL
+// All four mutations are admin-only. Assistants get 403.
 //
 // Deploy with: supabase functions deploy admin-songs --project-ref yzbvajungshqcpusfiia
 
@@ -27,14 +35,16 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// Same column set the dashboard previously requested.
+// Same column set the dashboard previously requested, plus whatsapp_sent_at
+// so the dashboard can render the "Enviado" column and "Por Enviar" tab
+// without an extra round-trip.
 const SONG_LIST_COLUMNS = [
   'id', 'created_at', 'email', 'recipient_name', 'sender_name',
   'genre', 'genre_name', 'sub_genre', 'occasion', 'voice_type',
   'session_id', 'stripe_session_id', 'stripe_payment_id', 'payment_status',
   'paid', 'paid_at', 'amount_paid',
   'coupon_code', 'affiliate_code', 'utm_source',
-  'audio_url', 'whatsapp_phone', 'download_count', 'downloaded',
+  'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
   'has_video_addon',
 ].join(',');
 
@@ -99,7 +109,12 @@ serve(async (req) => {
     const isAssistant = role === 'assistant';
 
     // Parse request
-    let body: { action?: string; songId?: string } = {};
+    let body: {
+      action?: string;
+      songId?: string;
+      songIds?: string[];
+      cutoff?: string;
+    } = {};
     if (req.method === 'POST') {
       try {
         body = await req.json();
@@ -122,6 +137,97 @@ serve(async (req) => {
       if (error) return json({ success: false, error: error.message }, 500);
       const song = isAssistant ? redactForAssistant(data) : data;
       return json({ success: true, role, song });
+    }
+
+    // ─── action: mark-sent (admin only) ──────────────────────────────────
+    // Sets whatsapp_sent_at to NOW() for one song. Idempotent — calling it
+    // twice doesn't re-stamp; we keep the original send time.
+    if (action === 'mark-sent') {
+      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
+      if (!body.songId) {
+        return json({ success: false, error: 'songId required' }, 400);
+      }
+      const nowIso = new Date().toISOString();
+      const { data, error } = await admin
+        .from('songs')
+        .update({ whatsapp_sent_at: nowIso })
+        .eq('id', body.songId)
+        .is('whatsapp_sent_at', null) // don't overwrite an existing send time
+        .select('id, whatsapp_sent_at')
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message }, 500);
+      // If maybeSingle returned null it means it was already marked — return
+      // the existing timestamp so the UI still updates correctly.
+      let finalRow = data;
+      if (!finalRow) {
+        const { data: existing } = await admin
+          .from('songs')
+          .select('id, whatsapp_sent_at')
+          .eq('id', body.songId)
+          .maybeSingle();
+        finalRow = existing;
+      }
+      return json({ success: true, song: finalRow });
+    }
+
+    // ─── action: unmark-sent (admin only) ────────────────────────────────
+    // Recovery for "oops, I clicked the wrong button". Clears the timestamp.
+    if (action === 'unmark-sent') {
+      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
+      if (!body.songId) {
+        return json({ success: false, error: 'songId required' }, 400);
+      }
+      const { error } = await admin
+        .from('songs')
+        .update({ whatsapp_sent_at: null })
+        .eq('id', body.songId);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true });
+    }
+
+    // ─── action: bulk-mark-sent (admin only) ─────────────────────────────
+    // Stamps an array of songs in a single round-trip. Used by the bulk
+    // "Marcar seleccionadas como enviadas" button on the Por Enviar tab.
+    if (action === 'bulk-mark-sent') {
+      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
+      const ids = Array.isArray(body.songIds) ? body.songIds : [];
+      if (ids.length === 0) {
+        return json({ success: false, error: 'songIds required' }, 400);
+      }
+      if (ids.length > 500) {
+        return json({ success: false, error: 'Too many ids (max 500)' }, 400);
+      }
+      const nowIso = new Date().toISOString();
+      const { error, count } = await admin
+        .from('songs')
+        .update({ whatsapp_sent_at: nowIso }, { count: 'exact' })
+        .in('id', ids)
+        .is('whatsapp_sent_at', null);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, updated: count ?? 0, sentAt: nowIso });
+    }
+
+    // ─── action: backfill-sent (admin only) ──────────────────────────────
+    // One-click "everything paid before <cutoff> is already sent" helper so
+    // the Por Enviar queue isn't flooded on day one. Cutoff is an ISO
+    // timestamp; we only touch rows that are paid, have a phone, and
+    // currently have whatsapp_sent_at = NULL.
+    if (action === 'backfill-sent') {
+      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
+      const cutoff = body.cutoff;
+      if (!cutoff || isNaN(new Date(cutoff).getTime())) {
+        return json({ success: false, error: 'cutoff (ISO timestamp) required' }, 400);
+      }
+      const nowIso = new Date().toISOString();
+      const { error, count } = await admin
+        .from('songs')
+        .update({ whatsapp_sent_at: nowIso }, { count: 'exact' })
+        .eq('paid', true)
+        .not('whatsapp_phone', 'is', null)
+        .is('whatsapp_sent_at', null)
+        .lte('created_at', cutoff);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, updated: count ?? 0, sentAt: nowIso });
     }
 
     // ─── action: list (default) ──────────────────────────────────────────

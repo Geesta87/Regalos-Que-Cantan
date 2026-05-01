@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
 import { AppContext } from '../App';
 import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
@@ -123,6 +123,24 @@ export default function AdminDashboard() {
   const [lookupPage, setLookupPage] = useState(0);
   const ORDERS_PER_PAGE = 50;
   const LOOKUP_PER_PAGE = 50;
+  // Por Enviar (Pending to Send) tab state
+  const [pendingSendSort, setPendingSendSort] = useState('oldest'); // 'oldest' | 'recent'
+  const [selectedPendingIds, setSelectedPendingIds] = useState(() => new Set());
+  const [markSendBusy, setMarkSendBusy] = useState(null); // songId currently being marked
+  const [bulkSendBusy, setBulkSendBusy] = useState(false);
+  const [autoMarkOnSend, setAutoMarkOnSend] = useState(true); // toggle: auto-mark when admin clicks WhatsApp
+  const [backfillModalOpen, setBackfillModalOpen] = useState(false);
+  const [backfillCutoff, setBackfillCutoff] = useState(() => {
+    // Default: midnight last night (so "everything before today" is the obvious choice)
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm for datetime-local input
+  });
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  // Orders tab: "Today only" quick-filter
+  const [todayOnly, setTodayOnly] = useState(false);
+  // Search input ref so the "/" keyboard shortcut can focus it
+  const searchInputRef = useRef(null);
   const debouncedSearchTerm = useDebounce(searchTerm);
   const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
@@ -272,7 +290,7 @@ export default function AdminDashboard() {
     'session_id', 'stripe_session_id', 'stripe_payment_id', 'payment_status',
     'paid', 'paid_at', 'amount_paid',
     'coupon_code', 'affiliate_code', 'utm_source',
-    'audio_url', 'whatsapp_phone', 'download_count', 'downloaded',
+    'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
     'has_video_addon'
   ].join(',');
 
@@ -444,7 +462,7 @@ export default function AdminDashboard() {
   const createAffiliate = async () => {
     const { name, email, code, password, couponCode } = newAffiliate;
     if (!name || !email || !code || !password) {
-      setAffiliateMsg({ type: 'error', text: 'Nombre, email, código y contraseña son requeridos' });
+      setAffiliateMsg({ type: 'error', text: 'Name, email, code and password are required' });
       return;
     }
     setCreatingAffiliate(true);
@@ -462,11 +480,11 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        setAffiliateMsg({ type: 'success', text: `Afiliado ${data.affiliate.name} creado. Email de bienvenida enviado a ${data.affiliate.email}` });
+        setAffiliateMsg({ type: 'success', text: `Affiliate ${data.affiliate.name} created. Welcome email sent to ${data.affiliate.email}` });
         setNewAffiliate({ name: '', email: '', code: '', couponCode: '', password: '' });
         fetchAffiliates();
       } else {
-        setAffiliateMsg({ type: 'error', text: data.error || 'Error al crear afiliado' });
+        setAffiliateMsg({ type: 'error', text: data.error || 'Error creating affiliate' });
       }
     } catch (err) {
       setAffiliateMsg({ type: 'error', text: err.message });
@@ -516,7 +534,7 @@ export default function AdminDashboard() {
     if (!token) return;
     const balance = parseInt(murekaForm.balance, 10);
     if (!Number.isFinite(balance) || balance < 0) {
-      alert('Por favor ingresa un número válido de créditos');
+      alert('Please enter a valid credit amount');
       return;
     }
     setMurekaSaving(true);
@@ -536,7 +554,7 @@ export default function AdminDashboard() {
       );
       const result = await response.json();
       if (!result.success) {
-        alert(`Error: ${result.error || 'no se pudo guardar'}`);
+        alert(`Error: ${result.error || 'could not save'}`);
       } else {
         setMurekaCredits(result);
         // Optionally update thresholds / per-gen if user changed them
@@ -631,7 +649,7 @@ export default function AdminDashboard() {
       );
       const result = await response.json();
       if (!result.success) {
-        alert(`Error: ${result.error || 'no se pudo cambiar el estado'}`);
+        alert(`Error: ${result.error || 'could not change state'}`);
       } else {
         setSocialPipeline(result);
       }
@@ -671,7 +689,7 @@ export default function AdminDashboard() {
       );
     } catch (err) {
       console.error('Error toggling campaign:', err);
-      alert('Error al cambiar el estado');
+      alert('Error changing state');
     }
   };
 
@@ -696,10 +714,10 @@ export default function AdminDashboard() {
         prev.map(c => c.id === campaign.id ? campaign : c)
       );
       setEditingCampaign(null);
-      alert('✅ Campaña actualizada');
+      alert('✅ Campaign updated');
     } catch (err) {
       console.error('Error saving campaign:', err);
-      alert('Error al guardar');
+      alert('Error saving');
     } finally {
       setSavingCampaign(false);
     }
@@ -708,7 +726,7 @@ export default function AdminDashboard() {
   const sendTestEmail = async (campaignId) => {
     setSendingTestEmail(campaignId);
     try {
-      const testEmail = prompt('Enviar email de prueba a:', 'tu@email.com');
+      const testEmail = prompt('Send test email to:', 'you@email.com');
       if (!testEmail) {
         setSendingTestEmail(false);
         return;
@@ -732,7 +750,7 @@ export default function AdminDashboard() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ Email enviado a ${testEmail}`);
+        alert(`✅ Email sent to ${testEmail}`);
         fetchEmailLogs();
       } else {
         alert(`❌ Error: ${result.error}`);
@@ -763,7 +781,7 @@ export default function AdminDashboard() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ Email reenviado a ${log.email}`);
+        alert(`✅ Email resent to ${log.email}`);
         fetchEmailLogs();
       } else {
         alert(`❌ Error: ${result.error}`);
@@ -863,11 +881,32 @@ export default function AdminDashboard() {
   };
 
   // Reset page when filters change
-  useEffect(() => { setOrdersPage(0); }, [debouncedSearchTerm, filterStatus]);
+  useEffect(() => { setOrdersPage(0); }, [debouncedSearchTerm, filterStatus, todayOnly]);
   useEffect(() => { setLookupPage(0); }, [debouncedLookupSearch, lookupSearchType]);
+
+  // Global keyboard shortcut: "/" focuses the Órdenes search input. Ignored
+  // when the user is already typing in another input/textarea so we don't
+  // hijack form fields.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== '/') return;
+      const target = e.target;
+      const tag = target?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
+      if (isTyping) return;
+      if (activeTab !== 'orders') return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select?.();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTab]);
 
   const filteredSongs = useMemo(() => {
     const term = debouncedSearchTerm.toLowerCase();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     return songs.filter(song => {
       const matchesSearch = !term ||
         song.recipient_name?.toLowerCase().includes(term) ||
@@ -878,9 +917,58 @@ export default function AdminDashboard() {
         filterStatus === 'all' ||
         (filterStatus === 'paid' && isPaid(song)) ||
         (filterStatus === 'pending' && !isPaid(song));
-      return matchesSearch && matchesFilter;
+      const matchesToday = !todayOnly ||
+        (song.created_at && new Date(song.created_at) >= todayStart);
+      return matchesSearch && matchesFilter && matchesToday;
     });
-  }, [songs, debouncedSearchTerm, filterStatus]);
+  }, [songs, debouncedSearchTerm, filterStatus, todayOnly]);
+
+  // Songs queued for WhatsApp delivery — paid + has phone + has audio + not
+  // yet marked sent. Sorted oldest-first by default so admins handle the
+  // longest-waiting buyers first.
+  const pendingSendSongs = useMemo(() => {
+    const list = songs.filter(needsWhatsAppDelivery);
+    list.sort((a, b) => {
+      const ta = new Date(a.paid_at || a.created_at).getTime();
+      const tb = new Date(b.paid_at || b.created_at).getTime();
+      return pendingSendSort === 'oldest' ? ta - tb : tb - ta;
+    });
+    return list;
+  }, [songs, pendingSendSort]);
+
+  // Number of paid songs with a phone we've never marked sent — used as the
+  // red badge on the "Por Enviar" tab and in the top attention summary.
+  const pendingSendCount = pendingSendSongs.length;
+
+  // Stuck / failed songs are the third "needs my attention" signal next to
+  // pending deliveries and hot leads. We count payment_status = 'failed' and
+  // anything still 'processing' for >2h.
+  const stuckSongsCount = useMemo(() => {
+    const twoHoursAgo = Date.now() - 2 * 3600 * 1000;
+    return songs.filter(s => {
+      if (s.payment_status === 'failed') return true;
+      if (!s.audio_url && !isPaid(s)) {
+        const ts = new Date(s.created_at).getTime();
+        if (ts < twoHoursAgo && s.payment_status !== 'paid') return true;
+      }
+      return false;
+    }).length;
+  }, [songs]);
+
+  // Hot leads count (matches the existing tab-badge logic) — extracted so the
+  // attention summary row can reuse it without duplicating the inline math.
+  const hotLeadsCount = useMemo(() => {
+    const paidEmails = new Set(
+      songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase())
+    );
+    const phones = new Set();
+    songs.forEach(s => {
+      if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
+      if (paidEmails.has(s.email.toLowerCase())) return;
+      phones.add(s.whatsapp_phone);
+    });
+    return phones.size;
+  }, [songs]);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -922,6 +1010,224 @@ export default function AdminDashboard() {
     return map[occasion] || occasion.replace(/_/g, ' ');
   };
 
+  // ─── Delivery / age helpers (used by Por Enviar tab + Órdenes table) ──
+  // A song "needs WhatsApp delivery" when it's paid, has a phone number,
+  // has the audio URL ready (otherwise there's nothing to send), and has
+  // never been marked sent.
+  const needsWhatsAppDelivery = (song) =>
+    isPaid(song) &&
+    !!song.whatsapp_phone &&
+    !!song.audio_url &&
+    !song.whatsapp_sent_at;
+
+  // "hace 2h", "hace 3d", "ahora" — short Spanish relative time.
+  const timeAgo = (dateString) => {
+    if (!dateString) return '';
+    const ms = Date.now() - new Date(dateString).getTime();
+    if (ms < 0) return 'ahora';
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return 'ahora';
+    if (mins < 60) return `hace ${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `hace ${hours}h`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `hace ${days}d`;
+    const months = Math.floor(days / 30);
+    return `hace ${months}mes${months > 1 ? 'es' : ''}`;
+  };
+
+  // Subtle left-border color used on Órdenes rows so admins can spot a
+  // fresh order at a glance without reading the timestamp column.
+  const ageBorderClass = (dateString) => {
+    if (!dateString) return '';
+    const hours = (Date.now() - new Date(dateString).getTime()) / 3600000;
+    if (hours < 1) return 'border-l-4 border-l-green-400';     // hot — last hour
+    if (hours < 24) return 'border-l-4 border-l-amber-400';    // today
+    if (hours < 72) return 'border-l-4 border-l-amber-400/40'; // last 3 days
+    return '';
+  };
+
+  // Build the WhatsApp message + wa.me url for a paid song. Same logic that
+  // already lives inline in the Órdenes table — extracted so the new Por
+  // Enviar tab and the bulk "open all" helper can reuse it.
+  const buildWhatsAppDelivery = (song, allSongs) => {
+    if (!song.whatsapp_phone) return null;
+    const phone = song.whatsapp_phone.startsWith('1')
+      ? song.whatsapp_phone
+      : '1' + song.whatsapp_phone;
+    // Group sibling songs from same Stripe session so a single link covers
+    // bundled purchases.
+    const siblings = (allSongs || []).filter(s =>
+      s.id !== song.id &&
+      isPaid(s) &&
+      s.audio_url &&
+      ((song.session_id && s.session_id === song.session_id) ||
+       (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id))
+    );
+    const ids = [song.id, ...siblings.map(s => s.id)].join(',');
+    const url = `${window.location.origin}/song/${ids}`;
+    const msg = `¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${url}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
+    return { phone, url, msg, waHref: `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` };
+  };
+
+  // Mark a single song as sent. Optimistic update + rollback on error.
+  const markSongAsSent = useCallback(async (songId) => {
+    if (!accessToken || userRole !== 'admin') return;
+    setMarkSendBusy(songId);
+    const previous = songs;
+    const optimisticTime = new Date().toISOString();
+    setSongs(prev => prev.map(s =>
+      s.id === songId ? { ...s, whatsapp_sent_at: optimisticTime } : s
+    ));
+    setSelectedPendingIds(prev => {
+      const next = new Set(prev);
+      next.delete(songId);
+      return next;
+    });
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'mark-sent', songId }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+      // Reconcile with server timestamp if it sent one back.
+      if (result.song?.whatsapp_sent_at) {
+        setSongs(prev => prev.map(s =>
+          s.id === songId ? { ...s, whatsapp_sent_at: result.song.whatsapp_sent_at } : s
+        ));
+      }
+    } catch (err) {
+      console.error('markSongAsSent error:', err);
+      alert(`Error marking as sent: ${err.message}`);
+      setSongs(previous); // rollback
+    } finally {
+      setMarkSendBusy(null);
+    }
+  }, [accessToken, userRole, songs]);
+
+  // Undo a mistaken mark-as-sent.
+  const unmarkSongAsSent = useCallback(async (songId) => {
+    if (!accessToken || userRole !== 'admin') return;
+    if (!confirm('Mark this song as NOT sent? It will return to the queue.')) return;
+    const previous = songs;
+    setSongs(prev => prev.map(s =>
+      s.id === songId ? { ...s, whatsapp_sent_at: null } : s
+    ));
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'unmark-sent', songId }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+    } catch (err) {
+      console.error('unmarkSongAsSent error:', err);
+      alert(`Error: ${err.message}`);
+      setSongs(previous);
+    }
+  }, [accessToken, userRole, songs]);
+
+  // Mark every selected song as sent in one request.
+  const bulkMarkAsSent = useCallback(async () => {
+    if (!accessToken || userRole !== 'admin') return;
+    const ids = Array.from(selectedPendingIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Mark ${ids.length} song${ids.length > 1 ? 's' : ''} as sent?`)) return;
+    setBulkSendBusy(true);
+    const previous = songs;
+    const optimisticTime = new Date().toISOString();
+    setSongs(prev => prev.map(s =>
+      ids.includes(s.id) ? { ...s, whatsapp_sent_at: s.whatsapp_sent_at || optimisticTime } : s
+    ));
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'bulk-mark-sent', songIds: ids }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+      setSelectedPendingIds(new Set());
+      alert(`✅ ${result.updated || 0} song${result.updated === 1 ? '' : 's'} marked as sent.`);
+    } catch (err) {
+      console.error('bulkMarkAsSent error:', err);
+      alert(`Error: ${err.message}`);
+      setSongs(previous);
+    } finally {
+      setBulkSendBusy(false);
+    }
+  }, [accessToken, userRole, songs, selectedPendingIds]);
+
+  // One-click backfill: mark every paid+phone song with created_at <= cutoff
+  // as already sent. Stops the queue from being flooded with historical orders
+  // on day one of the feature.
+  const backfillSent = useCallback(async () => {
+    if (!accessToken || userRole !== 'admin') return;
+    if (!backfillCutoff) return;
+    const cutoffIso = new Date(backfillCutoff).toISOString();
+    setBackfillBusy(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ action: 'backfill-sent', cutoff: cutoffIso }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+      const stamp = result.sentAt || new Date().toISOString();
+      // Update everything client-side so the queue updates instantly.
+      setSongs(prev => prev.map(s => {
+        if (
+          isPaid(s) &&
+          s.whatsapp_phone &&
+          !s.whatsapp_sent_at &&
+          new Date(s.created_at).getTime() <= new Date(cutoffIso).getTime()
+        ) {
+          return { ...s, whatsapp_sent_at: stamp };
+        }
+        return s;
+      }));
+      setBackfillModalOpen(false);
+      alert(`✅ ${result.updated || 0} historical songs marked as sent.`);
+    } catch (err) {
+      console.error('backfillSent error:', err);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setBackfillBusy(false);
+    }
+  }, [accessToken, userRole, backfillCutoff]);
+
   // Full-page spinner only while we're verifying who's logged in. Once auth
   // resolves the dashboard mounts; songs/funnel/email data fill in as their
   // own fetches return. This avoids wedging the whole UI behind the multi-MB
@@ -931,7 +1237,7 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-[#0f1419] flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Verificando acceso...</p>
+          <p className="text-gray-400">Verifying access...</p>
         </div>
       </div>
     );
@@ -947,7 +1253,23 @@ export default function AdminDashboard() {
               🎵
             </div>
             <div>
-              <h1 className="font-bold text-lg">Admin Dashboard</h1>
+              <h1 className="font-bold text-lg flex items-center gap-2">
+                Admin Dashboard
+                {userRole && (
+                  <span
+                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
+                      userRole === 'admin'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    }`}
+                    title={userRole === 'admin'
+                      ? 'You can see revenue and commission amounts'
+                      : 'Financial amounts are hidden in this role'}
+                  >
+                    {userRole === 'admin' ? '👑 Admin' : '👤 Assistant'}
+                  </span>
+                )}
+              </h1>
               <p className="text-xs text-gray-400">RegalosQueCantan</p>
             </div>
           </div>
@@ -955,22 +1277,22 @@ export default function AdminDashboard() {
             {isLoading && (
               <span className="hidden md:inline-flex items-center gap-2 text-xs text-gray-400">
                 <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                Cargando datos...
+                Loading data...
               </span>
             )}
             <button
               onClick={() => fetchSongs()}
               className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
-              title="Refrescar"
+              title="Refresh"
             >
               <span className="material-symbols-outlined text-gray-400">refresh</span>
             </button>
-            <button 
+            <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition"
             >
               <span className="material-symbols-outlined text-sm">logout</span>
-              Salir
+              Sign out
             </button>
           </div>
         </div>
@@ -982,9 +1304,9 @@ export default function AdminDashboard() {
             <div className="flex items-start gap-3">
               <span className="material-symbols-outlined text-red-400">error</span>
               <div>
-                <p className="font-semibold text-red-300">No se pudieron cargar los datos</p>
+                <p className="font-semibold text-red-300">Couldn't load data</p>
                 <p className="text-sm text-red-200/80 mt-1">
-                  Las estadísticas mostradas pueden no reflejar la realidad. Detalle: {error}
+                  The stats below may not match reality. Details: {error}
                 </p>
               </div>
             </div>
@@ -992,7 +1314,7 @@ export default function AdminDashboard() {
               onClick={() => fetchSongs()}
               className="px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-sm font-medium whitespace-nowrap"
             >
-              Reintentar
+              Retry
             </button>
           </div>
         )}
@@ -1002,7 +1324,7 @@ export default function AdminDashboard() {
           <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3 text-sm">
             <span className="text-amber-400">📊</span>
             <p className="text-amber-200/80">
-              Datos financieros en auditoría — los montos se restablecerán cuando termine la revisión.
+              Financial data is in audit mode — amounts will be restored when the review ends.
             </p>
           </div>
         )}
@@ -1033,29 +1355,29 @@ export default function AdminDashboard() {
                   <span className={`text-3xl ${pulse}`}>🎵</span>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-400">
-                      Créditos de canción (estimado)
+                      Song credits (estimated)
                     </p>
                     <p className={`text-3xl font-bold ${numColor}`}>
                       {c.estimated_remaining.toLocaleString()}
                       <span className="text-sm font-normal text-gray-500 ml-2">
-                        / {c.balance.toLocaleString()} créditos
+                        / {c.balance.toLocaleString()} credits
                       </span>
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      ≈ {Math.floor(c.estimated_remaining / Math.max(c.credits_per_generation, 1)).toLocaleString()} canciones restantes
+                      ≈ {Math.floor(c.estimated_remaining / Math.max(c.credits_per_generation, 1)).toLocaleString()} songs remaining
                       {' • '}
-                      {c.generations_since_anchor.toLocaleString()} generadas desde el último ajuste
-                      {daysSinceAnchor !== null && ` (hace ${daysSinceAnchor === 0 ? 'hoy' : daysSinceAnchor + 'd'})`}
-                      {' • '}{c.credits_per_generation} créditos/canción
+                      {c.generations_since_anchor.toLocaleString()} generated since last adjustment
+                      {daysSinceAnchor !== null && ` (${daysSinceAnchor === 0 ? 'today' : daysSinceAnchor + 'd ago'})`}
+                      {' • '}{c.credits_per_generation} credits/song
                     </p>
                     {c.status === 'critical' && (
                       <p className="text-xs text-red-300 font-semibold mt-2">
-                        ⚠ Créditos en nivel crítico — recarga ahora antes de que las canciones empiecen a fallar.
+                        ⚠ Credits at critical level — top up now before songs start to fail.
                       </p>
                     )}
                     {c.status === 'low' && (
                       <p className="text-xs text-amber-300 mt-2">
-                        Créditos bajos — considera recargar pronto.
+                        Credits running low — consider topping up soon.
                       </p>
                     )}
                   </div>
@@ -1064,7 +1386,7 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => fetchMurekaCredits()}
                     className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition"
-                    title="Recalcular"
+                    title="Recalculate"
                   >
                     <span className="material-symbols-outlined text-gray-400 text-base">refresh</span>
                   </button>
@@ -1073,7 +1395,7 @@ export default function AdminDashboard() {
                       onClick={openMurekaModal}
                       className="px-4 py-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-sm font-medium border border-violet-500/30"
                     >
-                      🔧 Actualizar saldo
+                      🔧 Update balance
                     </button>
                   )}
                 </div>
@@ -1103,22 +1425,22 @@ export default function AdminDashboard() {
                   <span className="text-3xl">{enabled ? '📣' : '⏸️'}</span>
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-400">
-                      Publicación en redes (FB · IG · TikTok · YT)
+                      Social posting (FB · IG · TikTok · YT)
                     </p>
                     <p className={`text-2xl font-bold ${enabled ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {enabled ? 'Activa' : 'Pausada'}
+                      {enabled ? 'Active' : 'Paused'}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
                       {enabled
-                        ? 'Cada canción pagada se publica automáticamente como reel + historia.'
-                        : 'No se está publicando nada nuevo. Las canciones se siguen generando y entregando como siempre.'}
+                        ? 'Every paid song is automatically posted as a reel + story.'
+                        : 'Nothing new is being posted. Songs are still generated and delivered as usual.'}
                       {updatedLabel && (
-                        <> {' • '}Última actualización: {updatedLabel}</>
+                        <> {' • '}Last updated: {updatedLabel}</>
                       )}
                     </p>
                     {!isAdmin && (
                       <p className="text-xs text-gray-500 mt-1 italic">
-                        Solo un admin puede cambiar este estado.
+                        Only an admin can change this state.
                       </p>
                     )}
                   </div>
@@ -1135,8 +1457,8 @@ export default function AdminDashboard() {
                   {socialToggling
                     ? '⏳ ...'
                     : enabled
-                      ? '✓ Posteo activo · pausar'
-                      : '○ Posteo pausado · activar'}
+                      ? '✓ Posting active · pause'
+                      : '○ Posting paused · activate'}
                 </button>
               </div>
             </div>
@@ -1151,13 +1473,13 @@ export default function AdminDashboard() {
               <span className="text-xs text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">Total</span>
             </div>
             <p className="text-3xl font-bold">{stats.totalSongs}</p>
-            <p className="text-sm text-gray-400">Canciones</p>
+            <p className="text-sm text-gray-400">Songs</p>
           </div>
 
           <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-green-400 text-2xl">💰</span>
-              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Ingresos</span>
+              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Revenue</span>
             </div>
             <p className="text-3xl font-bold">
               {userRole === 'admin'
@@ -1166,27 +1488,27 @@ export default function AdminDashboard() {
             </p>
             <p className="text-sm text-gray-400">
               {userRole === 'admin'
-                ? (stats.freeOrders > 0 && `${stats.freeOrders} gratis`)
-                : 'auditando'}
+                ? (stats.freeOrders > 0 && `${stats.freeOrders} free`)
+                : 'auditing'}
             </p>
           </div>
 
           <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-2xl p-5 border border-emerald-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-emerald-400 text-2xl">✅</span>
-              <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-full">Pagadas</span>
+              <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-full">Paid</span>
             </div>
             <p className="text-3xl font-bold">{stats.paidOrders}</p>
-            <p className="text-sm text-gray-400">Órdenes completadas</p>
+            <p className="text-sm text-gray-400">Completed orders</p>
           </div>
-          
+
           <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-2xl p-5 border border-amber-500/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-amber-400 text-2xl">⏳</span>
-              <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded-full">Pendientes</span>
+              <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded-full">Pending</span>
             </div>
             <p className="text-3xl font-bold">{stats.pendingOrders}</p>
-            <p className="text-sm text-gray-400">Sin pagar</p>
+            <p className="text-sm text-gray-400">Unpaid</p>
           </div>
         </div>
 
@@ -1198,7 +1520,7 @@ export default function AdminDashboard() {
                 <span className="text-2xl">💬</span>
                 <div>
                   <p className="font-semibold text-green-400">WhatsApp Contacts</p>
-                  <p className="text-sm text-gray-400">{stats.whatsappContacts} números únicos recopilados</p>
+                  <p className="text-sm text-gray-400">{stats.whatsappContacts} unique numbers collected</p>
                 </div>
               </div>
               <button
@@ -1209,11 +1531,11 @@ export default function AdminDashboard() {
                     .filter((v, i, a) => a.indexOf(v) === i);
                   const csv = 'Phone\tEmail\tRecipient\tSender\n' + contacts.join('\n');
                   navigator.clipboard.writeText(csv);
-                  alert(`✅ ${contacts.length} contactos copiados al portapapeles (formato TSV)`);
+                  alert(`✅ ${contacts.length} contacts copied to clipboard (TSV format)`);
                 }}
                 className="px-4 py-2 bg-green-500/20 text-green-400 rounded-xl text-sm font-medium hover:bg-green-500/30 transition border border-green-500/30"
               >
-                📋 Exportar Contactos
+                📋 Export Contacts
               </button>
             </div>
           </div>
@@ -1226,8 +1548,8 @@ export default function AdminDashboard() {
               <div className="flex items-center gap-3">
                 <span className="text-2xl">🔥</span>
                 <div>
-                  <p className="font-semibold">Hoy</p>
-                  <p className="text-sm text-gray-400">{stats.todayOrders} órdenes</p>
+                  <p className="font-semibold">Today</p>
+                  <p className="text-sm text-gray-400">{stats.todayOrders} orders</p>
                 </div>
               </div>
               <div className="text-right">
@@ -1241,96 +1563,183 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'orders' 
-                ? 'bg-amber-400 text-black' 
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
-          >
-            📦 Órdenes
-          </button>
-          <button
-            onClick={() => setActiveTab('funnel')}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'funnel' 
-                ? 'bg-amber-400 text-black' 
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
-          >
-            📊 Funnel Analytics
-          </button>
-          <button
-            onClick={() => { setActiveTab('emails'); fetchEmailLogs(); }}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'emails' 
-                ? 'bg-amber-400 text-black' 
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
-          >
-            📧 Emails ({emailLogs.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('lookup')}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'lookup' 
-                ? 'bg-amber-400 text-black' 
-                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-            }`}
-          >
-            🔍 Lookup
-          </button>
-          <button
-            onClick={() => setActiveTab('hotleads')}
-            className={`px-5 py-2.5 rounded-xl font-medium transition relative ${
-              activeTab === 'hotleads' 
-                ? 'bg-orange-500 text-white' 
-                : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/30'
-            }`}
-          >
-            🔥 Hot Leads
-            {(() => {
-              const count = (() => {
-                const paidEmails = new Set(songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase()));
-                const leadsMap = {};
-                songs.forEach(s => {
-                  if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
-                  if (paidEmails.has(s.email.toLowerCase())) return;
-                  const key = s.whatsapp_phone;
-                  if (!leadsMap[key]) leadsMap[key] = true;
-                });
-                return Object.keys(leadsMap).length;
-              })();
-              return count > 0 ? (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {count}
-                </span>
-              ) : null;
-            })()}
-          </button>
-          <button
-            onClick={() => setActiveTab('blast')}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'blast' 
-                ? 'bg-rose-500 text-white' 
-                : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30'
-            }`}
-          >
-            💘 Valentine Blast
-          </button>
-          <button
-            onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }}
-            className={`px-5 py-2.5 rounded-xl font-medium transition ${
-              activeTab === 'affiliates'
-                ? 'bg-blue-500 text-white'
-                : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30'
-            }`}
-          >
-            🤝 Afiliados ({affiliates.length})
-          </button>
+        {/* Attention Summary — clickable counters that jump to the relevant tab.
+            Hidden when nothing needs attention so the dashboard isn't always
+            shouting. Shown to both admin and assistant roles. */}
+        {(pendingSendCount > 0 || hotLeadsCount > 0 || stuckSongsCount > 0) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <button
+              onClick={() => setActiveTab('pendingsend')}
+              disabled={pendingSendCount === 0}
+              className={`text-left rounded-2xl p-4 border transition ${
+                pendingSendCount > 0
+                  ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/30 hover:border-green-400 hover:from-green-500/20'
+                  : 'bg-white/3 border-white/5 opacity-60 cursor-default'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">📤</span>
+                <span className="text-3xl font-bold text-green-400">{pendingSendCount}</span>
+              </div>
+              <p className="text-sm text-gray-300 mt-1">Waiting to send via WhatsApp</p>
+              <p className="text-xs text-gray-500">Paid with phone · not marked sent</p>
+            </button>
+            <button
+              onClick={() => setActiveTab('hotleads')}
+              disabled={hotLeadsCount === 0}
+              className={`text-left rounded-2xl p-4 border transition ${
+                hotLeadsCount > 0
+                  ? 'bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/30 hover:border-orange-400 hover:from-orange-500/20'
+                  : 'bg-white/3 border-white/5 opacity-60 cursor-default'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">🔥</span>
+                <span className="text-3xl font-bold text-orange-400">{hotLeadsCount}</span>
+              </div>
+              <p className="text-sm text-gray-300 mt-1">Hot leads, unpaid</p>
+              <p className="text-xs text-gray-500">With WhatsApp · still recoverable</p>
+            </button>
+            <button
+              onClick={() => { setActiveTab('orders'); setFilterStatus('pending'); }}
+              disabled={stuckSongsCount === 0}
+              className={`text-left rounded-2xl p-4 border transition ${
+                stuckSongsCount > 0
+                  ? 'bg-gradient-to-br from-red-500/10 to-rose-500/10 border-red-500/30 hover:border-red-400 hover:from-red-500/20'
+                  : 'bg-white/3 border-white/5 opacity-60 cursor-default'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">⚠️</span>
+                <span className="text-3xl font-bold text-red-400">{stuckSongsCount}</span>
+              </div>
+              <p className="text-sm text-gray-300 mt-1">Stuck or failed songs</p>
+              <p className="text-xs text-gray-500">Unpaid &gt; 2h or payment failed</p>
+            </button>
+          </div>
+        )}
+
+        {/* Tabs — visually grouped so a new admin's eye knows where to start.
+            Group 1: Día a día (Órdenes / Por Enviar / Hot Leads).
+            Group 2: Marketing (Emails / Blast / Afiliados).
+            Group 3: Datos (Funnel / Lookup). */}
+        <div className="space-y-3 mb-6">
+          {/* Group 1: Día a día */}
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5 ml-1">
+              Daily ops
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'orders'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📦 Orders
+              </button>
+              <button
+                onClick={() => setActiveTab('pendingsend')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition relative ${
+                  activeTab === 'pendingsend'
+                    ? 'bg-green-500 text-white'
+                    : 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30'
+                }`}
+              >
+                📤 Pending to Send
+                {pendingSendCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                    {pendingSendCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('hotleads')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition relative ${
+                  activeTab === 'hotleads'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 border border-orange-500/30'
+                }`}
+              >
+                🔥 Hot Leads
+                {hotLeadsCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                    {hotLeadsCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Group 2: Marketing */}
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5 ml-1">
+              Marketing
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setActiveTab('emails'); fetchEmailLogs(); }}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'emails'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📧 Emails ({emailLogs.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('blast')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'blast'
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30'
+                }`}
+              >
+                💘 Valentine Blast
+              </button>
+              <button
+                onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'affiliates'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30'
+                }`}
+              >
+                🤝 Affiliates ({affiliates.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Group 3: Insights */}
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5 ml-1">
+              Insights
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setActiveTab('funnel')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'funnel'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📊 Funnel Analytics
+              </button>
+              <button
+                onClick={() => setActiveTab('lookup')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'lookup'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🔍 Lookup
+              </button>
+            </div>
+          </div>
         </div>
 
         {activeTab === 'orders' ? (
@@ -1340,71 +1749,85 @@ export default function AdminDashboard() {
               <div className="flex-1">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-                  <input 
-                    type="text" 
-                    placeholder="Buscar por nombre o email..." 
-                    value={searchTerm} 
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search by name, email or phone... (shortcut: /)"
+                    value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400/50"
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
-                  { key: 'all', label: 'Todos', count: songs.length },
-                  { key: 'paid', label: '✅ Pagados', count: stats.paidOrders },
-                  { key: 'pending', label: '⏳ Pendientes', count: stats.pendingOrders }
+                  { key: 'all', label: 'All', count: songs.length },
+                  { key: 'paid', label: '✅ Paid', count: stats.paidOrders },
+                  { key: 'pending', label: '⏳ Pending', count: stats.pendingOrders }
                 ].map((filter) => (
-                  <button 
+                  <button
                     key={filter.key}
                     onClick={() => setFilterStatus(filter.key)}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                      filterStatus === filter.key 
-                        ? 'bg-amber-400 text-black' 
+                      filterStatus === filter.key
+                        ? 'bg-amber-400 text-black'
                         : 'bg-white/5 text-gray-400 hover:bg-white/10'
                     }`}
                   >
                     {filter.label} ({filter.count})
                   </button>
                 ))}
+                <button
+                  onClick={() => setTodayOnly(v => !v)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition border ${
+                    todayOnly
+                      ? 'bg-purple-500 text-white border-purple-500'
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10 border-white/10'
+                  }`}
+                  title="Show only today's orders"
+                >
+                  📅 Today only
+                </button>
               </div>
             </div>
 
-            {/* Orders Table */}
-            <div className="bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
+            {/* Orders Table — desktop table view */}
+            <div className="hidden md:block bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-white/5 text-left">
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Fecha</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Cliente</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Canción</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Ocasión</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voz</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Fuente</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Monto</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Estado</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Descarga</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Acciones</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Date</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Customer</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Song</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Occasion</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Voice</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Source</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-right">Amount</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Status</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Download</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Sent</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {filteredSongs.length === 0 ? (
                       <tr>
-                        <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
-                          No se encontraron órdenes
+                        <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                          No orders found
                         </td>
                       </tr>
                     ) : (
                       filteredSongs.slice(ordersPage * ORDERS_PER_PAGE, (ordersPage + 1) * ORDERS_PER_PAGE).map((song) => (
-                        <tr key={song.id} className="hover:bg-white/5 transition">
+                        <tr key={song.id} className={`hover:bg-white/5 transition ${ageBorderClass(song.created_at)}`}>
                           <td className="px-4 py-3">
                             <span className="text-sm text-gray-300">{formatDate(song.created_at)}</span>
+                            <p className="text-[10px] text-gray-500 mt-0.5">{timeAgo(song.created_at)}</p>
                           </td>
                           <td className="px-4 py-3">
                             <div>
                               <p className="font-medium text-white">{song.recipient_name || '—'}</p>
-                              <p className="text-xs text-gray-500">de {song.sender_name || '—'}</p>
+                              <p className="text-xs text-gray-500">from {song.sender_name || '—'}</p>
                               <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
                               {song.whatsapp_phone && (
                                 <a 
@@ -1452,7 +1875,7 @@ export default function AdminDashboard() {
                                    song.utm_source === 'google' ? '🔍 Google' : `🔗 ${song.utm_source}`}
                                 </span>
                               ) : !song.affiliate_code ? (
-                                <span className="text-xs text-gray-600">directo</span>
+                                <span className="text-xs text-gray-600">direct</span>
                               ) : null}
                               {song.affiliate_code && (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-pink-500/20 text-pink-400 border border-pink-500/30">
@@ -1477,11 +1900,11 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3 text-center">
                             {isPaid(song) ? (
                               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                                ✓ Pagado
+                                ✓ Paid
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                ⏳ Pendiente
+                                ⏳ Pending
                               </span>
                             )}
                           </td>
@@ -1489,7 +1912,7 @@ export default function AdminDashboard() {
                             {isPaid(song) ? (
                               song.downloaded ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400">
-                                  ✓ {song.download_count > 1 ? `${song.download_count}x` : 'Sí'}
+                                  ✓ {song.download_count > 1 ? `${song.download_count}x` : 'Yes'}
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-400">
@@ -1500,62 +1923,82 @@ export default function AdminDashboard() {
                               <span className="text-gray-600">—</span>
                             )}
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            {/* "Sent" — only meaningful for paid songs with a phone */}
+                            {isPaid(song) && song.whatsapp_phone ? (
+                              song.whatsapp_sent_at ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-400"
+                                  title={`Sent ${formatDate(song.whatsapp_sent_at)}`}
+                                >
+                                  ✓ {timeAgo(song.whatsapp_sent_at)}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-amber-500/20 text-amber-400">
+                                  ✗ Pending
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-gray-600">—</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-1">
-                              <button 
-                                onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }} 
+                              <button
+                                onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                                 className="p-2 rounded-lg hover:bg-white/10 transition"
-                                title="Ver detalles"
+                                title="View details"
                               >
                                 <span className="material-symbols-outlined text-gray-400 text-xl">visibility</span>
                               </button>
                               {song.audio_url && (
                                 <>
-                                  <a 
-                                    href={song.audio_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
+                                  <a
+                                    href={song.audio_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="p-2 rounded-lg hover:bg-white/10 transition"
-                                    title="Reproducir"
+                                    title="Play"
                                   >
                                     <span className="material-symbols-outlined text-amber-400 text-xl">play_circle</span>
                                   </a>
-                                  <a 
-                                    href={song.audio_url} 
-                                    download 
+                                  <a
+                                    href={song.audio_url}
+                                    download
                                     className="p-2 rounded-lg hover:bg-white/10 transition"
-                                    title="Descargar"
+                                    title="Download"
                                   >
                                     <span className="material-symbols-outlined text-blue-400 text-xl">download</span>
                                   </a>
                                 </>
                               )}
-                              {/* WhatsApp delivery button - for paid songs with WhatsApp number */}
+                              {/* WhatsApp delivery button - for paid songs with WhatsApp number.
+                                  Auto-marks the song as sent on click when the global toggle
+                                  is on AND the user is admin AND it isn't already marked. */}
                               {isPaid(song) && song.whatsapp_phone && song.audio_url && (() => {
-                                // Find all sibling songs from same purchase (same session_id or stripe_session_id)
-                                const siblingsSongs = songs.filter(s => 
-                                  s.id !== song.id && 
-                                  isPaid(s) && 
-                                  s.audio_url &&
-                                  ((song.session_id && s.session_id === song.session_id) ||
-                                   (song.stripe_session_id && s.stripe_session_id === song.stripe_session_id))
-                                );
-                                const allSongs = [song, ...siblingsSongs];
-                                const songIds = allSongs.map(s => s.id).join(',');
-                                const songPageUrl = `${window.location.origin}/song/${songIds}`;
-                                const phone = song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone;
-                                
-                                const msg = `¡Hola! Tu canción personalizada para ${song.recipient_name || 'tu ser querido'} está lista. 🎵\n\nEscúchala aquí: ${songPageUrl}\n\nCuando quieras regalársela, solo reenvía este mensaje con el link. ¡Gracias por tu compra con RegalosQueCantan! 🎶`;
-                                
+                                const delivery = buildWhatsAppDelivery(song, songs);
+                                if (!delivery) return null;
+                                const alreadySent = !!song.whatsapp_sent_at;
                                 return (
                                   <a
-                                    href={`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`}
+                                    href={delivery.waHref}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-2 rounded-lg hover:bg-green-500/20 transition"
-                                    title={`Enviar por WhatsApp a ${song.whatsapp_phone}`}
+                                    onClick={() => {
+                                      if (autoMarkOnSend && userRole === 'admin' && !alreadySent) {
+                                        markSongAsSent(song.id);
+                                      }
+                                    }}
+                                    className={`p-2 rounded-lg transition ${
+                                      alreadySent
+                                        ? 'hover:bg-white/10'
+                                        : 'hover:bg-green-500/20'
+                                    }`}
+                                    title={alreadySent
+                                      ? `Already sent ${formatDate(song.whatsapp_sent_at)} — click to resend`
+                                      : `Send via WhatsApp to ${song.whatsapp_phone}`}
                                   >
-                                    <span className="material-symbols-outlined text-green-400 text-xl">mail</span>
+                                    <span className={`material-symbols-outlined text-xl ${alreadySent ? 'text-gray-400' : 'text-green-400'}`}>mail</span>
                                   </a>
                                 );
                               })()}
@@ -1575,7 +2018,7 @@ export default function AdminDashboard() {
                 return (
                   <div className="px-4 py-3 bg-white/5 flex items-center justify-between">
                     <span className="text-sm text-gray-500">
-                      {filteredSongs.length > 0 ? `${start}–${end} de ${filteredSongs.length} órdenes` : '0 órdenes'}
+                      {filteredSongs.length > 0 ? `${start}–${end} of ${filteredSongs.length} orders` : '0 orders'}
                     </span>
                     {totalPages > 1 && (
                       <div className="flex items-center gap-2">
@@ -1584,17 +2027,17 @@ export default function AdminDashboard() {
                           disabled={ordersPage === 0}
                           className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
                         >
-                          ← Anterior
+                          ← Previous
                         </button>
                         <span className="text-sm text-gray-400">
-                          Pág {ordersPage + 1} / {totalPages}
+                          Page {ordersPage + 1} / {totalPages}
                         </span>
                         <button
                           onClick={() => setOrdersPage(p => Math.min(totalPages - 1, p + 1))}
                           disabled={ordersPage >= totalPages - 1}
                           className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
                         >
-                          Siguiente →
+                          Next →
                         </button>
                       </div>
                     )}
@@ -1602,7 +2045,414 @@ export default function AdminDashboard() {
                 );
               })()}
             </div>
+
+            {/* Orders — mobile card view (md:hidden mirrors of the table). */}
+            <div className="md:hidden space-y-3">
+              {filteredSongs.length === 0 ? (
+                <div className="bg-[#1a1f26] rounded-2xl p-6 text-center text-gray-500 border border-white/5">
+                  No orders found
+                </div>
+              ) : (
+                filteredSongs.slice(ordersPage * ORDERS_PER_PAGE, (ordersPage + 1) * ORDERS_PER_PAGE).map((song) => {
+                  const delivery = (isPaid(song) && song.whatsapp_phone && song.audio_url)
+                    ? buildWhatsAppDelivery(song, songs)
+                    : null;
+                  return (
+                    <div
+                      key={song.id}
+                      className={`bg-[#1a1f26] rounded-2xl p-4 border border-white/5 ${ageBorderClass(song.created_at)}`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-white truncate">{song.recipient_name || '—'}</p>
+                          <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 ml-3">
+                          {isPaid(song) ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400">✓ Paid</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500/20 text-amber-400">⏳ Pending</span>
+                          )}
+                          <span className="text-[10px] text-gray-500">{timeAgo(song.created_at)}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-3">
+                        <span className="capitalize text-amber-400">🎵 {song.genre || '—'}</span>
+                        <span>{formatOccasion(song.occasion)}</span>
+                        {isPaid(song) && userRole === 'admin' && (
+                          <span className="text-green-400">{formatCurrency(getSongPrice(song))}</span>
+                        )}
+                        {song.whatsapp_phone && (
+                          <span className="text-green-400">💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs hover:bg-white/10"
+                        >
+                          👁️ Details
+                        </button>
+                        {song.audio_url && (
+                          <a
+                            href={song.audio_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 text-xs hover:bg-amber-500/25"
+                          >
+                            ▶ Play
+                          </a>
+                        )}
+                        {delivery && (
+                          <a
+                            href={delivery.waHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              if (autoMarkOnSend && userRole === 'admin' && !song.whatsapp_sent_at) {
+                                markSongAsSent(song.id);
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs ${
+                              song.whatsapp_sent_at
+                                ? 'bg-white/5 text-gray-300 hover:bg-white/10'
+                                : 'bg-green-500/15 text-green-300 hover:bg-green-500/25'
+                            }`}
+                          >
+                            {song.whatsapp_sent_at ? `✓ Sent ${timeAgo(song.whatsapp_sent_at)}` : '📱 Send'}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              {/* Mobile pagination */}
+              {(() => {
+                const totalPages = Math.ceil(filteredSongs.length / ORDERS_PER_PAGE);
+                if (totalPages <= 1) return null;
+                return (
+                  <div className="flex items-center justify-between bg-[#1a1f26] rounded-2xl p-3 border border-white/5">
+                    <button
+                      onClick={() => setOrdersPage(p => Math.max(0, p - 1))}
+                      disabled={ordersPage === 0}
+                      className="px-3 py-1 rounded-lg text-sm bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30"
+                    >
+                      ← Previous
+                    </button>
+                    <span className="text-sm text-gray-400">Page {ordersPage + 1} / {totalPages}</span>
+                    <button
+                      onClick={() => setOrdersPage(p => Math.min(totalPages - 1, p + 1))}
+                      disabled={ordersPage >= totalPages - 1}
+                      className="px-3 py-1 rounded-lg text-sm bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
           </>
+        ) : activeTab === 'pendingsend' ? (
+          /* ─── Por Enviar Tab — paid songs queued for WhatsApp delivery ─── */
+          <div className="space-y-4">
+            {/* Header bar: sort, auto-mark toggle, backfill helper, bulk actions */}
+            <div className="bg-[#1a1f26] rounded-2xl p-4 border border-white/5 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3 justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    📤 Songs to send via WhatsApp
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Paid, with a phone number, not yet marked as sent.
+                    {pendingSendCount > 0 && (
+                      <> {' • '}<strong className="text-green-400">{pendingSendCount}</strong> in queue</>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+                    <button
+                      onClick={() => setPendingSendSort('oldest')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                        pendingSendSort === 'oldest' ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-white/5'
+                      }`}
+                    >
+                      Oldest first
+                    </button>
+                    <button
+                      onClick={() => setPendingSendSort('recent')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                        pendingSendSort === 'recent' ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-white/5'
+                      }`}
+                    >
+                      Newest first
+                    </button>
+                  </div>
+                  {userRole === 'admin' && (
+                    <button
+                      onClick={() => setBackfillModalOpen(true)}
+                      className="px-3 py-1.5 rounded-lg bg-violet-500/15 text-violet-300 text-xs font-medium hover:bg-violet-500/25 border border-violet-500/30"
+                      title="Mark every order older than a chosen date as already sent"
+                    >
+                      🗓️ Historical backfill
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-white/5">
+                <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoMarkOnSend}
+                    onChange={(e) => setAutoMarkOnSend(e.target.checked)}
+                    className="w-4 h-4 accent-green-500"
+                  />
+                  Mark as sent when clicking WhatsApp
+                </label>
+                {selectedPendingIds.size > 0 && userRole === 'admin' && (
+                  <div className="flex gap-2 ml-auto">
+                    <button
+                      onClick={() => {
+                        // Open up to 5 wa.me tabs at once. Browsers block more
+                        // than ~5 simultaneous popups so we cap deliberately.
+                        const ids = Array.from(selectedPendingIds).slice(0, 5);
+                        ids.forEach(id => {
+                          const s = songs.find(x => x.id === id);
+                          if (!s) return;
+                          const d = buildWhatsAppDelivery(s, songs);
+                          if (d) window.open(d.waHref, '_blank', 'noopener');
+                        });
+                        if (selectedPendingIds.size > 5) {
+                          alert(`Opened 5 chats. Select fewer to open them all at once (browsers block more).`);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-300 text-xs font-medium hover:bg-green-500/25 border border-green-500/30"
+                    >
+                      📱 Open {Math.min(selectedPendingIds.size, 5)} chats
+                    </button>
+                    <button
+                      onClick={bulkMarkAsSent}
+                      disabled={bulkSendBusy}
+                      className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-400 disabled:opacity-50"
+                    >
+                      {bulkSendBusy ? 'Marking…' : `✓ Mark ${selectedPendingIds.size} as sent`}
+                    </button>
+                    <button
+                      onClick={() => setSelectedPendingIds(new Set())}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-xs hover:bg-white/10"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Empty state */}
+            {pendingSendSongs.length === 0 ? (
+              <div className="bg-[#1a1f26] rounded-2xl p-10 text-center border border-white/5">
+                <div className="text-5xl mb-3">🎉</div>
+                <p className="text-lg font-semibold text-white">No songs waiting to be sent</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Every paid order with a WhatsApp number is marked as sent.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Desktop list */}
+                <div className="hidden md:block bg-[#1a1f26] rounded-2xl overflow-hidden border border-white/5">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-white/5 text-left">
+                        <th className="px-4 py-3 w-10">
+                          <input
+                            type="checkbox"
+                            disabled={userRole !== 'admin'}
+                            checked={
+                              pendingSendSongs.length > 0 &&
+                              pendingSendSongs.every(s => selectedPendingIds.has(s.id))
+                            }
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedPendingIds(new Set(pendingSendSongs.map(s => s.id)));
+                              } else {
+                                setSelectedPendingIds(new Set());
+                              }
+                            }}
+                            className="w-4 h-4 accent-green-500"
+                            title="Select all"
+                          />
+                        </th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Waiting</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Customer</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">For</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">WhatsApp</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {pendingSendSongs.map((song) => {
+                        const since = song.paid_at || song.created_at;
+                        const hours = (Date.now() - new Date(since).getTime()) / 3600000;
+                        const urgencyColor =
+                          hours > 24 ? 'text-red-400' :
+                          hours > 6 ? 'text-orange-400' :
+                          hours > 1 ? 'text-amber-400' :
+                          'text-green-400';
+                        const delivery = buildWhatsAppDelivery(song, songs);
+                        const isSelected = selectedPendingIds.has(song.id);
+                        return (
+                          <tr key={song.id} className="hover:bg-white/5">
+                            <td className="px-4 py-3">
+                              <input
+                                type="checkbox"
+                                disabled={userRole !== 'admin'}
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  setSelectedPendingIds(prev => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(song.id); else next.delete(song.id);
+                                    return next;
+                                  });
+                                }}
+                                className="w-4 h-4 accent-green-500"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className={`text-sm font-semibold ${urgencyColor}`}>{timeAgo(since)}</p>
+                              <p className="text-[10px] text-gray-500">{formatDate(since)}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-white">{song.sender_name || '—'}</p>
+                              <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-amber-400">{song.recipient_name || '—'}</p>
+                              <p className="text-xs text-gray-500 capitalize">{song.genre || ''} · {formatOccasion(song.occasion)}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-green-400">
+                                {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                {delivery && (
+                                  <a
+                                    href={delivery.waHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => {
+                                      if (autoMarkOnSend && userRole === 'admin') {
+                                        markSongAsSent(song.id);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-400"
+                                  >
+                                    📱 Send
+                                  </a>
+                                )}
+                                {userRole === 'admin' && (
+                                  <button
+                                    onClick={() => markSongAsSent(song.id)}
+                                    disabled={markSendBusy === song.id}
+                                    className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs font-medium hover:bg-white/10 disabled:opacity-50"
+                                    title="Only mark as sent (without opening WhatsApp)"
+                                  >
+                                    {markSendBusy === song.id ? '…' : '✓ Mark'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                                  className="p-1.5 rounded-lg hover:bg-white/10"
+                                  title="View details"
+                                >
+                                  <span className="material-symbols-outlined text-gray-400 text-base">visibility</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card view */}
+                <div className="md:hidden space-y-3">
+                  {pendingSendSongs.map((song) => {
+                    const since = song.paid_at || song.created_at;
+                    const hours = (Date.now() - new Date(since).getTime()) / 3600000;
+                    const urgencyColor =
+                      hours > 24 ? 'text-red-400' :
+                      hours > 6 ? 'text-orange-400' :
+                      hours > 1 ? 'text-amber-400' :
+                      'text-green-400';
+                    const delivery = buildWhatsAppDelivery(song, songs);
+                    const isSelected = selectedPendingIds.has(song.id);
+                    return (
+                      <div key={song.id} className="bg-[#1a1f26] rounded-2xl p-4 border border-white/5">
+                        <div className="flex items-start gap-3 mb-3">
+                          {userRole === 'admin' && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                setSelectedPendingIds(prev => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(song.id); else next.delete(song.id);
+                                  return next;
+                                });
+                              }}
+                              className="w-5 h-5 mt-0.5 accent-green-500"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-white">For {song.recipient_name || '—'}</p>
+                            <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
+                          </div>
+                          <p className={`text-xs font-semibold whitespace-nowrap ${urgencyColor}`}>{timeAgo(since)}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {delivery && (
+                            <a
+                              href={delivery.waHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => {
+                                if (autoMarkOnSend && userRole === 'admin') {
+                                  markSongAsSent(song.id);
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium"
+                            >
+                              📱 Send
+                            </a>
+                          )}
+                          {userRole === 'admin' && (
+                            <button
+                              onClick={() => markSongAsSent(song.id)}
+                              disabled={markSendBusy === song.id}
+                              className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs hover:bg-white/10 disabled:opacity-50"
+                            >
+                              {markSendBusy === song.id ? '…' : '✓ Mark'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                            className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-xs hover:bg-white/10 ml-auto"
+                          >
+                            👁️ Details
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         ) : activeTab === 'funnel' ? (
           /* Funnel Analytics Tab */
           <div className="space-y-6">
@@ -1630,13 +2480,13 @@ export default function AdminDashboard() {
                 onClick={fetchFunnelData}
                 className="ml-auto px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 transition flex items-center gap-2"
               >
-                🔄 Actualizar
+                🔄 Refresh
               </button>
             </div>
 
             {/* Funnel Visualization */}
             <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
-              <h3 className="text-lg font-semibold mb-6">Funnel de Conversión</h3>
+              <h3 className="text-lg font-semibold mb-6">Conversion Funnel</h3>
               <div className="space-y-3">
                 {FUNNEL_STEPS.map((step, index) => {
                   const count = funnelData[step.key] || 0;
@@ -1722,19 +2572,19 @@ export default function AdminDashboard() {
             {/* Section 1: Email Campaigns */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">📬 Campañas de Email</h2>
+                <h2 className="text-xl font-bold">📬 Email Campaigns</h2>
                 <button
                   onClick={fetchEmailCampaigns}
                   className="text-sm text-gray-400 hover:text-white transition"
                 >
-                  🔄 Actualizar
+                  🔄 Refresh
                 </button>
               </div>
-              
+
               <div className="grid gap-4">
                 {emailCampaigns.length === 0 ? (
                   <div className="bg-[#1a1f26] rounded-2xl p-8 text-center border border-white/5">
-                    <p className="text-gray-500">Cargando campañas...</p>
+                    <p className="text-gray-500">Loading campaigns...</p>
                   </div>
                 ) : (
                   emailCampaigns.map((campaign) => {
@@ -1763,20 +2613,20 @@ export default function AdminDashboard() {
                             
                             {/* Subject Preview */}
                             <div className="bg-white/5 rounded-lg p-3 mt-3">
-                              <p className="text-xs text-gray-500 mb-1">Asunto:</p>
+                              <p className="text-xs text-gray-500 mb-1">Subject:</p>
                               <p className="text-sm text-amber-400">{campaign.subject}</p>
                             </div>
-                            
+
                             {/* Stats with Conversion Rate */}
                             <div className="flex items-center gap-4 mt-3 text-xs">
-                              <span className="text-gray-500">📧 {conversions.sent} enviados</span>
+                              <span className="text-gray-500">📧 {conversions.sent} sent</span>
                               {campaign.id !== 'purchase_confirmation' && (
                                 <span className={`${conversions.rate > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                  💰 {conversions.converted} convertidos ({conversions.rate}%)
+                                  💰 {conversions.converted} converted ({conversions.rate}%)
                                 </span>
                               )}
                               {campaign.delay_hours > 0 && (
-                                <span className="text-gray-500">⏱️ Se envía a las {campaign.delay_hours}h</span>
+                                <span className="text-gray-500">⏱️ Sends after {campaign.delay_hours}h</span>
                               )}
                             </div>
                           </div>
@@ -1792,9 +2642,9 @@ export default function AdminDashboard() {
                                   : 'bg-white/5 text-gray-500 border border-white/10'
                               }`}
                             >
-                              {campaign.enabled ? '✓ Activa' : '○ Pausada'}
+                              {campaign.enabled ? '✓ Active' : '○ Paused'}
                             </button>
-                            
+
                             {/* Preview Button */}
                             <button
                               onClick={() => setPreviewingCampaign(campaign)}
@@ -1802,13 +2652,13 @@ export default function AdminDashboard() {
                             >
                               👁️ Preview
                             </button>
-                            
+
                             {/* Edit Button */}
                             <button
                               onClick={() => setEditingCampaign({...campaign})}
                               className="px-4 py-2 rounded-lg text-sm bg-white/5 text-gray-400 hover:bg-white/10 transition"
                             >
-                              ✏️ Editar
+                              ✏️ Edit
                             </button>
                             
                             {/* Test Button */}
@@ -1831,19 +2681,19 @@ export default function AdminDashboard() {
             {/* Section 2: Email History with Filters */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">📨 Historial de Emails</h2>
-                <span className="text-sm text-gray-500">{filteredEmailLogs.length} de {emailLogs.length} emails</span>
+                <h2 className="text-xl font-bold">📨 Email History</h2>
+                <span className="text-sm text-gray-500">{filteredEmailLogs.length} of {emailLogs.length} emails</span>
               </div>
-              
+
               {/* Filters */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {[
-                  { key: 'all', label: 'Todos', count: emailLogs.length },
-                  { key: 'purchase_confirmation', label: '✅ Confirmaciones', count: emailLogs.filter(e => e.email_type === 'purchase_confirmation').length },
+                  { key: 'all', label: 'All', count: emailLogs.length },
+                  { key: 'purchase_confirmation', label: '✅ Confirmations', count: emailLogs.filter(e => e.email_type === 'purchase_confirmation').length },
                   { key: 'abandoned_15min', label: '⚡ 15min', count: emailLogs.filter(e => e.email_type === 'abandoned_15min').length },
                   { key: 'abandoned_1hr', label: '⏰ 1hr', count: emailLogs.filter(e => e.email_type === 'abandoned_1hr').length },
                   { key: 'abandoned_24hr', label: '⚠️ 24hr', count: emailLogs.filter(e => e.email_type === 'abandoned_24hr').length },
-                  { key: 'failed', label: '❌ Fallidos', count: emailLogs.filter(e => e.status === 'failed').length }
+                  { key: 'failed', label: '❌ Failed', count: emailLogs.filter(e => e.status === 'failed').length }
                 ].map((filter) => (
                   <button
                     key={filter.key}
@@ -1863,18 +2713,18 @@ export default function AdminDashboard() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-white/5 text-left text-xs text-gray-500 uppercase">
-                      <th className="px-4 py-3">Fecha</th>
-                      <th className="px-4 py-3">Tipo</th>
-                      <th className="px-4 py-3">Para</th>
-                      <th className="px-4 py-3">Estado</th>
-                      <th className="px-4 py-3 text-center">Acción</th>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Type</th>
+                      <th className="px-4 py-3">To</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {filteredEmailLogs.length === 0 ? (
                       <tr>
                         <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                          No hay emails {emailFilter !== 'all' ? 'con este filtro' : 'enviados todavía'}
+                          No emails {emailFilter !== 'all' ? 'with this filter' : 'sent yet'}
                         </td>
                       </tr>
                     ) : (
@@ -1894,7 +2744,7 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3">
                             {log.status === 'sent' ? (
-                              <span className="text-green-400 text-sm">✓ Enviado</span>
+                              <span className="text-green-400 text-sm">✓ Sent</span>
                             ) : (
                               <span className="text-red-400 text-sm">✗ Error</span>
                             )}
@@ -1906,7 +2756,7 @@ export default function AdminDashboard() {
                                 disabled={resendingEmail === log.id}
                                 className="px-3 py-1 rounded-lg text-xs bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition disabled:opacity-50"
                               >
-                                {resendingEmail === log.id ? '⏳' : '🔄 Reenviar'}
+                                {resendingEmail === log.id ? '⏳' : '🔄 Resend'}
                               </button>
                             )}
                           </td>
@@ -1917,7 +2767,7 @@ export default function AdminDashboard() {
                 </table>
                 {filteredEmailLogs.length > 30 && (
                   <div className="px-4 py-3 bg-white/5 text-center">
-                    <span className="text-sm text-gray-500">Mostrando últimos 30 de {filteredEmailLogs.length}</span>
+                    <span className="text-sm text-gray-500">Showing latest 30 of {filteredEmailLogs.length}</span>
                   </div>
                 )}
               </div>
@@ -1930,9 +2780,9 @@ export default function AdminDashboard() {
             <div className="bg-[#1a1f26] rounded-2xl p-4 flex flex-col md:flex-row gap-3">
               <div className="flex gap-2">
                 {[
-                  { value: 'all', label: 'Todos' },
+                  { value: 'all', label: 'All' },
                   { value: 'email', label: '📧 Email' },
-                  { value: 'name', label: '👤 Nombre' },
+                  { value: 'name', label: '👤 Name' },
                   { value: 'phone', label: '💬 WhatsApp' }
                 ].map(opt => (
                   <button
@@ -1954,7 +2804,7 @@ export default function AdminDashboard() {
                   type="text"
                   value={lookupSearch}
                   onChange={(e) => setLookupSearch(e.target.value)}
-                  placeholder="Buscar por email, nombre, o ID..."
+                  placeholder="Search by email, name, or ID..."
                   className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
                 />
                 {lookupSearch && (
@@ -1992,8 +2842,8 @@ export default function AdminDashboard() {
                 <>
                   <p className="text-sm text-gray-500">
                     {debouncedLookupSearch
-                      ? `${lookupFiltered.length} resultado${lookupFiltered.length !== 1 ? 's' : ''} para "${debouncedLookupSearch}"`
-                      : `${lookupFiltered.length} canciones totales`
+                      ? `${lookupFiltered.length} result${lookupFiltered.length !== 1 ? 's' : ''} for "${debouncedLookupSearch}"`
+                      : `${lookupFiltered.length} total songs`
                     }
                   </p>
 
@@ -2015,13 +2865,13 @@ export default function AdminDashboard() {
                           <div className="flex items-start justify-between mb-3">
                             <div>
                               <h3 className="font-bold text-base">
-                                🎵 {song.recipient_name || 'Sin nombre'}
+                                🎵 {song.recipient_name || 'No name'}
                                 {song.sender_name && (
                                   <span className="text-gray-500 font-normal text-sm"> ← {song.sender_name}</span>
                                 )}
                               </h3>
                               <p className="text-xs text-gray-500 mt-1">
-                                {song.email || 'Sin email'}
+                                {song.email || 'No email'}
                                 {song.whatsapp_phone && (
                                   <> • <a href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}`} target="_blank" rel="noopener noreferrer" className="text-green-400 hover:text-green-300">💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</a></>
                                 )}
@@ -2035,7 +2885,7 @@ export default function AdminDashboard() {
                                   ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                                   : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                             }`}>
-                              {paid ? '✓ Pagada' : hasAudio ? '⏳ Sin pago' : '🔄 Generando'}
+                              {paid ? '✓ Paid' : hasAudio ? '⏳ Unpaid' : '🔄 Generating'}
                             </span>
                           </div>
 
@@ -2061,7 +2911,7 @@ export default function AdminDashboard() {
                                     : 'bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
                                 }`}
                               >
-                                {copiedLinkId === `preview-${song.id}` ? '✅ ¡Copiado!' : '🎧 Preview Link'}
+                                {copiedLinkId === `preview-${song.id}` ? '✅ Copied!' : '🎧 Preview Link'}
                               </button>
                               <button
                                 onClick={() => { navigator.clipboard.writeText(successLink); setCopiedLinkId(`success-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
@@ -2071,7 +2921,7 @@ export default function AdminDashboard() {
                                     : 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
                                 }`}
                               >
-                                {copiedLinkId === `success-${song.id}` ? '✅ ¡Copiado!' : '📥 Download Link'}
+                                {copiedLinkId === `success-${song.id}` ? '✅ Copied!' : '📥 Download Link'}
                               </button>
                             </div>
                           )}
@@ -2086,7 +2936,7 @@ export default function AdminDashboard() {
                                     : 'bg-pink-500/10 text-pink-400 border border-pink-500/30 hover:bg-pink-500/20'
                                 }`}
                               >
-                                {copiedLinkId === `polaroid-${song.id}` ? '✅ ¡Copiado!' : '🎨 Polaroid Page'}
+                                {copiedLinkId === `polaroid-${song.id}` ? '✅ Copied!' : '🎨 Polaroid Page'}
                               </button>
                               <a
                                 href={polaroidLink}
@@ -2121,7 +2971,7 @@ export default function AdminDashboard() {
                                       : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
                                   }`}
                                 >
-                                  {copiedLinkId === `combo-preview-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Preview (${pairSongs.length + 1})`}
+                                  {copiedLinkId === `combo-preview-${song.id}` ? '✅ Copied!' : `📦 Both Preview (${pairSongs.length + 1})`}
                                 </button>
                                 <button
                                   onClick={() => { navigator.clipboard.writeText(combinedSuccessLink); setCopiedLinkId(`combo-success-${song.id}`); setTimeout(() => setCopiedLinkId(null), 2000); }}
@@ -2131,7 +2981,7 @@ export default function AdminDashboard() {
                                       : 'bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20'
                                   }`}
                                 >
-                                  {copiedLinkId === `combo-success-${song.id}` ? '✅ ¡Copiado!' : `📦 Both Download (${pairSongs.length + 1})`}
+                                  {copiedLinkId === `combo-success-${song.id}` ? '✅ Copied!' : `📦 Both Download (${pairSongs.length + 1})`}
                                 </button>
                               </div>
                             );
@@ -2142,13 +2992,13 @@ export default function AdminDashboard() {
                             {hasAudio && (
                               <div className="flex gap-3">
                                 <a href={previewLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-amber-400 underline">
-                                  Abrir preview ↗
+                                  Open preview ↗
                                 </a>
                                 <a href={successLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-blue-400 underline">
-                                  Abrir success ↗
+                                  Open success ↗
                                 </a>
                                 <a href={polaroidLink} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-pink-400 underline">
-                                  Abrir polaroid ↗
+                                  Open polaroid ↗
                                 </a>
                               </div>
                             )}
@@ -2156,7 +3006,7 @@ export default function AdminDashboard() {
                               onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                               className="text-xs text-gray-500 hover:text-white underline ml-auto"
                             >
-                              Ver detalles
+                              View details
                             </button>
                           </div>
                         </div>
@@ -2170,22 +3020,22 @@ export default function AdminDashboard() {
                       const lEnd = Math.min((lookupPage + 1) * LOOKUP_PER_PAGE, lookupFiltered.length);
                       return (
                         <div className="flex items-center justify-between py-3">
-                          <span className="text-sm text-gray-500">{lStart}–{lEnd} de {lookupFiltered.length}</span>
+                          <span className="text-sm text-gray-500">{lStart}–{lEnd} of {lookupFiltered.length}</span>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setLookupPage(p => Math.max(0, p - 1))}
                               disabled={lookupPage === 0}
                               className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
                             >
-                              ← Anterior
+                              ← Previous
                             </button>
-                            <span className="text-sm text-gray-400">Pág {lookupPage + 1} / {totalLookupPages}</span>
+                            <span className="text-sm text-gray-400">Page {lookupPage + 1} / {totalLookupPages}</span>
                             <button
                               onClick={() => setLookupPage(p => Math.min(totalLookupPages - 1, p + 1))}
                               disabled={lookupPage >= totalLookupPages - 1}
                               className="px-3 py-1 rounded-lg text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition"
                             >
-                              Siguiente →
+                              Next →
                             </button>
                           </div>
                         </div>
@@ -2194,7 +3044,7 @@ export default function AdminDashboard() {
                     {lookupFiltered.length === 0 && (
                       <div className="text-center py-12 bg-[#1a1f26] rounded-2xl">
                         <p className="text-3xl mb-3">🔍</p>
-                        <p className="text-gray-500">No se encontraron canciones{debouncedLookupSearch ? ` para "${debouncedLookupSearch}"` : ''}</p>
+                        <p className="text-gray-500">No songs found{debouncedLookupSearch ? ` for "${debouncedLookupSearch}"` : ''}</p>
                       </div>
                     )}
                   </div>
@@ -2250,21 +3100,21 @@ export default function AdminDashboard() {
             const getTimeSince = (dateStr) => {
               const diff = Date.now() - new Date(dateStr).getTime();
               const mins = Math.floor(diff / 60000);
-              if (mins < 60) return `hace ${mins}m`;
+              if (mins < 60) return `${mins}m ago`;
               const hrs = Math.floor(mins / 60);
-              if (hrs < 24) return `hace ${hrs}h`;
+              if (hrs < 24) return `${hrs}h ago`;
               const days = Math.floor(hrs / 24);
-              return `hace ${days}d`;
+              return `${days}d ago`;
             };
 
             // Heat level based on recency
             const getHeatLevel = (dateStr) => {
               const hrs = (Date.now() - new Date(dateStr).getTime()) / 3600000;
-              if (hrs < 1) return { label: 'CALIENTE', color: 'bg-red-500', emoji: '🔥🔥🔥' };
-              if (hrs < 6) return { label: 'MUY CALIENTE', color: 'bg-orange-500', emoji: '🔥🔥' };
-              if (hrs < 24) return { label: 'TIBIO', color: 'bg-yellow-500', emoji: '🔥' };
-              if (hrs < 72) return { label: 'FRÍO', color: 'bg-blue-400', emoji: '❄️' };
-              return { label: 'VIEJO', color: 'bg-gray-500', emoji: '💤' };
+              if (hrs < 1) return { label: 'HOT', color: 'bg-red-500', emoji: '🔥🔥🔥' };
+              if (hrs < 6) return { label: 'VERY HOT', color: 'bg-orange-500', emoji: '🔥🔥' };
+              if (hrs < 24) return { label: 'WARM', color: 'bg-yellow-500', emoji: '🔥' };
+              if (hrs < 72) return { label: 'COLD', color: 'bg-blue-400', emoji: '❄️' };
+              return { label: 'OLD', color: 'bg-gray-500', emoji: '💤' };
             };
 
             // Build WhatsApp message for a lead
@@ -2307,12 +3157,12 @@ export default function AdminDashboard() {
                       <span className="text-3xl">🔥</span>
                       <div>
                         <h2 className="text-xl font-bold text-orange-400">Super Hot Leads</h2>
-                        <p className="text-sm text-gray-400">Dieron WhatsApp, crearon canciones, pero NO compraron</p>
+                        <p className="text-sm text-gray-400">Gave WhatsApp, created songs, but did NOT purchase</p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-3xl font-bold text-orange-400">{leads.length}</p>
-                      <p className="text-xs text-gray-500">leads sin convertir</p>
+                      <p className="text-xs text-gray-500">unconverted leads</p>
                     </div>
                   </div>
                   {/* Potential revenue */}
@@ -2323,15 +3173,15 @@ export default function AdminDashboard() {
                           ? formatCurrency(leads.length * 29.99)
                           : <span className="animate-pulse">Calculating...</span>}
                       </p>
-                      <p className="text-xs text-gray-500">Ingreso potencial</p>
+                      <p className="text-xs text-gray-500">Potential revenue</p>
                     </div>
                     <div className="flex-1 text-center">
                       <p className="text-lg font-bold text-yellow-400">{leads.reduce((sum, l) => sum + l.songs.length, 0)}</p>
-                      <p className="text-xs text-gray-500">Canciones generadas</p>
+                      <p className="text-xs text-gray-500">Songs generated</p>
                     </div>
                     <div className="flex-1 text-center">
                       <p className="text-lg font-bold text-blue-400">{leads.filter(l => (Date.now() - new Date(l.latestDate).getTime()) < 86400000).length}</p>
-                      <p className="text-xs text-gray-500">Últimas 24hrs</p>
+                      <p className="text-xs text-gray-500">Last 24h</p>
                     </div>
                   </div>
                 </div>
@@ -2345,7 +3195,7 @@ export default function AdminDashboard() {
                         hotLeadSort === 'recent' ? 'bg-orange-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
                       }`}
                     >
-                      Más recientes
+                      Newest
                     </button>
                     <button
                       onClick={() => setHotLeadSort('oldest')}
@@ -2353,7 +3203,7 @@ export default function AdminDashboard() {
                         hotLeadSort === 'oldest' ? 'bg-orange-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'
                       }`}
                     >
-                      Más antiguos
+                      Oldest
                     </button>
                   </div>
                   <button
@@ -2364,11 +3214,11 @@ export default function AdminDashboard() {
                           return `${l.phone},${l.email},${l.senderName || ''},${s?.recipient_name || ''},${s?.genre || ''},${s?.occasion || ''},${new Date(l.latestDate).toLocaleDateString()},${l.songs.length}`;
                         }).join('\n');
                       navigator.clipboard.writeText(csv);
-                      alert(`✅ ${leads.length} leads copiados (CSV)`);
+                      alert(`✅ ${leads.length} leads copied (CSV)`);
                     }}
                     className="px-4 py-2 bg-white/5 text-gray-400 rounded-xl text-sm font-medium hover:bg-white/10 transition border border-white/10"
                   >
-                    📋 Exportar CSV
+                    📋 Export CSV
                   </button>
                 </div>
 
@@ -2391,10 +3241,10 @@ export default function AdminDashboard() {
                                 </div>
                                 <div>
                                   <p className="font-bold text-white text-lg">
-                                    {lead.senderName || 'Sin nombre'}
+                                    {lead.senderName || 'No name'}
                                   </p>
                                   <p className="text-sm text-gray-400">
-                                    Para: <span className="text-amber-400 font-medium">{mainSong?.recipient_name}</span>
+                                    For: <span className="text-amber-400 font-medium">{mainSong?.recipient_name}</span>
                                   </p>
                                 </div>
                               </div>
@@ -2417,19 +3267,19 @@ export default function AdminDashboard() {
                                 <p className="text-sm font-medium text-gray-300 truncate">{lead.email}</p>
                               </div>
                               <div className="bg-white/5 rounded-lg px-3 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase">Género</p>
+                                <p className="text-[10px] text-gray-500 uppercase">Genre</p>
                                 <p className="text-sm font-medium text-amber-400 capitalize">{[...lead.genres].join(', ') || '—'}</p>
                               </div>
                               <div className="bg-white/5 rounded-lg px-3 py-2">
-                                <p className="text-[10px] text-gray-500 uppercase">Canciones</p>
-                                <p className="text-sm font-medium">{lead.songs.length} generada{lead.songs.length !== 1 ? 's' : ''}</p>
+                                <p className="text-[10px] text-gray-500 uppercase">Songs</p>
+                                <p className="text-sm font-medium">{lead.songs.length} generated</p>
                               </div>
                             </div>
 
                             {/* Song preview links */}
                             {lead.songs.filter(s => s.audio_url).length > 0 && (
                               <div className="mb-3 bg-amber-500/5 border border-amber-500/10 rounded-lg p-2">
-                                <p className="text-[10px] text-amber-400 uppercase font-bold mb-1">🎵 Canciones listas para escuchar:</p>
+                                <p className="text-[10px] text-amber-400 uppercase font-bold mb-1">🎵 Songs ready to listen:</p>
                                 <div className="flex flex-wrap gap-1">
                                   {lead.songs.filter(s => s.audio_url).map((s, i) => (
                                     <button
@@ -2442,7 +3292,7 @@ export default function AdminDashboard() {
                                       }}
                                       className="px-2 py-1 bg-amber-500/10 text-amber-400 rounded text-xs hover:bg-amber-500/20 transition"
                                     >
-                                      {copiedLinkId === s.id ? '✅ Copiado!' : `🎧 Canción ${i + 1}`}
+                                      {copiedLinkId === s.id ? '✅ Copied!' : `🎧 Song ${i + 1}`}
                                     </button>
                                   ))}
                                 </div>
@@ -2458,7 +3308,7 @@ export default function AdminDashboard() {
                                 rel="noopener noreferrer"
                                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] text-white rounded-xl font-medium text-sm hover:bg-[#20bd5a] transition"
                               >
-                                💬 Enviar WhatsApp
+                                💬 Send WhatsApp
                               </a>
                               {/* Copy message to customize */}
                               <button
@@ -2473,14 +3323,14 @@ export default function AdminDashboard() {
                                     : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/10'
                                 }`}
                               >
-                                {copiedMessageId === lead.phone ? '✅ Copiado' : '📋 Copiar Mensaje'}
+                                {copiedMessageId === lead.phone ? '✅ Copied' : '📋 Copy Message'}
                               </button>
                               {/* View song detail */}
                               <button
                                 onClick={() => setSelectedSong(mainSong)}
                                 className="px-4 py-2.5 bg-white/5 text-gray-400 rounded-xl font-medium text-sm hover:bg-white/10 transition border border-white/10"
                               >
-                                👁️ Ver
+                                👁️ View
                               </button>
                             </div>
                           </div>
@@ -2491,8 +3341,8 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="text-center py-16 bg-[#1a1f26] rounded-2xl">
                     <p className="text-5xl mb-4">🎉</p>
-                    <p className="text-xl font-bold text-green-400 mb-2">¡No hay leads pendientes!</p>
-                    <p className="text-gray-500">Todos los contactos con WhatsApp ya compraron</p>
+                    <p className="text-xl font-bold text-green-400 mb-2">No pending leads!</p>
+                    <p className="text-gray-500">Every WhatsApp contact has already purchased</p>
                   </div>
                 )}
               </div>
@@ -2693,16 +3543,16 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-2xl p-6 border border-blue-500/20">
-              <h2 className="text-2xl font-bold text-white mb-2">🤝 Programa de Afiliados</h2>
-              <p className="text-gray-400">Agrega afiliados y les llega un email de bienvenida con sus credenciales y link.</p>
+              <h2 className="text-2xl font-bold text-white mb-2">🤝 Affiliate Program</h2>
+              <p className="text-gray-400">Add affiliates and they'll receive a welcome email with their credentials and link.</p>
             </div>
 
             {/* Add New Affiliate Form */}
             <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
-              <h3 className="text-white font-semibold mb-4">Agregar nuevo afiliado</h3>
+              <h3 className="text-white font-semibold mb-4">Add new affiliate</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="text-gray-400 text-xs font-medium mb-1 block">Nombre completo *</label>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Full name *</label>
                   <input
                     type="text"
                     placeholder="Maria Garcia"
@@ -2722,7 +3572,7 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs font-medium mb-1 block">Código de afiliado * <span className="text-gray-600">(se usa en ?ref=CODE)</span></label>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Affiliate code * <span className="text-gray-600">(used in ?ref=CODE)</span></label>
                   <input
                     type="text"
                     placeholder="maria20"
@@ -2732,7 +3582,7 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs font-medium mb-1 block">Contraseña * <span className="text-gray-600">(para su portal)</span></label>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Password * <span className="text-gray-600">(for their portal)</span></label>
                   <input
                     type="text"
                     placeholder="password123"
@@ -2742,7 +3592,7 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs font-medium mb-1 block">Código de descuento <span className="text-gray-600">(opcional, se crea automático)</span></label>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Discount code <span className="text-gray-600">(optional, created automatically)</span></label>
                   <input
                     type="text"
                     placeholder="MARIA10"
@@ -2764,7 +3614,7 @@ export default function AdminDashboard() {
                 disabled={creatingAffiliate}
                 className="px-6 py-2.5 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-400 transition disabled:opacity-50"
               >
-                {creatingAffiliate ? '⏳ Creando...' : '➕ Crear afiliado y enviar email'}
+                {creatingAffiliate ? '⏳ Creating...' : '➕ Create affiliate and send email'}
               </button>
             </div>
 
@@ -2782,11 +3632,11 @@ export default function AdminDashboard() {
               const isAdmin = userRole === 'admin';
               const calculating = <span className="text-green-400 animate-pulse">Calculating...</span>;
               const summaryCards = [
-                { label: 'Afiliados', value: affiliates.length, color: 'blue' },
-                { label: 'Clicks totales', value: totals.visits.toLocaleString(), color: 'gray' },
-                { label: 'Ventas totales', value: totals.sales, color: 'green' },
-                { label: 'Comisión total', value: isAdmin ? `$${totals.commission.toFixed(2)}` : calculating, color: 'emerald' },
-                { label: 'Por pagar', value: isAdmin ? `$${owed.toFixed(2)}` : calculating, color: isAdmin && owed > 0 ? 'amber' : 'gray' },
+                { label: 'Affiliates', value: affiliates.length, color: 'blue' },
+                { label: 'Total clicks', value: totals.visits.toLocaleString(), color: 'gray' },
+                { label: 'Total sales', value: totals.sales, color: 'green' },
+                { label: 'Total commission', value: isAdmin ? `$${totals.commission.toFixed(2)}` : calculating, color: 'emerald' },
+                { label: 'Owed', value: isAdmin ? `$${owed.toFixed(2)}` : calculating, color: isAdmin && owed > 0 ? 'amber' : 'gray' },
               ];
               return (
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -2803,28 +3653,28 @@ export default function AdminDashboard() {
             {/* Affiliates Table */}
             <div className="bg-[#1a1f26] rounded-2xl border border-white/5 overflow-hidden">
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h3 className="text-white font-semibold">Afiliados ({affiliates.length})</h3>
-                <button onClick={() => fetchAffiliates()} className="text-xs text-gray-400 hover:text-white transition">🔄 Refrescar</button>
+                <h3 className="text-white font-semibold">Affiliates ({affiliates.length})</h3>
+                <button onClick={() => fetchAffiliates()} className="text-xs text-gray-400 hover:text-white transition">🔄 Refresh</button>
               </div>
               {affiliates.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  {affiliatesLoaded ? 'No hay afiliados registrados todavía' : '⏳ Cargando...'}
+                  {affiliatesLoaded ? 'No affiliates registered yet' : '⏳ Loading...'}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-gray-400 text-xs uppercase border-b border-white/5">
-                        <th className="text-left px-4 py-3">Afiliado</th>
-                        <th className="text-left px-4 py-3">Código / Cupón</th>
+                        <th className="text-left px-4 py-3">Affiliate</th>
+                        <th className="text-left px-4 py-3">Code / Coupon</th>
                         <th className="text-right px-4 py-3">Clicks</th>
-                        <th className="text-right px-4 py-3">Ventas</th>
+                        <th className="text-right px-4 py-3">Sales</th>
                         <th className="text-right px-4 py-3">Conv.</th>
-                        <th className="text-right px-4 py-3">Comisión</th>
-                        <th className="text-right px-4 py-3">Pagado</th>
-                        <th className="text-right px-4 py-3">Por pagar</th>
-                        <th className="text-left px-4 py-3">Última venta</th>
-                        <th className="text-left px-4 py-3">Estado</th>
+                        <th className="text-right px-4 py-3">Commission</th>
+                        <th className="text-right px-4 py-3">Paid</th>
+                        <th className="text-right px-4 py-3">Owed</th>
+                        <th className="text-left px-4 py-3">Last sale</th>
+                        <th className="text-left px-4 py-3">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2872,16 +3722,16 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-xs">
                               {s.lastSale ? (
                                 <div>
-                                  <div className="text-gray-300">{s.lastSale.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</div>
+                                  <div className="text-gray-300">{s.lastSale.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</div>
                                   <div className={`text-xs ${daysSinceLastSale > 30 ? 'text-red-400' : daysSinceLastSale > 14 ? 'text-amber-400' : 'text-green-400'}`}>
-                                    {daysSinceLastSale === 0 ? 'Hoy' : daysSinceLastSale === 1 ? 'Ayer' : `hace ${daysSinceLastSale}d`}
+                                    {daysSinceLastSale === 0 ? 'Today' : daysSinceLastSale === 1 ? 'Yesterday' : `${daysSinceLastSale}d ago`}
                                   </div>
                                 </div>
                               ) : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                                {a.active ? 'Activo' : 'Inactivo'}
+                                {a.active ? 'Active' : 'Inactive'}
                               </span>
                             </td>
                           </tr>
@@ -2896,6 +3746,73 @@ export default function AdminDashboard() {
         ) : null}
       </main>
 
+      {/* Backfill modal — admin only. Marks every paid+phone song with
+          created_at <= cutoff as already sent so the Por Enviar queue isn't
+          flooded with historical orders on day one. */}
+      {backfillModalOpen && userRole === 'admin' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => !backfillBusy && setBackfillModalOpen(false)}
+        >
+          <div
+            className="bg-[#1a1f26] rounded-2xl max-w-md w-full overflow-hidden border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                🗓️ Backfill — mark as sent
+              </h3>
+              <button
+                onClick={() => !backfillBusy && setBackfillModalOpen(false)}
+                className="p-2 rounded-lg hover:bg-white/10 transition"
+              >
+                <span className="material-symbols-outlined text-gray-400">close</span>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-300">
+                Mark as <strong className="text-green-400">already sent</strong> every paid song
+                with a phone whose creation date is
+                <em> earlier than </em> the moment you choose.
+              </p>
+              <p className="text-xs text-gray-500">
+                Use this once when activating the "Pending to Send" queue so hundreds of
+                historical orders you've probably already delivered by email don't show up.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Cutoff (everything created before this moment)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={backfillCutoff}
+                  onChange={(e) => setBackfillCutoff(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Recommended: midnight today (what the field already has by default).
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => !backfillBusy && setBackfillModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={backfillSent}
+                  disabled={backfillBusy || !backfillCutoff}
+                  className="flex-1 py-3 rounded-xl bg-violet-500 hover:bg-violet-400 text-white font-medium disabled:opacity-50"
+                >
+                  {backfillBusy ? 'Applying…' : 'Mark as sent'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mureka Credits Update Modal — admin only */}
       {murekaModalOpen && userRole === 'admin' && (
         <div
@@ -2909,7 +3826,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🎵</span>
-                <h3 className="font-semibold text-white">Actualizar saldo de créditos</h3>
+                <h3 className="font-semibold text-white">Update credit balance</h3>
               </div>
               <button
                 onClick={() => !murekaSaving && setMurekaModalOpen(false)}
@@ -2921,7 +3838,7 @@ export default function AdminDashboard() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Saldo actual (créditos)
+                  Current balance (credits)
                 </label>
                 <input
                   type="number"
@@ -2930,20 +3847,20 @@ export default function AdminDashboard() {
                   value={murekaForm.balance}
                   onChange={(e) => setMurekaForm({ ...murekaForm, balance: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:ring-2 focus:ring-violet-400 focus:border-transparent"
-                  placeholder="ej. 20000"
+                  placeholder="e.g. 20000"
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  El número de créditos que ves en el panel del proveedor de música después de recargar.
-                  Reinicia el contador de generaciones.
+                  The credit count you see in the music provider's dashboard after topping up.
+                  This resets the generation counter.
                 </p>
               </div>
               <details className="text-sm">
-                <summary className="cursor-pointer text-gray-400 hover:text-white">Configuración avanzada</summary>
+                <summary className="cursor-pointer text-gray-400 hover:text-white">Advanced settings</summary>
                 <div className="mt-3 space-y-3 pl-2 border-l-2 border-white/5">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">
-                      Créditos por canción
+                      Credits per song
                     </label>
                     <input
                       type="number"
@@ -2957,7 +3874,7 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Umbral amarillo
+                        Low threshold
                       </label>
                       <input
                         type="number"
@@ -2969,7 +3886,7 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Umbral rojo
+                        Critical threshold
                       </label>
                       <input
                         type="number"
@@ -2987,14 +3904,14 @@ export default function AdminDashboard() {
                   onClick={() => !murekaSaving && setMurekaModalOpen(false)}
                   className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-medium"
                 >
-                  Cancelar
+                  Cancel
                 </button>
                 <button
                   onClick={saveMurekaBalance}
                   disabled={murekaSaving || !murekaForm.balance}
                   className="flex-1 py-3 rounded-xl bg-violet-500 hover:bg-violet-400 text-white font-medium disabled:opacity-50"
                 >
-                  {murekaSaving ? 'Guardando...' : 'Guardar'}
+                  {murekaSaving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>
@@ -3014,7 +3931,7 @@ export default function AdminDashboard() {
           >
             <div className="flex items-center justify-between p-4 border-b border-white/10">
               <div>
-                <h3 className="font-bold text-white">👁️ Vista Previa del Email</h3>
+                <h3 className="font-bold text-white">👁️ Email Preview</h3>
                 <p className="text-xs text-gray-500">{previewingCampaign.name}</p>
               </div>
               <button 
@@ -3043,7 +3960,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-[#1a1f26] rounded-2xl max-w-lg w-full p-6 border border-white/10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold">✏️ Editar Campaña</h3>
+              <h3 className="text-xl font-bold">✏️ Edit Campaign</h3>
               <button 
                 onClick={() => setEditingCampaign(null)}
                 className="text-gray-400 hover:text-white"
@@ -3056,7 +3973,7 @@ export default function AdminDashboard() {
               {/* Timing (for abandoned cart emails) */}
               {editingCampaign.id !== 'purchase_confirmation' && (
                 <div>
-                  <label className="block text-sm text-gray-400 mb-1">⏱️ Enviar después de (horas)</label>
+                  <label className="block text-sm text-gray-400 mb-1">⏱️ Send after (hours)</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -3066,17 +3983,17 @@ export default function AdminDashboard() {
                       onChange={(e) => setEditingCampaign({...editingCampaign, delay_hours: parseInt(e.target.value) || 1})}
                       className="w-24 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-amber-400 text-center"
                     />
-                    <span className="text-gray-500 text-sm">horas después de crear la canción</span>
+                    <span className="text-gray-500 text-sm">hours after the song is created</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-1">
-                    {editingCampaign.id === 'abandoned_1hr' ? 'Recomendado: 1-2 horas' : 'Recomendado: 12-24 horas'}
+                    {editingCampaign.id === 'abandoned_1hr' ? 'Recommended: 1-2 hours' : 'Recommended: 12-24 hours'}
                   </p>
                 </div>
               )}
-              
-              {/* Subject */}
+
+              {/* Subject — keeps the Spanish placeholder because the email goes to Spanish-speaking customers */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Asunto del Email</label>
+                <label className="block text-sm text-gray-400 mb-1">Email subject</label>
                 <input
                   type="text"
                   value={editingCampaign.subject}
@@ -3085,10 +4002,10 @@ export default function AdminDashboard() {
                   placeholder="🎵 ¡Tu canción está lista!"
                 />
               </div>
-              
+
               {/* Heading */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Título Principal</label>
+                <label className="block text-sm text-gray-400 mb-1">Main heading</label>
                 <input
                   type="text"
                   value={editingCampaign.heading}
@@ -3097,10 +4014,10 @@ export default function AdminDashboard() {
                   placeholder="¡Tu canción está lista!"
                 />
               </div>
-              
+
               {/* Body Text */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Texto del Mensaje</label>
+                <label className="block text-sm text-gray-400 mb-1">Body text</label>
                 <textarea
                   value={editingCampaign.body_text}
                   onChange={(e) => setEditingCampaign({...editingCampaign, body_text: e.target.value})}
@@ -3108,12 +4025,12 @@ export default function AdminDashboard() {
                   className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-amber-400 resize-none"
                   placeholder="La canción para {{recipient_name}} está esperándote..."
                 />
-                <p className="text-xs text-gray-500 mt-1">Usa {'{{recipient_name}}'} para el nombre del destinatario</p>
+                <p className="text-xs text-gray-500 mt-1">Use {'{{recipient_name}}'} for the recipient's name</p>
               </div>
-              
+
               {/* Button Text */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Texto del Botón</label>
+                <label className="block text-sm text-gray-400 mb-1">Button text</label>
                 <input
                   type="text"
                   value={editingCampaign.button_text}
@@ -3123,21 +4040,21 @@ export default function AdminDashboard() {
                 />
               </div>
             </div>
-            
+
             {/* Actions */}
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setEditingCampaign(null)}
                 className="flex-1 px-4 py-3 rounded-xl bg-white/5 text-gray-400 hover:bg-white/10 transition"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={() => saveCampaign(editingCampaign)}
                 disabled={savingCampaign}
                 className="flex-1 px-4 py-3 rounded-xl bg-amber-400 text-black font-semibold hover:bg-amber-300 transition disabled:opacity-50"
               >
-                {savingCampaign ? '⏳ Guardando...' : '✓ Guardar'}
+                {savingCampaign ? '⏳ Saving...' : '✓ Save'}
               </button>
             </div>
           </div>
@@ -3156,7 +4073,7 @@ export default function AdminDashboard() {
           >
             {/* Modal Header */}
             <div className="sticky top-0 bg-[#1a1f26] border-b border-white/10 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold">Detalles de la Orden</h2>
+              <h2 className="text-xl font-bold">Order Details</h2>
               <button 
                 onClick={() => setSelectedSong(null)} 
                 className="p-2 rounded-lg hover:bg-white/10 transition"
@@ -3171,13 +4088,13 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between">
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    ✓ Pagado — {userRole === 'admin'
+                    ✓ Paid — {userRole === 'admin'
                       ? formatCurrency(getSongPrice(selectedSong))
                       : <span className="animate-pulse">Calculating...</span>}
                   </span>
                 ) : (
                   <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    ⏳ Pendiente
+                    ⏳ Pending
                   </span>
                 )}
                 <span className="text-sm text-gray-500">{formatDate(selectedSong.created_at)}</span>
@@ -3190,7 +4107,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">{selectedSong.downloaded ? '✅' : '⚠️'}</span>
                       <div>
-                        <p className="font-medium">{selectedSong.downloaded ? 'Descargado' : 'No descargado'}</p>
+                        <p className="font-medium">{selectedSong.downloaded ? 'Downloaded' : 'Not downloaded'}</p>
                         {selectedSong.downloaded && (
                           <p className="text-xs text-gray-400">
                             {selectedSong.download_count || 1}x
@@ -3206,35 +4123,35 @@ export default function AdminDashboard() {
               {/* Coupon Badge */}
               {selectedSong.coupon_code && (
                 <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-4 py-3">
-                  <span className="text-purple-400 text-sm">🎟️ Cupón: <strong>{selectedSong.coupon_code}</strong></span>
+                  <span className="text-purple-400 text-sm">🎟️ Coupon: <strong>{selectedSong.coupon_code}</strong></span>
                 </div>
               )}
               
               {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Para</p>
+                  <p className="text-xs text-gray-500 mb-1">For</p>
                   <p className="font-semibold">{selectedSong.recipient_name || '—'}</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">De</p>
+                  <p className="text-xs text-gray-500 mb-1">From</p>
                   <p className="font-semibold">{selectedSong.sender_name || '—'}</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Género</p>
+                  <p className="text-xs text-gray-500 mb-1">Genre</p>
                   <p className="font-semibold capitalize text-amber-400">{selectedSong.genre || '—'}</p>
                   {selectedSong.sub_genre && <p className="text-xs text-gray-500">{selectedSong.sub_genre}</p>}
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Ocasión</p>
+                  <p className="text-xs text-gray-500 mb-1">Occasion</p>
                   <p className="font-semibold">{formatOccasion(selectedSong.occasion)}</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Voz</p>
-                  <p className="font-semibold">{selectedSong.voice_type === 'female' ? '♀️ Femenina' : '♂️ Masculina'}</p>
+                  <p className="text-xs text-gray-500 mb-1">Voice</p>
+                  <p className="font-semibold">{selectedSong.voice_type === 'female' ? '♀️ Female' : '♂️ Male'}</p>
                 </div>
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">Relación</p>
+                  <p className="text-xs text-gray-500 mb-1">Relationship</p>
                   <p className="font-semibold capitalize">{selectedSong.relationship || '—'}</p>
                 </div>
               </div>
@@ -3248,29 +4165,58 @@ export default function AdminDashboard() {
               {/* WhatsApp */}
               {selectedSong.whatsapp_phone && (
                 <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                  <p className="text-xs text-green-400 mb-2">💬 WhatsApp</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-green-400">💬 WhatsApp</p>
+                    {isPaid(selectedSong) && (
+                      selectedSong.whatsapp_sent_at ? (
+                        <span className="text-xs text-green-400 flex items-center gap-1">
+                          ✓ Sent {timeAgo(selectedSong.whatsapp_sent_at)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-400">⏳ Pending delivery</span>
+                      )
+                    )}
+                  </div>
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-lg">
                       {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap justify-end">
                       <a
                         href={`https://wa.me/${selectedSong.whatsapp_phone.startsWith('1') ? selectedSong.whatsapp_phone : '1' + selectedSong.whatsapp_phone}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-4 py-2 bg-[#25D366] text-white rounded-lg text-sm font-medium hover:bg-[#20bd5a] transition flex items-center gap-2"
                       >
-                        💬 Abrir Chat
+                        💬 Open Chat
                       </a>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(selectedSong.whatsapp_phone);
-                          alert('Número copiado!');
+                          alert('Number copied!');
                         }}
                         className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                       >
-                        📋 Copiar
+                        📋 Copy
                       </button>
+                      {userRole === 'admin' && isPaid(selectedSong) && (
+                        selectedSong.whatsapp_sent_at ? (
+                          <button
+                            onClick={() => unmarkSongAsSent(selectedSong.id)}
+                            className="px-4 py-2 bg-amber-500/20 text-amber-300 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition border border-amber-500/30"
+                          >
+                            ↺ Mark as NOT sent
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => markSongAsSent(selectedSong.id)}
+                            disabled={markSendBusy === selectedSong.id}
+                            className="px-4 py-2 bg-green-500/20 text-green-300 rounded-lg text-sm font-medium hover:bg-green-500/30 transition border border-green-500/30 disabled:opacity-50"
+                          >
+                            ✓ Mark as sent
+                          </button>
+                        )
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3279,15 +4225,15 @@ export default function AdminDashboard() {
               {/* Details */}
               {selectedSong.details && (
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Detalles</p>
+                  <p className="text-xs text-gray-500 mb-2">Details</p>
                   <p className="text-sm whitespace-pre-wrap">{selectedSong.details}</p>
                 </div>
               )}
-              
+
               {/* Lyrics */}
               {selectedSong.lyrics && (
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Letra</p>
+                  <p className="text-xs text-gray-500 mb-2">Lyrics</p>
                   <p className="text-sm whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300">{selectedSong.lyrics}</p>
                 </div>
               )}
@@ -3303,16 +4249,16 @@ export default function AdminDashboard() {
                       download 
                       className="flex-1 py-2 px-4 bg-amber-400 text-black rounded-lg font-medium text-center text-sm hover:bg-amber-300 transition"
                     >
-                      ⬇️ Descargar MP3
+                      ⬇️ Download MP3
                     </a>
-                    <button 
+                    <button
                       onClick={() => {
                         navigator.clipboard.writeText(selectedSong.audio_url);
-                        alert('URL copiada!');
+                        alert('URL copied!');
                       }}
                       className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
                     >
-                      📋 Copiar URL
+                      📋 Copy URL
                     </button>
                   </div>
                 </div>
@@ -3320,48 +4266,48 @@ export default function AdminDashboard() {
               
               {/* Customer Links */}
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                <p className="text-xs text-blue-400 mb-2">🔗 Links del cliente</p>
-                
+                <p className="text-xs text-blue-400 mb-2">🔗 Customer links</p>
+
                 {/* Preview Link */}
                 <div className="mb-3">
-                  <p className="text-xs text-gray-500 mb-1">🎧 Preview (20s + compra):</p>
+                  <p className="text-xs text-gray-500 mb-1">🎧 Preview (20s + checkout):</p>
                   <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      readOnly 
+                    <input
+                      type="text"
+                      readOnly
                       value={`${window.location.origin}/listen?song_id=${selectedSong.id}`}
                       className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
                     />
-                    <button 
+                    <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${window.location.origin}/listen?song_id=${selectedSong.id}`);
-                        alert('Preview link copiado!');
+                        alert('Preview link copied!');
                       }}
                       className="px-4 py-2 bg-amber-500 text-black rounded-lg text-sm font-medium hover:bg-amber-400 transition"
                     >
-                      Copiar
+                      Copy
                     </button>
                   </div>
                 </div>
 
                 {/* Success Link */}
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">📥 Download (canción completa):</p>
+                  <p className="text-xs text-gray-500 mb-1">📥 Download (full song):</p>
                   <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      readOnly 
+                    <input
+                      type="text"
+                      readOnly
                       value={`${window.location.origin}/success?song_id=${selectedSong.id}`}
                       className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
                     />
-                    <button 
+                    <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${window.location.origin}/success?song_id=${selectedSong.id}`);
-                        alert('Download link copiado!');
+                        alert('Download link copied!');
                       }}
                       className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-400 transition"
                     >
-                      Copiar
+                      Copy
                     </button>
                   </div>
                 </div>
@@ -3369,23 +4315,23 @@ export default function AdminDashboard() {
 
               {/* Polaroid Shareable Page Link */}
               <div className="bg-pink-500/10 border border-pink-500/20 rounded-xl p-4">
-                <p className="text-xs text-pink-400 mb-2">🎨 Página Compartible (Polaroid)</p>
-                <p className="text-xs text-gray-500 mb-2">Este link muestra la canción en una página bonita para compartir por WhatsApp</p>
+                <p className="text-xs text-pink-400 mb-2">🎨 Shareable page (Polaroid)</p>
+                <p className="text-xs text-gray-500 mb-2">This link shows the song on a nice page to share via WhatsApp</p>
                 <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
+                  <input
+                    type="text"
+                    readOnly
                     value={`${window.location.origin}/song/${selectedSong.id}`}
                     className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-300"
                   />
-                  <button 
+                  <button
                     onClick={() => {
                       navigator.clipboard.writeText(`${window.location.origin}/song/${selectedSong.id}`);
-                      alert('Polaroid link copiado!');
+                      alert('Polaroid link copied!');
                     }}
                     className="px-4 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-400 transition"
                   >
-                    Copiar
+                    Copy
                   </button>
                   <a
                     href={`${window.location.origin}/song/${selectedSong.id}`}
@@ -3393,7 +4339,7 @@ export default function AdminDashboard() {
                     rel="noopener noreferrer"
                     className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                   >
-                    👁️ Ver
+                    👁️ View
                   </a>
                 </div>
               </div>
