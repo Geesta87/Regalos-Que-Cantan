@@ -1990,14 +1990,13 @@ export default function AdminDashboard() {
                                   </a>
                                 </>
                               )}
-                              {/* WhatsApp send button — visible whenever the customer left a
-                                  phone number AND a song is ready. Paid → delivery action;
-                                  unpaid → recovery outreach. Auto-marks as contacted on
-                                  click (toggle, admin only) so the row drops out of the
-                                  Pending to Send queue / Hot Leads list.
+                              {/* WhatsApp send button — only on PAID songs with a phone and
+                                  audio. Per-row: if a customer paid for 1 of 2 songs, only
+                                  the paid one shows this button. Unpaid lead outreach lives
+                                  on the Hot Leads tab, not here.
                                   Rendered as a labeled pill ("WhatsApp" or "Sent") so it's
                                   visually distinct from the icon-only actions. */}
-                              {song.whatsapp_phone && song.audio_url && (() => {
+                              {isPaid(song) && song.whatsapp_phone && song.audio_url && (() => {
                                 const delivery = buildWhatsAppDelivery(song, songs);
                                 if (!delivery) return null;
                                 const alreadySent = !!song.whatsapp_sent_at;
@@ -2087,9 +2086,9 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 filteredSongs.slice(ordersPage * ORDERS_PER_PAGE, (ordersPage + 1) * ORDERS_PER_PAGE).map((song) => {
-                  // Same as desktop: WhatsApp button shows whenever there's a phone
-                  // and audio, paid or not. Paid → delivery; unpaid → recovery outreach.
-                  const delivery = (song.whatsapp_phone && song.audio_url)
+                  // Same gate as desktop: only paid songs with a phone and audio
+                  // get the WhatsApp delivery button.
+                  const delivery = (isPaid(song) && song.whatsapp_phone && song.audio_url)
                     ? buildWhatsAppDelivery(song, songs)
                     : null;
                   return (
