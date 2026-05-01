@@ -1663,8 +1663,150 @@ RESPONDE SOLO JSON:
     console.log('Song saved:', songId);
 
     // ==========================================================================
-    // STEP 6: Call Mureka via useapi.net
+    // STEP 6: Call music provider (Mureka via useapi.net OR Kie.ai)
+    // Set MUSIC_PROVIDER=kie on Supabase to route through Kie.ai/Suno instead.
     // ==========================================================================
+    const MUSIC_PROVIDER = (Deno.env.get('MUSIC_PROVIDER') || 'mureka').toLowerCase();
+
+    if (MUSIC_PROVIDER === 'kie') {
+      // ====================================================================
+      // KIE.AI BRANCH — Suno via api.kie.ai
+      // Used as a manual fallback when Mureka/useapi.net is unavailable.
+      // Flip back to Mureka by unsetting MUSIC_PROVIDER (or setting to 'mureka').
+      // ====================================================================
+      const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
+      const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
+      if (!KIE_API_KEY) {
+        await supabase.from('songs').update({
+          status: 'failed',
+          error_message: 'KIE_API_KEY env var missing on Supabase',
+          provider: 'kie',
+        }).eq('id', songId);
+        throw new Error('KIE_API_KEY env var missing — cannot use Kie.ai provider');
+      }
+
+      // Same gender-reinforced style description we use for Mureka
+      const kieGender = vocalGender === 'f' ? 'f' : 'm';
+      const genderLabelKie = vocalGender === 'f'
+        ? 'solo female vocalist, single female singer only, NO male voice, NO duet'
+        : 'solo male vocalist, single male singer only, NO female voice, NO duet';
+      const vocalStyleKie = vocalCharacter || 'expressive vocal';
+      const voicePrefixKie = `${genderLabelKie}, ${vocalStyleKie}`;
+      const noVoiceSuffixKie = vocalGender === 'f'
+        ? ', absolutely no male vocals no duet'
+        : ', absolutely no female vocals no duet';
+      const maxStyleCharsKie = 1000 - voicePrefixKie.length - noVoiceSuffixKie.length - 4;
+      const styleWithVoiceKie = `${voicePrefixKie}, ${finalStyle.substring(0, maxStyleCharsKie)}${noVoiceSuffixKie}`;
+
+      // Title cap is 80 on Kie (50 on Mureka). We use 80 here.
+      const titleKie = (isForSelf ? `Mi canción — ${recipientName}` : `Canción para ${recipientName}`).substring(0, 80);
+
+      const callBackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
+
+      const kiePayload: Record<string, unknown> = {
+        prompt: lyrics.substring(0, 5000),
+        customMode: true,
+        instrumental: false,
+        model: KIE_MODEL,
+        callBackUrl,
+        style: styleWithVoiceKie.substring(0, 1000),
+        title: titleKie,
+        vocalGender: kieGender,
+      };
+
+      console.log('=== CALLING KIE.AI ===');
+      console.log(`Model: ${KIE_MODEL}`);
+      console.log(`Style length: ${(kiePayload.style as string).length}`);
+      console.log(`Vocal gender: ${kieGender}`);
+
+      const kieResp = await fetch('https://api.kie.ai/api/v1/generate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${KIE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kiePayload),
+      });
+
+      if (!kieResp.ok) {
+        const errText = await kieResp.text().catch(() => 'unknown');
+        console.error(`kie.ai error: ${kieResp.status} - ${errText.substring(0, 500)}`);
+        await supabase.from('songs').update({
+          status: 'failed',
+          error_message: `kie.ai ${kieResp.status}: ${errText.substring(0, 200)}`,
+          kie_payload: JSON.stringify(kiePayload),
+          provider: 'kie',
+        }).eq('id', songId);
+        throw new Error(`kie.ai generate failed (${kieResp.status}): ${errText.substring(0, 200)}`);
+      }
+
+      const kieData = await kieResp.json();
+      if (kieData.code !== 200 || !kieData.data?.taskId) {
+        const errMsg = kieData.msg || 'no taskId';
+        await supabase.from('songs').update({
+          status: 'failed',
+          error_message: `kie.ai code=${kieData.code}: ${errMsg}`.substring(0, 200),
+          kie_payload: JSON.stringify(kiePayload),
+          provider: 'kie',
+        }).eq('id', songId);
+        throw new Error(`kie.ai returned code=${kieData.code}: ${errMsg}`);
+      }
+
+      const taskId = kieData.data.taskId;
+
+      await supabase.from('songs').update({
+        task_id: taskId,
+        kie_task_id: taskId,
+        kie_payload: JSON.stringify(kiePayload),
+        provider: 'kie',
+      }).eq('id', songId);
+      console.log(`kie.ai taskId: ${taskId} (model: ${KIE_MODEL})`);
+
+      // Kie.ai returns 2 tracks per task — insert v2 sibling so song-callback
+      // can fan out to both rows by kie_task_id.
+      const { data: song2Record, error: song2Err } = await supabase.from('songs').insert({
+        session_id: currentSessionId,
+        version: 2,
+        recipient_name: recipientName,
+        sender_name: senderName,
+        relationship: relationship,
+        relationship_custom: customRelationship || null,
+        genre: genre,
+        genre_name: genreName || null,
+        sub_genre: subGenre || null,
+        sub_genre_name: subGenreName || null,
+        occasion: occasion,
+        occasion_custom: customOccasion || null,
+        emotional_tone: emotionalTone || null,
+        details: details,
+        email: email,
+        lyrics: lyrics,
+        audio_url: null,
+        preview_url: null,
+        image_url: imageUrl,
+        status: 'processing',
+        paid: false,
+        selected: false,
+        voice_type: voiceType || 'male',
+        artist_inspiration: artistInspiration || null,
+        style_used: finalStyle,
+        task_id: taskId,
+        kie_task_id: taskId,
+        kie_payload: JSON.stringify(kiePayload),
+        provider: 'kie',
+      }).select().single();
+
+      const song2IdKie = song2Record?.id || null;
+      if (song2Err) console.error('Failed to insert Song 2 row (kie):', song2Err.message);
+      else console.log('Song 2 (version 2, kie) saved:', song2IdKie);
+
+      return new Response(JSON.stringify({
+        success: true,
+        song: { id: songId, status: 'processing', imageUrl, song2PendingId: song2IdKie },
+        sessionId: currentSessionId
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
+    }
+
     // Build callback URL for instant completion notifications
     const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
     const callbackBase = `${SUPABASE_URL}/functions/v1/mureka-useapi-callback`;

@@ -63,6 +63,12 @@ verify_jwt = false
 # Cron-driven recovery job.
 verify_jwt = false
 
+[functions.recover-mureka-cap-songs]
+# One-shot recovery for the 2026-05-01 Mureka quota-cap outage. Re-submits failed
+# songs through Kie.ai/Suno and emails the customer. Invoked from the admin/CLI
+# (no user JWT) — must stay verify_jwt = false.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # Internal generators invoked server-to-server from other edge functions
 # ---------------------------------------------------------------------------
