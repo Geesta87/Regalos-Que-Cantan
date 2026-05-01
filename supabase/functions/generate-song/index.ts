@@ -434,7 +434,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Bachata Tradicional',
-        style: 'traditional Dominican bachata, classic guitar bachata, barrio bachata, raw authentic bachata sound, Aventura early style, acoustic Dominican bachata with street soul',
+        style: 'traditional Dominican bachata, classic guitar bachata, barrio bachata, raw authentic bachata sound, early-2000s authentic Dominican bachata, acoustic Dominican bachata with street soul',
         tempo: '120-140 BPM, classic bachata derecho rhythm, syncopated guitar groove, swaying dance beat',
         instruments: 'requinto lead guitar with bending hammer-on ornaments, rhythm guitar with muted strumming pattern, electric bass guitar syncopated line, bongos with tumbao pattern, güira metal scraper steady rhythm',
         vibe: 'Dominican barrio romance, raw honest heartbreak, street corner serenade, colmado music, authentic working-class love stories',
@@ -634,7 +634,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       pop_balada: {
         name: 'Pop Balada',
-        style: 'Latin pop ballad, emotional slow pop en español, Luis Miguel style pop ballad, Reik soft pop, radio-friendly emotional slow song, polished studio ballad with orchestral touches',
+        style: 'Latin pop ballad, emotional slow pop en español, classic crooner-style Latin pop ballad, soft modern Latin pop, radio-friendly emotional slow song, polished studio ballad with orchestral touches',
         tempo: '70-90 BPM, SLOW emotional, breathing room, dramatic pop ballad pacing',
         instruments: 'grand piano chords and arpeggios, string orchestra arrangement, acoustic guitar fingerpicking, soft brushed drums, bass guitar, subtle synth pad warmth, optional choir on chorus',
         vibe: 'radio ballad elegance, emotional but polished, tearful dedication, wedding reception slow dance, telenovela soundtrack, beautiful sadness',
@@ -683,7 +683,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       balada_pop: {
         name: 'Balada Pop',
-        style: 'contemporary Latin pop ballad, modern radio ballad en español, Sin Bandera Reik style pop ballad, clean modern emotional slow song, polished studio production ballad',
+        style: 'contemporary Latin pop ballad, modern radio ballad en español, modern duo-style Latin pop ballad with soft male vocal, clean modern emotional slow song, polished studio production ballad',
         tempo: '70-90 BPM, contemporary slow, modern pacing, accessible emotional tempo',
         instruments: 'acoustic guitar fingerpicking, piano chords, modern soft programmed drums, electric bass, subtle synth pad, string section accents on chorus, clean guitar arpeggios',
         vibe: 'modern radio ballad, emotional but accessible and polished, Spotify playlist ballad, contemporary heartfelt, young love dedication, relatable modern emotion',
@@ -1153,6 +1153,60 @@ function findArtist(query: string): ArtistData | null {
   return null;
 }
 
+// Defense-in-depth: strip real-artist names from style/desc strings before
+// they're sent to the music provider. Suno (Kie.ai) rejects any request
+// whose tags reference a real artist by name. We had multiple genre-DNA
+// leaks that caused customer outages on 2026-05-01; this sanitizer ensures
+// future leaks (genre data tweaks, accidental mentions) can't reach the API.
+//
+// Strips canonical names from artistDNA + an extra list of well-known Latin
+// artists not in the DB. Intentionally only matches multi-word or 6+ char
+// names to avoid false-strips on short common tokens (e.g. "ms", "junior").
+const ADDITIONAL_ARTIST_NAMES = [
+  'El Recodo', 'Banda El Recodo', 'Sin Bandera', 'Aventura', 'Reik',
+  'Luis Miguel', 'Ángela Aguilar', 'Angela Aguilar', 'Prince Royce',
+  'Marc Anthony', 'Maluma', 'J Balvin', 'Karol G', 'Fuerza Regida',
+  'Eslabón Armado', 'Eslabon Armado', 'Espinoza Paz', 'Pepe Aguilar',
+  'Joan Sebastian', 'Joss Favela', 'Yahritza', 'Edén Muñoz', 'Eden Munoz',
+  'Ariel Camacho', 'Lupillo Rivera', 'Jenni Rivera', 'Daddy Yankee',
+  'Don Omar', 'Anuel', 'Ozuna', 'Ricardo Arjona', 'Juan Gabriel',
+  'José Alfredo', 'Jose Alfredo', 'José José', 'Jose Jose',
+  'Pedro Fernández', 'Pedro Fernandez', 'Alejandro Fernández',
+  'Alejandro Fernandez', 'Calibre 50', 'Intocable', 'Conjunto Primavera',
+  'Banda MS', 'BandaMS',
+];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function sanitizeArtistNames(input: string): string {
+  if (!input) return input;
+  let out = input;
+  // Strip canonical names from artistDNA
+  for (const artist of Object.values(artistDNA)) {
+    if (artist.name && artist.name.length >= 6) {
+      out = out.replace(new RegExp(`\\b${escapeRegExp(artist.name)}\\b`, 'gi'), '');
+    }
+  }
+  // Strip the additional well-known names list
+  for (const name of ADDITIONAL_ARTIST_NAMES) {
+    if (name.length >= 6) {
+      out = out.replace(new RegExp(`\\b${escapeRegExp(name)}\\b`, 'gi'), '');
+    }
+  }
+  // Clean up the artifacts of stripping (double commas, "style" left dangling)
+  out = out
+    .replace(/\s+style\b/gi, ' style')        // normalize spacing around "style"
+    .replace(/,\s*style\b/gi, ' style')       // ", style" → " style" (was "X style")
+    .replace(/\s*,\s*,/g, ',')                // double commas
+    .replace(/\(\s*,/g, '(').replace(/,\s*\)/g, ')')
+    .replace(/\s+/g, ' ')                     // collapse whitespace
+    .replace(/^\s*,\s*|\s*,\s*$/g, '')        // trim leading/trailing commas
+    .trim();
+  return out;
+}
+
 function buildStylePrompt(
   genre: string,
   subGenre: string | null,
@@ -1275,11 +1329,14 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const replyUrl = USEAPI_WEBHOOK_SECRET ? `${callbackBase}?token=${USEAPI_WEBHOOK_SECRET}` : callbackBase;
   const apiVocalGender = ctx.vocalGender === 'f' ? 'female' : 'male';
 
+  // Defense-in-depth: scrub any leaked artist names from the desc before sending.
+  const safeDesc = sanitizeArtistNames(descWithVoice).substring(0, 1000);
+
   const payload: Record<string, unknown> = {
     account: MUREKA_ACCOUNT,
     lyrics: ctx.lyrics.substring(0, 5000),
     title: songTitle,
-    desc: descWithVoice.substring(0, 1000),
+    desc: safeDesc,
     model: MUREKA_MODEL,
     vocal_gender: apiVocalGender,
     replyUrl,
@@ -1366,13 +1423,18 @@ async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const styleWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
   const title = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 80);
 
+  // Defense-in-depth: Suno (Kie) rejects any request whose tags reference a
+  // real artist by name. Strip artist names from style AND lyrics before sending.
+  const safeStyle = sanitizeArtistNames(styleWithVoice).substring(0, 1000);
+  const safeLyrics = sanitizeArtistNames(ctx.lyrics).substring(0, 5000);
+
   const payload: Record<string, unknown> = {
-    prompt: ctx.lyrics.substring(0, 5000),
+    prompt: safeLyrics,
     customMode: true,
     instrumental: false,
     model: KIE_MODEL,
     callBackUrl: `${ctx.supabaseUrl}/functions/v1/song-callback`,
-    style: styleWithVoice.substring(0, 1000),
+    style: safeStyle,
     title,
     vocalGender: ctx.vocalGender,
   };
@@ -1440,13 +1502,23 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
-    const { 
+    const {
       genre, genreName, subGenre, subGenreName,
-      artistInspiration, occasion, occasionPrompt, customOccasion,
+      artistInspiration: _ignoredArtistInspiration, occasion, occasionPrompt, customOccasion,
       emotionalTone, recipientName, senderName, relationship,
-      relationshipContext, customRelationship, details, 
+      relationshipContext, customRelationship, details,
       email, voiceType, sessionId
     } = body;
+
+    // Artist inspiration UX step was removed on 2026-05-01: customers complained
+    // songs didn't actually sound like the picked artist, AND it was the vector
+    // for Suno content-policy rejections (today's incident with Christian Nodal).
+    // Force null here so legacy frontends that still send the field can't trigger
+    // any artist-related code paths. The DB column is still set (= null), the
+    // findArtist helper is preserved, and the artistDNA database is intact —
+    // this is a soft-disable, fully reversible by removing this line.
+    const artistInspiration: string | null = null;
+    void _ignoredArtistInspiration;
 
     if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
     if (!USEAPI_TOKEN || !MUREKA_ACCOUNT) throw new Error('USEAPI_TOKEN and MUREKA_ACCOUNT must be configured');
@@ -1603,7 +1675,7 @@ ${(() => {
     ranchera_lenta: {
       condition: genre === 'ranchera' && subGenre === 'lenta',
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS (no cantadas) — una dedicatoria emocional directa a ${recipientName}. Estilo Vicente Fernández: íntimo, con pausa dramática, como si le hablaras al oído. Ejemplo: "Escúchame bien, ${recipientName}... esto que siento no cabe en una canción... pero aquí va, con todo mi corazón."`,
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS (no cantadas) — una dedicatoria emocional directa a ${recipientName}. Estilo ranchera dramática clásica: íntimo, con pausa dramática, como si le hablaras al oído. Ejemplo: "Escúchame bien, ${recipientName}... esto que siento no cabe en una canción... pero aquí va, con todo mi corazón."`,
       placement: 'before_coro_final',
       sectionDesc: `- [Hablado]: Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.`
     },
@@ -1638,7 +1710,7 @@ Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS en tono vulne
     banda_romantica: {
       condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'),
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria dramática con la banda de fondo suave. Estilo Banda MS/El Recodo romántico. Ejemplo: "Esto va para ti, ${recipientName}... porque no hay canción que alcance para decirte lo que significas..."`,
+Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria dramática con la banda de fondo suave. Estilo banda romántica dramática clásica. Ejemplo: "Esto va para ti, ${recipientName}... porque no hay canción que alcance para decirte lo que significas..."`,
       placement: 'before_coro_final',
       sectionDesc: `- [Hablado]: Dedicatoria dramática (NO cantada). 2-3 líneas emotivas con banda suave de fondo.`
     },

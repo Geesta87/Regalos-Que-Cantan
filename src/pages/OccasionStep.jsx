@@ -115,7 +115,8 @@ export default function OccasionStep() {
   };
 
   const handleBack = () => {
-    navigateTo('artist');
+    // Artist-inspiration step removed 2026-05-01; back goes straight to genre.
+    navigateTo('genre');
   };
 
   const isOtroValid = selectedOccasion !== 'otro' || (customOccasion.length >= 20 && emotionalTone);

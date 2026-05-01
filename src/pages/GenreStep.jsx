@@ -300,8 +300,9 @@ export default function GenreStep() {
         voiceType: selectedVoice
       });
       
-      // Navigate to artist inspiration step
-      navigateTo('artist');
+      // Skip artist-inspiration step (removed 2026-05-01: didn't sound like the artist
+      // anyway and was the cause of Suno content-policy rejections). Go straight to occasion.
+      navigateTo('occasion');
     }
   };
 
