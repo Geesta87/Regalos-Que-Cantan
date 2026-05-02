@@ -356,23 +356,33 @@ export default function AdminDashboard() {
         .subscribe();
     })();
 
-    // Poll for new payments every 30s so the dashboard catches new orders
-    // even when the tab has been open for hours without manual refresh.
-    // The fetch is also what feeds the toast-alert effect below.
-    const pollHandle = setInterval(() => {
-      // accessToken state may not be set on first tick — fetchSongs reads
-      // its own state, so we just call it. Cheap when nothing changed
-      // because Supabase serves through the edge function quickly.
-      fetchSongs();
-    }, 30000);
-
     return () => {
       cancelled = true;
       if (emailSubscription) emailSubscription.unsubscribe();
       if (campaignSubscription) campaignSubscription.unsubscribe();
-      clearInterval(pollHandle);
     };
   }, [dateRange]);
+
+  // Poll for new payments every 30s so the dashboard catches new orders
+  // even when the tab has been open for hours without manual refresh.
+  //
+  // CRITICAL: this MUST be its own effect with [accessToken] as the
+  // dependency, NOT inside the auth useEffect above. Why: the auth
+  // useEffect runs once on mount when accessToken is still null, so any
+  // setInterval set up there captures a closure with token = null. Every
+  // poll then bails out of fetchSongs (`if (!token) return`) and the
+  // songs list never refreshes — which is exactly what was happening
+  // until this fix. Splitting it out forces the interval to be torn down
+  // and recreated with a fresh fetchSongs closure once accessToken lands.
+  useEffect(() => {
+    if (!accessToken) return;
+    console.log('[admin-alerts] polling started, fetch every 30s');
+    const handle = setInterval(() => {
+      console.log('[admin-alerts] poll → fetchSongs');
+      fetchSongs();
+    }, 30000);
+    return () => clearInterval(handle);
+  }, [accessToken]);
 
   // Watch the songs list for newly-paid rows and fire a toast + sound for
   // each one. The first time songs lands we just record a high-water-mark
