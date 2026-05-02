@@ -243,9 +243,16 @@ export default function AdminDashboard() {
 
   const triggerPaymentAlert = useCallback((song) => {
     if (!song || !song.id) return;
-    if (seenPaymentIdsRef.current.has(song.id)) return;
+    console.log('[admin-alerts] triggerPaymentAlert', song.id, song.recipient_name);
+    if (seenPaymentIdsRef.current.has(song.id)) {
+      console.log('[admin-alerts] skipped: already seen', song.id);
+      return;
+    }
     seenPaymentIdsRef.current.add(song.id);
-    if (!paymentAlertsEnabled) return;
+    if (!paymentAlertsEnabled) {
+      console.log('[admin-alerts] skipped: alerts disabled');
+      return;
+    }
 
     const toastId = `${song.id}:${Date.now()}`;
     setPaymentToasts(prev => [...prev, { id: toastId, song, at: Date.now() }]);
@@ -259,10 +266,9 @@ export default function AdminDashboard() {
 
   // Bypasses the seen-id dedupe and the alerts-enabled toggle so admins can
   // verify the full toast + sound + desktop-notification pipeline is wired
-  // up without waiting for a real payment to land. Built from the most
-  // recent paid song so the toast is realistic; if there are no paid songs
-  // (fresh DB) we fall back to a placeholder.
+  // up without waiting for a real payment to land.
   const fireTestPaymentAlert = useCallback(() => {
+    console.log('[admin-alerts] TEST button clicked — firing fake payment alert');
     const fakeSong = {
       id: `test-${Date.now()}`,
       recipient_name: 'María González',
@@ -272,7 +278,11 @@ export default function AdminDashboard() {
       paid_at: new Date().toISOString(),
     };
     const toastId = `${fakeSong.id}`;
-    setPaymentToasts(prev => [...prev, { id: toastId, song: fakeSong, at: Date.now() }]);
+    setPaymentToasts(prev => {
+      const next = [...prev, { id: toastId, song: fakeSong, at: Date.now() }];
+      console.log('[admin-alerts] toast queue size:', next.length);
+      return next;
+    });
     setTimeout(() => {
       setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
     }, 12000);
@@ -1571,47 +1581,47 @@ export default function AdminDashboard() {
                 Loading data...
               </span>
             )}
-            {/* Test alert button — fires a fake toast + sound + desktop
+            {/* Big obvious "TEST" pill — fires a fake toast + sound + desktop
                 notification so admins can verify the wiring without waiting
-                for a real payment. Bypasses the seen-id dedupe. */}
+                for a real payment. Uses plain text + emoji so it's visible
+                even if Material Symbols font hasn't loaded. */}
             <button
               onClick={fireTestPaymentAlert}
-              className="p-2 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition"
+              className="px-3 py-2 rounded-lg bg-violet-500 hover:bg-violet-400 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-violet-500/30"
               title="Fire a test payment alert (verify sound + popup are working)"
               aria-label="Test payment alert"
             >
-              <span className="material-symbols-outlined">science</span>
+              <span>🧪</span>
+              <span>TEST</span>
             </button>
-            {/* Live payment-alert toggle. Default on. When clicked, also asks
-                for desktop-notification permission so toasts surface even if
-                the dashboard tab is in the background. The badge shows the
-                count of real payments alerted since this tab was opened so
-                admins can confirm the system fired even if the toast already
-                auto-dismissed. */}
+            {/* Alert toggle pill with explicit ON/OFF text. The state was
+                previously icon-only (notifications_active vs _off) which is
+                indistinguishable at a glance — admins were missing whether
+                they had the alerts muted. Now the pill says what state it's
+                in, what the count is, and what clicking does. */}
             <button
               onClick={() => {
                 const next = !paymentAlertsEnabled;
                 setPaymentAlertsEnabled(next);
                 window.localStorage.setItem('rqc_admin_payment_alerts', String(next));
+                console.log('[admin-alerts] toggle →', next ? 'ON' : 'OFF');
                 if (next && 'Notification' in window && Notification.permission === 'default') {
-                  Notification.requestPermission();
+                  Notification.requestPermission().then(p => console.log('[admin-alerts] desktop notification permission:', p));
                 }
               }}
-              className={`p-2 rounded-lg transition relative ${
+              className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 text-xs font-bold ${
                 paymentAlertsEnabled
-                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300'
-                  : 'bg-white/5 hover:bg-white/10 text-gray-500'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-md shadow-emerald-500/30'
+                  : 'bg-gray-600 hover:bg-gray-500 text-white'
               }`}
               title={paymentAlertsEnabled
-                ? `Payment alerts ON — ${paymentAlertCount} fired this session. Click to mute.`
-                : 'Payment alerts OFF — click to enable'}
-              aria-label={paymentAlertsEnabled ? 'Mute payment alerts' : 'Enable payment alerts'}
+                ? `Alerts ON — ${paymentAlertCount} fired this session. Click to mute.`
+                : 'Alerts OFF — click to enable'}
             >
-              <span className="material-symbols-outlined">
-                {paymentAlertsEnabled ? 'notifications_active' : 'notifications_off'}
-              </span>
+              <span>{paymentAlertsEnabled ? '🔔' : '🔕'}</span>
+              <span>{paymentAlertsEnabled ? 'ON' : 'OFF'}</span>
               {paymentAlertCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                <span className="ml-0.5 bg-white/25 rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">
                   {paymentAlertCount}
                 </span>
               )}
