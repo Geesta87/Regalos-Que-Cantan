@@ -216,7 +216,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       brava: {
         name: 'Ranchera Brava',
-        style: 'fast fiery ranchera, energetic celebratory mariachi, uptempo ranchera with grito, powerful defiant ranchera, Mexican pride anthem, Alejandro Fernández style fiery ranchera',
+        style: 'fast fiery ranchera, energetic celebratory mariachi, uptempo ranchera with grito, powerful defiant ranchera, Mexican pride anthem, modern fiery ranchera style with full mariachi',
         tempo: '120-140 BPM, FAST fiery tempo, energetic 3/4 waltz or 2/4 march, driving celebratory pace',
         instruments: 'mariachi full ensemble, aggressive trumpet fanfares and staccato runs, violin section playing rapid passages in unison, vihuela percussive strumming, guitarrón driving bass line, occasional guitar solo',
         vibe: 'defiant proud energy, celebratory machismo, grito-inducing power, fist-raising anthem, Mexican independence spirit, fiesta patria, charreada arena energy',
@@ -523,7 +523,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       romantico: {
         name: 'Vallenato Romántico',
-        style: 'romantic vallenato ballad, emotional Colombian love vallenato, Carlos Vives romantic style, tender accordion love song, serenata vallenata, paseo lento vallenato',
+        style: 'romantic vallenato ballad, emotional Colombian love vallenato, modern romantic Colombian vallenato style, tender accordion love song, serenata vallenata, paseo lento vallenato',
         tempo: '90-110 BPM, tender swaying paseo rhythm, gentle romantic groove, serenata pace',
         instruments: 'accordion with sustained emotional notes and gentle melodic phrases, caja vallenata soft, guacharaca light, acoustic guitar arpeggios, bass guitar, optional string arrangement',
         vibe: 'deep Colombian love songs, serenata under the stars, emotional confessions to the beloved, Caribbean moonlight romance, tender devoted love',
@@ -643,7 +643,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       pop_bailable: {
         name: 'Pop Bailable',
-        style: 'upbeat danceable Latin pop, summer Latin pop hit, Shakira Ricky Martin party pop, catchy Latin dance pop, feel-good uptempo pop en español, global Latin pop sound',
+        style: 'upbeat danceable Latin pop, summer Latin pop hit, late-90s/early-2000s globally-charting Latin party pop style, catchy Latin dance pop, feel-good uptempo pop en español, global Latin pop sound',
         tempo: '110-130 BPM, dance-friendly upbeat, infectious groove, summer anthem tempo',
         instruments: 'electronic programmed beats with Latin percussion, synthesizers, congas and timbales accents, bass synth, electric guitar riffs, handclaps, brass stabs, polished maximalist production',
         vibe: 'dance floor anthem, summer hit energy, global appeal, party starter, positive vibes, viral TikTok energy, feel-good celebration',
@@ -674,7 +674,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       balada_clasica: {
         name: 'Balada Clásica',
-        style: 'classic orchestral Latin ballad, grand romantic 1970s 1980s ballad en español, José José style dramatic ballad, Rocío Dúrcal classical ballad, theatrical emotional Latin ballad with full orchestra, cinematic love song',
+        style: 'classic orchestral Latin ballad, grand romantic 1970s 1980s ballad en español, classic dramatic crooner-style Latin ballad, classical orchestral love ballad, theatrical emotional Latin ballad with full orchestra, cinematic love song',
         tempo: '60-80 BPM, VERY SLOW, dramatic pauses, rubato phrasing, grand theatrical pacing',
         instruments: 'full string orchestra with sweeping arrangements, grand piano, soft timpani, harp arpeggios, french horn warmth, flute melody, brushed drums, orchestral crescendo builds, choir on final chorus',
         vibe: 'grand romantic gestures, theatrical tearjerker emotion, telenovela climax moment, standing ovation performance, goosebumps crescendo, classic Latin drama',
@@ -932,7 +932,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       clasico: {
         name: 'Rock en Español Clásico',
-        style: 'classic rock en español, 1980s 1990s Latin rock, Maná style melodic rock, Caifanes dark rock, Soda Stereo new wave rock, arena rock Latino, powerful guitar riffs with melodic hooks',
+        style: 'classic rock en español, 1980s 1990s Latin rock, classic Latin melodic rock style, dark Latin rock with new-wave influence, arena rock Latino, powerful guitar riffs with melodic hooks',
         tempo: '110-130 BPM, driving rock tempo, energetic band groove',
         instruments: 'electric guitar with overdrive riffs and clean arpeggios, bass guitar driving eighth notes, full drum kit with rock beat, keyboards pad, occasional acoustic guitar bridge',
         vibe: 'stadium energy, fist-pumping anthem, 90s nostalgia, rock revolution, passionate defiance, arena singalong, generational anthem',
@@ -950,7 +950,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       alternativo: {
         name: 'Rock Alternativo',
-        style: 'alternative rock en español, indie rock Latino, Zoé atmospheric rock, Café Tacvba experimental, dreamy shoegaze-influenced Latin rock, textural guitar layers, atmospheric production',
+        style: 'alternative rock en español, indie rock Latino, atmospheric Latin alt-rock style, experimental Latin rock fusion, dreamy shoegaze-influenced Latin rock, textural guitar layers, atmospheric production',
         tempo: '95-120 BPM, mid-tempo atmospheric, spacious groove, dreamy floating rhythm',
         instruments: 'electric guitar with delay and reverb effects, jangly clean guitars, synthesizer textures, bass guitar melodic lines, drum kit with ride cymbal feel, ambient layers',
         vibe: 'dreamy introspection, artistic depth, atmospheric beauty, indie cinema soundtrack, poetic melancholy, sophisticated cool, underground credibility',
@@ -959,7 +959,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       pop_rock: {
         name: 'Pop Rock Latino',
-        style: 'Latin pop rock, radio-friendly rock en español, Juanes style upbeat rock, La Oreja de Van Gogh pop rock, catchy melodic hooks with rock energy, polished rock production',
+        style: 'Latin pop rock, radio-friendly rock en español, upbeat Latin pop-rock style with bright guitars, modern Spanish-language pop-rock, catchy melodic hooks with rock energy, polished rock production',
         tempo: '105-125 BPM, upbeat radio tempo, catchy groove, singalong pace',
         instruments: 'electric guitar catchy riffs, acoustic guitar strumming, bass guitar, full drum kit, keyboards and piano, occasional horn accents, handclaps',
         vibe: 'radio hit energy, singalong chorus, feel-good anthem, summer soundtrack, positive energy, youth spirit, commercial appeal with rock credibility',
@@ -1188,9 +1188,12 @@ const ADDITIONAL_ARTIST_NAMES = [
   // Bachata
   'Frank Reyes', 'Antony Santos', 'Anthony Santos', 'Zacarías Ferreira',
   'Zacarias Ferreira',
-  // Rock español
+  // Rock español / Latin pop-rock
   'Enrique Bunbury', 'Bunbury', 'Maná', 'Mana', 'Soda Stereo',
-  'Café Tacvba', 'Cafe Tacvba',
+  'Café Tacvba', 'Cafe Tacvba', 'Caifanes', 'Zoé', 'Zoe',
+  'Juanes', 'La Oreja de Van Gogh', 'Shakira', 'Ricky Martin',
+  'Rocío Dúrcal', 'Rocio Durcal', 'Yuri', 'Thalía', 'Thalia',
+  'Belinda',
 ];
 
 function escapeRegExp(s: string): string {
