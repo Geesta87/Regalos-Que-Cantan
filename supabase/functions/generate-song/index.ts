@@ -1311,6 +1311,10 @@ type ProviderErrorClass =
 interface ProviderCtx {
   lyrics: string;
   finalStyle: string;
+  /** Genre/sub-genre negative tags computed by buildStylePrompt. Sent to Kie
+   *  (which has a negativeTags field). Mureka has no negative-prompt API field,
+   *  so this is currently unused on the Mureka path. */
+  negativeTags?: string;
   vocalGender: 'm' | 'f';
   vocalCharacter?: string;
   isForSelf: boolean;
@@ -1425,6 +1429,27 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   return { ok: true, provider: 'mureka-useapi', taskId: data.jobid, payload };
 }
 
+// Suno (Kie) is an English-trained model. It expects English structural
+// markers in lyrics ([Verse 1], [Chorus], etc.) — NOT Spanish ([Verso 1],
+// [Coro], etc.). When Suno encounters a Spanish marker it doesn't recognize,
+// it tends to either sing the word literally or blur the section boundary,
+// resulting in less clean verse/chorus structure.
+//
+// We translate ONLY the structural markers; the actual sung lyrics stay 100%
+// Spanish (since the site is Spanish-only). [Intro] and [Outro] are identical
+// in both languages so they pass through.
+function sunoifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
 async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
   const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
@@ -1433,20 +1458,38 @@ async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
     return { ok: false, provider: 'kie', classification: 'auth_broken', errorMessage: 'KIE_API_KEY env var missing' };
   }
 
+  // Suno's vocalGender param "can only increase the probability but cannot
+  // guarantee adherence" (per Kie docs). We've seen male-requested orders come
+  // back with female vocals in production. Two reinforcement tactics:
+  //   1. Put the gender label FIRST in the style string (Suno weighs early tags more)
+  //   2. Add the OPPOSITE gender to negativeTags — Suno respects negatives strictly
   const genderLabel = ctx.vocalGender === 'f'
-    ? 'solo female vocalist, single female singer only, NO male voice, NO duet'
-    : 'solo male vocalist, single male singer only, NO female voice, NO duet';
+    ? 'solo female vocalist, female voice'
+    : 'solo male vocalist, male voice, masculine vocal';
+  const oppositeGenderTags = ctx.vocalGender === 'f'
+    ? 'male voice, male vocal, baritone, bass voice, deep male voice'
+    : 'female voice, female vocal, soprano, female harmony, high female voice';
+
   const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
+  // Gender at the START gives it positional priority in Suno's tag parsing.
   const voicePrefix = `${genderLabel}, ${vocalStyle}`;
-  const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
-  const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
-  const styleWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+  const maxStyleChars = 1000 - voicePrefix.length - 4;
+  const styleWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}`;
   const title = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 80);
 
   // Defense-in-depth: Suno (Kie) rejects any request whose tags reference a
   // real artist by name. Strip artist names from style AND lyrics before sending.
+  // Also translate Spanish section markers ([Verso 1] → [Verse 1]) so Suno
+  // recognizes the song structure.
   const safeStyle = sanitizeArtistNames(styleWithVoice).substring(0, 1000);
-  const safeLyrics = sanitizeArtistNames(ctx.lyrics).substring(0, 5000);
+  const safeLyrics = sanitizeArtistNames(sunoifyLyricsMarkers(ctx.lyrics)).substring(0, 5000);
+
+  // Combine genre-level negatives (computed by buildStylePrompt) with the
+  // opposite-gender exclusion list. Capped at 200 chars per Kie API limits.
+  const combinedNegatives = [ctx.negativeTags, oppositeGenderTags]
+    .filter((s): s is string => Boolean(s && s.trim()))
+    .join(', ')
+    .substring(0, 200);
 
   const payload: Record<string, unknown> = {
     prompt: safeLyrics,
@@ -1457,9 +1500,17 @@ async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
     style: safeStyle,
     title,
     vocalGender: ctx.vocalGender,
+    negativeTags: combinedNegatives,
+    // Bias Suno strongly toward the style description — important for regional
+    // Mexican genres where Suno's training is weaker than its pop training.
+    styleWeight: 0.85,
+    // Reduce experimental drift — keeps corridos sounding like corridos.
+    weirdnessConstraint: 0.3,
+    // Slightly favor audio features over creative liberties.
+    audioWeight: 0.7,
   };
 
-  console.log(`[callKie] POST api.kie.ai (model=${KIE_MODEL}, gender=${ctx.vocalGender})`);
+  console.log(`[callKie] POST api.kie.ai (model=${KIE_MODEL}, gender=${ctx.vocalGender}, styleWeight=0.85)`);
 
   let resp: Response;
   try {
@@ -2110,6 +2161,7 @@ RESPONDE SOLO JSON:
     const providerCtx: ProviderCtx = {
       lyrics,
       finalStyle,
+      negativeTags,
       vocalGender: (vocalGender === 'f' ? 'f' : 'm'),
       vocalCharacter,
       isForSelf,
