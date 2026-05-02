@@ -1546,12 +1546,55 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const currentSessionId = sessionId || crypto.randomUUID();
 
-    // Anti-abuse cap: limit unpaid songs per email per 24h. Each Mureka call
-    // creates 2 rows, so 10 rows = 5 generation attempts. Failed rows are
-    // excluded so provider errors don't penalize legit customers.
+    // Anti-abuse caps. Three independent rate limits — caller is rejected if
+    // ANY of them trips. We layer them because earlier we had a single per-
+    // email cap and a determined abuser bypassed it by rotating emails
+    // (88 unpaid songs across 9 fake @myyahoo.com addresses, all from the
+    // same recipient/sender combo).
+    //
+    //   1) per email          — 10 unpaid songs in 24h (legacy)
+    //   2) per IP             — 12 unpaid songs in 24h (catches email
+    //                            rotation; cap slightly higher than #1
+    //                            so a household sharing a router doesn't
+    //                            hit it before the per-email rule does)
+    //   3) per (sender,recipient) combo — 12 unpaid songs in 24h (catches
+    //                            email + IP rotation; the same buyer for
+    //                            the same recipient is the strongest signal
+    //                            of "this is one person spamming")
+    //
+    // Failed rows are excluded so provider errors don't penalize legit
+    // customers. Caps are deliberately generous — a real customer trying
+    // a few takes won't trip them; an abuser cycling through emails will.
+
     const UNPAID_LIMIT_PER_EMAIL_24H = 10;
+    const UNPAID_LIMIT_PER_IP_24H = 12;
+    const UNPAID_LIMIT_PER_PAIR_24H = 12;
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    // Resolve client IP via the same forwarded-headers chain create-checkout
+    // already uses. First hop in x-forwarded-for is the original client.
+    const xfwd = req.headers.get('x-forwarded-for') || '';
+    const clientIp = (xfwd.split(',')[0]?.trim()
+      || req.headers.get('cf-connecting-ip')
+      || req.headers.get('x-real-ip')
+      || '').trim();
+
+    // Helper to short-circuit with a 429. Same Spanish error string for
+    // every cap so abusers can't tell which limit they tripped.
+    const blockedResponse = (reason: string, count: number, cap: number) => {
+      console.log(`RATE_LIMIT_UNPAID (${reason}): count=${count} cap=${cap} email=${email} ip=${clientIp} sender=${senderName} recipient=${recipientName}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'RATE_LIMIT_UNPAID',
+          error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+      );
+    };
+
+    // (1) Per-email cap (legacy behavior)
     if (email && typeof email === 'string' && email.trim()) {
-      const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { count: unpaidCount, error: countError } = await supabase
         .from('songs')
         .select('id', { count: 'exact', head: true })
@@ -1561,17 +1604,53 @@ serve(async (req) => {
         .gte('created_at', windowStart);
 
       if (countError) {
-        console.warn(`Unpaid-quota check failed for ${email}: ${countError.message} — allowing through`);
+        console.warn(`per-email quota check failed for ${email}: ${countError.message} — allowing through`);
       } else if ((unpaidCount ?? 0) >= UNPAID_LIMIT_PER_EMAIL_24H) {
-        console.log(`RATE_LIMIT_UNPAID: ${email} has ${unpaidCount} unpaid songs in last 24h (cap ${UNPAID_LIMIT_PER_EMAIL_24H})`);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: 'RATE_LIMIT_UNPAID',
-            error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
-        );
+        return blockedResponse('per-email', unpaidCount ?? 0, UNPAID_LIMIT_PER_EMAIL_24H);
+      }
+    }
+
+    // (2) Per-IP cap — defeats email rotation. Only enforced when we have
+    // a non-empty client IP; if forwarding headers are missing we skip
+    // rather than block legit traffic.
+    if (clientIp) {
+      const { count: ipUnpaidCount, error: ipCountError } = await supabase
+        .from('songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_ip', clientIp)
+        .eq('paid', false)
+        .neq('status', 'failed')
+        .gte('created_at', windowStart);
+
+      if (ipCountError) {
+        console.warn(`per-ip quota check failed for ${clientIp}: ${ipCountError.message} — allowing through`);
+      } else if ((ipUnpaidCount ?? 0) >= UNPAID_LIMIT_PER_IP_24H) {
+        return blockedResponse('per-ip', ipUnpaidCount ?? 0, UNPAID_LIMIT_PER_IP_24H);
+      }
+    }
+
+    // (3) Per (sender, recipient) cap — defeats email + IP rotation. The
+    // strongest signal of a single abuser is "the same gift for the same
+    // person, over and over." Two real customers might share a name, but
+    // they won't both have the same buyer name AND the same recipient
+    // dozens of times in 24h.
+    if (
+      senderName && typeof senderName === 'string' && senderName.trim() &&
+      recipientName && typeof recipientName === 'string' && recipientName.trim()
+    ) {
+      const { count: pairCount, error: pairCountError } = await supabase
+        .from('songs')
+        .select('id', { count: 'exact', head: true })
+        .ilike('sender_name', senderName.trim())
+        .ilike('recipient_name', recipientName.trim())
+        .eq('paid', false)
+        .neq('status', 'failed')
+        .gte('created_at', windowStart);
+
+      if (pairCountError) {
+        console.warn(`per-pair quota check failed: ${pairCountError.message} — allowing through`);
+      } else if ((pairCount ?? 0) >= UNPAID_LIMIT_PER_PAIR_24H) {
+        return blockedResponse('per-pair', pairCount ?? 0, UNPAID_LIMIT_PER_PAIR_24H);
       }
     }
 
@@ -1969,7 +2048,11 @@ RESPONDE SOLO JSON:
       selected: false,
       voice_type: voiceType || 'male',
       artist_inspiration: artistInspiration || null,
-      style_used: finalStyle
+      style_used: finalStyle,
+      // Anti-abuse: stamp the client IP so the per-IP rate limit on the
+      // next request can find this row. NULL is fine when the forwarding
+      // headers aren't present (e.g. local dev).
+      client_ip: clientIp || null
     }).select().single();
 
     if (dbError) throw new Error('DB error: ' + dbError.message);
@@ -2128,6 +2211,8 @@ RESPONDE SOLO JSON:
       style_used: finalStyle,
       task_id: taskId,
       provider: winningProvider,
+      // Same anti-abuse stamp as the v1 insert.
+      client_ip: clientIp || null,
     };
     if (winningProvider === 'mureka-useapi') {
       v2Base.mureka_job_id = taskId;
