@@ -1567,7 +1567,11 @@ serve(async (req) => {
     // a few takes won't trip them; an abuser cycling through emails will.
 
     const UNPAID_LIMIT_PER_EMAIL_24H = 10;
-    const UNPAID_LIMIT_PER_IP_24H = 12;
+    // Tightened from 12 → 8 after the Beto incident: 8 unpaid songs per IP
+    // per 24h is plenty for a real customer (it's 4 generation attempts —
+    // each generation produces 2 sibling rows). Anyone exceeding it from
+    // the same IP within a day is virtually always abusing.
+    const UNPAID_LIMIT_PER_IP_24H = 8;
     const UNPAID_LIMIT_PER_PAIR_24H = 12;
     const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -1578,6 +1582,35 @@ serve(async (req) => {
       || req.headers.get('cf-connecting-ip')
       || req.headers.get('x-real-ip')
       || '').trim();
+
+    // Hard IP blocklist — checked BEFORE any rate-limit math. Used for
+    // abusers who've demonstrated intent to evade the soft caps (e.g. by
+    // typo'ing the recipient name to bypass the per-pair cap). Once an IP
+    // is in `blocked_ips`, every request from it is rejected immediately
+    // with a 403 — no song row created, no Mureka credits spent.
+    if (clientIp) {
+      const { data: blockedRow, error: blockedErr } = await supabase
+        .from('blocked_ips')
+        .select('ip, reason')
+        .eq('ip', clientIp)
+        .maybeSingle();
+      if (blockedErr) {
+        console.warn(`blocked_ips lookup failed for ${clientIp}: ${blockedErr.message} — allowing through`);
+      } else if (blockedRow) {
+        console.log(`IP_BLOCKED: ${clientIp} reason=${blockedRow.reason}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: 'IP_BLOCKED',
+            // Same generic Spanish message as the rate-limit response so
+            // the abuser can't tell whether they hit the soft cap or a
+            // hard block — and can't infer a workaround from the error.
+            error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+        );
+      }
+    }
 
     // Helper to short-circuit with a 429. Same Spanish error string for
     // every cap so abusers can't tell which limit they tripped.
