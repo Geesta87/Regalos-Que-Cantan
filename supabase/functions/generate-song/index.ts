@@ -287,7 +287,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       ranchero: {
         name: 'Mariachi Ranchero',
-        style: 'energetic ranchero mariachi, fiesta mariachi with gritos, bold celebratory mariachi, powerful mariachi anthem, uptempo fiesta brava, Pedro Infante style joyful mariachi',
+        style: 'energetic ranchero mariachi, fiesta mariachi with gritos, bold celebratory mariachi, powerful mariachi anthem, uptempo fiesta brava, classic golden-age joyful mariachi style',
         tempo: '100-130 BPM, energetic driving tempo, festive and uplifting pace, march-like energy',
         instruments: 'full mariachi ensemble, aggressive trumpet fanfares with staccato runs, violin section rapid bowing passages, vihuela driving percussive strumming, guitarrón strong rhythmic bass, grito vocal exclamations',
         vibe: 'bold masculine declarations, celebratory machismo, fiesta-ready energy, grito-inducing moments, rodeo arena power, charreada pride, Mexican Independence party',
@@ -452,7 +452,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       romantica: {
         name: 'Bachata Romántica',
-        style: 'romantic emotional bachata, heartbreak bachata ballad, crying bachata, Frank Reyes style painful bachata, tearful Dominican love song, gut-wrenching romantic bachata',
+        style: 'romantic emotional bachata, heartbreak bachata ballad, crying bachata, classic painful Dominican bachata style, tearful Dominican love song, gut-wrenching romantic bachata',
         tempo: '115-135 BPM, tender emotional groove, heartbreak swaying, crying-while-dancing tempo',
         instruments: 'acoustic guitar prominent with emotional bending, requinto lead with crying vibrato, bongos soft, bass guitar sustained, soft güira, occasional piano chords, string pad',
         vibe: 'deep emotional pain, crying in the dark, heartbreak anthems, love lost, tearful confession, Dominican torch song, broken heart pouring out',
@@ -514,7 +514,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Vallenato Tradicional',
-        style: 'traditional Colombian vallenato, classic accordion-driven vallenato, Diomedes Díaz style storytelling vallenato, Valledupar sound, son vallenato and merengue vallenato rhythms',
+        style: 'traditional Colombian vallenato, classic accordion-driven vallenato, classic storytelling vallenato style, Valledupar sound, son vallenato and merengue vallenato rhythms',
         tempo: '100-120 BPM, classic swinging groove, paseo rhythm, conversational storytelling pace',
         instruments: 'diatonic accordion with melodic runs and trills carrying the melody, caja vallenata hand drum with syncopated patterns, guacharaca scraper providing steady rhythm, bass guitar',
         vibe: 'Colombian Caribbean coast, narrative storytelling tradition, romantic nostalgia, Festival de la Leyenda Vallenata spirit, parrandero joy, riverside memories',
@@ -532,7 +532,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       moderno: {
         name: 'Vallenato Moderno',
-        style: 'modern contemporary vallenato, pop-vallenato crossover, Silvestre Dangond style modern vallenato, Carlos Vives rock-vallenato fusion, radio-friendly Colombian accordion pop',
+        style: 'modern contemporary vallenato, pop-vallenato crossover, modern radio-friendly vallenato style, Colombian accordion-pop fusion with rock influence, radio-friendly Colombian accordion pop',
         tempo: '100-130 BPM, contemporary energetic groove, modern production feel with traditional rhythm',
         instruments: 'accordion with modern clean recording, pop drum kit or programmed drums, electric bass, acoustic guitar, keyboard pads, occasional electric guitar, modern mixing clarity',
         vibe: 'updated fresh vallenato sound, streaming-friendly crossover appeal, young Colombian energy, modern party with traditional soul, radio hit potential',
@@ -652,7 +652,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       pop_urbano: {
         name: 'Pop Urbano',
-        style: 'urban Latin pop, modern pop-reggaeton fusion, streaming era Latin pop, Sebastián Yatra Camilo style contemporary, melodic urban pop, radio-friendly pop with subtle dembow or trap influence',
+        style: 'urban Latin pop, modern pop-reggaeton fusion, streaming era Latin pop, contemporary melodic urban Latin pop style, radio-friendly pop with subtle dembow or trap influence',
         tempo: '90-110 BPM, modern mid-tempo groove, relaxed but groovy, streaming-friendly pace',
         instruments: 'modern programmed drums with subtle dembow hint, synth pads, electric guitar clean, bass synth, vocal processing with light effects, acoustic guitar layer, finger snaps, minimal percussion',
         vibe: 'contemporary streaming hit, youthful fresh energy, Instagram aesthetic, modern Latin romance, accessible global sound, TikTok viral potential',
@@ -843,7 +843,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       romantico: {
         name: 'Duranguense Romántico',
-        style: 'romantic duranguense ballad, slow techno-banda love song, Alacranes Musical style romantic duranguense, emotional synthesizer ballad, keyboard-driven Mexican ballad',
+        style: 'romantic duranguense ballad, slow techno-banda love song, classic romantic duranguense style with synth-keyboard lead, emotional synthesizer ballad, keyboard-driven Mexican ballad',
         tempo: '85-105 BPM, moderate emotional tempo, swaying ballad pace',
         instruments: 'synthesizer accordion with sustained emotional notes, electronic piano, keyboard strings pad, soft electronic drums, bass synth, occasional trumpet accents',
         vibe: 'emotional dedication, slow dance romance, tearful love confession, sentimental, heartfelt, quinceañera vals, prom night',
@@ -852,7 +852,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       norteno_duranguense: {
         name: 'Norteño-Duranguense',
-        style: 'norteño-duranguense fusion, accordion-forward duranguense with norteño elements, K-Paz de la Sierra style, hybrid techno-norteño, polka rhythm with electronic production',
+        style: 'norteño-duranguense fusion, accordion-forward duranguense with norteño elements, hybrid norteño-duranguense style with techno-banda elements, hybrid techno-norteño, polka rhythm with electronic production',
         tempo: '115-135 BPM, energetic, driving polka groove with electronic backbone',
         instruments: 'diatonic accordion AND synthesizer accordion layered, bajo sexto rhythm guitar, electronic drums with polka pattern, keyboard bass, tambora, snare hits',
         vibe: 'border fusion energy, modern yet traditional, dance floor ready, norteño soul with duranguense power, crossover appeal',
@@ -941,7 +941,7 @@ const genreDNA: Record<string, GenreData> = {
       },
       balada_rock: {
         name: 'Balada de Rock',
-        style: 'rock power ballad in Spanish, emotional rock ballad, Enrique Bunbury style dramatic rock, soft verse building to heavy chorus, lighter-waving slow rock anthem',
+        style: 'rock power ballad in Spanish, emotional rock ballad, dramatic Spanish rock ballad style, soft verse building to heavy chorus, lighter-waving slow rock anthem',
         tempo: '70-85 BPM verses building to 90-100 BPM chorus, dynamic tempo, soft-loud contrast',
         instruments: 'clean electric guitar arpeggios verse, distorted power chords chorus, piano ballad foundation, bass guitar, drums building from brushes to full kit, string section optional',
         vibe: 'emotional crescendo, vulnerable confession building to powerful declaration, goosebumps, concert lighter moment, dramatic arc, raw vocal emotion',
@@ -1163,17 +1163,34 @@ function findArtist(query: string): ArtistData | null {
 // artists not in the DB. Intentionally only matches multi-word or 6+ char
 // names to avoid false-strips on short common tokens (e.g. "ms", "junior").
 const ADDITIONAL_ARTIST_NAMES = [
+  // Latin pop / urbano
   'El Recodo', 'Banda El Recodo', 'Sin Bandera', 'Aventura', 'Reik',
   'Luis Miguel', 'Ángela Aguilar', 'Angela Aguilar', 'Prince Royce',
-  'Marc Anthony', 'Maluma', 'J Balvin', 'Karol G', 'Fuerza Regida',
-  'Eslabón Armado', 'Eslabon Armado', 'Espinoza Paz', 'Pepe Aguilar',
-  'Joan Sebastian', 'Joss Favela', 'Yahritza', 'Edén Muñoz', 'Eden Munoz',
-  'Ariel Camacho', 'Lupillo Rivera', 'Jenni Rivera', 'Daddy Yankee',
+  'Marc Anthony', 'Maluma', 'J Balvin', 'Karol G', 'Daddy Yankee',
   'Don Omar', 'Anuel', 'Ozuna', 'Ricardo Arjona', 'Juan Gabriel',
+  'Sebastián Yatra', 'Sebastian Yatra', 'Camilo',
+  // Regional Mexicano (corrido / norteño / sierreño / banda / mariachi)
+  'Fuerza Regida', 'Eslabón Armado', 'Eslabon Armado', 'Espinoza Paz',
+  'Pepe Aguilar', 'Joan Sebastian', 'Joss Favela', 'Yahritza',
+  'Edén Muñoz', 'Eden Munoz', 'Ariel Camacho', 'Lupillo Rivera',
+  'Jenni Rivera', 'Pedro Fernández', 'Pedro Fernandez',
+  'Alejandro Fernández', 'Alejandro Fernandez', 'Pedro Infante',
   'José Alfredo', 'Jose Alfredo', 'José José', 'Jose Jose',
-  'Pedro Fernández', 'Pedro Fernandez', 'Alejandro Fernández',
-  'Alejandro Fernandez', 'Calibre 50', 'Intocable', 'Conjunto Primavera',
-  'Banda MS', 'BandaMS',
+  'Calibre 50', 'Intocable', 'Conjunto Primavera', 'Banda MS', 'BandaMS',
+  // Duranguense / techno-banda (today's leak vector)
+  'Alacranes Musical', 'K-Paz de la Sierra', 'K-Paz', 'Patrulla 81',
+  'Banda Cuisillos', 'Banda Limón', 'Banda Limon', 'Banda Recoditos',
+  'Los Recoditos', 'Montez de Durango', 'Horóscopos de Durango',
+  'Horoscopos de Durango', 'La Adictiva', 'Pesado', 'Duelo',
+  // Vallenato (today's leak vector)
+  'Diomedes Díaz', 'Diomedes Diaz', 'Silvestre Dangond', 'Carlos Vives',
+  'Jorge Celedón', 'Jorge Celedon', 'Peter Manjarrés', 'Peter Manjarres',
+  // Bachata
+  'Frank Reyes', 'Antony Santos', 'Anthony Santos', 'Zacarías Ferreira',
+  'Zacarias Ferreira',
+  // Rock español
+  'Enrique Bunbury', 'Bunbury', 'Maná', 'Mana', 'Soda Stereo',
+  'Café Tacvba', 'Cafe Tacvba',
 ];
 
 function escapeRegExp(s: string): string {
@@ -1784,6 +1801,9 @@ ${habladoLine}
 GENERA JSON con:
 1. "lyrics": Letra completa siguiendo las reglas anteriores.
 2. "emotionalModifiers": Máximo 25 palabras en INGLÉS describiendo la emoción/atmósfera única (NO género/instrumentos/tempo)
+
+REGLA ABSOLUTA — NOMBRES DE ARTISTAS:
+NUNCA escribas el nombre de un artista, banda, cantante o grupo musical real (ni en las letras, ni en emotionalModifiers, ni en ningún otro campo). Esto incluye nombres como "Christian Nodal", "Vicente Fernández", "Alacranes Musical", "Banda MS", "Carin León", "Peso Pluma", "K-Paz", "Diomedes Díaz", etc. — si pensaste mencionar un artista para describir el estilo, REEMPLÁZALO por una descripción del SONIDO ("modern romantic ranchera style", "techno-banda style") sin mencionar al artista. El proveedor de música RECHAZA cualquier referencia a artistas reales y la canción FALLA.
 
 REGLA CRÍTICA para emotionalModifiers:
 Los modifiers DEBEN ser compatibles con el carácter sonoro del género. Expresa la emoción A TRAVÉS del lente del género, nunca en contra.
