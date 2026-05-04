@@ -255,6 +255,13 @@ serve(async (req) => {
       customer_email: email,
       line_items: lineItems,
       mode: 'payment',
+      locale: 'es',
+      submit_type: 'pay',
+      custom_text: {
+        submit: {
+          message: 'Después del pago te llevaremos directamente a tu canción y enviaremos el enlace permanente a tu correo. Guarda el correo — el enlace nunca expira.',
+        },
+      },
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${allSongIds}`,
       cancel_url: `${BASE_URL}/preview/${songId}`,
       metadata: {

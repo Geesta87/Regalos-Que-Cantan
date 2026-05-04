@@ -449,6 +449,13 @@ export default function PreviewPage() {
               </div>
             </div>
 
+            <div className="bg-white/[0.04] border border-gold/20 rounded-2xl px-5 py-3 mb-5 max-w-md mx-auto">
+              <p className="text-white/85 text-xs md:text-sm leading-relaxed text-center">
+                <span className="mr-1">📧</span>
+                Después del pago verás tu canción al instante y enviaremos el enlace a <span className="text-gold/90 font-semibold">tu correo</span>. Guárdalo — <span className="text-white">el enlace nunca expira</span>.
+              </p>
+            </div>
+
             <div className="text-center">
               <button
                 onClick={handleCheckout}

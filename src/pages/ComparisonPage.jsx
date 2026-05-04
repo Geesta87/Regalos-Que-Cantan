@@ -1481,6 +1481,28 @@ export default function ComparisonPage() {
             </div>
           )}
 
+          {/* Post-payment expectations banner */}
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(212,175,55,0.25)',
+            borderRadius: '14px',
+            padding: '12px 16px',
+            marginBottom: '14px',
+            textAlign: 'center'
+          }}>
+            <p style={{
+              color: 'rgba(255,255,255,0.85)',
+              fontSize: '12.5px',
+              lineHeight: 1.5,
+              margin: 0
+            }}>
+              <span style={{marginRight: '4px'}}>📧</span>
+              Después del pago verás tu canción al instante y enviaremos el enlace a{' '}
+              <span style={{color: '#d4af37', fontWeight: 600}}>tu correo</span>. Guárdalo —{' '}
+              <span style={{color: 'white'}}>el enlace nunca expira</span>.
+            </p>
+          </div>
+
           {/* Main CTA */}
           <button
             ref={checkoutCtaRef}
