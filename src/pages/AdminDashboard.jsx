@@ -2197,11 +2197,26 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3">
                             <div>
-                              <p className="font-medium text-amber-400 capitalize flex items-center gap-1.5">
+                              <p className="font-medium text-amber-400 capitalize flex items-center gap-1.5 flex-wrap">
                                 <span>{song.genre || '—'}</span>
                                 <span className="text-xs opacity-70" title={song.voice_type === 'female' ? 'Female voice' : 'Male voice'}>
                                   {getVoiceLabel(song)}
                                 </span>
+                                {/* V1/V2 chip — every song creation produces 2 audio variants
+                                    (rows share a mureka_job_id). Color-coded so a glance at the
+                                    list shows whether you're looking at V1 or V2. */}
+                                {(song.version === 1 || song.version === 2) && (
+                                  <span
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      song.version === 1
+                                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                                        : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                    }`}
+                                    title={`Version ${song.version} of 2 — sibling shares mureka_job_id ${song.mureka_job_id || '(none)'}`}
+                                  >
+                                    V{song.version}
+                                  </span>
+                                )}
                               </p>
                               {song.sub_genre && (
                                 <p className="text-xs text-gray-500">{song.sub_genre}</p>
@@ -2448,6 +2463,19 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mb-3">
                         <span className="capitalize text-amber-400">🎵 {song.genre || '—'}</span>
+                        {/* V1/V2 chip for the mobile card — same color scheme as the desktop table */}
+                        {(song.version === 1 || song.version === 2) && (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold self-start ${
+                              song.version === 1
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                            }`}
+                            title={`Version ${song.version} of 2`}
+                          >
+                            V{song.version}
+                          </span>
+                        )}
                         <span>{formatOccasion(song.occasion)}</span>
                         {isPaid(song) && userRole === 'admin' && (
                           <span className="text-green-400">{formatCurrency(getSongPrice(song))}</span>
@@ -3724,20 +3752,27 @@ export default function AdminDashboard() {
                               <div className="mb-3 bg-amber-500/5 border border-amber-500/10 rounded-lg p-2">
                                 <p className="text-[10px] text-amber-400 uppercase font-bold mb-1">🎵 Songs ready to listen:</p>
                                 <div className="flex flex-wrap gap-1">
-                                  {lead.songs.filter(s => s.audio_url).map((s, i) => (
-                                    <button
-                                      key={s.id}
-                                      onClick={() => {
-                                        const url = `${window.location.origin}/listen?song_id=${s.id}`;
-                                        navigator.clipboard.writeText(url);
-                                        setCopiedLinkId(s.id);
-                                        setTimeout(() => setCopiedLinkId(null), 2000);
-                                      }}
-                                      className="px-2 py-1 bg-amber-500/10 text-amber-400 rounded text-xs hover:bg-amber-500/20 transition"
-                                    >
-                                      {copiedLinkId === s.id ? '✅ Copied!' : `🎧 Song ${i + 1}`}
-                                    </button>
-                                  ))}
+                                  {lead.songs.filter(s => s.audio_url).map((s, i) => {
+                                    // Prefer the actual `version` column when present so the
+                                    // chip matches the orders table (V1 / V2). Fall back to
+                                    // positional numbering for legacy rows that pre-date the
+                                    // version field.
+                                    const v = (s.version === 1 || s.version === 2) ? s.version : (i + 1);
+                                    return (
+                                      <button
+                                        key={s.id}
+                                        onClick={() => {
+                                          const url = `${window.location.origin}/listen?song_id=${s.id}`;
+                                          navigator.clipboard.writeText(url);
+                                          setCopiedLinkId(s.id);
+                                          setTimeout(() => setCopiedLinkId(null), 2000);
+                                        }}
+                                        className="px-2 py-1 bg-amber-500/10 text-amber-400 rounded text-xs hover:bg-amber-500/20 transition"
+                                      >
+                                        {copiedLinkId === s.id ? '✅ Copied!' : `🎧 V${v}`}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
@@ -4516,9 +4551,25 @@ export default function AdminDashboard() {
           >
             {/* Modal Header */}
             <div className="sticky top-0 bg-[#1a1f26] border-b border-white/10 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold">Order Details</h2>
-              <button 
-                onClick={() => setSelectedSong(null)} 
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                Order Details
+                {/* Show V1/V2 right next to the title so it's obvious which audio
+                    variant this row represents. Each song creation produces 2. */}
+                {(selectedSong.version === 1 || selectedSong.version === 2) && (
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
+                      selectedSong.version === 1
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                        : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    }`}
+                    title={`Version ${selectedSong.version} of 2`}
+                  >
+                    Version {selectedSong.version} de 2
+                  </span>
+                )}
+              </h2>
+              <button
+                onClick={() => setSelectedSong(null)}
                 className="p-2 rounded-lg hover:bg-white/10 transition"
               >
                 <span className="material-symbols-outlined text-gray-400">close</span>

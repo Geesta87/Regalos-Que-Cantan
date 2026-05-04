@@ -45,6 +45,10 @@ const SONG_LIST_COLUMNS = [
   'coupon_code', 'affiliate_code', 'utm_source',
   'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
   'has_video_addon', 'admin_dismissed_at', 'status',
+  // version + mureka_job_id power the V1/V2 label in the admin orders list:
+  // each song creation produces 2 rows that share a mureka_job_id, one per
+  // generated audio variant (version 1, version 2).
+  'version', 'mureka_job_id',
 ].join(',');
 
 // Fields that reveal payment amounts. Wiped out for the assistant role.

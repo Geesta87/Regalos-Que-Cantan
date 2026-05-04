@@ -349,8 +349,10 @@ function getAbandonedCheckoutEmailHtml(song: any, listenUrl: string) {
 </html>`;
 }
 
-// Email template for purchase confirmation (dark gradient design)
-function getPurchaseEmailHtml(song: any) {
+// Email template for purchase confirmation (dark gradient design).
+// Pass the full list of paid song IDs so 2-song bundle buyers get ONE link
+// covering all of them — the listen page resolves comma-joined ids.
+function getPurchaseEmailHtml(song: any, songIds: string[] = [song.id]) {
   const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
   const recipientName = song.recipient_name || 'tu ser querido';
   const songTitle = song.song_title || `Canci\u00f3n para ${song.recipient_name || 'ti'}`;
@@ -359,7 +361,14 @@ function getPurchaseEmailHtml(song: any) {
   const occasion = song.occasion || 'Especial';
   // Use durable /listen page link, NOT the raw audio_url (which can change as audio
   // moves from Mureka CDN → Supabase Storage). The page handles all URL states.
-  const listenUrl = `https://regalosquecantan.com/listen?song_id=${song.id}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_confirmation`;
+  // Listen page deep-link. Bundle buyers (2+ songs) get `song_ids=id1,id2`
+  // so a single link covers every paid song under one combo player.
+  const isCombo = songIds.length > 1;
+  const songCount = songIds.length;
+  const listenParam = isCombo
+    ? `song_ids=${songIds.join(',')}`
+    : `song_id=${song.id}`;
+  const listenUrl = `https://regalosquecantan.com/listen?${listenParam}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_confirmation`;
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -374,21 +383,33 @@ function getPurchaseEmailHtml(song: any) {
 
         <!-- Dark Hero Section -->
         <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA</p>
+          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA${isCombo ? ` &middot; ${songCount} CANCIONES` : ''}</p>
           <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
-          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">Tu canci&oacute;n ya es <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">tuya.</span></h2>
-          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.</p>
+          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">${isCombo ? `Tus <strong style="color:#ffd23f;">${songCount} canciones</strong> ya son` : 'Tu canci&oacute;n ya es'} <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">${isCombo ? 'tuyas.' : 'tuya.'}</span></h2>
+          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">${isCombo
+            ? `Letra, melod&iacute;a y emoci&oacute;n en <strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas</strong> &mdash;<br>todas listas para llegar al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`
+            : `Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`}</p>
         </td></tr>
 
         <!-- Download CTA Button -->
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
           <a href="${listenUrl}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
-            &#127911; Escuchar y Descargar
+            &#127911; ${isCombo ? `Escuchar mis ${songCount} canciones` : 'Escuchar y Descargar'}
           </a>
         </td></tr>
-
+${isCombo ? `
+        <!-- Combo callout — flagged so 2-song bundle buyers don't think they only got one song -->
+        <tr><td style="background-color:#1a0e08;padding:0 30px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,rgba(255,107,53,0.12) 0%,rgba(255,46,136,0.12) 100%);border:1.5px solid rgba(255,107,53,0.4);border-radius:16px;">
+            <tr><td style="padding:18px 22px;text-align:center;">
+              <p style="color:#ffd23f;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0 0 6px;">&#127911;&#127911; PAQUETE DE ${songCount} CANCIONES</p>
+              <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;line-height:1.5;">El bot&oacute;n de arriba abre <strong style="color:#ff8c42;">tus ${songCount} canciones</strong> en una sola p&aacute;gina.<br><span style="color:#c9b99a;font-weight:400;font-size:13px;">Usa los botones &laquo;Canci&oacute;n 1&raquo; / &laquo;Canci&oacute;n 2&raquo; arriba del reproductor para alternar entre ellas.</span></p>
+            </td></tr>
+          </table>
+        </td></tr>
+` : ''}
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#a67c52;font-size:13px;margin:0;">&#128274; Este enlace no expira &middot; Escucha y descarga cuando quieras</p>
+          <p style="color:#a67c52;font-size:13px;margin:0;">&#128274; Este enlace no expira &middot; ${isCombo ? `Las ${songCount} canciones est&aacute;n incluidas` : 'Escucha y descarga cuando quieras'}</p>
         </td></tr>
 
         <!-- Gradient Divider -->
@@ -396,8 +417,8 @@ function getPurchaseEmailHtml(song: any) {
 
         <!-- Song Preview Section -->
         <tr><td style="background-color:#1a0e08;padding:40px 30px 10px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; TU CANCI&Oacute;N COMPRADA</p>
-          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">Este regalo tiene voz propia</h3>
+          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; ${isCombo ? `TUS ${songCount} CANCIONES COMPRADAS` : 'TU CANCI&Oacute;N COMPRADA'}</p>
+          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">${isCombo ? `${songCount} canciones, un solo enlace` : 'Este regalo tiene voz propia'}</h3>
         </td></tr>
 
         <!-- Song Card -->
@@ -407,13 +428,13 @@ function getPurchaseEmailHtml(song: any) {
               <!-- Play Button Column -->
               <td width="120" style="background:linear-gradient(135deg,#ff6b35 0%,#c2693a 100%);text-align:center;vertical-align:middle;padding:20px;">
                 <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 8px;line-height:50px;font-size:24px;">&#9654;</div>
-                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">COMPRADA</p>
+                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">${isCombo ? `${songCount} CANCIONES` : 'COMPRADA'}</p>
               </td>
               <!-- Song Info Column -->
               <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
-                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">TU CANCI&Oacute;N PERSONALIZADA</p>
+                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">${isCombo ? `TUS ${songCount} CANCIONES PERSONALIZADAS` : 'TU CANCI&Oacute;N PERSONALIZADA'}</p>
                 <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${recipientName}</strong> &middot; De: ${senderName}<br>Estilo: <span style="text-transform:capitalize;">${genre}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${occasion}</span></p>
+                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${recipientName}</strong> &middot; De: ${senderName}<br>Estilo: <span style="text-transform:capitalize;">${genre}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${occasion}</span>${isCombo ? `<br><strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas en el mismo enlace</strong>` : ''}</p>
                 <!-- Mini Waveform -->
                 <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
                 <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>
@@ -527,12 +548,18 @@ serve(async (req) => {
           let emailOk = false;
           let emailErr: string | null = null;
           try {
+            const subject = songIds.length > 1
+              ? `🎵 Tus ${songIds.length} canciones para ${existingPaid.recipient_name} están listas!`
+              : `🎵 Tu canción para ${existingPaid.recipient_name} está lista!`;
+            const preheader = songIds.length > 1
+              ? `Tus ${songIds.length} canciones para ${existingPaid.recipient_name} en un solo enlace. El enlace nunca expira — guarda este correo.`
+              : `Escucha y descarga tu canción para ${existingPaid.recipient_name}. El enlace nunca expira — guarda este correo.`;
             await sendEmail(
               recoveryEmail,
-              `🎵 Tu canción para ${existingPaid.recipient_name} está lista!`,
-              getPurchaseEmailHtml(existingPaid),
+              subject,
+              getPurchaseEmailHtml(existingPaid, songIds),
               'purchase_confirmation',
-              `Escucha y descarga tu canción para ${existingPaid.recipient_name}. El enlace nunca expira — guarda este correo.`,
+              preheader,
             );
             emailOk = true;
             console.log('📧 Purchase email sent (recovery) to:', recoveryEmail, 'song:', existingPaid.id);
@@ -683,12 +710,18 @@ serve(async (req) => {
           let emailOk = false;
           let emailErr: string | null = null;
           try {
+            const subject = songIds.length > 1
+              ? `🎵 Tus ${songIds.length} canciones para ${firstSong.recipient_name} están listas!`
+              : `🎵 Tu canción para ${firstSong.recipient_name} está lista!`;
+            const preheader = songIds.length > 1
+              ? `Tus ${songIds.length} canciones para ${firstSong.recipient_name} en un solo enlace. El enlace nunca expira — guarda este correo.`
+              : `Escucha y descarga tu canción para ${firstSong.recipient_name}. El enlace nunca expira — guarda este correo.`;
             await sendEmail(
               email,
-              `🎵 Tu canción para ${firstSong.recipient_name} está lista!`,
-              getPurchaseEmailHtml(firstSong),
+              subject,
+              getPurchaseEmailHtml(firstSong, songIds),
               'purchase_confirmation',
-              `Escucha y descarga tu canción para ${firstSong.recipient_name}. El enlace nunca expira — guarda este correo.`,
+              preheader,
             );
             emailOk = true;
             console.log('📧 Purchase email sent to:', email, 'for songs:', songIds);

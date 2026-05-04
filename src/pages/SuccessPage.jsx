@@ -472,15 +472,21 @@ export default function SuccessPage() {
 
   // ------ Start countdown once song + audio are ready ------
   // ------ Redirect to SongPage after payment (song-only buyers) ------
+  // For 2-song bundles this MUST include every paid song id (comma-joined)
+  // so the SongPage loads them all under one combo player. Using a single
+  // id here was the bug that made bundle buyers think they only got one song.
   const redirectSongIdRef = useRef(null);
   const hasTriggeredRedirect = useRef(false);
 
-  // Store song ID as soon as we have it
+  // Build the comma-joined id list as soon as the songs query resolves —
+  // falls back to the first song id while the rest stream in.
   useEffect(() => {
-    if (currentSong?.id) {
+    if (songs && songs.length > 0) {
+      redirectSongIdRef.current = songs.map(s => s.id).filter(Boolean).join(',');
+    } else if (currentSong?.id) {
       redirectSongIdRef.current = currentSong.id;
     }
-  }, [currentSong]);
+  }, [songs, currentSong]);
 
   // One-time redirect setup on first mount
   useEffect(() => {
