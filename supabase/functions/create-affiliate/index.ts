@@ -9,6 +9,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as hexEncode } from 'https://deno.land/std@0.168.0/encoding/hex.ts';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,6 +191,11 @@ serve(async (req) => {
     if (SENDGRID_API_KEY) {
       try {
         const firstName = name.split(' ')[0];
+        const rawHtml = getWelcomeEmailHtml(name, email.toLowerCase().trim(), password, code.toLowerCase().trim(), couponCode || null);
+        const { html: finalHtml, text: finalText } = buildEmailParts(
+          rawHtml,
+          `${firstName}, bienvenido al programa de afiliados. Tus credenciales y enlace de partner están adentro.`,
+        );
         const emailResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
           method: 'POST',
           headers: {
@@ -201,7 +207,11 @@ serve(async (req) => {
             from: { email: 'hola@regalosquecantan.com', name: 'RegalosQueCantan' },
             reply_to: { email: 'hola@regalosquecantan.com', name: 'RegalosQueCantan' },
             subject: `🎵 ${firstName}, bienvenido al programa de afiliados de RegalosQueCantan`,
-            content: [{ type: 'text/html', value: getWelcomeEmailHtml(name, email.toLowerCase().trim(), password, code.toLowerCase().trim(), couponCode || null) }],
+            // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+            content: [
+              { type: 'text/plain', value: finalText },
+              { type: 'text/html', value: finalHtml },
+            ],
             categories: ['affiliate_welcome', 'rqc'],
             tracking_settings: {
               click_tracking: { enable: true, enable_text: false },

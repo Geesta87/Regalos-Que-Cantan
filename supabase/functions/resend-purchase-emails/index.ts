@@ -19,6 +19,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -62,7 +63,8 @@ function buildHtml(firstName: string, recipientName: string, listenUrl: string):
 </table></td></tr></table></body></html>`;
 }
 
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+async function sendEmail(to: string, subject: string, html: string, preheader: string = ''): Promise<void> {
+  const { html: finalHtml, text: finalText } = buildEmailParts(html, preheader);
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -74,7 +76,11 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
       from: { email: SENDER_EMAIL, name: SENDER_NAME },
       reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
       subject,
-      content: [{ type: 'text/html', value: html }],
+      // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+      content: [
+        { type: 'text/plain', value: finalText },
+        { type: 'text/html', value: finalHtml },
+      ],
       categories: ['purchase_link_resend', 'rqc'],
       tracking_settings: {
         click_tracking: { enable: true, enable_text: false },
@@ -190,7 +196,12 @@ serve(async (req) => {
     const subject = `🎵 Tu canción de RegalosQueCantan — aquí está tu enlace por si no lo viste`;
 
     try {
-      await sendEmail(r.email, subject, buildHtml(firstName, recipientName, listenUrl));
+      await sendEmail(
+        r.email,
+        subject,
+        buildHtml(firstName, recipientName, listenUrl),
+        `Tu canción para ${recipientName} — aquí tienes el enlace por si no viste el original.`,
+      );
       await supabase.from('funnel_events').insert([
         {
           step: 'purchase_link_resend_sent',

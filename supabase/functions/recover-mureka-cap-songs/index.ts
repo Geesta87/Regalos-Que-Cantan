@@ -12,6 +12,7 @@
 // Deploy with: supabase functions deploy recover-mureka-cap-songs --project-ref yzbvajungshqcpusfiia
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,7 +116,11 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
     return false;
   }
   const subject = `🎧 ¡Disculpa la espera! Tu canción para ${recipientName} ya está lista`;
-  const html = getApologyEmailHtml(song, previewLink);
+  const rawHtml = getApologyEmailHtml(song, previewLink);
+  const { html: finalHtml, text: finalText } = buildEmailParts(
+    rawHtml,
+    `Disculpa la espera — tu canción para ${recipientName} ya está lista. Escúchala aquí.`,
+  );
   const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -127,7 +132,11 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
       from: { email: SENDER_EMAIL, name: SENDER_NAME },
       reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
       subject,
-      content: [{ type: 'text/html', value: html }],
+      // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+      content: [
+        { type: 'text/plain', value: finalText },
+        { type: 'text/html', value: finalHtml },
+      ],
       categories: ['outage_recovery_2026_05_01', 'transactional', 'rqc'],
       tracking_settings: {
         click_tracking: { enable: true, enable_text: false },

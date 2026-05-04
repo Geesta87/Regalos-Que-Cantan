@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,14 +39,30 @@ serve(async (req) => {
       } catch (err) { console.error('Failed to log email:', err) }
     }
 
-    async function sendEmail(to: string, subject: string, htmlContent: string): Promise<boolean> {
+    async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'rqc_drip', preheader: string = ''): Promise<boolean> {
+      const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sendgridApiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: to }], subject }],
           from: { email: 'hola@regalosquecantan.com', name: 'RegalosQueCantan' },
-          content: [{ type: 'text/html', value: htmlContent }]
+          reply_to: { email: 'hola@regalosquecantan.com', name: 'RegalosQueCantan' },
+          // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+          content: [
+            { type: 'text/plain', value: finalText },
+            { type: 'text/html', value: finalHtml },
+          ],
+          categories: [category, 'rqc'],
+          tracking_settings: {
+            click_tracking: { enable: true, enable_text: false },
+            open_tracking: { enable: true },
+            subscription_tracking: { enable: false },
+          },
+          headers: {
+            'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         }),
       })
       return response.status === 202

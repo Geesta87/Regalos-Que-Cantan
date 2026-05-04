@@ -8,6 +8,7 @@
 // Always returns 200 so Kie.ai doesn't retry.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,9 +25,16 @@ const SENDER_NAME = 'RegalosQueCantan';
 // EMAIL HELPERS — same template/category as mureka-useapi-callback
 // ============================================================================
 
-async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'transactional') {
+async function sendEmail(
+  to: string,
+  subject: string,
+  htmlContent: string,
+  category: string = 'transactional',
+  preheader: string = '',
+) {
   if (!SENDGRID_API_KEY) return null;
   try {
+    const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
     return await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -38,7 +46,11 @@ async function sendEmail(to: string, subject: string, htmlContent: string, categ
         from: { email: SENDER_EMAIL, name: SENDER_NAME },
         reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
         subject,
-        content: [{ type: 'text/html', value: htmlContent }],
+        // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+        content: [
+          { type: 'text/plain', value: finalText },
+          { type: 'text/html', value: finalHtml },
+        ],
         categories: [category, 'rqc'],
         tracking_settings: {
           click_tracking: { enable: true, enable_text: false },

@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -124,12 +125,21 @@ async function sendMetaCAPIPurchase(args: {
   }
 }
 
-// Helper function to send emails via SendGrid (with tracking + deliverability)
-async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'transactional') {
+// Helper function to send emails via SendGrid (with tracking + deliverability).
+// Uses _shared/email.ts to inject a hidden preheader and a text/plain alternative.
+async function sendEmail(
+  to: string,
+  subject: string,
+  htmlContent: string,
+  category: string = 'transactional',
+  preheader: string = '',
+) {
   if (!SENDGRID_API_KEY) {
     console.warn('SENDGRID_API_KEY not set, skipping email');
     return null;
   }
+
+  const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -142,7 +152,11 @@ async function sendEmail(to: string, subject: string, htmlContent: string, categ
       from: { email: SENDER_EMAIL, name: SENDER_NAME },
       reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
       subject: subject,
-      content: [{ type: 'text/html', value: htmlContent }],
+      // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
+      content: [
+        { type: 'text/plain', value: finalText },
+        { type: 'text/html', value: finalHtml },
+      ],
       categories: [category, 'rqc'],
       tracking_settings: {
         click_tracking: { enable: true, enable_text: false },
@@ -517,7 +531,8 @@ serve(async (req) => {
               recoveryEmail,
               `🎵 Tu canción para ${existingPaid.recipient_name} está lista!`,
               getPurchaseEmailHtml(existingPaid),
-              'purchase_confirmation'
+              'purchase_confirmation',
+              `Escucha y descarga tu canción para ${existingPaid.recipient_name}. El enlace nunca expira — guarda este correo.`,
             );
             emailOk = true;
             console.log('📧 Purchase email sent (recovery) to:', recoveryEmail, 'song:', existingPaid.id);
@@ -672,7 +687,8 @@ serve(async (req) => {
               email,
               `🎵 Tu canción para ${firstSong.recipient_name} está lista!`,
               getPurchaseEmailHtml(firstSong),
-              'purchase_confirmation'
+              'purchase_confirmation',
+              `Escucha y descarga tu canción para ${firstSong.recipient_name}. El enlace nunca expira — guarda este correo.`,
             );
             emailOk = true;
             console.log('📧 Purchase email sent to:', email, 'for songs:', songIds);
@@ -766,7 +782,8 @@ serve(async (req) => {
                   email,
                   `🎵 ${song.recipient_name ? `Tu canción para ${song.recipient_name}` : 'Tu canción'} te espera — 10% OFF`,
                   getAbandonedCheckoutEmailHtml(song, listenUrl),
-                  'checkout_recovery'
+                  'checkout_recovery',
+                  `Tu canción personalizada sigue lista. Completa tu compra con 10% OFF — usa el código VUELVE10.`,
                 );
 
                 // Log that we sent the recovery email (prevents duplicates)
