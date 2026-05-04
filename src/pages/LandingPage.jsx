@@ -83,17 +83,18 @@ export default function LandingPage() {
           <span className="material-symbols-outlined text-3xl">library_music</span>
           <h2 className="text-white text-xl font-extrabold tracking-tight">RegalosQueCantan</h2>
         </div>
-        <div className="flex items-center gap-3 md:gap-5">
+        <div className="flex items-center gap-2 md:gap-4">
           <button
             onClick={() => navigateTo('recoverSong')}
-            className="hidden sm:inline text-white/65 hover:text-white text-xs md:text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
             title="Recupera tu canción si ya compraste"
           >
-            Mi canción
+            <span aria-hidden="true">🎵</span>
+            <span>Mi canción</span>
           </button>
           <button
             onClick={() => navigateTo('genre')}
-            className="bg-landing-primary hover:bg-landing-primary/90 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-all shadow-lg shadow-landing-primary/25"
+            className="bg-landing-primary hover:bg-landing-primary/90 text-white text-sm font-bold px-5 py-2.5 md:px-6 rounded-lg transition-all shadow-lg shadow-landing-primary/25"
           >
             Empezar
           </button>
@@ -167,14 +168,17 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Existing customer recovery link */}
+          {/* Existing customer recovery — visible chip-style CTA */}
           <div className="mt-6">
             <a
               href="/mi-cancion"
               onClick={(e) => { e.preventDefault(); navigateTo('recoverSong'); }}
-              className="text-white/55 hover:text-white/90 text-sm font-medium underline underline-offset-4 decoration-white/30 hover:decoration-white/70 transition-colors"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 hover:border-landing-primary/50 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all shadow-md"
             >
-              ¿Ya compraste? Recupera tu canción aquí 🎵
+              <span aria-hidden="true">🎵</span>
+              <span>¿Ya compraste?</span>
+              <span className="text-landing-primary">Encuentra tu canción</span>
+              <span aria-hidden="true">→</span>
             </a>
           </div>
 
@@ -222,7 +226,14 @@ export default function LandingPage() {
       {/* ─── Footer ─── */}
       <footer className="relative z-30 bg-landing-bg border-t border-white/5 py-8 px-6 lg:px-20 flex flex-col md:flex-row justify-between items-center gap-4">
         <p className="text-slate-500 text-sm">© 2026 RegalosQueCantan · Hecho con ❤️</p>
-        <div className="flex gap-6">
+        <div className="flex flex-wrap items-center justify-center gap-5">
+          <a
+            className="text-slate-300 hover:text-landing-primary transition-colors text-xs font-semibold inline-flex items-center gap-1"
+            href="/mi-cancion"
+            onClick={(e) => { e.preventDefault(); navigateTo('recoverSong'); }}
+          >
+            🎵 Recuperar mi canción
+          </a>
           <a className="text-slate-500 hover:text-landing-primary transition-colors text-xs" href="mailto:hola@regalosquecantan.com">Contacto</a>
         </div>
       </footer>

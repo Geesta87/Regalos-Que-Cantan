@@ -167,13 +167,27 @@ export default function LandingPagePremium() {
         }}>
           Regalos<span style={{ color: '#f20d80' }}>Que</span>Cantan
         </button>
-        <button className="lpp-header-cta" onClick={handleCTA} style={{
-          background: 'transparent', border: '1px solid rgba(201,24,74,0.4)', color: '#ff8fa3',
-          padding: '10px 28px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
-          letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.3s'
-        }}>
-          Crear Canción
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button onClick={() => navigateTo('recoverSong')} style={{
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
+            color: 'white', padding: '9px 16px', borderRadius: '999px',
+            fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            transition: 'all 0.3s',
+          }}
+          title="Recupera tu canción si ya compraste"
+          >
+            <span aria-hidden="true">🎵</span>
+            <span>Mi canción</span>
+          </button>
+          <button className="lpp-header-cta" onClick={handleCTA} style={{
+            background: 'transparent', border: '1px solid rgba(201,24,74,0.4)', color: '#ff8fa3',
+            padding: '10px 28px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
+            letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.3s'
+          }}>
+            Crear Canción
+          </button>
+        </div>
       </div>
 
       {/* HERO */}
