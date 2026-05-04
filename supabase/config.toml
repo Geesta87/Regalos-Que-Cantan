@@ -134,3 +134,12 @@ verify_jwt = true
 # Reads + flips social_pipeline_state.enabled, the dashboard-controlled
 # pause switch for render-social-clip + post-to-ghl.
 verify_jwt = true
+
+[functions.recover-song]
+# Public-facing self-service song recovery, called from /mi-cancion with the
+# Supabase anon key. Same auth pattern as create-checkout — verify_jwt = true
+# means the gateway accepts the public anon JWT before our handler runs.
+# The handler enforces its own per-IP rate limit and returns a same-shape
+# response on every code path so the endpoint can't be used for email
+# enumeration.
+verify_jwt = true

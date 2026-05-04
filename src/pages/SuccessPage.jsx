@@ -1281,10 +1281,39 @@ export default function SuccessPage() {
     return (
       <div style={S.fullScreenCenter}>
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-        <div style={{ textAlign: 'center', padding: '20px' }}>
+        <div style={{ textAlign: 'center', padding: '20px', maxWidth: '440px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>😔</div>
-          <p style={{ color: '#f87171', marginBottom: '16px', fontSize: '18px', fontFamily: "'Montserrat', sans-serif" }}>{error}</p>
-          <a href="/" style={{ color: '#f74da6', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif" }}>← Volver al inicio</a>
+          <p style={{ color: '#f87171', marginBottom: '20px', fontSize: '18px', fontFamily: "'Montserrat', sans-serif" }}>{error}</p>
+
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(247, 77, 166, 0.25)',
+            borderRadius: '14px',
+            padding: '18px 16px',
+            marginBottom: '20px',
+            fontFamily: "'Montserrat', sans-serif",
+          }}>
+            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', margin: '0 0 12px', lineHeight: 1.5 }}>
+              Si ya pagaste, también te enviamos el enlace por correo. ¿No lo ves?
+            </p>
+            <a
+              href="/mi-cancion"
+              style={{
+                display: 'inline-block',
+                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                color: 'white',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                padding: '12px 20px',
+                borderRadius: '10px',
+              }}
+            >
+              📧 Reenviar enlace a mi correo
+            </a>
+          </div>
+
+          <a href="/" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontWeight: '600', fontFamily: "'Montserrat', sans-serif", fontSize: '13px' }}>← Volver al inicio</a>
         </div>
       </div>
     );
