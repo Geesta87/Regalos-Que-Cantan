@@ -49,6 +49,11 @@ const SONG_LIST_COLUMNS = [
   // each song creation produces 2 rows that share a mureka_job_id, one per
   // generated audio variant (version 1, version 2).
   'version', 'mureka_job_id',
+  // Order-details modal fields. These were lazy-loaded via the `detail` action
+  // but the on-demand fetch silently failed for some admins, leaving the
+  // modal blank. Fetching them up-front is reliable; the extra payload
+  // compresses well over the wire (gzip on text/JSON).
+  'details', 'lyrics', 'relationship', 'last_downloaded_at',
 ].join(',');
 
 // Fields that reveal payment amounts. Wiped out for the assistant role.
