@@ -83,7 +83,14 @@ export default function LandingPage() {
           <span className="material-symbols-outlined text-3xl">library_music</span>
           <h2 className="text-white text-xl font-extrabold tracking-tight">RegalosQueCantan</h2>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 md:gap-5">
+          <button
+            onClick={() => navigateTo('recoverSong')}
+            className="hidden sm:inline text-white/65 hover:text-white text-xs md:text-sm font-medium transition-colors"
+            title="Recupera tu canción si ya compraste"
+          >
+            Mi canción
+          </button>
           <button
             onClick={() => navigateTo('genre')}
             className="bg-landing-primary hover:bg-landing-primary/90 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-all shadow-lg shadow-landing-primary/25"
@@ -158,6 +165,17 @@ export default function LandingPage() {
               Desde <span className="line-through text-white/40 mx-1">$59.99</span> <span className="font-bold">$29.99</span> · Preview gratis
               <span>✨</span>
             </p>
+          </div>
+
+          {/* Existing customer recovery link */}
+          <div className="mt-6">
+            <a
+              href="/mi-cancion"
+              onClick={(e) => { e.preventDefault(); navigateTo('recoverSong'); }}
+              className="text-white/55 hover:text-white/90 text-sm font-medium underline underline-offset-4 decoration-white/30 hover:decoration-white/70 transition-colors"
+            >
+              ¿Ya compraste? Recupera tu canción aquí 🎵
+            </a>
           </div>
 
           {/* Trust Badges */}

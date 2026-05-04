@@ -2,39 +2,67 @@ import React, { useContext, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { AppContext } from '../App';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('es-MX', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+  } catch { return ''; }
+}
+
+async function callRecover(email, action) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ email, action }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
 export default function RecoverSongPage() {
   const { navigateTo } = useContext(AppContext);
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); // idle | searching | found | none | error
+  const [songs, setSongs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
-
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const [emailSendStatus, setEmailSendStatus] = useState('idle'); // idle | sending | sent | error
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const cleaned = email.trim().toLowerCase();
     if (!cleaned) return;
-    setStatus('submitting');
+    setStatus('searching');
     setErrorMsg('');
+    setSongs([]);
+    setEmailSendStatus('idle');
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ email: cleaned }),
-      });
-      if (res.ok) {
-        setStatus('sent');
-      } else {
-        const data = await res.json().catch(() => ({}));
+      const { ok, status: httpStatus, data } = await callRecover(cleaned, 'lookup');
+      if (httpStatus === 429) {
+        setErrorMsg('Demasiados intentos. Por favor espera unos minutos antes de volver a intentar.');
+        setStatus('error');
+        return;
+      }
+      if (!ok) {
         setErrorMsg(data?.error === 'invalid email'
           ? 'Por favor ingresa un correo válido.'
           : 'Hubo un problema. Intenta de nuevo en un momento.');
         setStatus('error');
+        return;
+      }
+      if (Array.isArray(data?.songs) && data.songs.length > 0) {
+        setSongs(data.songs);
+        setStatus('found');
+      } else {
+        setStatus('none');
       }
     } catch (err) {
       setErrorMsg('Hubo un problema de conexión. Intenta de nuevo.');
@@ -42,8 +70,30 @@ export default function RecoverSongPage() {
     }
   };
 
-  const submitting = status === 'submitting';
-  const sent = status === 'sent';
+  const handleResendEmail = async () => {
+    if (emailSendStatus === 'sending' || emailSendStatus === 'sent') return;
+    setEmailSendStatus('sending');
+    try {
+      const { ok, data } = await callRecover(email.trim().toLowerCase(), 'send');
+      if (ok && data?.emailSent) {
+        setEmailSendStatus('sent');
+      } else {
+        setEmailSendStatus('error');
+      }
+    } catch {
+      setEmailSendStatus('error');
+    }
+  };
+
+  const handleStartOver = () => {
+    setStatus('idle');
+    setSongs([]);
+    setEmail('');
+    setErrorMsg('');
+    setEmailSendStatus('idle');
+  };
+
+  const searching = status === 'searching';
 
   return (
     <>
@@ -63,40 +113,27 @@ export default function RecoverSongPage() {
         <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 
         <div style={{
-          maxWidth: '480px', width: '100%',
+          maxWidth: '520px', width: '100%',
           background: 'rgba(255,255,255,0.04)',
           borderRadius: '24px',
-          padding: '40px 28px',
+          padding: '36px 28px',
           border: '1px solid rgba(255,255,255,0.08)',
           backdropFilter: 'blur(20px)',
         }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ fontSize: '40px', marginBottom: '14px' }}>🎵</div>
             <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '0 0 10px' }}>
-              Recuperar mi canción
+              {status === 'found' ? 'Encontramos tus canciones' : 'Encontrar mi canción'}
             </h1>
             <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
-              Ingresa el correo que usaste al comprar y te reenviaremos el enlace de tu canción.
+              {status === 'found'
+                ? `${songs.length === 1 ? '1 canción asociada' : `${songs.length} canciones asociadas`} a ${email.toLowerCase().trim()}`
+                : 'Ingresa el correo que usaste al comprar y te mostraremos tus canciones.'}
             </p>
           </div>
 
-          {sent ? (
-            <div style={{
-              background: 'rgba(34,197,94,0.08)',
-              border: '1px solid rgba(34,197,94,0.25)',
-              borderRadius: '14px',
-              padding: '24px 20px',
-              textAlign: 'center',
-            }}>
-              <div style={{ fontSize: '36px', marginBottom: '10px' }}>✉️</div>
-              <p style={{ color: 'white', fontWeight: 700, fontSize: '15px', margin: '0 0 10px', lineHeight: 1.4 }}>
-                Listo. Si encontramos canciones asociadas a tu correo, recibirás un email en los próximos minutos.
-              </p>
-              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>
-                Revisa tu bandeja de entrada — y la carpeta de spam por si acaso.
-              </p>
-            </div>
-          ) : (
+          {/* ─── Idle / Error / Searching: Form ─── */}
+          {(status === 'idle' || status === 'error' || status === 'searching') && (
             <form onSubmit={handleSubmit}>
               <label
                 htmlFor="recover-email-input"
@@ -116,7 +153,7 @@ export default function RecoverSongPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@correo.com"
-                disabled={submitting}
+                disabled={searching}
                 style={{
                   width: '100%',
                   background: 'rgba(255,255,255,0.06)',
@@ -140,32 +177,185 @@ export default function RecoverSongPage() {
 
               <button
                 type="submit"
-                disabled={submitting || !email.trim()}
+                disabled={searching || !email.trim()}
                 style={{
                   width: '100%',
                   padding: '16px',
-                  background: submitting || !email.trim()
+                  background: searching || !email.trim()
                     ? 'rgba(255,255,255,0.08)'
                     : 'linear-gradient(90deg, #e11d74, #c026d3)',
-                  color: submitting || !email.trim() ? 'rgba(255,255,255,0.4)' : 'white',
+                  color: searching || !email.trim() ? 'rgba(255,255,255,0.4)' : 'white',
                   border: 'none',
                   borderRadius: '12px',
                   fontSize: '15px',
                   fontWeight: 700,
-                  cursor: submitting || !email.trim() ? 'not-allowed' : 'pointer',
+                  cursor: searching || !email.trim() ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit',
                   transition: 'all 0.2s',
-                  boxShadow: submitting || !email.trim() ? 'none' : '0 4px 20px rgba(225,29,116,0.3)',
+                  boxShadow: searching || !email.trim() ? 'none' : '0 4px 20px rgba(225,29,116,0.3)',
                 }}
               >
-                {submitting ? '⏳ Enviando...' : '📧 Reenviar enlace de mi canción'}
+                {searching ? '⏳ Buscando...' : '🔍 Buscar mis canciones'}
               </button>
             </form>
+          )}
+
+          {/* ─── No songs found ─── */}
+          {status === 'none' && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                borderRadius: '14px',
+                padding: '24px 18px',
+                marginBottom: '16px',
+              }}>
+                <div style={{ fontSize: '36px', marginBottom: '10px' }}>🔎</div>
+                <p style={{ color: 'white', fontWeight: 700, fontSize: '15px', margin: '0 0 10px', lineHeight: 1.4 }}>
+                  No encontramos canciones con este correo
+                </p>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>
+                  Verifica que sea el correo exacto que usaste al comprar — incluyendo mayúsculas/minúsculas. Si crees que hay un error, escríbenos a{' '}
+                  <a href="mailto:hola@regalosquecantan.com" style={{ color: '#ff6b35', fontWeight: 600 }}>
+                    hola@regalosquecantan.com
+                  </a>
+                </p>
+              </div>
+              <button
+                onClick={handleStartOver}
+                style={{
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.6)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '10px',
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Probar con otro correo
+              </button>
+            </div>
+          )}
+
+          {/* ─── Songs found: list ─── */}
+          {status === 'found' && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+                {songs.map((s) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,107,53,0.25)',
+                      borderRadius: '14px',
+                      padding: '16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                        <p style={{ color: 'rgba(255,210,63,0.95)', fontSize: '11px', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+                          Canción para
+                        </p>
+                        <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 2px', wordBreak: 'break-word' }}>
+                          {s.recipient_name}
+                        </p>
+                        {s.paid_at && (
+                          <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
+                            Comprada el {formatDate(s.paid_at)}
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={s.listen_url}
+                        style={{
+                          background: 'linear-gradient(90deg, #ff6b35, #ff8c42)',
+                          color: 'white',
+                          textDecoration: 'none',
+                          fontWeight: 700,
+                          fontSize: '13px',
+                          padding: '11px 16px',
+                          borderRadius: '10px',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 4px 14px rgba(255,107,53,0.3)',
+                        }}
+                      >
+                        ▶ Escuchar
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Email send option */}
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px dashed rgba(255,255,255,0.15)',
+                borderRadius: '12px',
+                padding: '14px 16px',
+                textAlign: 'center',
+                marginBottom: '16px',
+              }}>
+                {emailSendStatus === 'sent' ? (
+                  <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                    ✅ Enviamos el enlace a tu correo. Revisa tu bandeja (y spam por si acaso).
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
+                      ¿Quieres recibir el enlace por correo también?
+                    </p>
+                    <button
+                      onClick={handleResendEmail}
+                      disabled={emailSendStatus === 'sending'}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.18)',
+                        color: 'white',
+                        padding: '10px 18px',
+                        borderRadius: '10px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: emailSendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {emailSendStatus === 'sending' ? '⏳ Enviando...' : '📧 Enviar enlace a mi correo'}
+                    </button>
+                    {emailSendStatus === 'error' && (
+                      <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
+                        No pudimos enviar el correo. Intenta de nuevo.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={handleStartOver}
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.5)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Buscar con otro correo
+              </button>
+            </>
           )}
         </div>
 
         <p style={{
-          maxWidth: '480px', width: '100%',
+          maxWidth: '520px', width: '100%',
           color: 'rgba(255,255,255,0.4)',
           fontSize: '12px',
           lineHeight: 1.6,

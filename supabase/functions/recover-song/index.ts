@@ -1,10 +1,20 @@
 // supabase/functions/recover-song/index.ts
 //
 // Public-facing self-service song recovery. The customer types their email at
-// /mi-cancion and we re-send the song link(s) to that email if any paid songs
-// exist. Always returns a same-shape "ok" response — even when no songs exist
-// or the IP is rate-limited — so the endpoint can't be used to enumerate
-// which emails have purchased.
+// /mi-cancion and we either (a) show them their paid songs directly on the
+// page, (b) re-send the song link(s) by email, or both.
+//
+// Body shape:
+//   { email: string, action?: 'lookup' | 'send' | 'both' }   default: 'lookup'
+//
+// Response (lookup or both):
+//   { ok: true, songs: [{ id, recipient_name, paid_at, listen_url }], emailSent: bool }
+//
+// The owner has explicitly opted into showing songs to anyone who knows the
+// purchase email — see commit history for the trade-off rationale. The
+// per-IP rate limit (5 attempts / 10 min) remains, and the endpoint still
+// returns 200 with empty list on no-match (so the failure-shape mirrors
+// success-with-zero-songs).
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -132,30 +142,26 @@ serve(async (req) => {
     });
   }
 
-  // Same-shape success response — we always return this when we don't want to
-  // leak whether the email exists or whether rate-limiting kicked in.
-  const successResponse = () =>
-    new Response(JSON.stringify({ ok: true }), {
-      status: 200,
+  const respondJson = (status: number, body: Record<string, unknown>) =>
+    new Response(JSON.stringify(body), {
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   let email: string;
+  let action: 'lookup' | 'send' | 'both' = 'lookup';
   try {
     const body = await req.json();
     email = String(body?.email || '').trim().toLowerCase();
+    if (body?.action === 'send' || body?.action === 'both' || body?.action === 'lookup') {
+      action = body.action;
+    }
   } catch {
-    return new Response(JSON.stringify({ ok: false, error: 'invalid body' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return respondJson(400, { ok: false, error: 'invalid body' });
   }
 
   if (!email || !isValidEmail(email)) {
-    return new Response(JSON.stringify({ ok: false, error: 'invalid email' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return respondJson(400, { ok: false, error: 'invalid email' });
   }
 
   const xfwd = req.headers.get('x-forwarded-for') || '';
@@ -174,14 +180,14 @@ serve(async (req) => {
 
   if ((attemptCount ?? 0) >= RATE_LIMIT_MAX_PER_IP) {
     console.log('[recover-song] rate-limited', { ip: clientIp, count: attemptCount });
-    return successResponse();
+    return respondJson(429, { ok: false, error: 'rate_limited', songs: [], emailSent: false });
   }
 
   // Log the attempt (also serves as the rate-limit counter).
   await supabase.from('funnel_events').insert([
     {
       step: 'song_recovery_attempt',
-      metadata: { email, ip: clientIp, ts: new Date().toISOString() },
+      metadata: { email, ip: clientIp, action, ts: new Date().toISOString() },
     },
   ]);
 
@@ -195,33 +201,49 @@ serve(async (req) => {
     .order('paid_at', { ascending: false })
     .limit(20);
 
-  if (!songs || songs.length === 0) {
-    console.log('[recover-song] no songs found', { email });
-    return successResponse();
-  }
+  const songRows = songs ?? [];
 
-  const enrichedSongs: RecoveredSong[] = songs.map((s) => ({
+  const responseSongs = songRows.map((s) => ({
+    id: s.id,
     recipient_name: (s.recipient_name || 'tu ser querido').trim(),
+    paid_at: s.paid_at || null,
     listen_url: `${SITE_URL}/listen?song_id=${s.id}`,
   }));
 
+  if (songRows.length === 0) {
+    console.log('[recover-song] no songs found', { email, action });
+    return respondJson(200, { ok: true, songs: [], emailSent: false });
+  }
+
+  // If the caller only asked to look up, we're done.
+  if (action === 'lookup') {
+    return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
+  }
+
+  // Otherwise send the email.
+  const enrichedForEmail: RecoveredSong[] = responseSongs.map((s) => ({
+    recipient_name: s.recipient_name,
+    listen_url: s.listen_url,
+  }));
   const subject =
-    songs.length > 1
+    songRows.length > 1
       ? '🎵 Aquí están tus canciones de RegalosQueCantan'
       : '🎵 Aquí está tu canción de RegalosQueCantan';
 
+  let emailSent = false;
   try {
-    await sendEmail(email, subject, buildHtml(enrichedSongs), buildPlaintext(enrichedSongs));
+    await sendEmail(email, subject, buildHtml(enrichedForEmail), buildPlaintext(enrichedForEmail));
     await supabase.from('funnel_events').insert([
       {
         step: 'song_recovery_sent',
-        metadata: { email, song_count: songs.length, ip: clientIp },
+        metadata: { email, song_count: songRows.length, ip: clientIp },
       },
     ]);
-    console.log('[recover-song] sent', { email, count: songs.length });
+    emailSent = true;
+    console.log('[recover-song] sent', { email, count: songRows.length });
   } catch (e) {
     console.error('[recover-song] sendEmail failed', e);
   }
 
-  return successResponse();
+  return respondJson(200, { ok: true, songs: responseSongs, emailSent });
 });
