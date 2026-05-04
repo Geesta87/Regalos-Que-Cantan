@@ -128,7 +128,7 @@ export default function RecoverSongPage() {
             <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
               {status === 'found'
                 ? `${songs.length === 1 ? '1 canción asociada' : `${songs.length} canciones asociadas`} a ${email.toLowerCase().trim()}`
-                : 'Ingresa el correo que usaste al comprar y te mostraremos tus canciones.'}
+                : 'Ingresa el correo que usaste al crear tu canción y te mostraremos lo que encontramos — tanto las compradas como las pendientes.'}
             </p>
           </div>
 
@@ -240,118 +240,204 @@ export default function RecoverSongPage() {
             </div>
           )}
 
-          {/* ─── Songs found: list ─── */}
-          {status === 'found' && (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-                {songs.map((s) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,107,53,0.25)',
-                      borderRadius: '14px',
-                      padding: '16px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                        <p style={{ color: 'rgba(255,210,63,0.95)', fontSize: '11px', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-                          Canción para
-                        </p>
-                        <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 2px', wordBreak: 'break-word' }}>
-                          {s.recipient_name}
-                        </p>
-                        {s.paid_at && (
-                          <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
-                            Comprada el {formatDate(s.paid_at)}
-                          </p>
-                        )}
-                      </div>
-                      <a
-                        href={s.listen_url}
-                        style={{
-                          background: 'linear-gradient(90deg, #ff6b35, #ff8c42)',
-                          color: 'white',
-                          textDecoration: 'none',
-                          fontWeight: 700,
-                          fontSize: '13px',
-                          padding: '11px 16px',
-                          borderRadius: '10px',
-                          whiteSpace: 'nowrap',
-                          boxShadow: '0 4px 14px rgba(255,107,53,0.3)',
-                        }}
-                      >
-                        ▶ Escuchar
-                      </a>
+          {/* ─── Songs found: two sections (paid + unpaid) ─── */}
+          {status === 'found' && (() => {
+            const paidSongs = songs.filter((s) => s.paid);
+            const unpaidSongs = songs.filter((s) => !s.paid);
+            return (
+              <>
+                {/* Paid songs */}
+                {paidSongs.length > 0 && (
+                  <div style={{ marginBottom: unpaidSongs.length > 0 ? '24px' : '20px' }}>
+                    <p style={{
+                      color: 'rgba(74,222,128,0.95)',
+                      fontSize: '11px', fontWeight: 700,
+                      margin: '0 0 10px',
+                      textTransform: 'uppercase', letterSpacing: '1.5px',
+                    }}>
+                      ✅ Tus canciones compradas
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {paidSongs.map((s) => (
+                        <div
+                          key={s.id}
+                          style={{
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(74,222,128,0.25)',
+                            borderRadius: '14px',
+                            padding: '16px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                              <p style={{ color: 'rgba(255,210,63,0.95)', fontSize: '11px', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+                                Canción para
+                              </p>
+                              <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 2px', wordBreak: 'break-word' }}>
+                                {s.recipient_name}
+                              </p>
+                              {s.paid_at && (
+                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
+                                  Comprada el {formatDate(s.paid_at)}
+                                </p>
+                              )}
+                            </div>
+                            <a
+                              href={s.listen_url}
+                              style={{
+                                background: 'linear-gradient(90deg, #ff6b35, #ff8c42)',
+                                color: 'white',
+                                textDecoration: 'none',
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                padding: '11px 16px',
+                                borderRadius: '10px',
+                                whiteSpace: 'nowrap',
+                                boxShadow: '0 4px 14px rgba(255,107,53,0.3)',
+                              }}
+                            >
+                              ▶ Escuchar y descargar
+                            </a>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {/* Email send option */}
-              <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px dashed rgba(255,255,255,0.15)',
-                borderRadius: '12px',
-                padding: '14px 16px',
-                textAlign: 'center',
-                marginBottom: '16px',
-              }}>
-                {emailSendStatus === 'sent' ? (
-                  <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
-                    ✅ Enviamos el enlace a tu correo. Revisa tu bandeja (y spam por si acaso).
-                  </p>
-                ) : (
-                  <>
-                    <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
-                      ¿Quieres recibir el enlace por correo también?
-                    </p>
-                    <button
-                      onClick={handleResendEmail}
-                      disabled={emailSendStatus === 'sending'}
-                      style={{
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.18)',
-                        color: 'white',
-                        padding: '10px 18px',
-                        borderRadius: '10px',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: emailSendStatus === 'sending' ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      {emailSendStatus === 'sending' ? '⏳ Enviando...' : '📧 Enviar enlace a mi correo'}
-                    </button>
-                    {emailSendStatus === 'error' && (
-                      <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
-                        No pudimos enviar el correo. Intenta de nuevo.
-                      </p>
-                    )}
-                  </>
                 )}
-              </div>
 
-              <button
-                onClick={handleStartOver}
-                style={{
-                  width: '100%',
-                  background: 'transparent',
-                  color: 'rgba(255,255,255,0.5)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                Buscar con otro correo
-              </button>
-            </>
-          )}
+                {/* Unpaid songs */}
+                {unpaidSongs.length > 0 && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <p style={{
+                      color: 'rgba(255,210,63,0.95)',
+                      fontSize: '11px', fontWeight: 700,
+                      margin: '0 0 6px',
+                      textTransform: 'uppercase', letterSpacing: '1.5px',
+                    }}>
+                      ⏳ Pendientes de compra
+                    </p>
+                    <p style={{
+                      color: 'rgba(255,255,255,0.55)',
+                      fontSize: '12px',
+                      margin: '0 0 10px',
+                      lineHeight: 1.5,
+                    }}>
+                      Estas canciones ya están listas pero aún no se han comprado. Escucha la vista previa y completa la compra para descargar la versión completa.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {unpaidSongs.map((s) => (
+                        <div
+                          key={s.id}
+                          style={{
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,210,63,0.25)',
+                            borderRadius: '14px',
+                            padding: '16px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                              <p style={{ color: 'rgba(255,210,63,0.95)', fontSize: '11px', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+                                Canción para
+                              </p>
+                              <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 2px', wordBreak: 'break-word' }}>
+                                {s.recipient_name}
+                              </p>
+                              {s.created_at && (
+                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
+                                  Creada el {formatDate(s.created_at)}
+                                </p>
+                              )}
+                            </div>
+                            <a
+                              href={s.listen_url}
+                              style={{
+                                background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+                                color: 'white',
+                                textDecoration: 'none',
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                padding: '11px 16px',
+                                borderRadius: '10px',
+                                whiteSpace: 'nowrap',
+                                boxShadow: '0 4px 14px rgba(225,29,116,0.3)',
+                              }}
+                            >
+                              💳 Comprar
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Email send option — only meaningful when at least one paid song exists */}
+                {paidSongs.length > 0 && (
+                  <div style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px dashed rgba(255,255,255,0.15)',
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    textAlign: 'center',
+                    marginBottom: '16px',
+                  }}>
+                    {emailSendStatus === 'sent' ? (
+                      <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                        ✅ Enviamos el enlace a tu correo. Revisa tu bandeja (y spam por si acaso).
+                      </p>
+                    ) : (
+                      <>
+                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
+                          ¿Quieres recibir el enlace de tus canciones compradas por correo también?
+                        </p>
+                        <button
+                          onClick={handleResendEmail}
+                          disabled={emailSendStatus === 'sending'}
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.18)',
+                            color: 'white',
+                            padding: '10px 18px',
+                            borderRadius: '10px',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: emailSendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {emailSendStatus === 'sending' ? '⏳ Enviando...' : '📧 Enviar enlace a mi correo'}
+                        </button>
+                        {emailSendStatus === 'error' && (
+                          <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
+                            No pudimos enviar el correo. Intenta de nuevo.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleStartOver}
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    color: 'rgba(255,255,255,0.5)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '10px',
+                    padding: '10px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Buscar con otro correo
+                </button>
+              </>
+            );
+          })()}
         </div>
 
         <p style={{

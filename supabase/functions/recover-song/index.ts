@@ -7,8 +7,13 @@
 // Body shape:
 //   { email: string, action?: 'lookup' | 'send' | 'both' }   default: 'lookup'
 //
-// Response (lookup or both):
-//   { ok: true, songs: [{ id, recipient_name, paid_at, listen_url }], emailSent: bool }
+// Response:
+//   { ok: true, songs: [
+//       { id, recipient_name, paid: bool, paid_at | null, created_at,
+//         listen_url }   // /song/<id> when paid, /listen?song_id=<id> when not
+//     ],
+//     emailSent: bool   // only true when at least one PAID song was emailed
+//   }
 //
 // The owner has explicitly opted into showing songs to anyone who knows the
 // purchase email — see commit history for the trade-off rationale. The
@@ -191,24 +196,36 @@ serve(async (req) => {
     },
   ]);
 
-  // Look up paid songs for this email.
+  // Look up every song with a previewable audio_url for this email.
+  // Both paid and unpaid are returned, distinguished by the `paid` field —
+  // the frontend renders them in separate sections and routes to different
+  // pages (paid → /song/<id> SongPage, unpaid → /listen?song_id=<id>
+  // ShareablePreviewPage where the customer can preview + buy).
   const { data: songs } = await supabase
     .from('songs')
-    .select('id, recipient_name, paid_at, audio_url')
+    .select('id, recipient_name, paid, paid_at, created_at, audio_url')
     .eq('email', email)
-    .eq('paid', true)
     .not('audio_url', 'is', null)
-    .order('paid_at', { ascending: false })
-    .limit(20);
+    .order('created_at', { ascending: false })
+    .limit(40);
 
   const songRows = songs ?? [];
 
-  const responseSongs = songRows.map((s) => ({
-    id: s.id,
-    recipient_name: (s.recipient_name || 'tu ser querido').trim(),
-    paid_at: s.paid_at || null,
-    listen_url: `${SITE_URL}/listen?song_id=${s.id}`,
-  }));
+  const responseSongs = songRows.map((s) => {
+    const isPaid = s.paid === true;
+    return {
+      id: s.id,
+      recipient_name: (s.recipient_name || 'tu ser querido').trim(),
+      paid: isPaid,
+      paid_at: s.paid_at || null,
+      created_at: s.created_at || null,
+      // Paid → SongPage (player + downloads). Unpaid → ShareablePreviewPage
+      // (preview + buy button).
+      listen_url: isPaid
+        ? `${SITE_URL}/song/${s.id}`
+        : `${SITE_URL}/listen?song_id=${s.id}`,
+    };
+  });
 
   if (songRows.length === 0) {
     console.log('[recover-song] no songs found', { email, action });
@@ -220,27 +237,33 @@ serve(async (req) => {
     return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
   }
 
-  // Otherwise send the email.
-  const enrichedForEmail: RecoveredSong[] = responseSongs.map((s) => ({
-    recipient_name: s.recipient_name,
-    listen_url: s.listen_url,
-  }));
+  // Email send: only send PAID songs (the email template is "your purchase
+  // is here") — unpaid songs go through the abandoned-cart drip instead.
+  const paidForEmail: RecoveredSong[] = responseSongs
+    .filter((s) => s.paid)
+    .map((s) => ({ recipient_name: s.recipient_name, listen_url: s.listen_url }));
+
+  if (paidForEmail.length === 0) {
+    console.log('[recover-song] no paid songs to email', { email });
+    return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
+  }
+
   const subject =
-    songRows.length > 1
+    paidForEmail.length > 1
       ? '🎵 Aquí están tus canciones de RegalosQueCantan'
       : '🎵 Aquí está tu canción de RegalosQueCantan';
 
   let emailSent = false;
   try {
-    await sendEmail(email, subject, buildHtml(enrichedForEmail), buildPlaintext(enrichedForEmail));
+    await sendEmail(email, subject, buildHtml(paidForEmail), buildPlaintext(paidForEmail));
     await supabase.from('funnel_events').insert([
       {
         step: 'song_recovery_sent',
-        metadata: { email, song_count: songRows.length, ip: clientIp },
+        metadata: { email, song_count: paidForEmail.length, ip: clientIp },
       },
     ]);
     emailSent = true;
-    console.log('[recover-song] sent', { email, count: songRows.length });
+    console.log('[recover-song] sent', { email, count: paidForEmail.length });
   } catch (e) {
     console.error('[recover-song] sendEmail failed', e);
   }
