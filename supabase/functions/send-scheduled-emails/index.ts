@@ -313,7 +313,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/listen?song_ids=${songIds.join(',')}&coupon=VUELVE10&from=email_3day`
-        const subject = `\u{1F381} Regalo especial: 20% OFF en tu canci\u00f3n para ${primary.recipient_name}`
+        const subject = `\u{1F381} Regalo especial: 10% OFF en tu canci\u00f3n para ${primary.recipient_name}`
         const html = build3DayEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -605,7 +605,7 @@ function build3DayEmail(recipientName: string, songCount: number, url: string): 
     <div style="width:64px;height:64px;background-color:#7c3aed;border-radius:50%;margin:0 auto 24px;line-height:64px;font-size:28px;">&#127873;</div>
     <p style="color:#7c3aed;font-size:12px;font-weight:800;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px;">OFERTA ESPECIAL</p>
     <h1 style="color:#ffffff;font-size:28px;font-weight:800;margin:0 0 8px;line-height:1.3;">
-      20% OFF en tu canci&oacute;n para ${recipientName}
+      10% OFF en tu canci&oacute;n para ${recipientName}
     </h1>
     <p style="color:#999999;font-size:15px;margin:0;line-height:1.6;">
       Tu canci&oacute;n sigue esperando. Usa el c&oacute;digo <strong style="color:#7c3aed;">VUELVE10</strong> para obtener tu descuento.
@@ -623,7 +623,7 @@ function build3DayEmail(recipientName: string, songCount: number, url: string): 
       </tr>
     </table>
 
-    ${ctaButton('Escuchar y Obtener 20% OFF', url, '#7c3aed', '#ffffff')}
+    ${ctaButton('Escuchar y Obtener 10% OFF', url, '#7c3aed', '#ffffff')}
 
     <p style="color:#666666;font-size:13px;text-align:center;margin:16px 0 0;line-height:1.5;">
       Oferta por tiempo limitado.
@@ -632,5 +632,5 @@ function build3DayEmail(recipientName: string, songCount: number, url: string): 
     ${testimonialCard('No sab&iacute;a qu&eacute; regalarle a mi abuela y esta canci&oacute;n la hizo llorar de felicidad. Vale cada centavo.', 'Mar&iacute;a G.', 'Miami, FL')}
     ${trustStrip()}`
 
-  return emailShell('#7c3aed', '&#127873; 20% DE DESCUENTO', hero, body)
+  return emailShell('#7c3aed', '&#127873; 10% DE DESCUENTO', hero, body)
 }
