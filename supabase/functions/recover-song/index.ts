@@ -5,14 +5,17 @@
 // page, (b) re-send the song link(s) by email, or both.
 //
 // Body shape:
-//   { email: string, action?: 'lookup' | 'send' | 'both' }   default: 'lookup'
+//   { email: string,
+//     action?: 'lookup' | 'send'                  default: 'lookup'
+//     which?:  'paid'   | 'unpaid'                default: 'paid'   (only used when action='send')
+//   }
 //
 // Response:
 //   { ok: true, songs: [
 //       { id, recipient_name, paid: bool, paid_at | null, created_at,
 //         listen_url }   // /song/<id> when paid, /listen?song_id=<id> when not
 //     ],
-//     emailSent: bool   // only true when at least one PAID song was emailed
+//     emailSent: bool   // true when an email was actually dispatched
 //   }
 //
 // The owner has explicitly opted into showing songs to anyone who knows the
@@ -47,7 +50,7 @@ function isValidEmail(s: string): boolean {
 
 type RecoveredSong = { recipient_name: string; listen_url: string };
 
-function buildHtml(songs: RecoveredSong[]): string {
+function buildPaidHtml(songs: RecoveredSong[]): string {
   const songRows = songs
     .map(
       (s) => `
@@ -84,7 +87,7 @@ function buildHtml(songs: RecoveredSong[]): string {
 </table></td></tr></table></body></html>`;
 }
 
-function buildPlaintext(songs: RecoveredSong[]): string {
+function buildPaidPlaintext(songs: RecoveredSong[]): string {
   const lines: string[] = [];
   lines.push('Aquí están tus canciones de RegalosQueCantan');
   lines.push('');
@@ -101,7 +104,67 @@ function buildPlaintext(songs: RecoveredSong[]): string {
   return lines.join('\n');
 }
 
-async function sendEmail(to: string, subject: string, html: string, plaintext: string): Promise<void> {
+function buildUnpaidHtml(songs: RecoveredSong[]): string {
+  const songRows = songs
+    .map(
+      (s) => `
+    <tr><td style="padding:16px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+      <p style="color:#c9b99a;margin:0 0 8px;font-size:14px;">Canci&oacute;n para <strong style="color:#ffd23f;">${s.recipient_name}</strong></p>
+      <a href="${s.listen_url}" style="display:inline-block;background:linear-gradient(135deg,#e11d74 0%,#c026d3 100%);color:#ffffff;padding:12px 24px;border-radius:30px;text-decoration:none;font-weight:700;font-size:14px;">&#128178; Escuchar y comprar</a>
+    </td></tr>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#1a0e08;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Recordatorio: tienes canciones creadas pendientes de comprar en RegalosQueCantan. Esc&uacute;chalas y compl&eacute;talas aqu&iacute;.</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
+  <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:40px 30px 24px;text-align:center;">
+    <p style="color:#ffd23f;font-size:36px;margin:0 0 12px;">&#9203;</p>
+    <h1 style="color:#ffffff;font-size:24px;margin:0 0 10px;font-weight:700;">Tus canciones pendientes</h1>
+    <p style="color:#c9b99a;font-size:14px;margin:0;line-height:1.6;">Estas canciones ya est&aacute;n listas para escuchar. Compl&eacute;talas para descargar la versi&oacute;n completa y compartirlas.</p>
+  </td></tr>
+  <tr><td style="background-color:#1a0e08;padding:8px 30px 28px;">
+    <table width="100%" cellpadding="0" cellspacing="0">${songRows}</table>
+  </td></tr>
+  <tr><td style="background-color:#1a0e08;padding:0 30px 32px;text-align:center;">
+    <p style="color:#a67c52;font-size:12px;margin:0;line-height:1.6;">Tu progreso est&aacute; guardado. No necesitas volver a crear nada &mdash; solo completar la compra.</p>
+  </td></tr>
+  <tr><td style="height:3px;background:linear-gradient(90deg,#e11d74,#ffd23f,#ff6b35);font-size:0;line-height:0;">&nbsp;</td></tr>
+  <tr><td style="background-color:#1a0e08;padding:24px 30px;text-align:center;">
+    <p style="color:#c9b99a;font-size:13px;margin:0 0 6px;">&iquest;Necesitas ayuda?</p>
+    <p style="color:#a67c52;font-size:12px;margin:0;"><a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a></p>
+    <p style="color:#4a2c1a;font-size:11px;margin:10px 0 0;">&copy; ${new Date().getFullYear()} Regalos Que Cantan</p>
+  </td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+function buildUnpaidPlaintext(songs: RecoveredSong[]): string {
+  const lines: string[] = [];
+  lines.push('Tus canciones pendientes en RegalosQueCantan');
+  lines.push('');
+  lines.push('Estas canciones ya están listas. Complétalas para descargar la versión completa y compartirlas:');
+  lines.push('');
+  for (const s of songs) {
+    lines.push(`• Canción para ${s.recipient_name}`);
+    lines.push(`  ${s.listen_url}`);
+    lines.push('');
+  }
+  lines.push('Tu progreso está guardado. No necesitas volver a crear nada — solo completar la compra.');
+  lines.push('');
+  lines.push('¿Necesitas ayuda? Escríbenos a hola@regalosquecantan.com');
+  return lines.join('\n');
+}
+
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  plaintext: string,
+  category: string,
+): Promise<void> {
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -118,7 +181,7 @@ async function sendEmail(to: string, subject: string, html: string, plaintext: s
         { type: 'text/plain', value: plaintext },
         { type: 'text/html', value: html },
       ],
-      categories: ['song_recovery', 'rqc'],
+      categories: [category, 'rqc'],
       tracking_settings: {
         click_tracking: { enable: true, enable_text: false },
         open_tracking: { enable: true },
@@ -154,12 +217,16 @@ serve(async (req) => {
     });
 
   let email: string;
-  let action: 'lookup' | 'send' | 'both' = 'lookup';
+  let action: 'lookup' | 'send' = 'lookup';
+  let which: 'paid' | 'unpaid' = 'paid';
   try {
     const body = await req.json();
     email = String(body?.email || '').trim().toLowerCase();
-    if (body?.action === 'send' || body?.action === 'both' || body?.action === 'lookup') {
+    if (body?.action === 'send' || body?.action === 'lookup') {
       action = body.action;
+    }
+    if (body?.which === 'paid' || body?.which === 'unpaid') {
+      which = body.which;
     }
   } catch {
     return respondJson(400, { ok: false, error: 'invalid body' });
@@ -192,7 +259,7 @@ serve(async (req) => {
   await supabase.from('funnel_events').insert([
     {
       step: 'song_recovery_attempt',
-      metadata: { email, ip: clientIp, action, ts: new Date().toISOString() },
+      metadata: { email, ip: clientIp, action, which, ts: new Date().toISOString() },
     },
   ]);
 
@@ -237,33 +304,53 @@ serve(async (req) => {
     return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
   }
 
-  // Email send: only send PAID songs (the email template is "your purchase
-  // is here") — unpaid songs go through the abandoned-cart drip instead.
-  const paidForEmail: RecoveredSong[] = responseSongs
-    .filter((s) => s.paid)
+  // Email send — pick the template + subject based on `which`.
+  const targetSongs: RecoveredSong[] = responseSongs
+    .filter((s) => (which === 'paid' ? s.paid : !s.paid))
     .map((s) => ({ recipient_name: s.recipient_name, listen_url: s.listen_url }));
 
-  if (paidForEmail.length === 0) {
-    console.log('[recover-song] no paid songs to email', { email });
+  if (targetSongs.length === 0) {
+    console.log('[recover-song] no songs to email', { email, which });
     return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
   }
 
-  const subject =
-    paidForEmail.length > 1
-      ? '🎵 Aquí están tus canciones de RegalosQueCantan'
-      : '🎵 Aquí está tu canción de RegalosQueCantan';
+  let subject: string;
+  let html: string;
+  let plaintext: string;
+  let category: string;
+  let funnelStep: string;
+
+  if (which === 'paid') {
+    subject =
+      targetSongs.length > 1
+        ? '🎵 Aquí están tus canciones de RegalosQueCantan'
+        : '🎵 Aquí está tu canción de RegalosQueCantan';
+    html = buildPaidHtml(targetSongs);
+    plaintext = buildPaidPlaintext(targetSongs);
+    category = 'song_recovery';
+    funnelStep = 'song_recovery_sent';
+  } else {
+    subject =
+      targetSongs.length > 1
+        ? '⏳ Tus canciones pendientes en RegalosQueCantan'
+        : '⏳ Tu canción pendiente en RegalosQueCantan';
+    html = buildUnpaidHtml(targetSongs);
+    plaintext = buildUnpaidPlaintext(targetSongs);
+    category = 'song_recovery_unpaid';
+    funnelStep = 'song_recovery_unpaid_sent';
+  }
 
   let emailSent = false;
   try {
-    await sendEmail(email, subject, buildHtml(paidForEmail), buildPlaintext(paidForEmail));
+    await sendEmail(email, subject, html, plaintext, category);
     await supabase.from('funnel_events').insert([
       {
-        step: 'song_recovery_sent',
-        metadata: { email, song_count: paidForEmail.length, ip: clientIp },
+        step: funnelStep,
+        metadata: { email, which, song_count: targetSongs.length, ip: clientIp },
       },
     ]);
     emailSent = true;
-    console.log('[recover-song] sent', { email, count: paidForEmail.length });
+    console.log('[recover-song] sent', { email, which, count: targetSongs.length });
   } catch (e) {
     console.error('[recover-song] sendEmail failed', e);
   }

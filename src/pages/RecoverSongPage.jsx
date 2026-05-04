@@ -14,7 +14,10 @@ function formatDate(iso) {
   } catch { return ''; }
 }
 
-async function callRecover(email, action) {
+async function callRecover(email, { action, which } = {}) {
+  const body = { email };
+  if (action) body.action = action;
+  if (which) body.which = which;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
     method: 'POST',
     headers: {
@@ -22,7 +25,7 @@ async function callRecover(email, action) {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
-    body: JSON.stringify({ email, action }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
@@ -34,7 +37,10 @@ export default function RecoverSongPage() {
   const [status, setStatus] = useState('idle'); // idle | searching | found | none | error
   const [songs, setSongs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
-  const [emailSendStatus, setEmailSendStatus] = useState('idle'); // idle | sending | sent | error
+  // Independent send-state per section.
+  // Each is one of: 'idle' | 'sending' | 'sent' | 'error'
+  const [paidSendStatus, setPaidSendStatus] = useState('idle');
+  const [unpaidSendStatus, setUnpaidSendStatus] = useState('idle');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,9 +49,10 @@ export default function RecoverSongPage() {
     setStatus('searching');
     setErrorMsg('');
     setSongs([]);
-    setEmailSendStatus('idle');
+    setPaidSendStatus('idle');
+    setUnpaidSendStatus('idle');
     try {
-      const { ok, status: httpStatus, data } = await callRecover(cleaned, 'lookup');
+      const { ok, status: httpStatus, data } = await callRecover(cleaned, { action: 'lookup' });
       if (httpStatus === 429) {
         setErrorMsg('Demasiados intentos. Por favor espera unos minutos antes de volver a intentar.');
         setStatus('error');
@@ -70,18 +77,20 @@ export default function RecoverSongPage() {
     }
   };
 
-  const handleResendEmail = async () => {
-    if (emailSendStatus === 'sending' || emailSendStatus === 'sent') return;
-    setEmailSendStatus('sending');
+  const handleSendEmail = async (which) => {
+    const setter = which === 'paid' ? setPaidSendStatus : setUnpaidSendStatus;
+    const current = which === 'paid' ? paidSendStatus : unpaidSendStatus;
+    if (current === 'sending' || current === 'sent') return;
+    setter('sending');
     try {
-      const { ok, data } = await callRecover(email.trim().toLowerCase(), 'send');
+      const { ok, data } = await callRecover(email.trim().toLowerCase(), { action: 'send', which });
       if (ok && data?.emailSent) {
-        setEmailSendStatus('sent');
+        setter('sent');
       } else {
-        setEmailSendStatus('error');
+        setter('error');
       }
     } catch {
-      setEmailSendStatus('error');
+      setter('error');
     }
   };
 
@@ -90,7 +99,8 @@ export default function RecoverSongPage() {
     setSongs([]);
     setEmail('');
     setErrorMsg('');
-    setEmailSendStatus('idle');
+    setPaidSendStatus('idle');
+    setUnpaidSendStatus('idle');
   };
 
   const searching = status === 'searching';
@@ -246,16 +256,16 @@ export default function RecoverSongPage() {
             const unpaidSongs = songs.filter((s) => !s.paid);
             return (
               <>
-                {/* Paid songs */}
+                {/* ─── Paid songs section ─── */}
                 {paidSongs.length > 0 && (
-                  <div style={{ marginBottom: unpaidSongs.length > 0 ? '24px' : '20px' }}>
+                  <div style={{ marginBottom: unpaidSongs.length > 0 ? '28px' : '20px' }}>
                     <p style={{
                       color: 'rgba(74,222,128,0.95)',
                       fontSize: '11px', fontWeight: 700,
                       margin: '0 0 10px',
                       textTransform: 'uppercase', letterSpacing: '1.5px',
                     }}>
-                      ✅ Tus canciones compradas
+                      ✅ Tus canciones compradas ({paidSongs.length})
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {paidSongs.map((s) => (
@@ -302,10 +312,56 @@ export default function RecoverSongPage() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Email send for PAID section */}
+                    <div style={{
+                      marginTop: '12px',
+                      background: 'rgba(74,222,128,0.05)',
+                      border: '1px dashed rgba(74,222,128,0.30)',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      textAlign: 'center',
+                    }}>
+                      {paidSendStatus === 'sent' ? (
+                        <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                          ✅ Enviamos {paidSongs.length === 1 ? 'tu canción comprada' : `tus ${paidSongs.length} canciones compradas`} a {email.toLowerCase().trim()}
+                        </p>
+                      ) : (
+                        <>
+                          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
+                            ¿Prefieres recibir el enlace de {paidSongs.length === 1 ? 'esta canción comprada' : `estas ${paidSongs.length} canciones compradas`} en tu correo?
+                          </p>
+                          <button
+                            onClick={() => handleSendEmail('paid')}
+                            disabled={paidSendStatus === 'sending'}
+                            style={{
+                              background: 'rgba(74,222,128,0.12)',
+                              border: '1px solid rgba(74,222,128,0.40)',
+                              color: 'white',
+                              padding: '10px 18px',
+                              borderRadius: '10px',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              cursor: paidSendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {paidSendStatus === 'sending'
+                              ? '⏳ Enviando...'
+                              : `📧 Enviar ${paidSongs.length === 1 ? 'mi canción comprada' : 'mis canciones compradas'}`}
+                          </button>
+                          {paidSendStatus === 'error' && (
+                            <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
+                              No pudimos enviar el correo. Intenta de nuevo.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Unpaid songs */}
+                {/* ─── Unpaid songs section ─── */}
                 {unpaidSongs.length > 0 && (
                   <div style={{ marginBottom: '20px' }}>
                     <p style={{
@@ -314,7 +370,7 @@ export default function RecoverSongPage() {
                       margin: '0 0 6px',
                       textTransform: 'uppercase', letterSpacing: '1.5px',
                     }}>
-                      ⏳ Pendientes de compra
+                      ⏳ Pendientes de compra ({unpaidSongs.length})
                     </p>
                     <p style={{
                       color: 'rgba(255,255,255,0.55)',
@@ -369,52 +425,52 @@ export default function RecoverSongPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
 
-                {/* Email send option — only meaningful when at least one paid song exists */}
-                {paidSongs.length > 0 && (
-                  <div style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px dashed rgba(255,255,255,0.15)',
-                    borderRadius: '12px',
-                    padding: '14px 16px',
-                    textAlign: 'center',
-                    marginBottom: '16px',
-                  }}>
-                    {emailSendStatus === 'sent' ? (
-                      <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
-                        ✅ Enviamos el enlace a tu correo. Revisa tu bandeja (y spam por si acaso).
-                      </p>
-                    ) : (
-                      <>
-                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
-                          ¿Quieres recibir el enlace de tus canciones compradas por correo también?
+                    {/* Email send for UNPAID section */}
+                    <div style={{
+                      marginTop: '12px',
+                      background: 'rgba(255,210,63,0.05)',
+                      border: '1px dashed rgba(255,210,63,0.30)',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      textAlign: 'center',
+                    }}>
+                      {unpaidSendStatus === 'sent' ? (
+                        <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                          ✅ Te enviamos un recordatorio de {unpaidSongs.length === 1 ? 'tu canción pendiente' : `tus ${unpaidSongs.length} canciones pendientes`} a {email.toLowerCase().trim()}
                         </p>
-                        <button
-                          onClick={handleResendEmail}
-                          disabled={emailSendStatus === 'sending'}
-                          style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.18)',
-                            color: 'white',
-                            padding: '10px 18px',
-                            borderRadius: '10px',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            cursor: emailSendStatus === 'sending' ? 'not-allowed' : 'pointer',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          {emailSendStatus === 'sending' ? '⏳ Enviando...' : '📧 Enviar enlace a mi correo'}
-                        </button>
-                        {emailSendStatus === 'error' && (
-                          <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
-                            No pudimos enviar el correo. Intenta de nuevo.
+                      ) : (
+                        <>
+                          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
+                            ¿Quieres un recordatorio por correo de {unpaidSongs.length === 1 ? 'esta canción pendiente' : `estas ${unpaidSongs.length} canciones pendientes`}?
                           </p>
-                        )}
-                      </>
-                    )}
+                          <button
+                            onClick={() => handleSendEmail('unpaid')}
+                            disabled={unpaidSendStatus === 'sending'}
+                            style={{
+                              background: 'rgba(255,210,63,0.12)',
+                              border: '1px solid rgba(255,210,63,0.40)',
+                              color: 'white',
+                              padding: '10px 18px',
+                              borderRadius: '10px',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              cursor: unpaidSendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {unpaidSendStatus === 'sending'
+                              ? '⏳ Enviando...'
+                              : `📧 Enviarme recordatorio ${unpaidSongs.length === 1 ? 'de mi canción pendiente' : 'de mis pendientes'}`}
+                          </button>
+                          {unpaidSendStatus === 'error' && (
+                            <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
+                              No pudimos enviar el correo. Intenta de nuevo.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
 
