@@ -173,11 +173,11 @@ export default function LandingPage() {
             <a
               href="/mi-cancion"
               onClick={(e) => { e.preventDefault(); navigateTo('recoverSong'); }}
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 hover:border-landing-primary/50 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all shadow-md"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 hover:border-landing-primary/50 text-white text-sm font-semibold px-5 py-2.5 rounded-full transition-all shadow-md cursor-pointer"
             >
               <span aria-hidden="true">🎵</span>
-              <span>¿Ya compraste?</span>
-              <span className="text-landing-primary">Encuentra tu canción</span>
+              <span>Ya hiciste tu canción —</span>
+              <span className="text-landing-primary">encuéntrala aquí</span>
               <span aria-hidden="true">→</span>
             </a>
           </div>
