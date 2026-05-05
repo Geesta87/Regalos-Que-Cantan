@@ -175,6 +175,52 @@ export default function ComparisonPage() {
   const checkoutCtaRef = useRef(null);
   const videoAddonRef = useRef(null);
 
+  // Hard cap on preview playback. The <audio> src is the full song (preview_url == audio_url
+  // server-side), so the 40s limit is entirely client-side. The timeupdate event is unreliable
+  // when the tab is backgrounded on mobile (iOS Safari throttles JS while audio keeps playing),
+  // which let users hear the full song. setTimeout fires even when backgrounded (just throttled),
+  // and the visibilitychange listener below pauses everything the instant the tab goes hidden.
+  const previewTimeoutRef = useRef(null);
+  const clearPreviewTimeout = () => {
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+      previewTimeoutRef.current = null;
+    }
+  };
+  const armPreviewTimeout = (songId) => {
+    clearPreviewTimeout();
+    previewTimeoutRef.current = setTimeout(() => {
+      previewTimeoutRef.current = null;
+      const audio = audioRefs.current[songId];
+      if (audio) {
+        try { audio.pause(); audio.currentTime = PREVIEW_START; } catch { /* ignore */ }
+      }
+      setPlayingId(null);
+      setAutoPlayingIndex(-1);
+      setPreviewEnded(prev => ({ ...prev, [songId]: true }));
+      setCurrentTimes(prev => ({ ...prev, [songId]: PREVIEW_DURATION }));
+    }, PREVIEW_DURATION * 1000 + 500);
+  };
+
+  useEffect(() => {
+    const pauseAll = () => {
+      Object.values(audioRefs.current).forEach(a => {
+        if (a) { try { a.pause(); } catch { /* ignore */ } }
+      });
+      clearPreviewTimeout();
+      setPlayingId(null);
+      setAutoPlayingIndex(-1);
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') pauseAll(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', pauseAll);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', pauseAll);
+      clearPreviewTimeout();
+    };
+  }, []);
+
   // Safely get genre display name
   const genreConfig = genres?.[formData?.genre];
   const genreName = genreConfig?.name || formData?.genre || 'Género';
@@ -426,6 +472,7 @@ export default function ComparisonPage() {
           playPromise.then(() => {
             setPlayingId(firstSong.id);
             setAutoPlayingIndex(0);
+            armPreviewTimeout(firstSong.id);
           }).catch(() => {
             // Autoplay blocked by browser
             setAutoPlayed(true);
@@ -468,6 +515,7 @@ export default function ComparisonPage() {
           setAutoPlayingIndex(1);
           setCurrentTimes(prev => ({ ...prev, [secondSong.id]: 0 }));
           setPreviewEnded(prev => ({ ...prev, [secondSong.id]: false }));
+          armPreviewTimeout(secondSong.id);
         }).catch(() => {
           setAutoPlayingIndex(-1);
           setAutoPlayed(true);
@@ -495,20 +543,24 @@ export default function ComparisonPage() {
 
       if (playingId === songId) {
         audio.pause();
+        clearPreviewTimeout();
         setPlayingId(null);
       } else {
-        Object.values(audioRefs.current).forEach(a => { 
-          if (a) { a.pause(); a.volume = 1.0; } 
+        Object.values(audioRefs.current).forEach(a => {
+          if (a) { a.pause(); a.volume = 1.0; }
         });
-        
+        clearPreviewTimeout();
+
         if (previewEnded[songId] || audio.currentTime < PREVIEW_START || audio.currentTime >= PREVIEW_END) {
           audio.currentTime = PREVIEW_START;
           setPreviewEnded(prev => ({ ...prev, [songId]: false }));
           setCurrentTimes(prev => ({ ...prev, [songId]: 0 }));
         }
-        
+
         audio.volume = 1.0;
-        audio.play().catch(err => {
+        audio.play().then(() => {
+          armPreviewTimeout(songId);
+        }).catch(err => {
           if (import.meta.env.DEV) console.error('Play error:', err);
         });
         setPlayingId(songId);
@@ -532,9 +584,10 @@ export default function ComparisonPage() {
       if (time >= PREVIEW_END) {
         audio.pause();
         audio.currentTime = PREVIEW_START;
+        clearPreviewTimeout();
         setPlayingId(null);
         setPreviewEnded(prev => ({ ...prev, [songId]: true }));
-        
+
         // ✅ Auto-play chain: Song 1 ended → start Song 2
         if (autoPlayingIndex === 0 && songs.length >= 2) {
           const nextSong = songs[1];
@@ -549,6 +602,7 @@ export default function ComparisonPage() {
                   setAutoPlayingIndex(1);
                   setCurrentTimes(prev => ({ ...prev, [nextSong.id]: 0 }));
                   setPreviewEnded(prev => ({ ...prev, [nextSong.id]: false }));
+                  armPreviewTimeout(nextSong.id);
                 }).catch(() => {
                   setAutoPlayingIndex(-1);
                   setAutoPlayed(true);
