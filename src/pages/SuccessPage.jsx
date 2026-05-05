@@ -1462,6 +1462,10 @@ export default function SuccessPage() {
         @keyframes eq3 { 0%, 100% { height: 12px; } 50% { height: 32px; } }
         @keyframes eq4 { 0%, 100% { height: 6px; } 50% { height: 22px; } }
         @keyframes floatUp { 0% { opacity:0; transform:translateY(30px); } 15% { opacity:0.15; } 85% { opacity:0.15; } 100% { opacity:0; transform:translateY(-100vh) rotate(15deg); } }
+        @keyframes borderGlow {
+          0%, 100% { box-shadow: 0 0 16px rgba(${ts.accentRgb},0.35), 0 4px 20px rgba(0,0,0,0.2); border-color: rgba(${ts.accentRgb},0.6); }
+          50% { box-shadow: 0 0 32px rgba(${ts.accentRgb},0.65), 0 4px 24px rgba(0,0,0,0.25); border-color: rgba(${ts.accentRgb},1); }
+        }
         .sp-particle { position:absolute; animation:floatUp linear infinite; }
         button:active { transform:scale(0.97) !important; }
       `}</style>
@@ -1550,6 +1554,62 @@ export default function SuccessPage() {
               </>
             )}
           </div>
+
+          {/* ===== MULTI-SONG BANNER — shown above player so it cannot be missed ===== */}
+          {songs.length > 1 && (
+            <div style={{
+              background: `linear-gradient(135deg, rgba(${ts.accentRgb},0.18), rgba(${ts.accentRgb},0.08))`,
+              borderRadius: '22px', padding: '20px',
+              marginBottom: '20px',
+              border: `2.5px solid rgba(${ts.accentRgb},0.7)`,
+              boxShadow: `0 0 24px rgba(${ts.accentRgb},0.3), 0 4px 20px rgba(0,0,0,0.2)`,
+              animation: 'borderGlow 1.8s ease-in-out infinite',
+            }}>
+              <p style={{ margin: '0 0 4px 0', textAlign: 'center', fontSize: '13px', fontWeight: '700', color: ts.accent, letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                🎁 Tu pedido incluye
+              </p>
+              <p style={{ margin: '0 0 16px 0', textAlign: 'center', fontSize: '22px', fontWeight: '900', color: ts.textPrimary, lineHeight: '1.2' }}>
+                {songs.length} Canciones Únicas
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {songs.map((song, index) => {
+                  const isActive = currentSong.id === song.id;
+                  return (
+                    <button key={song.id}
+                      onClick={() => { setCurrentSong(song); setIsPlaying(false); setCurrentTime(0); }}
+                      style={{
+                        flex: 1, padding: '16px 12px', borderRadius: '16px', cursor: 'pointer',
+                        fontFamily: ts.font, textAlign: 'center', transition: 'all 0.25s',
+                        background: isActive
+                          ? `rgba(${ts.accentRgb},0.25)`
+                          : isLight ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.07)',
+                        border: isActive
+                          ? `2.5px solid ${ts.accent}`
+                          : isLight ? '2px dashed rgba(0,0,0,0.2)' : '2px dashed rgba(255,255,255,0.25)',
+                        color: ts.textPrimary,
+                        boxShadow: isActive ? `0 0 16px rgba(${ts.accentRgb},0.4)` : 'none',
+                      }}>
+                      <div style={{ fontSize: '26px', marginBottom: '6px' }}>
+                        {index === 0 ? '💫' : '🔥'}
+                      </div>
+                      <div style={{ fontSize: '15px', fontWeight: '800' }}>
+                        Canción {index + 1}
+                      </div>
+                      {isActive ? (
+                        <div style={{ fontSize: '12px', color: ts.accent, marginTop: '5px', fontWeight: '700' }}>
+                          ▶ Escuchando ahora
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '12px', color: ts.textSecondary, marginTop: '5px', fontWeight: '600' }}>
+                          👆 Toca para escuchar
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ===== PLAYER CARD — hidden entirely when has_video_addon (video replaces it) ===== */}
           {!currentSong?.has_video_addon && (<>
@@ -1659,39 +1719,6 @@ export default function SuccessPage() {
             </div>
           </div>
 
-          {/* ===== MULTI-SONG SELECTOR ===== */}
-          {songs.length > 1 && (
-            <div style={{
-              background: ts.cardBg, borderRadius: '20px', padding: '18px',
-              marginBottom: '24px', border: `1px solid ${ts.cardBorder}`,
-              backdropFilter: ts.cardBlur,
-              animation: 'fadeInUp 0.7s ease-out 0.25s both'
-            }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', textAlign: 'center', color: ts.textSecondary, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                Tus {songs.length} Versiones
-              </h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {songs.map((song, index) => (
-                  <button key={song.id}
-                    onClick={() => { setCurrentSong(song); setIsPlaying(false); setCurrentTime(0); }}
-                    style={{
-                      flex: 1, padding: '14px 12px', borderRadius: '14px',
-                      background: currentSong.id === song.id ? `rgba(${ts.accentRgb},0.15)` : isLight ? 'white' : 'rgba(255,255,255,0.04)',
-                      border: `2px solid ${currentSong.id === song.id ? ts.accent : ts.cardBorder}`,
-                      color: ts.textPrimary, cursor: 'pointer', textAlign: 'center',
-                      transition: 'all 0.3s', fontFamily: ts.font
-                    }}>
-                    <span style={{ fontSize: '14px', fontWeight: '700' }}>
-                      {index === 0 ? '💫' : '🔥'} Versión {index + 1}
-                    </span>
-                    {currentSong.id === song.id && (
-                      <span style={{ display: 'block', fontSize: '11px', color: ts.accent, marginTop: '4px', fontWeight: '600' }}>▶ Escuchando</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           </>)}{/* end player card conditional */}
 
           {/* ===== DOWNLOAD & SHARE SECTION — hidden entirely when has_video_addon ===== */}
