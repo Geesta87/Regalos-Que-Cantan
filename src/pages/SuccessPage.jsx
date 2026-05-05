@@ -1466,6 +1466,14 @@ export default function SuccessPage() {
           0%, 100% { box-shadow: 0 0 16px rgba(${ts.accentRgb},0.35), 0 4px 20px rgba(0,0,0,0.2); border-color: rgba(${ts.accentRgb},0.6); }
           50% { box-shadow: 0 0 32px rgba(${ts.accentRgb},0.65), 0 4px 24px rgba(0,0,0,0.25); border-color: rgba(${ts.accentRgb},1); }
         }
+        @keyframes songPulseGreen {
+          0%, 100% { box-shadow: 0 0 10px rgba(34,197,94,0.3), 0 0 0 0 rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.7); }
+          50% { box-shadow: 0 0 24px rgba(34,197,94,0.7), 0 0 0 6px rgba(34,197,94,0.08); border-color: #22c55e; }
+        }
+        @keyframes songPulsePurple {
+          0%, 100% { box-shadow: 0 0 10px rgba(168,85,247,0.3), 0 0 0 0 rgba(168,85,247,0.25); border-color: rgba(168,85,247,0.7); }
+          50% { box-shadow: 0 0 24px rgba(168,85,247,0.7), 0 0 0 6px rgba(168,85,247,0.08); border-color: #a855f7; }
+        }
         .sp-particle { position:absolute; animation:floatUp linear infinite; }
         button:active { transform:scale(0.97) !important; }
       `}</style>
@@ -1558,50 +1566,53 @@ export default function SuccessPage() {
           {/* ===== MULTI-SONG BANNER — shown above player so it cannot be missed ===== */}
           {songs.length > 1 && (
             <div style={{
-              background: `linear-gradient(135deg, rgba(${ts.accentRgb},0.18), rgba(${ts.accentRgb},0.08))`,
-              borderRadius: '22px', padding: '20px',
+              background: 'linear-gradient(135deg, rgba(16,10,30,0.95), rgba(10,20,16,0.95))',
+              borderRadius: '24px', padding: '22px 18px 18px',
               marginBottom: '20px',
-              border: `2.5px solid rgba(${ts.accentRgb},0.7)`,
-              boxShadow: `0 0 24px rgba(${ts.accentRgb},0.3), 0 4px 20px rgba(0,0,0,0.2)`,
-              animation: 'borderGlow 1.8s ease-in-out infinite',
+              border: '2px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             }}>
-              <p style={{ margin: '0 0 4px 0', textAlign: 'center', fontSize: '13px', fontWeight: '700', color: ts.accent, letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+              <p style={{ margin: '0 0 3px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', textTransform: 'uppercase' }}>
                 🎁 Tu pedido incluye
               </p>
-              <p style={{ margin: '0 0 16px 0', textAlign: 'center', fontSize: '22px', fontWeight: '900', color: ts.textPrimary, lineHeight: '1.2' }}>
-                {songs.length} Canciones Únicas
+              <p style={{ margin: '0 0 18px 0', textAlign: 'center', fontSize: '24px', fontWeight: '900', color: '#fff', lineHeight: '1.2' }}>
+                {songs.length} Canciones Únicas 🎵
               </p>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
                 {songs.map((song, index) => {
                   const isActive = currentSong.id === song.id;
+                  const isGreen = index === 0;
+                  const color = isGreen ? '#22c55e' : '#a855f7';
+                  const rgb = isGreen ? '34,197,94' : '168,85,247';
+                  const animName = isGreen ? 'songPulseGreen' : 'songPulsePurple';
                   return (
                     <button key={song.id}
                       onClick={() => { setCurrentSong(song); setIsPlaying(false); setCurrentTime(0); }}
                       style={{
-                        flex: 1, padding: '16px 12px', borderRadius: '16px', cursor: 'pointer',
-                        fontFamily: ts.font, textAlign: 'center', transition: 'all 0.25s',
+                        flex: 1, padding: '18px 12px', borderRadius: '18px', cursor: 'pointer',
+                        fontFamily: ts.font, textAlign: 'center',
                         background: isActive
-                          ? `rgba(${ts.accentRgb},0.25)`
-                          : isLight ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.07)',
-                        border: isActive
-                          ? `2.5px solid ${ts.accent}`
-                          : isLight ? '2px dashed rgba(0,0,0,0.2)' : '2px dashed rgba(255,255,255,0.25)',
-                        color: ts.textPrimary,
-                        boxShadow: isActive ? `0 0 16px rgba(${ts.accentRgb},0.4)` : 'none',
+                          ? `rgba(${rgb},0.2)`
+                          : `rgba(${rgb},0.08)`,
+                        border: `2.5px solid ${color}`,
+                        color: '#fff',
+                        animation: `${animName} 1.6s ease-in-out infinite`,
+                        transition: 'transform 0.2s',
+                        transform: isActive ? 'scale(1.03)' : 'scale(1)',
                       }}>
-                      <div style={{ fontSize: '26px', marginBottom: '6px' }}>
-                        {index === 0 ? '💫' : '🔥'}
+                      <div style={{ fontSize: '30px', marginBottom: '8px' }}>
+                        {index === 0 ? '💚' : '💜'}
                       </div>
-                      <div style={{ fontSize: '15px', fontWeight: '800' }}>
+                      <div style={{ fontSize: '16px', fontWeight: '900', color }}>
                         Canción {index + 1}
                       </div>
                       {isActive ? (
-                        <div style={{ fontSize: '12px', color: ts.accent, marginTop: '5px', fontWeight: '700' }}>
+                        <div style={{ fontSize: '12px', color, marginTop: '6px', fontWeight: '800', letterSpacing: '0.5px' }}>
                           ▶ Escuchando ahora
                         </div>
                       ) : (
-                        <div style={{ fontSize: '12px', color: ts.textSecondary, marginTop: '5px', fontWeight: '600' }}>
-                          👆 Toca para escuchar
+                        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginTop: '6px', fontWeight: '700' }}>
+                          👆 Toca aquí
                         </div>
                       )}
                     </button>
