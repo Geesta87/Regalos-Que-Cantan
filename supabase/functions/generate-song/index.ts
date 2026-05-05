@@ -14,6 +14,12 @@ const MUREKA_FALLBACK_MODEL = 'V8';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+// Optional admin override PIN. When set as a Supabase secret, the owner can
+// type this PIN into the rate-limit error UI to bypass the hard IP block AND
+// all 3 unpaid-song rate limits. Used when the owner's own IP/email gets
+// caught by the soft caps during testing. Empty/unset = override disabled.
+const ADMIN_OVERRIDE_PIN = Deno.env.get('ADMIN_OVERRIDE_PIN') || '';
+
 // =============================================================================
 // COMPLETE GENRE DNA DATABASE - From RegalosQueCantan_Genre_DNA_FILLED.xlsx
 // All 18 genres with sub-genres, tempos, instruments, vibes, and negative tags
@@ -1578,7 +1584,7 @@ serve(async (req) => {
       artistInspiration: _ignoredArtistInspiration, occasion, occasionPrompt, customOccasion,
       emotionalTone, recipientName, senderName, relationship,
       relationshipContext, customRelationship, details,
-      email, voiceType, sessionId
+      email, voiceType, sessionId, overridePin,
     } = body;
 
     // Artist inspiration UX step was removed on 2026-05-01: customers complained
@@ -1634,12 +1640,26 @@ serve(async (req) => {
       || req.headers.get('x-real-ip')
       || '').trim();
 
+    // Owner override: when ADMIN_OVERRIDE_PIN is set as a project secret AND
+    // the request body contains a matching `overridePin`, ALL anti-abuse
+    // checks below (hard IP block + 3 unpaid-song rate limits) are skipped.
+    // The frontend exposes a PIN input on the rate-limit error screen so the
+    // owner can unblock themselves during testing without a deploy. Logging
+    // every use lets us audit if the PIN ever leaks.
+    const submittedOverridePin = typeof overridePin === 'string' ? overridePin.trim() : '';
+    const overrideActive = !!ADMIN_OVERRIDE_PIN
+      && submittedOverridePin.length > 0
+      && submittedOverridePin === ADMIN_OVERRIDE_PIN;
+    if (overrideActive) {
+      console.log(`[ADMIN_OVERRIDE] anti-abuse bypassed ip=${clientIp} email=${email} sender=${senderName} recipient=${recipientName}`);
+    }
+
     // Hard IP blocklist — checked BEFORE any rate-limit math. Used for
     // abusers who've demonstrated intent to evade the soft caps (e.g. by
     // typo'ing the recipient name to bypass the per-pair cap). Once an IP
     // is in `blocked_ips`, every request from it is rejected immediately
     // with a 403 — no song row created, no Mureka credits spent.
-    if (clientIp) {
+    if (clientIp && !overrideActive) {
       const { data: blockedRow, error: blockedErr } = await supabase
         .from('blocked_ips')
         .select('ip, reason')
@@ -1678,7 +1698,7 @@ serve(async (req) => {
     };
 
     // (1) Per-email cap (legacy behavior)
-    if (email && typeof email === 'string' && email.trim()) {
+    if (!overrideActive && email && typeof email === 'string' && email.trim()) {
       const { count: unpaidCount, error: countError } = await supabase
         .from('songs')
         .select('id', { count: 'exact', head: true })
@@ -1697,7 +1717,7 @@ serve(async (req) => {
     // (2) Per-IP cap — defeats email rotation. Only enforced when we have
     // a non-empty client IP; if forwarding headers are missing we skip
     // rather than block legit traffic.
-    if (clientIp) {
+    if (!overrideActive && clientIp) {
       const { count: ipUnpaidCount, error: ipCountError } = await supabase
         .from('songs')
         .select('id', { count: 'exact', head: true })
@@ -1719,6 +1739,7 @@ serve(async (req) => {
     // they won't both have the same buyer name AND the same recipient
     // dozens of times in 24h.
     if (
+      !overrideActive &&
       senderName && typeof senderName === 'string' && senderName.trim() &&
       recipientName && typeof recipientName === 'string' && recipientName.trim()
     ) {

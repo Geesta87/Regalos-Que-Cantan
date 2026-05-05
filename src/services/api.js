@@ -39,11 +39,11 @@ export const occasionPrompts = {
 /**
  * Generate a personalized song
  */
-export async function generateSong(formData) {
+export async function generateSong(formData, overridePin = null) {
   const url = `${SUPABASE_URL}/functions/v1/generate-song`;
-  
+
   const stylePrompt = formData.subGenrePrompt || genreStyles[formData.genre];
-  
+
   const payload = {
     genre: formData.genre,
     genreStyle: stylePrompt,
@@ -58,7 +58,12 @@ export async function generateSong(formData) {
     voiceType: formData.voiceType || 'male',
     artistInspiration: formData.artistInspiration || ''
   };
-  
+
+  // Optional admin override PIN — bypasses anti-abuse rate limits when the
+  // owner needs to test from a flagged IP/email. Server-side check is the
+  // real gate; we only forward whatever the user typed.
+  if (overridePin) payload.overridePin = overridePin;
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -71,8 +76,13 @@ export async function generateSong(formData) {
   if (!response.ok) {
     let errorBody = null;
     try { errorBody = await response.json(); } catch { /* non-JSON body */ }
-    if (response.status === 429 && errorBody?.error) {
-      throw new Error(errorBody.error);
+    // Tag the error with status + backend code so the UI can show the
+    // "enter PIN" override flow only on rate-limit / blocklist failures.
+    if (response.status === 429 || response.status === 403) {
+      const err = new Error(errorBody?.error || `HTTP ${response.status}`);
+      err.status = response.status;
+      err.code = errorBody?.code || (response.status === 429 ? 'RATE_LIMIT_UNPAID' : 'IP_BLOCKED');
+      throw err;
     }
     throw new Error(`Failed to generate song: ${response.status} - ${errorBody?.error || 'Unknown error'}`);
   }

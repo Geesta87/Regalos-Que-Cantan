@@ -49,11 +49,14 @@ const SONG_LIST_COLUMNS = [
   // each song creation produces 2 rows that share a mureka_job_id, one per
   // generated audio variant (version 1, version 2).
   'version', 'mureka_job_id',
-  // Order-details modal fields. These were lazy-loaded via the `detail` action
-  // but the on-demand fetch silently failed for some admins, leaving the
-  // modal blank. Fetching them up-front is reliable; the extra payload
-  // compresses well over the wire (gzip on text/JSON).
-  'details', 'lyrics', 'relationship', 'last_downloaded_at',
+  // Small modal-only fields are safe to include in the list (each adds a few
+  // bytes per row). `details` and `lyrics` are NOT in the list — the table has
+  // 24k+ rows and avg(lyrics)+avg(details) ≈ 1.6 KB/row, so including them
+  // pushed the response past the edge function's memory ceiling and the call
+  // started returning 546 (Resource Limit Exceeded), which made the dashboard
+  // render "0 songs". Those two fields are lazy-loaded via the `detail` action
+  // when the order-details modal opens — see fetchSongDetails in AdminDashboard.jsx.
+  'relationship', 'last_downloaded_at',
 ].join(',');
 
 // Fields that reveal payment amounts. Wiped out for the assistant role.
