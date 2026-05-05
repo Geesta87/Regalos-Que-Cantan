@@ -112,7 +112,7 @@ const CAN_SPAM_ADDRESS_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:transparent;">
   <tr><td align="center" style="padding:0 0 16px;">
     <p style="color:#888888;font-size:11px;margin:0;line-height:1.5;font-family:'Helvetica Neue',Arial,sans-serif;">
-      Regalos Que Cantan &bull; San Antonio, TX 78201, USA<br>
+      Regalos Que Cantan &bull; Los Angeles, CA 91324, USA<br>
       <a href="mailto:hola@regalosquecantan.com" style="color:#888888;text-decoration:underline;">hola@regalosquecantan.com</a>
     </p>
   </td></tr>

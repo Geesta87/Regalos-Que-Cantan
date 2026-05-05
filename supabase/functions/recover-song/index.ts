@@ -57,7 +57,7 @@ function emailFooter(): string {
     <p style="color:#a67c52;font-size:12px;margin:0 0 4px;line-height:1.6;">Estos enlaces nunca expiran &mdash; gu&aacute;rdalos.</p>
     <p style="color:#a67c52;font-size:12px;margin:0;">&iquest;Necesitas ayuda? <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a></p>
     <p style="color:#4a2c1a;font-size:11px;margin:10px 0 0;">&copy; ${new Date().getFullYear()} Regalos Que Cantan</p>
-    <p style="color:#4a2c1a;font-size:10px;margin:4px 0 0;">Regalos Que Cantan &bull; San Antonio, TX 78201, USA</p>
+    <p style="color:#4a2c1a;font-size:10px;margin:4px 0 0;">Regalos Que Cantan &bull; Los Angeles, CA 91324, USA</p>
   </td></tr>`;
 }
 
@@ -96,7 +96,7 @@ function buildPaidHtml(entries: RecoveredSong[]): string {
     <p style="color:#a67c52;font-size:12px;margin:0 0 4px;">Estos enlaces nunca expiran &mdash; gu&aacute;rdalos.</p>
     <p style="color:#a67c52;font-size:12px;margin:0;">&iquest;Necesitas ayuda? <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;text-decoration:none;">hola@regalosquecantan.com</a></p>
     <p style="color:#4a2c1a;font-size:11px;margin:10px 0 0;">&copy; ${new Date().getFullYear()} Regalos Que Cantan</p>
-    <p style="color:#4a2c1a;font-size:10px;margin:6px 0 0;">Regalos Que Cantan &bull; San Antonio, TX 78201, USA</p>
+    <p style="color:#4a2c1a;font-size:10px;margin:6px 0 0;">Regalos Que Cantan &bull; Los Angeles, CA 91324, USA</p>
   </td></tr>
 </table>
 </td></tr></table>
