@@ -279,11 +279,16 @@ export default function RecoverSongPage() {
                             textAlign: 'center',
                           }}
                         >
-                          {s.is_bundle && (
-                            <p style={{ color: '#ffd23f', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
-                              🎁 Paquete 2 canciones
-                            </p>
-                          )}
+                          {s.has_video_addon
+                            ? <p style={{ color: '#a78bfa', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                                🎬 Canción + Video{s.is_bundle ? ' (Paquete 2)' : ''}
+                              </p>
+                            : s.is_bundle && (
+                                <p style={{ color: '#ffd23f', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                                  🎁 Paquete 2 canciones
+                                </p>
+                              )
+                          }
                           <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 14px', wordBreak: 'break-word' }}>
                             Para {s.recipient_name}
                           </p>
@@ -296,17 +301,21 @@ export default function RecoverSongPage() {
                             href={s.listen_url}
                             style={{
                               display: 'inline-block',
-                              background: 'linear-gradient(135deg, #ff6b35, #ff8c42)',
+                              background: s.has_video_addon
+                                ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                                : 'linear-gradient(135deg, #ff6b35, #ff8c42)',
                               color: 'white',
                               textDecoration: 'none',
                               fontWeight: 800,
                               fontSize: '15px',
                               padding: '14px 28px',
                               borderRadius: '30px',
-                              boxShadow: '0 4px 18px rgba(255,107,53,0.35)',
+                              boxShadow: s.has_video_addon
+                                ? '0 4px 18px rgba(139,92,246,0.4)'
+                                : '0 4px 18px rgba(255,107,53,0.35)',
                             }}
                           >
-                            ▶ Escuchar y descargar
+                            {s.has_video_addon ? '🎬 Ver video y descargar' : '▶ Escuchar y descargar'}
                           </a>
                         </div>
                       ))}
