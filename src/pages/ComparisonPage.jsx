@@ -296,6 +296,17 @@ export default function ComparisonPage() {
 
   // Load songs from songData OR URL parameters (for page refresh support)
   useEffect(() => {
+    // DEMO MODE: ?demo=1 renders with fake songs for local preview
+    if (new URLSearchParams(window.location.search).get('demo') === '1') {
+      const demoSongs = [
+        { id: 'demo-1', version: 1, audioUrl: null, previewUrl: null, imageUrl: null, genre: 'corrido', lyrics: 'Desde el primer día que te vi\nSupe que eras tú mi destino\nTu sonrisa ilumina mi camino\nY en mis sueños siempre estás aquí' },
+        { id: 'demo-2', version: 2, audioUrl: null, previewUrl: null, imageUrl: null, genre: 'corrido', lyrics: 'Eres la luz de mis mañanas\nEres el sol de mis noches\nCon tu amor todo lo puedo\nEres mi razón de ser' },
+      ];
+      setDbRecipientName('María');
+      setSongs(demoSongs);
+      setLoading(false);
+      return;
+    }
     try {
       const loadedSongs = [];
       
@@ -808,8 +819,8 @@ export default function ComparisonPage() {
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         @keyframes glimmer { 0% { left: -100%; } 100% { left: 200%; } }
-        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 15px rgba(34,197,94,0.2), 0 0 30px rgba(34,197,94,0.05); } 50% { box-shadow: 0 0 25px rgba(34,197,94,0.35), 0 0 50px rgba(34,197,94,0.1); } }
-        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 15px rgba(139,92,246,0.2), 0 0 30px rgba(139,92,246,0.05); } 50% { box-shadow: 0 0 25px rgba(139,92,246,0.35), 0 0 50px rgba(139,92,246,0.1); } }
+        @keyframes borderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.4), 0 0 16px rgba(34,197,94,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(34,197,94,0.6); } 50% { box-shadow: 0 0 0 8px rgba(34,197,94,0.35), 0 0 60px rgba(34,197,94,0.75), 0 0 100px rgba(34,197,94,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #4ade80; } }
+        @keyframes videoBorderGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(139,92,246,0.4), 0 0 16px rgba(139,92,246,0.3), 0 4px 20px rgba(0,0,0,0.4); border-color: rgba(139,92,246,0.6); } 50% { box-shadow: 0 0 0 8px rgba(139,92,246,0.35), 0 0 60px rgba(139,92,246,0.75), 0 0 100px rgba(139,92,246,0.2), 0 4px 24px rgba(0,0,0,0.5); border-color: #c084fc; } }
         @keyframes song2Reveal { 0% { opacity: 0; transform: scale(0.95) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, 20px); } 15% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
         @keyframes kbSlide1 { 0%{transform:scale(1);opacity:1} 12%{transform:scale(1.1) translate(-1%,1%);opacity:1} 14.28%{opacity:0} 100%{opacity:0} }
@@ -829,6 +840,7 @@ export default function ComparisonPage() {
         @keyframes progressPreview { 0%{width:0%} 100%{width:100%} }
         @keyframes noteFloat { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
         @keyframes videoProgress { 0%{width:0%} 100%{width:100%} }
+        @keyframes pricePulse { 0%, 100% { transform: scale(1); text-shadow: 0 0 10px rgba(192,132,252,0.4), 0 0 20px rgba(192,132,252,0.2); color: #c084fc; } 50% { transform: scale(1.12); text-shadow: 0 0 20px rgba(232,121,249,0.9), 0 0 40px rgba(192,132,252,0.5), 0 0 60px rgba(139,92,246,0.3); color: #f0abfc; } }
       `}</style>
 
       {/* Audio elements (hidden) */}
@@ -1115,14 +1127,14 @@ export default function ComparisonPage() {
             style={{
               background: purchaseBoth
                 ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.08))'
-                : 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(255,255,255,0.03))',
-              border: purchaseBoth ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.25)',
+                : 'linear-gradient(135deg, rgba(34,197,94,0.07), rgba(255,255,255,0.03))',
+              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(34,197,94,0.6)',
               borderRadius: '18px', padding: '22px',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
-              transition: 'all 0.3s', opacity: selectedSongId ? 0.55 : 1,
-              animation: purchaseBoth ? 'borderGlow 2.5s ease-in-out infinite' : 'fadeIn 0.6s ease-out 0.3s both',
-              boxShadow: purchaseBoth ? '0 0 25px rgba(34,197,94,0.2)' : '0 2px 12px rgba(0,0,0,0.2)',
+              transition: 'all 0.3s', opacity: 1,
+              animation: 'borderGlow 1.6s ease-in-out infinite',
+              boxShadow: '0 0 0 4px rgba(34,197,94,0.2), 0 0 28px rgba(34,197,94,0.3), 0 4px 20px rgba(0,0,0,0.4)',
             }}
           >
             {/* Glimmer sweep */}
@@ -1217,70 +1229,52 @@ export default function ComparisonPage() {
             onClick={() => setVideoAddon(!videoAddon)}
             style={{
               background: videoAddon
-                ? 'linear-gradient(135deg, rgba(109,40,217,0.18), rgba(139,92,246,0.08))'
-                : 'linear-gradient(135deg, rgba(139,92,246,0.06), rgba(255,255,255,0.02))',
-              border: videoAddon ? '2px solid #8b5cf6' : '2px solid rgba(139,92,246,0.25)',
-              borderRadius: '18px', padding: '20px',
+                ? 'linear-gradient(135deg, rgba(109,40,217,0.22), rgba(139,92,246,0.1))'
+                : 'linear-gradient(160deg, rgba(109,40,217,0.1) 0%, rgba(15,11,14,0.9) 60%)',
+              border: videoAddon ? '3px solid #a855f7' : '3px solid rgba(139,92,246,0.65)',
+              borderRadius: '20px', padding: '0',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
-              transition: 'all 0.3s',
-              animation: videoAddon ? 'videoBorderGlow 2.5s ease-in-out infinite' : 'fadeIn 0.4s ease-out',
-              boxShadow: videoAddon ? '0 0 25px rgba(139,92,246,0.2)' : '0 2px 12px rgba(0,0,0,0.2)',
+              transition: 'all 0.35s',
+              animation: 'videoBorderGlow 1.6s ease-in-out infinite',
+              boxShadow: '0 0 0 4px rgba(139,92,246,0.2), 0 0 28px rgba(139,92,246,0.3), 0 4px 20px rgba(0,0,0,0.4)',
             }}
           >
             {/* Glimmer sweep */}
             <div style={{
-              position: 'absolute', top: 0, width: '60%', height: '100%',
-              background: 'linear-gradient(90deg, transparent, rgba(139,92,246,0.06), rgba(255,255,255,0.05), transparent)',
+              position: 'absolute', top: 0, width: '50%', height: '100%',
+              background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.07), rgba(255,255,255,0.05), transparent)',
               animation: 'glimmer 3.5s ease-in-out infinite',
-              pointerEvents: 'none'
+              pointerEvents: 'none', zIndex: 1,
             }} />
 
-            {/* Social proof badge */}
+            {/* Top badge */}
             <div style={{
               position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)',
               background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
-              color: 'white', padding: '4px 16px', borderRadius: '0 0 10px 10px',
-              fontSize: '11px', fontWeight: '800', letterSpacing: '0.3px',
-              boxShadow: '0 4px 12px rgba(124,58,237,0.3)',
+              color: 'white', padding: '5px 20px', borderRadius: '0 0 12px 12px',
+              fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px',
+              boxShadow: '0 4px 14px rgba(124,58,237,0.45)',
+              whiteSpace: 'nowrap', zIndex: 2,
             }}>
-              87% LO AGREGAN
-            </div>
-
-            {/* Header with toggle */}
-            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', marginBottom: '12px'}}>
-              <h3 style={{fontSize: '17px', fontWeight: '800', margin: 0, color: '#e9d5ff'}}>
-                🎬 Video para {recipientName}
-              </h3>
-              {/* Toggle indicator */}
-              <div style={{
-                width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                border: videoAddon ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.2)',
-                background: videoAddon ? '#22c55e' : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.2s',
-                boxShadow: videoAddon ? '0 0 12px rgba(34,197,94,0.4)' : 'none',
-              }}>
-                {videoAddon && <span style={{color: 'white', fontSize: '14px', fontWeight: 'bold'}}>✓</span>}
-              </div>
+              ✨ 87% DE CLIENTES LO AGREGAN
             </div>
 
             {/* Cinematic video preview — Ken Burns slideshow */}
             <div style={{
-              position: 'relative', borderRadius: '14px', overflow: 'hidden',
-              marginBottom: '14px', aspectRatio: '16/9',
-              border: '2px solid rgba(139,92,246,0.3)',
-              boxShadow: '0 8px 32px rgba(124,58,237,0.25)',
+              position: 'relative', overflow: 'hidden',
+              aspectRatio: '16/9',
+              borderRadius: '18px 18px 0 0',
               background: '#0a0015',
             }}>
               {[
-                'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=600&h=340&fit=crop',
-                'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=600&h=340&fit=crop',
+                'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=700&h=394&fit=crop',
+                'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=700&h=394&fit=crop',
               ].map((src, i) => (
                 <img key={i} src={src} alt="" style={{
                   position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
@@ -1289,74 +1283,219 @@ export default function ComparisonPage() {
                 }} />
               ))}
 
-              {/* Gradient overlay */}
+              {/* Dark vignette overlay */}
               <div style={{
                 position: 'absolute', inset: 0,
-                background: 'linear-gradient(180deg, rgba(10,0,21,0) 50%, rgba(10,0,21,0.7) 100%)',
+                background: 'linear-gradient(180deg, rgba(10,0,21,0.15) 0%, rgba(10,0,21,0) 40%, rgba(10,0,21,0.75) 100%)',
                 pointerEvents: 'none',
               }} />
 
               {/* Floating music notes */}
-              <div style={{ position: 'absolute', top: '10px', right: '12px', display: 'flex', gap: '6px' }}>
+              <div style={{ position: 'absolute', top: '14px', right: '14px', display: 'flex', gap: '8px', zIndex: 3 }}>
                 {['🎵', '🎶'].map((n, i) => (
                   <span key={i} style={{
-                    fontSize: '16px', opacity: 0.7,
+                    fontSize: '18px', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))',
                     animation: `noteFloat 2s ease-in-out ${i * 0.7}s infinite`,
                   }}>{n}</span>
                 ))}
               </div>
 
-              {/* Play button overlay */}
+              {/* Center play button */}
               <div style={{
                 position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-                width: '48px', height: '48px', borderRadius: '50%',
-                background: 'rgba(124,58,237,0.85)', backdropFilter: 'blur(8px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+                zIndex: 3,
               }}>
-                <span style={{ fontSize: '18px', marginLeft: '3px', color: 'white' }}>▶</span>
+                <div style={{
+                  width: '60px', height: '60px', borderRadius: '50%',
+                  background: 'rgba(124,58,237,0.9)', backdropFilter: 'blur(12px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 8px 32px rgba(124,58,237,0.6)',
+                  animation: 'pulse 2.5s ease-in-out infinite',
+                }}>
+                  <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
+                </div>
               </div>
 
-              {/* Bottom info bar */}
+              {/* "YOUR PHOTOS HERE" text overlay */}
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, calc(-50% + 46px))',
+                zIndex: 3, textAlign: 'center',
+              }}>
+                <span style={{
+                  fontSize: '11px', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '1.5px',
+                  textTransform: 'uppercase', textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+                }}>TUS FOTOS AQUÍ</span>
+              </div>
+
+              {/* Bottom bar */}
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0,
-                padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                background: 'linear-gradient(180deg, transparent, rgba(10,0,21,0.9))',
+                padding: '10px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                zIndex: 3,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '12px', color: '#c4b5fd', fontWeight: 700 }}>Vista previa</span>
-                  <span style={{ fontSize: '10px', color: 'rgba(196,181,253,0.6)' }}>•</span>
-                  <span style={{ fontSize: '10px', color: 'rgba(196,181,253,0.6)' }}>Tus fotos + su canción</span>
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-end', gap: '2px', height: '12px'
+                  }}>
+                    {[0,1,2].map(i => (
+                      <div key={i} style={{
+                        width: '3px', borderRadius: '2px', background: '#a78bfa',
+                        animation: `eq${i+1} ${[0.6,0.5,0.7][i]}s ease-in-out infinite`,
+                      }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#c4b5fd', fontWeight: 700 }}>Tu canción sonando</span>
                 </div>
-                <span style={{ fontSize: '10px', color: '#a78bfa', fontWeight: 600, background: 'rgba(124,58,237,0.3)', padding: '2px 7px', borderRadius: '5px' }}>HD 1080p</span>
+                <span style={{
+                  fontSize: '10px', color: '#a78bfa', fontWeight: 700,
+                  background: 'rgba(124,58,237,0.45)', padding: '2px 8px', borderRadius: '5px',
+                  backdropFilter: 'blur(4px)',
+                }}>HD 1080p</span>
               </div>
 
               {/* Progress bar */}
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)' }}>
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)', zIndex: 4 }}>
                 <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'progressPreview 28s linear infinite' }} />
               </div>
             </div>
 
-            {/* Price + details */}
-            <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap'}}>
-              <span style={{fontSize: '14px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through'}}>$29.99</span>
-              <span style={{fontSize: '22px', fontWeight: '900', color: '#a855f7'}}>$9.99</span>
-              <span style={{fontSize: '11px', fontWeight: '700', color: '#22c55e', background: 'rgba(34,197,94,0.15)', padding: '3px 10px', borderRadius: '8px'}}>Ahorra 67%</span>
-            </div>
-            <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: '0 0 8px', lineHeight: 1.5}}>
-              Video HD con tus fotos favoritas + graba un mensaje personal
-            </p>
-            {/* Mini feature pills */}
-            <div style={{display: 'flex', gap: '6px', flexWrap: 'wrap'}}>
-              {['HD 1080p', 'MP4', '🎤 Mensaje gratis'].map((f, i) => (
-                <span key={i} style={{
-                  fontSize: '10px', color: i === 2 ? '#ec4899' : 'rgba(255,255,255,0.6)',
-                  background: i === 2 ? 'rgba(236,72,153,0.1)' : 'rgba(139,92,246,0.1)',
-                  padding: '3px 8px', borderRadius: '6px',
-                  border: i === 2 ? '1px solid rgba(236,72,153,0.2)' : '1px solid rgba(139,92,246,0.12)',
-                  fontWeight: i === 2 ? '700' : '500'
-                }}>{f}</span>
-              ))}
+            {/* Body section */}
+            <div style={{ padding: '18px 20px 20px', position: 'relative', zIndex: 2 }}>
+
+              {/* Title row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div>
+                  <h3 style={{ fontSize: '19px', fontWeight: '900', margin: '0 0 3px', color: '#e9d5ff', lineHeight: 1.2 }}>
+                    🎬 Video Musical para {recipientName}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
+                    Convierte la canción en un regalo que se ve y se siente
+                  </p>
+                </div>
+                {/* Add / Added button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
+                  style={{
+                    flexShrink: 0, marginLeft: '12px',
+                    padding: '9px 18px',
+                    borderRadius: '50px',
+                    border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                    background: videoAddon
+                      ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                      : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    color: 'white',
+                    fontSize: '13px', fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    transition: 'all 0.25s',
+                    boxShadow: videoAddon
+                      ? '0 0 14px rgba(34,197,94,0.5), 0 4px 12px rgba(0,0,0,0.3)'
+                      : '0 0 14px rgba(139,92,246,0.5), 0 4px 12px rgba(0,0,0,0.3)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {videoAddon ? '✓ Agregado' : '+ Agregar'}
+                </button>
+              </div>
+
+              {/* What you get — 3 feature rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {[
+                  { icon: '📸', label: 'Tus fotos favoritas', sub: 'Sube hasta 15 fotos — las ponemos al ritmo' },
+                  { icon: '🎤', label: 'Graba un mensaje personal', sub: 'Tu voz al inicio del video, gratis' },
+                  { icon: '📲', label: 'Listo para compartir', sub: 'MP4 HD — WhatsApp, Instagram, lo que sea' },
+                ].map(({ icon, label, sub }, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '12px',
+                    background: 'rgba(139,92,246,0.07)', borderRadius: '10px',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(139,92,246,0.12)',
+                  }}>
+                    <span style={{ fontSize: '20px', flexShrink: 0, lineHeight: 1 }}>{icon}</span>
+                    <div>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#e9d5ff', lineHeight: 1.2 }}>{label}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Price row */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                background: videoAddon
+                  ? 'linear-gradient(90deg, rgba(124,58,237,0.25), rgba(168,85,247,0.15))'
+                  : 'rgba(139,92,246,0.08)',
+                borderRadius: '12px', padding: '16px',
+                border: videoAddon ? '1px solid rgba(168,85,247,0.4)' : '1px solid rgba(139,92,246,0.2)',
+                transition: 'all 0.3s',
+              }}>
+                <div style={{ textAlign: 'center', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>$29.99</span>
+                    <span style={{
+                      fontSize: '11px', fontWeight: '800', color: '#fbbf24',
+                      background: 'rgba(251,191,36,0.15)', padding: '2px 8px',
+                      borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)',
+                      letterSpacing: '0.5px'
+                    }}>SOLO</span>
+                  </div>
+                  {/* Price row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '12px' }}>
+                    <span style={{
+                      fontSize: '48px', fontWeight: '900', lineHeight: 1, display: 'inline-block',
+                      animation: 'pricePulse 1.5s ease-in-out infinite',
+                    }}>$9.99</span>
+                    <div>
+                      <span style={{
+                        display: 'block', fontSize: '13px', fontWeight: '800', color: '#22c55e',
+                        background: 'rgba(34,197,94,0.15)', padding: '4px 12px',
+                        borderRadius: '20px', border: '1px solid rgba(34,197,94,0.25)',
+                        marginBottom: '4px', whiteSpace: 'nowrap',
+                      }}>Ahorra 67%</span>
+                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
+                    </div>
+                  </div>
+                  {/* Big add button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
+                    style={{
+                      width: '100%', padding: '16px',
+                      borderRadius: '14px',
+                      border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                      background: videoAddon
+                        ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                        : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                      color: 'white',
+                      fontSize: '18px', fontWeight: '900',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      transition: 'all 0.25s',
+                      boxShadow: videoAddon
+                        ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
+                        : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
+                      letterSpacing: '0.3px',
+                    }}
+                  >
+                    {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
+                  </button>
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+                    Se agrega a tu pedido
+                  </p>
+                </div>
+              </div>
+
+              {/* CTA nudge text */}
+              <p style={{
+                textAlign: 'center', margin: '12px 0 0',
+                fontSize: '12px', transition: 'all 0.3s',
+                color: videoAddon ? '#86efac' : 'rgba(255,255,255,0.35)',
+                fontWeight: videoAddon ? '600' : '400',
+              }}>
+                {videoAddon
+                  ? '✅ ¡Agregado! Tu video se crea después del pago.'
+                  : 'Toca "Agregar" para incluir el video en tu pedido'}
+              </p>
             </div>
           </div>
         )}
