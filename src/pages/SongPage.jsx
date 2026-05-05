@@ -88,54 +88,68 @@ const fmt = (s) => {
 // ═══════════════════════════════════════
 function SongSelector({ songs, activeIndex, onSelect, template, lang }) {
   if (songs.length <= 1) return null;
-  const songLabel = lang === 'en' ? (i) => `Song ${i + 1}` : (i) => `Canción ${i + 1}`;
-  const bannerCopy = lang === 'en'
-    ? { eyebrow: `🎵🎵 YOU HAVE ${songs.length} SONGS`, hint: `Tap to switch between them` }
-    : { eyebrow: `🎵🎵 TIENES ${songs.length} CANCIONES`, hint: `Toca para alternar entre ellas` };
-  const themes = {
-    golden_hour: { active: '#f4c025', activeBg: 'rgba(244,192,37,0.15)', border: 'rgba(244,192,37,0.25)', bg: 'rgba(255,255,255,0.07)', textActive: 'rgba(255,255,255,0.9)', textInactive: 'rgba(255,255,255,0.4)', labelInactive: 'rgba(255,255,255,0.35)', font: "'Plus Jakarta Sans', sans-serif", bannerBg: 'linear-gradient(135deg, rgba(244,192,37,0.18), rgba(255,140,66,0.12))', bannerBorder: 'rgba(244,192,37,0.4)', bannerEyebrow: '#f4c025', bannerText: 'rgba(255,255,255,0.85)' },
-    lavender_dream: { active: '#9947eb', activeBg: 'rgba(153,71,235,0.08)', border: 'rgba(153,71,235,0.15)', bg: 'white', textActive: '#0f172a', textInactive: '#94a3b8', labelInactive: '#94a3b8', font: "'Newsreader', serif", bannerBg: 'linear-gradient(135deg, rgba(153,71,235,0.10), rgba(124,58,237,0.06))', bannerBorder: 'rgba(153,71,235,0.3)', bannerEyebrow: '#7c3aed', bannerText: '#475569' },
-    electric_magenta: { active: '#f20d59', activeBg: 'rgba(242,13,89,0.15)', border: 'rgba(242,13,89,0.25)', bg: 'rgba(255,255,255,0.05)', textActive: 'rgba(255,255,255,0.9)', textInactive: 'rgba(255,255,255,0.4)', labelInactive: 'rgba(255,255,255,0.35)', font: "'Space Grotesk', sans-serif", bannerBg: 'linear-gradient(135deg, rgba(242,13,89,0.18), rgba(255,46,136,0.12))', bannerBorder: 'rgba(242,13,89,0.4)', bannerEyebrow: '#f20d59', bannerText: 'rgba(255,255,255,0.85)' },
+  const isEn = lang === 'en';
+  const fonts = {
+    golden_hour: "'Plus Jakarta Sans', sans-serif",
+    lavender_dream: "'Newsreader', serif",
+    electric_magenta: "'Space Grotesk', sans-serif",
   };
-  const c = themes[template] || themes.golden_hour;
+  const font = fonts[template] || fonts.golden_hour;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, width: '100%', maxWidth: 420 }}>
-      <style>{`@keyframes rqcComboPulse { 0%, 100% { box-shadow: 0 0 0 0 ${c.bannerBorder}; } 50% { box-shadow: 0 0 0 8px rgba(0,0,0,0); } }`}</style>
+    <div style={{ width: '100%', maxWidth: 420 }}>
+      <style>{`
+        @keyframes rqcGreenPulse {
+          0%, 100% { box-shadow: 0 0 10px rgba(34,197,94,0.3), 0 0 0 0 rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.7); }
+          50% { box-shadow: 0 0 24px rgba(34,197,94,0.7), 0 0 0 5px rgba(34,197,94,0.07); border-color: #22c55e; }
+        }
+        @keyframes rqcPurplePulse {
+          0%, 100% { box-shadow: 0 0 10px rgba(168,85,247,0.3), 0 0 0 0 rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.7); }
+          50% { box-shadow: 0 0 24px rgba(168,85,247,0.7), 0 0 0 5px rgba(168,85,247,0.07); border-color: #a855f7; }
+        }
+      `}</style>
       <div style={{
-        width: '100%', padding: '10px 16px', borderRadius: 14,
-        background: c.bannerBg, border: `1.5px solid ${c.bannerBorder}`,
-        textAlign: 'center', fontFamily: c.font,
-        animation: 'rqcComboPulse 2.4s ease-in-out 3',
+        background: 'linear-gradient(135deg, rgba(16,10,30,0.97), rgba(10,20,16,0.97))',
+        borderRadius: 22, padding: '18px 16px 16px',
+        border: '2px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
       }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.18em', color: c.bannerEyebrow, marginBottom: 2 }}>
-          {bannerCopy.eyebrow}
+        <p style={{ margin: '0 0 2px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.45)', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: font }}>
+          🎁 {isEn ? 'Your order includes' : 'Tu pedido incluye'}
+        </p>
+        <p style={{ margin: '0 0 14px 0', textAlign: 'center', fontSize: 20, fontWeight: 900, color: '#fff', fontFamily: font }}>
+          {songs.length} {isEn ? 'Unique Songs' : 'Canciones Únicas'} 🎵
+        </p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {songs.map((s, i) => {
+            const isActive = i === activeIndex;
+            const isGreen = i === 0;
+            const color = isGreen ? '#22c55e' : '#a855f7';
+            const rgb = isGreen ? '34,197,94' : '168,85,247';
+            const anim = isGreen ? 'rqcGreenPulse' : 'rqcPurplePulse';
+            const emoji = isGreen ? '💚' : '💜';
+            const activeLabel = isEn ? '▶ Playing now' : '▶ Escuchando ahora';
+            const inactiveLabel = isEn ? '👆 Tap to listen' : '👆 Toca aquí';
+            return (
+              <button key={s.id} onClick={() => onSelect(i)} style={{
+                flex: 1, padding: '16px 10px', borderRadius: 16, textAlign: 'center', cursor: 'pointer',
+                fontFamily: font,
+                background: isActive ? `rgba(${rgb},0.2)` : `rgba(${rgb},0.07)`,
+                border: `2.5px solid ${color}`,
+                color: '#fff',
+                animation: `${anim} 1.6s ease-in-out infinite`,
+                transform: isActive ? 'scale(1.04)' : 'scale(1)',
+                transition: 'transform 0.2s',
+              }}>
+                <div style={{ fontSize: 26, marginBottom: 6 }}>{emoji}</div>
+                <div style={{ fontSize: 15, fontWeight: 900, color }}>{isEn ? `Song ${i + 1}` : `Canción ${i + 1}`}</div>
+                <div style={{ fontSize: 11, marginTop: 5, fontWeight: 700, color: isActive ? color : 'rgba(255,255,255,0.65)' }}>
+                  {isActive ? activeLabel : inactiveLabel}
+                </div>
+              </button>
+            );
+          })}
         </div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: c.bannerText }}>
-          {bannerCopy.hint} ↓
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', width: '100%' }}>
-        {songs.map((s, i) => {
-          const isActive = i === activeIndex;
-          const genre = (s.genre_name || s.genre || '').replace(/_/g, ' ');
-          return (
-            <button key={s.id} onClick={() => onSelect(i)} style={{
-              flex: 1, padding: '12px 10px', borderRadius: 14, textAlign: 'center', cursor: 'pointer',
-              border: `1.5px solid ${isActive ? c.active : c.border}`,
-              background: isActive ? c.activeBg : c.bg,
-              transition: 'all 0.25s', transform: isActive ? 'scale(1.02)' : 'scale(1)',
-              fontFamily: c.font, color: 'inherit',
-            }}>
-              <span style={{ display: 'block', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: isActive ? c.active : c.labelInactive, marginBottom: 2 }}>
-                {songLabel(i)}
-              </span>
-              <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: isActive ? c.textActive : c.textInactive, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {genre || `#${i + 1}`}
-              </span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
