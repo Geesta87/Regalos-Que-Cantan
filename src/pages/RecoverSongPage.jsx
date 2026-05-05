@@ -275,40 +275,39 @@ export default function RecoverSongPage() {
                             background: 'rgba(255,255,255,0.04)',
                             border: '1px solid rgba(74,222,128,0.25)',
                             borderRadius: '14px',
-                            padding: '16px',
+                            padding: '18px',
+                            textAlign: 'center',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                              <p style={{ color: 'rgba(255,210,63,0.95)', fontSize: '11px', fontWeight: 700, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-                                Canción para
-                              </p>
-                              <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 2px', wordBreak: 'break-word' }}>
-                                {s.recipient_name}
-                              </p>
-                              {s.paid_at && (
-                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', margin: 0 }}>
-                                  Comprada el {formatDate(s.paid_at)}
-                                </p>
-                              )}
-                            </div>
-                            <a
-                              href={s.listen_url}
-                              style={{
-                                background: 'linear-gradient(90deg, #ff6b35, #ff8c42)',
-                                color: 'white',
-                                textDecoration: 'none',
-                                fontWeight: 700,
-                                fontSize: '13px',
-                                padding: '11px 16px',
-                                borderRadius: '10px',
-                                whiteSpace: 'nowrap',
-                                boxShadow: '0 4px 14px rgba(255,107,53,0.3)',
-                              }}
-                            >
-                              ▶ Escuchar y descargar
-                            </a>
-                          </div>
+                          {s.is_bundle && (
+                            <p style={{ color: '#ffd23f', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                              🎁 Paquete 2 canciones
+                            </p>
+                          )}
+                          <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 14px', wordBreak: 'break-word' }}>
+                            Para {s.recipient_name}
+                          </p>
+                          {s.paid_at && (
+                            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', margin: '0 0 14px' }}>
+                              Comprada el {formatDate(s.paid_at)}
+                            </p>
+                          )}
+                          <a
+                            href={s.listen_url}
+                            style={{
+                              display: 'inline-block',
+                              background: 'linear-gradient(135deg, #ff6b35, #ff8c42)',
+                              color: 'white',
+                              textDecoration: 'none',
+                              fontWeight: 800,
+                              fontSize: '15px',
+                              padding: '14px 28px',
+                              borderRadius: '30px',
+                              boxShadow: '0 4px 18px rgba(255,107,53,0.35)',
+                            }}
+                          >
+                            ▶ Escuchar y descargar
+                          </a>
                         </div>
                       ))}
                     </div>
