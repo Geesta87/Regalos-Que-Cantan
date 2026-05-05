@@ -217,6 +217,10 @@ serve(async (req) => {
               click_tracking: { enable: true, enable_text: false },
               open_tracking: { enable: true },
               subscription_tracking: { enable: false }
+            },
+            headers: {
+              'List-Unsubscribe': '<mailto:hola@regalosquecantan.com?subject=unsubscribe>',
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
             }
           })
         });

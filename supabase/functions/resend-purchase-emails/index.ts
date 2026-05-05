@@ -49,9 +49,13 @@ function buildHtml(firstName: string, recipientName: string, listenUrl: string):
     <p style="color:#c9b99a;font-size:14px;margin:0;line-height:1.6;">Algunos correos se retrasaron hoy por un problema t&eacute;cnico. Por si no viste el original, aqu&iacute; tienes tu enlace directo:</p>
   </td></tr>
   <tr><td style="background-color:#1a0e08;padding:16px 30px 28px;text-align:center;">
-    <a href="${listenUrl}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
-      &#127911; Escuchar y descargar mi canci&oacute;n
-    </a>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+      <tr><td align="center" style="border-radius:8px;background-color:#ff6b35;">
+        <a href="${listenUrl}" target="_blank" style="display:inline-block;padding:18px 44px;font-family:'Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:8px;">
+          &#127911; Escuchar y descargar mi canci&oacute;n
+        </a>
+      </td></tr>
+    </table>
     <p style="color:#a67c52;font-size:13px;margin:20px 0 0;">Si ya la recibiste, puedes ignorar este correo &mdash; es solo un respaldo.</p>
   </td></tr>
   <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>

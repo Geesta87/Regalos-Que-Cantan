@@ -103,6 +103,31 @@ export function injectPreheader(html: string, preheader: string): string {
 }
 
 /**
+ * CAN-SPAM requires a physical mailing address in every commercial email.
+ * Without it, Gmail/Yahoo spam filters score the message negatively.
+ * This is injected automatically by buildEmailParts into every email that
+ * goes through the shared helper — no per-template work needed.
+ */
+const CAN_SPAM_ADDRESS_HTML = `
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:transparent;">
+  <tr><td align="center" style="padding:0 0 16px;">
+    <p style="color:#888888;font-size:11px;margin:0;line-height:1.5;font-family:'Helvetica Neue',Arial,sans-serif;">
+      Regalos Que Cantan &bull; San Antonio, TX 78201, USA<br>
+      <a href="mailto:hola@regalosquecantan.com" style="color:#888888;text-decoration:underline;">hola@regalosquecantan.com</a>
+    </p>
+  </td></tr>
+</table>`;
+
+function injectCanSpamAddress(html: string): string {
+  // Skip if address already present (e.g. recover-song builds its own footer).
+  if (html.includes('San Antonio') || html.includes('CAN-SPAM') || html.includes('can-spam')) return html;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${CAN_SPAM_ADDRESS_HTML}</body>`);
+  }
+  return html + CAN_SPAM_ADDRESS_HTML;
+}
+
+/**
  * One-shot helper: returns both pieces ready to drop into a SendGrid content[]
  * array.  Pass the result as:
  *   content: [
@@ -111,7 +136,8 @@ export function injectPreheader(html: string, preheader: string): string {
  *   ]
  */
 export function buildEmailParts(html: string, preheader: string = ''): { html: string; text: string } {
-  const finalHtml = injectPreheader(html, preheader);
+  const withAddress = injectCanSpamAddress(html);
+  const finalHtml = injectPreheader(withAddress, preheader);
   const finalText = htmlToPlaintext(finalHtml);
   return { html: finalHtml, text: finalText };
 }

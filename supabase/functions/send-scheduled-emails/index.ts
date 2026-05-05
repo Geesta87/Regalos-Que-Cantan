@@ -173,7 +173,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/listen?song_id=${primary.id}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_reminder_30min`
-        const subject = `\u{1F4EC} Recordatorio: tu canci\u00f3n para ${primary.recipient_name} (por si no la viste)`
+        const subject = `Por si no la viste: tu canci\u00f3n para ${primary.recipient_name}`
         const html = build30MinPurchaseReminderEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -209,7 +209,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
-        const subject = `\u{1F3B5} \u00a1${songs.length > 1 ? 'Tus canciones' : 'Tu canci\u00f3n'} para ${primary.recipient_name} ${songs.length > 1 ? 'est\u00e1n listas' : 'est\u00e1 lista'}!`
+        const subject = `Tu canci\u00f3n para ${primary.recipient_name} en RegalosQueCantan`
         const html = build15MinEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -244,7 +244,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
-        const subject = `\u{1F381} \u00bfOlvidaste algo? Tu regalo para ${primary.recipient_name} espera`
+        const subject = `Tu regalo para ${primary.recipient_name} te est\u00e1 esperando`
         const html = build1HrEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -278,7 +278,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
-        const subject = `\u23f0 \u00daltima oportunidad: ${songs.length > 1 ? 'Canciones' : 'Canci\u00f3n'} para ${primary.recipient_name}`
+        const subject = `Tu canci\u00f3n para ${primary.recipient_name} sigue aqu\u00ed`
         const html = build24HrEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -313,7 +313,7 @@ serve(async (req) => {
       const songIds = songs.map(s => s.id)
       try {
         const url = `https://regalosquecantan.com/listen?song_ids=${songIds.join(',')}&coupon=VUELVE10&from=email_3day`
-        const subject = `\u{1F381} Regalo especial: 10% OFF en tu canci\u00f3n para ${primary.recipient_name}`
+        const subject = `Para ti: un detalle en tu canci\u00f3n para ${primary.recipient_name}`
         const html = build3DayEmail(primary.recipient_name, songs.length, url)
         const success = await sendEmail(primary.email, subject, html)
         if (success) {
@@ -583,12 +583,12 @@ function build1HrEmail(recipientName: string, songCount: number, url: string): s
 function build24HrEmail(recipientName: string, songCount: number, url: string): string {
   const hero = `
     <div style="width:64px;height:64px;background-color:#dc2626;border-radius:50%;margin:0 auto 24px;line-height:64px;font-size:28px;">&#9200;</div>
-    <p style="color:#dc2626;font-size:12px;font-weight:800;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px;">&Uacute;LTIMA OPORTUNIDAD</p>
+    <p style="color:#dc2626;font-size:12px;font-weight:800;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px;">TU CANCI&Oacute;N TE ESPERA</p>
     <h1 style="color:#ffffff;font-size:28px;font-weight:800;margin:0 0 8px;line-height:1.3;">
-      ${songCount > 1 ? 'Tus canciones para ' + recipientName + ' se borrar&aacute;n pronto' : 'Tu canci&oacute;n para ' + recipientName + ' se borrar&aacute; pronto'}
+      ${songCount > 1 ? 'Tus canciones para ' + recipientName + ' siguen listas' : 'Tu canci&oacute;n para ' + recipientName + ' sigue lista'}
     </h1>
     <p style="color:#999999;font-size:15px;margin:0;line-height:1.6;">
-      No pierdas este regalo &uacute;nico. Completa tu compra antes de que expire.
+      Completa tu compra cuando quieras y dale ese regalo &uacute;nico.
     </p>`
 
   const body = `

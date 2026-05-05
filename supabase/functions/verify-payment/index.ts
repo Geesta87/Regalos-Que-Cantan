@@ -109,9 +109,13 @@ function getPurchaseEmailHtml(song: any) {
         </td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <a href="${listenUrl}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
-            &#127911; Escuchar y Descargar
-          </a>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+            <tr><td align="center" style="border-radius:8px;background-color:#ff6b35;">
+              <a href="${listenUrl}" target="_blank" style="display:inline-block;padding:18px 44px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:8px;">
+                &#127911; Escuchar y Descargar
+              </a>
+            </td></tr>
+          </table>
         </td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
