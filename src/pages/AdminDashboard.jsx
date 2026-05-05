@@ -144,6 +144,22 @@ export default function AdminDashboard() {
   const [lookupPage, setLookupPage] = useState(0);
   const ORDERS_PER_PAGE = 50;
   const LOOKUP_PER_PAGE = 50;
+  // Server-side search results for the Lookup tab. null = no active search
+  // (use local songs array). Populated by the useEffect below.
+  const [lookupServerResults, setLookupServerResults] = useState(null);
+  const [lookupServerTotal, setLookupServerTotal] = useState(0);
+  const [lookupServerLoading, setLookupServerLoading] = useState(false);
+  // Feature: internal admin notes on orders
+  const [noteText, setNoteText] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  // Feature: one-click retry for stuck/failed songs
+  const [retryingId, setRetryingId] = useState(null);
+  const [retryResult, setRetryResult] = useState(null); // { ok, message }
+  // Feature: inline audio preview in orders table
+  const [previewingId, setPreviewingId] = useState(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const audioRef = useRef(null);
   // Por Enviar (Pending to Send) tab state
   const [pendingSendSort, setPendingSendSort] = useState('oldest'); // 'oldest' | 'recent'
   const [selectedPendingIds, setSelectedPendingIds] = useState(() => new Set());
@@ -419,6 +435,99 @@ export default function AdminDashboard() {
     paymentHighWaterRef.current = newMax;
   }, [songs, triggerPaymentAlert]);
 
+  // Sync note textarea whenever the admin opens a different song.
+  useEffect(() => {
+    setNoteText(selectedSong?.admin_notes || '');
+    setNoteSaved(false);
+    setRetryResult(null);
+  }, [selectedSong?.id]);
+
+  // Save an internal admin note for the open song.
+  const saveNote = async () => {
+    if (!selectedSong || !accessToken) return;
+    setNoteSaving(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ action: 'save-note', songId: selectedSong.id, note: noteText }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const saved = noteText.trim() || null;
+        setSongs(prev => prev.map(s => s.id === selectedSong.id ? { ...s, admin_notes: saved } : s));
+        setSelectedSong(prev => prev ? { ...prev, admin_notes: saved } : prev);
+        setNoteSaved(true);
+        setTimeout(() => setNoteSaved(false), 2500);
+      }
+    } catch (e) {
+      console.error('saveNote error:', e);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  // Retry a stuck/failed song — creates a new Mureka job server-side.
+  const retrySong = async (songId) => {
+    if (!accessToken) return;
+    setRetryingId(songId);
+    setRetryResult(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ action: 'retry', songId }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSongs(prev => prev.map(s =>
+          s.id === songId || (s.mureka_job_id && s.mureka_job_id === prev.find(x => x.id === songId)?.mureka_job_id)
+            ? { ...s, status: 'processing' }
+            : s
+        ));
+        setSelectedSong(prev => prev?.id === songId ? { ...prev, status: 'processing' } : prev);
+        setRetryResult({ ok: true, message: result.message || 'Retry queued — check back in 3–5 min' });
+      } else {
+        setRetryResult({ ok: false, message: result.error || 'Retry failed' });
+      }
+    } catch (e) {
+      setRetryResult({ ok: false, message: e.message });
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  // Inline audio preview: play or pause the selected song row.
+  const togglePreview = (songId, audioUrl) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (previewingId === songId) {
+      // same song — toggle play/pause
+      if (previewPlaying) {
+        audio.pause();
+        setPreviewPlaying(false);
+      } else {
+        audio.play().then(() => setPreviewPlaying(true)).catch(() => {});
+      }
+    } else {
+      // different song — swap src and play
+      audio.pause();
+      audio.src = audioUrl;
+      audio.currentTime = 0;
+      setPreviewingId(songId);
+      setPreviewPlaying(false);
+      audio.play().then(() => setPreviewPlaying(true)).catch(() => {});
+    }
+  };
+
   // (isPaid is now defined at module scope above the component — no need
   // to redeclare here. Doing so caused a temporal-dead-zone ReferenceError
   // because earlier hooks already referenced it.)
@@ -460,7 +569,7 @@ export default function AdminDashboard() {
     'paid', 'paid_at', 'amount_paid',
     'coupon_code', 'affiliate_code', 'utm_source',
     'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
-    'has_video_addon', 'admin_dismissed_at', 'status'
+    'has_video_addon', 'admin_dismissed_at', 'status', 'admin_notes'
   ].join(',');
 
   const fetchSongs = async (tokenOverride) => {
@@ -1051,7 +1160,38 @@ export default function AdminDashboard() {
 
   // Reset page when filters change
   useEffect(() => { setOrdersPage(0); }, [debouncedSearchTerm, filterStatus, todayOnly]);
-  useEffect(() => { setLookupPage(0); }, [debouncedLookupSearch, lookupSearchType]);
+
+  // Lookup tab: server-side search. Fires whenever the debounced search term
+  // or field type changes. Resets to page 0 and fetches up to 500 matches from
+  // the DB so we never miss an order that isn't in the recent-2000 local cache.
+  useEffect(() => {
+    setLookupPage(0);
+    if (!debouncedLookupSearch.trim() || !accessToken) {
+      setLookupServerResults(null);
+      setLookupServerTotal(0);
+      return;
+    }
+    setLookupServerLoading(true);
+    const field = lookupSearchType === 'all' ? undefined : lookupSearchType;
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ action: 'list', search: debouncedLookupSearch.trim(), searchField: field, limit: 500 }),
+    })
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) {
+          setLookupServerResults(result.songs || []);
+          setLookupServerTotal(result.total_count ?? result.songs?.length ?? 0);
+        }
+      })
+      .catch(err => console.error('[lookup] server search failed:', err))
+      .finally(() => setLookupServerLoading(false));
+  }, [debouncedLookupSearch, lookupSearchType, accessToken]);
 
   // Global keyboard shortcut: "/" focuses the Órdenes search input. Ignored
   // when the user is already typing in another input/textarea so we don't
@@ -1227,6 +1367,23 @@ export default function AdminDashboard() {
       const createdMs = new Date(s.created_at).getTime();
       return createdMs < tenMinAgo;
     }).length;
+  }, [songs]);
+
+  // Repeat buyers — paid emails that appear more than once. Used to show a
+  // badge on orders from returning customers.
+  const repeatBuyerEmails = useMemo(() => {
+    const counts = new Map();
+    for (const s of songs) {
+      if (s.email && isPaid(s)) {
+        const key = s.email.toLowerCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    }
+    const result = new Set();
+    for (const [email, count] of counts) {
+      if (count > 1) result.add(email);
+    }
+    return result;
   }, [songs]);
 
   // Hot leads count (matches the existing tab-badge logic) — extracted so the
@@ -2182,9 +2339,16 @@ export default function AdminDashboard() {
                             <div>
                               <p className="font-medium text-white">{song.recipient_name || '—'}</p>
                               <p className="text-xs text-gray-500">from {song.sender_name || '—'}</p>
-                              <p className="text-xs text-gray-500 truncate max-w-[180px]">{song.email}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs text-gray-500 truncate max-w-[160px]">{song.email}</p>
+                                {song.email && repeatBuyerEmails.has(song.email.toLowerCase()) && (
+                                  <span title="Repeat buyer" className="flex-shrink-0 text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded-full px-1.5 py-0.5 leading-none">
+                                    ★ repeat
+                                  </span>
+                                )}
+                              </div>
                               {song.whatsapp_phone && (
-                                <a 
+                                <a
                                   href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -2322,15 +2486,15 @@ export default function AdminDashboard() {
                               </button>
                               {song.audio_url && (
                                 <>
-                                  <a
-                                    href={song.audio_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0"
-                                    title="Play"
+                                  <button
+                                    onClick={() => togglePreview(song.id, song.audio_url)}
+                                    className={`p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0 ${previewingId === song.id ? 'bg-amber-500/20' : ''}`}
+                                    title={previewingId === song.id && previewPlaying ? 'Pause' : 'Play preview'}
                                   >
-                                    <span className="material-symbols-outlined text-amber-400 text-xl">play_circle</span>
-                                  </a>
+                                    <span className={`material-symbols-outlined text-xl ${previewingId === song.id && previewPlaying ? 'text-amber-300 animate-pulse' : 'text-amber-400'}`}>
+                                      {previewingId === song.id && previewPlaying ? 'pause_circle' : 'play_circle'}
+                                    </span>
+                                  </button>
                                   <a
                                     href={song.audio_url}
                                     download
@@ -3287,7 +3451,12 @@ export default function AdminDashboard() {
 
             {/* Results count */}
             {(() => {
+              // When a search term is active, use the server results (searches
+              // the entire database, not just the 2000 most-recently-cached rows).
+              // When no search term, fall back to the local songs array as before.
+              const isServerSearch = !!debouncedLookupSearch.trim();
               const lookupFiltered = (() => {
+                if (isServerSearch && lookupServerResults !== null) return lookupServerResults;
                 if (!debouncedLookupSearch.trim()) return songs;
                 const q = debouncedLookupSearch.toLowerCase().trim();
                 return songs.filter(song => {
@@ -3308,9 +3477,13 @@ export default function AdminDashboard() {
               return (
                 <>
                   <p className="text-sm text-gray-500">
-                    {debouncedLookupSearch
-                      ? `${lookupFiltered.length} result${lookupFiltered.length !== 1 ? 's' : ''} for "${debouncedLookupSearch}"`
-                      : `${lookupFiltered.length} total songs`
+                    {lookupServerLoading
+                      ? 'Buscando...'
+                      : debouncedLookupSearch
+                        ? lookupServerTotal > lookupFiltered.length
+                          ? `${lookupFiltered.length} de ${lookupServerTotal} resultados para "${debouncedLookupSearch}"`
+                          : `${lookupFiltered.length} result${lookupFiltered.length !== 1 ? 's' : ''} for "${debouncedLookupSearch}"`
+                        : `${lookupFiltered.length} total songs`
                     }
                   </p>
 
@@ -4652,7 +4825,14 @@ export default function AdminDashboard() {
               
               {/* Email */}
               <div className="bg-white/5 rounded-xl p-4">
-                <p className="text-xs text-gray-500 mb-1">Email</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-gray-500">Email</p>
+                  {selectedSong.email && repeatBuyerEmails.has(selectedSong.email.toLowerCase()) && (
+                    <span className="text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded-full px-2 py-0.5">
+                      ★ Repeat Buyer
+                    </span>
+                  )}
+                </div>
                 <p className="font-semibold">{selectedSong.email}</p>
               </div>
 
@@ -4838,12 +5018,61 @@ export default function AdminDashboard() {
                 </div>
               </div>
               
+              {/* Retry button — only shown for stuck/failed songs (admin only) */}
+              {userRole === 'admin' && selectedSong.status && selectedSong.status !== 'completed' && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-2">
+                  <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">
+                    ⚠️ Generation status: <span className="font-mono">{selectedSong.status}</span>
+                  </p>
+                  {retryResult && (
+                    <p className={`text-xs ${retryResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                      {retryResult.ok ? '✓ ' : '✗ '}{retryResult.message}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => retrySong(selectedSong.id)}
+                    disabled={retryingId === selectedSong.id}
+                    className="w-full py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-semibold transition disabled:opacity-50"
+                  >
+                    {retryingId === selectedSong.id ? '⏳ Submitting retry...' : '🔄 Retry Generation'}
+                  </button>
+                </div>
+              )}
+
+              {/* Admin notes — internal only, never shown to customers */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">📝 Internal Notes</p>
+                <textarea
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
+                  placeholder="Add a private note about this order..."
+                  rows={3}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-600 resize-none focus:outline-none focus:border-amber-400/40"
+                />
+                <button
+                  onClick={saveNote}
+                  disabled={noteSaving}
+                  className="px-4 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 text-amber-300 text-xs font-semibold transition disabled:opacity-50"
+                >
+                  {noteSaving ? 'Saving...' : noteSaved ? '✓ Saved' : 'Save Note'}
+                </button>
+              </div>
+
               {/* Song ID */}
               <p className="text-center text-xs text-gray-600 font-mono">ID: {selectedSong.id}</p>
             </div>
           </div>
         </div>
       )}
+
+      {/* Hidden audio player — shared across all rows */}
+      <audio
+        ref={audioRef}
+        onEnded={() => { setPreviewPlaying(false); setPreviewingId(null); }}
+        onPause={() => setPreviewPlaying(false)}
+        onPlay={() => setPreviewPlaying(true)}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }
