@@ -71,6 +71,12 @@ export default function GeneratingPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [factIndex, setFactIndex] = useState(0);
   const [error, setError] = useState(null);
+  // errorCode mirrors the backend's err.code on rate-limit / blocklist failures
+  // (RATE_LIMIT_UNPAID, IP_BLOCKED). Used to gate the owner-override PIN UI so
+  // it only shows up on anti-abuse failures, not on generic provider errors.
+  const [errorCode, setErrorCode] = useState(null);
+  const [overridePin, setOverridePin] = useState('');
+  const [overrideRetrying, setOverrideRetrying] = useState(false);
   
   // Song generation state
   const [song1Id, setSong1Id] = useState(null);
@@ -180,7 +186,138 @@ export default function GeneratingPage() {
     return () => clearInterval(timeoutCheck);
   }, [song1Status, song2Status]);
 
-  // Start two-song generation
+  // Dual-song generation. Defined inline (not useCallback) so the override-
+  // retry handler always sees the latest formData/state setters; we only ever
+  // invoke it from the mount effect and from handleOverrideRetry, never from
+  // a useEffect dependency array, so stable identity isn't needed.
+  async function runDualGeneration(overridePinArg) {
+    try {
+      // Guard against empty formData (prevents ghost records)
+      if (!formData?.recipientName?.trim() || !formData?.email?.trim() || !formData?.genre?.trim()) {
+        console.error('❌ Missing required formData fields:', {
+          recipientName: formData?.recipientName || 'MISSING',
+          email: formData?.email || 'MISSING',
+          genre: formData?.genre || 'MISSING'
+        });
+        setError('Faltan datos del formulario. Por favor regresa e intenta de nuevo.');
+        return;
+      }
+
+      if (import.meta.env.DEV) {
+        console.log(`🎵 Starting song generation${overridePinArg ? ' (with admin override)' : ''}...`);
+      }
+
+      // Generate Song 1
+      setSong1Status('generating');
+      const result1 = await generateSong({
+        ...formData,
+        version: 1
+      }, overridePinArg);
+
+      if (result1.success && result1.song?.id) {
+        if (import.meta.env.DEV) {
+          console.log('✅ Song 1 started:', result1.song.id);
+        }
+        setSong1Id(result1.song.id);
+
+        // If Kie.ai is down, song was queued for retry — show friendly message
+        if (result1.queued) {
+          setSong1Status('queued_retry');
+          return; // Don't start Song 2, we'll email them
+        }
+
+        // Capture sessionId from API for Song 2 linking
+        if (result1.sessionId) {
+          setApiSessionId(result1.sessionId);
+        }
+
+        // If we got lyrics back immediately, show them
+        if (result1.song.lyrics) {
+          const lines = result1.song.lyrics.split('\n').filter(l => l.trim());
+          setLyricsLines(lines);
+          setShowLyrics(true);
+        }
+
+        // ============================================
+        // BOTH FUNNELS: Kick off Song 2 in parallel
+        // useapi.net already creates both songs in 1 call — skip 2nd API call
+        // FAST: Fire and forget (ComparisonPage polls)
+        // CONTROL: Wait for both before navigating
+        // ============================================
+        if (result1.song.song2PendingId) {
+          // useapi.net provider: Song 2 already created in same job
+          if (import.meta.env.DEV) {
+            console.log('✅ Song 2 already created by useapi.net:', result1.song.song2PendingId);
+          }
+          setSong2Id(result1.song.song2PendingId);
+          setSong2Status('generating');
+        } else {
+          // Direct Mureka fallback: need separate API call for Song 2
+          if (import.meta.env.DEV) {
+            console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
+          }
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          setSong2Status('generating');
+          const result2 = await generateSong({
+            ...formData,
+            version: 2,
+            sessionId: result1.sessionId
+          }, overridePinArg);
+
+          if (result2.success && result2.song?.id) {
+            if (import.meta.env.DEV) {
+              console.log('✅ Song 2 started:', result2.song.id);
+            }
+            setSong2Id(result2.song.id);
+          } else {
+            if (import.meta.env.DEV) {
+              console.warn('⚠️ Song 2 failed to start, continuing with single song');
+            }
+            setSong2Status('failed');
+          }
+        }
+      } else {
+        throw new Error(result1.error || 'Failed to start song generation');
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error('❌ Generation error:', err);
+      }
+      setError(err.message);
+      setErrorCode(err.code || null);
+    }
+  }
+
+  // Owner-override retry: re-run generation with the PIN entered in the
+  // rate-limit error UI. Resets the song state so the progress UI starts
+  // fresh; backend skips all anti-abuse checks when the PIN matches.
+  async function handleOverrideRetry() {
+    const pin = overridePin.trim();
+    if (!pin || overrideRetrying) return;
+    setOverrideRetrying(true);
+    setError(null);
+    setErrorCode(null);
+    setSong1Id(null);
+    setSong2Id(null);
+    setSong1Status('pending');
+    setSong2Status('pending');
+    setSong1Data(null);
+    setSong2Data(null);
+    setApiSessionId(null);
+    setShowLyrics(false);
+    setLyricsLines([]);
+    setVisibleLines(0);
+    hasNavigated.current = false;
+    generationStartTime.current = Date.now();
+    try {
+      await runDualGeneration(pin);
+    } finally {
+      setOverrideRetrying(false);
+    }
+  }
+
+  // Start two-song generation on mount
   useEffect(() => {
     // Guard 1: Component-level ref (handles normal re-renders)
     if (hasStarted.current) return;
@@ -199,106 +336,7 @@ export default function GeneratingPage() {
     lastGenerationStartMs = now;
     generationStartTime.current = now; // ✅ FIX: Track start time
 
-    async function startDualGeneration() {
-      try {
-        // ✅ FIX: Guard against empty formData (prevents ghost records)
-        if (!formData?.recipientName?.trim() || !formData?.email?.trim() || !formData?.genre?.trim()) {
-          console.error('❌ Missing required formData fields:', {
-            recipientName: formData?.recipientName || 'MISSING',
-            email: formData?.email || 'MISSING',
-            genre: formData?.genre || 'MISSING'
-          });
-          setError('Faltan datos del formulario. Por favor regresa e intenta de nuevo.');
-          return;
-        }
-
-        // ✅ FIX: Wrapped in DEV check
-        if (import.meta.env.DEV) {
-          console.log('🎵 Starting song generation (single call — Mureka creates 2 versions)...');
-        }
-        
-        // Generate Song 1
-        setSong1Status('generating');
-        const result1 = await generateSong({
-          ...formData,
-          version: 1
-        });
-        
-        if (result1.success && result1.song?.id) {
-          if (import.meta.env.DEV) {
-            console.log('✅ Song 1 started:', result1.song.id);
-          }
-          setSong1Id(result1.song.id);
-
-          // If Kie.ai is down, song was queued for retry — show friendly message
-          if (result1.queued) {
-            setSong1Status('queued_retry');
-            return; // Don't start Song 2, we'll email them
-          }
-
-          // Capture sessionId from API for Song 2 linking
-          if (result1.sessionId) {
-            setApiSessionId(result1.sessionId);
-          }
-
-          // If we got lyrics back immediately, show them
-          if (result1.song.lyrics) {
-            const lines = result1.song.lyrics.split('\n').filter(l => l.trim());
-            setLyricsLines(lines);
-            setShowLyrics(true);
-          }
-
-          // ============================================
-          // BOTH FUNNELS: Kick off Song 2 in parallel
-          // useapi.net already creates both songs in 1 call — skip 2nd API call
-          // FAST: Fire and forget (ComparisonPage polls)
-          // CONTROL: Wait for both before navigating
-          // ============================================
-          if (result1.song.song2PendingId) {
-            // useapi.net provider: Song 2 already created in same job
-            if (import.meta.env.DEV) {
-              console.log('✅ Song 2 already created by useapi.net:', result1.song.song2PendingId);
-            }
-            setSong2Id(result1.song.song2PendingId);
-            setSong2Status('generating');
-          } else {
-            // Direct Mureka fallback: need separate API call for Song 2
-            if (import.meta.env.DEV) {
-              console.log('⏳ Waiting 3 seconds before Song 2 to avoid rate limit...');
-            }
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            setSong2Status('generating');
-            const result2 = await generateSong({
-              ...formData,
-              version: 2,
-              sessionId: result1.sessionId
-            });
-
-            if (result2.success && result2.song?.id) {
-              if (import.meta.env.DEV) {
-                console.log('✅ Song 2 started:', result2.song.id);
-              }
-              setSong2Id(result2.song.id);
-            } else {
-              if (import.meta.env.DEV) {
-                console.warn('⚠️ Song 2 failed to start, continuing with single song');
-              }
-              setSong2Status('failed');
-            }
-          }
-        } else {
-          throw new Error(result1.error || 'Failed to start song generation');
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error('❌ Generation error:', err);
-        }
-        setError(err.message);
-      }
-    }
-
-    startDualGeneration();
+    runDualGeneration(null);
 
     return () => {
       if (pollInterval1Ref.current) clearInterval(pollInterval1Ref.current);
@@ -493,6 +531,7 @@ export default function GeneratingPage() {
 
   // Error state
   if (error) {
+    const isRateLimit = errorCode === 'RATE_LIMIT_UNPAID' || errorCode === 'IP_BLOCKED';
     return (
       <div className="bg-forest min-h-screen flex items-center justify-center p-6">
         <div className="bg-white/10 border border-red-500/30 rounded-2xl p-8 max-w-md text-center">
@@ -505,6 +544,33 @@ export default function GeneratingPage() {
           >
             Intentar de nuevo
           </button>
+          {isRateLimit && (
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <p className="text-white/40 text-xs mb-3">Admin override</p>
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleOverrideRetry(); }}
+                className="flex gap-2 justify-center"
+              >
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={overridePin}
+                  onChange={(e) => setOverridePin(e.target.value)}
+                  placeholder="PIN"
+                  disabled={overrideRetrying}
+                  className="w-32 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-center placeholder-white/30 focus:outline-none focus:border-gold/60 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={!overridePin.trim() || overrideRetrying}
+                  className="px-4 py-2 bg-white/10 border border-white/20 text-white text-sm font-medium rounded-lg hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {overrideRetrying ? 'Generando…' : 'Override'}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     );
