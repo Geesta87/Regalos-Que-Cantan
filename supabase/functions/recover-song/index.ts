@@ -215,6 +215,7 @@ serve(async (req) => {
   let email: string;
   let action: 'lookup' | 'send' = 'lookup';
   let which: 'paid' | 'unpaid' = 'paid';
+  let filterStripePaymentId: string | null = null;
   try {
     const body = await req.json();
     email = String(body?.email || '').trim().toLowerCase();
@@ -223,6 +224,11 @@ serve(async (req) => {
     }
     if (body?.which === 'paid' || body?.which === 'unpaid') {
       which = body.which;
+    }
+    // Optional: when sending paid songs, caller can pass a stripe_payment_id
+    // to restrict the email to just that one purchase instead of all paid songs.
+    if (body?.stripe_payment_id && typeof body.stripe_payment_id === 'string') {
+      filterStripePaymentId = body.stripe_payment_id;
     }
   } catch {
     return respondJson(400, { ok: false, error: 'invalid body' });
@@ -355,15 +361,22 @@ serve(async (req) => {
       console.log('[recover-song] no paid songs to email', { email });
       return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
     }
-    const emailEntries: RecoveredSong[] = paidEntries.map((e) => ({ recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video }));
-    subject = paidEntries.length === 1 && !paidEntries[0].is_bundle
+    const entriesToSend = filterStripePaymentId
+      ? paidEntries.filter((e) => e.stripe_payment_id === filterStripePaymentId)
+      : paidEntries;
+    if (entriesToSend.length === 0) {
+      console.log('[recover-song] stripe_payment_id filter matched no entries', { email, filterStripePaymentId });
+      return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
+    }
+    const emailEntries: RecoveredSong[] = entriesToSend.map((e) => ({ recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video }));
+    subject = entriesToSend.length === 1 && !entriesToSend[0].is_bundle
       ? '🎵 Aquí está tu canción de RegalosQueCantan'
       : '🎵 Aquí están tus canciones de RegalosQueCantan';
     html = buildPaidHtml(emailEntries);
     plaintext = buildPaidPlaintext(emailEntries);
     category = 'song_recovery';
     funnelStep = 'song_recovery_sent';
-    songCount = paidEntries.length;
+    songCount = entriesToSend.length;
   } else {
     if (unpaidEntries.length === 0) {
       console.log('[recover-song] no unpaid songs to email', { email });
