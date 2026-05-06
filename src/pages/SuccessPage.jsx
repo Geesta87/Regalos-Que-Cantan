@@ -288,7 +288,21 @@ export default function SuccessPage() {
   const [templateSaved, setTemplateSaved] = useState(false);
 
   // Video upsell states
-  const [videoOrder, setVideoOrder] = useState(null); // null | { id, status, video_url, ... }
+  // videoOrdersMap: { [songId]: order } — one entry per song so switching songs shows the right video.
+  const [videoOrdersMap, setVideoOrdersMap] = useState({});
+  // videoOrder is derived from the map based on whichever song is currently selected.
+  // We also keep a writable state so all existing setVideoOrder() calls keep working.
+  const [_videoOrder, _setVideoOrder] = useState(null);
+  const videoOrder = videoOrdersMap[songs[selectedVideoSongIdx]?.id] ?? _videoOrder;
+  const setVideoOrder = useCallback((orderOrUpdater) => {
+    _setVideoOrder(prev => {
+      const next = typeof orderOrUpdater === 'function' ? orderOrUpdater(prev) : orderOrUpdater;
+      if (next?.song_id) {
+        setVideoOrdersMap(m => ({ ...m, [next.song_id]: next }));
+      }
+      return next;
+    });
+  }, []);
   const [videoPhotos, setVideoPhotos] = useState([]); // array of { file, preview }
   const [uploadingVideoPics, setUploadingVideoPics] = useState(false);
   const [videoGenerating, setVideoGenerating] = useState(false);
@@ -716,22 +730,32 @@ export default function SuccessPage() {
     (async () => {
       const songIds = songs.map(s => s.id);
 
-      // 1) Existing video_order? Use it and sync the picker.
+      // 1) Existing video_order(s)? Load ALL of them (one per song) and populate the map.
       const { data: existingOrders } = await supabase
         .from('video_orders')
         .select('*')
         .in('song_id', songIds)
         .eq('paid', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false });
 
       if (existingOrders && existingOrders.length > 0) {
-        const order = existingOrders[0];
-        setVideoOrder(order);
-        const orderSongIdx = songs.findIndex(s => s.id === order.song_id);
-        if (orderSongIdx >= 0) setSelectedVideoSongIdx(orderSongIdx);
-        if (order.status === 'processing') {
-          startVideoPolling(order.song_id);
+        // Build a map: songId → most-recent order for that song.
+        const map = {};
+        for (const o of existingOrders) {
+          if (!map[o.song_id]) map[o.song_id] = o; // already sorted desc, first wins
+        }
+        setVideoOrdersMap(map);
+
+        // Show the order that belongs to the first selected song (or first in map).
+        const firstSongId = songIds.find(id => map[id]);
+        if (firstSongId) {
+          const order = map[firstSongId];
+          _setVideoOrder(order);
+          const orderSongIdx = songs.findIndex(s => s.id === firstSongId);
+          if (orderSongIdx >= 0) setSelectedVideoSongIdx(orderSongIdx);
+          if (order.status === 'processing') {
+            startVideoPolling(order.song_id);
+          }
         }
         return;
       }
@@ -787,6 +811,17 @@ export default function SuccessPage() {
       }
     })().catch(() => {});
   }, [selectedVideoSongIdx]);
+
+  // When the customer switches songs, pull the correct order out of the map
+  // so the video player / status badge updates immediately.
+  useEffect(() => {
+    const songId = songs[selectedVideoSongIdx]?.id;
+    if (!songId) return;
+    const mappedOrder = videoOrdersMap[songId];
+    if (mappedOrder) {
+      _setVideoOrder(mappedOrder);
+    }
+  }, [selectedVideoSongIdx, videoOrdersMap, songs]);
 
   // Used on photo upload — guarantees we have a video_order to attach to.
   const ensureVideoOrderForSelectedSong = async () => {
