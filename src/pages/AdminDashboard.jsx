@@ -2386,6 +2386,14 @@ export default function AdminDashboard() {
                                     V{song.version}
                                   </span>
                                 )}
+                                {song.has_video_addon && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/40"
+                                    title="Video addon purchased"
+                                  >
+                                    🎬 Video
+                                  </span>
+                                )}
                               </p>
                               {song.sub_genre && (
                                 <p className="text-xs text-gray-500">{song.sub_genre}</p>
