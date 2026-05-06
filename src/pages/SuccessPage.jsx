@@ -2178,6 +2178,38 @@ export default function SuccessPage() {
                   ))}
                 </div>
 
+                {/* ===== 3-STEP GUIDE — clear, simple instructions ===== */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(79,70,229,0.08))',
+                  border: '1px solid rgba(139,92,246,0.25)',
+                  borderRadius: '16px',
+                  padding: '16px 14px',
+                  marginBottom: '20px',
+                }}>
+                  <p style={{ margin: '0 0 12px 0', textAlign: 'center', fontSize: '11px', fontWeight: '800', color: '#a78bfa', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                    📋 3 pasos rápidos
+                  </p>
+                  {[
+                    { num: '1', title: 'Sube tus fotos', desc: 'Selecciona de 3 a 15 fotos' },
+                    { num: '2', title: 'Mensaje personal', desc: 'Graba un mensaje (opcional)' },
+                    { num: '3', title: 'Generar video', desc: 'Toca el botón al final' },
+                  ].map((step, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: i < 2 ? '10px' : 0 }}>
+                      <div style={{
+                        width: '32px', height: '32px', minWidth: '32px', borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '15px', fontWeight: '900', color: 'white',
+                        boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+                      }}>{step.num}</div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: ts.textPrimary, lineHeight: 1.2 }}>{step.title}</p>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: ts.textSecondary, lineHeight: 1.3 }}>{step.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
                 {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
                   <div style={{
