@@ -263,7 +263,7 @@ serve(async (req) => {
   const { data: songs } = await supabase
     .from('songs')
     .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, has_video_addon')
-    .eq('email', email)
+    .ilike('email', email)
     .not('audio_url', 'is', null)
     .order('created_at', { ascending: false })
     .limit(40);
