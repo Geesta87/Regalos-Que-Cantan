@@ -1689,6 +1689,11 @@ export default function AdminDashboard() {
                     {t.song.genre}
                   </p>
                 )}
+                {t.song.has_video_addon && (
+                  <p className="text-xs mt-0.5 font-semibold flex items-center gap-1">
+                    <span>🎬</span> Includes video
+                  </p>
+                )}
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => {
