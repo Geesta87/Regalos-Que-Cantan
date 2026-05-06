@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/200.html" }]
+  "rewrites": [
+    {
+      "source": "/videos/:songId",
+      "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/:songId"
+    },
+    { "source": "/(.*)", "destination": "/200.html" }
+  ]
 }
