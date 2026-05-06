@@ -71,12 +71,32 @@ serve(async (req) => {
     // Get message URL from request or DB
     const personalMessageUrl = messageUrl || videoOrder.message_url || null;
 
+    // Resolve actual song duration. Caller may pass it (SuccessPage probes the
+    // audio element), but manual re-triggers and edge cases won't. If missing,
+    // probe the audio file's Content-Length and estimate from 128 kbps bitrate.
+    // This ensures we never cut the song short at the hardcoded 210s fallback.
+    let resolvedSongDuration = songDuration;
+    if (!resolvedSongDuration) {
+      try {
+        const headRes = await fetch(song.audio_url, { method: 'HEAD' });
+        const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
+        if (contentLength > 0) {
+          // 128 kbps = 16 000 bytes/sec — Mureka's typical output bitrate.
+          // Round up slightly so the video covers the full audio with a small buffer.
+          resolvedSongDuration = Math.ceil(contentLength / 16000);
+          console.log(`Probed audio duration: ${contentLength} bytes → ${resolvedSongDuration}s`);
+        }
+      } catch (e) {
+        console.warn('Could not probe audio duration:', e);
+      }
+    }
+
     // Build Shotstack timeline with filter + text overlays + optional message
     const timeline = buildShotstackTimeline(
       photoUrls,
       song,
       aspectRatio,
-      songDuration,
+      resolvedSongDuration,
       filter,
       personalMessageUrl,
       messageDuration
