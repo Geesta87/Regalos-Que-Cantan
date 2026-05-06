@@ -1695,7 +1695,7 @@ export default function SuccessPage() {
                   const animName = isGreen ? 'songPulseGreen' : 'songPulsePurple';
                   return (
                     <button key={song.id}
-                      onClick={() => { setCurrentSong(song); setIsPlaying(false); setCurrentTime(0); }}
+                      onClick={() => { setCurrentSong(song); setIsPlaying(false); setCurrentTime(0); const idx = songs.findIndex(s => s.id === song.id); if (idx >= 0) setSelectedVideoSongIdx(idx); }}
                       style={{
                         flex: 1, padding: '18px 12px', borderRadius: '18px', cursor: 'pointer',
                         fontFamily: ts.font, textAlign: 'center',
