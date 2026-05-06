@@ -702,50 +702,73 @@ export default function SuccessPage() {
     }
   };
 
-  // ------ VIDEO: Detect video addon & check status on load ------
+  // ------ VIDEO: Detect existing video order on load (DO NOT auto-create) ------
+  // We deliberately do NOT auto-create a video_order here because the customer
+  // hasn't picked which song the video is for yet (in a multi-song bundle).
+  // The video_order is created lazily on first photo upload, using the song
+  // they selected via the song picker. See createVideoOrderIfNeeded below.
   const hasFiredVideoCheck = useRef(false);
   useEffect(() => {
     if (hasFiredVideoCheck.current) return;
     if (!songs.length) return;
-    const songId = songs[selectedVideoSongIdx]?.id;
-    if (!songId) return;
     hasFiredVideoCheck.current = true;
 
-    // Check if there's an existing video order for this song
-    checkVideoStatus(songId)
-      .then(async (res) => {
-        if (res?.videoOrder) {
-          setVideoOrder(res.videoOrder);
-          if (res.videoOrder.status === 'processing') {
-            startVideoPolling(songId);
-          }
-        } else {
-          // No video order yet — auto-create one if has_video_addon is true
-          const song = songs[selectedVideoSongIdx];
-          if (song?.has_video_addon) {
-            try {
-              const { data: newOrder, error: insertErr } = await supabase
-                .from('video_orders')
-                .insert({
-                  song_id: songId,
-                  paid: true,
-                  paid_at: new Date().toISOString(),
-                  status: 'pending',
-                  amount_cents: 999,
-                })
-                .select()
-                .single();
-              if (!insertErr && newOrder) {
-                setVideoOrder(newOrder);
-              }
-            } catch (e) {
-              console.error('Failed to auto-create video order:', e);
-            }
-          }
+    // Check ALL songs in the bundle for an existing paid video order.
+    // Whichever song already has a video_order is the one the customer chose.
+    (async () => {
+      const songIds = songs.map(s => s.id);
+      const { data: existingOrders } = await supabase
+        .from('video_orders')
+        .select('*')
+        .in('song_id', songIds)
+        .eq('paid', true)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existingOrders && existingOrders.length > 0) {
+        const order = existingOrders[0];
+        setVideoOrder(order);
+        // Sync the song picker to the song this order is attached to
+        const orderSongIdx = songs.findIndex(s => s.id === order.song_id);
+        if (orderSongIdx >= 0) setSelectedVideoSongIdx(orderSongIdx);
+        if (order.status === 'processing') {
+          startVideoPolling(order.song_id);
         }
-      })
-      .catch(() => {});
+      }
+    })().catch(() => {});
   }, [songs]);
+
+  // Lazily create the video_order for the currently selected song.
+  // Called right before photo upload starts (or on first photo selection).
+  const ensureVideoOrderForSelectedSong = async () => {
+    if (videoOrder) return videoOrder;
+    const song = songs[selectedVideoSongIdx];
+    if (!song) return null;
+    // Only create if any song in the bundle has the video addon flag —
+    // they paid for ONE video upsell.
+    const anyHasAddon = songs.some(s => s?.has_video_addon);
+    if (!anyHasAddon) return null;
+    try {
+      const { data: newOrder, error: insertErr } = await supabase
+        .from('video_orders')
+        .insert({
+          song_id: song.id,
+          paid: true,
+          paid_at: new Date().toISOString(),
+          status: 'pending',
+          amount_cents: 999,
+        })
+        .select()
+        .single();
+      if (!insertErr && newOrder) {
+        setVideoOrder(newOrder);
+        return newOrder;
+      }
+    } catch (e) {
+      console.error('Failed to create video order:', e);
+    }
+    return null;
+  };
 
   // ------ VIDEO UPSELL: Polling for video render completion ------
   const startVideoPolling = useCallback((songId) => {
@@ -967,7 +990,10 @@ export default function SuccessPage() {
       setVideoError('Necesitas al menos 3 fotos para generar el video.');
       return;
     }
-    if (!videoOrder?.id) {
+    // Lazily create the video_order now that we know which song the customer
+    // selected for the video. This is the only path that creates a video_order.
+    const order = videoOrder?.id ? videoOrder : await ensureVideoOrderForSelectedSong();
+    if (!order?.id) {
       setVideoError('No se encontró la orden de video.');
       return;
     }
@@ -982,7 +1008,7 @@ export default function SuccessPage() {
       for (let i = 0; i < videoPhotos.length; i++) {
         const photo = videoPhotos[i];
         const ext = photo.file.name.split('.').pop();
-        const filePath = `${videoOrder.id}/${i}_${Date.now()}.${ext}`;
+        const filePath = `${order.id}/${i}_${Date.now()}.${ext}`;
 
         const { error: uploadErr } = await supabase.storage
           .from('video-photos')
@@ -1005,7 +1031,7 @@ export default function SuccessPage() {
       if (recordedMessage?.blob) {
         const blobType = recordedMessage.blob.type || 'video/webm';
         const msgExt = blobType.includes('mp4') ? 'mp4' : 'webm';
-        const msgPath = `${videoOrder.id}/message_${Date.now()}.${msgExt}`;
+        const msgPath = `${order.id}/message_${Date.now()}.${msgExt}`;
         const contentType = blobType;
         console.log('Uploading message:', msgPath, 'size:', recordedMessage.blob.size, 'type:', contentType);
         const { error: msgUploadErr } = await supabase.storage
@@ -1031,7 +1057,7 @@ export default function SuccessPage() {
       const { error: updateErr } = await supabase
         .from('video_orders')
         .update(updateData)
-        .eq('id', videoOrder.id);
+        .eq('id', order.id);
 
       if (updateErr) throw new Error('Error guardando fotos en la orden');
 
@@ -1059,7 +1085,7 @@ export default function SuccessPage() {
         } catch (e) { console.warn('Could not probe audio duration:', e); }
       }
       console.log('Song duration for video:', actualSongDuration);
-      const genRes = await generateVideo(videoOrder.id, messageUrl, messageDuration, actualSongDuration);
+      const genRes = await generateVideo(order.id, messageUrl, messageDuration, actualSongDuration);
 
       // Update local state
       setVideoOrder(prev => ({ ...prev, status: 'processing' }));
