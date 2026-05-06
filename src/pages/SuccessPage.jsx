@@ -702,21 +702,21 @@ export default function SuccessPage() {
     }
   };
 
-  // ------ VIDEO: Detect existing video order on load (DO NOT auto-create) ------
-  // We deliberately do NOT auto-create a video_order here because the customer
-  // hasn't picked which song the video is for yet (in a multi-song bundle).
-  // The video_order is created lazily on first photo upload, using the song
-  // they selected via the song picker. See createVideoOrderIfNeeded below.
+  // ------ VIDEO: Detect existing video order on load, or auto-create if paid ------
+  // If a video_order already exists, use it.
+  // If any song has has_video_addon=true (customer paid for the video), auto-create
+  // the video_order on the FLAGGED song (not always songs[0]). This ensures the
+  // upload UI shows up immediately for paid customers.
   const hasFiredVideoCheck = useRef(false);
   useEffect(() => {
     if (hasFiredVideoCheck.current) return;
     if (!songs.length) return;
     hasFiredVideoCheck.current = true;
 
-    // Check ALL songs in the bundle for an existing paid video order.
-    // Whichever song already has a video_order is the one the customer chose.
     (async () => {
       const songIds = songs.map(s => s.id);
+
+      // 1) Existing video_order? Use it and sync the picker.
       const { data: existingOrders } = await supabase
         .from('video_orders')
         .select('*')
@@ -728,26 +728,72 @@ export default function SuccessPage() {
       if (existingOrders && existingOrders.length > 0) {
         const order = existingOrders[0];
         setVideoOrder(order);
-        // Sync the song picker to the song this order is attached to
         const orderSongIdx = songs.findIndex(s => s.id === order.song_id);
         if (orderSongIdx >= 0) setSelectedVideoSongIdx(orderSongIdx);
         if (order.status === 'processing') {
           startVideoPolling(order.song_id);
         }
+        return;
+      }
+
+      // 2) No video_order yet — auto-create on the song the user actually paid for.
+      //    Find the song that has has_video_addon=true. If multiple are flagged
+      //    (legacy data from before the bug fix), prefer the first.
+      const flaggedSong = songs.find(s => s?.has_video_addon);
+      if (!flaggedSong) return;
+
+      try {
+        const { data: newOrder, error: insertErr } = await supabase
+          .from('video_orders')
+          .insert({
+            song_id: flaggedSong.id,
+            paid: true,
+            paid_at: new Date().toISOString(),
+            status: 'pending',
+            amount_cents: 999,
+          })
+          .select()
+          .single();
+        if (!insertErr && newOrder) {
+          setVideoOrder(newOrder);
+          const idx = songs.findIndex(s => s.id === flaggedSong.id);
+          if (idx >= 0) setSelectedVideoSongIdx(idx);
+        }
+      } catch (e) {
+        console.error('Failed to auto-create video order:', e);
       }
     })().catch(() => {});
   }, [songs]);
 
-  // Lazily create the video_order for the currently selected song.
-  // Called right before photo upload starts (or on first photo selection).
+  // If the customer changes their song selection BEFORE uploading photos,
+  // move the empty video_order to the new song (status=pending, 0 photos).
+  // Once photos are uploaded, the video_order is locked to that song.
+  useEffect(() => {
+    if (!videoOrder?.id) return;
+    if (videoOrder.status !== 'pending') return;
+    if ((videoOrder.photo_count || 0) > 0) return;
+    const targetSong = songs[selectedVideoSongIdx];
+    if (!targetSong) return;
+    if (videoOrder.song_id === targetSong.id) return;
+    (async () => {
+      const { data: updated, error } = await supabase
+        .from('video_orders')
+        .update({ song_id: targetSong.id, updated_at: new Date().toISOString() })
+        .eq('id', videoOrder.id)
+        .select()
+        .single();
+      if (!error && updated) {
+        setVideoOrder(updated);
+      }
+    })().catch(() => {});
+  }, [selectedVideoSongIdx]);
+
+  // Used on photo upload — guarantees we have a video_order to attach to.
   const ensureVideoOrderForSelectedSong = async () => {
     if (videoOrder) return videoOrder;
     const song = songs[selectedVideoSongIdx];
     if (!song) return null;
-    // Only create if any song in the bundle has the video addon flag —
-    // they paid for ONE video upsell.
-    const anyHasAddon = songs.some(s => s?.has_video_addon);
-    if (!anyHasAddon) return null;
+    if (!songs.some(s => s?.has_video_addon)) return null;
     try {
       const { data: newOrder, error: insertErr } = await supabase
         .from('video_orders')
