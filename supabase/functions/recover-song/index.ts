@@ -215,7 +215,7 @@ serve(async (req) => {
   let email: string;
   let action: 'lookup' | 'send' = 'lookup';
   let which: 'paid' | 'unpaid' = 'paid';
-  let filterStripePaymentId: string | null = null;
+  let filterGroupKey: string | null = null;
   try {
     const body = await req.json();
     email = String(body?.email || '').trim().toLowerCase();
@@ -225,10 +225,14 @@ serve(async (req) => {
     if (body?.which === 'paid' || body?.which === 'unpaid') {
       which = body.which;
     }
-    // Optional: when sending paid songs, caller can pass a stripe_payment_id
-    // to restrict the email to just that one purchase instead of all paid songs.
-    if (body?.stripe_payment_id && typeof body.stripe_payment_id === 'string') {
-      filterStripePaymentId = body.stripe_payment_id;
+    // Optional: restrict a paid-send to one specific purchase group.
+    // group_key is whichever of stripe_payment_id / stripe_session_id was
+    // used as the bundle key (returned by the lookup response).
+    if (body?.group_key && typeof body.group_key === 'string') {
+      filterGroupKey = body.group_key;
+    } else if (body?.stripe_payment_id && typeof body.stripe_payment_id === 'string') {
+      // backwards-compat: older clients may still send stripe_payment_id
+      filterGroupKey = body.stripe_payment_id;
     }
   } catch {
     return respondJson(400, { ok: false, error: 'invalid body' });
@@ -268,7 +272,7 @@ serve(async (req) => {
   // Look up every song with a previewable audio_url for this email.
   const { data: songs } = await supabase
     .from('songs')
-    .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, has_video_addon')
+    .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, stripe_session_id, has_video_addon')
     .ilike('email', email)
     .not('audio_url', 'is', null)
     .order('created_at', { ascending: false })
@@ -286,13 +290,17 @@ serve(async (req) => {
   const paidRows = songRows.filter((s) => s.paid === true);
   const unpaidRows = songRows.filter((s) => s.paid !== true);
 
+  // Group by stripe_payment_id first, fall back to stripe_session_id.
+  // Both songs in a 2-song bundle share the same checkout session, so even
+  // when stripe_payment_id is null the session ID ties them together.
   const bundleMap = new Map<string, typeof paidRows>();
   const soloPaidRows: typeof paidRows = [];
   for (const s of paidRows) {
-    if (s.stripe_payment_id) {
-      const grp = bundleMap.get(s.stripe_payment_id);
+    const groupKey = s.stripe_payment_id || s.stripe_session_id;
+    if (groupKey) {
+      const grp = bundleMap.get(groupKey);
       if (grp) grp.push(s);
-      else bundleMap.set(s.stripe_payment_id, [s]);
+      else bundleMap.set(groupKey, [s]);
     } else {
       soloPaidRows.push(s);
     }
@@ -301,19 +309,19 @@ serve(async (req) => {
   // Each entry represents one card in the email / one row on the page.
   // Video orders route to /success?song_ids= (full video player + download).
   // Audio-only orders route to /song/ (SongPage).
-  type PaidEntry = { ids: string; recipient_names: string; listen_url: string; paid_at: string | null; is_bundle: boolean; has_video: boolean; stripe_payment_id: string | null };
+  type PaidEntry = { ids: string; recipient_names: string; listen_url: string; paid_at: string | null; is_bundle: boolean; has_video: boolean; stripe_payment_id: string | null; group_key: string | null };
   const paidEntries: PaidEntry[] = [];
-  for (const [pid, grp] of bundleMap) {
+  for (const [groupKey, grp] of bundleMap) {
     const ids = grp.map((s) => s.id).join(',');
     const names = grp.map((s) => (s.recipient_name || 'tu ser querido').trim()).join(' y ');
     const hasVideo = grp.some((s) => s.has_video_addon === true);
     const url = hasVideo ? `${SITE_URL}/success?song_ids=${ids}` : `${SITE_URL}/song/${ids}`;
-    paidEntries.push({ ids, recipient_names: names, listen_url: url, paid_at: grp[0].paid_at || null, is_bundle: grp.length > 1, has_video: hasVideo, stripe_payment_id: pid });
+    paidEntries.push({ ids, recipient_names: names, listen_url: url, paid_at: grp[0].paid_at || null, is_bundle: grp.length > 1, has_video: hasVideo, stripe_payment_id: grp[0].stripe_payment_id || null, group_key: groupKey });
   }
   for (const s of soloPaidRows) {
     const hasVideo = s.has_video_addon === true;
     const url = hasVideo ? `${SITE_URL}/success?song_ids=${s.id}` : `${SITE_URL}/song/${s.id}`;
-    paidEntries.push({ ids: s.id, recipient_names: (s.recipient_name || 'tu ser querido').trim(), listen_url: url, paid_at: s.paid_at || null, is_bundle: false, has_video: hasVideo, stripe_payment_id: s.stripe_payment_id || null });
+    paidEntries.push({ ids: s.id, recipient_names: (s.recipient_name || 'tu ser querido').trim(), listen_url: url, paid_at: s.paid_at || null, is_bundle: false, has_video: hasVideo, stripe_payment_id: s.stripe_payment_id || null, group_key: null });
   }
 
   // Unpaid songs stay individual (each needs its own preview+buy flow).
@@ -339,6 +347,7 @@ serve(async (req) => {
       is_bundle: e.is_bundle,
       has_video_addon: e.has_video,
       stripe_payment_id: e.stripe_payment_id,
+      group_key: e.group_key,
     })),
     ...unpaidEntries,
   ];
@@ -361,11 +370,11 @@ serve(async (req) => {
       console.log('[recover-song] no paid songs to email', { email });
       return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
     }
-    const entriesToSend = filterStripePaymentId
-      ? paidEntries.filter((e) => e.stripe_payment_id === filterStripePaymentId)
+    const entriesToSend = filterGroupKey
+      ? paidEntries.filter((e) => e.group_key === filterGroupKey)
       : paidEntries;
     if (entriesToSend.length === 0) {
-      console.log('[recover-song] stripe_payment_id filter matched no entries', { email, filterStripePaymentId });
+      console.log('[recover-song] group_key filter matched no entries', { email, filterGroupKey });
       return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
     }
     const emailEntries: RecoveredSong[] = entriesToSend.map((e) => ({ recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video }));
