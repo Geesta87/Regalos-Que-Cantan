@@ -14,10 +14,11 @@ function formatDate(iso) {
   } catch { return ''; }
 }
 
-async function callRecover(email, { action, which } = {}) {
+async function callRecover(email, { action, which, stripe_payment_id } = {}) {
   const body = { email };
   if (action) body.action = action;
   if (which) body.which = which;
+  if (stripe_payment_id) body.stripe_payment_id = stripe_payment_id;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
     method: 'POST',
     headers: {
@@ -39,7 +40,9 @@ export default function RecoverSongPage() {
   const [errorMsg, setErrorMsg] = useState('');
   // Independent send-state per section.
   // Each is one of: 'idle' | 'sending' | 'sent' | 'error'
-  const [paidSendStatus, setPaidSendStatus] = useState('idle');
+  // Keyed by stripe_payment_id (or a fallback key) so each purchase group
+  // has its own independent send state: 'idle' | 'sending' | 'sent' | 'error'
+  const [paidSendStatus, setPaidSendStatus] = useState({});
   const [unpaidSendStatus, setUnpaidSendStatus] = useState('idle');
 
   const handleSubmit = async (e) => {
@@ -49,7 +52,7 @@ export default function RecoverSongPage() {
     setStatus('searching');
     setErrorMsg('');
     setSongs([]);
-    setPaidSendStatus('idle');
+    setPaidSendStatus({});
     setUnpaidSendStatus('idle');
     try {
       const { ok, status: httpStatus, data } = await callRecover(cleaned, { action: 'lookup' });
@@ -77,20 +80,32 @@ export default function RecoverSongPage() {
     }
   };
 
-  const handleSendEmail = async (which) => {
-    const setter = which === 'paid' ? setPaidSendStatus : setUnpaidSendStatus;
-    const current = which === 'paid' ? paidSendStatus : unpaidSendStatus;
+  // For paid groups: groupKey = stripe_payment_id (or a fallback).
+  // stripePaymentId is passed to the backend to restrict the email to that purchase.
+  const handleSendPaidGroup = async (groupKey, stripePaymentId) => {
+    const current = paidSendStatus[groupKey] || 'idle';
     if (current === 'sending' || current === 'sent') return;
-    setter('sending');
+    setPaidSendStatus((prev) => ({ ...prev, [groupKey]: 'sending' }));
+    try {
+      const params = { action: 'send', which: 'paid' };
+      if (stripePaymentId) params.stripe_payment_id = stripePaymentId;
+      const { ok, data } = await callRecover(email.trim().toLowerCase(), params);
+      const next = ok && data?.emailSent ? 'sent' : 'error';
+      setPaidSendStatus((prev) => ({ ...prev, [groupKey]: next }));
+    } catch {
+      setPaidSendStatus((prev) => ({ ...prev, [groupKey]: 'error' }));
+    }
+  };
+
+  const handleSendEmail = async (which) => {
+    if (which !== 'unpaid') return;
+    if (unpaidSendStatus === 'sending' || unpaidSendStatus === 'sent') return;
+    setUnpaidSendStatus('sending');
     try {
       const { ok, data } = await callRecover(email.trim().toLowerCase(), { action: 'send', which });
-      if (ok && data?.emailSent) {
-        setter('sent');
-      } else {
-        setter('error');
-      }
+      setUnpaidSendStatus(ok && data?.emailSent ? 'sent' : 'error');
     } catch {
-      setter('error');
+      setUnpaidSendStatus('error');
     }
   };
 
@@ -99,7 +114,7 @@ export default function RecoverSongPage() {
     setSongs([]);
     setEmail('');
     setErrorMsg('');
-    setPaidSendStatus('idle');
+    setPaidSendStatus({});
     setUnpaidSendStatus('idle');
   };
 
@@ -256,118 +271,153 @@ export default function RecoverSongPage() {
             const unpaidSongs = songs.filter((s) => !s.paid);
             return (
               <>
-                {/* ─── Paid songs section ─── */}
-                {paidSongs.length > 0 && (
-                  <div style={{ marginBottom: unpaidSongs.length > 0 ? '28px' : '20px' }}>
-                    <p style={{
-                      color: 'rgba(74,222,128,0.95)',
-                      fontSize: '11px', fontWeight: 700,
-                      margin: '0 0 10px',
-                      textTransform: 'uppercase', letterSpacing: '1.5px',
-                    }}>
-                      ✅ Tus canciones compradas ({paidSongs.length})
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {paidSongs.map((s) => (
-                        <div
-                          key={s.id}
-                          style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(74,222,128,0.25)',
-                            borderRadius: '14px',
-                            padding: '18px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {s.has_video_addon
-                            ? <p style={{ color: '#a78bfa', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
-                                🎬 Canción + Video{s.is_bundle ? ' (Paquete 2)' : ''}
-                              </p>
-                            : s.is_bundle && (
-                                <p style={{ color: '#ffd23f', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
-                                  🎁 Paquete 2 canciones
-                                </p>
-                              )
-                          }
-                          <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 14px', wordBreak: 'break-word' }}>
-                            Para {s.recipient_name}
-                          </p>
-                          {s.paid_at && (
-                            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', margin: '0 0 14px' }}>
-                              Comprada el {formatDate(s.paid_at)}
-                            </p>
-                          )}
-                          <a
-                            href={s.listen_url}
-                            style={{
-                              display: 'inline-block',
-                              background: s.has_video_addon
-                                ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
-                                : 'linear-gradient(135deg, #ff6b35, #ff8c42)',
-                              color: 'white',
-                              textDecoration: 'none',
-                              fontWeight: 800,
-                              fontSize: '15px',
-                              padding: '14px 28px',
-                              borderRadius: '30px',
-                              boxShadow: s.has_video_addon
-                                ? '0 4px 18px rgba(139,92,246,0.4)'
-                                : '0 4px 18px rgba(255,107,53,0.35)',
-                            }}
-                          >
-                            {s.has_video_addon ? '🎬 Ver video y descargar' : '▶ Escuchar y descargar'}
-                          </a>
-                        </div>
-                      ))}
-                    </div>
+                {/* ─── Paid songs section — grouped by purchase ─── */}
+                {paidSongs.length > 0 && (() => {
+                  // Group paid entries by stripe_payment_id so each purchase
+                  // shows as its own block with its own "send" button.
+                  const groups = [];
+                  const seen = new Map();
+                  for (const s of paidSongs) {
+                    const key = s.stripe_payment_id || `no-pid-${s.id}`;
+                    if (!seen.has(key)) {
+                      seen.set(key, { key, stripePaymentId: s.stripe_payment_id || null, songs: [] });
+                      groups.push(seen.get(key));
+                    }
+                    seen.get(key).songs.push(s);
+                  }
+                  return (
+                    <div style={{ marginBottom: unpaidSongs.length > 0 ? '28px' : '20px' }}>
+                      <p style={{
+                        color: 'rgba(74,222,128,0.95)',
+                        fontSize: '11px', fontWeight: 700,
+                        margin: '0 0 12px',
+                        textTransform: 'uppercase', letterSpacing: '1.5px',
+                      }}>
+                        ✅ Tus canciones compradas ({paidSongs.length})
+                      </p>
 
-                    {/* Email send for PAID section */}
-                    <div style={{
-                      marginTop: '12px',
-                      background: 'rgba(74,222,128,0.05)',
-                      border: '1px dashed rgba(74,222,128,0.30)',
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      textAlign: 'center',
-                    }}>
-                      {paidSendStatus === 'sent' ? (
-                        <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
-                          ✅ Enviamos {paidSongs.length === 1 ? 'tu canción comprada' : `tus ${paidSongs.length} canciones compradas`} a {email.toLowerCase().trim()}
-                        </p>
-                      ) : (
-                        <>
-                          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12.5px', margin: '0 0 10px', lineHeight: 1.5 }}>
-                            ¿Prefieres recibir el enlace de {paidSongs.length === 1 ? 'esta canción comprada' : `estas ${paidSongs.length} canciones compradas`} en tu correo?
-                          </p>
-                          <button
-                            onClick={() => handleSendEmail('paid')}
-                            disabled={paidSendStatus === 'sending'}
-                            style={{
-                              background: 'rgba(74,222,128,0.12)',
-                              border: '1px solid rgba(74,222,128,0.40)',
-                              color: 'white',
-                              padding: '10px 18px',
-                              borderRadius: '10px',
-                              fontSize: '13px',
-                              fontWeight: 600,
-                              cursor: paidSendStatus === 'sending' ? 'not-allowed' : 'pointer',
-                              fontFamily: 'inherit',
-                            }}
-                          >
-                            {paidSendStatus === 'sending'
-                              ? '⏳ Enviando...'
-                              : `📧 Enviar ${paidSongs.length === 1 ? 'mi canción comprada' : 'mis canciones compradas'}`}
-                          </button>
-                          {paidSendStatus === 'error' && (
-                            <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
-                              No pudimos enviar el correo. Intenta de nuevo.
-                            </p>
-                          )}
-                        </>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {groups.map((group, gi) => {
+                          const groupSendStatus = paidSendStatus[group.key] || 'idle';
+                          const firstDate = group.songs[0]?.paid_at;
+                          return (
+                            <div
+                              key={group.key}
+                              style={{
+                                background: 'rgba(74,222,128,0.03)',
+                                border: '1px solid rgba(74,222,128,0.20)',
+                                borderRadius: '16px',
+                                padding: '14px',
+                              }}
+                            >
+                              {/* Purchase header */}
+                              {firstDate && (
+                                <p style={{
+                                  color: 'rgba(74,222,128,0.7)',
+                                  fontSize: '10px', fontWeight: 700,
+                                  margin: '0 0 10px',
+                                  textTransform: 'uppercase', letterSpacing: '1.2px',
+                                }}>
+                                  🛒 Compra {gi + 1} — {formatDate(firstDate)}
+                                </p>
+                              )}
+
+                              {/* Song cards */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                                {group.songs.map((s) => (
+                                  <div
+                                    key={s.id}
+                                    style={{
+                                      background: 'rgba(255,255,255,0.04)',
+                                      border: '1px solid rgba(74,222,128,0.15)',
+                                      borderRadius: '12px',
+                                      padding: '16px',
+                                      textAlign: 'center',
+                                    }}
+                                  >
+                                    {s.has_video_addon
+                                      ? <p style={{ color: '#a78bfa', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                                          🎬 Canción + Video{s.is_bundle ? ' (Paquete 2)' : ''}
+                                        </p>
+                                      : s.is_bundle && (
+                                          <p style={{ color: '#ffd23f', fontSize: '10px', fontWeight: 800, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+                                            🎁 Paquete 2 canciones
+                                          </p>
+                                        )
+                                    }
+                                    <p style={{ color: 'white', fontSize: '17px', fontWeight: 800, margin: '0 0 14px', wordBreak: 'break-word' }}>
+                                      Para {s.recipient_name}
+                                    </p>
+                                    <a
+                                      href={s.listen_url}
+                                      style={{
+                                        display: 'inline-block',
+                                        background: s.has_video_addon
+                                          ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                                          : 'linear-gradient(135deg, #ff6b35, #ff8c42)',
+                                        color: 'white',
+                                        textDecoration: 'none',
+                                        fontWeight: 800,
+                                        fontSize: '15px',
+                                        padding: '14px 28px',
+                                        borderRadius: '30px',
+                                        boxShadow: s.has_video_addon
+                                          ? '0 4px 18px rgba(139,92,246,0.4)'
+                                          : '0 4px 18px rgba(255,107,53,0.35)',
+                                      }}
+                                    >
+                                      {s.has_video_addon ? '🎬 Ver video y descargar' : '▶ Escuchar y descargar'}
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Per-purchase send button */}
+                              <div style={{
+                                background: 'rgba(74,222,128,0.05)',
+                                border: '1px dashed rgba(74,222,128,0.25)',
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                textAlign: 'center',
+                              }}>
+                                {groupSendStatus === 'sent' ? (
+                                  <p style={{ color: '#4ade80', fontSize: '13px', margin: 0, fontWeight: 600 }}>
+                                    ✅ Enviamos esta compra a {email.toLowerCase().trim()}
+                                  </p>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleSendPaidGroup(group.key, group.stripePaymentId)}
+                                      disabled={groupSendStatus === 'sending'}
+                                      style={{
+                                        background: 'rgba(74,222,128,0.12)',
+                                        border: '1px solid rgba(74,222,128,0.40)',
+                                        color: 'white',
+                                        padding: '9px 16px',
+                                        borderRadius: '9px',
+                                        fontSize: '12.5px',
+                                        fontWeight: 600,
+                                        cursor: groupSendStatus === 'sending' ? 'not-allowed' : 'pointer',
+                                        fontFamily: 'inherit',
+                                      }}
+                                    >
+                                      {groupSendStatus === 'sending' ? '⏳ Enviando...' : '📧 Enviar esta compra a mi correo'}
+                                    </button>
+                                    {groupSendStatus === 'error' && (
+                                      <p style={{ color: '#f87171', fontSize: '12px', margin: '8px 0 0' }}>
+                                        No pudimos enviar el correo. Intenta de nuevo.
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* ─── Unpaid songs section ─── */}
                 {unpaidSongs.length > 0 && (
