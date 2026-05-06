@@ -601,26 +601,32 @@ serve(async (req) => {
       const metaUtmCampaign = session.metadata?.utm_campaign || null;
       const metaFromEmail = session.metadata?.from_email_campaign || null;
 
-      const updateData: Record<string, any> = {
+      const baseUpdateData: Record<string, any> = {
         paid: true,
         payment_status: 'paid',
         paid_at: new Date().toISOString(),
         stripe_session_id: session.id,
         amount_paid: amountPaid
       };
-      // Video addon flag from checkout metadata
-      if (session.metadata?.videoAddon === 'true') {
-        updateData.has_video_addon = true;
-      }
       // Only overwrite UTMs if they exist in metadata (don't null out existing values)
-      if (metaUtmSource) updateData.utm_source = metaUtmSource;
-      if (metaUtmMedium) updateData.utm_medium = metaUtmMedium;
-      if (metaUtmCampaign) updateData.utm_campaign = metaUtmCampaign;
-      if (metaFromEmail) updateData.from_email_campaign = metaFromEmail;
+      if (metaUtmSource) baseUpdateData.utm_source = metaUtmSource;
+      if (metaUtmMedium) baseUpdateData.utm_medium = metaUtmMedium;
+      if (metaUtmCampaign) baseUpdateData.utm_campaign = metaUtmCampaign;
+      if (metaFromEmail) baseUpdateData.from_email_campaign = metaFromEmail;
+
+      // Video addon: customer paid for ONE video upsell — flag only the first song
+      // in the bundle (which is the default selected song on the success page).
+      const videoAddonPurchased = session.metadata?.videoAddon === 'true';
 
       // Update ALL songs in the bundle
       let firstSong = null;
-      for (const sid of songIds) {
+      for (let idx = 0; idx < songIds.length; idx++) {
+        const sid = songIds[idx];
+        const updateData = { ...baseUpdateData };
+        // Only the first song gets has_video_addon — there is only one video upsell
+        if (videoAddonPurchased && idx === 0) {
+          updateData.has_video_addon = true;
+        }
         const { data: song, error: updateError } = await supabase
           .from('songs')
           .update(updateData)

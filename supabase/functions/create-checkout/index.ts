@@ -159,8 +159,10 @@ serve(async (req) => {
 
     // If FREE coupon, skip Stripe and mark as purchased
     if (priceInCents === 0 && appliedCoupon) {
-      // Mark ALL songs as paid
-      for (const sid of songIds) {
+      // Mark ALL songs as paid; only flag has_video_addon on the FIRST song
+      // (one video upsell = one flagged song) to avoid duplicate video orders.
+      for (let idx = 0; idx < songIds.length; idx++) {
+        const sid = songIds[idx];
         await supabase
           .from('songs')
           .update({
@@ -169,7 +171,7 @@ serve(async (req) => {
             amount_paid: 0,
             coupon_code: appliedCoupon.code,
             paid_at: new Date().toISOString(),
-            has_video_addon: videoAddon || false,
+            has_video_addon: idx === 0 ? (videoAddon || false) : false,
             utm_source: utm_source || null,
             utm_medium: utm_medium || null,
             utm_campaign: utm_campaign || null,

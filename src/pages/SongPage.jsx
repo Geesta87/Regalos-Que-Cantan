@@ -287,12 +287,16 @@ export default function SongPage({ songId: propSongId }) {
         if (!ordered[0].audio_url) throw new Error(t.noLista);
         setAllSongs(ordered);
 
-        // Check if there's a completed video for this song
+        // Check if there's a completed video for ANY song in the bundle.
+        // Customers buy ONE video upsell, but we don't know in advance which
+        // song id it's attached to (depends on the order they were selected).
+        const allSongIds = ordered.map(s => s.id);
         const { data: videoOrders } = await supabase
           .from('video_orders')
-          .select('video_url, status')
-          .eq('song_id', ordered[0].id)
+          .select('video_url, status, song_id')
+          .in('song_id', allSongIds)
           .eq('status', 'completed')
+          .order('updated_at', { ascending: false })
           .limit(1);
         if (videoOrders?.length > 0 && videoOrders[0].video_url) {
           setVideoData(videoOrders[0]);
