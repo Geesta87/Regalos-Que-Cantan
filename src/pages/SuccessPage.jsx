@@ -288,6 +288,8 @@ export default function SuccessPage() {
   const [templateSaved, setTemplateSaved] = useState(false);
 
   // Video upsell states
+  // selectedVideoSongIdx must be declared BEFORE videoOrdersMap so the derived videoOrder can reference it.
+  const [selectedVideoSongIdx, setSelectedVideoSongIdx] = useState(0);
   // videoOrdersMap: { [songId]: order } — one entry per song so switching songs shows the right video.
   const [videoOrdersMap, setVideoOrdersMap] = useState({});
   // videoOrder is derived from the map based on whichever song is currently selected.
@@ -331,7 +333,6 @@ export default function SuccessPage() {
     }
   }, [cameraReady, isRecording, messageMode]);
 
-  const [selectedVideoSongIdx, setSelectedVideoSongIdx] = useState(0);
   const videoPhotoInputRef = useRef(null);
   const videoPollingRef = useRef(null);
 
