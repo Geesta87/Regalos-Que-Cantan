@@ -81,10 +81,11 @@ serve(async (req) => {
         const headRes = await fetch(song.audio_url, { method: 'HEAD' });
         const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
         if (contentLength > 0) {
-          // 128 kbps = 16 000 bytes/sec — Mureka's typical output bitrate.
-          // Round up slightly so the video covers the full audio with a small buffer.
-          resolvedSongDuration = Math.ceil(contentLength / 16000);
-          console.log(`Probed audio duration: ${contentLength} bytes → ${resolvedSongDuration}s`);
+          // Mureka outputs at 192 kbps = 24 000 bytes/sec (confirmed by file analysis).
+          // Using 128 kbps (16 000) caused a 1.5× overestimate — videos ran 2+ minutes
+          // longer than the audio. Add 1 second buffer so the last note isn't clipped.
+          resolvedSongDuration = Math.ceil(contentLength / 24000) + 1;
+          console.log(`Probed audio duration: ${contentLength} bytes → ${resolvedSongDuration}s (at 192kbps)`);
         }
       } catch (e) {
         console.warn('Could not probe audio duration:', e);
