@@ -205,7 +205,7 @@ function buildShotstackTimeline(
         in: 'fade',
         out: 'fade',
       },
-      fit: 'cover',
+      fit: 'crop',
     };
   });
 
@@ -264,7 +264,7 @@ function buildShotstackTimeline(
       },
       start: totalDuration,
       length: messageDuration,
-      fit: 'cover',
+      fit: 'crop',
       transition: {
         in: 'fade',
       },
