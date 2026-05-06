@@ -22,7 +22,7 @@ serve(async (req) => {
   }
 
   try {
-    const { videoOrderId, aspectRatio = '9:16', songDuration = null, videoFilter = null, messageUrl = null, messageDuration = null } = await req.json();
+    const { videoOrderId, aspectRatio = '4:5', songDuration = null, videoFilter = null, messageUrl = null, messageDuration = null } = await req.json();
 
     if (!videoOrderId) {
       throw new Error('Missing videoOrderId');
@@ -171,14 +171,21 @@ function buildShotstackTimeline(
   // Actual total duration based on photo timing
   const totalDuration = photoCount * photoDisplayTime - (photoCount - 1) * transitionDuration;
 
-  // Resolution based on aspect ratio
-  const isPortrait = aspectRatio === '9:16';
-  const resolution = isPortrait ? 'sd' : 'hd';
-  const width = isPortrait ? 576 : 1280;
-  const height = isPortrait ? 1024 : 720;
+  // Resolution / canvas dimensions per aspect ratio.
+  // 4:5 is the default — wider than 9:16 so photos aren't squeezed thin,
+  // still portrait-friendly for mobile / Instagram.
+  const dimensionMap: Record<string, { resolution: string; width: number; height: number }> = {
+    '4:5':  { resolution: 'hd', width: 1080, height: 1350 },
+    '9:16': { resolution: 'sd', width: 576,  height: 1024 },
+    '1:1':  { resolution: 'hd', width: 1080, height: 1080 },
+    '16:9': { resolution: 'hd', width: 1280, height: 720  },
+  };
+  const dims = dimensionMap[aspectRatio] ?? dimensionMap['4:5'];
+  const { resolution, width, height } = dims;
 
-  // Ken Burns effects to cycle through
-  const effects = ['zoomIn', 'zoomOut', 'slideLeft', 'slideRight', 'slideUp', 'slideDown'];
+  // Ken Burns: slide-only effects — no zoomIn / zoomOut so photos don't feel
+  // cropped / blown up. Slide still gives motion without sacrificing framing.
+  const effects = ['slideLeft', 'slideRight', 'slideUp', 'slideDown'];
 
   // ---- TRACK 2 (bottom): Photo clips with filter ----
   const photoClips = photoUrls.map((url, index) => {
@@ -196,7 +203,7 @@ function buildShotstackTimeline(
         in: 'fade',
         out: 'fade',
       },
-      fit: 'crop',
+      fit: 'cover',
     };
   });
 
