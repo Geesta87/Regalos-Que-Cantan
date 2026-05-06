@@ -182,6 +182,8 @@ function buildShotstackTimeline(
   };
   const dims = dimensionMap[aspectRatio] ?? dimensionMap['4:5'];
   const { resolution, width, height } = dims;
+  // fontSize scale: 4:5 and 9:16 are portrait-ish, 16:9 is landscape
+  const isPortrait = aspectRatio !== '16:9';
 
   // Ken Burns: slide-only effects — no zoomIn / zoomOut so photos don't feel
   // cropped / blown up. Slide still gives motion without sacrificing framing.
