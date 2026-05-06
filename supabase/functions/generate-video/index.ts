@@ -22,7 +22,7 @@ serve(async (req) => {
   }
 
   try {
-    const { videoOrderId, aspectRatio = '4:5', songDuration = null, videoFilter = null, messageUrl = null, messageDuration = null } = await req.json();
+    const { videoOrderId, aspectRatio = '9:16', songDuration = null, videoFilter = null, messageUrl = null, messageDuration = null } = await req.json();
 
     if (!videoOrderId) {
       throw new Error('Missing videoOrderId');
