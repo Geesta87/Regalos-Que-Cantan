@@ -14,11 +14,11 @@ function formatDate(iso) {
   } catch { return ''; }
 }
 
-async function callRecover(email, { action, which, stripe_payment_id } = {}) {
+async function callRecover(email, { action, which, group_key } = {}) {
   const body = { email };
   if (action) body.action = action;
   if (which) body.which = which;
-  if (stripe_payment_id) body.stripe_payment_id = stripe_payment_id;
+  if (group_key) body.group_key = group_key;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
     method: 'POST',
     headers: {
@@ -82,14 +82,12 @@ export default function RecoverSongPage() {
 
   // For paid groups: groupKey = stripe_payment_id (or a fallback).
   // stripePaymentId is passed to the backend to restrict the email to that purchase.
-  const handleSendPaidGroup = async (groupKey, stripePaymentId) => {
+  const handleSendPaidGroup = async (groupKey) => {
     const current = paidSendStatus[groupKey] || 'idle';
     if (current === 'sending' || current === 'sent') return;
     setPaidSendStatus((prev) => ({ ...prev, [groupKey]: 'sending' }));
     try {
-      const params = { action: 'send', which: 'paid' };
-      if (stripePaymentId) params.stripe_payment_id = stripePaymentId;
-      const { ok, data } = await callRecover(email.trim().toLowerCase(), params);
+      const { ok, data } = await callRecover(email.trim().toLowerCase(), { action: 'send', which: 'paid', group_key: groupKey });
       const next = ok && data?.emailSent ? 'sent' : 'error';
       setPaidSendStatus((prev) => ({ ...prev, [groupKey]: next }));
     } catch {
@@ -273,18 +271,13 @@ export default function RecoverSongPage() {
               <>
                 {/* ─── Paid songs section — grouped by purchase ─── */}
                 {paidSongs.length > 0 && (() => {
-                  // Group paid entries by stripe_payment_id so each purchase
-                  // shows as its own block with its own "send" button.
-                  const groups = [];
-                  const seen = new Map();
-                  for (const s of paidSongs) {
-                    const key = s.stripe_payment_id || `no-pid-${s.id}`;
-                    if (!seen.has(key)) {
-                      seen.set(key, { key, stripePaymentId: s.stripe_payment_id || null, songs: [] });
-                      groups.push(seen.get(key));
-                    }
-                    seen.get(key).songs.push(s);
-                  }
+                  // The backend already merges bundle songs into one entry per
+                  // purchase (keyed by group_key = stripe_payment_id ?? stripe_session_id).
+                  // We wrap each entry in its own group — one group = one purchase.
+                  const groups = paidSongs.map((s, i) => ({
+                    key: s.group_key || `no-key-${i}`,
+                    songs: [s],
+                  }));
                   return (
                     <div style={{ marginBottom: unpaidSongs.length > 0 ? '28px' : '20px' }}>
                       <p style={{
@@ -387,7 +380,7 @@ export default function RecoverSongPage() {
                                 ) : (
                                   <>
                                     <button
-                                      onClick={() => handleSendPaidGroup(group.key, group.stripePaymentId)}
+                                      onClick={() => handleSendPaidGroup(group.key)}
                                       disabled={groupSendStatus === 'sending'}
                                       style={{
                                         background: 'rgba(74,222,128,0.12)',
