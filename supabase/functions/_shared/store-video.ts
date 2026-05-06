@@ -3,142 +3,224 @@
 // to the Supabase `videos` storage bucket.
 //
 // Strategy (in order):
-//   1. STREAMING S3 PUT via Supabase Storage's S3-compatible endpoint.
-//      Uses constant memory (no full buffering). Requires the env vars
-//      SUPABASE_S3_ACCESS_KEY_ID + SUPABASE_S3_SECRET_ACCESS_KEY which
-//      can be created in the Supabase dashboard under Storage → S3 Connection.
-//   2. SINGLE-BUFFER Blob upload via the Storage SDK as a fallback.
-//      Holds the file in memory once (instead of 3x like the old code did)
-//      so videos up to ~150MB fit within the edge-function memory cap.
+//   1. TUS RESUMABLE upload via Supabase Storage's resumable endpoint.
+//      Reads the source stream in 6 MB chunks and PATCHes each one.
+//      Maximum in-memory usage ≈ 12 MB regardless of file size.
+//      Required for files > 50 MB (Supabase's REST POST limit).
+//   2. STREAMING REST PUT via Supabase Storage's object endpoint.
+//      Pipes the ReadableStream directly — works for files ≤ 50 MB.
+//   3. SINGLE-BUFFER Blob upload via the Storage SDK.
+//      Last resort — loads full file into memory (fails on large videos).
 //
 // IMPORTANT: NEVER fall back to keeping the temporary Shotstack URL —
-// those URLs expire and customers lose their video. If both upload paths
-// fail, throw so the caller leaves status as "processing" and we retry
-// on the next poll.
-
-import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20';
+// those URLs expire and customers lose their video. If all paths fail,
+// throw so the caller leaves status as "processing" and we retry.
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const S3_ACCESS_KEY_ID = Deno.env.get('SUPABASE_S3_ACCESS_KEY_ID') || '';
-const S3_SECRET_ACCESS_KEY = Deno.env.get('SUPABASE_S3_SECRET_ACCESS_KEY') || '';
-// Default region must match the Supabase project region — set
-// SUPABASE_S3_REGION if your project lives elsewhere.
-const S3_REGION = Deno.env.get('SUPABASE_S3_REGION') || 'us-west-1';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const VIDEOS_BUCKET = 'videos';
 
+// TUS chunk size: 6 MB keeps peak RAM well under Deno's ~150 MB worker limit.
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+
 export interface StoreVideoResult {
   publicUrl: string;
-  method: 's3-stream' | 'sdk-buffer';
+  method: 'tus-resumable' | 'rest-stream' | 'sdk-buffer';
   bytes: number;
 }
 
 /**
  * Download a video from `sourceUrl` and persist it as `${fileKey}` inside
  * the `videos` bucket. Returns the permanent public URL.
- *
- * @param fileKey   The object key inside the bucket (e.g. `${songId}.mp4`).
- * @param sourceUrl The Shotstack temporary URL to copy from.
- * @param supabase  Supabase service-role client (used by the SDK fallback).
  */
 export async function storeRenderedVideo(
   fileKey: string,
   sourceUrl: string,
   supabase: any,
 ): Promise<StoreVideoResult> {
-  // Try the streaming S3 path first when credentials are configured.
-  if (S3_ACCESS_KEY_ID && S3_SECRET_ACCESS_KEY) {
-    try {
-      const result = await streamUploadViaS3(fileKey, sourceUrl);
-      console.log(
-        `[store-video] S3 stream OK: ${fileKey} (${result.bytes} bytes)`,
-      );
-      return result;
-    } catch (err) {
-      console.error(
-        `[store-video] S3 stream FAILED for ${fileKey}, falling back to SDK buffer:`,
-        err,
-      );
-    }
-  } else {
-    console.warn(
-      '[store-video] SUPABASE_S3_ACCESS_KEY_ID/SECRET not set — using SDK buffer path. ' +
-      'Configure S3 credentials in Supabase secrets to enable streaming for large videos.',
-    );
+  // ── Path 1: TUS resumable (handles any file size, ≈12 MB peak RAM) ──────────
+  try {
+    const result = await tusUpload(fileKey, sourceUrl);
+    console.log(`[store-video] TUS OK: ${fileKey} (${result.bytes} bytes)`);
+    return result;
+  } catch (err) {
+    console.error(`[store-video] TUS FAILED for ${fileKey}, trying REST stream:`, err);
   }
 
-  // Fallback: single-buffer Blob upload via supabase-js.
+  // ── Path 2: REST streaming (works for files ≤ ~50 MB) ───────────────────────
+  try {
+    const result = await restStreamUpload(fileKey, sourceUrl);
+    console.log(`[store-video] REST stream OK: ${fileKey} (${result.bytes} bytes)`);
+    return result;
+  } catch (err) {
+    console.error(`[store-video] REST stream FAILED for ${fileKey}, trying SDK buffer:`, err);
+  }
+
+  // ── Path 3: SDK buffer (last resort — may OOM on large videos) ──────────────
   const result = await sdkBufferUpload(fileKey, sourceUrl, supabase);
-  console.log(
-    `[store-video] SDK buffer OK: ${fileKey} (${result.bytes} bytes)`,
-  );
+  console.log(`[store-video] SDK buffer OK: ${fileKey} (${result.bytes} bytes)`);
   return result;
 }
 
 // ---------------------------------------------------------------------------
-// Path 1 — Streaming S3 PUT via Supabase Storage's S3-compatible endpoint.
+// Path 1 — TUS resumable upload (Supabase Storage tus protocol).
+// Reads the stream in TUS_CHUNK_SIZE chunks and PATCHes each one.
+// Peak RAM usage = ~2 × TUS_CHUNK_SIZE = ~12 MB, regardless of file size.
 // ---------------------------------------------------------------------------
-async function streamUploadViaS3(
+async function tusUpload(
   fileKey: string,
   sourceUrl: string,
 ): Promise<StoreVideoResult> {
-  const aws = new AwsClient({
-    accessKeyId: S3_ACCESS_KEY_ID,
-    secretAccessKey: S3_SECRET_ACCESS_KEY,
-    region: S3_REGION,
-    service: 's3',
-  });
-
   const videoResponse = await fetch(sourceUrl);
   if (!videoResponse.ok || !videoResponse.body) {
-    throw new Error(
-      `Failed to fetch source video: HTTP ${videoResponse.status}`,
-    );
+    throw new Error(`Failed to fetch source video: HTTP ${videoResponse.status}`);
   }
 
-  const contentLength = videoResponse.headers.get('content-length');
-  if (!contentLength) {
-    // S3 PUT requires Content-Length when streaming a body. If Shotstack
-    // didn't return one, abort the streaming path so we fall back to SDK.
-    throw new Error('Source response missing Content-Length header');
+  const contentLengthStr = videoResponse.headers.get('content-length');
+  if (!contentLengthStr) {
+    throw new Error('Source response missing Content-Length — required for TUS upload');
   }
+  const totalBytes = parseInt(contentLengthStr, 10);
 
-  // Supabase S3 endpoint format:
-  //   https://<project-ref>.supabase.co/storage/v1/s3/<bucket>/<key>
-  const projectHost = new URL(SUPABASE_URL).host;
-  const s3Url =
-    `https://${projectHost}/storage/v1/s3/${VIDEOS_BUCKET}/${fileKey}`;
+  // Build TUS Upload-Metadata (base64-encoded key/value pairs).
+  const filename = fileKey.split('/').pop() || fileKey;
+  const metadata = [
+    `filename ${btoa(filename)}`,
+    `bucketName ${btoa(VIDEOS_BUCKET)}`,
+    `contentType ${btoa('video/mp4')}`,
+    `cacheControl ${btoa('31536000')}`,
+  ].join(',');
 
-  const uploadRes = await aws.fetch(s3Url, {
-    method: 'PUT',
-    body: videoResponse.body,
+  // ── Step 1: Create the TUS upload session ──
+  const createRes = await fetch(`${SUPABASE_URL}/storage/v1/upload/resumable`, {
+    method: 'POST',
     headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Length': contentLength,
-      // UNSIGNED-PAYLOAD lets us PUT a stream without pre-hashing the body.
-      // The transport is HTTPS so the body is still confidential in transit.
-      'x-amz-content-sha256': 'UNSIGNED-PAYLOAD',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/offset+octet-stream',
+      'Upload-Length': contentLengthStr,
+      'Upload-Metadata': metadata,
+      'Tus-Resumable': '1.0.0',
+      'x-upsert': 'true',
     },
   });
 
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text().catch(() => '<no body>');
-    throw new Error(`S3 PUT failed: HTTP ${uploadRes.status} — ${errText}`);
+  if (!createRes.ok && createRes.status !== 201) {
+    const body = await createRes.text().catch(() => '<no body>');
+    throw new Error(`TUS create session failed: HTTP ${createRes.status} — ${body}`);
+  }
+
+  // The Location header contains the upload URL (may be relative or absolute).
+  const location = createRes.headers.get('Location');
+  if (!location) {
+    throw new Error('TUS create session missing Location header');
+  }
+  const uploadUrl = location.startsWith('http')
+    ? location
+    : `${SUPABASE_URL}${location}`;
+
+  // ── Step 2: Upload in chunks ──
+  const reader = videoResponse.body.getReader();
+  let offset = 0;
+
+  // `pending` holds data read from the stream that hasn't been sent yet.
+  // It never exceeds TUS_CHUNK_SIZE bytes.
+  let pending = new Uint8Array(0);
+  let streamDone = false;
+
+  while (!streamDone || pending.length > 0) {
+    // Fill `pending` up to TUS_CHUNK_SIZE.
+    while (pending.length < TUS_CHUNK_SIZE && !streamDone) {
+      const { value, done } = await reader.read();
+      if (done) {
+        streamDone = true;
+        break;
+      }
+      const merged = new Uint8Array(pending.length + value.length);
+      merged.set(pending, 0);
+      merged.set(value, pending.length);
+      pending = merged;
+    }
+
+    if (pending.length === 0) break;
+
+    // Slice exactly one chunk to PATCH.
+    const chunk = pending.slice(0, TUS_CHUNK_SIZE);
+    pending = pending.slice(TUS_CHUNK_SIZE);
+
+    const patchRes = await fetch(uploadUrl, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/offset+octet-stream',
+        'Upload-Offset': String(offset),
+        'Tus-Resumable': '1.0.0',
+        'Content-Length': String(chunk.length),
+      },
+      body: chunk,
+    });
+
+    if (!patchRes.ok && patchRes.status !== 204) {
+      const body = await patchRes.text().catch(() => '<no body>');
+      throw new Error(
+        `TUS PATCH failed at offset ${offset}/${totalBytes}: HTTP ${patchRes.status} — ${body}`,
+      );
+    }
+
+    offset += chunk.length;
+    console.log(`[store-video] TUS progress: ${offset}/${totalBytes} bytes (${Math.round(offset / totalBytes * 100)}%)`);
   }
 
   return {
-    publicUrl:
-      `${SUPABASE_URL}/storage/v1/object/public/${VIDEOS_BUCKET}/${fileKey}`,
-    method: 's3-stream',
-    bytes: Number(contentLength),
+    publicUrl: `${SUPABASE_URL}/storage/v1/object/public/${VIDEOS_BUCKET}/${fileKey}`,
+    method: 'tus-resumable',
+    bytes: totalBytes,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Path 2 — Single-buffer Blob upload via supabase-js.
-// Replaces the old triple-buffer approach (Blob → ArrayBuffer → Uint8Array)
-// that was OOM-ing the edge function on videos > ~80MB.
+// Path 2 — Streaming REST PUT via Supabase Storage object endpoint.
+// Pipes the Shotstack ReadableStream directly to Supabase — no buffering.
+// Works for files ≤ ~50 MB (Supabase's REST POST limit).
+// ---------------------------------------------------------------------------
+async function restStreamUpload(
+  fileKey: string,
+  sourceUrl: string,
+): Promise<StoreVideoResult> {
+  const videoResponse = await fetch(sourceUrl);
+  if (!videoResponse.ok || !videoResponse.body) {
+    throw new Error(`Failed to fetch source video: HTTP ${videoResponse.status}`);
+  }
+
+  const contentLength = videoResponse.headers.get('content-length');
+
+  const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${VIDEOS_BUCKET}/${fileKey}`;
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'video/mp4',
+      'Cache-Control': '31536000',
+      'x-upsert': 'true',
+      ...(contentLength ? { 'Content-Length': contentLength } : {}),
+    },
+    body: videoResponse.body,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text().catch(() => '<no body>');
+    throw new Error(`REST upload failed: HTTP ${uploadRes.status} — ${errText}`);
+  }
+
+  return {
+    publicUrl: `${SUPABASE_URL}/storage/v1/object/public/${VIDEOS_BUCKET}/${fileKey}`,
+    method: 'rest-stream',
+    bytes: Number(contentLength || 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Path 3 — Single-buffer Blob upload via supabase-js (last resort).
 // ---------------------------------------------------------------------------
 async function sdkBufferUpload(
   fileKey: string,
@@ -147,9 +229,7 @@ async function sdkBufferUpload(
 ): Promise<StoreVideoResult> {
   const videoResponse = await fetch(sourceUrl);
   if (!videoResponse.ok) {
-    throw new Error(
-      `Failed to fetch source video: HTTP ${videoResponse.status}`,
-    );
+    throw new Error(`Failed to fetch source video: HTTP ${videoResponse.status}`);
   }
 
   const blob = await videoResponse.blob();
