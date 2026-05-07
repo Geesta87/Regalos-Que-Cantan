@@ -57,12 +57,12 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'authentic old school Mexican corrido, 1990s-2000s golden era polka corrido, accordion-led 2/4 polka rhythm, narrative storytelling strophic verse form, vintage analog cantina recording, dry rural Sinaloa border sound, classic conjunto corrido feel',
-        tempo: '108-125 BPM, steady 2/4 polka groove, brisk dance tempo, metronomic and consistent throughout',
-        instruments: 'diatonic three-row button accordion as the sole lead melodic instrument carrying the melody and answering each phrase, bajo sexto twelve-string with percussive downstroke chord strumming, electric bass with oom-pah quarter-note walking pattern, drum kit with kick on the 1 and snare backbeat on the 2 polka pattern, accordion-forward mix',
-        vibe: 'narrative storytelling cantina corrido, working-class dance floor, accordion solos between every verse, dry vintage 90s-2000s mix, rural Sinaloa rancho authenticity, raw analog feel',
-        negative: 'saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, brass section, sierreño nylon guitar, requinto guitar, tololoche upright bass, tuba, banda brass, trumpets, trombones, mariachi violins, trap beats, 808 bass, auto-tune, modern clean radio production, polished pop production, slow ballad tempo, free rubato tempo, half-time feel, corridos tumbados, sad sierreño, romantic softness, synthesizers, electronic drums',
-        vocalCharacter: 'nasal storytelling male lead vocal, raw unpolished vintage delivery, narrative clarity with strong consonants, classic 90s-2000s cantina corrido singer feel'
+        style: 'authentic golden-era Mexican corrido, 1990s 2000s polka corrido tradition, accordion-led 2/4 polka, narrative storytelling four-line stanzas, dry transparent acoustic conjunto mix, classic Sinaloa border corrido sound',
+        tempo: '110-145 BPM, crisp 2/4 polka pulse, oom-pah feel, kick on 1 snare backbeat on 2, rim-shot offbeats, danceable cantina tempo',
+        instruments: 'one lead instrument the diatonic three-row button accordion in G-C-F or F-Bb-Eb tuning playing every melody line every fill and every solo with grace notes bellows shakes quick trills and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths locked with the bass oom-pah, electric bass quarter-note walking pattern on root and fifth, minimal drum kit',
+        vibe: 'declamatory storytelling narrator vocal that sounds like a corrido balladeer, working-class rural Sinaloa-Texas border authenticity, dry natural acoustic mix, present accordion midrange and bajo sexto cutting through, clear kick-snare transients, transparent reportorial production, cantina dance floor energy',
+        negative: 'saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, reverb-heavy production, modern radio polish, slow ballad tempo, free rubato tempo, half-time feel, corridos tumbados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums',
+        vocalCharacter: 'declamatory storytelling male lead vocal, narrator cadence with strong consonants and clear diction, raw rural unpolished delivery, classic 1990s 2000s Sinaloa border corrido balladeer'
       },
       tumbados: {
         name: 'Corridos Tumbados',
