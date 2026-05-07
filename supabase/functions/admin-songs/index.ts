@@ -19,7 +19,16 @@
 //   - action: 'bulk-mark-sent'    → set it for an array of song ids
 //   - action: 'backfill-sent'     → set it for every paid+phone song with
 //                                    created_at <= cutoff that's currently NULL
-// All four mutations are admin-only. Assistants get 403.
+//
+// As of 2026-05-06 also handles manual email-delivery tracking:
+//   - action: 'mark-email-sent'   → set songs.email_sent_at = now() for one song
+//   - action: 'unmark-email-sent' → clear it
+//
+// Delivery-tracking writes are allowed for BOTH 'admin' and 'assistant' roles
+// — Ivan (assistant) and the owner (admin) both operate the dashboard, and a
+// click by either one needs to sync to the other so neither double-sends to
+// a customer. Only revenue-sensitive actions (backfill-sent, which is a bulk
+// admin-only sweep) stay restricted.
 //
 // Deploy with: supabase functions deploy admin-songs --project-ref yzbvajungshqcpusfiia
 
@@ -43,7 +52,7 @@ const SONG_LIST_COLUMNS = [
   'session_id', 'stripe_session_id', 'stripe_payment_id', 'payment_status',
   'paid', 'paid_at', 'amount_paid',
   'coupon_code', 'affiliate_code', 'utm_source',
-  'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'download_count', 'downloaded',
+  'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'email_sent_at', 'download_count', 'downloaded',
   'has_video_addon', 'admin_dismissed_at', 'status',
   // version + mureka_job_id power the V1/V2 label in the admin orders list:
   // each song creation produces 2 rows that share a mureka_job_id, one per
@@ -150,11 +159,12 @@ serve(async (req) => {
       return json({ success: true, role, song });
     }
 
-    // ─── action: mark-sent (admin only) ──────────────────────────────────
+    // ─── action: mark-sent (admin or assistant) ──────────────────────────
     // Sets whatsapp_sent_at to NOW() for one song. Idempotent — calling it
-    // twice doesn't re-stamp; we keep the original send time.
+    // twice doesn't re-stamp; we keep the original send time. Both roles can
+    // call this so a click by either operator syncs to the other (otherwise
+    // we double-send to the customer).
     if (action === 'mark-sent') {
-      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
       if (!body.songId) {
         return json({ success: false, error: 'songId required' }, 400);
       }
@@ -181,10 +191,9 @@ serve(async (req) => {
       return json({ success: true, song: finalRow });
     }
 
-    // ─── action: unmark-sent (admin only) ────────────────────────────────
+    // ─── action: unmark-sent (admin or assistant) ────────────────────────
     // Recovery for "oops, I clicked the wrong button". Clears the timestamp.
     if (action === 'unmark-sent') {
-      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
       if (!body.songId) {
         return json({ success: false, error: 'songId required' }, 400);
       }
@@ -196,11 +205,10 @@ serve(async (req) => {
       return json({ success: true });
     }
 
-    // ─── action: bulk-mark-sent (admin only) ─────────────────────────────
+    // ─── action: bulk-mark-sent (admin or assistant) ─────────────────────
     // Stamps an array of songs in a single round-trip. Used by the bulk
     // "Marcar seleccionadas como enviadas" button on the Por Enviar tab.
     if (action === 'bulk-mark-sent') {
-      if (isAssistant) return json({ success: false, error: 'Admin only' }, 403);
       const ids = Array.isArray(body.songIds) ? body.songIds : [];
       if (ids.length === 0) {
         return json({ success: false, error: 'songIds required' }, 400);
@@ -216,6 +224,49 @@ serve(async (req) => {
         .is('whatsapp_sent_at', null);
       if (error) return json({ success: false, error: error.message }, 500);
       return json({ success: true, updated: count ?? 0, sentAt: nowIso });
+    }
+
+    // ─── action: mark-email-sent (admin or assistant) ────────────────────
+    // Sets email_sent_at to NOW() for one song. Used by the small "email
+    // sent?" checkbox shown next to the customer's email on paid orders that
+    // don't have a WhatsApp number — when the song link has been delivered
+    // manually via the Mi Canción recovery flow. Idempotent.
+    if (action === 'mark-email-sent') {
+      if (!body.songId) {
+        return json({ success: false, error: 'songId required' }, 400);
+      }
+      const nowIso = new Date().toISOString();
+      const { data, error } = await admin
+        .from('songs')
+        .update({ email_sent_at: nowIso })
+        .eq('id', body.songId)
+        .is('email_sent_at', null)
+        .select('id, email_sent_at')
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message }, 500);
+      let finalRow = data;
+      if (!finalRow) {
+        const { data: existing } = await admin
+          .from('songs')
+          .select('id, email_sent_at')
+          .eq('id', body.songId)
+          .maybeSingle();
+        finalRow = existing;
+      }
+      return json({ success: true, song: finalRow });
+    }
+
+    // ─── action: unmark-email-sent (admin or assistant) ──────────────────
+    if (action === 'unmark-email-sent') {
+      if (!body.songId) {
+        return json({ success: false, error: 'songId required' }, 400);
+      }
+      const { error } = await admin
+        .from('songs')
+        .update({ email_sent_at: null })
+        .eq('id', body.songId);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true });
     }
 
     // ─── action: backfill-sent (admin only) ──────────────────────────────

@@ -1446,8 +1446,11 @@ export default function AdminDashboard() {
   };
 
   // Mark a single song as sent. Optimistic update + rollback on error.
+  // Both admins and assistants can mark sent — Ivan and the owner share
+  // delivery duties, so a click by either operator must persist (and then
+  // sync via the 30s poll) or they end up double-sending to the customer.
   const markSongAsSent = useCallback(async (songId) => {
-    if (!accessToken || userRole !== 'admin') return;
+    if (!accessToken || !userRole) return;
     setMarkSendBusy(songId);
     const previous = songs;
     const optimisticTime = new Date().toISOString();
@@ -1491,7 +1494,7 @@ export default function AdminDashboard() {
 
   // Undo a mistaken mark-as-sent.
   const unmarkSongAsSent = useCallback(async (songId) => {
-    if (!accessToken || userRole !== 'admin') return;
+    if (!accessToken || !userRole) return;
     if (!confirm('Mark this song as NOT sent? It will return to the queue.')) return;
     const previous = songs;
     setSongs(prev => prev.map(s =>
@@ -1519,12 +1522,57 @@ export default function AdminDashboard() {
     }
   }, [accessToken, userRole, songs]);
 
+  // Mark / unmark a song as "email manually delivered" — the small checkbox
+  // shown next to the customer's email on paid orders without a WhatsApp
+  // number. Distinct from whatsapp_sent_at so a song delivered both ways
+  // still has a clean record of which channel actually reached the buyer.
+  const [emailSendBusy, setEmailSendBusy] = useState(null);
+  const toggleEmailSent = useCallback(async (songId, currentlyMarked) => {
+    if (!accessToken || !userRole) return;
+    const previous = songs;
+    const optimisticTime = currentlyMarked ? null : new Date().toISOString();
+    setEmailSendBusy(songId);
+    setSongs(prev => prev.map(s =>
+      s.id === songId ? { ...s, email_sent_at: optimisticTime } : s
+    ));
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            action: currentlyMarked ? 'unmark-email-sent' : 'mark-email-sent',
+            songId,
+          }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+      if (result.song?.email_sent_at !== undefined) {
+        setSongs(prev => prev.map(s =>
+          s.id === songId ? { ...s, email_sent_at: result.song.email_sent_at } : s
+        ));
+      }
+    } catch (err) {
+      console.error('toggleEmailSent error:', err);
+      alert(`Error marking email as sent: ${err.message}`);
+      setSongs(previous);
+    } finally {
+      setEmailSendBusy(null);
+    }
+  }, [accessToken, userRole, songs]);
+
   // Mark a group of song ids as sent in one bulk request. Used by the
   // "✓ Mark sent" button on a Pending to Send row that covers multiple
   // songs (one customer paid for both at once → both get stamped together).
   // Falls back to the single-song path when only one id is passed.
   const markGroupAsSent = useCallback(async (ids) => {
-    if (!accessToken || userRole !== 'admin') return;
+    if (!accessToken || !userRole) return;
     const cleanIds = (Array.isArray(ids) ? ids : []).filter(Boolean);
     if (cleanIds.length === 0) return;
     if (cleanIds.length === 1) return markSongAsSent(cleanIds[0]);
@@ -1561,7 +1609,7 @@ export default function AdminDashboard() {
 
   // Mark every selected song as sent in one request.
   const bulkMarkAsSent = useCallback(async () => {
-    if (!accessToken || userRole !== 'admin') return;
+    if (!accessToken || !userRole) return;
     const ids = Array.from(selectedPendingIds);
     if (ids.length === 0) return;
     if (!confirm(`Mark ${ids.length} song${ids.length > 1 ? 's' : ''} as sent?`)) return;
@@ -2352,6 +2400,33 @@ export default function AdminDashboard() {
                                   </span>
                                 )}
                               </div>
+                              {/* Manual "email sent?" checkbox — only on paid orders WITHOUT
+                                  a WhatsApp number. We're sending those song links manually
+                                  via the Mi Canción recovery flow because some buyers
+                                  miss the auto-confirmation in spam, and either admin needs
+                                  to see at a glance whether the other one already sent it. */}
+                              {isPaid(song) && !song.whatsapp_phone && (
+                                <label
+                                  className="mt-1 inline-flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
+                                  title={song.email_sent_at
+                                    ? `Email marked sent ${formatDate(song.email_sent_at)} — click to undo`
+                                    : 'Mark email as sent when you deliver the link manually'}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={!!song.email_sent_at}
+                                    disabled={emailSendBusy === song.id}
+                                    onChange={() => toggleEmailSent(song.id, !!song.email_sent_at)}
+                                    className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+                                  />
+                                  <span className={song.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
+                                    {song.email_sent_at
+                                      ? `📧 Sent ${timeAgo(song.email_sent_at)}`
+                                      : '📧 email sent?'}
+                                  </span>
+                                </label>
+                              )}
                               {song.whatsapp_phone && (
                                 <a
                                   href={`https://wa.me/${song.whatsapp_phone.startsWith('1') ? song.whatsapp_phone : '1' + song.whatsapp_phone}`}
@@ -2534,7 +2609,7 @@ export default function AdminDashboard() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => {
-                                      if (autoMarkOnSend && userRole === 'admin' && !alreadySent) {
+                                      if (autoMarkOnSend && !alreadySent) {
                                         markSongAsSent(song.id);
                                       }
                                     }}
@@ -2628,6 +2703,29 @@ export default function AdminDashboard() {
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-white truncate">{song.recipient_name || '—'}</p>
                           <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
+                          {/* Manual "email sent?" checkbox — only when paid and no WhatsApp number */}
+                          {isPaid(song) && !song.whatsapp_phone && (
+                            <label
+                              className="mt-1 inline-flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
+                              title={song.email_sent_at
+                                ? `Email marked sent ${formatDate(song.email_sent_at)} — click to undo`
+                                : 'Mark email as sent when you deliver the link manually'}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!song.email_sent_at}
+                                disabled={emailSendBusy === song.id}
+                                onChange={() => toggleEmailSent(song.id, !!song.email_sent_at)}
+                                className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+                              />
+                              <span className={song.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
+                                {song.email_sent_at
+                                  ? `📧 Sent ${timeAgo(song.email_sent_at)}`
+                                  : '📧 email sent?'}
+                              </span>
+                            </label>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 ml-3">
                           {isPaid(song) ? (
@@ -2684,7 +2782,7 @@ export default function AdminDashboard() {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={() => {
-                              if (autoMarkOnSend && userRole === 'admin' && !song.whatsapp_sent_at) {
+                              if (autoMarkOnSend && !song.whatsapp_sent_at) {
                                 markSongAsSent(song.id);
                               }
                             }}
@@ -2949,7 +3047,7 @@ export default function AdminDashboard() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => {
-                                      if (autoMarkOnSend && userRole === 'admin') {
+                                      if (autoMarkOnSend) {
                                         markGroupAsSent(group.songIds);
                                       }
                                     }}
@@ -3055,7 +3153,7 @@ export default function AdminDashboard() {
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={() => {
-                                if (autoMarkOnSend && userRole === 'admin') {
+                                if (autoMarkOnSend) {
                                   markGroupAsSent(group.songIds);
                                 }
                               }}
@@ -4846,7 +4944,33 @@ export default function AdminDashboard() {
                     </span>
                   )}
                 </div>
-                <p className="font-semibold">{selectedSong.email}</p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="font-semibold break-all">{selectedSong.email}</p>
+                  {/* Manual "email sent?" checkbox — only on paid orders without
+                      a WhatsApp number, since that's when we deliver the link
+                      manually via the Mi Canción recovery flow. */}
+                  {isPaid(selectedSong) && !selectedSong.whatsapp_phone && (
+                    <label
+                      className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                      title={selectedSong.email_sent_at
+                        ? `Email marked sent ${formatDate(selectedSong.email_sent_at)} — click to undo`
+                        : 'Mark email as sent when you deliver the link manually'}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!selectedSong.email_sent_at}
+                        disabled={emailSendBusy === selectedSong.id}
+                        onChange={() => toggleEmailSent(selectedSong.id, !!selectedSong.email_sent_at)}
+                        className="w-4 h-4 accent-amber-400 cursor-pointer"
+                      />
+                      <span className={selectedSong.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
+                        {selectedSong.email_sent_at
+                          ? `📧 Email sent ${timeAgo(selectedSong.email_sent_at)}`
+                          : '📧 email sent?'}
+                      </span>
+                    </label>
+                  )}
+                </div>
               </div>
 
               {/* WhatsApp */}
