@@ -134,6 +134,9 @@ serve(async (req) => {
       songId?: string;
       songIds?: string[];
       cutoff?: string;
+      search?: string;
+      searchField?: 'email' | 'name' | 'phone' | 'all';
+      limit?: number;
     } = {};
     if (req.method === 'POST') {
       try {
@@ -293,17 +296,68 @@ serve(async (req) => {
     }
 
     // ─── action: list (default) ──────────────────────────────────────────
-    const { data, error } = await admin
+    // Optional server-side search used by the Lookup tab so admins can find
+    // an order even if it's older than what's already in the dashboard's
+    // local songs cache. The frontend sends:
+    //   search       — substring to match (case-insensitive)
+    //   searchField  — 'email' | 'name' | 'phone' | 'all' (default 'all')
+    //   limit        — max rows to return (default 500, hard cap 5000)
+    // When `search` is empty/missing this falls through to the original
+    // unfiltered listing used by the Orders tab + 30s poll.
+    const rawSearch = typeof body.search === 'string' ? body.search.trim() : '';
+    const searchField = body.searchField || 'all';
+    const requestedLimit = Number.isFinite(body.limit as number)
+      ? Math.min(Math.max(1, Number(body.limit)), 5000)
+      : 500;
+    const isSearch = rawSearch.length > 0;
+
+    let listQuery = admin
       .from('songs')
-      .select(SONG_LIST_COLUMNS)
-      .order('created_at', { ascending: false })
-      .range(0, 49999);
+      .select(SONG_LIST_COLUMNS, { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (isSearch) {
+      // PostgREST `.or(...)` filter. Substrings are wrapped in % for ILIKE.
+      // Commas and parens inside the search would break the .or() syntax,
+      // so we strip them — matches `%foo%` semantics with no false positives.
+      const sanitized = rawSearch.replace(/[(),]/g, ' ').trim();
+      const ilike = `*${sanitized}*`;
+      if (searchField === 'email') {
+        listQuery = listQuery.ilike('email', ilike);
+      } else if (searchField === 'name') {
+        listQuery = listQuery.or(
+          `recipient_name.ilike.${ilike},sender_name.ilike.${ilike}`
+        );
+      } else if (searchField === 'phone') {
+        listQuery = listQuery.ilike('whatsapp_phone', ilike);
+      } else {
+        listQuery = listQuery.or(
+          [
+            `email.ilike.${ilike}`,
+            `recipient_name.ilike.${ilike}`,
+            `sender_name.ilike.${ilike}`,
+            `whatsapp_phone.ilike.${ilike}`,
+            `id.ilike.${ilike}`,
+          ].join(',')
+        );
+      }
+      listQuery = listQuery.range(0, requestedLimit - 1);
+    } else {
+      listQuery = listQuery.range(0, 49999);
+    }
+
+    const { data, error, count } = await listQuery;
 
     if (error) return json({ success: false, error: error.message }, 500);
 
     const songs = isAssistant ? (data || []).map(redactForAssistant) : (data || []);
 
-    return json({ success: true, role, songs });
+    return json({
+      success: true,
+      role,
+      songs,
+      total_count: count ?? songs.length,
+    });
   } catch (err) {
     console.error('admin-songs error:', err);
     return json({ success: false, error: String(err?.message || err) }, 500);
