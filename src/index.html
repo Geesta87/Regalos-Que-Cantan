@@ -235,16 +235,19 @@
     
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-
-    <!-- Service Worker cleanup: only unregister anything left over from
-         older deploys. We do NOT register /sw.js anymore — registering it
-         caused an install→activate→force-reload loop that wiped admin
-         search state a few seconds after page load. -->
+    
+    <!-- Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations?.().then((regs) => {
-          regs.forEach((reg) => reg.unregister().catch(() => {}));
-        }).catch(() => {});
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('SW registration failed:', error);
+            });
+        });
       }
     </script>
   </body>
