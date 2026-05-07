@@ -20,19 +20,13 @@ self.addEventListener('activate', (event) => {
         await Promise.all(keys.map((k) => caches.delete(k)));
       } catch (e) {}
 
-      // 2. Unregister ourselves
+      // 2. Unregister ourselves. We deliberately do NOT force-reload open
+      // tabs — that caused an install→activate→navigate loop on every
+      // page load (the page would re-register /sw.js, which would install
+      // a fresh SW, which would activate and navigate again). The next
+      // natural navigation will pick up an SW-free page.
       try {
         await self.registration.unregister();
-      } catch (e) {}
-
-      // 3. Force-reload every open tab so they drop the SW controller
-      try {
-        const clientsList = await self.clients.matchAll({ type: 'window' });
-        clientsList.forEach((client) => {
-          if ('navigate' in client) {
-            client.navigate(client.url);
-          }
-        });
       } catch (e) {}
     })()
   );
