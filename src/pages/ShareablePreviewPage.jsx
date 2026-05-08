@@ -22,6 +22,7 @@ const SINGLE_PRICE = 29.99;
 const BUNDLE_PRICE = 39.99;
 const EXTRA_SONG_PRICE = 9.99;
 const VIDEO_ADDON_PRICE = 9.99;
+const VIDEO_DUAL_ADDON_PRICE = 17.99;
 const DEFAULT_BUNDLE_SIZE = 2;
 
 // selectedCount → price. Single at 1, bundle at 2, bundle+extras at 3+.
@@ -153,8 +154,9 @@ export default function ShareablePreviewPage() {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [allPaid, setAllPaid] = useState(false);
 
-  // Video addon
-  const [videoAddon, setVideoAddon] = useState(false);
+  // Video addon (0 = none, 1 = one video, 2 = both videos)
+  const [videoAddonCount, setVideoAddonCount] = useState(0);
+  const videoAddon = videoAddonCount > 0; // backward-compat derived bool
 
   // Social proof
   const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120);
@@ -321,7 +323,7 @@ export default function ShareablePreviewPage() {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, couponCode: couponApplied?.code || null })
+        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, videoAddonCount, couponCode: couponApplied?.code || null })
       });
       const data = await res.json();
       if (!data.success || !data.url) throw new Error(data.error || 'Error al crear checkout.');
@@ -345,7 +347,7 @@ export default function ShareablePreviewPage() {
     : rawPrice
     : rawPrice;
   const basePrice = discountedPrice;
-  const currentPrice = basePrice + (videoAddon ? VIDEO_ADDON_PRICE : 0);
+  const currentPrice = basePrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0);
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
@@ -961,7 +963,7 @@ export default function ShareablePreviewPage() {
             <div style={{textAlign: 'right'}}>
               {couponApplied && rawPrice !== discountedPrice && (
                 <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
-                  ${(rawPrice + (videoAddon ? VIDEO_ADDON_PRICE : 0)).toFixed(2)}
+                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0)).toFixed(2)}
                 </p>
               )}
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
@@ -1017,7 +1019,7 @@ export default function ShareablePreviewPage() {
             </div>
 
             <div
-              onClick={() => setVideoAddon(!videoAddon)}
+              onClick={() => setVideoAddonCount(c => c > 0 ? 0 : 1)}
               style={{
                 background: videoAddon
                   ? 'linear-gradient(160deg, rgba(109,40,217,0.25), rgba(79,70,229,0.15))'
@@ -1135,7 +1137,7 @@ export default function ShareablePreviewPage() {
                     </p>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
+                    onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
                     style={{
                       flexShrink: 0, padding: '9px 18px', borderRadius: '50px',
                       border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
@@ -1205,20 +1207,60 @@ export default function ShareablePreviewPage() {
                         <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
-                      style={{
-                        width: '100%', padding: '16px', borderRadius: '14px',
-                        border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
-                        background: videoAddon ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, #7c3aed, #a855f7)',
-                        color: 'white', fontSize: '17px', fontWeight: '900', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        boxShadow: videoAddon ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)' : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
-                        transition: 'all 0.25s', letterSpacing: '0.3px',
-                      }}
-                    >
-                      {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
-                    </button>
+                    {selectedCount >= 2 ? (
+                      /* 3-way selector for 2+ song bundles */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        {[
+                          { count: 0, label: '❌ Sin video', sub: null, price: null, color: videoAddonCount === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)', border: videoAddonCount === 0 ? '2px solid rgba(255,255,255,0.35)' : '2px solid rgba(255,255,255,0.1)', textColor: videoAddonCount === 0 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' },
+                          { count: 1, label: '🎬 Video para 1 canción', sub: 'Tú eliges cuál', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : 'rgba(139,92,246,0.12)', border: videoAddonCount === 1 ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)', textColor: 'white' },
+                          { count: 2, label: '🎬🎬 Video para ambas canciones', sub: 'Ahorra $2 vs comprar por separado', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: videoAddonCount === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                        ].map(({ count, label, sub, price, color, border, textColor }) => (
+                          <button
+                            key={count}
+                            onClick={(e) => { e.stopPropagation(); setVideoAddonCount(count); }}
+                            style={{
+                              width: '100%', padding: '12px 16px', borderRadius: '12px',
+                              border, background: color, color: textColor,
+                              fontSize: '14px', fontWeight: '700', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              transition: 'all 0.2s', textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                width: '18px', height: '18px', borderRadius: '50%',
+                                border: videoAddonCount === count ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
+                                background: videoAddonCount === count ? 'white' : 'transparent',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                              }}>
+                                {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : '#7c3aed' }} />}
+                              </span>
+                              <div>
+                                <div>{label}</div>
+                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                              </div>
+                            </div>
+                            {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      /* Single-song mode: simple toggle */
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
+                        style={{
+                          width: '100%', padding: '16px', borderRadius: '14px',
+                          border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                          background: videoAddon ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                          color: 'white', fontSize: '17px', fontWeight: '900', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          boxShadow: videoAddon ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)' : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
+                          transition: 'all 0.25s', letterSpacing: '0.3px',
+                        }}
+                      >
+                        {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
+                      </button>
+                    )}
                     <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.35)', margin: '8px 0 0' }}>
                       Se agrega a tu pedido
                     </p>
