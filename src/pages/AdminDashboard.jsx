@@ -1612,7 +1612,9 @@ export default function AdminDashboard() {
   // SendGrid template and sender reputation. After a successful send it also
   // auto-marks the "email sent?" checkbox so we don't double-send.
   const sendLinkByEmail = async (song) => {
-    if (!song?.email || !song?.stripe_payment_id) {
+    // stripe_payment_id is null for all orders; the real bundle key is stripe_session_id
+    const groupKey = song?.stripe_payment_id || song?.stripe_session_id;
+    if (!song?.email || !groupKey) {
       alert('Falta email o ID de pago — no se puede enviar.');
       return;
     }
@@ -1631,7 +1633,7 @@ export default function AdminDashboard() {
             email: song.email.trim().toLowerCase(),
             action: 'send',
             which: 'paid',
-            group_key: song.stripe_payment_id,
+            group_key: groupKey,
           }),
         }
       );
