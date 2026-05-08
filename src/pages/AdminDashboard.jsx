@@ -1566,6 +1566,7 @@ export default function AdminDashboard() {
   // number. Distinct from whatsapp_sent_at so a song delivered both ways
   // still has a clean record of which channel actually reached the buyer.
   const [emailSendBusy, setEmailSendBusy] = useState(null);
+  const [sendingLinkEmail, setSendingLinkEmail] = useState(null); // songId being sent via recover-song
   const toggleEmailSent = useCallback(async (songId, currentlyMarked) => {
     if (!accessToken || !userRole) return;
     const previous = songs;
@@ -1605,6 +1606,48 @@ export default function AdminDashboard() {
       setEmailSendBusy(null);
     }
   }, [accessToken, userRole, songs]);
+
+  // 1-touch email delivery — calls the exact same recover-song function that
+  // Mi Canción uses, so the email lands in inbox (not spam) using the same
+  // SendGrid template and sender reputation. After a successful send it also
+  // auto-marks the "email sent?" checkbox so we don't double-send.
+  const sendLinkByEmail = async (song) => {
+    if (!song?.email || !song?.stripe_payment_id) {
+      alert('Falta email o ID de pago — no se puede enviar.');
+      return;
+    }
+    setSendingLinkEmail(song.id);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recover-song`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            email: song.email.trim().toLowerCase(),
+            action: 'send',
+            which: 'paid',
+            group_key: song.stripe_payment_id,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.emailSent) {
+        if (!song.email_sent_at) await toggleEmailSent(song.id, false);
+        alert('✅ Link enviado por email al cliente');
+      } else {
+        alert(`❌ Error al enviar: ${data?.error || 'intenta de nuevo'}`);
+      }
+    } catch (err) {
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setSendingLinkEmail(null);
+    }
+  };
 
   // Mark a group of song ids as sent in one bulk request. Used by the
   // "✓ Mark sent" button on a Pending to Send row that covers multiple
@@ -2742,28 +2785,34 @@ export default function AdminDashboard() {
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-white truncate">{song.recipient_name || '—'}</p>
                           <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
-                          {/* Manual "email sent?" checkbox — only when paid and no WhatsApp number */}
+                          {/* Manual "email sent?" checkbox + 1-touch send button — only when paid and no WhatsApp number */}
                           {isPaid(song) && !song.whatsapp_phone && (
-                            <label
-                              className="mt-1 inline-flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
-                              title={song.email_sent_at
-                                ? `Email marked sent ${formatDate(song.email_sent_at)} — click to undo`
-                                : 'Mark email as sent when you deliver the link manually'}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={!!song.email_sent_at}
-                                disabled={emailSendBusy === song.id}
-                                onChange={() => toggleEmailSent(song.id, !!song.email_sent_at)}
-                                className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
-                              />
-                              <span className={song.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
-                                {song.email_sent_at
-                                  ? `📧 Sent ${timeAgo(song.email_sent_at)}`
-                                  : '📧 email sent?'}
-                              </span>
-                            </label>
+                            <div className="mt-1 flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                              <label
+                                className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer select-none"
+                                title={song.email_sent_at
+                                  ? `Email marked sent ${formatDate(song.email_sent_at)} — click to undo`
+                                  : 'Mark email as sent when you deliver the link manually'}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!!song.email_sent_at}
+                                  disabled={emailSendBusy === song.id}
+                                  onChange={() => toggleEmailSent(song.id, !!song.email_sent_at)}
+                                  className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+                                />
+                                <span className={song.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
+                                  {song.email_sent_at ? `📧 Sent ${timeAgo(song.email_sent_at)}` : '📧 email sent?'}
+                                </span>
+                              </label>
+                              <button
+                                onClick={() => sendLinkByEmail(song)}
+                                disabled={sendingLinkEmail === song.id}
+                                className="text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition disabled:opacity-50"
+                              >
+                                {sendingLinkEmail === song.id ? '⏳ Enviando...' : '📤 Enviar Link'}
+                              </button>
+                            </div>
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 ml-3">
@@ -4985,29 +5034,36 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="font-semibold break-all">{selectedSong.email}</p>
-                  {/* Manual "email sent?" checkbox — only on paid orders without
-                      a WhatsApp number, since that's when we deliver the link
-                      manually via the Mi Canción recovery flow. */}
+                  {/* 1-touch email send + "email sent?" checkbox — only on paid orders without WhatsApp */}
                   {isPaid(selectedSong) && !selectedSong.whatsapp_phone && (
-                    <label
-                      className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                      title={selectedSong.email_sent_at
-                        ? `Email marked sent ${formatDate(selectedSong.email_sent_at)} — click to undo`
-                        : 'Mark email as sent when you deliver the link manually'}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!selectedSong.email_sent_at}
-                        disabled={emailSendBusy === selectedSong.id}
-                        onChange={() => toggleEmailSent(selectedSong.id, !!selectedSong.email_sent_at)}
-                        className="w-4 h-4 accent-amber-400 cursor-pointer"
-                      />
-                      <span className={selectedSong.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
-                        {selectedSong.email_sent_at
-                          ? `📧 Email sent ${timeAgo(selectedSong.email_sent_at)}`
-                          : '📧 email sent?'}
-                      </span>
-                    </label>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => sendLinkByEmail(selectedSong)}
+                        disabled={sendingLinkEmail === selectedSong.id}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition text-xs font-semibold disabled:opacity-50"
+                      >
+                        {sendingLinkEmail === selectedSong.id ? '⏳ Enviando...' : '📤 Enviar Link por Email'}
+                      </button>
+                      <label
+                        className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                        title={selectedSong.email_sent_at
+                          ? `Email marked sent ${formatDate(selectedSong.email_sent_at)} — click to undo`
+                          : 'Mark email as sent when you deliver the link manually'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!selectedSong.email_sent_at}
+                          disabled={emailSendBusy === selectedSong.id}
+                          onChange={() => toggleEmailSent(selectedSong.id, !!selectedSong.email_sent_at)}
+                          className="w-4 h-4 accent-amber-400 cursor-pointer"
+                        />
+                        <span className={selectedSong.email_sent_at ? 'text-amber-300' : 'text-gray-400'}>
+                          {selectedSong.email_sent_at
+                            ? `📧 Email sent ${timeAgo(selectedSong.email_sent_at)}`
+                            : '📧 email sent?'}
+                        </span>
+                      </label>
+                    </div>
                   )}
                 </div>
               </div>
