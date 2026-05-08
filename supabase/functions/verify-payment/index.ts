@@ -378,8 +378,20 @@ serve(async (req) => {
     const allBundleIds = (session.metadata?.songId || songId)
       .split(',').map((id: string) => id.trim()).filter(Boolean);
 
-    // Payment is confirmed by Stripe - update ALL songs in the bundle at once.
-    const updateData: Record<string, any> = {
+    // Payment is confirmed by Stripe - update songs in the bundle.
+    // Mirror the same per-song video-addon logic as stripe-webhook:
+    //   dual-video (videoAddonCount >= 2) → flag ALL songs
+    //   single-video                      → flag FIRST song only (idx 0)
+    // Applying has_video_addon=true to every song for a single-video purchase
+    // caused the SuccessPage to create video orders for all songs, giving
+    // customers free extra videos and double-charging the rendering pipeline.
+    const videoAddonPurchased = session.metadata?.videoAddon === 'true';
+    const videoAddonCount = videoAddonPurchased
+      ? Math.max(1, parseInt(session.metadata?.videoAddonCount || '1'))
+      : 0;
+    const isDualVideo = videoAddonPurchased && videoAddonCount >= 2;
+
+    const baseUpdateData: Record<string, any> = {
       paid: true,
       paid_at: new Date().toISOString(),
       stripe_session_id: session.id,
@@ -387,23 +399,27 @@ serve(async (req) => {
       payment_status: 'completed',
       amount_paid: (session.amount_total || 0) / 100
     };
-    if (session.metadata?.videoAddon === 'true') {
-      updateData.has_video_addon = true;
-      const addonCount = parseInt(session.metadata?.videoAddonCount || '1');
-      updateData.video_addon_count = addonCount >= 1 ? addonCount : 1;
-    }
 
-    const { error: updateError } = await supabase
-      .from('songs')
-      .update(updateData)
-      .in('id', allBundleIds);
+    // Update each song individually so we can apply the correct video flags per index.
+    for (let idx = 0; idx < allBundleIds.length; idx++) {
+      const sid = allBundleIds[idx];
+      const updateData = { ...baseUpdateData };
+      if (videoAddonPurchased && (isDualVideo || idx === 0)) {
+        updateData.has_video_addon = true;
+        updateData.video_addon_count = isDualVideo ? 2 : 1;
+      }
+      const { error: updateError } = await supabase
+        .from('songs')
+        .update(updateData)
+        .eq('id', sid);
 
-    if (updateError) {
-      console.error('Failed to update song(s):', updateError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Database update failed' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      if (updateError) {
+        console.error(`Failed to update song ${sid}:`, updateError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Database update failed' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
     }
 
     // Fetch the primary song row for email building and the response.
