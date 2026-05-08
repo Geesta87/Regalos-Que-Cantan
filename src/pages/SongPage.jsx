@@ -172,7 +172,7 @@ export default function SongPage({ songId: propSongId }) {
   const [confettiPieces, setConfettiPieces] = useState([]);
   const [giftOpening, setGiftOpening] = useState(false);
   const [flashParticles, setFlashParticles] = useState([]);
-  const [videoData, setVideoData] = useState(null); // { video_url, status } from video_orders
+  const [videoDataMap, setVideoDataMap] = useState({}); // { [songId]: { video_url, status } }
   const audioRef = useRef(null);
   const audioSetupRef = useRef(null); // tracks which song URL was last loaded
   const videoPlayerRef = useRef(null);
@@ -296,10 +296,12 @@ export default function SongPage({ songId: propSongId }) {
           .select('video_url, status, song_id')
           .in('song_id', allSongIds)
           .eq('status', 'completed')
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        if (videoOrders?.length > 0 && videoOrders[0].video_url) {
-          setVideoData(videoOrders[0]);
+          .order('updated_at', { ascending: false });
+        if (videoOrders?.length > 0) {
+          // Build a map keyed by song_id so each song shows its own video
+          const map = {};
+          videoOrders.forEach(vo => { if (vo.video_url) map[vo.song_id] = vo; });
+          setVideoDataMap(map);
         }
 
         setLoading(false);
@@ -310,6 +312,8 @@ export default function SongPage({ songId: propSongId }) {
 
   const song = allSongs[activeIndex] || null;
   const isCombo = allSongs.length > 1;
+  // Derived: current song's video (switches automatically when activeIndex changes)
+  const videoData = song ? (videoDataMap[song.id] ?? null) : null;
 
   // Switch songs
   const switchSong = (idx) => {
