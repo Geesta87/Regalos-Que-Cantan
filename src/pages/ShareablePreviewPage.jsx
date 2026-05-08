@@ -1154,9 +1154,9 @@ export default function ShareablePreviewPage() {
                 {/* Feature rows */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
                   {[
-                    { icon: '📸', label: 'Hasta 15 fotos que cuentan su historia', sub: 'Cada imagen aparece al ritmo de la canción, como una película' },
-                    { icon: '🎤', label: 'Tu voz antes de que empiece la música', sub: 'Graba unas palabras — sus ojos se van a llenar de lágrimas' },
-                    { icon: '📲', label: 'Listo para dejarlos sin palabras', sub: 'Video HD para enviar por WhatsApp, Instagram o proyectar en la fiesta' },
+                    { icon: '📸', label: 'Hasta 15 fotos que cuentan su historia', sub: 'Las transformamos en un video cinematográfico personalizado' },
+                    { icon: '🎤', label: 'Graba un mensaje directo de tu corazón', sub: 'Tu voz y tu cara aparecen al final del video' },
+                    { icon: '📲', label: 'Listo para compartir en el momento especial', sub: 'Descárgalo en HD — perfecto para WhatsApp, Instagram o proyectarlo en vivo' },
                   ].map(({ icon, label, sub }, i) => (
                     <div key={i} style={{
                       display: 'flex', alignItems: 'center', gap: '12px',
