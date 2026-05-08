@@ -614,18 +614,20 @@ serve(async (req) => {
       if (metaUtmCampaign) baseUpdateData.utm_campaign = metaUtmCampaign;
       if (metaFromEmail) baseUpdateData.from_email_campaign = metaFromEmail;
 
-      // Video addon: customer paid for ONE video upsell — flag only the first song
-      // in the bundle (which is the default selected song on the success page).
+      // Video addon: flag songs appropriately based on count
       const videoAddonPurchased = session.metadata?.videoAddon === 'true';
+      const videoAddonCountMeta = parseInt(session.metadata?.videoAddonCount || '1');
+      const isDualVideo = videoAddonPurchased && videoAddonCountMeta >= 2;
 
       // Update ALL songs in the bundle
       let firstSong = null;
       for (let idx = 0; idx < songIds.length; idx++) {
         const sid = songIds[idx];
         const updateData = { ...baseUpdateData };
-        // Only the first song gets has_video_addon — there is only one video upsell
-        if (videoAddonPurchased && idx === 0) {
+        // Dual-video: all songs get has_video_addon; single-video: first song only
+        if (videoAddonPurchased && (isDualVideo || idx === 0)) {
           updateData.has_video_addon = true;
+          updateData.video_addon_count = isDualVideo ? 2 : 1;
         }
         const { data: song, error: updateError } = await supabase
           .from('songs')

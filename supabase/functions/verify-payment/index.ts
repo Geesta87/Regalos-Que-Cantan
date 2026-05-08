@@ -81,14 +81,20 @@ async function sendEmail(
   return response;
 }
 
-function getPurchaseEmailHtml(song: any) {
+// Bundle-aware email template for purchase confirmation.
+// Pass the full list of paid song IDs so bundle buyers get ONE link
+// covering all of them — the listen page resolves comma-joined ids.
+function getPurchaseEmailHtml(song: any, songIds: string[] = [song.id]) {
   const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
   const recipientName = song.recipient_name || 'tu ser querido';
   const songTitle = song.song_title || `Canción para ${song.recipient_name || 'ti'}`;
   const senderName = song.sender_name || 'Anónimo';
   const genre = song.genre || 'Musical';
   const occasion = song.occasion || 'Especial';
-  const listenUrl = `https://regalosquecantan.com/listen?song_id=${song.id}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_confirmation`;
+  const isCombo = songIds.length > 1;
+  const songCount = songIds.length;
+  const listenParam = isCombo ? `song_ids=${songIds.join(',')}` : `song_id=${song.id}`;
+  const listenUrl = `https://regalosquecantan.com/listen?${listenParam}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_confirmation`;
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -102,31 +108,41 @@ function getPurchaseEmailHtml(song: any) {
       <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
 
         <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA</p>
+          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#127881; COMPRA CONFIRMADA${isCombo ? ` &middot; ${songCount} CANCIONES` : ''}</p>
           <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
-          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">Tu canci&oacute;n ya es <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">tuya.</span></h2>
-          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.</p>
+          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">${isCombo ? `Tus <strong style="color:#ffd23f;">${songCount} canciones</strong> ya son` : 'Tu canci&oacute;n ya es'} <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">${isCombo ? 'tuyas.' : 'tuya.'}</span></h2>
+          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">${isCombo
+            ? `Letra, melod&iacute;a y emoci&oacute;n en <strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas</strong> &mdash;<br>todas listas para llegar al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`
+            : `Letra, melod&iacute;a y emoci&oacute;n &mdash; todo listo para<br>que llegue al coraz&oacute;n de <strong style="color:#ffd23f;">${recipientName}</strong>.`}</p>
         </td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
             <tr><td align="center" style="border-radius:8px;background-color:#ff6b35;">
               <a href="${listenUrl}" target="_blank" style="display:inline-block;padding:18px 44px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:8px;">
-                &#127911; Escuchar y Descargar
+                &#127911; ${isCombo ? `Escuchar mis ${songCount} canciones` : 'Escuchar y Descargar'}
               </a>
             </td></tr>
           </table>
         </td></tr>
 
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#a67c52;font-size:13px;margin:0;">&#128274; Este enlace no expira &middot; Escucha y descarga cuando quieras</p>
+${isCombo ? `        <tr><td style="background-color:#1a0e08;padding:0 30px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,rgba(255,107,53,0.12) 0%,rgba(255,46,136,0.12) 100%);border:1.5px solid rgba(255,107,53,0.4);border-radius:16px;">
+            <tr><td style="padding:18px 22px;text-align:center;">
+              <p style="color:#ffd23f;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin:0 0 6px;">&#127911;&#127911; PAQUETE DE ${songCount} CANCIONES</p>
+              <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;line-height:1.5;">El bot&oacute;n de arriba abre <strong style="color:#ff8c42;">tus ${songCount} canciones</strong> en una sola p&aacute;gina.<br><span style="color:#c9b99a;font-weight:400;font-size:13px;">Usa los botones &laquo;Canci&oacute;n 1&raquo; / &laquo;Canci&oacute;n 2&raquo; arriba del reproductor para alternar entre ellas.</span></p>
+            </td></tr>
+          </table>
+        </td></tr>
+` : ''}        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
+          <p style="color:#a67c52;font-size:13px;margin:0;">&#128274; Este enlace no expira &middot; ${isCombo ? `Las ${songCount} canciones est&aacute;n incluidas` : 'Escucha y descarga cuando quieras'}</p>
         </td></tr>
 
         <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:40px 30px 10px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; TU CANCI&Oacute;N COMPRADA</p>
-          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">Este regalo tiene voz propia</h3>
+          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; ${isCombo ? `TUS ${songCount} CANCIONES COMPRADAS` : 'TU CANCIÓN COMPRADA'}</p>
+          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">${isCombo ? `${songCount} canciones, un solo enlace` : 'Este regalo tiene voz propia'}</h3>
         </td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;">
@@ -134,12 +150,12 @@ function getPurchaseEmailHtml(song: any) {
             <tr>
               <td width="120" style="background:linear-gradient(135deg,#ff6b35 0%,#c2693a 100%);text-align:center;vertical-align:middle;padding:20px;">
                 <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 8px;line-height:50px;font-size:24px;">&#9654;</div>
-                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">COMPRADA</p>
+                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">${isCombo ? `${songCount} CANCIONES` : 'COMPRADA'}</p>
               </td>
               <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
-                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">TU CANCI&Oacute;N PERSONALIZADA</p>
+                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">${isCombo ? `TUS ${songCount} CANCIONES PERSONALIZADAS` : 'TU CANCIÓN PERSONALIZADA'}</p>
                 <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${recipientName}</strong> &middot; De: ${senderName}<br>Estilo: <span style="text-transform:capitalize;">${genre}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${occasion}</span></p>
+                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Para <strong style="color:#ffd23f;">${recipientName}</strong> &middot; De: ${senderName}<br>Estilo: <span style="text-transform:capitalize;">${genre}</span> &middot; Ocasi&oacute;n: <span style="text-transform:capitalize;">${occasion}</span>${isCombo ? `<br><strong style="color:#ffd23f;">${songCount} versiones &uacute;nicas en el mismo enlace</strong>` : ''}</p>
                 <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
                 <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>
                 <span style="display:inline-block;width:4px;height:10px;background:#ffd23f;border-radius:2px;margin:0 1px;"></span>
@@ -237,6 +253,7 @@ async function recordAffiliatePurchase(
 async function sendPurchaseEmailIfNotSent(
   supabase: any,
   song: any,
+  allSongIds: string[],
   email: string,
   sessionId: string,
   source: string
@@ -255,20 +272,25 @@ async function sendPurchaseEmailIfNotSent(
     return;
   }
 
+  const isCombo = allSongIds.length > 1;
+  const subject = isCombo
+    ? `🎵 Tus ${allSongIds.length} canciones para ${song.recipient_name} están listas!`
+    : `🎵 Tu canción para ${song.recipient_name} está lista!`;
+
   let emailOk = false;
   let emailErr: string | null = null;
   try {
     await sendEmail(
       email,
-      `🎵 Tu canción para ${song.recipient_name} está lista!`,
-      getPurchaseEmailHtml(song),
+      subject,
+      getPurchaseEmailHtml(song, allSongIds),
       'purchase_confirmation'
     );
     emailOk = true;
-    console.log('📧 Purchase email sent to:', email, 'for song:', song.id, '(source:', source + ')');
+    console.log('📧 Purchase email sent to:', email, 'for song(s):', allSongIds.join(','), '(source:', source + ')');
   } catch (emailError: any) {
     emailErr = emailError?.message || String(emailError);
-    console.error('🔴 Failed to send purchase email:', emailErr, 'songId:', song.id, 'email:', email);
+    console.error('🔴 Failed to send purchase email:', emailErr, 'songIds:', allSongIds.join(','), 'email:', email);
   }
 
   try {
@@ -277,7 +299,7 @@ async function sendPurchaseEmailIfNotSent(
       step: emailOk ? 'purchase_email_sent' : 'purchase_email_failed',
       metadata: {
         stripe_session_id: sessionId,
-        song_ids: [song.id],
+        song_ids: allSongIds,
         email,
         error: emailErr,
         attempted_at: new Date().toISOString(),
@@ -320,8 +342,11 @@ serve(async (req) => {
       try {
         const session = await stripe.checkout.sessions.retrieve(sessionId);
         const email = session.metadata?.email || session.customer_email || existingSong.email;
+        // Parse all bundle IDs from metadata so the email covers every song.
+        const allBundleIds = (session.metadata?.songId || songId)
+          .split(',').map((id: string) => id.trim()).filter(Boolean);
         if (email) {
-          await sendPurchaseEmailIfNotSent(supabase, existingSong, email, sessionId, 'verify-payment-already-paid');
+          await sendPurchaseEmailIfNotSent(supabase, existingSong, allBundleIds, email, sessionId, 'verify-payment-already-paid');
         }
         // Self-heal affiliate attribution if a previous run never logged it.
         try {
@@ -349,7 +374,11 @@ serve(async (req) => {
       );
     }
 
-    // Payment is confirmed by Stripe - update the database
+    // All song IDs in this checkout session (comma-joined in metadata by create-checkout).
+    const allBundleIds = (session.metadata?.songId || songId)
+      .split(',').map((id: string) => id.trim()).filter(Boolean);
+
+    // Payment is confirmed by Stripe - update ALL songs in the bundle at once.
     const updateData: Record<string, any> = {
       paid: true,
       paid_at: new Date().toISOString(),
@@ -360,23 +389,39 @@ serve(async (req) => {
     };
     if (session.metadata?.videoAddon === 'true') {
       updateData.has_video_addon = true;
+      const addonCount = parseInt(session.metadata?.videoAddonCount || '1');
+      updateData.video_addon_count = addonCount >= 1 ? addonCount : 1;
     }
-    const { data: song, error: updateError } = await supabase
+
+    const { error: updateError } = await supabase
       .from('songs')
       .update(updateData)
-      .eq('id', songId)
-      .select()
-      .single();
+      .in('id', allBundleIds);
 
     if (updateError) {
-      console.error('Failed to update song:', updateError);
+      console.error('Failed to update song(s):', updateError);
       return new Response(
         JSON.stringify({ success: false, error: 'Database update failed' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    console.log('Payment verified and song marked as paid via fallback:', songId);
+    // Fetch the primary song row for email building and the response.
+    const { data: song } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('id', songId)
+      .single();
+
+    if (!song) {
+      console.error('Song not found after update:', songId);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Song not found after update' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+
+    console.log(`Payment verified and ${allBundleIds.length} song(s) marked as paid via fallback:`, allBundleIds.join(','));
 
     // Affiliate attribution: record the purchase event + bump coupon usage.
     // Idempotent — stripe-webhook will also call this and one of them will
@@ -393,7 +438,7 @@ serve(async (req) => {
     try {
       const email = session.metadata?.email || session.customer_email || song.email;
       if (email) {
-        await sendPurchaseEmailIfNotSent(supabase, song, email, session.id, 'verify-payment');
+        await sendPurchaseEmailIfNotSent(supabase, song, allBundleIds, email, session.id, 'verify-payment');
       } else {
         console.warn('🟡 No email available for purchase confirmation, songId:', song.id);
       }

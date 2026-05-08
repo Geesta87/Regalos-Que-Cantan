@@ -27,7 +27,11 @@ serve(async (req) => {
   try {
     const body = await req.json();
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    // Normalize to a count: supports new videoAddonCount (0/1/2) or legacy videoAddon boolean
+    const videoAddonCountNum: number = typeof rawVideoAddonCount === 'number' ? rawVideoAddonCount
+      : typeof rawVideoAddonCount === 'string' ? parseInt(rawVideoAddonCount) || 0
+      : videoAddon ? 1 : 0;
     // Client IP for Meta Conversions API. Cloudflare/Vercel/Supabase set
     // x-forwarded-for to "<client>, <proxy>, ..." — first hop is the user.
     const xfwd = req.headers.get('x-forwarded-for') || '';
@@ -72,7 +76,7 @@ serve(async (req) => {
     } else {
       priceInCents = 3999 + Math.max(0, songCount - 2) * 999;
     }
-    const videoAddonCents = videoAddon ? 999 : 0;
+    const videoAddonCents = videoAddonCountNum === 2 ? 1799 : videoAddonCountNum === 1 ? 999 : 0;
     let appliedCoupon = null;
 
     // Validate and apply coupon if provided
@@ -171,7 +175,8 @@ serve(async (req) => {
             amount_paid: 0,
             coupon_code: appliedCoupon.code,
             paid_at: new Date().toISOString(),
-            has_video_addon: idx === 0 ? (videoAddon || false) : false,
+            has_video_addon: videoAddonCountNum > 0,
+            video_addon_count: videoAddonCountNum > 0 ? videoAddonCountNum : null,
             utm_source: utm_source || null,
             utm_medium: utm_medium || null,
             utm_campaign: utm_campaign || null,
@@ -239,13 +244,17 @@ serve(async (req) => {
     ];
 
     // Add video addon as separate line item
-    if (videoAddon && videoAddonCents > 0) {
+    if (videoAddonCountNum > 0 && videoAddonCents > 0) {
       lineItems.push({
         price_data: {
           currency: 'usd',
           product_data: {
-            name: 'Video Cinematográfico con Fotos',
-            description: 'Video personalizado con efecto Ken Burns, HD 1080p, MP4 descargable',
+            name: videoAddonCountNum >= 2
+              ? '2 Videos Cinematográficos con Fotos (Ambas Canciones)'
+              : 'Video Cinematográfico con Fotos',
+            description: videoAddonCountNum >= 2
+              ? '2 videos personalizados con efecto Ken Burns, HD 1080p, MP4 descargable'
+              : 'Video personalizado con efecto Ken Burns, HD 1080p, MP4 descargable',
           },
           unit_amount: videoAddonCents,
         },
@@ -277,7 +286,8 @@ serve(async (req) => {
         from_email_campaign: from_email_campaign || '',
         purchaseBoth: (purchaseBoth || songCount >= 2) ? 'true' : 'false',
         songCount: String(songCount),
-        videoAddon: videoAddon ? 'true' : 'false',
+        videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
+        videoAddonCount: String(videoAddonCountNum),
         affiliateCode: resolvedAffiliate || '',
         // Meta Conversions API identifiers — read by stripe-webhook on
         // checkout.session.completed. Stripe metadata cap is 500 chars/value.

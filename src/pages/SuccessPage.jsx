@@ -730,6 +730,7 @@ export default function SuccessPage() {
 
     (async () => {
       const songIds = songs.map(s => s.id);
+      const isDualVideo = (songs[0]?.video_addon_count ?? 1) >= 2 && songs.length >= 2;
 
       // 1) Existing video_order(s)? Load ALL of them (one per song) and populate the map.
       const { data: existingOrders } = await supabase
@@ -761,12 +762,33 @@ export default function SuccessPage() {
         return;
       }
 
-      // 2) No video_order yet — auto-create on the song the user actually paid for.
-      //    Find the song that has has_video_addon=true. If multiple are flagged
-      //    (legacy data from before the bug fix), prefer the first.
-      const flaggedSong = songs.find(s => s?.has_video_addon);
-      if (!flaggedSong) return;
+      // 2) No video_order yet — auto-create.
+      //    Dual-video: create for ALL flagged songs. Single-video: first flagged song only.
+      const flaggedSongs = songs.filter(s => s?.has_video_addon);
+      if (!flaggedSongs.length) return;
 
+      if (isDualVideo) {
+        // Create a video_order for every song that has the addon
+        const map = {};
+        for (const s of flaggedSongs) {
+          try {
+            const { data: newOrder, error: insertErr } = await supabase
+              .from('video_orders')
+              .insert({ song_id: s.id, paid: true, paid_at: new Date().toISOString(), status: 'pending', amount_cents: 1799 })
+              .select().single();
+            if (!insertErr && newOrder) map[s.id] = newOrder;
+          } catch (e) {
+            console.error('Failed to auto-create video order for song', s.id, e);
+          }
+        }
+        setVideoOrdersMap(map);
+        const currentId = songs[selectedVideoSongIdx]?.id;
+        if (map[currentId]) _setVideoOrder(map[currentId]);
+        return;
+      }
+
+      // Single-video: create for the first flagged song
+      const flaggedSong = flaggedSongs[0];
       try {
         const { data: newOrder, error: insertErr } = await supabase
           .from('video_orders')
@@ -861,6 +883,7 @@ export default function SuccessPage() {
         const res = await checkVideoStatus(songId);
         if (res?.videoOrder) {
           setVideoOrder(res.videoOrder);
+          setVideoOrdersMap(prev => ({ ...prev, [songId]: res.videoOrder }));
           if (res.videoOrder.status === 'completed' || res.videoOrder.status === 'failed') {
             clearInterval(videoPollingRef.current);
             videoPollingRef.current = null;
@@ -1170,7 +1193,9 @@ export default function SuccessPage() {
       const genRes = await generateVideo(order.id, messageUrl, messageDuration, actualSongDuration);
 
       // Update local state
+      const currentSongId = songs[selectedVideoSongIdx]?.id;
       setVideoOrder(prev => ({ ...prev, status: 'processing' }));
+      if (currentSongId) setVideoOrdersMap(prev => ({ ...prev, [currentSongId]: { ...(prev[currentSongId] || {}), status: 'processing' } }));
 
       // Start polling
       startVideoPolling(songs[selectedVideoSongIdx].id);
@@ -2164,8 +2189,32 @@ export default function SuccessPage() {
                   </div>
                 </div>
 
-                {/* Song selector for combo purchases */}
-                {songs.length > 1 && !videoOrder && (
+                {/* Song tab switcher for dual-video purchases */}
+                {songs.length > 1 && (songs[0]?.video_addon_count ?? 1) >= 2 && (
+                  <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
+                    {songs.map((s, i) => {
+                      const order = videoOrdersMap[s.id];
+                      const isDone = order?.status === 'completed';
+                      const isActive = selectedVideoSongIdx === i;
+                      return (
+                        <button key={s.id} onClick={() => setSelectedVideoSongIdx(i)} style={{
+                          flex: 1, padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                          border: isActive ? '2px solid #7c3aed' : `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)'}`,
+                          background: isActive ? (isLight ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.2)') : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)'),
+                          color: isActive ? (isLight ? '#4c1d95' : '#c4b5fd') : ts.textSecondary,
+                          fontSize: '13px', fontWeight: isActive ? '700' : '500',
+                          fontFamily: ts.font, transition: 'all 0.2s',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        }}>
+                          {isDone ? '✅' : '🎬'} Versión {i + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Song selector for combo purchases (1-video only — dual-video skips picker) */}
+                {songs.length > 1 && !videoOrder && (songs[0]?.video_addon_count ?? 1) < 2 && (
                   <div style={{
                     marginBottom: '20px', padding: '12px 14px', borderRadius: '12px',
                     background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',

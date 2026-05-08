@@ -229,6 +229,7 @@ export default function ComparisonPage() {
   const baseSinglePrice = 29.99;
   const baseBundlePrice = 39.99;
   const videoAddonPrice = 9.99;
+  const videoDualAddonPrice = 17.99;
   const isFree = couponApplied?.free || false;
   const discountPercent = couponApplied?.discount || 0;
   const hasDiscount = !isFree && discountPercent > 0;
@@ -236,8 +237,9 @@ export default function ComparisonPage() {
   const bundlePrice = hasDiscount ? parseFloat((baseBundlePrice * (1 - discountPercent / 100)).toFixed(2)) : baseBundlePrice;
   const bundleSavings = (baseSinglePrice * 2) - baseBundlePrice;
 
-  // Video add-on toggle
-  const [videoAddon, setVideoAddon] = useState(false);
+  // Video add-on toggle (0 = none, 1 = one video, 2 = both videos)
+  const [videoAddonCount, setVideoAddonCount] = useState(0);
+  const videoAddon = videoAddonCount > 0; // backward-compat derived bool
 
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
@@ -725,7 +727,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount);
 
       if (result.url) {
         window.location.href = result.url;
@@ -775,7 +777,9 @@ export default function ComparisonPage() {
   const getCurrentPrice = () => {
     if (isFree) return 0;
     const base = purchaseBoth ? bundlePrice : singlePrice;
-    return videoAddon ? base + videoAddonPrice : base;
+    if (videoAddonCount === 2) return base + videoDualAddonPrice;
+    if (videoAddonCount === 1) return base + videoAddonPrice;
+    return base;
   };
 
   // ==================== RENDER ====================
@@ -1374,7 +1378,7 @@ export default function ComparisonPage() {
                 </div>
                 {/* Add / Added button */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
+                  onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
                   style={{
                     flexShrink: 0, marginLeft: '12px',
                     padding: '9px 18px',
@@ -1456,29 +1460,73 @@ export default function ComparisonPage() {
                       <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
                     </div>
                   </div>
-                  {/* Big add button */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setVideoAddon(!videoAddon); }}
-                    style={{
-                      width: '100%', padding: '16px',
-                      borderRadius: '14px',
-                      border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
-                      background: videoAddon
-                        ? 'linear-gradient(135deg, #16a34a, #22c55e)'
-                        : 'linear-gradient(135deg, #7c3aed, #a855f7)',
-                      color: 'white',
-                      fontSize: '18px', fontWeight: '900',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      transition: 'all 0.25s',
-                      boxShadow: videoAddon
-                        ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
-                        : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
-                      letterSpacing: '0.3px',
-                    }}
-                  >
-                    {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
-                  </button>
+                  {/* Big add button — 3-way selector in combo mode, toggle in single mode */}
+                  {purchaseBoth ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      {[
+                        { count: 0, label: '❌ Sin video', sub: null, price: null, color: 'rgba(255,255,255,0.06)', border: '2px solid rgba(255,255,255,0.1)', textColor: 'rgba(255,255,255,0.5)' },
+                        { count: 1, label: '🎬 Video para 1 canción', sub: 'Tú eliges cuál', price: '$9.99', color: videoAddonCount === 1 ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : 'rgba(139,92,246,0.12)', border: videoAddonCount === 1 ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)', textColor: 'white' },
+                        { count: 2, label: '🎬🎬 Video para ambas canciones', sub: 'Ahorra $2 vs comprar por separado', price: '$17.99', color: videoAddonCount === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: videoAddonCount === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                      ].map(({ count, label, sub, price, color, border, textColor }) => (
+                        <button
+                          key={count}
+                          onClick={(e) => { e.stopPropagation(); setVideoAddonCount(count); }}
+                          style={{
+                            width: '100%', padding: '12px 16px',
+                            borderRadius: '12px',
+                            border,
+                            background: color,
+                            color: textColor,
+                            fontSize: '14px', fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            transition: 'all 0.2s',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              width: '18px', height: '18px', borderRadius: '50%',
+                              border: videoAddonCount === count ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
+                              background: videoAddonCount === count ? 'white' : 'transparent',
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}>
+                              {videoAddonCount === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : '#7c3aed' }} />}
+                            </span>
+                            <div>
+                              <div>{label}</div>
+                              {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                            </div>
+                          </div>
+                          {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setVideoAddonCount(c => c > 0 ? 0 : 1); }}
+                      style={{
+                        width: '100%', padding: '16px',
+                        borderRadius: '14px',
+                        border: videoAddon ? '2px solid #22c55e' : '2px solid #a855f7',
+                        background: videoAddon
+                          ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                          : 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                        color: 'white',
+                        fontSize: '18px', fontWeight: '900',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        transition: 'all 0.25s',
+                        boxShadow: videoAddon
+                          ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
+                          : '0 0 24px rgba(139,92,246,0.55), 0 6px 16px rgba(0,0,0,0.4)',
+                        letterSpacing: '0.3px',
+                      }}
+                    >
+                      {videoAddon ? '✓ Video Agregado' : '🎬 Agregar Video — $9.99'}
+                    </button>
+                  )}
                   <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
                     Se agrega a tu pedido
                   </p>
@@ -1584,7 +1632,7 @@ export default function ComparisonPage() {
               <div style={{textAlign: 'right'}}>
                 {hasDiscount && (
                   <p style={{margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through'}}>
-                    ${(videoAddon ? (purchaseBoth ? baseBundlePrice : baseSinglePrice) + videoAddonPrice : (purchaseBoth ? baseBundlePrice : baseSinglePrice)).toFixed(2)}
+                    ${(videoAddonCount === 2 ? (purchaseBoth ? baseBundlePrice : baseSinglePrice) + videoDualAddonPrice : videoAddonCount === 1 ? (purchaseBoth ? baseBundlePrice : baseSinglePrice) + videoAddonPrice : (purchaseBoth ? baseBundlePrice : baseSinglePrice)).toFixed(2)}
                   </p>
                 )}
                 <p style={{margin: 0, fontSize: '20px', fontWeight: '800', color: hasDiscount ? '#4ade80' : '#f74da6'}}>
@@ -1715,7 +1763,7 @@ export default function ComparisonPage() {
             {isCheckingOut ? '⏳ Procesando...'
               : !hasSelection ? '👆 Selecciona una opción'
               : isFree ? '🎉 Descargar Gratis'
-              : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddon ? ' + Video' : ''} — $${getCurrentPrice().toFixed(2)}`
+              : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddonCount === 2 ? ' + 2 Videos' : videoAddonCount === 1 ? ' + Video' : ''} — $${getCurrentPrice().toFixed(2)}`
             }
           </button>
 
