@@ -1230,7 +1230,7 @@ export default function ComparisonPage() {
         <div ref={videoAddonRef} />
         {hasSelection && (
           <div
-            onClick={() => setVideoAddon(!videoAddon)}
+            onClick={() => setVideoAddonCount(c => c > 0 ? 0 : 1)}
             style={{
               background: videoAddon
                 ? 'linear-gradient(135deg, rgba(109,40,217,0.22), rgba(139,92,246,0.1))'
