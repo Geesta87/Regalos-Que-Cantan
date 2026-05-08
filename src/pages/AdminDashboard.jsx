@@ -198,6 +198,7 @@ export default function AdminDashboard() {
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
   // Video orders: map of songId → video_order row (fetched on-demand when modal opens)
   const [videoOrdersMap, setVideoOrdersMap] = useState({});
+  const [retryingVideo, setRetryingVideo] = useState(false);
   const debouncedSearchTerm = useDebounce(searchTerm);
   const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
@@ -598,6 +599,51 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error('fetchVideoOrder error:', err);
+    }
+  };
+
+  const retryVideoRender = async (songId, videoOrderId) => {
+    if (!videoOrderId) { alert('No se encontró la orden de video.'); return; }
+    setRetryingVideo(true);
+    try {
+      // 1. Reset status back to photos_uploaded
+      const patchRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/video_orders?id=eq.${videoOrderId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify({ status: 'photos_uploaded', shotstack_render_id: null }),
+        }
+      );
+      if (!patchRes.ok) throw new Error(`Reset status failed: HTTP ${patchRes.status}`);
+
+      // 2. Call generate-video
+      const genRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-video`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ videoOrderId }),
+        }
+      );
+      const genData = await genRes.json();
+      if (!genRes.ok || !genData.success) throw new Error(genData.error || `HTTP ${genRes.status}`);
+
+      alert(`✅ Video re-enviado a Shotstack. Render ID: ${genData.renderId}`);
+      // 3. Refresh the video order panel
+      await fetchVideoOrder(songId);
+    } catch (err) {
+      alert(`Error al reintentar: ${err.message}`);
+    } finally {
+      setRetryingVideo(false);
     }
   };
 
@@ -5177,6 +5223,15 @@ export default function AdminDashboard() {
                       {vo && sc && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.color}`}>{sc.label}</span>}
                       <button onClick={() => fetchVideoOrder(selectedSong.id)} className="text-[11px] text-gray-500 hover:text-gray-300 transition ml-1" title="Refresh">↻</button>
                     </div>
+                    {vo?.status === 'failed' && vo?.photo_urls?.length >= 3 && (
+                      <button
+                        onClick={() => retryVideoRender(selectedSong.id, vo.id)}
+                        disabled={retryingVideo}
+                        className="w-full py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-semibold hover:bg-red-500/30 transition disabled:opacity-50"
+                      >
+                        {retryingVideo ? '⏳ Reintentando...' : '🔄 Reintentar render'}
+                      </button>
+                    )}
                     {vo && vo.photo_urls && vo.photo_urls.length > 0 && (
                       <p className="text-xs text-gray-400">📸 {vo.photo_urls.length} foto{vo.photo_urls.length !== 1 ? 's' : ''} subida{vo.photo_urls.length !== 1 ? 's' : ''}</p>
                     )}
