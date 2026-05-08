@@ -319,7 +319,7 @@ export default function SongPage({ songId: propSongId }) {
   const switchSong = (idx) => {
     if (idx === activeIndex) return;
     const a = audioRef.current;
-    if (a) { a.pause(); a.currentTime = 0; }
+    if (a) { a.pause(); a.currentTime = 0; a.volume = 1; } // always restore volume — iOS unlock sets it to 0
     setIsPlaying(false); setTime(0); setDur(0); setShowLyrics(false);
     setActiveIndex(idx);
   };
@@ -329,6 +329,7 @@ export default function SongPage({ songId: propSongId }) {
     const a = audioRef.current;
     if (!a || !song) return;
     a.src = song.audio_url;
+    a.volume = 1; // always restore — iOS unlock may have set it to 0 when song 1 has a video
     a.preload = 'auto';
     a.load();
     const h = {
