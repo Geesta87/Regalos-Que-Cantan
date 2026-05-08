@@ -5153,10 +5153,9 @@ export default function AdminDashboard() {
                         )
                       )}
                     </div>
-                  </div>
                 </div>
               )}
-              
+
               {/* Video Addon Panel — shown for songs with has_video_addon = true */}
               {selectedSong.has_video_addon && (() => {
                 const vo = videoOrdersMap[selectedSong.id]; // undefined = loading, null = no order, object = fetched
