@@ -92,6 +92,26 @@ serve(async (req) => {
       }
     }
 
+    // Detect audio-only message recordings (iPhone Safari records audio/mp4
+    // even when the user selects "video" mode — no video stream, just audio).
+    // Sending audio/mp4 to Shotstack as type:'video' causes a 400 asset-type-
+    // mismatch error. Probe Content-Type first and flag audio-only files so
+    // buildShotstackTimeline can handle them gracefully: voice plays over the
+    // last photo instead of trying to display a video track.
+    let isAudioOnlyMessage = false;
+    if (personalMessageUrl) {
+      try {
+        const headRes = await fetch(personalMessageUrl, { method: 'HEAD' });
+        const ct = headRes.headers.get('content-type') || '';
+        if (ct.startsWith('audio/') || ct === 'audio/mp4' || ct === 'audio/webm') {
+          isAudioOnlyMessage = true;
+          console.log('[generate-video] Message is audio-only (content-type:', ct, ') — will render as audio track over last photo');
+        }
+      } catch (e) {
+        console.warn('[generate-video] Could not HEAD-check message URL:', e);
+      }
+    }
+
     // Build Shotstack timeline with filter + text overlays + optional message
     const timeline = buildShotstackTimeline(
       photoUrls,
@@ -100,7 +120,8 @@ serve(async (req) => {
       resolvedSongDuration,
       filter,
       personalMessageUrl,
-      messageDuration
+      messageDuration,
+      isAudioOnlyMessage
     );
 
     console.log('Shotstack timeline:', JSON.stringify(timeline, null, 2));
@@ -172,7 +193,8 @@ function buildShotstackTimeline(
   songDuration: number | null,
   videoFilter: string,
   personalMessageUrl: string | null = null,
-  msgDuration: number | null = null
+  msgDuration: number | null = null,
+  isAudioOnlyMessage: boolean = false
 ) {
   const photoCount = photoUrls.length;
   const transitionDuration = 0.5;
@@ -272,26 +294,38 @@ function buildShotstackTimeline(
   const messageClips = [];
 
   if (personalMessageUrl) {
-    console.log('Adding personal message to timeline:', personalMessageUrl, 'duration:', messageDuration);
+    console.log('Adding personal message to timeline:', personalMessageUrl, 'duration:', messageDuration, 'audioOnly:', isAudioOnlyMessage);
 
-    // Personal video message — full video clip with boosted audio
-    messageClips.push({
-      asset: {
-        type: 'video',
-        src: personalMessageUrl,
-        volume: 1,
-        trim: 0,
-        transcode: true,
-      },
-      start: totalDuration,
-      length: messageDuration,
-      fit: 'crop',
-      transition: {
-        in: 'fade',
-      },
-    });
+    if (isAudioOnlyMessage) {
+      // iPhone / Safari audio-only recording: no video stream available.
+      // Show the last photo extended for the message duration, and play the
+      // voice as an audio clip. The "Un mensaje de …" text overlay still shows.
+      const lastPhoto = photoUrls[photoUrls.length - 1];
+      messageClips.push({
+        asset: { type: 'image', src: lastPhoto },
+        start: totalDuration,
+        length: messageDuration,
+        effect: 'zoomIn',
+        transition: { in: 'fade' },
+      });
+    } else {
+      // Full video message — customer's face appears on screen
+      messageClips.push({
+        asset: {
+          type: 'video',
+          src: personalMessageUrl,
+          volume: 1,
+          trim: 0,
+          transcode: true,
+        },
+        start: totalDuration,
+        length: messageDuration,
+        fit: 'crop',
+        transition: { in: 'fade' },
+      });
+    }
 
-    // "Un mensaje de [sender]" text at the bottom (brief)
+    // "Un mensaje de [sender]" text overlay — shown for both video and audio-only
     messageClips.push({
       asset: {
         type: 'html',
@@ -326,19 +360,33 @@ function buildShotstackTimeline(
   // If personal message exists, use audio track instead of soundtrack
   // so the song fades out before the message plays
   if (personalMessageUrl) {
-    // Add song as an audio clip that ends when photos end (with fade out)
-    tracks.push({
-      clips: [{
+    const audioClips: any[] = [{
+      asset: {
+        type: 'audio',
+        src: song.audio_url,
+        volume: 1,
+        effect: 'fadeOut',
+      },
+      start: 0,
+      length: totalDuration,
+    }];
+
+    // For audio-only messages (iPhone Safari), add the voice as an audio clip
+    // starting right where the photos end — the video track already shows the
+    // last photo extended for the same duration.
+    if (isAudioOnlyMessage) {
+      audioClips.push({
         asset: {
           type: 'audio',
-          src: song.audio_url,
+          src: personalMessageUrl,
           volume: 1,
-          effect: 'fadeOut',
         },
-        start: 0,
-        length: totalDuration,
-      }],
-    });
+        start: totalDuration,
+        length: messageDuration,
+      });
+    }
+
+    tracks.push({ clips: audioClips });
   }
 
   const timelineObj: any = { tracks };

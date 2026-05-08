@@ -1034,8 +1034,13 @@ export default function SuccessPage() {
       const actualDuration = Math.round((Date.now() - startTime) / 1000);
       const blob = new Blob(chunks, { type: recorder.mimeType });
       const url = URL.createObjectURL(blob);
-      console.log('Recording stopped. Actual duration:', actualDuration, 'seconds');
-      setRecordedMessage({ blob, url, duration: actualDuration, mode });
+      const actualMime = recorder.mimeType || '';
+      // iPhone Safari doesn't support video/mp4 in MediaRecorder — it silently
+      // falls back to audio/mp4 (no video stream). Detect this so we can warn
+      // the customer and still render the video with their voice over a photo.
+      const capturedAudioOnly = mode === 'video' && actualMime.startsWith('audio/');
+      console.log('Recording stopped. Actual duration:', actualDuration, 'seconds, mimeType:', actualMime, 'audioOnly:', capturedAudioOnly);
+      setRecordedMessage({ blob, url, duration: actualDuration, mode, audioOnly: capturedAudioOnly });
       setIsRecording(false);
       setCameraReady(false);
       clearInterval(recordingTimerRef.current);
@@ -2693,7 +2698,17 @@ export default function SuccessPage() {
                     {/* Recorded message preview */}
                     {recordedMessage && showMessageRecorder && (
                       <div style={{ padding: '0 16px 16px' }}>
-                        {recordedMessage.mode === 'video' ? (
+                        {/* iPhone Safari warning: wanted video but got audio-only */}
+                        {recordedMessage.audioOnly && (
+                          <div style={{
+                            marginBottom: '12px', padding: '10px 14px', borderRadius: '10px',
+                            background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)',
+                            color: '#fbbf24', fontSize: '12px', lineHeight: '1.5',
+                          }}>
+                            📱 <strong>Tu cámara no grabó video</strong> — solo se guardó tu voz. Tu mensaje de voz aparecerá al final del video sobre una foto. Si quieres que tu cara salga, intenta desde una computadora.
+                          </div>
+                        )}
+                        {recordedMessage.mode === 'video' && !recordedMessage.audioOnly ? (
                           <video src={recordedMessage.url} controls playsInline style={{
                             width: '100%', maxWidth: '240px', display: 'block', margin: '0 auto 14px',
                             borderRadius: '14px', background: '#000',
