@@ -196,6 +196,8 @@ export default function AdminDashboard() {
   // and the bell rang each time" without needing to remember if the toast
   // already auto-dismissed.
   const [paymentAlertCount, setPaymentAlertCount] = useState(0);
+  // Video orders: map of songId → video_order row (fetched on-demand when modal opens)
+  const [videoOrdersMap, setVideoOrdersMap] = useState({});
   const debouncedSearchTerm = useDebounce(searchTerm);
   const debouncedLookupSearch = useDebounce(lookupSearch);
   const [stats, setStats] = useState({
@@ -442,6 +444,19 @@ export default function AdminDashboard() {
     setRetryResult(null);
   }, [selectedSong?.id]);
 
+  // Auto-fetch video order when a song with video addon is selected in the modal.
+  // We only fetch once per songId (sentinel stored in map). Re-fetching can be
+  // triggered manually by a "Refresh" button in the panel if needed.
+  useEffect(() => {
+    if (
+      selectedSong?.id &&
+      selectedSong?.has_video_addon &&
+      !(selectedSong.id in videoOrdersMap)
+    ) {
+      fetchVideoOrder(selectedSong.id);
+    }
+  }, [selectedSong?.id, selectedSong?.has_video_addon]);
+
   // Save an internal admin note for the open song.
   const saveNote = async () => {
     if (!selectedSong || !accessToken) return;
@@ -559,6 +574,30 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error('fetchSongDetails error:', err);
+    }
+  };
+
+  // Fetch video_order for a song on demand (used when detail modal opens for
+  // a song with has_video_addon = true). Uses supabase client directly — no
+  // edge function needed because video_orders is a standard table.
+  const fetchVideoOrder = async (songId) => {
+    if (!songId) return;
+    try {
+      const { data, error } = await supabase
+        .from('video_orders')
+        .select('id, status, paid, photo_urls, video_url, created_at, updated_at')
+        .eq('song_id', songId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!error && data) {
+        setVideoOrdersMap(prev => ({ ...prev, [songId]: data }));
+      } else if (!error && !data) {
+        // No video order exists yet — store null sentinel so we don't re-fetch
+        setVideoOrdersMap(prev => ({ ...prev, [songId]: null }));
+      }
+    } catch (err) {
+      console.error('fetchVideoOrder error:', err);
     }
   };
 
@@ -5075,6 +5114,102 @@ export default function AdminDashboard() {
                 </div>
               )}
               
+              {/* Video Addon Panel — shown for songs with has_video_addon = true */}
+              {selectedSong.has_video_addon && (() => {
+                const vo = videoOrdersMap[selectedSong.id]; // undefined = loading, null = no order, object = fetched
+                const photoUploadUrl = `${window.location.origin}/success?song_id=${selectedSong.id}`;
+
+                // Status badge config
+                const statusConfig = {
+                  pending:         { label: 'Pendiente fotos',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+                  photos_uploaded: { label: 'Fotos subidas',    color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+                  processing:      { label: 'Procesando video', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+                  completed:       { label: '✅ Completado',    color: 'bg-green-500/20 text-green-300 border-green-500/40' },
+                  failed:          { label: '❌ Falló',         color: 'bg-red-500/20 text-red-300 border-red-500/40' },
+                };
+                const sc = vo ? (statusConfig[vo.status] || { label: vo.status, color: 'bg-gray-500/20 text-gray-300 border-gray-500/40' }) : null;
+
+                return (
+                  <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 space-y-3">
+                    {/* Header row */}
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-violet-400 font-semibold">🎬 Video Addon</p>
+                      {vo === undefined && (
+                        <span className="text-xs text-gray-500 animate-pulse">Cargando...</span>
+                      )}
+                      {vo !== undefined && !vo && (
+                        <span className="text-xs text-amber-400">Sin orden de video</span>
+                      )}
+                      {vo && sc && (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.color}`}>
+                          {sc.label}
+                        </span>
+                      )}
+                      {/* Manual refresh */}
+                      <button
+                        onClick={() => fetchVideoOrder(selectedSong.id)}
+                        className="text-[11px] text-gray-500 hover:text-gray-300 transition ml-1"
+                        title="Refresh video order status"
+                      >
+                        ↻
+                      </button>
+                    </div>
+
+                    {/* Photo count (if photos uploaded) */}
+                    {vo && vo.photo_urls && vo.photo_urls.length > 0 && (
+                      <p className="text-xs text-gray-400">
+                        📸 {vo.photo_urls.length} foto{vo.photo_urls.length !== 1 ? 's' : ''} subida{vo.photo_urls.length !== 1 ? 's' : ''}
+                      </p>
+                    )}
+
+                    {/* Completed: show video URL */}
+                    {vo?.status === 'completed' && vo?.video_url && (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={vo.video_url}
+                          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300"
+                        />
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(vo.video_url); alert('Video URL copiada!'); }}
+                          className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition"
+                        >
+                          Copy
+                        </button>
+                        <a
+                          href={vo.video_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition"
+                        >
+                          👁️
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Photo upload URL — always show so staff can resend it */}
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">📸 Link para subir fotos (enviar al cliente):</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={photoUploadUrl}
+                          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300"
+                        />
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(photoUploadUrl); alert('Link copiado!'); }}
+                          className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap"
+                        >
+                          📋 Copiar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Customer Links */}
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                 <p className="text-xs text-blue-400 mb-2">🔗 Customer links</p>
