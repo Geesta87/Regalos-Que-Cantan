@@ -5072,6 +5072,48 @@ export default function AdminDashboard() {
                 </div>
               )}
               
+              {/* Video Addon Panel — shown for songs with has_video_addon = true */}
+              {selectedSong.has_video_addon && (() => {
+                const vo = videoOrdersMap[selectedSong.id]; // undefined = loading, null = no order, object = fetched
+                const photoUploadUrl = `${window.location.origin}/success?song_id=${selectedSong.id}`;
+                const statusConfig = {
+                  pending:         { label: 'Pendiente fotos',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+                  photos_uploaded: { label: 'Fotos subidas',    color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+                  processing:      { label: 'Procesando video', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+                  completed:       { label: '✅ Completado',    color: 'bg-green-500/20 text-green-300 border-green-500/40' },
+                  failed:          { label: '❌ Falló',         color: 'bg-red-500/20 text-red-300 border-red-500/40' },
+                };
+                const sc = vo ? (statusConfig[vo.status] || { label: vo.status, color: 'bg-gray-500/20 text-gray-300 border-gray-500/40' }) : null;
+                return (
+                  <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-violet-400 font-semibold">🎬 Video Addon</p>
+                      {vo === undefined && <span className="text-xs text-gray-500 animate-pulse">Cargando...</span>}
+                      {vo !== undefined && !vo && <span className="text-xs text-amber-400">Sin orden de video</span>}
+                      {vo && sc && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.color}`}>{sc.label}</span>}
+                      <button onClick={() => fetchVideoOrder(selectedSong.id)} className="text-[11px] text-gray-500 hover:text-gray-300 transition ml-1" title="Refresh">↻</button>
+                    </div>
+                    {vo && vo.photo_urls && vo.photo_urls.length > 0 && (
+                      <p className="text-xs text-gray-400">📸 {vo.photo_urls.length} foto{vo.photo_urls.length !== 1 ? 's' : ''} subida{vo.photo_urls.length !== 1 ? 's' : ''}</p>
+                    )}
+                    {vo?.status === 'completed' && vo?.video_url && (
+                      <div className="flex gap-2">
+                        <input type="text" readOnly value={vo.video_url} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
+                        <button onClick={() => { navigator.clipboard.writeText(vo.video_url); alert('Video URL copiada!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition">Copy</button>
+                        <a href={vo.video_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition">👁️</a>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">📸 Link para subir fotos (enviar al cliente):</p>
+                      <div className="flex gap-2">
+                        <input type="text" readOnly value={photoUploadUrl} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
+                        <button onClick={() => { navigator.clipboard.writeText(photoUploadUrl); alert('Link copiado!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap">📋 Copiar</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Details */}
               {selectedSong.details && (
                 <div className="bg-white/5 rounded-xl p-4">
@@ -5114,102 +5156,6 @@ export default function AdminDashboard() {
                 </div>
               )}
               
-              {/* Video Addon Panel — shown for songs with has_video_addon = true */}
-              {selectedSong.has_video_addon && (() => {
-                const vo = videoOrdersMap[selectedSong.id]; // undefined = loading, null = no order, object = fetched
-                const photoUploadUrl = `${window.location.origin}/success?song_id=${selectedSong.id}`;
-
-                // Status badge config
-                const statusConfig = {
-                  pending:         { label: 'Pendiente fotos',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-                  photos_uploaded: { label: 'Fotos subidas',    color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
-                  processing:      { label: 'Procesando video', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
-                  completed:       { label: '✅ Completado',    color: 'bg-green-500/20 text-green-300 border-green-500/40' },
-                  failed:          { label: '❌ Falló',         color: 'bg-red-500/20 text-red-300 border-red-500/40' },
-                };
-                const sc = vo ? (statusConfig[vo.status] || { label: vo.status, color: 'bg-gray-500/20 text-gray-300 border-gray-500/40' }) : null;
-
-                return (
-                  <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 space-y-3">
-                    {/* Header row */}
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-violet-400 font-semibold">🎬 Video Addon</p>
-                      {vo === undefined && (
-                        <span className="text-xs text-gray-500 animate-pulse">Cargando...</span>
-                      )}
-                      {vo !== undefined && !vo && (
-                        <span className="text-xs text-amber-400">Sin orden de video</span>
-                      )}
-                      {vo && sc && (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.color}`}>
-                          {sc.label}
-                        </span>
-                      )}
-                      {/* Manual refresh */}
-                      <button
-                        onClick={() => fetchVideoOrder(selectedSong.id)}
-                        className="text-[11px] text-gray-500 hover:text-gray-300 transition ml-1"
-                        title="Refresh video order status"
-                      >
-                        ↻
-                      </button>
-                    </div>
-
-                    {/* Photo count (if photos uploaded) */}
-                    {vo && vo.photo_urls && vo.photo_urls.length > 0 && (
-                      <p className="text-xs text-gray-400">
-                        📸 {vo.photo_urls.length} foto{vo.photo_urls.length !== 1 ? 's' : ''} subida{vo.photo_urls.length !== 1 ? 's' : ''}
-                      </p>
-                    )}
-
-                    {/* Completed: show video URL */}
-                    {vo?.status === 'completed' && vo?.video_url && (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={vo.video_url}
-                          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300"
-                        />
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(vo.video_url); alert('Video URL copiada!'); }}
-                          className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition"
-                        >
-                          Copy
-                        </button>
-                        <a
-                          href={vo.video_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-2 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition"
-                        >
-                          👁️
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Photo upload URL — always show so staff can resend it */}
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">📸 Link para subir fotos (enviar al cliente):</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={photoUploadUrl}
-                          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300"
-                        />
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(photoUploadUrl); alert('Link copiado!'); }}
-                          className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap"
-                        >
-                          📋 Copiar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
               {/* Customer Links */}
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                 <p className="text-xs text-blue-400 mb-2">🔗 Customer links</p>
