@@ -1567,6 +1567,9 @@ export default function AdminDashboard() {
   // still has a clean record of which channel actually reached the buyer.
   const [emailSendBusy, setEmailSendBusy] = useState(null);
   const [sendingLinkEmail, setSendingLinkEmail] = useState(null); // songId being sent via recover-song
+  const [editingPhone, setEditingPhone] = useState(false);       // whether phone edit input is open
+  const [phoneEditValue, setPhoneEditValue] = useState('');      // current value in the input
+  const [phoneSaving, setPhoneSaving] = useState(false);         // save in-flight
   const toggleEmailSent = useCallback(async (songId, currentlyMarked) => {
     if (!accessToken || !userRole) return;
     const previous = songs;
@@ -1648,6 +1651,36 @@ export default function AdminDashboard() {
       alert(`❌ Error: ${err.message}`);
     } finally {
       setSendingLinkEmail(null);
+    }
+  };
+
+  // Save a corrected WhatsApp phone number for a song
+  const savePhone = async (songId, newPhone) => {
+    const digits = newPhone.replace(/\D/g, '');
+    if (!digits) { alert('Enter a valid phone number.'); return; }
+    setPhoneSaving(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/songs?id=eq.${songId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify({ whatsapp_phone: digits }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSongs(prev => prev.map(s => s.id === songId ? { ...s, whatsapp_phone: digits } : s));
+      setSelectedSong(prev => prev ? { ...prev, whatsapp_phone: digits } : prev);
+      setEditingPhone(false);
+    } catch (err) {
+      alert(`Error saving phone: ${err.message}`);
+    } finally {
+      setPhoneSaving(false);
     }
   };
 
@@ -2637,7 +2670,7 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3 w-[220px]">
                             <div className="flex items-center justify-end gap-1 flex-nowrap">
                               <button
-                                onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                                onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                                 className="p-2 rounded-lg hover:bg-white/10 transition flex-shrink-0"
                                 title="View details"
                               >
@@ -2823,7 +2856,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <button
-                          onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                          onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                           className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 text-xs hover:bg-white/10"
                         >
                           👁️ Details
@@ -3148,7 +3181,7 @@ export default function AdminDashboard() {
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                                  onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                                   className="p-1.5 rounded-lg hover:bg-white/10 flex-shrink-0"
                                   title="View details"
                                 >
@@ -3244,7 +3277,7 @@ export default function AdminDashboard() {
                             </button>
                           )}
                           <button
-                            onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                            onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                             className="px-3 py-1.5 rounded-lg bg-white/5 text-gray-400 text-xs hover:bg-white/10 ml-auto"
                           >
                             👁️ Details
@@ -3816,7 +3849,7 @@ export default function AdminDashboard() {
                               </div>
                             )}
                             <button
-                              onClick={() => { setSelectedSong(song); if (!song._fullLoaded) fetchSongDetails(song.id); }}
+                              onClick={() => { setSelectedSong(song); setEditingPhone(false); if (!song._fullLoaded) fetchSongDetails(song.id); }}
                               className="text-xs text-gray-500 hover:text-white underline ml-auto"
                             >
                               View details
@@ -5040,11 +5073,50 @@ export default function AdminDashboard() {
                       )
                     )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-lg">
-                      {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
-                    </p>
-                    <div className="flex gap-2 flex-wrap justify-end">
+                  {/* Phone display / inline edit */}
+                  {editingPhone ? (
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      <input
+                        type="tel"
+                        value={phoneEditValue}
+                        onChange={(e) => setPhoneEditValue(e.target.value)}
+                        placeholder="10-digit number"
+                        className="flex-1 min-w-[140px] px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-sm text-white focus:outline-none focus:border-green-400"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') savePhone(selectedSong.id, phoneEditValue);
+                          if (e.key === 'Escape') setEditingPhone(false);
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => savePhone(selectedSong.id, phoneEditValue)}
+                        disabled={phoneSaving}
+                        className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-400 transition disabled:opacity-50"
+                      >
+                        {phoneSaving ? '⏳' : '✓ Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingPhone(false)}
+                        className="px-3 py-1.5 bg-white/10 text-white rounded-lg text-sm hover:bg-white/20 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 mb-3">
+                      <p className="font-semibold text-lg">
+                        {selectedSong.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}
+                      </p>
+                      <button
+                        onClick={() => { setPhoneEditValue(selectedSong.whatsapp_phone); setEditingPhone(true); }}
+                        className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-gray-400 hover:text-white hover:bg-white/20 transition"
+                        title="Correct phone number"
+                      >
+                        ✏️ Edit
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-2 flex-wrap justify-end">
                       <a
                         href={`https://wa.me/${selectedSong.whatsapp_phone.startsWith('1') ? selectedSong.whatsapp_phone : '1' + selectedSong.whatsapp_phone}`}
                         target="_blank"
