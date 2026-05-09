@@ -393,7 +393,12 @@ export default function SongPage({ songId: propSongId }) {
   };
 
   const shareFacebook = () => {
-    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'width=600,height=400');
+    // Facebook scrapes the URL for OG tags. Point at /share/<ids> so our
+    // serverless function returns personalized OG metadata (recipient name,
+    // genre, occasion) instead of the SPA's generic site card.
+    const ids = allSongs.map(s => s.id).join(',');
+    const fbScrapeUrl = `https://www.regalosquecantan.com/share/${ids}`;
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(fbScrapeUrl)}`, '_blank', 'width=600,height=400');
   };
 
   const nativeShare = (name) => {
