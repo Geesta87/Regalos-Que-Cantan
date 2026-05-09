@@ -2563,8 +2563,8 @@ export default function AdminDashboard() {
                                   </span>
                                 )}
                               </div>
-                              {/* 1-touch send button — only on paid orders WITHOUT a WhatsApp number */}
-                              {isPaid(song) && !song.whatsapp_phone && (
+                              {/* 1-touch send button — shown on every paid order so admin can email the link regardless of whether a WhatsApp number was captured */}
+                              {isPaid(song) && (
                                 <button
                                   className="mt-1 text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition disabled:opacity-50"
                                   onClick={(e) => { e.stopPropagation(); sendLinkByEmail(song); }}
@@ -2853,8 +2853,8 @@ export default function AdminDashboard() {
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-white truncate">{song.recipient_name || '—'}</p>
                           <p className="text-xs text-gray-500 truncate">from {song.sender_name || '—'} · {song.email}</p>
-                          {/* 1-touch send button — only when paid and no WhatsApp number */}
-                          {isPaid(song) && !song.whatsapp_phone && (
+                          {/* 1-touch send button — shown on every paid order, with or without a WhatsApp number */}
+                          {isPaid(song) && (
                             <button
                               className="mt-1 text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition disabled:opacity-50"
                               onClick={(e) => { e.stopPropagation(); sendLinkByEmail(song); }}
@@ -5087,8 +5087,8 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <p className="font-semibold break-all">{selectedSong.email}</p>
-                  {/* 1-touch send button — only on paid orders without WhatsApp */}
-                  {isPaid(selectedSong) && !selectedSong.whatsapp_phone && (
+                  {/* 1-touch send button — shown on every paid order, with or without a WhatsApp number */}
+                  {isPaid(selectedSong) && (
                     <button
                       onClick={() => sendLinkByEmail(selectedSong)}
                       disabled={sendingLinkEmail === selectedSong.id}
