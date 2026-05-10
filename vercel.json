@@ -8,6 +8,7 @@
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/:songId"
     },
     { "source": "/share/:ids", "destination": "/api/share?ids=:ids" },
+    { "source": "/video", "destination": "/api/video" },
     { "source": "/(.*)", "destination": "/200.html" }
   ]
 }
