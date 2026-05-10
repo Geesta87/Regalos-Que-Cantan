@@ -948,17 +948,20 @@ export default function SuccessPage() {
     // Limit to 15 photos total
     const totalPhotos = videoPhotos.length + files.length;
     if (totalPhotos > 15) {
-      setVideoError(`Máximo 15 fotos. Ya tienes ${videoPhotos.length}, seleccionaste ${files.length}.`);
+      setVideoError(`Máximo 15 fotos. Ya tienes ${videoPhotos.length}, seleccionadas ${files.length}.`);
       return;
     }
 
-    // Validate each file (max 5MB, images only)
+    // Validate each file (max 20MB, images only)
+    const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i;
     for (const file of files) {
       if (file.size > 20 * 1024 * 1024) {
         setVideoError(`"${file.name}" es mayor a 20MB.`);
         return;
       }
-      if (!file.type.startsWith('image/')) {
+      const mimeOk = file.type.startsWith('image/');
+      const extOk = IMAGE_EXTENSIONS.test(file.name);
+      if (!mimeOk && !extOk) {
         setVideoError(`"${file.name}" no es una imagen válida.`);
         return;
       }
