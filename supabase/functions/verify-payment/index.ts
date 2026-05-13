@@ -10,6 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildPurchaseEmail, buildPurchaseEmailPlaintext, type PurchaseEmailEntry } from '../_shared/purchase-email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -82,9 +83,25 @@ async function sendEmail(
 }
 
 // Bundle-aware email template for purchase confirmation.
-// Pass the full list of paid song IDs so bundle buyers get ONE link
-// covering all of them — the listen page resolves comma-joined ids.
-function getPurchaseEmailHtml(song: any, songIds: string[] = [song.id]) {
+// Build the purchase confirmation email via the shared template.
+// Returns { html, subject, preheader } ready for SendGrid.
+function buildPurchaseConfirmationEmail(song: any, songIds: string[] = [song.id]) {
+  const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
+  const entry: PurchaseEmailEntry = {
+    ids: songIds,
+    recipientName: song.recipient_name || 'tu ser querido',
+    senderName: song.sender_name || null,
+    songTitle: song.song_title || null,
+    genre: song.genre || null,
+    occasion: song.occasion || null,
+    hasVideoAddon: !!song.has_video_addon,
+  };
+  return buildPurchaseEmail({ firstName, entries: [entry] });
+}
+
+// Legacy purchase-confirmation template — no longer called. Kept inert below
+// only to minimise the diff; replaced by buildPurchaseConfirmationEmail above.
+function _legacy_getPurchaseEmailHtml_unused(song: any, songIds: string[] = [song.id]) {
   const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
   const recipientName = song.recipient_name || 'tu ser querido';
   const songTitle = song.song_title || `Canción para ${song.recipient_name || 'ti'}`;
@@ -272,19 +289,16 @@ async function sendPurchaseEmailIfNotSent(
     return;
   }
 
-  const isCombo = allSongIds.length > 1;
-  const subject = isCombo
-    ? `🎵 Tus ${allSongIds.length} canciones para ${song.recipient_name} están listas!`
-    : `🎵 Tu canción para ${song.recipient_name} está lista!`;
-
   let emailOk = false;
   let emailErr: string | null = null;
   try {
+    const built = buildPurchaseConfirmationEmail(song, allSongIds);
     await sendEmail(
       email,
-      subject,
-      getPurchaseEmailHtml(song, allSongIds),
-      'purchase_confirmation'
+      built.subject,
+      built.html,
+      'purchase_confirmation',
+      built.preheader,
     );
     emailOk = true;
     console.log('📧 Purchase email sent to:', email, 'for song(s):', allSongIds.join(','), '(source:', source + ')');

@@ -5,6 +5,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildPurchaseEmail, buildPurchaseEmailPlaintext, type PurchaseEmailEntry } from '../_shared/purchase-email.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -349,10 +350,30 @@ function getAbandonedCheckoutEmailHtml(song: any, listenUrl: string) {
 </html>`;
 }
 
-// Email template for purchase confirmation (dark gradient design).
-// Pass the full list of paid song IDs so 2-song bundle buyers get ONE link
-// covering all of them — the listen page resolves comma-joined ids.
-function getPurchaseEmailHtml(song: any, songIds: string[] = [song.id]) {
+// Build the purchase confirmation email via the shared template.
+// Returns { html, subject, preheader, plaintext } ready for SendGrid.
+// Bundle handling: pass every song id in the order — the template renders
+// one card per song and a single download button that covers them all.
+function buildPurchaseConfirmationEmail(song: any, songIds: string[] = [song.id]) {
+  const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
+  const entry: PurchaseEmailEntry = {
+    ids: songIds,
+    recipientName: song.recipient_name || 'tu ser querido',
+    senderName: song.sender_name || null,
+    songTitle: song.song_title || null,
+    genre: song.genre || null,
+    occasion: song.occasion || null,
+    hasVideoAddon: !!song.has_video_addon,
+  };
+  const parts = buildPurchaseEmail({ firstName, entries: [entry] });
+  const plaintext = buildPurchaseEmailPlaintext({ firstName, entries: [entry] });
+  return { ...parts, plaintext };
+}
+
+// Legacy purchase-confirmation template — kept inert below the new helper
+// only to minimise the diff. It is no longer called from anywhere; the new
+// builder above (buildPurchaseConfirmationEmail) is what callers use.
+function _legacy_getPurchaseEmailHtml_unused(song: any, songIds: string[] = [song.id]) {
   const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
   const recipientName = song.recipient_name || 'tu ser querido';
   const songTitle = song.song_title || `Canci\u00f3n para ${song.recipient_name || 'ti'}`;
@@ -548,18 +569,13 @@ serve(async (req) => {
           let emailOk = false;
           let emailErr: string | null = null;
           try {
-            const subject = songIds.length > 1
-              ? `🎵 Tus ${songIds.length} canciones para ${existingPaid.recipient_name} están listas!`
-              : `🎵 Tu canción para ${existingPaid.recipient_name} está lista!`;
-            const preheader = songIds.length > 1
-              ? `Tus ${songIds.length} canciones para ${existingPaid.recipient_name} en un solo enlace. El enlace nunca expira — guarda este correo.`
-              : `Escucha y descarga tu canción para ${existingPaid.recipient_name}. El enlace nunca expira — guarda este correo.`;
+            const built = buildPurchaseConfirmationEmail(existingPaid, songIds);
             await sendEmail(
               recoveryEmail,
-              subject,
-              getPurchaseEmailHtml(existingPaid, songIds),
+              built.subject,
+              built.html,
               'purchase_confirmation',
-              preheader,
+              built.preheader,
             );
             emailOk = true;
             console.log('📧 Purchase email sent (recovery) to:', recoveryEmail, 'song:', existingPaid.id);
@@ -718,18 +734,13 @@ serve(async (req) => {
           let emailOk = false;
           let emailErr: string | null = null;
           try {
-            const subject = songIds.length > 1
-              ? `🎵 Tus ${songIds.length} canciones para ${firstSong.recipient_name} están listas!`
-              : `🎵 Tu canción para ${firstSong.recipient_name} está lista!`;
-            const preheader = songIds.length > 1
-              ? `Tus ${songIds.length} canciones para ${firstSong.recipient_name} en un solo enlace. El enlace nunca expira — guarda este correo.`
-              : `Escucha y descarga tu canción para ${firstSong.recipient_name}. El enlace nunca expira — guarda este correo.`;
+            const built = buildPurchaseConfirmationEmail(firstSong, songIds);
             await sendEmail(
               email,
-              subject,
-              getPurchaseEmailHtml(firstSong, songIds),
+              built.subject,
+              built.html,
               'purchase_confirmation',
-              preheader,
+              built.preheader,
             );
             emailOk = true;
             console.log('📧 Purchase email sent to:', email, 'for songs:', songIds);

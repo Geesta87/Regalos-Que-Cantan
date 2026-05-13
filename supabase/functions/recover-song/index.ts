@@ -26,6 +26,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildPurchaseEmail, buildPurchaseEmailPlaintext, type PurchaseEmailEntry } from '../_shared/purchase-email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -270,9 +271,12 @@ serve(async (req) => {
   ]);
 
   // Look up every song with a previewable audio_url for this email.
+  // sender_name, song_title, genre, occasion are pulled so the email template
+  // (shared with stripe-webhook / verify-payment) can render real song
+  // metadata instead of fallback placeholders.
   const { data: songs } = await supabase
     .from('songs')
-    .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, stripe_session_id, has_video_addon')
+    .select('id, recipient_name, sender_name, song_title, genre, occasion, paid, paid_at, created_at, audio_url, stripe_payment_id, stripe_session_id, has_video_addon')
     .ilike('email', email)
     .not('audio_url', 'is', null)
     .order('created_at', { ascending: false })
@@ -309,19 +313,53 @@ serve(async (req) => {
   // Each entry represents one card in the email / one row on the page.
   // Video orders route to /success?song_ids= (full video player + download).
   // Audio-only orders route to /song/ (SongPage).
-  type PaidEntry = { ids: string; recipient_names: string; listen_url: string; paid_at: string | null; is_bundle: boolean; has_video: boolean; stripe_payment_id: string | null; group_key: string | null };
+  // sender_name/song_title/genre/occasion are stored per-entry so the shared
+  // purchase-confirmation template can render real metadata on resends.
+  type PaidEntry = {
+    ids: string;
+    id_list: string[];
+    recipient_names: string;
+    sender_name: string | null;
+    song_title: string | null;
+    genre: string | null;
+    occasion: string | null;
+    listen_url: string;
+    paid_at: string | null;
+    is_bundle: boolean;
+    has_video: boolean;
+    stripe_payment_id: string | null;
+    group_key: string | null;
+  };
   const paidEntries: PaidEntry[] = [];
   for (const [groupKey, grp] of bundleMap) {
-    const ids = grp.map((s) => s.id).join(',');
+    const idList = grp.map((s) => s.id);
+    const ids = idList.join(',');
     const names = grp.map((s) => (s.recipient_name || 'tu ser querido').trim()).join(' y ');
     const hasVideo = grp.some((s) => s.has_video_addon === true);
     const url = hasVideo ? `${SITE_URL}/success?song_ids=${ids}` : `${SITE_URL}/song/${ids}`;
-    paidEntries.push({ ids, recipient_names: names, listen_url: url, paid_at: grp[0].paid_at || null, is_bundle: grp.length > 1, has_video: hasVideo, stripe_payment_id: grp[0].stripe_payment_id || null, group_key: groupKey });
+    const primary = grp[0];
+    paidEntries.push({
+      ids, id_list: idList, recipient_names: names,
+      sender_name: primary.sender_name ?? null,
+      song_title: primary.song_title ?? null,
+      genre: primary.genre ?? null,
+      occasion: primary.occasion ?? null,
+      listen_url: url, paid_at: primary.paid_at || null, is_bundle: grp.length > 1, has_video: hasVideo,
+      stripe_payment_id: primary.stripe_payment_id || null, group_key: groupKey,
+    });
   }
   for (const s of soloPaidRows) {
     const hasVideo = s.has_video_addon === true;
     const url = hasVideo ? `${SITE_URL}/success?song_ids=${s.id}` : `${SITE_URL}/song/${s.id}`;
-    paidEntries.push({ ids: s.id, recipient_names: (s.recipient_name || 'tu ser querido').trim(), listen_url: url, paid_at: s.paid_at || null, is_bundle: false, has_video: hasVideo, stripe_payment_id: s.stripe_payment_id || null, group_key: null });
+    paidEntries.push({
+      ids: s.id, id_list: [s.id], recipient_names: (s.recipient_name || 'tu ser querido').trim(),
+      sender_name: s.sender_name ?? null,
+      song_title: s.song_title ?? null,
+      genre: s.genre ?? null,
+      occasion: s.occasion ?? null,
+      listen_url: url, paid_at: s.paid_at || null, is_bundle: false, has_video: hasVideo,
+      stripe_payment_id: s.stripe_payment_id || null, group_key: null,
+    });
   }
 
   // Unpaid songs stay individual (each needs its own preview+buy flow).
@@ -377,12 +415,25 @@ serve(async (req) => {
       console.log('[recover-song] group_key filter matched no entries', { email, filterGroupKey });
       return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
     }
-    const emailEntries: RecoveredSong[] = entriesToSend.map((e) => ({ recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video }));
-    subject = entriesToSend.length === 1 && !entriesToSend[0].is_bundle
-      ? '🎵 Aquí está tu canción de RegalosQueCantan'
-      : '🎵 Aquí están tus canciones de RegalosQueCantan';
-    html = buildPaidHtml(emailEntries);
-    plaintext = buildPaidPlaintext(emailEntries);
+    // Render via the SHARED purchase-confirmation template — same look as the
+    // original receipt the customer got from stripe-webhook. This way admin
+    // resends and /mi-cancion self-recovery don't look like a marketing
+    // resend; they look like "the receipt, again", which customers trust.
+    const purchaseEntries: PurchaseEmailEntry[] = entriesToSend.map((e) => ({
+      ids: e.id_list,
+      recipientName: e.recipient_names,
+      senderName: e.sender_name,
+      songTitle: e.song_title,
+      genre: e.genre,
+      occasion: e.occasion,
+      hasVideoAddon: e.has_video,
+    }));
+    const firstSenderName = entriesToSend.find((e) => e.sender_name)?.sender_name || '';
+    const firstName = (firstSenderName || '').split(' ')[0] || 'Amigo';
+    const built = buildPurchaseEmail({ firstName, entries: purchaseEntries });
+    subject = built.subject;
+    html = built.html;
+    plaintext = buildPurchaseEmailPlaintext({ firstName, entries: purchaseEntries });
     category = 'song_recovery';
     funnelStep = 'song_recovery_sent';
     songCount = entriesToSend.length;
