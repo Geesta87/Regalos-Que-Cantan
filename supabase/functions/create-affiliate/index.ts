@@ -10,6 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as hexEncode } from 'https://deno.land/std@0.168.0/encoding/hex.ts';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -196,6 +197,7 @@ serve(async (req) => {
           rawHtml,
           `${firstName}, bienvenido al programa de afiliados. Tus credenciales y enlace de partner están adentro.`,
         );
+        const unsubHeaders = await buildUnsubscribeHeaders(email.toLowerCase().trim());
         const emailResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
           method: 'POST',
           headers: {
@@ -218,10 +220,7 @@ serve(async (req) => {
               open_tracking: { enable: true },
               subscription_tracking: { enable: false }
             },
-            headers: {
-              'List-Unsubscribe': '<mailto:hola@regalosquecantan.com?subject=unsubscribe>',
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            }
+            headers: unsubHeaders
           })
         });
 

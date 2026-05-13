@@ -75,6 +75,14 @@ verify_jwt = false
 # (no user JWT) — must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.unsubscribe]
+# Email unsubscribe endpoint. Called by:
+#   - Gmail/Yahoo/Apple Mail one-click POST (RFC 8058) — no JWT
+#   - Recipient clicking the link in their inbox (GET) — no JWT
+# The handler validates an HMAC token from the URL instead, signed with
+# UNSUBSCRIBE_SECRET. Admin path requires service_role JWT internally.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # Internal generators invoked server-to-server from other edge functions
 # ---------------------------------------------------------------------------

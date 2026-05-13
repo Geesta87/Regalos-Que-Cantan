@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 import { buildEmailParts } from '../_shared/email.ts';
 import { buildPurchaseEmail, buildPurchaseEmailPlaintext, type PurchaseEmailEntry } from '../_shared/purchase-email.ts';
+import { buildUnsubscribeHeaders, isMarketingSuppressed } from '../_shared/unsubscribe.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -141,6 +142,7 @@ async function sendEmail(
   }
 
   const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
+  const unsubHeaders = await buildUnsubscribeHeaders(to);
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -164,10 +166,7 @@ async function sendEmail(
         open_tracking: { enable: true },
         subscription_tracking: { enable: false }
       },
-      headers: {
-        'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-      }
+      headers: unsubHeaders
     })
   });
 
@@ -824,7 +823,19 @@ serve(async (req) => {
                 .contains('metadata', { stripe_session_id: session.id })
                 .maybeSingle();
 
-              if (!existingEvent) {
+              // checkout_recovery is a marketing email (10% OFF coupon to lure
+              // the abandoner back). MUST honor the suppression list — unlike
+              // purchase_confirmation above, which is transactional and always
+              // sends. Suppressed: log a funnel event and fall through to the
+              // rest of the webhook handler (other event-type branches still run).
+              if (!existingEvent && await isMarketingSuppressed(supabase, email)) {
+                console.log('[suppressed] skipping checkout_recovery to', email);
+                await supabase.from('funnel_events').insert([{
+                  session_id: session.id,
+                  step: 'checkout_recovery_skipped_suppressed',
+                  metadata: { stripe_session_id: session.id, song_ids: songIds, email },
+                }]);
+              } else if (!existingEvent) {
                 const siteUrl = 'https://regalosquecantan.com';
                 const listenUrl = songIds.length > 1
                   ? `${siteUrl}/listen?song_ids=${songIds.join(',')}&coupon=VUELVE10`

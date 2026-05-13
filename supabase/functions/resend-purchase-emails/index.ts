@@ -20,6 +20,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -69,6 +70,7 @@ function buildHtml(firstName: string, recipientName: string, listenUrl: string):
 
 async function sendEmail(to: string, subject: string, html: string, preheader: string = ''): Promise<void> {
   const { html: finalHtml, text: finalText } = buildEmailParts(html, preheader);
+  const unsubHeaders = await buildUnsubscribeHeaders(to);
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -91,10 +93,7 @@ async function sendEmail(to: string, subject: string, html: string, preheader: s
         open_tracking: { enable: true },
         subscription_tracking: { enable: false },
       },
-      headers: {
-        'List-Unsubscribe': '<mailto:hola@regalosquecantan.com?subject=unsubscribe>',
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
+      headers: unsubHeaders,
     }),
   });
   if (!response.ok) {

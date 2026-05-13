@@ -11,6 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
 import { buildEmailParts } from '../_shared/email.ts';
 import { buildPurchaseEmail, buildPurchaseEmailPlaintext, type PurchaseEmailEntry } from '../_shared/purchase-email.ts';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,6 +43,7 @@ async function sendEmail(
   }
 
   const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
+  const unsubHeaders = await buildUnsubscribeHeaders(to);
 
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -65,10 +67,7 @@ async function sendEmail(
         open_tracking: { enable: true },
         subscription_tracking: { enable: false }
       },
-      headers: {
-        'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-      }
+      headers: unsubHeaders
     })
   });
 

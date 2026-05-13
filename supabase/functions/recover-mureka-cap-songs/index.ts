@@ -13,6 +13,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -125,6 +126,7 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
     rawHtml,
     `Disculpa la espera — tu canción para ${recipientName} ya está lista. Escúchala aquí.`,
   );
+  const unsubHeaders = await buildUnsubscribeHeaders(to);
   const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -147,10 +149,7 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
         open_tracking: { enable: true },
         subscription_tracking: { enable: false },
       },
-      headers: {
-        'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
+      headers: unsubHeaders,
     }),
   });
   if (!resp.ok) {

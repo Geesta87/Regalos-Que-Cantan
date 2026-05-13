@@ -9,6 +9,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +36,7 @@ async function sendEmail(
   if (!SENDGRID_API_KEY) return null;
   try {
     const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
+    const unsubHeaders = await buildUnsubscribeHeaders(to);
     return await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
@@ -57,10 +59,7 @@ async function sendEmail(
           open_tracking: { enable: true },
           subscription_tracking: { enable: false },
         },
-        headers: {
-          'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        },
+        headers: unsubHeaders,
       }),
     });
   } catch (e) {

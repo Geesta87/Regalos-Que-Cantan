@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders, isMarketingSuppressed } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +41,17 @@ serve(async (req) => {
     }
 
     async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'rqc_drip', preheader: string = ''): Promise<boolean> {
+      // Marketing/drip emails MUST gate on the suppression list. send-scheduled-emails
+      // sends ONLY marketing/drip categories (abandoned cart, 30-min reminder,
+      // checkout recovery, 3-day follow-up) — so we check every recipient here
+      // without per-call discrimination. Transactional senders (purchase
+      // confirmation, preview-ready) live in OTHER functions and do not gate.
+      if (await isMarketingSuppressed(supabase, to)) {
+        console.log('[suppressed] skipping marketing email to', to, '— category:', category);
+        return false;
+      }
       const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
+      const unsubHeaders = await buildUnsubscribeHeaders(to);
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sendgridApiKey}`, 'Content-Type': 'application/json' },
@@ -59,10 +70,7 @@ serve(async (req) => {
             open_tracking: { enable: true },
             subscription_tracking: { enable: false },
           },
-          headers: {
-            'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-          },
+          headers: unsubHeaders,
         }),
       })
       return response.status === 202
