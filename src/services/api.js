@@ -128,7 +128,23 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       fbc,
       fbp,
       clientUserAgent: navigator.userAgent,
-      affiliateCode: sessionStorage.getItem('rqc_affiliate') || null,
+      // 30-day localStorage attribution (see tracking.js). Falls back to the
+      // legacy sessionStorage location during the rollout window so anyone
+      // mid-funnel during deploy keeps their attribution intact.
+      affiliateCode: (() => {
+        try {
+          const raw = localStorage.getItem('rqc_affiliate');
+          if (raw && raw.startsWith('{')) {
+            const obj = JSON.parse(raw);
+            if (obj && obj.code && obj.expiresAt && Date.now() < obj.expiresAt) {
+              return String(obj.code).toLowerCase();
+            }
+          } else if (raw) {
+            return String(raw).toLowerCase();
+          }
+        } catch { /* ignore */ }
+        return sessionStorage.getItem('rqc_affiliate') || null;
+      })(),
       // UTM attribution passthrough
       ...(() => {
         try {

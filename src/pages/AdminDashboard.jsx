@@ -140,6 +140,11 @@ export default function AdminDashboard() {
   const [newAffiliate, setNewAffiliate] = useState({ name: '', email: '', code: '', couponCode: '', password: '' });
   const [creatingAffiliate, setCreatingAffiliate] = useState(false);
   const [affiliateMsg, setAffiliateMsg] = useState(null);
+  // Record-payout modal state
+  const [payoutModal, setPayoutModal] = useState(null); // { affiliate, suggestedAmount } | null
+  const [payoutForm, setPayoutForm] = useState({ amount: '', method: '', note: '' });
+  const [recordingPayout, setRecordingPayout] = useState(false);
+  const [payoutModalError, setPayoutModalError] = useState('');
   const [ordersPage, setOrdersPage] = useState(0);
   const [lookupPage, setLookupPage] = useState(0);
   const ORDERS_PER_PAGE = 50;
@@ -852,6 +857,63 @@ export default function AdminDashboard() {
     } catch (err) {
       setAffiliateMsg({ type: 'error', text: err.message });
     } finally { setCreatingAffiliate(false); }
+  };
+
+  // Open the record-payout modal for a specific affiliate. Pre-fills the
+  // amount with what the partner is currently owed and the method with
+  // whatever they registered on their dashboard.
+  const openPayoutModal = (affiliate) => {
+    const stats = affiliate._stats || {};
+    const owed = Math.max(0, (stats.commission || 0) - (stats.paidOut || 0));
+    setPayoutForm({
+      amount: owed > 0 ? owed.toFixed(2) : '',
+      method: affiliate.payout_method || '',
+      note: '',
+    });
+    setPayoutModalError('');
+    setPayoutModal({ affiliate, suggestedAmount: owed });
+  };
+
+  const recordPayout = async () => {
+    if (!payoutModal) return;
+    setPayoutModalError('');
+    const amount = parseFloat(payoutForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPayoutModalError('Enter a positive amount');
+      return;
+    }
+    setRecordingPayout(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-record-payout`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            affiliateCode: payoutModal.affiliate.code,
+            amount,
+            method: payoutForm.method || null,
+            note: payoutForm.note || null,
+          })
+        }
+      );
+      const data = await res.json();
+      if (!data.success) {
+        setPayoutModalError(data.error || 'Failed to record payout');
+        return;
+      }
+      setPayoutModal(null);
+      setPayoutForm({ amount: '', method: '', note: '' });
+      // Refresh so the new payout shows up immediately
+      fetchAffiliates();
+    } catch (err) {
+      setPayoutModalError(err.message || 'Network error');
+    } finally {
+      setRecordingPayout(false);
+    }
   };
 
   const fetchEmailLogs = async () => {
@@ -4576,8 +4638,10 @@ export default function AdminDashboard() {
                         <th className="text-right px-4 py-3">Commission</th>
                         <th className="text-right px-4 py-3">Paid</th>
                         <th className="text-right px-4 py-3">Owed</th>
+                        <th className="text-left px-4 py-3">Payout</th>
                         <th className="text-left px-4 py-3">Last sale</th>
                         <th className="text-left px-4 py-3">Status</th>
+                        {userRole === 'admin' && <th className="text-right px-4 py-3">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -4623,6 +4687,20 @@ export default function AdminDashboard() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-xs">
+                              {a.payout_method ? (
+                                <div>
+                                  <div className="text-gray-300 font-medium capitalize">{a.payout_method}</div>
+                                  <div className="text-gray-500 font-mono text-[10px] break-all" title={a.payout_handle || ''}>
+                                    {a.payout_handle && a.payout_handle.length > 22
+                                      ? a.payout_handle.slice(0, 20) + '…'
+                                      : a.payout_handle || ''}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-amber-500/80 text-xs">Not set</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-xs">
                               {s.lastSale ? (
                                 <div>
                                   <div className="text-gray-300">{s.lastSale.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</div>
@@ -4637,6 +4715,17 @@ export default function AdminDashboard() {
                                 {a.active ? 'Active' : 'Inactive'}
                               </span>
                             </td>
+                            {userRole === 'admin' && (
+                              <td className="px-4 py-3 text-right">
+                                <button
+                                  onClick={() => openPayoutModal(a)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${owed > 0 ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                                  title={owed > 0 ? `Record payout (owed: $${owed.toFixed(2)})` : 'Record payout'}
+                                >
+                                  💸 Record
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -4648,6 +4737,164 @@ export default function AdminDashboard() {
           </div>
         ) : null}
       </main>
+
+      {/* Record-payout modal — admin only. Inserts a row into
+          affiliate_payouts so the partner's dashboard reflects "Pagado"
+          and the Owed column drops accordingly. Triggered from the Record
+          button in the affiliates table. */}
+      {payoutModal && userRole === 'admin' && (() => {
+        const a = payoutModal.affiliate;
+        const stats = a._stats || {};
+        const owed = payoutModal.suggestedAmount || 0;
+        const payouts = a._payouts || [];
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => !recordingPayout && setPayoutModal(null)}
+          >
+            <div
+              className="bg-[#1a1f26] rounded-2xl max-w-lg w-full overflow-hidden border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-white/10">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  💸 Record payout to {a.name}
+                </h3>
+                <button
+                  onClick={() => !recordingPayout && setPayoutModal(null)}
+                  className="p-2 rounded-lg hover:bg-white/10 transition text-gray-400"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Owed summary */}
+                <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-gray-400">Total commission</p>
+                    <p className="text-emerald-400 font-mono font-semibold text-sm mt-1">
+                      ${(stats.commission || 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-gray-400">Already paid</p>
+                    <p className="text-gray-300 font-mono font-semibold text-sm mt-1">
+                      ${(stats.paidOut || 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className={`rounded-lg p-3 ${owed > 0 ? 'bg-amber-500/10' : 'bg-white/5'}`}>
+                    <p className="text-gray-400">Owed now</p>
+                    <p className={`font-mono font-semibold text-sm mt-1 ${owed > 0 ? 'text-amber-300' : 'text-gray-500'}`}>
+                      ${owed.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Affiliate's saved payout method */}
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 text-xs">
+                  <p className="text-gray-400 uppercase tracking-wide font-medium mb-1">Partner's payout info</p>
+                  {a.payout_method ? (
+                    <div>
+                      <span className="text-blue-300 font-semibold capitalize">{a.payout_method}</span>
+                      {' → '}
+                      <span className="text-white font-mono break-all">{a.payout_handle}</span>
+                      {a.payout_notes && <div className="text-gray-400 mt-1">{a.payout_notes}</div>}
+                    </div>
+                  ) : (
+                    <span className="text-amber-400">Not set — ask partner to add it in their dashboard before paying.</span>
+                  )}
+                </div>
+
+                {/* Inputs */}
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Amount (USD) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={payoutForm.amount}
+                    onChange={e => setPayoutForm(p => ({ ...p, amount: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm font-mono focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Method</label>
+                  <select
+                    value={payoutForm.method}
+                    onChange={e => setPayoutForm(p => ({ ...p, method: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:border-blue-500/50 focus:outline-none"
+                  >
+                    <option value="" className="bg-[#1a1f26]">— select —</option>
+                    <option value="zelle" className="bg-[#1a1f26]">Zelle</option>
+                    <option value="venmo" className="bg-[#1a1f26]">Venmo</option>
+                    <option value="paypal" className="bg-[#1a1f26]">PayPal</option>
+                    <option value="bank" className="bg-[#1a1f26]">Bank transfer</option>
+                    <option value="other" className="bg-[#1a1f26]">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-gray-400 text-xs font-medium mb-1 block">Note (optional)</label>
+                  <input
+                    type="text"
+                    value={payoutForm.note}
+                    onChange={e => setPayoutForm(p => ({ ...p, note: e.target.value }))}
+                    placeholder="e.g. Zelle confirmation #ABC123"
+                    maxLength={500}
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:border-blue-500/50 focus:outline-none"
+                  />
+                </div>
+
+                {payoutModalError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">
+                    ❌ {payoutModalError}
+                  </div>
+                )}
+
+                {/* Recent payouts for this affiliate (last 5) */}
+                {payouts.length > 0 && (
+                  <div className="border-t border-white/5 pt-4">
+                    <p className="text-gray-400 text-xs uppercase tracking-wide font-medium mb-2">
+                      Recent payouts ({payouts.length})
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {payouts.slice(0, 5).map(p => (
+                        <div key={p.id} className="flex items-center justify-between text-xs bg-white/3 rounded px-3 py-1.5">
+                          <span className="text-gray-400">
+                            {new Date(p.paid_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {p.method && <span className="ml-2 text-gray-500 capitalize">• {p.method}</span>}
+                          </span>
+                          <span className="text-emerald-400 font-mono">${p.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => !recordingPayout && setPayoutModal(null)}
+                    disabled={recordingPayout}
+                    className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-sm font-medium transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={recordPayout}
+                    disabled={recordingPayout}
+                    className="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-sm font-medium transition disabled:opacity-50"
+                  >
+                    {recordingPayout ? 'Recording…' : 'Record payout'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Backfill modal — admin only. Marks every paid+phone song with
           created_at <= cutoff as already sent so the Por Enviar queue isn't

@@ -49,34 +49,113 @@ const storeUtmParams = () => {
   }
 };
 
+// ─── Affiliate attribution storage ─────────────────────────────────────────
+// Affiliate codes persist across browser sessions for 30 days. Previously
+// stored in sessionStorage, which lost attribution the moment a buyer closed
+// the tab — partners were losing commission on every delayed conversion.
+// Now stored in localStorage as { code, expiresAt } so the attribution
+// survives tab closes, browser restarts, and email-link round trips.
+const AFFILIATE_TTL_DAYS = 30;
+const AFFILIATE_STORAGE_KEY = 'rqc_affiliate';
+const AFFILIATE_VISIT_FLAG_KEY = 'rqc_affiliate_visit_logged';
+
 /**
- * Capture affiliate ref code from URL (?ref=code) and persist it to sessionStorage.
- * Logs a single visit event to affiliate_events the first time we see the code in this session.
- * Safe to call on every page load — dedupes via sessionStorage flags.
+ * Read the stored affiliate code, honoring the 30-day TTL. Also migrates
+ * legacy sessionStorage values and pre-TTL plain-string localStorage values
+ * so the rollout doesn't drop attribution for anyone mid-funnel.
+ * Returns the lowercase code or null.
+ */
+export const getStoredAffiliateCode = () => {
+  try {
+    const raw = localStorage.getItem(AFFILIATE_STORAGE_KEY);
+    if (raw) {
+      // New format: JSON { code, expiresAt }
+      if (raw.startsWith('{')) {
+        try {
+          const obj = JSON.parse(raw);
+          if (obj && typeof obj.code === 'string' && typeof obj.expiresAt === 'number') {
+            if (Date.now() < obj.expiresAt) return obj.code.toLowerCase();
+            // Expired — drop it
+            localStorage.removeItem(AFFILIATE_STORAGE_KEY);
+            localStorage.removeItem(AFFILIATE_VISIT_FLAG_KEY);
+            return null;
+          }
+        } catch { /* fall through to legacy handling */ }
+      }
+      // Legacy: raw string (the code itself, no expiry). Re-wrap with TTL.
+      const legacy = raw.toLowerCase().trim();
+      if (/^[a-z0-9_-]+$/.test(legacy)) {
+        setStoredAffiliateCode(legacy);
+        return legacy;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // One-time migration from the old sessionStorage location so anyone mid-
+  // visit during the rollout keeps their attribution.
+  try {
+    const legacy = sessionStorage.getItem(AFFILIATE_STORAGE_KEY);
+    if (legacy) {
+      const code = legacy.toLowerCase().trim();
+      sessionStorage.removeItem(AFFILIATE_STORAGE_KEY);
+      if (/^[a-z0-9_-]+$/.test(code)) {
+        setStoredAffiliateCode(code);
+        return code;
+      }
+    }
+  } catch { /* ignore */ }
+
+  return null;
+};
+
+const setStoredAffiliateCode = (code) => {
+  try {
+    localStorage.setItem(AFFILIATE_STORAGE_KEY, JSON.stringify({
+      code: code.toLowerCase(),
+      expiresAt: Date.now() + AFFILIATE_TTL_DAYS * 24 * 60 * 60 * 1000,
+    }));
+  } catch { /* storage full / disabled */ }
+};
+
+const clearStoredAffiliateCode = () => {
+  try {
+    localStorage.removeItem(AFFILIATE_STORAGE_KEY);
+    localStorage.removeItem(AFFILIATE_VISIT_FLAG_KEY);
+    sessionStorage.removeItem(AFFILIATE_STORAGE_KEY);
+  } catch { /* ignore */ }
+};
+
+/**
+ * Capture affiliate ref code from URL (?ref=code) and persist it for 30 days.
+ * Logs a single visit event to affiliate_events the first time we see the
+ * code per browser per 30-day window. Safe to call on every page load.
  */
 export const captureAffiliateRef = async () => {
   try {
     const params = new URLSearchParams(window.location.search);
     const refFromUrl = (params.get('ref') || '').toLowerCase().trim();
 
-    // Update stored code if URL has a fresh one (last-touch attribution)
+    // Update stored code if URL has a fresh one (last-touch attribution).
+    // A new ?ref= always wins and resets the 30-day window.
     if (refFromUrl) {
-      const previous = sessionStorage.getItem('rqc_affiliate');
+      const previous = getStoredAffiliateCode();
       if (previous !== refFromUrl) {
-        sessionStorage.setItem('rqc_affiliate', refFromUrl);
-        // New affiliate this session — clear the visit-logged flag so we log it
-        sessionStorage.removeItem('rqc_affiliate_visit_logged');
+        setStoredAffiliateCode(refFromUrl);
+        // New affiliate this window — clear the visit-logged flag so we log it
+        try { localStorage.removeItem(AFFILIATE_VISIT_FLAG_KEY); } catch { /* ignore */ }
       }
     }
 
-    const affiliateCode = sessionStorage.getItem('rqc_affiliate');
+    const affiliateCode = getStoredAffiliateCode();
     if (!affiliateCode) return;
 
-    // Only log one visit per session per affiliate code
-    if (sessionStorage.getItem('rqc_affiliate_visit_logged') === affiliateCode) return;
+    // Log at most one visit per browser per affiliate code in the 30-day
+    // window. Flag stored in localStorage so a refresh / second tab doesn't
+    // double-count, but flag is cleared when the code changes (above).
+    if (localStorage.getItem(AFFILIATE_VISIT_FLAG_KEY) === affiliateCode) return;
 
     // Optimistically mark as logged so we don't double-fire on re-renders
-    sessionStorage.setItem('rqc_affiliate_visit_logged', affiliateCode);
+    try { localStorage.setItem(AFFILIATE_VISIT_FLAG_KEY, affiliateCode); } catch { /* ignore */ }
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/log-affiliate-visit`, {
       method: 'POST',
@@ -89,15 +168,14 @@ export const captureAffiliateRef = async () => {
 
     // If the code is invalid, drop it so we don't keep sending bad attribution
     if (res.status === 404) {
-      sessionStorage.removeItem('rqc_affiliate');
-      sessionStorage.removeItem('rqc_affiliate_visit_logged');
+      clearStoredAffiliateCode();
     } else if (!res.ok) {
       // Network/server error — allow retry next page load
-      sessionStorage.removeItem('rqc_affiliate_visit_logged');
+      try { localStorage.removeItem(AFFILIATE_VISIT_FLAG_KEY); } catch { /* ignore */ }
     }
   } catch (err) {
     // Never block the app on tracking failures, but allow retry next time
-    sessionStorage.removeItem('rqc_affiliate_visit_logged');
+    try { localStorage.removeItem(AFFILIATE_VISIT_FLAG_KEY); } catch { /* ignore */ }
     if (import.meta.env.DEV) console.warn('Affiliate visit tracking failed:', err);
   }
 };
@@ -252,5 +330,6 @@ export default {
   trackPurchase,
   FUNNEL_STEPS,
   getSessionId,
-  captureAffiliateRef
+  captureAffiliateRef,
+  getStoredAffiliateCode
 };

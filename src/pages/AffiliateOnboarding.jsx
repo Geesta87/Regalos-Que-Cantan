@@ -127,6 +127,13 @@ export default function AffiliateOnboarding() {
   const [step, setStep] = useState(0);
   const [copied, setCopied] = useState('');
 
+  // Payout-method step state
+  const [payoutMethod, setPayoutMethod] = useState('');
+  const [payoutHandle, setPayoutHandle] = useState('');
+  const [payoutNotes, setPayoutNotes] = useState('');
+  const [payoutSaving, setPayoutSaving] = useState(false);
+  const [payoutError, setPayoutError] = useState('');
+
   useEffect(() => {
     const auth = localStorage.getItem('rqc_affiliate_auth');
     if (!auth) { navigateTo('affiliateLogin'); return; }
@@ -142,6 +149,55 @@ export default function AffiliateOnboarding() {
     setCopied(label);
     setTimeout(() => setCopied(''), 2000);
   };
+
+  // Save payout info, then advance to the tools step. If the partner picks
+  // "skip", we just advance without saving — they'll see a banner in the
+  // dashboard prompting them to add it later.
+  const savePayout = async (advance) => {
+    setPayoutError('');
+    if (!payoutMethod) { setPayoutError('Elige un método de pago'); return; }
+    if (!payoutHandle.trim()) { setPayoutError('Falta el dato de contacto para recibir el pago'); return; }
+    setPayoutSaving(true);
+    try {
+      const auth = JSON.parse(localStorage.getItem('rqc_affiliate_auth'));
+      if (!auth?.token) {
+        navigateTo('affiliateLogin');
+        return;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-update-payout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${auth.token}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          payout_method: payoutMethod,
+          payout_handle: payoutHandle.trim(),
+          payout_notes: payoutNotes.trim(),
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setPayoutError(data.error || 'No pudimos guardar tu información');
+        return;
+      }
+      advance();
+    } catch {
+      setPayoutError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setPayoutSaving(false);
+    }
+  };
+
+  const payoutMethods = [
+    { id: 'zelle',  label: 'Zelle',  icon: '⚡', placeholder: 'email o teléfono registrado en Zelle' },
+    { id: 'venmo',  label: 'Venmo',  icon: '🅥', placeholder: '@tu-usuario-de-venmo' },
+    { id: 'paypal', label: 'PayPal', icon: '🅿️', placeholder: 'email de tu cuenta PayPal' },
+    { id: 'bank',   label: 'Banco',  icon: '🏦', placeholder: 'nombre del titular + número de cuenta' },
+    { id: 'other',  label: 'Otro',   icon: '✉️', placeholder: 'cómo prefieres recibir el pago' },
+  ];
+  const activePayoutMethod = payoutMethods.find(m => m.id === payoutMethod);
 
   const completeOnboarding = async () => {
     // Persist server-side first so future logins skip onboarding even from a new device
@@ -288,10 +344,117 @@ export default function AffiliateOnboarding() {
         </p>
         <p style={{ fontSize: 11, color: '#94a3b8', margin: '10px 0 0', textAlign: 'center' }}>Adaptalo a tu estilo — lo importante es que sea autentico</p>
       </div>
-      <button onClick={() => setStep(4)} className="aff-ob-btn">Ver mis herramientas</button>
+      <button onClick={() => setStep(4)} className="aff-ob-btn">Configurar mi pago</button>
     </div>,
 
-    // Step 4: Tools
+    // Step 4: Payout method — captures Zelle / Venmo / PayPal / bank info
+    <div key="payout" className="aff-ob-step">
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div style={{ fontSize: 64, marginBottom: 12, animation: 'aff-scale-in 0.5s ease-out' }}>💳</div>
+        <h2 style={{ fontSize: 28, fontWeight: 800, color: '#1e3a5f', margin: '0 0 4px' }}>¿Como te pagamos?</h2>
+        <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>Asi sabemos donde enviarte tu comision cada mes</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 18 }}>
+        {payoutMethods.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setPayoutMethod(m.id)}
+            style={{
+              padding: '14px 12px',
+              borderRadius: 14,
+              border: `2px solid ${payoutMethod === m.id ? '#2563eb' : '#e2e8f0'}`,
+              background: payoutMethod === m.id ? '#eff6ff' : '#ffffff',
+              color: payoutMethod === m.id ? '#1d4ed8' : '#475569',
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 18 }}>{m.icon}</span>
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {activePayoutMethod && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            Datos para {activePayoutMethod.label}
+          </label>
+          <input
+            type="text"
+            value={payoutHandle}
+            onChange={e => setPayoutHandle(e.target.value)}
+            placeholder={activePayoutMethod.placeholder}
+            maxLength={200}
+            style={{
+              width: '100%', padding: '14px 16px', borderRadius: 12,
+              border: '1.5px solid #e2e8f0', background: '#f8fafc',
+              fontSize: 15, color: '#1e3a5f', fontFamily: 'inherit',
+              outline: 'none', boxSizing: 'border-box'
+            }}
+          />
+          {payoutMethod === 'bank' && (
+            <textarea
+              value={payoutNotes}
+              onChange={e => setPayoutNotes(e.target.value)}
+              placeholder="Banco, ruta/SWIFT, y cualquier dato adicional"
+              maxLength={500}
+              rows={3}
+              style={{
+                width: '100%', padding: '12px 16px', borderRadius: 12,
+                border: '1.5px solid #e2e8f0', background: '#f8fafc',
+                fontSize: 14, color: '#1e3a5f', fontFamily: 'inherit',
+                outline: 'none', boxSizing: 'border-box', marginTop: 8,
+                resize: 'vertical'
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {payoutError && (
+        <p style={{ color: '#dc2626', fontSize: 13, margin: '0 0 12px', padding: '10px 14px', background: '#fef2f2', borderRadius: 10, border: '1px solid #fecaca' }}>
+          {payoutError}
+        </p>
+      )}
+
+      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '12px 16px', border: '1px solid #bbf7d0', marginBottom: 14 }}>
+        <p style={{ fontSize: 12, color: '#15803d', margin: 0, lineHeight: 1.6 }}>
+          🔒 Solo lo ve el equipo de RegalosQueCantan. Puedes cambiarlo cuando quieras desde tu dashboard.
+        </p>
+      </div>
+
+      <button
+        onClick={() => savePayout(() => setStep(5))}
+        disabled={payoutSaving}
+        className="aff-ob-btn"
+        style={{ opacity: payoutSaving ? 0.6 : 1 }}
+      >
+        {payoutSaving ? 'Guardando…' : 'Guardar y continuar'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setStep(5)}
+        style={{
+          width: '100%', marginTop: 10, padding: 14, borderRadius: 14,
+          border: '1px solid #e2e8f0', background: '#ffffff', color: '#64748b',
+          fontSize: 14, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer'
+        }}
+      >
+        Lo configuro despues
+      </button>
+    </div>,
+
+    // Step 5: Tools
     <div key="tools" className="aff-ob-step" style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 64, marginBottom: 12, animation: 'aff-float 3s ease-in-out infinite' }}>🚀</div>
       <h2 style={{ fontSize: 28, fontWeight: 800, color: '#1e3a5f', margin: '0 0 4px' }}>Tus herramientas</h2>
@@ -337,7 +500,7 @@ export default function AffiliateOnboarding() {
       <div className="aff-ob-bg">
         <div className="aff-ob-card">
           <div style={{ display: 'flex', gap: 6, marginBottom: 36 }}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {[0, 1, 2, 3, 4, 5].map(i => (
               <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? 'linear-gradient(90deg, #2563eb, #1d4ed8)' : '#e2e8f0', transition: 'background 0.4s' }} />
             ))}
           </div>

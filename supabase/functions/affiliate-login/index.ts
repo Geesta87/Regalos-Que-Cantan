@@ -13,15 +13,26 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET') || 'rqc-affiliate-secret-2026';
+const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET');
+
+// Password hashing pepper. Decoupled from JWT signing so the JWT secret can
+// rotate without invalidating passwords. Defaults to AFFILIATE_JWT_SECRET so
+// existing affiliates (whose passwords were hashed with that value) keep
+// verifying — to rotate the JWT secret later, first set AFFILIATE_PASSWORD
+// _PEPPER to the CURRENT value of AFFILIATE_JWT_SECRET, then rotate the JWT
+// secret to a fresh random value. A future migration to per-user salts
+// (bcrypt) can supersede this.
+const PASSWORD_PEPPER = Deno.env.get('AFFILIATE_PASSWORD_PEPPER') || AFFILIATE_JWT_SECRET;
 
 async function hashPassword(password: string): Promise<string> {
-  const data = new TextEncoder().encode(AFFILIATE_JWT_SECRET + password);
+  if (!PASSWORD_PEPPER) throw new Error('Password pepper not configured');
+  const data = new TextEncoder().encode(PASSWORD_PEPPER + password);
   const hash = await crypto.subtle.digest('SHA-256', data);
   return new TextDecoder().decode(hexEncode(new Uint8Array(hash)));
 }
 
 async function createToken(payload: Record<string, unknown>): Promise<string> {
+  if (!AFFILIATE_JWT_SECRET) throw new Error('AFFILIATE_JWT_SECRET not configured');
   const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const body = btoa(JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 }));
   const key = await crypto.subtle.importKey(
@@ -43,6 +54,17 @@ async function createToken(payload: Record<string, unknown>): Promise<string> {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  // Fail closed if the JWT signing secret is not configured. Without it the
+  // function would have to fall back to a public default and let anyone
+  // forge tokens for any affiliate's dashboard.
+  if (!AFFILIATE_JWT_SECRET) {
+    console.error('[affiliate-login] AFFILIATE_JWT_SECRET is not set');
+    return new Response(
+      JSON.stringify({ success: false, error: 'Server misconfigured' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 
   try {

@@ -12,9 +12,10 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET') || 'rqc-affiliate-secret-2026';
+const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET');
 
 async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
+  if (!AFFILIATE_JWT_SECRET) return null;
   try {
     const [header, body, sig] = token.split('.');
     const key = await crypto.subtle.importKey(
@@ -43,6 +44,14 @@ async function verifyToken(token: string): Promise<Record<string, unknown> | nul
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (!AFFILIATE_JWT_SECRET) {
+    console.error('[affiliate-complete-onboarding] AFFILIATE_JWT_SECRET is not set');
+    return new Response(
+      JSON.stringify({ success: false, error: 'Server misconfigured' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 
   try {

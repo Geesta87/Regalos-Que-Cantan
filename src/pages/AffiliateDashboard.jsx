@@ -556,6 +556,12 @@ export default function AffiliateDashboard() {
   const [copied, setCopied] = useState('');
   const [toast, setToast] = useState(null); // { commission, when }
   const lastSeenPurchasesRef = React.useRef(0);
+  // Payout info (Zelle / Venmo / PayPal / bank). Pulled from affiliate-data.
+  const [payoutInfo, setPayoutInfo] = useState({ method: null, handle: null, notes: null, updatedAt: null });
+  const [payoutModalOpen, setPayoutModalOpen] = useState(false);
+  const [payoutForm, setPayoutForm] = useState({ method: '', handle: '', notes: '' });
+  const [payoutSaving, setPayoutSaving] = useState(false);
+  const [payoutError, setPayoutError] = useState('');
 
   useEffect(() => {
     const auth = localStorage.getItem('rqc_affiliate_auth');
@@ -612,6 +618,12 @@ export default function AffiliateDashboard() {
         setUtmBreakdown(data.utmBreakdown || []);
         setWeeklyGoal(data.weeklyGoal || { target: 10, current: 0, lastWeek: 0 });
         setRefundWindowDays(data.refundWindowDays || 14);
+        setPayoutInfo({
+          method: data.affiliate?.payoutMethod || null,
+          handle: data.affiliate?.payoutHandle || null,
+          notes: data.affiliate?.payoutNotes || null,
+          updatedAt: data.affiliate?.payoutUpdatedAt || null,
+        });
       } else if (response.status === 401) {
         localStorage.removeItem('rqc_affiliate_auth');
         navigateTo('affiliateLogin');
@@ -624,6 +636,69 @@ export default function AffiliateDashboard() {
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(''), 2000);
+  };
+
+  const PAYOUT_METHOD_LABELS = {
+    zelle: 'Zelle',
+    venmo: 'Venmo',
+    paypal: 'PayPal',
+    bank: 'Banco',
+    other: 'Otro',
+  };
+  const PAYOUT_METHOD_PLACEHOLDERS = {
+    zelle: 'email o teléfono registrado en Zelle',
+    venmo: '@tu-usuario-de-venmo',
+    paypal: 'email de tu cuenta PayPal',
+    bank: 'nombre del titular + número de cuenta',
+    other: 'cómo prefieres recibir el pago',
+  };
+
+  const openPayoutModal = () => {
+    setPayoutForm({
+      method: payoutInfo.method || '',
+      handle: payoutInfo.handle || '',
+      notes: payoutInfo.notes || '',
+    });
+    setPayoutError('');
+    setPayoutModalOpen(true);
+  };
+
+  const savePayoutFromModal = async () => {
+    setPayoutError('');
+    if (!payoutForm.method) { setPayoutError('Elige un método de pago'); return; }
+    if (!payoutForm.handle.trim()) { setPayoutError('Falta el dato para recibir el pago'); return; }
+    setPayoutSaving(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-update-payout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          payout_method: payoutForm.method,
+          payout_handle: payoutForm.handle.trim(),
+          payout_notes: payoutForm.notes.trim(),
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setPayoutError(data.error || 'No pudimos guardar tu información');
+        return;
+      }
+      setPayoutInfo({
+        method: data.payout?.payout_method || payoutForm.method,
+        handle: data.payout?.payout_handle || payoutForm.handle.trim(),
+        notes: data.payout?.payout_notes || payoutForm.notes.trim(),
+        updatedAt: data.payout?.payout_updated_at || new Date().toISOString(),
+      });
+      setPayoutModalOpen(false);
+    } catch {
+      setPayoutError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setPayoutSaving(false);
+    }
   };
 
   if (!affiliate) return null;
@@ -800,6 +875,60 @@ export default function AffiliateDashboard() {
                   {copied === 'link' ? 'Copiado' : 'Copiar'}
                 </button>
               </div>
+            </div>
+
+            {/* Payout method card — prompts to add if missing, otherwise shows current method */}
+            <div className="aff-tool-card" style={{
+              borderColor: payoutInfo.method ? '#ececec' : '#fbbf24',
+              background: payoutInfo.method ? '#ffffff' : '#fffbeb',
+            }}>
+              <label style={{
+                fontSize: 11, fontWeight: 500, color: payoutInfo.method ? '#737373' : '#92400e',
+                textTransform: 'uppercase', letterSpacing: 0.5,
+                marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8
+              }}>
+                <Icon.Wallet size={14} />
+                Cómo te pagamos
+              </label>
+              {payoutInfo.method ? (
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '11px 14px', background: '#fafafa', borderRadius: 9,
+                    border: '1px solid #ececec', fontSize: 13, color: '#404040', lineHeight: 1.5
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0a0a0a', marginBottom: 2 }}>
+                      {PAYOUT_METHOD_LABELS[payoutInfo.method] || payoutInfo.method}
+                    </div>
+                    <div style={{ fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace", fontSize: 12, color: '#525252', wordBreak: 'break-all' }}>
+                      {payoutInfo.handle}
+                    </div>
+                  </div>
+                  <button
+                    onClick={openPayoutModal}
+                    className="aff-copy-btn"
+                  >
+                    Editar
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 13, color: '#92400e', margin: '0 0 12px', lineHeight: 1.5 }}>
+                    Agrega tu Zelle, Venmo o PayPal para que podamos enviarte tu comisión cuando llegue al mínimo de pago.
+                  </p>
+                  <button
+                    onClick={openPayoutModal}
+                    style={{
+                      padding: '10px 18px', borderRadius: 9,
+                      border: 'none',
+                      background: '#c9184a', color: '#ffffff',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'inherit'
+                    }}
+                  >
+                    Agregar método de pago
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Coupon card */}
@@ -1406,6 +1535,134 @@ export default function AffiliateDashboard() {
           </a>
         </main>
       </div>
+
+      {/* -------- PAYOUT EDIT MODAL -------- */}
+      {payoutModalOpen && (
+        <div
+          onClick={() => !payoutSaving && setPayoutModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(10, 10, 10, 0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, animation: 'aff-fade-up 0.2s ease-out'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#ffffff', borderRadius: 18, width: '100%', maxWidth: 480,
+              padding: 28, boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
+              fontFamily: 'Inter, -apple-system, sans-serif',
+              maxHeight: '90vh', overflowY: 'auto'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+              <div>
+                <h3 style={{ fontSize: 20, fontWeight: 700, color: '#0a0a0a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+                  ¿Cómo te pagamos?
+                </h3>
+                <p style={{ fontSize: 13, color: '#737373', margin: 0 }}>
+                  Solo lo ve el equipo de RegalosQueCantan.
+                </p>
+              </div>
+              <button
+                onClick={() => !payoutSaving && setPayoutModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', padding: 4, cursor: 'pointer', color: '#737373', lineHeight: 0 }}
+                aria-label="Cerrar"
+              ><Icon.X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
+              {['zelle','venmo','paypal','bank','other'].map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPayoutForm(p => ({ ...p, method: m }))}
+                  style={{
+                    padding: '10px 8px', borderRadius: 9,
+                    border: `1.5px solid ${payoutForm.method === m ? '#c9184a' : '#ececec'}`,
+                    background: payoutForm.method === m ? '#fdf2f4' : '#ffffff',
+                    color: payoutForm.method === m ? '#c9184a' : '#404040',
+                    fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {PAYOUT_METHOD_LABELS[m]}
+                </button>
+              ))}
+            </div>
+
+            {payoutForm.method && (
+              <>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#525252', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Datos para {PAYOUT_METHOD_LABELS[payoutForm.method]}
+                </label>
+                <input
+                  type="text"
+                  value={payoutForm.handle}
+                  onChange={e => setPayoutForm(p => ({ ...p, handle: e.target.value }))}
+                  placeholder={PAYOUT_METHOD_PLACEHOLDERS[payoutForm.method]}
+                  maxLength={200}
+                  style={{
+                    width: '100%', padding: '12px 14px', borderRadius: 9,
+                    border: '1.5px solid #ececec', background: '#fafafa',
+                    fontSize: 14, color: '#0a0a0a', fontFamily: 'inherit',
+                    outline: 'none', boxSizing: 'border-box'
+                  }}
+                />
+                {payoutForm.method === 'bank' && (
+                  <textarea
+                    value={payoutForm.notes}
+                    onChange={e => setPayoutForm(p => ({ ...p, notes: e.target.value }))}
+                    placeholder="Banco, ruta/SWIFT, y cualquier dato adicional"
+                    maxLength={500}
+                    rows={3}
+                    style={{
+                      width: '100%', padding: '10px 14px', borderRadius: 9,
+                      border: '1.5px solid #ececec', background: '#fafafa',
+                      fontSize: 13, color: '#0a0a0a', fontFamily: 'inherit',
+                      outline: 'none', boxSizing: 'border-box', marginTop: 8,
+                      resize: 'vertical'
+                    }}
+                  />
+                )}
+              </>
+            )}
+
+            {payoutError && (
+              <p style={{ color: '#dc2626', fontSize: 13, margin: '14px 0 0', padding: '10px 12px', background: '#fef2f2', borderRadius: 9, border: '1px solid #fecaca' }}>
+                {payoutError}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+              <button
+                onClick={() => !payoutSaving && setPayoutModalOpen(false)}
+                disabled={payoutSaving}
+                style={{
+                  flex: 1, padding: 12, borderRadius: 9,
+                  border: '1px solid #ececec', background: '#ffffff', color: '#404040',
+                  fontSize: 14, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={savePayoutFromModal}
+                disabled={payoutSaving}
+                style={{
+                  flex: 1, padding: 12, borderRadius: 9,
+                  border: 'none', background: '#c9184a', color: '#ffffff',
+                  fontSize: 14, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                  opacity: payoutSaving ? 0.6 : 1
+                }}
+              >
+                {payoutSaving ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
