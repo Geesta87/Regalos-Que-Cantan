@@ -19,11 +19,17 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const HASH_SALT = Deno.env.get('AFFILIATE_JWT_SECRET') || 'rqc-affiliate-secret-2026';
+// Password hashing pepper. Decoupled from JWT signing so the JWT secret can
+// rotate without invalidating passwords. Must match the value used by
+// affiliate-login.hashPassword(): defaults to AFFILIATE_JWT_SECRET so
+// existing partner passwords keep verifying.
+const PASSWORD_PEPPER = Deno.env.get('AFFILIATE_PASSWORD_PEPPER')
+  || Deno.env.get('AFFILIATE_JWT_SECRET');
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 
 async function hashPassword(password: string): Promise<string> {
-  const data = new TextEncoder().encode(HASH_SALT + password);
+  if (!PASSWORD_PEPPER) throw new Error('Password pepper not configured');
+  const data = new TextEncoder().encode(PASSWORD_PEPPER + password);
   const hash = await crypto.subtle.digest('SHA-256', data);
   return new TextDecoder().decode(hexEncode(new Uint8Array(hash)));
 }

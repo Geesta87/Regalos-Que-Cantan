@@ -164,7 +164,8 @@ export default function AffiliateTerms() {
           <h2>4. Atribucion de ventas</h2>
           <ul>
             <li>Una venta se atribuye a ti cuando el cliente <strong>llega a traves de tu link</strong> (?ref=tucodigo) o <strong>usa tu codigo de descuento</strong> al momento de pagar.</li>
-            <li>La atribucion es por <strong>sesion</strong> — es decir, el cliente debe completar la compra en la misma visita en que hizo clic en tu link.</li>
+            <li>La atribucion por link dura <strong>30 dias</strong> desde el primer clic — si el cliente regresa dentro de ese periodo desde el mismo navegador y completa la compra, la venta es tuya.</li>
+            <li>Tu <strong>codigo de descuento</strong> no tiene fecha de expiracion: cada vez que alguien lo use al pagar, la venta se atribuye a ti.</li>
             <li>Si un cliente llega por tu link pero paga usando el codigo de otro afiliado, <strong>el codigo de descuento tiene prioridad</strong>.</li>
           </ul>
 

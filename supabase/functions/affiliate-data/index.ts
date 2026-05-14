@@ -12,12 +12,13 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET') || 'rqc-affiliate-secret-2026';
+const AFFILIATE_JWT_SECRET = Deno.env.get('AFFILIATE_JWT_SECRET');
 
 // 14-day refund window — purchases inside it are "pending", outside it become "available"
 const REFUND_WINDOW_DAYS = 14;
 
 async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
+  if (!AFFILIATE_JWT_SECRET) return null;
   try {
     const [header, body, sig] = token.split('.');
     const key = await crypto.subtle.importKey(
@@ -46,6 +47,14 @@ async function verifyToken(token: string): Promise<Record<string, unknown> | nul
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (!AFFILIATE_JWT_SECRET) {
+    console.error('[affiliate-data] AFFILIATE_JWT_SECRET is not set');
+    return new Response(
+      JSON.stringify({ success: false, error: 'Server misconfigured' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 
   try {
@@ -98,7 +107,7 @@ serve(async (req) => {
     // ===== Affiliate metadata =====
     const { data: affiliate } = await supabase
       .from('affiliates')
-      .select('commission_pct, coupon_code, name')
+      .select('commission_pct, coupon_code, name, payout_method, payout_handle, payout_notes, payout_updated_at')
       .eq('code', affiliateCode)
       .single();
 
@@ -279,6 +288,10 @@ serve(async (req) => {
           name: affiliate?.name,
           couponCode: affiliate?.coupon_code,
           code: affiliateCode,
+          payoutMethod: affiliate?.payout_method || null,
+          payoutHandle: affiliate?.payout_handle || null,
+          payoutNotes: affiliate?.payout_notes || null,
+          payoutUpdatedAt: affiliate?.payout_updated_at || null,
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }

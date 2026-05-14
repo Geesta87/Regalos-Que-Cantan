@@ -65,7 +65,9 @@ serve(async (req) => {
     const [{ data: affData, error: affError }, { data: events }, { data: payouts }] = await Promise.all([
       admin.from('affiliates').select('*').order('created_at', { ascending: false }),
       admin.from('affiliate_events').select('affiliate_code, event_type, amount, created_at'),
-      admin.from('affiliate_payouts').select('affiliate_code, amount'),
+      admin.from('affiliate_payouts')
+        .select('id, affiliate_code, amount, method, note, paid_at, recorded_by')
+        .order('paid_at', { ascending: false }),
     ]);
 
     if (affError) return json({ success: false, error: affError.message }, 500);
@@ -112,15 +114,40 @@ serve(async (req) => {
       }
     }
 
+    // Group payouts by affiliate code so the dashboard can render a per-row
+    // payout history without a second round-trip.
+    const payoutsByCode: Record<string, Array<{
+      id: string;
+      amount: number;
+      method: string | null;
+      note: string | null;
+      paid_at: string;
+      recorded_by: string | null;
+    }>> = {};
+
     for (const p of (payouts || [])) {
-      const s = statsMap[p.affiliate_code as string];
+      const code = p.affiliate_code as string;
+      const s = statsMap[code];
       if (s) s.paidOut += parseFloat(String(p.amount)) || 0;
+      if (!payoutsByCode[code]) payoutsByCode[code] = [];
+      payoutsByCode[code].push({
+        id: p.id as string,
+        amount: parseFloat(String(p.amount)) || 0,
+        method: (p.method as string) || null,
+        note: (p.note as string) || null,
+        paid_at: p.paid_at as string,
+        recorded_by: (p.recorded_by as string) || null,
+      });
     }
 
     return json({
       success: true,
       role,
-      affiliates: affiliates.map(a => ({ ...a, _stats: statsMap[a.code] })),
+      affiliates: affiliates.map(a => ({
+        ...a,
+        _stats: statsMap[a.code],
+        _payouts: payoutsByCode[a.code] || [],
+      })),
     });
   } catch (err) {
     console.error('admin-affiliates error:', err);

@@ -107,6 +107,13 @@ verify_jwt = false
 # can't verify it. Internal verifyToken() does the real check.
 verify_jwt = false
 
+[functions.affiliate-update-payout]
+# Same HMAC-token pattern as affiliate-complete-onboarding — the partner's
+# dashboard saves their Zelle / Venmo / PayPal / bank info here. Token is
+# verified internally; the gateway must not try to verify it as a Supabase
+# JWT or every call will 401.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # Frontend-authenticated functions — verify_jwt = true (default, explicit)
 # ---------------------------------------------------------------------------
@@ -127,6 +134,13 @@ verify_jwt = true
 # Admin-only writer that creates an affiliate, optional matching coupon, and
 # emails credentials. Handler requires admin_users.role = 'admin'. Gateway
 # verifies the JWT first so the role lookup runs against a real user.
+verify_jwt = true
+
+[functions.admin-record-payout]
+# Admin-only writer that inserts a row into affiliate_payouts when the owner
+# has sent money to a partner. Handler requires admin_users.role = 'admin'.
+# Same pattern as create-affiliate — gateway verifies the user JWT, handler
+# verifies the role.
 verify_jwt = true
 
 [functions.mureka-credits]
