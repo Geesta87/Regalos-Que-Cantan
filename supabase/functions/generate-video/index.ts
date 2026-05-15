@@ -94,18 +94,48 @@ serve(async (req) => {
 
     // Detect audio-only message recordings (iPhone Safari records audio/mp4
     // even when the user selects "video" mode — no video stream, just audio).
-    // Sending audio/mp4 to Shotstack as type:'video' causes a 400 asset-type-
-    // mismatch error. Probe Content-Type first and flag audio-only files so
-    // buildShotstackTimeline can handle them gracefully: voice plays over the
-    // last photo instead of trying to display a video track.
+    // Shotstack rejects .mp4 for type:'audio' but supports .m4a — and both
+    // are the exact same MPEG-4 container, just different file extensions.
+    // When we detect an audio-only .mp4, we copy it in storage with a .m4a
+    // extension so Shotstack accepts it as a valid audio asset.
     let isAudioOnlyMessage = false;
+    let resolvedMessageUrl = personalMessageUrl;
     if (personalMessageUrl) {
       try {
         const headRes = await fetch(personalMessageUrl, { method: 'HEAD' });
         const ct = headRes.headers.get('content-type') || '';
         if (ct.startsWith('audio/') || ct === 'audio/mp4' || ct === 'audio/webm') {
           isAudioOnlyMessage = true;
-          console.log('[generate-video] Message is audio-only (content-type:', ct, ') — will render as audio track over last photo');
+          console.log('[generate-video] Message is audio-only (content-type:', ct, ')');
+
+          // If the URL ends in .mp4, copy to .m4a so Shotstack accepts it
+          if (personalMessageUrl.endsWith('.mp4')) {
+            try {
+              const urlObj = new URL(personalMessageUrl);
+              // pathname: /storage/v1/object/public/video-photos/<order-id>/message_xxx.mp4
+              const bucketPrefix = '/storage/v1/object/public/video-photos/';
+              const objectPath = urlObj.pathname.slice(bucketPrefix.length); // e.g. 8caa.../message_xxx.mp4
+              const m4aPath = objectPath.replace(/\.mp4$/, '.m4a');
+
+              // Download the original file
+              const dlRes = await fetch(personalMessageUrl);
+              const buffer = await dlRes.arrayBuffer();
+
+              // Upload with .m4a extension (upsert in case we already did this)
+              const { error: uploadErr } = await supabase.storage
+                .from('video-photos')
+                .upload(m4aPath, buffer, { contentType: 'audio/mp4', upsert: true });
+
+              if (uploadErr) {
+                console.warn('[generate-video] Could not upload .m4a copy:', uploadErr.message, '— using original .mp4');
+              } else {
+                resolvedMessageUrl = `${SUPABASE_URL}/storage/v1/object/public/video-photos/${m4aPath}`;
+                console.log('[generate-video] Copied audio .mp4 → .m4a for Shotstack:', resolvedMessageUrl);
+              }
+            } catch (copyErr) {
+              console.warn('[generate-video] .mp4→.m4a copy failed:', copyErr, '— using original');
+            }
+          }
         }
       } catch (e) {
         console.warn('[generate-video] Could not HEAD-check message URL:', e);
@@ -119,7 +149,7 @@ serve(async (req) => {
       aspectRatio,
       resolvedSongDuration,
       filter,
-      personalMessageUrl,
+      resolvedMessageUrl,
       messageDuration,
       isAudioOnlyMessage
     );
@@ -372,18 +402,16 @@ function buildShotstackTimeline(
     }];
 
     // For audio-only messages (iPhone Safari), add the voice to the audio track.
-    // iPhone Safari records audio as .mp4 (audio/mp4 container); Shotstack rejects
-    // .mp4 for type:'audio' (supports mp3, m4a, wav, etc. only). Use type:'video'
-    // instead so Shotstack extracts the audio stream from the container. The visual
-    // track already shows the last photo extended for the message duration.
+    // The caller already resolved personalMessageUrl to a .m4a URL if it was .mp4
+    // (Shotstack supports m4a but not mp4 for type:'audio' — they're the same
+    // container, just different extensions). The visual track already shows the
+    // last photo extended for the message duration.
     if (isAudioOnlyMessage) {
       audioClips.push({
         asset: {
-          type: 'video',
+          type: 'audio',
           src: personalMessageUrl,
           volume: 1,
-          trim: 0,
-          transcode: true,
         },
         start: totalDuration,
         length: messageDuration,
