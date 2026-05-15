@@ -139,7 +139,7 @@ serve(async (req) => {
     if (!renderResponse.ok) {
       const errorText = await renderResponse.text();
       console.error('Shotstack error:', errorText);
-      throw new Error(`Shotstack render failed: ${renderResponse.status}`);
+      throw new Error(`Shotstack render failed: ${renderResponse.status} — ${errorText.substring(0, 500)}`);
     }
 
     const renderData = await renderResponse.json();
@@ -371,15 +371,19 @@ function buildShotstackTimeline(
       length: totalDuration,
     }];
 
-    // For audio-only messages (iPhone Safari), add the voice as an audio clip
-    // starting right where the photos end — the video track already shows the
-    // last photo extended for the same duration.
+    // For audio-only messages (iPhone Safari), add the voice to the audio track.
+    // iPhone Safari records audio as .mp4 (audio/mp4 container); Shotstack rejects
+    // .mp4 for type:'audio' (supports mp3, m4a, wav, etc. only). Use type:'video'
+    // instead so Shotstack extracts the audio stream from the container. The visual
+    // track already shows the last photo extended for the message duration.
     if (isAudioOnlyMessage) {
       audioClips.push({
         asset: {
-          type: 'audio',
+          type: 'video',
           src: personalMessageUrl,
           volume: 1,
+          trim: 0,
+          transcode: true,
         },
         start: totalDuration,
         length: messageDuration,
