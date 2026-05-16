@@ -142,9 +142,52 @@ serve(async (req) => {
       }
     }
 
+    // Convert any HEIC/HEIF photos to WebP before building the timeline.
+    // Shotstack checks URL file extensions and rejects .heic/.heif outright.
+    // Strategy: fetch the image via Supabase's render endpoint (which converts
+    // on the fly) and re-upload to storage with a .webp extension so the URL
+    // Shotstack receives has a supported extension.
+    const resolvedPhotoUrls = await Promise.all(
+      photoUrls.map(async (url) => {
+        if (!/\.heic$/i.test(url) && !/\.heif$/i.test(url)) return url;
+        try {
+          // Supabase render endpoint converts HEIC → WebP on the fly
+          const renderUrl = url.replace(
+            '/storage/v1/object/public/',
+            '/storage/v1/render/image/public/',
+          ) + '?format=webp';
+
+          const res = await fetch(renderUrl);
+          if (!res.ok) throw new Error(`Render fetch ${res.status}`);
+          const buffer = await res.arrayBuffer();
+
+          // Re-upload with .webp extension (upsert so reruns are idempotent)
+          const bucketPrefix = '/storage/v1/object/public/video-photos/';
+          const objectPath = new URL(url).pathname.slice(bucketPrefix.length);
+          const webpPath = objectPath.replace(/\.heic$/i, '.webp').replace(/\.heif$/i, '.webp');
+
+          const { error: uploadErr } = await supabase.storage
+            .from('video-photos')
+            .upload(webpPath, buffer, { contentType: 'image/webp', upsert: true });
+
+          if (uploadErr) {
+            console.warn(`[generate-video] WebP upload failed for ${url}:`, uploadErr.message);
+            return url;
+          }
+
+          const webpUrl = `${SUPABASE_URL}/storage/v1/object/public/video-photos/${webpPath}`;
+          console.log(`[generate-video] HEIC→WebP: ${url} → ${webpUrl}`);
+          return webpUrl;
+        } catch (e) {
+          console.warn(`[generate-video] HEIC→WebP conversion failed for ${url}:`, e);
+          return url;
+        }
+      })
+    );
+
     // Build Shotstack timeline with filter + text overlays + optional message
     const timeline = buildShotstackTimeline(
-      photoUrls,
+      resolvedPhotoUrls,
       song,
       aspectRatio,
       resolvedSongDuration,
@@ -268,7 +311,7 @@ function buildShotstackTimeline(
     return {
       asset: {
         type: 'image',
-        src: url,
+        src: url, // HEIC already converted to WebP before buildShotstackTimeline is called
       },
       start,
       length: photoDisplayTime,
