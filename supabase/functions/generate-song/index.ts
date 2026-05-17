@@ -57,12 +57,12 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'traditional corrido, classic Mexican norteño corrido, 1980s 1990s conjunto norteño corrido, raw analog recording, narrative ballad, polka rhythm corrido, strophic verse form',
-        tempo: '85-110 BPM, moderate steady polka tempo, storytelling-friendly mid-tempo',
-        instruments: 'diatonic accordion, bajo sexto twelve-string guitar, tololoche upright bass, electric bass, polka drums with snare backbeat, alto saxophone melodic fills',
-        vibe: 'storytelling, narrative, nostalgic, rural authenticity, raw unpolished emotion, cantina feel, nasal vocal harmonies in thirds, accordion interludes between verses',
-        negative: 'trap beats, 808 bass, electronic sounds, auto-tune, polished pop production, tuba, modern tumbado, slide requinto bending effects',
-        vocalCharacter: 'nasal storytelling vocal, raw unpolished delivery, narrative clarity, cantina singer feel'
+        style: 'authentic old-school 1990s 2000s storytelling Mexican corrido tradicional, slow-to-mid tempo narrative polka corrido, accordion-and-bajo-sexto conjunto sound, balladeer four-line stanzas where the singer narrates a true story, dry acoustic Sinaloa border mix, raw rural cantina recording',
+        tempo: '88-115 BPM, mid-tempo 2/4 polka pulse, clear oom-pah feel, kick on 1 snare backbeat on 2, deliberate storytelling-paced groove that leaves room for every word of the lyric',
+        instruments: 'lead is the diatonic three-row button accordion only, every melody every fill and every short solo break played on accordion with grace notes bellows shakes and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths locked with the bass oom-pah, electric bass quarter-note walking pattern on root and fifth, minimal drum kit',
+        vibe: 'declamatory corridista narrator vocal that sounds like a balladeer telling a true story, raw rural Sinaloa-Texas border feel, working-class cantina, dry natural acoustic mix, present accordion midrange, clear kick-snare transients, transparent reportorial production',
+        negative: 'fast party corrido, breakneck dance tempo, uptempo dance polka, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, reverb-heavy production, modern radio polish, slow ballad without polka feel, free rubato tempo, half-time feel, corridos tumbados, corridos alterados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums',
+        vocalCharacter: 'declamatory storytelling male lead vocal, corridista narrator delivery with strong consonants and clear diction, raw rural unpolished tone, classic 1990s 2000s slow-to-mid-tempo Sinaloa border corrido balladeer'
       },
       tumbados: {
         name: 'Corridos Tumbados',
