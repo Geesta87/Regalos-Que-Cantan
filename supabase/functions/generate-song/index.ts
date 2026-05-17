@@ -1365,17 +1365,18 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   // accordion-conjunto genres and trigger the very thing we're banning.
   // We trust the vocal_gender API field for binary voice selection instead.
   //
-  // Model: switched from V7.6 → V9 on 2026-05-17 to test whether the new
-  // aggressive Sinaloan-Chalino DNA (explicit "NOT fast, NOT polka, NOT
-  // dance" + 75-92 BPM + strong negatives) is enough to overcome V9's
-  // accordion-conjunto polka bias. V9 has better audio fidelity than V7.6
-  // (cleaner vocals, more polished). Original V7.6 routing was added when
-  // V9 returned BPMs 103-214 for the same prompt; the new DNA may have
-  // closed that gap. Env-overridable via MUREKA_CORRIDO_MODEL: set to
-  // 'V7.6' in Supabase secrets to revert instantly without a code deploy.
+  // Model: V7.6 (reverted from V9 on 2026-05-17). V9 has better audio
+  // fidelity but has a hard polka-bias on accordion-conjunto music that
+  // even the aggressive Sinaloan-Chalino DNA couldn't fully tame — V9
+  // returned fast/dance output that didn't match the owner's reference
+  // (slow Chalino-style storyteller corridos). V7.6 is older but honors
+  // slow-tempo cues reliably. The Sinaloa-saturated DNA stays in place
+  // and helps V7.6 land the Sinaloan storyteller sound. Env-overridable
+  // via MUREKA_CORRIDO_MODEL — set in Supabase secrets if you want to
+  // retest V9 without a code deploy.
   const isCorridoTradicional = ctx.genreId === 'corrido' && ctx.subGenreId === 'tradicional';
   const useStructuralOverride = isCorridoTradicional;
-  const CORRIDO_MODEL = Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V9';
+  const CORRIDO_MODEL = Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V7.6';
   const modelToUse = isCorridoTradicional ? CORRIDO_MODEL : MUREKA_MODEL;
 
   let descWithVoice: string;
