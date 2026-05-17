@@ -57,12 +57,12 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'authentic old-school 1990s 2000s storytelling Mexican corrido tradicional, slow-to-mid tempo narrative polka corrido, accordion-and-bajo-sexto conjunto sound, balladeer four-line stanzas where the singer narrates a true story, dry acoustic Sinaloa border mix, raw rural cantina recording',
-        tempo: '75-92 BPM, SLOW narrative storytelling tempo, deliberate half-time 2/4 polka feel, gentle oom-pah, relaxed unhurried snare backbeat on 2, every word of the lyric has plenty of room to breathe and land, ballad-paced corrido NOT mid-tempo NOT uptempo NOT danceable',
-        instruments: 'lead is the diatonic three-row button accordion only, every melody every fill and every short solo break played on accordion with grace notes bellows shakes and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths locked with the bass oom-pah, electric bass quarter-note walking pattern on root and fifth, minimal drum kit',
-        vibe: 'declamatory corridista narrator vocal that sounds like a balladeer telling a true story, raw rural Sinaloa-Texas border feel, working-class cantina, dry natural acoustic mix, present accordion midrange, clear kick-snare transients, transparent reportorial production',
-        negative: 'fast party corrido, fast polka, breakneck dance tempo, uptempo dance polka, mid-tempo polka, brisk polka pace, danceable tempo, party tempo, energetic dance tempo, fast cantina dance, uptempo storytelling, rushed delivery, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, reverb-heavy production, modern radio polish, free rubato tempo, corridos tumbados, corridos alterados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums',
-        vocalCharacter: 'declamatory storytelling male lead vocal, corridista narrator delivery with strong consonants and clear diction, raw rural unpolished tone, classic 1990s 2000s slow-paced Sinaloa border corrido balladeer, unhurried phrasing'
+        style: '1980s 1990s old-school slow Sinaloan-style corrido tradicional, classic Mexican narrative corrido in the rural Sinaloa cassette-era storytelling tradition, single male storyteller singing a true story over an accordion-led conjunto bed, octosyllabic four-line stanzas, strophic verse-after-verse song form, instrumental accordion ride between sung verses, analog cassette recording aesthetic, dry live-in-room mix, narrow stereo, warm tape saturation',
+        tempo: '75-92 BPM steady slow-corrido pulse, deliberate unhurried storytelling pace, the slow narrative end of the corrido tempo spectrum where every word of the lyric has plenty of room to breathe and land, gentle walking 2/4 corrido groove with kick on beat 1 and a soft rim-click or snare on beat 2, NOT a polka party tempo, NOT a fast accordion polka, NOT a dance tempo, NOT uptempo, NOT energetic, NOT supernatural fast, but ALSO not a slow 4/4 pop ballad',
+        instruments: 'lead is the diatonic three-row button accordion only, every melodic fill and the short instrumental ride between verses played on accordion with grace notes bellows shakes and scalar runs, bajo sexto twelve-string baritone guitar with a soft 2/4 chord chuck on beat 2, electric bass quarter-note pattern on root and fifth, gentle drum kit with kick on beat 1 and a soft rim-click or brushed snare on beat 2, no busy fills, no charcheta rolls, occasional grito vocal shouts of Ajua or Eha or short whistles between phrases',
+        vibe: '1980s 1990s slow Sinaloan-style corridista storyteller delivery from an analog cassette recording, working-class rural Mexican Sinaloa-to-border authenticity, dry warm mix, accordion sitting present in the midrange, bajo sexto rhythmic and forward, drums small dry and tight, no long reverb tails, no modern polish, reportorial narrative production, the unmistakable warmth of cassette-era corridos',
+        negative: 'fast tempo, uptempo, dance tempo, party tempo, party polka, fast polka, dancing polka, energetic polka, breakneck polka, supernatural fast pulse, dance corrido, breakneck dance tempo, mid-tempo polka, brisk polka, rushed delivery, charcheta rolls, busy drum fills, slow 4/4 pop ballad, 4/4 pop song, modern radio polish, polished production, 2010s 2020s production, wide stereo, deep sub bass, long vocal reverb, sidechain compression, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, norteño-sax, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, corridos tumbados, corridos alterados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums, female lead vocal, female harmony, duet, two voices, harmony vocal layers',
+        vocalCharacter: 'single male storyteller lead vocal, slow Sinaloan-style corridista narrator with strong consonants and clear diction so every word of the story lands, unhurried phrasing, raw rural Mexican unpolished tone, classic 1980s 1990s cassette-era recording'
       },
       tumbados: {
         name: 'Corridos Tumbados',
@@ -1326,6 +1326,13 @@ interface ProviderCtx {
   isForSelf: boolean;
   recipientName: string;
   supabaseUrl: string;
+  /** Genre id (e.g. "corrido", "norteno"). Used to route specific genres
+   *  onto V7.6 — V9 has a polka-bias on accordion conjunto that produces
+   *  fast party-polka output regardless of prompt. */
+  genreId?: string;
+  /** Sub-genre id (e.g. "tradicional"). Used together with genreId to
+   *  route specific sub-genres onto V7.6. */
+  subGenreId?: string;
 }
 
 type ProviderResult =
@@ -1351,8 +1358,32 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
   const voicePrefix = `${genderLabel}, ${vocalStyle}`;
   const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
-  const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
-  const descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+
+  // V7.6 routing for genres where Mureka V9 has a hard polka-bias that
+  // produces fast party-polka output regardless of prompt. Currently:
+  // - corrido tradicional: V9 returned BPMs ranging 103-214 for the same
+  //   prompt because V9's training data has overwhelming "accordion = fast
+  //   party polka" coupling. V7.6 is older / more stable / honors slow
+  //   tempo cues. Env-overridable via MUREKA_CORRIDO_MODEL.
+  // The structural-override path also strips the long negative voice
+  // suffix and the verbose genderLabel — those long "NO X" lists can
+  // tokenize as their positive form on V7.6 and trigger the very thing
+  // we're banning. We trust the vocal_gender API field instead.
+  const isCorridoTradicional = ctx.genreId === 'corrido' && ctx.subGenreId === 'tradicional';
+  const useStructuralOverride = isCorridoTradicional;
+  const CORRIDO_MODEL = Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V7.6';
+  const modelToUse = isCorridoTradicional ? CORRIDO_MODEL : MUREKA_MODEL;
+
+  let descWithVoice: string;
+  if (useStructuralOverride) {
+    const voiceTag = ctx.vocalGender === 'f' ? 'female lead vocal' : 'male lead vocal';
+    const styleSnippet = ctx.finalStyle.substring(0, 250).replace(/,?\s*$/, '');
+    descWithVoice = `${voiceTag}, single voice storyteller, ${styleSnippet}`;
+  } else {
+    const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
+    descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+  }
+
   const songTitle = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 50);
 
   const callbackBase = `${ctx.supabaseUrl}/functions/v1/mureka-useapi-callback`;
@@ -1367,12 +1398,12 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
     lyrics: ctx.lyrics.substring(0, 5000),
     title: songTitle,
     desc: safeDesc,
-    model: MUREKA_MODEL,
+    model: modelToUse,
     vocal_gender: apiVocalGender,
     replyUrl,
   };
 
-  console.log(`[callMureka] POST useapi.net (model=${MUREKA_MODEL}, gender=${apiVocalGender})`);
+  console.log(`[callMureka] POST useapi.net (model=${modelToUse}, gender=${apiVocalGender}, genre=${ctx.genreId}/${ctx.subGenreId})`);
 
   let resp: Response;
   try {
@@ -1385,9 +1416,11 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
     return { ok: false, provider: 'mureka-useapi', classification: 'provider_broken', errorMessage: `useapi.net network: ${e.message}`, payload };
   }
 
-  // Try V8 fallback model on model-specific 400s (existing behavior preserved)
+  // Try V8 fallback model on model-specific 400s (existing behavior preserved).
+  // Use modelToUse here so corrido-tradicional (routed to V7.6) can still
+  // fall back to V8 on a model-specific error.
   let cachedErrData: any = null;
-  if (!resp.ok && MUREKA_MODEL !== MUREKA_FALLBACK_MODEL) {
+  if (!resp.ok && modelToUse !== MUREKA_FALLBACK_MODEL) {
     cachedErrData = await resp.json().catch(() => ({ error: 'Unknown error' }));
     const errStr = JSON.stringify(cachedErrData);
     const isModelError = errStr.includes('model') || errStr.includes('not supported') || errStr.includes('invalid') || resp.status === 400;
@@ -1399,7 +1432,7 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
       || errStr.includes('Unexpected state')
       || errStr.includes('balance is not enough');
     if (isModelError && !hasOtherIssue) {
-      console.warn(`[callMureka] Model ${MUREKA_MODEL} failed (${resp.status}), retrying with ${MUREKA_FALLBACK_MODEL}`);
+      console.warn(`[callMureka] Model ${modelToUse} failed (${resp.status}), retrying with ${MUREKA_FALLBACK_MODEL}`);
       payload.model = MUREKA_FALLBACK_MODEL;
       cachedErrData = null;
       try {
@@ -2188,6 +2221,8 @@ RESPONDE SOLO JSON:
       isForSelf,
       recipientName,
       supabaseUrl: SUPABASE_URL!,
+      genreId: genre,
+      subGenreId: subGenre || undefined,
     };
 
     console.log(`[STEP 6] primary=${MUSIC_PROVIDER_PRIMARY} fallback=${MUSIC_PROVIDER_FALLBACK ?? 'NONE'}`);
