@@ -92,49 +92,60 @@ serve(async (req) => {
       }
     }
 
-    // Detect audio-only message recordings (iPhone Safari records audio/mp4
-    // even when the user selects "video" mode — no video stream, just audio).
-    // Shotstack rejects .mp4 for type:'audio' but supports .m4a — and both
-    // are the exact same MPEG-4 container, just different file extensions.
-    // When we detect an audio-only .mp4, we copy it in storage with a .m4a
-    // extension so Shotstack accepts it as a valid audio asset.
+    // ---- VOICE MESSAGE FORMAT RESOLUTION ----
+    // Shotstack audio asset supported formats: mp3, m4a, wav, flac, aac, ogg, opus, wma
+    // Browsers produce different formats depending on platform:
+    //   iPhone Safari (audio mode)  → audio/mp4  (.mp4) — copy bytes to .m4a (same container)
+    //   Chrome Android (audio mode) → audio/mp4 or audio/ogg — both handled natively
+    //   Firefox (audio mode)        → audio/ogg  (.ogg) — supported directly
+    //   Chrome (audio mode, old)    → audio/webm (.webm) — NOT supported by Shotstack;
+    //                                  graceful degradation: show last photo, skip voice track
+    //   Any video mode file         → type:'video' with transcode (handled below separately)
+    const SHOTSTACK_AUDIO_EXTS = new Set(['mp3', 'm4a', 'wav', 'flac', 'aac', 'ogg', 'opus', 'wma']);
+
     let isAudioOnlyMessage = false;
-    let resolvedMessageUrl = personalMessageUrl;
+    let resolvedMessageUrl = personalMessageUrl; // URL Shotstack will use for audio (null = skip audio)
     if (personalMessageUrl) {
       try {
         const headRes = await fetch(personalMessageUrl, { method: 'HEAD' });
         const ct = headRes.headers.get('content-type') || '';
         if (ct.startsWith('audio/') || ct === 'audio/mp4' || ct === 'audio/webm') {
           isAudioOnlyMessage = true;
-          console.log('[generate-video] Message is audio-only (content-type:', ct, ')');
+          const urlExt = personalMessageUrl.split('?')[0].split('.').pop()?.toLowerCase() || '';
+          console.log('[generate-video] Audio-only message detected (content-type:', ct, 'ext:', urlExt, ')');
 
-          // If the URL ends in .mp4, copy to .m4a so Shotstack accepts it
-          if (personalMessageUrl.endsWith('.mp4')) {
+          if (SHOTSTACK_AUDIO_EXTS.has(urlExt)) {
+            // Already a supported extension (ogg, m4a, mp3, etc.) — use directly
+            resolvedMessageUrl = personalMessageUrl;
+            console.log('[generate-video] Audio format supported directly:', urlExt);
+          } else if (urlExt === 'mp4') {
+            // iPhone Safari: audio/mp4 bytes are identical to m4a; just copy with .m4a extension
             try {
-              const urlObj = new URL(personalMessageUrl);
-              // pathname: /storage/v1/object/public/video-photos/<order-id>/message_xxx.mp4
               const bucketPrefix = '/storage/v1/object/public/video-photos/';
-              const objectPath = urlObj.pathname.slice(bucketPrefix.length); // e.g. 8caa.../message_xxx.mp4
+              const objectPath = new URL(personalMessageUrl).pathname.slice(bucketPrefix.length);
               const m4aPath = objectPath.replace(/\.mp4$/, '.m4a');
-
-              // Download the original file
               const dlRes = await fetch(personalMessageUrl);
               const buffer = await dlRes.arrayBuffer();
-
-              // Upload with .m4a extension (upsert in case we already did this)
               const { error: uploadErr } = await supabase.storage
                 .from('video-photos')
                 .upload(m4aPath, buffer, { contentType: 'audio/mp4', upsert: true });
-
               if (uploadErr) {
-                console.warn('[generate-video] Could not upload .m4a copy:', uploadErr.message, '— using original .mp4');
+                console.warn('[generate-video] .mp4→.m4a upload failed:', uploadErr.message, '— skipping voice audio');
+                resolvedMessageUrl = null;
               } else {
                 resolvedMessageUrl = `${SUPABASE_URL}/storage/v1/object/public/video-photos/${m4aPath}`;
-                console.log('[generate-video] Copied audio .mp4 → .m4a for Shotstack:', resolvedMessageUrl);
+                console.log('[generate-video] .mp4→.m4a:', resolvedMessageUrl);
               }
             } catch (copyErr) {
-              console.warn('[generate-video] .mp4→.m4a copy failed:', copyErr, '— using original');
+              console.warn('[generate-video] .mp4→.m4a copy failed:', copyErr, '— skipping voice audio');
+              resolvedMessageUrl = null;
             }
+          } else {
+            // webm or other unsupported format — Shotstack cannot play this as audio
+            // Graceful degradation: the message section still shows the last photo +
+            // "Un mensaje de …" overlay, but the voice track is omitted.
+            console.warn(`[generate-video] Unsupported audio format .${urlExt} — message visual will show but voice track is skipped`);
+            resolvedMessageUrl = null;
           }
         }
       } catch (e) {
@@ -185,14 +196,18 @@ serve(async (req) => {
       })
     );
 
-    // Build Shotstack timeline with filter + text overlays + optional message
+    // Build Shotstack timeline with filter + text overlays + optional message.
+    // personalMessageUrl = original URL; controls whether the message SECTION is shown.
+    // resolvedMessageUrl  = converted/renamed URL for the audio asset (null = skip audio
+    //                       but still show last-photo + "Un mensaje de" visual section).
     const timeline = buildShotstackTimeline(
       resolvedPhotoUrls,
       song,
       aspectRatio,
       resolvedSongDuration,
       filter,
-      resolvedMessageUrl,
+      personalMessageUrl,   // show/hide message section
+      resolvedMessageUrl,   // actual audio URL for Shotstack (may be null)
       messageDuration,
       isAudioOnlyMessage
     );
@@ -258,7 +273,10 @@ serve(async (req) => {
   }
 });
 
-// Build Shotstack JSON timeline with filter + text overlays + optional personal message
+// Build Shotstack JSON timeline with filter + text overlays + optional personal message.
+//   personalMessageUrl — original URL; controls whether the message section is rendered.
+//   resolvedAudioUrl   — the converted/renamed URL for the audio asset.
+//                        May be null (webm / unsupported): show visual section but skip audio clip.
 function buildShotstackTimeline(
   photoUrls: string[],
   song: { audio_url: string; recipient_name: string; sender_name: string; occasion: string; genre: string },
@@ -266,6 +284,7 @@ function buildShotstackTimeline(
   songDuration: number | null,
   videoFilter: string,
   personalMessageUrl: string | null = null,
+  resolvedAudioUrl: string | null = null,
   msgDuration: number | null = null,
   isAudioOnlyMessage: boolean = false
 ) {
@@ -367,7 +386,7 @@ function buildShotstackTimeline(
   const messageClips = [];
 
   if (personalMessageUrl) {
-    console.log('Adding personal message to timeline:', personalMessageUrl, 'duration:', messageDuration, 'audioOnly:', isAudioOnlyMessage);
+    console.log('Adding personal message to timeline:', personalMessageUrl, '→ audio:', resolvedAudioUrl ?? '(skipped)', 'duration:', messageDuration, 'audioOnly:', isAudioOnlyMessage);
 
     if (isAudioOnlyMessage) {
       // iPhone / Safari audio-only recording: no video stream available.
@@ -444,16 +463,16 @@ function buildShotstackTimeline(
       length: totalDuration,
     }];
 
-    // For audio-only messages (iPhone Safari), add the voice to the audio track.
-    // The caller already resolved personalMessageUrl to a .m4a URL if it was .mp4
-    // (Shotstack supports m4a but not mp4 for type:'audio' — they're the same
-    // container, just different extensions). The visual track already shows the
-    // last photo extended for the message duration.
-    if (isAudioOnlyMessage) {
+    // For audio-only messages, add the voice to the audio track when a
+    // Shotstack-compatible URL is available (m4a, ogg, mp3 …).
+    // resolvedAudioUrl is null when the browser produced an unsupported format
+    // (e.g. webm) — in that case we skip the audio clip but the visual section
+    // (last photo + "Un mensaje de" overlay) was already added above.
+    if (isAudioOnlyMessage && resolvedAudioUrl) {
       audioClips.push({
         asset: {
           type: 'audio',
-          src: personalMessageUrl,
+          src: resolvedAudioUrl,
           volume: 1,
         },
         start: totalDuration,

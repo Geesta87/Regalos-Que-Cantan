@@ -78,7 +78,7 @@ serve(async (_req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           },
           body: JSON.stringify(body),
         });

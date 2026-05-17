@@ -1022,7 +1022,14 @@ export default function SuccessPage() {
       return '';
     };
     const getAudioMimeType = () => {
+      // Preference order matters for Shotstack compatibility:
+      // 1. audio/mp4  → saved as .mp4, server copies to .m4a (Shotstack accepts m4a)
+      // 2. audio/ogg  → saved as .ogg, Shotstack accepts ogg natively
+      // 3. audio/webm → saved as .webm, Shotstack does NOT accept webm for audio;
+      //                 server will render the video without the voice track
       if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) return 'audio/ogg;codecs=opus';
+      if (MediaRecorder.isTypeSupported('audio/ogg')) return 'audio/ogg';
       if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
       return '';
     };
@@ -1143,7 +1150,9 @@ export default function SuccessPage() {
       }
       if (recordedMessage?.blob) {
         const blobType = recordedMessage.blob.type || 'video/webm';
-        const msgExt = blobType.includes('mp4') ? 'mp4' : 'webm';
+        const msgExt = blobType.includes('mp4') ? 'mp4'
+          : blobType.includes('ogg') ? 'ogg'
+          : 'webm'; // fallback; server will handle gracefully
         const msgPath = `${order.id}/message_${Date.now()}.${msgExt}`;
         const contentType = blobType;
         console.log('Uploading message:', msgPath, 'size:', recordedMessage.blob.size, 'type:', contentType);

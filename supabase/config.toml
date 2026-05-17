@@ -79,6 +79,12 @@ verify_jwt = false
 # Internal generators invoked server-to-server from other edge functions
 # ---------------------------------------------------------------------------
 
+[functions.generate-video]
+# Called from the SuccessPage frontend (anon key) AND server-to-server from
+# poll-pending-videos (service-role key). No single consistent JWT context —
+# the function validates videoOrder.paid internally instead.
+verify_jwt = false
+
 [functions.generate-song-mureka]
 # Called server-to-server from generate-song with service-role context, not
 # from a user session. Historically deployed with --no-verify-jwt.
