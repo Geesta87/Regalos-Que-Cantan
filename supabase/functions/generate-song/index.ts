@@ -57,7 +57,7 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: '1980s 1990s old-school slow Sinaloan-style corrido tradicional, classic Mexican narrative corrido in the rural Sinaloa cassette-era storytelling tradition, single male storyteller singing a true story over an accordion-led conjunto bed, octosyllabic four-line stanzas, strophic verse-after-verse song form, instrumental accordion ride between sung verses, analog cassette recording aesthetic, dry live-in-room mix, narrow stereo, warm tape saturation',
+        style: 'authentic Sinaloa corrido tradicional, classic 1980s 1990s old-school Sinaloan storyteller corrido sound, rural Sierra-Sinaloa cassette-era corrido tradition, deep Sinaloan corridista delivery, single male Sinaloan storyteller narrating a true story over an accordion-and-bajo-sexto conjunto bed, octosyllabic four-line stanzas, strophic verse-after-verse storytelling form, instrumental accordion ride between sung verses, dry live-in-room analog mix, narrow stereo image, warm tape saturation',
         tempo: '75-92 BPM steady slow-corrido pulse, deliberate unhurried storytelling pace, the slow narrative end of the corrido tempo spectrum where every word of the lyric has plenty of room to breathe and land, gentle walking 2/4 corrido groove with kick on beat 1 and a soft rim-click or snare on beat 2, NOT a polka party tempo, NOT a fast accordion polka, NOT a dance tempo, NOT uptempo, NOT energetic, NOT supernatural fast, but ALSO not a slow 4/4 pop ballad',
         instruments: 'lead is the diatonic three-row button accordion only, every melodic fill and the short instrumental ride between verses played on accordion with grace notes bellows shakes and scalar runs, bajo sexto twelve-string baritone guitar with a soft 2/4 chord chuck on beat 2, electric bass quarter-note pattern on root and fifth, gentle drum kit with kick on beat 1 and a soft rim-click or brushed snare on beat 2, no busy fills, no charcheta rolls, occasional grito vocal shouts of Ajua or Eha or short whistles between phrases',
         vibe: '1980s 1990s slow Sinaloan-style corridista storyteller delivery from an analog cassette recording, working-class rural Mexican Sinaloa-to-border authenticity, dry warm mix, accordion sitting present in the midrange, bajo sexto rhythmic and forward, drums small dry and tight, no long reverb tails, no modern polish, reportorial narrative production, the unmistakable warmth of cassette-era corridos',
@@ -1381,8 +1381,14 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   let descWithVoice: string;
   if (useStructuralOverride) {
     const voiceTag = ctx.vocalGender === 'f' ? 'female lead vocal' : 'male lead vocal';
+    // Include vocalCharacter — for corrido tradicional this carries additional
+    // Sinaloan-storyteller anchors ("slow Sinaloan-style corridista narrator")
+    // that reinforce the regional sound. Strip a trailing comma if any.
+    const vocalChar = (ctx.vocalCharacter || '').trim().replace(/[,.\s]+$/, '');
     const styleSnippet = ctx.finalStyle.substring(0, 250).replace(/,?\s*$/, '');
-    descWithVoice = `${voiceTag}, single voice storyteller, ${styleSnippet}`;
+    descWithVoice = vocalChar
+      ? `${voiceTag}, ${vocalChar}, single voice storyteller, ${styleSnippet}`
+      : `${voiceTag}, single voice storyteller, ${styleSnippet}`;
   } else {
     const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
     descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
