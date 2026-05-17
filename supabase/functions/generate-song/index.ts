@@ -1855,19 +1855,16 @@ serve(async (req) => {
     const displayGenre = subGenreName || genreName || genre;
 
     // Extract genre vibe so Claude can align emotional modifiers with genre character.
-    // IMPORTANT: strip nationality / regional / language markers from the vibe before
-    // passing to Claude. Those words ("Mexican", "Sinaloan", "Norte de México",
-    // "Texas-border", "Dominican", "border-conjunto", etc.) describe the MUSICAL
-    // tradition for the music model (Mureka), not the protagonist's identity. If
-    // they leak into Claude's prompt, Claude assumes the protagonist is from that
-    // region and contradicts the customer's own details (see Kevin/Honduras
-    // incident 2026-05-17 where corrido vibe leaked "Mexican Sinaloan" and the
-    // lyrics produced "mexicano de hondureño" despite Honduran-only details).
+    // The vibe text may include regional/nationality markers (Mexican, Sinaloan,
+    // Dominican, etc.) — that is correct for the MUSICAL tradition (a corrido
+    // should sound Mexican, a bachata should sound Dominican). We rely on
+    // claudePrompt rule 9 (absolute prohibition on injecting nationality the
+    // customer didn't state) and the system prompt opening (genre = SOUND not
+    // nationality) to prevent the music's regional flavor from contaminating
+    // the PROTAGONIST's identity.
     const genreDNAData = genreDNA[genre];
     const subGenreDNAData = subGenre && genreDNAData ? genreDNAData.subGenres[subGenre] : null;
-    const NATIONALITY_MARKERS = /\b(mexican[oa]?|m[eé]xico|sinaloan?|sinaloa|norte de m[eé]xico|texas[\s-]?border|texas[–-]northeastern[\s-]?mexico|sinaloa[\s-]?to[\s-]?border|border[\s-]?conjunto|dominican|cuban|colombian|puerto[\s-]?rican|salvadoran|honduran|guatemalan|venezuelan|argentin[oa]|chilean|peruvian|brazilian|caribbean|tex[\s-]?mex|tejano|nuevo le[oó]n|tamaulipas|coahuila)\b/gi;
-    const sanitizeForLyricPrompt = (s: string) => s.replace(NATIONALITY_MARKERS, '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').trim();
-    const genreVibe = sanitizeForLyricPrompt(subGenreDNAData?.vibe || '');
+    const genreVibe = subGenreDNAData?.vibe || '';
 
     const nameInstruction = isForSelf
       ? `Menciona "${recipientName}" como protagonista 1-2 veces de forma natural. Tono principal en primera persona: "yo soy", "mi vida", "este soy yo". NO escribir como regalo para otra persona.`
@@ -1906,7 +1903,7 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 
 4. ${nameInstruction}
 
-5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español COLOQUIAL natural, no literario ni poético rebuscado. Si los detalles del usuario mencionan un país de origen (México, Honduras, El Salvador, Guatemala, Colombia, Cuba, República Dominicana, Puerto Rico, etc.), usa el dialecto y giros lingüísticos NATURALES de ESE país. Si no se menciona país, usa español latinoamericano neutral coloquial.
+5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
 
 6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
 
