@@ -1854,10 +1854,20 @@ serve(async (req) => {
     // ==========================================================================
     const displayGenre = subGenreName || genreName || genre;
 
-    // Extract genre vibe so Claude can align emotional modifiers with genre character
+    // Extract genre vibe so Claude can align emotional modifiers with genre character.
+    // IMPORTANT: strip nationality / regional / language markers from the vibe before
+    // passing to Claude. Those words ("Mexican", "Sinaloan", "Norte de México",
+    // "Texas-border", "Dominican", "border-conjunto", etc.) describe the MUSICAL
+    // tradition for the music model (Mureka), not the protagonist's identity. If
+    // they leak into Claude's prompt, Claude assumes the protagonist is from that
+    // region and contradicts the customer's own details (see Kevin/Honduras
+    // incident 2026-05-17 where corrido vibe leaked "Mexican Sinaloan" and the
+    // lyrics produced "mexicano de hondureño" despite Honduran-only details).
     const genreDNAData = genreDNA[genre];
     const subGenreDNAData = subGenre && genreDNAData ? genreDNAData.subGenres[subGenre] : null;
-    const genreVibe = subGenreDNAData?.vibe || '';
+    const NATIONALITY_MARKERS = /\b(mexican[oa]?|m[eé]xico|sinaloan?|sinaloa|norte de m[eé]xico|texas[\s-]?border|texas[–-]northeastern[\s-]?mexico|sinaloa[\s-]?to[\s-]?border|border[\s-]?conjunto|dominican|cuban|colombian|puerto[\s-]?rican|salvadoran|honduran|guatemalan|venezuelan|argentin[oa]|chilean|peruvian|brazilian|caribbean|tex[\s-]?mex|tejano|nuevo le[oó]n|tamaulipas|coahuila)\b/gi;
+    const sanitizeForLyricPrompt = (s: string) => s.replace(NATIONALITY_MARKERS, '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/,\s*,/g, ',').trim();
+    const genreVibe = sanitizeForLyricPrompt(subGenreDNAData?.vibe || '');
 
     const nameInstruction = isForSelf
       ? `Menciona "${recipientName}" como protagonista 1-2 veces de forma natural. Tono principal en primera persona: "yo soy", "mi vida", "este soy yo". NO escribir como regalo para otra persona.`
@@ -1867,7 +1877,7 @@ serve(async (req) => {
       ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
       : '';
 
-    const claudePrompt = `Eres un compositor experto de música ${displayGenre} mexicana/latina. Escribes letras que la gente CANTA, no que solo lee.
+    const claudePrompt = `Eres un compositor experto en letras de canciones en español que la gente CANTA, no que solo lee. El género musical es ${displayGenre} — eso describe el SONIDO de la música, NO la nacionalidad del protagonista. La nacionalidad, país, región y cultura del protagonista vienen ÚNICAMENTE de los detalles que el usuario proporciona más abajo.
 
 INFORMACIÓN:
 - GÉNERO: ${displayGenre}
@@ -1896,13 +1906,15 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 
 4. ${nameInstruction}
 
-5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
+5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español COLOQUIAL natural, no literario ni poético rebuscado. Si los detalles del usuario mencionan un país de origen (México, Honduras, El Salvador, Guatemala, Colombia, Cuba, República Dominicana, Puerto Rico, etc.), usa el dialecto y giros lingüísticos NATURALES de ESE país. Si no se menciona país, usa español latinoamericano neutral coloquial.
 
 6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
 
 7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
 
 8. NO empezar múltiples versos con la misma palabra. Varía las aperturas de cada línea.
+
+9. REGLA ABSOLUTA — NACIONALIDAD / PAÍS / CULTURA DEL PROTAGONISTA: Usa EXACTAMENTE el país, región, ciudad y cultura que el usuario describió en los DETALLES PERSONALES. NUNCA inyectes una nacionalidad, país, ciudad, región o referencia cultural que el usuario NO mencionó. Si el usuario dice que el protagonista nació en Honduras, NO escribas que es mexicano. Si dice que es de El Salvador, NO escribas referencias a Sinaloa o al norte de México. Si dice que es cubano, NO menciones México. El estilo musical del género NO determina la nacionalidad del protagonista — un corrido puede ser sobre un hondureño, una bachata puede ser sobre un mexicano, una cumbia puede ser sobre un colombiano. Respeta SIEMPRE los datos del usuario sobre origen y cultura.
 
 ${perspectiveInstruction}
 
