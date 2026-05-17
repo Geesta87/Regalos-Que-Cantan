@@ -57,12 +57,23 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'authentic Sinaloa corrido tradicional, classic 1980s 1990s old-school Sinaloan storyteller corrido sound, rural Sierra-Sinaloa cassette-era corrido tradition, deep Sinaloan corridista delivery, single male Sinaloan storyteller narrating a true story over an accordion-and-bajo-sexto conjunto bed, octosyllabic four-line stanzas, strophic verse-after-verse storytelling form, instrumental accordion ride between sung verses, dry live-in-room analog mix, narrow stereo image, warm tape saturation',
-        tempo: '75-92 BPM steady slow-corrido pulse, deliberate unhurried storytelling pace, the slow narrative end of the corrido tempo spectrum where every word of the lyric has plenty of room to breathe and land, gentle walking 2/4 corrido groove with kick on beat 1 and a soft rim-click or snare on beat 2, NOT a polka party tempo, NOT a fast accordion polka, NOT a dance tempo, NOT uptempo, NOT energetic, NOT supernatural fast, but ALSO not a slow 4/4 pop ballad',
-        instruments: 'lead is the diatonic three-row button accordion only, every melodic fill and the short instrumental ride between verses played on accordion with grace notes bellows shakes and scalar runs, bajo sexto twelve-string baritone guitar with a soft 2/4 chord chuck on beat 2, electric bass quarter-note pattern on root and fifth, gentle drum kit with kick on beat 1 and a soft rim-click or brushed snare on beat 2, no busy fills, no charcheta rolls, occasional grito vocal shouts of Ajua or Eha or short whistles between phrases',
-        vibe: '1980s 1990s slow Sinaloan-style corridista storyteller delivery from an analog cassette recording, working-class rural Mexican Sinaloa-to-border authenticity, dry warm mix, accordion sitting present in the midrange, bajo sexto rhythmic and forward, drums small dry and tight, no long reverb tails, no modern polish, reportorial narrative production, the unmistakable warmth of cassette-era corridos',
-        negative: 'fast tempo, uptempo, dance tempo, party tempo, party polka, fast polka, dancing polka, energetic polka, breakneck polka, supernatural fast pulse, dance corrido, breakneck dance tempo, mid-tempo polka, brisk polka, rushed delivery, charcheta rolls, busy drum fills, slow 4/4 pop ballad, 4/4 pop song, modern radio polish, polished production, 2010s 2020s production, wide stereo, deep sub bass, long vocal reverb, sidechain compression, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, norteño-sax, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, corridos tumbados, corridos alterados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums, female lead vocal, female harmony, duet, two voices, harmony vocal layers',
-        vocalCharacter: 'single male storyteller lead vocal, slow Sinaloan-style corridista narrator with strong consonants and clear diction so every word of the story lands, unhurried phrasing, raw rural Mexican unpolished tone, classic 1980s 1990s cassette-era recording'
+        // GENRE = norteño conjunto (NOT Sinaloan corrido, which Mureka maps to
+        // banda sinaloense). The NARRATIVE tradition is Sinaloan storyteller.
+        // Chalino, Tucanes, Invasores all played NORTEÑO conjunto instrumentation
+        // (accordion + bajo sexto + bass + drums, no brass) with Sinaloan-border
+        // storytelling lyrical content. Per research 2026-05-17, "Sinaloa" alone
+        // in the prompt pulls brass-heavy banda from Mureka's training data
+        // (Banda El Recodo, Banda MS, Sinaloense narcobanda corpus). Solution:
+        // saturate the first 250 chars with "norteño conjunto / accordion /
+        // bajo sexto / five-piece" positive vocabulary. Mureka has no negative-
+        // prompt API field, so banda must be excluded by positive saturation,
+        // not by negating brass words.
+        style: 'classic norteño conjunto corrido, accordion-led conjunto norteño corrido performed by a five-piece accordion-and-bajo-sexto conjunto group, Tex-Mex border norteño accordion sound, slow Sinaloan storyteller narrative tradition performed in classic accordion-driven conjunto norteño style, single male corridista narrating a true story, 1990s analog cassette-era conjunto norteño recording aesthetic, dry live-in-room conjunto mix, narrow stereo image, warm tape saturation',
+        tempo: '90-105 BPM felt pulse, slow narrative norteño conjunto corrido tempo, deliberate unhurried storytelling pace, classic slow-corrido groove, norteño polka 2/4 or ranchera waltz 3/4 feel, the slow storytelling end of the corrido tempo spectrum where every word of the lyric has plenty of room to breathe and land, NOT a fast party polka, NOT mid-tempo, NOT dance tempo, NOT uptempo, NOT energetic, but ALSO not a slow 4/4 pop ballad',
+        instruments: 'lead is the diatonic three-row button accordion, all melodic fills and instrumental rides between verses played on accordion with bellows shakes grace notes and scalar runs, bajo sexto twelve-string baritone guitar with a soft 2/4 chord chuck on beat 2, electric bass quarter-note oom-pah pattern on root and fifth, norteño drum kit with kick on beat 1 and a soft rim-click or brushed snare on beat 2, no busy fills, classic five-piece conjunto norteño group instrumentation, occasional grito vocal shouts of Ajua or Eha or short whistles between phrases',
+        vibe: '1990s analog cassette-era norteño conjunto recording carrying Sinaloan corridista storyteller narrative content, working-class Tex-Mex border musical authenticity with Sinaloan rural storytelling, dry warm conjunto mix, accordion sitting present in the midrange, bajo sexto rhythmic and forward, drums small dry and tight, no long reverb tails, no modern polish, reportorial narrative production, the unmistakable warmth of cassette-era norteño corridos',
+        negative: 'banda sinaloense, brass section, trumpets, trombones, clarinets, tuba, sousaphone, tambora, wind ensemble, banda corrido, banda romántica, banda sound, sinaloense banda, full brass, horn section, mariachi, mariachi violins, mariachi strings, sierreño, requinto guitar, classical guitar lead, corridos tumbados, corridos alterados, peso pluma sierreño, sad sierreño, romantic softness, modern radio polish, polished production, 2010s 2020s production, wide stereo, deep sub bass, long vocal reverb, sidechain compression, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, norteño-sax, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, synthesizers, electronic drums, programmed drums, female lead vocal, female harmony, duet, two voices, harmony vocal layers, fast party corrido, breakneck polka, uptempo dance polka, danceable tempo, party tempo, energetic dance tempo, dance corrido, supernatural fast pulse',
+        vocalCharacter: 'single male corridista lead vocal in the slow Sinaloan-storyteller narrative cadence, raw rural unpolished norteño conjunto delivery, strong consonants and clear diction so every word of the story lands, unhurried phrasing, classic 1990s analog cassette-era conjunto corrido recording'
       },
       tumbados: {
         name: 'Corridos Tumbados',
@@ -1382,11 +1393,16 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   let descWithVoice: string;
   if (useStructuralOverride) {
     const voiceTag = ctx.vocalGender === 'f' ? 'female lead vocal' : 'male lead vocal';
-    // Include vocalCharacter — for corrido tradicional this carries additional
-    // Sinaloan-storyteller anchors ("slow Sinaloan-style corridista narrator")
-    // that reinforce the regional sound. Strip a trailing comma if any.
+    // Include vocalCharacter — carries additional norteño-conjunto storyteller
+    // anchors that reinforce the regional sound. Strip trailing punctuation.
     const vocalChar = (ctx.vocalCharacter || '').trim().replace(/[,.\s]+$/, '');
-    const styleSnippet = ctx.finalStyle.substring(0, 250).replace(/,?\s*$/, '');
+    // 600-char snippet (was 250) so style + tempo + a chunk of instruments
+    // reach Mureka. Critical for corrido tradicional: needs "norteño conjunto"
+    // saturation + "90-105 BPM slow narrative" + "accordion / bajo sexto /
+    // five-piece" instrument cues all together to keep Mureka from drifting
+    // to banda or to fast party polka. Total desc stays under Mureka's
+    // 1000-char limit (voiceTag ~18 + vocalChar ~290 + framing ~30 + 600 = ~938).
+    const styleSnippet = ctx.finalStyle.substring(0, 600).replace(/,?\s*$/, '');
     descWithVoice = vocalChar
       ? `${voiceTag}, ${vocalChar}, single voice storyteller, ${styleSnippet}`
       : `${voiceTag}, single voice storyteller, ${styleSnippet}`;
