@@ -1359,19 +1359,23 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const voicePrefix = `${genderLabel}, ${vocalStyle}`;
   const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
 
-  // V7.6 routing for genres where Mureka V9 has a hard polka-bias that
-  // produces fast party-polka output regardless of prompt. Currently:
-  // - corrido tradicional: V9 returned BPMs ranging 103-214 for the same
-  //   prompt because V9's training data has overwhelming "accordion = fast
-  //   party polka" coupling. V7.6 is older / more stable / honors slow
-  //   tempo cues. Env-overridable via MUREKA_CORRIDO_MODEL.
-  // The structural-override path also strips the long negative voice
-  // suffix and the verbose genderLabel — those long "NO X" lists can
-  // tokenize as their positive form on V7.6 and trigger the very thing
-  // we're banning. We trust the vocal_gender API field instead.
+  // Corrido tradicional gets the structural-override path (minimal positive-
+  // only desc, no long "NO duet" voice suffix) regardless of model version,
+  // because the long "NO X" lists tokenize as their positive form on
+  // accordion-conjunto genres and trigger the very thing we're banning.
+  // We trust the vocal_gender API field for binary voice selection instead.
+  //
+  // Model: switched from V7.6 → V9 on 2026-05-17 to test whether the new
+  // aggressive Sinaloan-Chalino DNA (explicit "NOT fast, NOT polka, NOT
+  // dance" + 75-92 BPM + strong negatives) is enough to overcome V9's
+  // accordion-conjunto polka bias. V9 has better audio fidelity than V7.6
+  // (cleaner vocals, more polished). Original V7.6 routing was added when
+  // V9 returned BPMs 103-214 for the same prompt; the new DNA may have
+  // closed that gap. Env-overridable via MUREKA_CORRIDO_MODEL: set to
+  // 'V7.6' in Supabase secrets to revert instantly without a code deploy.
   const isCorridoTradicional = ctx.genreId === 'corrido' && ctx.subGenreId === 'tradicional';
   const useStructuralOverride = isCorridoTradicional;
-  const CORRIDO_MODEL = Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V7.6';
+  const CORRIDO_MODEL = Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V9';
   const modelToUse = isCorridoTradicional ? CORRIDO_MODEL : MUREKA_MODEL;
 
   let descWithVoice: string;
