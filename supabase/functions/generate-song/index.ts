@@ -287,21 +287,29 @@ const genreDNA: Record<string, GenreData> = {
   // 6. MARIACHI
   // ===========================================================================
   mariachi: {
-    baseStyle: 'mariachi music, Mexican mariachi ensemble, traditional Mexican orchestral',
-    defaultTempo: '90-120 BPM',
+    baseStyle: 'mariachi music, Mexican mariachi ensemble, traditional Mexican orchestral ballad',
+    defaultTempo: '75-100 BPM',
     instruments: 'violins, trumpets, vihuela, guitarrón, guitar',
     negativeTags: 'electronic, trap, rock guitars, modern urban beats, EDM, synthesizer, 808',
-    defaultVocalCharacter: 'powerful operatic vocal, vibrato, dramatic projection',
+    defaultVocalCharacter: 'expressive operatic vocal, controlled vibrato, dignified projection',
     subGenres: {
+      // Standard "classic mariachi" — the slow-to-mid ballad sound most
+      // listeners associate with the genre (Vicente-Fernández-era classics
+      // like "Volver Volver" 76 BPM, "El Rey" 88 BPM, "México Lindo y
+      // Querido" 85 BPM). NOT the fast fiesta sound — that's ranchero.
       tradicional: {
         name: 'Mariachi Tradicional',
-        style: 'traditional classic mariachi, ceremonial Mexican mariachi ensemble, authentic son jalisciense, Jalisco mariachi, formal mariachi with full instrumentation, polished ensemble performance',
-        tempo: '90-120 BPM, variable classic tempo, son rhythm, waltz and march alternating',
-        instruments: 'violin section playing melodic passages in unison and harmony, trumpet duo with fanfare intros and sustained notes, vihuela percussive strumming providing harmonic rhythm, guitarrón deep bass on beats one and three, classical guitar arpeggios, optional harp',
-        vibe: 'Mexican national pride, elegant ceremony, timeless tradition, plaza Garibaldi atmosphere, formal beauty, cultural heritage, wedding ceremony, quinceañera vals',
-        negative: 'electronic production, trap, rock guitars, modern urban beats, synthesizers, lo-fi',
-        vocalCharacter: 'formal powerful vocal, operatic projection, ceremonial grandeur, vibrato'
+        style: 'traditional classic mariachi ballad, ceremonial Mexican mariachi ensemble, formal Jalisco mariachi tradition, dignified mariachi storytelling pace, classic bolero ranchero and slow son jalisciense, full ensemble with formal performance, classic golden-age Mexican mariachi recording aesthetic',
+        tempo: '75-100 BPM, ceremonial slow-to-moderate tempo, dignified storytelling pace, bolero ranchero or slow son feel, the classic slow-to-mid mariachi ballad sound, NOT fast, NOT a march, NOT a fiesta party tempo, NOT uptempo dance — this is the standard slow ceremonial mariachi NOT the fast fiesta mariachi',
+        instruments: 'violin section playing legato melodic passages in unison and harmony, trumpet duo with dignified sustained notes and gentle fanfare intros, vihuela percussive strumming providing harmonic rhythm, guitarrón deep bass on beats one and three, classical guitar arpeggios, optional harp',
+        vibe: 'Mexican national pride, elegant ceremony, timeless tradition, classic golden-age Mexican mariachi ballad style, plaza Garibaldi atmosphere, formal beauty, cultural heritage, wedding processional, slow ceremonial pace, classic ranchera ballad gravity',
+        negative: 'fast fiesta tempo, march tempo, polka march, uptempo dance, breakneck pace, mariachi ranchero party energy, fiesta brava, electronic production, trap, rock guitars, modern urban beats, synthesizers, lo-fi',
+        vocalCharacter: 'formal expressive vocal, classic ballad projection, ceremonial gravitas, controlled vibrato, dignified storytelling delivery'
       },
+      // INTENTIONAL fast/fiesta subgenre — this is THE dance/party mariachi.
+      // Do NOT slow this one down on a future tempo audit; ranchero IS the
+      // fast one by design (think "El Mariachi Loco" 135 BPM, "El Son de
+      // la Negra" 120 BPM). All other mariachi sub-genres default slow.
       ranchero: {
         name: 'Mariachi Ranchero',
         style: 'energetic ranchero mariachi, fiesta mariachi with gritos, bold celebratory mariachi, powerful mariachi anthem, uptempo fiesta brava, classic golden-age joyful mariachi style',
@@ -320,14 +328,17 @@ const genreDNA: Record<string, GenreData> = {
         negative: 'fast dance rhythms, brass-heavy banda, aggressive sounds, uptempo party, electronic',
         vocalCharacter: 'tender lyrical vocal, soft intimate delivery, serenading sweetness, gentle vibrato'
       },
+      // Contemporary/young-generation mariachi — modern recording quality
+      // but still rooted in the slow-to-mid ballad tradition. NOT the
+      // dance/fiesta side (that's ranchero).
       moderno: {
         name: 'Mariachi Moderno',
-        style: 'modern contemporary mariachi, updated mariachi with clean studio production, young generation mariachi, contemporary romantic mariachi style with subtle pop influence, traditional instruments with modern recording clarity',
-        tempo: '85-110 BPM, contemporary moderate tempo, accessible modern pacing',
-        instruments: 'classic mariachi ensemble with modern pristine recording quality, clean trumpet lines with reverb, violin section with studio clarity, vihuela, guitarrón, subtle acoustic guitar, light modern percussion shaker',
-        vibe: 'fresh modern take on mariachi classics, appeals to younger generation, Instagram-era elegance, accessible yet authentic, modern Mexican cultural pride, streaming-friendly',
-        negative: 'full electronic production, trap beats, reggaeton dembow rhythm, heavy distortion, lo-fi raw',
-        vocalCharacter: 'clean modern vocal, youthful accessible delivery, polished emotion'
+        style: 'modern contemporary mariachi ballad, updated mariachi with clean studio production, young generation mariachi ballad style, contemporary romantic mariachi with subtle pop influence, traditional mariachi instruments with modern recording clarity, slow-to-moderate ballad pace',
+        tempo: '75-95 BPM, contemporary moderate-to-slow ballad tempo, modern serenata feel, accessible modern pacing, NOT fast, NOT uptempo, NOT a fiesta party pace, NOT dance tempo',
+        instruments: 'classic mariachi ensemble with modern pristine recording quality, clean trumpet lines with subtle reverb, violin section with studio clarity, vihuela, guitarrón, subtle acoustic guitar, light modern percussion shaker, ballad pacing',
+        vibe: 'fresh modern take on mariachi ballads, appeals to younger generation, Instagram-era elegance, accessible yet authentic, modern Mexican cultural pride, streaming-friendly, slow contemporary serenata feel',
+        negative: 'fast fiesta tempo, uptempo dance, breakneck pace, mariachi ranchero party energy, full electronic production, trap beats, reggaeton dembow rhythm, heavy distortion, lo-fi raw',
+        vocalCharacter: 'clean modern vocal, youthful accessible delivery, polished emotion, contemporary ballad phrasing'
       }
     }
   },
