@@ -371,6 +371,10 @@ function homepageBodyHtml() {
         <p>Sorprende a mamá con una canción personalizada este Día de las Madres. En mariachi, bolero, ranchera o el género que ella prefiera.</p>
       </section>
       <section>
+        <h2><a href="/dia-del-padre">Canciones para el Día del Padre — 21 de Junio</a></h2>
+        <p>Sorprende a papá con una canción personalizada este Día del Padre. En corrido, norteño, banda, ranchera o el género que él prefiera.</p>
+      </section>
+      <section>
         <h2>¿Por qué elegir RegalosQueCantan?</h2>
         <ul>
           <li><strong>Rapidez:</strong> Tu canción está lista en 2-4 minutos, no días</li>
@@ -572,6 +576,78 @@ function buildRouteConfigs() {
       <section>
         <h2>Mas Ocasiones</h2>
         <ul>${allOccasions.filter(o => o.slug !== 'dia-de-las-madres').slice(0, 5).map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a></li>`).join('')}</ul>
+      </section>
+    </div>`
+  });
+
+  // Dia del Padre Seasonal Landing
+  const padreOccasion = OCCASIONS_SEO['dia-del-padre'];
+  const padreGenres = ['corridos-tumbados', 'corrido-clasico', 'norteno', 'banda-sinaloense', 'ranchera'].map(s => GENRES_SEO[s]).filter(Boolean);
+  routes.push({
+    path: '/dia-del-padre',
+    title: 'Cancion para Papa este 21 de Junio | RegalosQueCantan',
+    description: 'Sorprende a papa con una cancion personalizada este Dia del Padre. Con su nombre, en corrido, norteño, banda o ranchera. Lista en minutos desde $29.99.',
+    keywords: 'regalo dia del padre, cancion para papa, 21 de junio, regalo papa original, serenata papa, cancion personalizada papa, dia del padre 2026',
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Cancion Personalizada para el Dia del Padre",
+        "description": "Cancion personalizada para papa con su nombre en corrido, norteño, banda, ranchera y mas generos latinos.",
+        "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
+        "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 156 }
+      },
+      breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia del Padre', path: '/dia-del-padre' }]),
+      faqSchema([
+        { question: '¿Puedo crear la cancion el mismo 21 de Junio?', answer: 'Si, tu cancion estara lista en 2-4 minutos. Puedes crearla el mismo dia del padre y enviarla por WhatsApp al instante.' },
+        { question: '¿Que genero es mejor para papa?', answer: 'Depende de sus gustos. Corrido y norteño son los favoritos para papas de la vieja escuela. Banda para los que pegan jaladas. Ranchera para los romanticos.' },
+        { question: '¿Puedo incluir su apodo carinoso?', answer: 'Claro que si. Pa, Papi, Jefe, Apa, Viejo — cualquier nombre carinoso se incorpora naturalmente en la letra.' },
+        { question: '¿Cuanto cuesta la cancion para papa?', answer: 'Una cancion individual cuesta $29.99 USD. Sin suscripcion, pago unico. Recibes 2 versiones para elegir tu favorita.' },
+        { question: '¿Como se la envio a papa?', answer: 'Descargas el MP3 al instante y lo envias por WhatsApp, mensaje de texto, email o redes sociales.' },
+        { question: '¿La cancion menciona el nombre de papa?', answer: 'Si, la letra incluye su nombre, apodo, y los detalles personales que tu proporciones. Es una cancion 100% unica creada solo para el.' }
+      ])
+    ].filter(Boolean),
+    bodyHtml: `
+    <div id="prerender-content">
+      <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Dia del Padre</nav>
+      <h1>Cancion para Papa este 21 de Junio — Dia del Padre 2026</h1>
+      <p>Una cancion personalizada para el Dia del Padre es un regalo musical unico que incluye el nombre de papa, un mensaje de agradecimiento y detalles familiares especificos. Disponible en corrido, norteño, banda, ranchera y 20+ generos latinos, cada cancion se crea en 2-4 minutos y cuesta desde $29.99 USD.</p>
+      <p>Cientos de familias ya han sorprendido a papa con una cancion personalizada de RegalosQueCantan.</p>
+      <p><em>Actualizado: ${BUILD_DATE}</em></p>
+      <a href="/create/occasion">Crear Cancion para Papa — Desde $29.99</a>
+      <section>
+        <h2>¿Por que regalar una cancion para el Dia del Padre?</h2>
+        <p>Papa siempre da todo por la familia, pero rara vez escucha en voz alta lo que significa. Una cancion personalizada con su nombre es el regalo mas emotivo que puedes dar este 21 de Junio. Menciona su ejemplo, su trabajo duro y todo lo que admiras de el.</p>
+        <p>Con RegalosQueCantan, creas una cancion unica que papa podra escuchar una y otra vez. Es el regalo que lo hara sonreir, presumir y guardarla para siempre.</p>
+      </section>
+      <section>
+        <h2>Generos Populares para Papa</h2>
+        <ul>${padreGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
+      </section>
+      <section>
+        <h2>Ideas para Personalizar tu Cancion</h2>
+        <ul>
+          <li>Incluye su apodo carinoso: Pa, Papi, Jefe, Apa, Viejo</li>
+          <li>Menciona un recuerdo de la infancia juntos</li>
+          <li>Agradece su trabajo duro y sus sacrificios</li>
+          <li>Habla de su carro, su trabajo o sus hobbies favoritos</li>
+          <li>Incluye los nombres de los hijos o nietos</li>
+        </ul>
+      </section>
+      <section>
+        <h2>Regalo de Ultimo Minuto Perfecto</h2>
+        <p>Tu cancion estara lista en 2-4 minutos. Sin envio, sin espera. Descarga el MP3 y envialo por WhatsApp al instante. Perfecto si se te olvido el regalo para papa.</p>
+      </section>
+      <section>
+        <h2>Preguntas Frecuentes — Canciones para Papa</h2>
+        <h3>¿Puedo crear la cancion el mismo 21 de Junio?</h3><p>Si, tu cancion estara lista en 2-4 minutos.</p>
+        <h3>¿Que genero es mejor para papa?</h3><p>Corrido y norteño son los favoritos. Banda para los que pegan jaladas. Ranchera para los romanticos.</p>
+        <h3>¿Cuanto cuesta?</h3><p>$29.99 USD. Sin suscripcion, pago unico.</p>
+      </section>
+      <section>
+        <h2>Mas Ocasiones</h2>
+        <ul>${allOccasions.filter(o => o.slug !== 'dia-del-padre').slice(0, 5).map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a></li>`).join('')}</ul>
       </section>
     </div>`
   });
@@ -839,7 +915,7 @@ function main() {
   // Priority mapping
   const getPriority = (path) => {
     if (path === '/') return '1.0';
-    if (path === '/dia-de-las-madres') return '0.9';
+    if (path === '/dia-de-las-madres' || path === '/dia-del-padre') return '0.9';
     if (['/generos', '/ocasiones', '/como-funciona', '/preguntas-frecuentes', '/pricing'].includes(path)) return '0.9';
     if (path.startsWith('/generos/') || path.startsWith('/ocasiones/')) return '0.8';
     if (path.startsWith('/canciones/')) return '0.7';
@@ -848,7 +924,7 @@ function main() {
 
   const getChangefreq = (path) => {
     if (path === '/' || path === '/generos' || path === '/ocasiones') return 'weekly';
-    if (path === '/dia-de-las-madres') return 'weekly';
+    if (path === '/dia-de-las-madres' || path === '/dia-del-padre') return 'weekly';
     return 'monthly';
   };
 

@@ -33,6 +33,7 @@ import ComoFunciona from './pages/seo/ComoFunciona';
 import PreguntasFrecuentes from './pages/seo/PreguntasFrecuentes';
 import SobreNosotros from './pages/seo/SobreNosotros';
 import DiaDeLasMadresLanding from './pages/seo/DiaDeLasMadresLanding';
+import DiaDelPadreLanding from './pages/seo/DiaDelPadreLanding';
 import ComboLanding from './pages/seo/ComboLanding';
 import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
@@ -89,6 +90,7 @@ const pathToPage = {
   '/preguntas-frecuentes': 'preguntasFrecuentes',
   '/sobre-nosotros': 'sobreNosotros',
   '/dia-de-las-madres': 'diaDeLasMadres',
+  '/dia-del-padre': 'diaDelPadre',
   '/corridos': 'corridos',
   '/afiliados': 'affiliateLanding',
   '/partners': 'affiliateVSL',
@@ -276,6 +278,7 @@ export default function App() {
       preguntasFrecuentes: '/preguntas-frecuentes',
       sobreNosotros: '/sobre-nosotros',
       diaDeLasMadres: '/dia-de-las-madres',
+      diaDelPadre: '/dia-del-padre',
       corridos: '/corridos',
       affiliateLanding: '/afiliados',
       affiliateVSL: '/partners',
@@ -394,6 +397,7 @@ export default function App() {
           {currentPage === 'preguntasFrecuentes' && <PreguntasFrecuentes />}
           {currentPage === 'sobreNosotros' && <SobreNosotros />}
           {currentPage === 'diaDeLasMadres' && <DiaDeLasMadresLanding />}
+          {currentPage === 'diaDelPadre' && <DiaDelPadreLanding />}
           {currentPage === 'corridos' && <CorridosLanding />}
 
           {/* SEO Dynamic Genre pages */}

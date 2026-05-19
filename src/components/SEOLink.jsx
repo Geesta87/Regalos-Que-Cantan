@@ -34,7 +34,8 @@ const staticPageUrls = {
   adminDashboard: '/admin/dashboard',
   generos: '/generos',
   ocasiones: '/ocasiones',
-  diaDeLasMadres: '/dia-de-las-madres'
+  diaDeLasMadres: '/dia-de-las-madres',
+  diaDelPadre: '/dia-del-padre'
 };
 
 export function pageToUrl(page) {
