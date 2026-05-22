@@ -88,10 +88,10 @@ export default function LandingPage() {
             href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
+            className="inline-flex items-center gap-1.5 md:gap-2 bg-white hover:bg-white/90 text-landing-bg text-sm md:text-base font-extrabold px-4 py-2.5 md:px-5 md:py-3 rounded-lg transition-all shadow-lg ring-2 ring-white/40 hover:ring-white/70"
             title="English version — MadeYouASong"
           >
-            <span aria-hidden="true">🇺🇸</span>
+            <span aria-hidden="true" className="text-base md:text-lg">🇺🇸</span>
             <span>English</span>
           </a>
           <button
@@ -208,18 +208,17 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* English version handoff — fine print, doesn't compete with primary CTA */}
-          <p className="mt-8 text-xs text-white/40">
-            ¿Prefieres tu canción en inglés?{' '}
-            <a
-              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=hero_subtext&utm_campaign=hero_subtext"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-landing-primary hover:text-white underline underline-offset-4 font-semibold transition-colors"
-            >
-              Visita MadeYouASong →
-            </a>
-          </p>
+          {/* English version handoff — visible chip, prominent but secondary to primary CTA */}
+          <a
+            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=hero_subtext&utm_campaign=hero_subtext"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-8 inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 border-2 border-white/30 hover:border-white text-white text-sm font-bold px-5 py-3 rounded-full transition-all shadow-md"
+          >
+            <span aria-hidden="true" className="text-lg">🇺🇸</span>
+            <span>¿Prefieres tu canción en inglés? Visita MadeYouASong</span>
+            <span aria-hidden="true">→</span>
+          </a>
         </div>
 
         {/* Bottom fade — purely visual, must NOT capture clicks
