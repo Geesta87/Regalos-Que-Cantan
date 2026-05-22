@@ -324,10 +324,10 @@ export default function GenreStep() {
               href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all"
+              className="inline-flex items-center gap-1.5 md:gap-2 bg-white hover:bg-white/90 text-forest text-sm md:text-base font-extrabold px-4 py-2 md:px-5 md:py-2.5 rounded-full transition-all shadow-lg ring-2 ring-gold/40 hover:ring-gold"
               title="English version — MadeYouASong"
             >
-              <span aria-hidden="true">🇺🇸</span>
+              <span aria-hidden="true" className="text-base md:text-lg">🇺🇸</span>
               <span>English</span>
             </a>
             <span className="text-white/40 text-xs uppercase tracking-widest hidden md:block">Paso 1 de 5</span>
@@ -426,17 +426,17 @@ export default function GenreStep() {
             href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_pivot&utm_campaign=genre_pivot"
             target="_blank"
             rel="noopener noreferrer"
-            className="block mt-10 p-5 md:p-6 rounded-2xl border-2 border-dashed border-white/15 hover:border-gold/60 bg-white/[0.02] hover:bg-white/[0.05] transition-all text-center group"
+            className="block mt-10 p-6 md:p-7 rounded-2xl border-2 border-gold/50 hover:border-gold bg-gold/10 hover:bg-gold/15 transition-all text-center group shadow-lg shadow-gold/10 hover:shadow-gold/20"
           >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <span aria-hidden="true" className="text-2xl">🇺🇸</span>
-              <span className="text-white/90 group-hover:text-gold font-semibold text-sm md:text-base transition-colors">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <span aria-hidden="true" className="text-3xl md:text-4xl">🇺🇸</span>
+              <span className="text-white group-hover:text-gold font-bold text-base md:text-lg transition-colors">
                 ¿Buscas géneros en inglés?
               </span>
             </div>
-            <p className="text-white/50 text-xs md:text-sm">
+            <p className="text-white/80 text-sm md:text-base font-medium">
               Pop · Country · R&B · Rock · Hip-Hop · disponibles en{' '}
-              <span className="text-gold font-semibold">MadeYouASong →</span>
+              <span className="text-gold font-extrabold underline underline-offset-4">MadeYouASong →</span>
             </p>
           </a>
 
