@@ -168,6 +168,22 @@ export default function LandingPagePremium() {
           Regalos<span style={{ color: '#f20d80' }}>Que</span>Cantan
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <a
+            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header_premium"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
+              color: 'white', padding: '9px 16px', borderRadius: '999px',
+              fontSize: '12px', fontWeight: 600, textDecoration: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              transition: 'all 0.3s',
+            }}
+            title="English version — MadeYouASong"
+          >
+            <span aria-hidden="true">🇺🇸</span>
+            <span>English</span>
+          </a>
           <button onClick={() => navigateTo('recoverSong')} style={{
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
             color: 'white', padding: '9px 16px', borderRadius: '999px',

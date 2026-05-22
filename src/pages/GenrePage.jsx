@@ -91,19 +91,9 @@ export default function GenrePage() {
               RegalosQueCantan
             </h2>
           </div>
-          <div className="flex items-center gap-3 md:gap-4">
-            <a
-              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-all"
-              title="English version — MadeYouASong"
-            >
-              <span aria-hidden="true">🇺🇸</span>
-              <span>English</span>
-            </a>
+          <div className="flex items-center gap-4">
             <span className="text-white/40 text-xs uppercase tracking-widest hidden md:block">Paso 1 de 4</span>
-            <button
+            <button 
               onClick={() => navigateTo('landing')}
               className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-all"
             >
@@ -192,25 +182,6 @@ export default function GenrePage() {
               </button>
             </div>
           )}
-
-          {/* English genres pivot — handoff to MadeYouASong */}
-          <a
-            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_pivot&utm_campaign=genre_pivot"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block mt-10 p-5 md:p-6 rounded-2xl border-2 border-dashed border-white/15 hover:border-gold/60 bg-white/[0.02] hover:bg-white/[0.05] transition-all text-center group"
-          >
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <span aria-hidden="true" className="text-2xl">🇺🇸</span>
-              <span className="text-white/90 group-hover:text-gold font-semibold text-sm md:text-base transition-colors">
-                ¿Buscas géneros en inglés?
-              </span>
-            </div>
-            <p className="text-white/50 text-xs md:text-sm">
-              Pop · Country · R&B · Rock · Hip-Hop · disponibles en{' '}
-              <span className="text-gold font-semibold">MadeYouASong →</span>
-            </p>
-          </a>
 
           {/* Sub-genre Selection */}
           {currentGenre && currentGenre.subGenres && currentGenre.subGenres.length > 0 && (

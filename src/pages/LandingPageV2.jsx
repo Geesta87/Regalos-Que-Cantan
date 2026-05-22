@@ -262,6 +262,16 @@ export default function LandingPageV2() {
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
+            <a
+              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header_v2"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/15 text-white px-3 py-2 rounded-full text-xs md:text-sm font-semibold transition-all"
+              title="English version — MadeYouASong"
+            >
+              <span aria-hidden="true">🇺🇸</span>
+              <span>English</span>
+            </a>
             <button
               onClick={() => navigateTo('recoverSong')}
               className="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/15 text-white px-3 py-2 rounded-full text-xs md:text-sm font-semibold transition-all"
