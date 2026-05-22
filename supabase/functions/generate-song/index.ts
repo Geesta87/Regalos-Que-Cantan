@@ -133,12 +133,16 @@ const genreDNA: Record<string, GenreData> = {
       },
       con_sax_bailar: {
         name: 'Norteño con Sax — Para Bailar',
-        style: 'danceable norteño with saxophone, traditional polka norteño with sax lead, cumbia norteña con saxofón, upbeat northern Mexican dance hall sax, blue-collar cantina norteño-sax, sax riffs trading with accordion runs',
-        tempo: '120-145 BPM, upbeat polka and cumbia norteña groove, lively dance-floor tempo, sing-along energy',
-        instruments: 'punchy alto saxophone riffs and hooks between accordion lines, diatonic button accordion lead, bajo sexto twelve-string with percussive downstroke strumming, electric bass walking lines, polka drum pattern with rim shots and steady backbeat, group harmonies on chorus',
-        vibe: 'cantina sing-along, working-class dance floor, sweaty norteño party, sax-and-accordion call and response, rural rancho celebration, palenque feria energy, NOT a wedding ballad',
-        negative: 'slow ballad, classy wedding crooner, smooth romantic crooning, jazz fusion, EDM, trap, 808, heavy metal, banda brass section, modern pop production',
-        vocalCharacter: 'earnest grupo tenor vocal, slightly nasal cantina warmth, sing-along delivery, group harmonies on choruses, blue-collar charm'
+        // No "cumbia", "sing-along", "group harmonies", "duo" tokens — they
+        // trigger Mureka V9's polka-cumbia / vocal-group bias (see
+        // project_mureka_v9_norteno_bias memory). Saturate first ~250 chars
+        // with norteño-sax conjunto anchors only.
+        style: 'classic Tex-Mex norteño con saxofón, conjunto norteño with prominent alto sax lead, polka norteña with saxophone hooks, El Paso–Juárez border norteño-sax conjunto, traditional sax-driven norteño polka, sax-forward conjunto norteño, regional Mexican conjunto with alto saxophone',
+        tempo: '105-125 BPM, two-step polka norteña 2/4 time, traditional conjunto polka feel, classic norteño polka tempo, moderate polka pace',
+        instruments: 'punchy alto saxophone playing melodic hooks and fills between accordion lines, diatonic button accordion lead, bajo sexto twelve-string with percussive downstrokes, electric bass walking polka bass lines, polka norteña drum pattern with 2/4 backbeat, traditional conjunto rhythm section',
+        vibe: 'cantina norteño polka, traditional border-town conjunto dance, working-class polka norteña party, accordion-and-sax call and response, palenque feria norteño polka, conjunto polka norteña celebration',
+        negative: 'cumbia, cumbia norteña, sonidera, güiro, synth cumbia, dance hall electronic, fast quebradita, slow ballad, classy wedding crooner, smooth romantic crooning, jazz fusion, EDM, trap, 808, heavy metal, banda brass section, modern pop production',
+        vocalCharacter: 'earnest male norteño tenor lead vocal, slightly nasal cantina warmth, conjunto polka norteña delivery, blue-collar polka norteño charm'
       },
       nortena_banda: {
         name: 'Norteña-Banda',
@@ -1153,9 +1157,12 @@ const artistDNA: Record<string, ArtistData> = {
   },
   rieleros: {
     name: 'Los Rieleros del Norte',
-    genre: 'Norteño con Sax (Dance)',
-    signatureSound: 'classic danceable norteño with prominent saxophone hooks, polka-cumbia norteña groove, cantina sing-along energy, earnest grupo tenor vocals with group harmonies on choruses, blue-collar working-class warmth, El Paso–Juárez border sound',
-    keyElements: 'punchy alto sax riffs trading with accordion runs, diatonic accordion, bajo sexto, electric bass walking lines, polka-cumbia drum pattern, 120-140 BPM upbeat dance tempo, NOT a smooth ballad, sing-along chorus harmonies',
+    genre: 'Norteño con Sax',
+    // Per project_mureka_v9_norteno_bias memory: no "cumbia", "sing-along",
+    // "group harmonies", "duo" tokens — those activate V9's vocal-group and
+    // polka-cumbia bias even though we're routed to V7.6.
+    signatureSound: 'classic sax-driven norteño conjunto, prominent alto saxophone hooks trading with diatonic accordion, traditional polka norteña 2/4 groove, blue-collar El Paso–Juárez border norteño-sax sound, sax-forward conjunto polka tradition',
+    keyElements: 'punchy alto sax riffs between accordion runs, diatonic accordion, bajo sexto, electric bass walking polka lines, polka norteña 2/4 drum pattern, 110-125 BPM traditional norteño polka tempo, single male storyteller lead vocal',
     keywords: ['rieleros', 'los rieleros', 'rieleros del norte']
   }
 };
@@ -1344,6 +1351,11 @@ interface ProviderCtx {
   isForSelf: boolean;
   recipientName: string;
   supabaseUrl: string;
+  /** Genre ID (e.g. 'norteno', 'corrido', 'romantica'). Used by callMurekaProvider
+   *  to route specific genres to older Mureka models that don't carry V9's
+   *  accordion-conjunto polka-cumbia bias. See project_mureka_v9_norteno_bias. */
+  genre?: string;
+  subGenre?: string;
 }
 
 type ProviderResult =
@@ -1387,17 +1399,33 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   // Defense-in-depth: scrub any leaked artist names from the desc before sending.
   const safeDesc = sanitizeArtistNames(descWithVoice).substring(0, 1000);
 
+  // Per-genre model routing. Mureka V9 has a documented polka-cumbia bias on
+  // accordion-conjunto music — same prompt produces wildly variable BPMs and
+  // cumbia drift on norteño and corrido tradicional. V7.6 is the older /
+  // lower-bias model that honors slow-tempo cues and doesn't auto-drift to
+  // cumbia/quebradita on conjunto prompts. Both routes are env-overridable.
+  // See project_mureka_v9_norteno_bias memory.
+  const requestedModel = (() => {
+    if (ctx.genre === 'norteno') {
+      return Deno.env.get('MUREKA_NORTENO_MODEL') || 'V7.6';
+    }
+    if (ctx.genre === 'corrido' && ctx.subGenre === 'tradicional') {
+      return Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V7.6';
+    }
+    return MUREKA_MODEL;
+  })();
+
   const payload: Record<string, unknown> = {
     account: MUREKA_ACCOUNT,
     lyrics: ctx.lyrics.substring(0, 5000),
     title: songTitle,
     desc: safeDesc,
-    model: MUREKA_MODEL,
+    model: requestedModel,
     vocal_gender: apiVocalGender,
     replyUrl,
   };
 
-  console.log(`[callMureka] POST useapi.net (model=${MUREKA_MODEL}, gender=${apiVocalGender})`);
+  console.log(`[callMureka] POST useapi.net (model=${requestedModel}, gender=${apiVocalGender}, genre=${ctx.genre ?? 'n/a'}, subGenre=${ctx.subGenre ?? 'n/a'})`);
 
   let resp: Response;
   try {
@@ -1412,7 +1440,7 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
 
   // Try V8 fallback model on model-specific 400s (existing behavior preserved)
   let cachedErrData: any = null;
-  if (!resp.ok && MUREKA_MODEL !== MUREKA_FALLBACK_MODEL) {
+  if (!resp.ok && requestedModel !== MUREKA_FALLBACK_MODEL) {
     cachedErrData = await resp.json().catch(() => ({ error: 'Unknown error' }));
     const errStr = JSON.stringify(cachedErrData);
     const isModelError = errStr.includes('model') || errStr.includes('not supported') || errStr.includes('invalid') || resp.status === 400;
@@ -1424,7 +1452,7 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
       || errStr.includes('Unexpected state')
       || errStr.includes('balance is not enough');
     if (isModelError && !hasOtherIssue) {
-      console.warn(`[callMureka] Model ${MUREKA_MODEL} failed (${resp.status}), retrying with ${MUREKA_FALLBACK_MODEL}`);
+      console.warn(`[callMureka] Model ${requestedModel} failed (${resp.status}), retrying with ${MUREKA_FALLBACK_MODEL}`);
       payload.model = MUREKA_FALLBACK_MODEL;
       cachedErrData = null;
       try {
@@ -2311,6 +2339,8 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       isForSelf,
       recipientName,
       supabaseUrl: SUPABASE_URL!,
+      genre,
+      subGenre,
     };
 
     console.log(`[STEP 6] primary=${MUSIC_PROVIDER_PRIMARY} fallback=${MUSIC_PROVIDER_FALLBACK ?? 'NONE'}`);
