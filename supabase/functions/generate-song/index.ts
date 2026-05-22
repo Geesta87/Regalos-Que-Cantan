@@ -122,14 +122,23 @@ const genreDNA: Record<string, GenreData> = {
         negative: 'electronic beats, trap production, urban sounds, reggaeton, modern pop, synthesizers',
         vocalCharacter: 'bright energetic vocal, festive delivery, sing-along friendly, cantina warmth'
       },
-      con_sax: {
-        name: 'Norteño con Sax',
-        style: 'norteño with saxophone lead melody, norteño-sax fusion, alto saxophone carrying main melody over accordion harmony, romantic norteño with sax, smooth saxophone-forward northern Mexican',
+      con_sax_romantico: {
+        name: 'Norteño con Sax — Romántico',
+        style: 'romantic norteño with saxophone lead, norteño-sax ballad fusion, alto saxophone carrying main melody over accordion harmony, smooth saxophone-forward northern Mexican, polished norteño-sax love song',
         tempo: '100-120 BPM, smooth swaying energy, romantic dance groove',
         instruments: 'alto saxophone melodic lead with vibrato, diatonic accordion harmony and fills, bajo sexto rhythm guitar, electric bass, drums with norteño polka pattern, occasional trumpet accents',
         vibe: 'romantic yet energetic, classy wedding party, elegant saxophone serenading, sophisticated norteño, couples dancing close',
-        negative: 'heavy metal guitars, EDM drops, aggressive trap, rock sounds, harsh distortion, raw lo-fi',
+        negative: 'heavy metal guitars, EDM drops, aggressive trap, rock sounds, harsh distortion, raw lo-fi, fast quebradita, rushed cumbia',
         vocalCharacter: 'smooth romantic vocal, elegant delivery, polished and warm'
+      },
+      con_sax_bailar: {
+        name: 'Norteño con Sax — Para Bailar',
+        style: 'danceable norteño with saxophone, traditional polka norteño with sax lead, cumbia norteña con saxofón, upbeat northern Mexican dance hall sax, blue-collar cantina norteño-sax, sax riffs trading with accordion runs',
+        tempo: '120-145 BPM, upbeat polka and cumbia norteña groove, lively dance-floor tempo, sing-along energy',
+        instruments: 'punchy alto saxophone riffs and hooks between accordion lines, diatonic button accordion lead, bajo sexto twelve-string with percussive downstroke strumming, electric bass walking lines, polka drum pattern with rim shots and steady backbeat, group harmonies on chorus',
+        vibe: 'cantina sing-along, working-class dance floor, sweaty norteño party, sax-and-accordion call and response, rural rancho celebration, palenque feria energy, NOT a wedding ballad',
+        negative: 'slow ballad, classy wedding crooner, smooth romantic crooning, jazz fusion, EDM, trap, 808, heavy metal, banda brass section, modern pop production',
+        vocalCharacter: 'earnest grupo tenor vocal, slightly nasal cantina warmth, sing-along delivery, group harmonies on choruses, blue-collar charm'
       },
       nortena_banda: {
         name: 'Norteña-Banda',
@@ -1141,6 +1150,13 @@ const artistDNA: Record<string, ArtistData> = {
     signatureSound: 'grupera legends, romantic ballads, 80s-90s nostalgia, smooth emotional tenor voice',
     keyElements: 'keyboards, soft guitars, emotional ballads, 80-100 BPM, romantic lyrics',
     keywords: ['bukis', 'los bukis', 'marco antonio solis', 'marco antonio']
+  },
+  rieleros: {
+    name: 'Los Rieleros del Norte',
+    genre: 'Norteño con Sax (Dance)',
+    signatureSound: 'classic danceable norteño with prominent saxophone hooks, polka-cumbia norteña groove, cantina sing-along energy, earnest grupo tenor vocals with group harmonies on choruses, blue-collar working-class warmth, El Paso–Juárez border sound',
+    keyElements: 'punchy alto sax riffs trading with accordion runs, diatonic accordion, bajo sexto, electric bass walking lines, polka-cumbia drum pattern, 120-140 BPM upbeat dance tempo, NOT a smooth ballad, sing-along chorus harmonies',
+    keywords: ['rieleros', 'los rieleros', 'rieleros del norte']
   }
 };
 
@@ -1183,6 +1199,8 @@ const ADDITIONAL_ARTIST_NAMES = [
   'Alejandro Fernández', 'Alejandro Fernandez', 'Pedro Infante',
   'José Alfredo', 'Jose Alfredo', 'José José', 'Jose Jose',
   'Calibre 50', 'Intocable', 'Conjunto Primavera', 'Banda MS', 'BandaMS',
+  'Los Rieleros del Norte', 'Rieleros del Norte', 'Los Tigrillos',
+  'Los Palominos',
   // Duranguense / techno-banda (today's leak vector)
   'Alacranes Musical', 'K-Paz de la Sierra', 'K-Paz', 'Patrulla 81',
   'Banda Cuisillos', 'Banda Limón', 'Banda Limon', 'Banda Recoditos',
@@ -1569,6 +1587,98 @@ function shouldFallback(classification: ProviderErrorClass): boolean {
 }
 
 // =============================================================================
+// CLAUDE LYRICS GENERATION — STRUCTURED OUTPUT VIA TOOL USE
+// =============================================================================
+//
+// 2026-05-21: switched from "ask Claude to emit JSON" → tool use. The previous
+// approach asked Claude to return a JSON string we then parsed with JSON.parse.
+// An invalid escape sequence in the JSON (e.g. `\y` where Claude meant `\n`)
+// could blow up the parser, and the silent fallback shipped raw JSON syntax
+// to the customer as the song lyrics. With tool use, the API itself validates
+// the response against the schema below and returns `input` as a parsed object.
+// No string parsing on our side. No way for an LLM typo to leak through.
+//
+// Tool input is the contract. If Claude does not call the tool, or returns
+// input that fails schema validation, the request fails loudly — never silently.
+//
+// The static system prompt holds composition rules that don't change per
+// request. It's marked with cache_control so subsequent requests within
+// the cache TTL read it from cache at ~10% of the input cost.
+
+const LYRICS_TOOL = {
+  name: 'submit_song_lyrics',
+  description:
+    'Submit the final song lyrics and emotional modifiers for the music production pipeline. ' +
+    'You MUST call this tool to deliver your output. Do not respond with prose, JSON text, ' +
+    'or any other format — only call this tool with both required fields populated.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      lyrics: {
+        type: 'string',
+        description:
+          'The complete song lyrics in Spanish. Use real newline characters between lines ' +
+          '(the field accepts multi-line strings natively — do NOT write the literal characters ' +
+          'backslash-n). Include all required section markers like [Intro], [Verso 1], [Coro], ' +
+          '[Verso 2], [Puente], [Coro Final], [Outro] etc. per the structure rules in the user message. ' +
+          'Follow ALL composition rules from the system prompt and the per-song specifics from the user message.',
+      },
+      emotionalModifiers: {
+        type: 'string',
+        description:
+          'Up to 25 words in ENGLISH describing the unique emotion and atmosphere of THIS song. ' +
+          'Do NOT mention the genre, instruments, or tempo — those go elsewhere in the pipeline. ' +
+          'The modifiers MUST match the sonic character of the genre (e.g. fierce/defiant for ' +
+          'aggressive genres, aching/bittersweet for melancholic, euphoric for festive, tender for romantic).',
+      },
+    },
+    required: ['lyrics', 'emotionalModifiers'],
+    additionalProperties: false,
+  },
+} as const;
+
+// Static composition rules — invariant across all requests, eligible for prompt caching.
+// Anything per-customer (recipient name, genre, occasion, details, structure) is in the
+// dynamic user message below, NOT here. Keep this block byte-stable so the cache holds.
+const LYRICS_SYSTEM_PROMPT = `Eres un compositor experto de música mexicana y latina. Te especializas en composición personalizada para regalos musicales. Escribes letras que la gente CANTA, no que solo lee.
+
+Recibirás los detalles de cada canción (género, destinatario, ocasión, detalles personales, estructura de secciones) en el mensaje del usuario. Las REGLAS siguientes aplican a TODAS las canciones que escribes, sin excepción.
+
+REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
+
+1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4-6 líneas max), y fácil de cantar. Usa repetición intencional. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
+
+2. CONTRASTE VERSO vs CORO. Los versos CUENTAN la historia (narrativos, específicos, íntimos). El coro EXPLOTA la emoción (universal, repetible, intenso). Que se sientan como secciones DISTINTAS en energía y tono.
+
+3. DETALLES ESPECÍFICOS > FRASES GENÉRICAS.
+   PROHIBIDO: "eres la luz de mi vida", "sin ti no puedo vivir", "eres mi todo", "mi corazón late por ti", "eres mi sol y mi luna", "eres el amor de mi vida", "contigo soy feliz".
+   EN VEZ usa los detalles personales que el usuario provee para crear imágenes ÚNICAS y concretas. Un recuerdo específico vale más que 10 frases bonitas genéricas.
+   REGLA CRÍTICA: Si el usuario mencionó FECHAS, LUGARES, EVENTOS, APODOS, o ANÉCDOTAS en los detalles, DEBES incluir CADA UNO en la letra. Distribúyelos así: Verso 1 = contexto/origen de la historia, Verso 2 = momentos específicos y recuerdos, Puente = lo más íntimo/vulnerable. NO ignores ningún detalle que el usuario proporcionó — es lo que hace ÚNICA esta canción y por lo que PAGARON.
+
+4. USO DEL NOMBRE — instrucción específica viene en el mensaje del usuario (varía si la canción es para otra persona o para uno mismo).
+
+5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
+
+6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
+
+7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
+
+8. NO empezar múltiples versos con la misma palabra. Varía las aperturas de cada línea.
+
+REGLA ABSOLUTA — NOMBRES DE ARTISTAS:
+NUNCA escribas el nombre de un artista, banda, cantante o grupo musical real (ni en las letras, ni en emotionalModifiers, ni en ningún otro campo). Esto incluye nombres como "Christian Nodal", "Vicente Fernández", "Alacranes Musical", "Banda MS", "Carin León", "Peso Pluma", "K-Paz", "Diomedes Díaz", etc. — si pensaste mencionar un artista para describir el estilo, REEMPLÁZALO por una descripción del SONIDO ("modern romantic ranchera style", "techno-banda style") sin mencionar al artista. El proveedor de música RECHAZA cualquier referencia a artistas reales y la canción FALLA.
+
+REGLA CRÍTICA para emotionalModifiers:
+Los modifiers DEBEN ser compatibles con el carácter sonoro del género. Expresa la emoción A TRAVÉS del lente del género, nunca en contra.
+- Género agresivo/oscuro (bélico, trap, alterados): emociones con fuerza — "fierce unbreakable loyalty, defiant pride, raw respect" NO "warm heartfelt tender"
+- Género melancólico (sad sierreño, bolero): emociones con peso — "aching longing, bittersweet devotion, haunting memory"
+- Género festivo/bailable (cumbia, quebradita): emociones con energía — "euphoric celebration, infectious joy, vibrant tribute"
+- Género romántico/suave: calidez — "tender intimacy, warm embrace, gentle devotion"
+
+ENTREGA DE LA SALIDA:
+SIEMPRE entrega tu resultado llamando a la herramienta submit_song_lyrics con ambos campos (lyrics, emotionalModifiers). NUNCA respondas con prosa, JSON en texto, o cualquier otro formato. La herramienta es el único canal de entrega.`;
+
+// =============================================================================
 // MAIN HANDLER
 // =============================================================================
 serve(async (req) => {
@@ -1834,7 +1944,11 @@ serve(async (req) => {
       ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
       : '';
 
-    const claudePrompt = `Eres un compositor experto de música ${displayGenre} mexicana/latina. Escribes letras que la gente CANTA, no que solo lee.
+    // User message — DYNAMIC per request. Static composition rules (1-3, 5-8,
+    // artist-name rule, emotionalModifiers compatibility rule, tool-delivery
+    // contract) live in LYRICS_SYSTEM_PROMPT at module scope and are cached.
+    // Only per-song specifics go here.
+    const claudeUserMessage = `Escribe una canción de ${displayGenre} con los siguientes datos.
 
 INFORMACIÓN:
 - GÉNERO: ${displayGenre}
@@ -1850,26 +1964,8 @@ ${genreVibe ? `- CARÁCTER SONORO DEL GÉNERO: ${genreVibe}` : ''}
 DETALLES PERSONALES:
 ${details || 'No se proporcionaron detalles específicos. Inventa momentos y recuerdos verosímiles basados en la relación y ocasión — hazlo sentir personal aunque no tengas datos reales.'}
 
-REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
-
-1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4-6 líneas max), y fácil de cantar. Usa repetición intencional. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
-
-2. CONTRASTE VERSO vs CORO. Los versos CUENTAN la historia (narrativos, específicos, íntimos). El coro EXPLOTA la emoción (universal, repetible, intenso). Que se sientan como secciones DISTINTAS en energía y tono.
-
-3. DETALLES ESPECÍFICOS > FRASES GENÉRICAS.
-   PROHIBIDO: "eres la luz de mi vida", "sin ti no puedo vivir", "eres mi todo", "mi corazón late por ti", "eres mi sol y mi luna", "eres el amor de mi vida", "contigo soy feliz".
-   EN VEZ usa los detalles personales del usuario para crear imágenes ÚNICAS y concretas. Un recuerdo específico vale más que 10 frases bonitas genéricas.
-   REGLA CRÍTICA: Si el usuario mencionó FECHAS, LUGARES, EVENTOS, APODOS, o ANÉCDOTAS en los detalles, DEBES incluir CADA UNO en la letra. Distribúyelos así: Verso 1 = contexto/origen de la historia, Verso 2 = momentos específicos y recuerdos, Puente = lo más íntimo/vulnerable. NO ignores ningún detalle que el usuario proporcionó — es lo que hace ÚNICA esta canción y por lo que PAGARON.
-
-4. ${nameInstruction}
-
-5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
-
-6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
-
-7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
-
-8. NO empezar múltiples versos con la misma palabra. Varía las aperturas de cada línea.
+REGLA 4 (USO DEL NOMBRE) PARA ESTA CANCIÓN:
+${nameInstruction}
 
 ${perspectiveInstruction}
 
@@ -1985,24 +2081,9 @@ ${habladoLine}
 - [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
 })()}
 
-GENERA JSON con:
-1. "lyrics": Letra completa siguiendo las reglas anteriores.
-2. "emotionalModifiers": Máximo 25 palabras en INGLÉS describiendo la emoción/atmósfera única (NO género/instrumentos/tempo)
+Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa y los emotionalModifiers en inglés. Recuerda todas las reglas del sistema (composición, nombres de artistas, compatibilidad de modifiers con el género).`;
 
-REGLA ABSOLUTA — NOMBRES DE ARTISTAS:
-NUNCA escribas el nombre de un artista, banda, cantante o grupo musical real (ni en las letras, ni en emotionalModifiers, ni en ningún otro campo). Esto incluye nombres como "Christian Nodal", "Vicente Fernández", "Alacranes Musical", "Banda MS", "Carin León", "Peso Pluma", "K-Paz", "Diomedes Díaz", etc. — si pensaste mencionar un artista para describir el estilo, REEMPLÁZALO por una descripción del SONIDO ("modern romantic ranchera style", "techno-banda style") sin mencionar al artista. El proveedor de música RECHAZA cualquier referencia a artistas reales y la canción FALLA.
-
-REGLA CRÍTICA para emotionalModifiers:
-Los modifiers DEBEN ser compatibles con el carácter sonoro del género. Expresa la emoción A TRAVÉS del lente del género, nunca en contra.
-- Género agresivo/oscuro (bélico, trap, alterados): emociones con fuerza — "fierce unbreakable loyalty, defiant pride, raw respect" NO "warm heartfelt tender"
-- Género melancólico (sad sierreño, bolero): emociones con peso — "aching longing, bittersweet devotion, haunting memory"
-- Género festivo/bailable (cumbia, quebradita): emociones con energía — "euphoric celebration, infectious joy, vibrant tribute"
-- Género romántico/suave: calidez — "tender intimacy, warm embrace, gentle devotion"
-
-RESPONDE SOLO JSON:
-{"lyrics": "[Verso 1]\\n...", "emotionalModifiers": "..."}`;
-
-    console.log('Calling Claude...');
+    console.log('Calling Claude (structured tool output)...');
 
     // claude-sonnet-4-6 = Sonnet 4.6 (current production Sonnet, replaced
     // claude-sonnet-4-20250514 which is being retired by Anthropic on 2026-06-15;
@@ -2018,27 +2099,73 @@ RESPONDE SOLO JSON:
     let claudeResponse: Response | null = null;
     let claudeData: any = null;
     let modelUsedForLyrics = claudeModels[0];
+    let toolUseBlock: any = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // After all Sonnet retries fail, fall back to Haiku on last attempt
       const model = attempt === maxRetries ? claudeModels[1] : claudeModels[0];
 
+      // STRUCTURED OUTPUT via tool use.
+      //   - `system` is an array so we can attach cache_control to the static
+      //     rules block. Subsequent requests with the same system prompt read
+      //     it from cache at ~10% of normal input cost (5-min TTL).
+      //   - `tools` declares the single submit_song_lyrics tool, whose schema
+      //     defines the required lyrics + emotionalModifiers fields.
+      //   - `tool_choice: {type: "tool", name: ...}` FORCES Claude to call the
+      //     tool. The API itself validates the input against the schema — we
+      //     do not need to parse a JSON string on our side, so the previous
+      //     class of failure (malformed \y / illegal JSON escapes) is impossible
+      //     by construction.
       claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: claudeHeaders,
         body: JSON.stringify({
           model,
           max_tokens: 2000,
-          messages: [{ role: 'user', content: claudePrompt }]
+          system: [
+            { type: 'text', text: LYRICS_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }
+          ],
+          tools: [LYRICS_TOOL],
+          tool_choice: { type: 'tool', name: 'submit_song_lyrics' },
+          messages: [{ role: 'user', content: claudeUserMessage }]
         }),
       });
 
       claudeData = await claudeResponse.json();
 
-      if (claudeResponse.ok && claudeData.content?.[0]?.text) {
-        modelUsedForLyrics = model;
-        if (attempt > 1) console.log(`Claude succeeded on attempt ${attempt} with ${model}`);
-        break;
+      if (claudeResponse.ok && Array.isArray(claudeData.content)) {
+        // Find the tool_use block. With tool_choice forcing submit_song_lyrics,
+        // a successful 200 response is guaranteed to contain one. Defensive
+        // check anyway — never trust a single field.
+        const found = claudeData.content.find(
+          (b: any) => b && b.type === 'tool_use' && b.name === 'submit_song_lyrics'
+        );
+        if (
+          found &&
+          typeof found.input?.lyrics === 'string' &&
+          found.input.lyrics.trim() &&
+          typeof found.input?.emotionalModifiers === 'string'
+        ) {
+          toolUseBlock = found;
+          modelUsedForLyrics = model;
+          if (attempt > 1) console.log(`Claude succeeded on attempt ${attempt} with ${model}`);
+          // Cache telemetry — confirms the system prompt is being reused.
+          // First request will show creation tokens; subsequent within TTL will show reads.
+          if (claudeData.usage) {
+            console.log(
+              `Claude usage: input=${claudeData.usage.input_tokens} ` +
+              `cache_write=${claudeData.usage.cache_creation_input_tokens ?? 0} ` +
+              `cache_read=${claudeData.usage.cache_read_input_tokens ?? 0} ` +
+              `output=${claudeData.usage.output_tokens}`
+            );
+          }
+          break;
+        }
+        // 200 OK but no usable tool_use block — log and fall through to retry/fail.
+        console.warn(
+          `Claude returned 200 but no valid tool_use block on attempt ${attempt}. ` +
+          `stop_reason=${claudeData.stop_reason} content_types=${claudeData.content.map((b: any) => b?.type).join(',')}`
+        );
       }
 
       const isOverloaded = claudeData?.error?.type === 'overloaded_error' || claudeResponse.status === 529;
@@ -2050,36 +2177,25 @@ RESPONDE SOLO JSON:
       }
 
       if (attempt === maxRetries) {
-        throw new Error('Claude API failed after retries: ' + JSON.stringify(claudeData));
+        // No usable tool_use block after all retries (including Haiku fallback).
+        // Fail loudly — outer catch returns 500, no DB row is created, customer
+        // is not charged.
+        throw new Error(
+          'LYRICS_TOOL_CALL_FAILED: Claude did not return valid structured lyrics after all retries. ' +
+          'Response: ' + JSON.stringify(claudeData).slice(0, 500)
+        );
       }
     }
 
     console.log(`Lyrics generated with ${modelUsedForLyrics}`);
 
-    let lyrics: string;
-    let emotionalModifiers: string = '';
-    
-    try {
-      const responseText = claudeData.content[0].text.trim();
-      let jsonStr = responseText;
-      
-      if (responseText.includes('```json')) {
-        jsonStr = responseText.split('```json')[1].split('```')[0].trim();
-      } else if (responseText.includes('```')) {
-        jsonStr = responseText.split('```')[1].split('```')[0].trim();
-      }
-      
-      const parsed = JSON.parse(jsonStr);
-      lyrics = parsed.lyrics;
-      emotionalModifiers = parsed.emotionalModifiers || '';
-      
-      console.log('✓ Lyrics parsed');
-      console.log('Emotional modifiers:', emotionalModifiers);
-      
-    } catch (parseError) {
-      console.error('JSON parse failed, using raw text');
-      lyrics = claudeData.content[0].text;
-    }
+    // Tool input has been schema-validated by the Anthropic API. No parsing
+    // on our side, no possibility of malformed JSON leaking through.
+    const lyrics: string = toolUseBlock.input.lyrics;
+    const emotionalModifiers: string = toolUseBlock.input.emotionalModifiers || '';
+
+    console.log('✓ Lyrics extracted from tool_use block');
+    console.log('Emotional modifiers:', emotionalModifiers);
 
     // ==========================================================================
     // STEP 3: Combine DNA style + emotional modifiers

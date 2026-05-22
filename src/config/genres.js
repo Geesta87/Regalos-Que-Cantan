@@ -25,7 +25,8 @@ const genres = {
     description: "Acordeón y bajo sexto tradicional",
     subGenres: {
       tradicional: { name: "Tradicional", description: "Polka norteña clásica estilo Ramón Ayala" },
-      con_sax: { name: "Con Saxofón", description: "Norteño romántico con sax estilo Pesado" },
+      con_sax_romantico: { name: "Con Sax — Romántico", description: "Norteño con sax suave, balada elegante estilo Pesado / Duelo" },
+      con_sax_bailar: { name: "Con Sax — Para Bailar", description: "Polka norteña con sax bailable estilo Los Rieleros del Norte" },
       nortena_banda: { name: "Norteña-Banda", description: "Fusión con metales estilo Calibre 50" },
       romantico: { name: "Romántico", description: "Balada norteña suave estilo Intocable" }
     }
