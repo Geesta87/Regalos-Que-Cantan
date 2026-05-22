@@ -3125,6 +3125,42 @@ export default function SuccessPage() {
           </div>
           )}
 
+          {/* ===== ENGLISH CROSS-SELL — MadeYouASong (giftsthatsing.com) ===== */}
+          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
+          <a
+            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=success_crosssell&utm_campaign=success_crosssell&coupon=RQC5"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'block', textDecoration: 'none',
+              background: ts.cardBg, borderRadius: '24px', padding: '24px',
+              border: `1px dashed ${ts.cardBorder}`, marginBottom: '24px',
+              backdropFilter: ts.cardBlur,
+              animation: 'fadeInUp 0.7s ease-out 0.85s both',
+              textAlign: 'center',
+              transition: 'all 0.3s',
+            }}
+          >
+            <p style={{ fontSize: '28px', marginBottom: '10px' }}>🇺🇸</p>
+            <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '6px', color: ts.textPrimary }}>
+              ¿Conoces a alguien que prefiera una canción en inglés?
+            </h3>
+            <p style={{ fontSize: '13px', color: ts.textSecondary, marginBottom: '14px', lineHeight: '1.5' }}>
+              Regálale una en MadeYouASong con <strong style={{ color: ts.textPrimary }}>$5 de descuento</strong> · código <strong style={{ color: ts.textPrimary }}>RQC5</strong>
+            </p>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '12px 24px',
+              background: 'transparent',
+              color: ts.textPrimary, fontWeight: '700', fontSize: '14px',
+              border: `2px solid ${ts.cardBorder}`, borderRadius: '14px',
+              fontFamily: ts.font,
+            }}>
+              Ver MadeYouASong →
+            </span>
+          </a>
+          )}
+
           <p style={{ textAlign: 'center', marginTop: '30px', color: isLight ? '#94a3b8' : 'rgba(255,255,255,0.2)', fontSize: '10px', lineHeight: 1.6, maxWidth: 340, margin: '30px auto 0' }}>
             Todas las ventas son finales. Al comprar, aceptas que escuchaste la vista previa antes de realizar tu compra. No se ofrecen reembolsos una vez completada la transacción.
           </p>

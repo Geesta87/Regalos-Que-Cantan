@@ -84,6 +84,16 @@ export default function LandingPage() {
           <h2 className="text-white text-xl font-extrabold tracking-tight">RegalosQueCantan</h2>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
+          <a
+            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=lang_switch&utm_campaign=header"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
+            title="English version — MadeYouASong"
+          >
+            <span aria-hidden="true">🇺🇸</span>
+            <span>English</span>
+          </a>
           <button
             onClick={() => navigateTo('recoverSong')}
             className="inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
@@ -197,6 +207,19 @@ export default function LandingPage() {
               <span className="text-sm font-medium">+5000 Clientes Felices</span>
             </div>
           </div>
+
+          {/* English version handoff — fine print, doesn't compete with primary CTA */}
+          <p className="mt-8 text-xs text-white/40">
+            ¿Prefieres tu canción en inglés?{' '}
+            <a
+              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=hero_subtext&utm_campaign=hero_subtext"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-landing-primary hover:text-white underline underline-offset-4 font-semibold transition-colors"
+            >
+              Visita MadeYouASong →
+            </a>
+          </p>
         </div>
 
         {/* Bottom fade — purely visual, must NOT capture clicks
