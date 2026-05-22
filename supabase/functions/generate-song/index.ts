@@ -295,7 +295,7 @@ const genreDNA: Record<string, GenreData> = {
         name: 'Mariachi Tradicional',
         style: 'traditional classic mariachi, ceremonial Mexican mariachi ensemble, authentic son jalisciense, Jalisco mariachi, formal mariachi with full instrumentation, polished ensemble performance',
         tempo: '90-120 BPM, variable classic tempo, son rhythm, waltz and march alternating',
-        instruments: 'violin section playing melodic passages in unison and harmony, trumpet duo with fanfare intros and sustained notes, vihuela percussive strumming providing harmonic rhythm, guitarrón deep bass on beats one and three, classical guitar arpeggios, optional harp',
+        instruments: 'violin section playing melodic passages in unison and harmony, two-trumpet section with fanfare intros and sustained notes, vihuela percussive strumming providing harmonic rhythm, guitarrón deep bass on beats one and three, classical guitar arpeggios, optional harp',
         vibe: 'Mexican national pride, elegant ceremony, timeless tradition, plaza Garibaldi atmosphere, formal beauty, cultural heritage, wedding ceremony, quinceañera vals',
         negative: 'electronic production, trap, rock guitars, modern urban beats, synthesizers, lo-fi',
         vocalCharacter: 'formal powerful vocal, operatic projection, ceremonial grandeur, vibrato'
@@ -651,7 +651,7 @@ const genreDNA: Record<string, GenreData> = {
         name: 'Pop Balada',
         style: 'Latin pop ballad, emotional slow pop en español, classic crooner-style Latin pop ballad, soft modern Latin pop, radio-friendly emotional slow song, polished studio ballad with orchestral touches',
         tempo: '70-90 BPM, SLOW emotional, breathing room, dramatic pop ballad pacing',
-        instruments: 'grand piano chords and arpeggios, string orchestra arrangement, acoustic guitar fingerpicking, soft brushed drums, bass guitar, subtle synth pad warmth, optional choir on chorus',
+        instruments: 'grand piano chords and arpeggios, string orchestra arrangement, acoustic guitar fingerpicking, soft brushed drums, bass guitar, subtle synth pad warmth, lush string swell on chorus',
         vibe: 'radio ballad elegance, emotional but polished, tearful dedication, wedding reception slow dance, telenovela soundtrack, beautiful sadness',
         negative: 'aggressive trap, rock distortion, fast dance music, corridos, regional Mexican, harsh',
         vocalCharacter: 'emotional polished vocal, tearful elegance, radio ballad delivery'
@@ -691,14 +691,14 @@ const genreDNA: Record<string, GenreData> = {
         name: 'Balada Clásica',
         style: 'classic orchestral Latin ballad, grand romantic 1970s 1980s ballad en español, classic dramatic crooner-style Latin ballad, classical orchestral love ballad, theatrical emotional Latin ballad with full orchestra, cinematic love song',
         tempo: '60-80 BPM, VERY SLOW, dramatic pauses, rubato phrasing, grand theatrical pacing',
-        instruments: 'full string orchestra with sweeping arrangements, grand piano, soft timpani, harp arpeggios, french horn warmth, flute melody, brushed drums, orchestral crescendo builds, choir on final chorus',
+        instruments: 'full string orchestra with sweeping arrangements, grand piano, soft timpani, harp arpeggios, french horn warmth, flute melody, brushed drums, orchestral crescendo builds, lush string swell on final chorus',
         vibe: 'grand romantic gestures, theatrical tearjerker emotion, telenovela climax moment, standing ovation performance, goosebumps crescendo, classic Latin drama',
         negative: 'fast rhythms, electronic beats, rock, trap, party music, uptempo, modern urban, lo-fi',
         vocalCharacter: 'dramatic theatrical vocal, orchestral-matching power, grand emotional belting'
       },
       balada_pop: {
         name: 'Balada Pop',
-        style: 'contemporary Latin pop ballad, modern radio ballad en español, modern duo-style Latin pop ballad with soft male vocal, clean modern emotional slow song, polished studio production ballad',
+        style: 'contemporary Latin pop ballad, modern radio ballad en español, clean modern emotional slow song, polished studio production ballad, accessible contemporary love ballad',
         tempo: '70-90 BPM, contemporary slow, modern pacing, accessible emotional tempo',
         instruments: 'acoustic guitar fingerpicking, piano chords, modern soft programmed drums, electric bass, subtle synth pad, string section accents on chorus, clean guitar arpeggios',
         vibe: 'modern radio ballad, emotional but accessible and polished, Spotify playlist ballad, contemporary heartfelt, young love dedication, relatable modern emotion',
@@ -900,7 +900,7 @@ const genreDNA: Record<string, GenreData> = {
         name: 'Romántica Apasionada',
         style: 'passionate dramatic love ballad, power ballad Latin style, building emotional crescendo, dramatic string arrangement, soaring vocal climax',
         tempo: '75-95 BPM, building from slow to powerful, dramatic crescendo pacing',
-        instruments: 'grand piano, full string orchestra, electric guitar clean arpeggios building to sustained chords, powerful drum build, bass guitar, choir backing vocals on climax',
+        instruments: 'grand piano, full string orchestra, electric guitar clean arpeggios building to sustained chords, powerful drum build, bass guitar, orchestral brass and string swell on climax',
         vibe: 'dramatic passion, emotional explosion, theatrical love declaration, goosebumps, tears of joy, wedding ceremony peak moment, overwhelming devotion',
         negative: 'subtle quiet, minimalist, trap, reggaeton, fast dance, lo-fi, casual feel',
         vocalCharacter: 'passionate soaring vocal, dramatic crescendo delivery, powerful building emotion'
@@ -927,7 +927,7 @@ const genreDNA: Record<string, GenreData> = {
         name: 'Serenata Romántica',
         style: 'traditional serenata, Mexican serenade style, balcony love song, trio romántico feel, bolero-influenced serenade, classic Latin courtship song',
         tempo: '75-90 BPM, gentle serenade pace, moonlight tempo, traditional flowing rhythm',
-        instruments: 'requinto guitar lead melody, rhythm guitar, bass guitar or guitarrón, soft maracas, optional violin duo, occasional soft trumpet',
+        instruments: 'requinto guitar lead melody, rhythm guitar, bass guitar or guitarrón, soft maracas, optional second violin, occasional soft trumpet',
         vibe: 'moonlit serenade, under the balcony romance, old-fashioned courtship, timeless devotion, classic gentleman, roses and candles, traditional romance',
         negative: 'electronic production, modern pop, trap, drums heavy, fast tempo, aggressive, urban sound',
         vocalCharacter: 'classic serenading vocal, formal courtship delivery, moonlit tenderness'
@@ -1363,14 +1363,21 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
     return { ok: false, provider: 'mureka-useapi', classification: 'auth_broken', errorMessage: 'USEAPI_TOKEN or MUREKA_ACCOUNT env var missing' };
   }
 
+  // Mureka tokenizer treats long "NO duet / NO harmony / NO backing vocals" lists
+  // as POSITIVE cues (the negation token doesn't reliably bind to the noun). The
+  // canonical fix per project memory (project_mureka_v9_norteno_bias.md): keep
+  // the voice tag minimal and POSITIVE-only. The Mureka `vocal_gender` API
+  // parameter (passed separately below) does the actual gender pinning.
   const genderLabel = ctx.vocalGender === 'f'
-    ? 'solo female vocalist, single female singer only, NO male voice, NO duet, NO male harmony, NO male backing vocals'
-    : 'solo male vocalist, single male singer only, NO female voice, NO duet, NO female harmony, NO female backing vocals';
+    ? 'solo female lead vocal, single female singer'
+    : 'solo male lead vocal, single male singer';
   const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
   const voicePrefix = `${genderLabel}, ${vocalStyle}`;
-  const noVoiceSuffix = ctx.vocalGender === 'f' ? ', absolutely no male vocals no duet' : ', absolutely no female vocals no duet';
-  const maxStyleChars = 1000 - voicePrefix.length - noVoiceSuffix.length - 4;
-  const descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}${noVoiceSuffix}`;
+  // No noVoiceSuffix — the same tokenizer issue applies to the appended
+  // "absolutely no [opposite] vocals no duet" string. The minimal positive
+  // prefix above + the vocal_gender API param are sufficient.
+  const maxStyleChars = 1000 - voicePrefix.length - 4;
+  const descWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}`;
   const songTitle = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 50);
 
   const callbackBase = `${ctx.supabaseUrl}/functions/v1/mureka-useapi-callback`;
