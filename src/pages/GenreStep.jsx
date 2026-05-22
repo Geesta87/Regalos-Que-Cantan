@@ -58,7 +58,8 @@ const voiceGuidance = {
   norteno: {
     _default: { default: 'male', femalePopular: false },
     tradicional: { default: 'male', femalePopular: false },
-    con_sax: { default: 'male', femalePopular: true, tip: 'Ambas voces funcionan muy bien' },
+    con_sax_romantico: { default: 'male', femalePopular: true, tip: 'Ambas voces funcionan muy bien' },
+    con_sax_bailar: { default: 'male', femalePopular: false, tip: 'Voz masculina estilo Rieleros funciona mejor' },
     nortena_banda: { default: 'male', femalePopular: false },
     romantico: { default: 'male', femalePopular: true, tip: 'Baladas norteñas funcionan con ambas voces' }
   },

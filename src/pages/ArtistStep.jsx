@@ -42,10 +42,15 @@ const artistsByGenre = {
       { id: 'cadetes', name: 'Los Cadetes de Linares' },
       { id: 'lalo_mora', name: 'Lalo Mora' }
     ],
-    con_sax: [
+    con_sax_romantico: [
       { id: 'pesado', name: 'Pesado' },
       { id: 'duelo', name: 'Duelo' },
       { id: 'la_adictiva', name: 'La Adictiva' }
+    ],
+    con_sax_bailar: [
+      { id: 'rieleros', name: 'Los Rieleros del Norte' },
+      { id: 'tigrillos', name: 'Los Tigrillos' },
+      { id: 'palominos', name: 'Los Palominos' }
     ],
     nortena_banda: [
       { id: 'calibre_50', name: 'Calibre 50' },
