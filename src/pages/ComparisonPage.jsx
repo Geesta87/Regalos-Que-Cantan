@@ -943,6 +943,19 @@ export default function ComparisonPage() {
           <div>
             Escucha el sonido, la voz y el estilo de la letra. Las canciones completas duran <strong style={{textDecoration:'underline'}}>3–4 minutos</strong> y podrás descargarlas y compartirlas al completar el proceso.
           </div>
+          <div style={{
+            marginTop: '14px',
+            paddingTop: '14px',
+            borderTop: '1px solid rgba(255,255,255,0.35)',
+            fontSize: '15px',
+            fontWeight: 600,
+            lineHeight: '1.5'
+          }}>
+            <div style={{fontSize: '16px', fontWeight: 800, marginBottom: '4px'}}>
+              ✅ Garantía de satisfacción
+            </div>
+            ¿Hay un error en el nombre, la fecha o algún detalle? <strong>Lo corregimos sin costo</strong>. <strong>Compra con total tranquilidad.</strong>
+          </div>
         </div>
         <div style={{
           display: 'grid',
