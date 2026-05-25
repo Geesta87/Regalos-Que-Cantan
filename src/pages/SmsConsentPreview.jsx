@@ -25,12 +25,13 @@ export default function SmsConsentPreview() {
       <div style={{
         background: 'linear-gradient(90deg, #1e3a8a, #312e81)',
         color: 'rgba(255,255,255,0.95)',
-        padding: '10px 16px',
+        padding: '12px 16px',
         fontSize: '13px',
         textAlign: 'center',
-        borderBottom: '1px solid rgba(255,255,255,0.1)'
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        lineHeight: 1.5
       }}>
-        <strong>Vista previa del checkout</strong> · Checkout preview for compliance review. Customers see this exact opt-in surface when completing their purchase on regalosquecantan.com.
+        <strong>Checkout preview for SMS consent / CTA compliance review.</strong> Customers see this exact opt-in surface when completing their purchase on regalosquecantan.com. Production customers are Spanish-speaking; English translations are shown in parentheses for reviewer convenience. The SMS disclosure paragraph below is in English exactly as shown to U.S. customers.
       </div>
 
       {/* Brand header */}
@@ -54,7 +55,7 @@ export default function SmsConsentPreview() {
           </span>
         </div>
         <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
-          🔒 Pago seguro
+          🔒 Pago seguro <span style={{ color: 'rgba(255,255,255,0.35)' }}>(Secure payment)</span>
         </div>
       </header>
 
@@ -65,14 +66,14 @@ export default function SmsConsentPreview() {
           margin: '0 0 6px',
           letterSpacing: '-0.01em'
         }}>
-          Confirmar tu pedido
+          Confirmar tu pedido <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: 500 }}>(Confirm your order)</span>
         </h1>
         <p style={{
           color: 'rgba(255,255,255,0.55)',
           fontSize: '14px',
           margin: '0 0 24px'
         }}>
-          Falta solo un paso para recibir tu canción personalizada.
+          Falta solo un paso para recibir tu canción personalizada. <em style={{ color: 'rgba(255,255,255,0.4)' }}>(One last step to receive your personalized song.)</em>
         </p>
 
         {/* Order summary */}
@@ -103,10 +104,10 @@ export default function SmsConsentPreview() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
-              Tu Canción Personalizada
+              Tu Canción Personalizada <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>(Your Personalized Song)</span>
             </p>
             <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.55)' }}>
-              Cumbia Romántica · Versión 1
+              Cumbia Romántica · Versión 1 <span style={{ color: 'rgba(255,255,255,0.35)' }}>(Romantic Cumbia · Version 1)</span>
             </p>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -128,7 +129,7 @@ export default function SmsConsentPreview() {
             fontSize: '14px',
             fontWeight: 600
           }}>
-            Correo electrónico
+            Correo electrónico <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>(Email)</span>
           </label>
           <input
             type="email"
@@ -215,7 +216,7 @@ export default function SmsConsentPreview() {
             boxShadow: '0 4px 20px rgba(225,29,116,0.4)'
           }}
         >
-          Pagar $29.99
+          Pagar $29.99 — Pay $29.99
         </button>
 
         {submitted && (
@@ -229,7 +230,7 @@ export default function SmsConsentPreview() {
             fontSize: '13px',
             lineHeight: 1.5
           }}>
-            <strong>Vista previa</strong> — En el checkout real, este botón procesa el pago de forma segura a través de Stripe. Esta página es una reproducción del checkout de producción para verificación de cumplimiento; no se procesa ningún pago aquí.
+            <strong>Preview / Vista previa</strong> — In the live checkout, this button securely processes payment via Stripe and (if a phone number was entered) records the customer's SMS opt-in. This page is a reproduction of the production checkout for compliance verification only; no payment is processed and no SMS opt-in is recorded here.<br /><br /><em style={{ color: 'rgba(134,239,172,0.7)' }}>(En el checkout real, este botón procesa el pago de forma segura a través de Stripe. Esta página es una reproducción del checkout de producción para verificación de cumplimiento; no se procesa ningún pago aquí.)</em>
           </div>
         )}
 
@@ -241,7 +242,8 @@ export default function SmsConsentPreview() {
           lineHeight: 1.6
         }}>
           Pago seguro procesado por Stripe · Garantía de satisfacción<br />
-          ¿Preguntas? <a href="mailto:hola@regalosquecantan.com" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>hola@regalosquecantan.com</a>
+          <span style={{ color: 'rgba(255,255,255,0.3)' }}>(Secure payment processed by Stripe · Satisfaction guarantee)</span><br />
+          ¿Preguntas? <span style={{ color: 'rgba(255,255,255,0.3)' }}>(Questions?)</span> <a href="mailto:hola@regalosquecantan.com" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>hola@regalosquecantan.com</a>
         </p>
       </main>
     </div>
