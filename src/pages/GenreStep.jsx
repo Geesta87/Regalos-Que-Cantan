@@ -38,7 +38,8 @@ const genreIcons = {
   duranguense: 'queue_music',
   merengue: 'sports_handball',
   rock_espanol: 'electric_bolt',
-  vals: 'attractions'
+  vals: 'attractions',
+  cristiana: 'church'
 };
 
 // Primary genres to show first — balanced for all occasions
@@ -185,6 +186,13 @@ const voiceGuidance = {
     tejano_clasico: { default: 'male', femalePopular: true },
     tejano_romantico: { default: 'male', femalePopular: true },
     tejano_cumbia: { default: 'female', femalePopular: true, tip: '⭐ Estilo Selena = voz femenina icónica' }
+  },
+  cristiana: {
+    _default: { default: 'male', femalePopular: true, tip: 'Ambas voces funcionan muy bien en alabanza' },
+    balada_intima: { default: 'female', femalePopular: true, tip: 'Voz femenina íntima estilo Christine D\'Clario o masculina estilo Marcos Witt' },
+    alabanza_celebratoria: { default: 'male', femalePopular: true, tip: 'Marco Barrientos o voces femeninas vibrantes' },
+    adoracion_acustica: { default: 'male', femalePopular: true, tip: 'Jesús Adrián Romero o voces femeninas suaves' },
+    worship_moderno: { default: 'male', femalePopular: true, tip: 'Hillsong en español o voces contemporáneas' }
   }
 };
 

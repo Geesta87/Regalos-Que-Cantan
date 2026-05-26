@@ -57,12 +57,12 @@ const genreDNA: Record<string, GenreData> = {
     subGenres: {
       tradicional: {
         name: 'Corrido Tradicional',
-        style: 'authentic old-school 1990s 2000s storytelling Mexican corrido tradicional, slow-to-mid tempo narrative polka corrido, accordion-and-bajo-sexto conjunto sound, balladeer four-line stanzas where the singer narrates a true story, dry acoustic Sinaloa border mix, raw rural cantina recording',
-        tempo: '88-115 BPM, mid-tempo 2/4 polka pulse, clear oom-pah feel, kick on 1 snare backbeat on 2, deliberate storytelling-paced groove that leaves room for every word of the lyric',
-        instruments: 'lead is the diatonic three-row button accordion only, every melody every fill and every short solo break played on accordion with grace notes bellows shakes and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths locked with the bass oom-pah, electric bass quarter-note walking pattern on root and fifth, minimal drum kit',
-        vibe: 'declamatory corridista narrator vocal that sounds like a balladeer telling a true story, raw rural Sinaloa-Texas border feel, working-class cantina, dry natural acoustic mix, present accordion midrange, clear kick-snare transients, transparent reportorial production',
-        negative: 'fast party corrido, breakneck dance tempo, uptempo dance polka, saxophone, alto saxophone, tenor saxophone, sax solo, sax fills, brass section, trumpets, trombones, banda brass, sierreño nylon guitar, requinto guitar, classical guitar lead, tololoche upright bass, tuba, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, reverb-heavy production, modern radio polish, slow ballad without polka feel, free rubato tempo, half-time feel, corridos tumbados, corridos alterados, modern 2010s 2020s corridos, sad sierreño, romantic softness, synthesizers, electronic drums, programmed drums',
-        vocalCharacter: 'declamatory storytelling male lead vocal, corridista narrator delivery with strong consonants and clear diction, raw rural unpolished tone, classic 1990s 2000s slow-to-mid-tempo Sinaloa border corrido balladeer'
+        style: 'authentic 1990s Sinaloa corrido, pure Sinaloense rural rancho corrido, pre-2000s era corrido ONLY (strictly before corridos tumbados, before the 2010s narcocorrido evolution), classic Sinaloa-style conjunto corrido of the Chalino era, traditional Mexican corrido from the Sierra de Sinaloa with Culiacán and Mazatlán cantina roots, narrative balladeer storytelling corrido, accordion-and-bajo-sexto with slapped tololoche upright bass driving the oom-pah, cassette-tape direct-to-tape recording aesthetic, raw cantina corrido from rural Sinaloa palenques, four-line stanza cuarteta narrative, traditional Mexican corridista narrating real events with grave authority, deeply rooted Sinaloense rancho music, pure 1990s rural Mexican Sinaloa sound, live-band single-room performance recording feel',
+        tempo: '85-105 BPM, deliberate mid-tempo storytelling pace, mostly 2/4 polka corrido pulse with prominent oom-pah feel from the tololoche slap, occasional 3/4 corrido waltz feel, narrator-paced groove that leaves generous room for every lyric word, NEVER rushed NEVER danceable, steady balladeer storytelling tempo above all',
+        instruments: 'diatonic three-row button accordion as the SOLE melodic lead with TREBLY MIDRANGE-FORWARD reedy timbre (not bass-heavy modern accordion), every melody fill and short solo break on accordion with grace notes bellows shakes and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths, TOLOLOCHE acoustic upright bass with prominent SLAP technique driving the entire oom-pah pattern (this slapped tololoche is the CENTRAL Sinaloa signature), optional requinto sierreño nylon guitar for short ornamental runs between verses in the Sinaloa rancho style, sparse minimal kick drum or no drums at all, NO brass NO saxophone NO trap NO electronic NO modern drum kit',
+        vibe: 'rural Sinaloa rancho authenticity of the 1990s, Culiacán-Mazatlán cantina at midnight, Sierra de Sinaloa palenque atmosphere, cassette-tape direct-to-tape lo-fi recording quality, live-band single-room performance feel (the whole band playing together in one room — NOT modern multitrack overdubs), grave declamatory corridista narrator delivery, weathered Sinaloense balladeer, working-class Sinaloense pride, BONE-DRY VINTAGE MIX with no reverb wash, no vocal doubling, no stereo widening, no compression pumping, dry natural microphone placement, mono or narrow stereo image, present accordion midrange and audible slapped tololoche thump, raw unpolished 90s production, every word audible, reportorial storytelling weight, Chalino-era rancho feel WITHOUT naming any artist',
+        negative: 'modern 2010s 2020s corrido production, slick radio polish, full drum kit polka beat, snare-heavy modern drum kit, electric bass guitar, saxophone, alto sax, tenor sax, sax solo, sax fills, brass section, trumpets, trombones, full banda brass, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, auto-tune, heavy reverb wash, lush stereo reverb, vocal doubling, vocal stacking, stereo widening, modern multitrack overdubs, click track production, compression pumping, modern radio EQ, Melodyne, pitch correction, corridos tumbados, corridos alterados, corrido bélico, sad sierreño melancholy, romantic softness, synthesizers, electronic drums, programmed drums, cumbia rhythm, rapid party tempo, breakneck dance speed, EDM, pop production, K-pop, hip-hop, bass-heavy modern accordion mix',
+        vocalCharacter: 'declamatory male corridista narrator vocal in the classic 1990s Sinaloa style, grave storytelling authority with strong consonants and clear diction, raw cracked emotional delivery in the rural Sinaloense lloradito tradition (slightly broken voice on emotional peaks), weathered cantina balladeer tone, unpolished cassette-era recording quality, no modern studio gloss, no auto-tune, no vocal correction, no vocal doubling or stacking, single dry vocal track'
       },
       tumbados: {
         name: 'Corridos Tumbados',
@@ -1035,6 +1035,55 @@ const genreDNA: Record<string, GenreData> = {
         vocalCharacter: 'clean modern vocal, cinematic delivery, youthful elegance, accessible beauty'
       }
     }
+  },
+
+  // ===========================================================================
+  // MÚSICA CRISTIANA (Christian Praise & Worship)
+  // ===========================================================================
+  cristiana: {
+    baseStyle: 'Spanish-language Christian praise and worship music, música cristiana de alabanza y adoración, contemporary worship song',
+    defaultTempo: '70-100 BPM',
+    instruments: 'acoustic guitar, piano, soft pad, light percussion, bass guitar',
+    negativeTags: 'profane lyrics, secular party themes, aggressive trap, 808 bass, reggaeton dembow, EDM drops, heavy metal distortion, regional Mexican accordion, mariachi trumpets',
+    defaultVocalCharacter: 'warm devoted worship vocal, sincere passionate delivery, prayerful and reverent tone',
+    subGenres: {
+      balada_intima: {
+        name: 'Balada Íntima de Adoración',
+        style: 'slow intimate Christian worship ballad in Spanish, prayerful adoración ballad, contemplative praise ballad, tender devotional song, reflective worship anthem with emotional build, balada cristiana de adoración íntima',
+        tempo: '65-80 BPM, slow reverent tempo, prayerful breathing pace, contemplative groove',
+        instruments: 'soft grand piano leading the harmony, fingerpicked acoustic guitar, warm string pad, gentle cello swells, subtle brushed drums or no drums, sustained synth pad, occasional crystal bells, soft electric guitar swells on chorus',
+        vibe: 'intimate prayer atmosphere, tearful surrender, devotional reverence, chapel quiet beauty, kneeling worship moment, candlelit adoration, faith-filled emotional surrender, hands-lifted in stillness',
+        negative: 'party energy, dance tempo, secular romantic, aggressive drums, distorted guitars, trap 808, reggaeton, fast tempo, accordion, mariachi brass',
+        vocalCharacter: 'tender devoted worship vocal, intimate prayerful delivery, emotionally surrendered tone, reverent and warm'
+      },
+      alabanza_celebratoria: {
+        name: 'Alabanza Celebratoria',
+        style: 'uplifting celebratory Christian praise song in Spanish, joyful congregational praise anthem, vibrant worship celebration, hand-clapping alabanza, high-energy church praise band, festive worship anthem with big chorus',
+        tempo: '110-130 BPM, energetic celebratory tempo, joyful clapping groove, uplifting praise pulse',
+        instruments: 'driving acoustic guitar strumming, full piano chords, bright electric guitar riffs, energetic drum kit with hand claps, bass guitar, tambourine and shaker, optional bright brass stabs, gospel-style organ swells, congregational backing choir',
+        vibe: 'joyful praise celebration, hands raised in worship, congregational singing energy, festival of praise atmosphere, jubilant gratitude, victorious faith celebration, uplifting Sunday morning service energy',
+        negative: 'sad melancholy, slow ballad only, secular party themes, aggressive trap, reggaeton, EDM drops, heavy metal',
+        vocalCharacter: 'passionate joyful worship leader vocal, bright celebratory delivery, congregational call-and-response energy, uplifted and victorious'
+      },
+      adoracion_acustica: {
+        name: 'Adoración Acústica',
+        style: 'acoustic intimate Christian worship in Spanish, unplugged worship song, acoustic adoración with vocal and guitar, organic worship music, coffee-house style Christian praise, singer-songwriter worship feel',
+        tempo: '75-95 BPM, gentle flowing tempo, organic acoustic groove, intimate worship pace',
+        instruments: 'fingerpicked nylon-string acoustic guitar lead, soft piano accompaniment, warm acoustic bass, subtle brushed cajón or light percussion, occasional violin or cello melody, light vocal harmonies',
+        vibe: 'unplugged living-room worship, intimate small-group adoración, sincere acoustic devotion, organic spiritual warmth, coffee-shop praise night, raw heartfelt faith, stripped-down honesty',
+        negative: 'electronic production, EDM, heavy drum kit, distorted electric guitar, trap beats, reggaeton, brass section, accordion, mariachi',
+        vocalCharacter: 'sincere acoustic worship vocal, warm honest delivery, intimate devoted tone, singer-songwriter style faith expression'
+      },
+      worship_moderno: {
+        name: 'Worship Moderno',
+        style: 'contemporary Christian worship band in Spanish, modern Spanish-language worship anthem, atmospheric worship rock, arena-worship sound, polished praise band production, modern adoración with cinematic build',
+        tempo: '75-100 BPM, dynamic build from soft verse to soaring chorus, modern worship anthem pacing',
+        instruments: 'atmospheric electric guitars with delay and reverb, sustained synth pads, piano foundation, acoustic guitar layer, modern drum kit with floor tom builds, bass guitar, ambient guitar swells, optional string section on climax',
+        vibe: 'arena worship anthem, soaring spiritual crescendo, modern church atmosphere, cinematic praise moment, contemporary congregation singing together, faith declaration with goosebumps, modern worship night energy',
+        negative: 'old hymnal style, traditional church organ only, regional Mexican, accordion, mariachi, trap, reggaeton, EDM drops, aggressive metal',
+        vocalCharacter: 'modern worship leader vocal, dynamic delivery from soft intimacy to soaring praise, anthemic and faith-filled'
+      }
+    }
   }
 };
 
@@ -1399,6 +1448,12 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   // Defense-in-depth: scrub any leaked artist names from the desc before sending.
   const safeDesc = sanitizeArtistNames(descWithVoice).substring(0, 1000);
 
+  // Translate Spanish section markers ([Verso 1] → [Verse 1], [Hablado] → [Spoken Word],
+  // etc.) before sending to Mureka. Mureka is English-trained — Spanish tags get
+  // ignored as structural cues, which is why [Hablado] was historically getting sung
+  // instead of spoken. Lyrics CONTENT stays Spanish; only the bracketed markers flip.
+  const safeLyrics = englishifyLyricsMarkers(ctx.lyrics).substring(0, 5000);
+
   // Per-genre model routing. Mureka V9 has a documented polka-cumbia bias on
   // accordion-conjunto music — same prompt produces wildly variable BPMs and
   // cumbia drift on norteño and corrido tradicional. V7.6 is the older /
@@ -1417,7 +1472,7 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
 
   const payload: Record<string, unknown> = {
     account: MUREKA_ACCOUNT,
-    lyrics: ctx.lyrics.substring(0, 5000),
+    lyrics: safeLyrics,
     title: songTitle,
     desc: safeDesc,
     model: requestedModel,
@@ -1488,16 +1543,18 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   return { ok: true, provider: 'mureka-useapi', taskId: data.jobid, payload };
 }
 
-// Suno (Kie) is an English-trained model. It expects English structural
-// markers in lyrics ([Verse 1], [Chorus], etc.) — NOT Spanish ([Verso 1],
-// [Coro], etc.). When Suno encounters a Spanish marker it doesn't recognize,
-// it tends to either sing the word literally or blur the section boundary,
-// resulting in less clean verse/chorus structure.
+// Both providers (Mureka and Suno/Kie) are English-trained music models. They
+// expect English structural markers in lyrics ([Verse 1], [Chorus], [Spoken Word],
+// etc.) — NOT Spanish ([Verso 1], [Coro], [Hablado], etc.). When the model
+// encounters a Spanish marker it doesn't recognize, it tends to either sing the
+// word literally, blur the section boundary, or — in the case of [Hablado] —
+// fail to switch the vocal model into spoken-word mode (so the "spoken"
+// dedication ends up sung). [Intro] and [Outro] are identical in both languages
+// so they pass through.
 //
 // We translate ONLY the structural markers; the actual sung lyrics stay 100%
-// Spanish (since the site is Spanish-only). [Intro] and [Outro] are identical
-// in both languages so they pass through.
-function sunoifyLyricsMarkers(lyrics: string): string {
+// Spanish (since the site is Spanish-only).
+function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
   return lyrics
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
@@ -1506,6 +1563,7 @@ function sunoifyLyricsMarkers(lyrics: string): string {
     .replace(/\[Coro Final\]/gi, '[Final Chorus]')
     .replace(/\[Coro\]/gi, '[Chorus]')
     .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
     .replace(/\[Hablado\]/gi, '[Spoken Word]');
 }
 
@@ -1541,7 +1599,7 @@ async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   // Also translate Spanish section markers ([Verso 1] → [Verse 1]) so Suno
   // recognizes the song structure.
   const safeStyle = sanitizeArtistNames(styleWithVoice).substring(0, 1000);
-  const safeLyrics = sanitizeArtistNames(sunoifyLyricsMarkers(ctx.lyrics)).substring(0, 5000);
+  const safeLyrics = sanitizeArtistNames(englishifyLyricsMarkers(ctx.lyrics)).substring(0, 5000);
 
   // Combine genre-level negatives (computed by buildStylePrompt) with the
   // opposite-gender exclusion list. Capped at 200 chars per Kie API limits.
@@ -1681,7 +1739,15 @@ Recibirás los detalles de cada canción (género, destinatario, ocasión, detal
 
 REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 
-1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4-6 líneas max), y fácil de cantar. Usa repetición intencional. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
+1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4 líneas), y fácil de cantar. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
+
+   FÓRMULA OBLIGATORIA DEL CORO — patrón A-A'-B-A (la receta del earworm):
+   - Línea 1 (A): La frase-GANCHO central. Esta es LA línea que la gente recuerda y tararea. Es el corazón de la canción. 4-7 sílabas. Contiene el sentimiento principal.
+   - Línea 2 (A'): Variación de la línea 1. Misma estructura rítmica, cambia 1-2 palabras. Refuerza el gancho sin repetirlo idéntico.
+   - Línea 3 (B): Línea de CONTRASTE. Idea diferente que prepara el regreso al gancho.
+   - Línea 4 (A): REPITE EXACTAMENTE la línea 1. Cierra el coro con el gancho intacto.
+
+   Esta repetición intencional (3 veces el gancho, 1 vez variación, 1 vez contraste) es lo que crea earworm — la canción que se queda en la cabeza después de UNA escucha. NO inventes "estilos creativos" de coro: usa esta fórmula sin excepciones.
 
 2. CONTRASTE VERSO vs CORO. Los versos CUENTAN la historia (narrativos, específicos, íntimos). El coro EXPLOTA la emoción (universal, repetible, intenso). Que se sientan como secciones DISTINTAS en energía y tono.
 
@@ -1692,13 +1758,20 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 
 4. USO DEL NOMBRE — instrucción específica viene en el mensaje del usuario (varía si la canción es para otra persona o para uno mismo).
 
-5. CANTABILIDAD. Cada línea: 8-14 sílabas MÁXIMO. Líneas más largas no se cantan bien. Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
+5. CANTABILIDAD — DOS PRESUPUESTOS DE SÍLABAS DISTINTOS (no es un solo límite universal).
+   - VERSOS ([Verso 1], [Verso 2], [Puente]): 8-14 sílabas por línea. Los versos cuentan la historia — necesitan espacio para narrar.
+   - CORO ([Coro], [Coro Final], [Pre-Coro]): 4-7 sílabas por línea. CORTAS, PUNZANTES. Líneas largas en el coro NO se pueden gritar en grupo. La línea-gancho debe ser tan corta que se grabe en la cabeza después de UNA escucha. Si una línea del coro pasa de 7 sílabas, RECÓRTALA.
+   Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
 
 6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
 
 7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
 
 8. NO empezar múltiples versos con la misma palabra. Varía las aperturas de cada línea.
+
+9. VOCALES ABIERTAS AL FINAL DEL CORO — regla física, no estilística. Cada línea de [Coro], [Coro Final], y [Pre-Coro] (si existe) DEBE terminar en vocal abierta: a, o, e. NUNCA terminar línea del coro en consonante final, ni en "s" plural, ni en sílabas cerradas (-r, -n, -d, -l, -z, etc.).
+   Razón: las vocales abiertas se pueden SOSTENER al cantar — son donde vive el "singalong". Las consonantes cortan el sonido y matan la cantabilidad en grupo. Compara: "te quiero a ti" (cantable) vs "te quiero más" (cortante).
+   Si una línea del coro termina en consonante, REESCRÍBELA invirtiendo el orden o cambiando la palabra final para que termine en vocal abierta. Esta regla es INNEGOCIABLE para [Coro], [Coro Final], [Pre-Coro]. En versos no aplica (puedes terminar como quieras).
 
 REGLA ABSOLUTA — NOMBRES DE ARTISTAS:
 NUNCA escribas el nombre de un artista, banda, cantante o grupo musical real (ni en las letras, ni en emotionalModifiers, ni en ningún otro campo). Esto incluye nombres como "Christian Nodal", "Vicente Fernández", "Alacranes Musical", "Banda MS", "Carin León", "Peso Pluma", "K-Paz", "Diomedes Díaz", etc. — si pensaste mencionar un artista para describir el estilo, REEMPLÁZALO por una descripción del SONIDO ("modern romantic ranchera style", "techno-banda style") sin mencionar al artista. El proveedor de música RECHAZA cualquier referencia a artistas reales y la canción FALLA.
@@ -1979,6 +2052,39 @@ serve(async (req) => {
       ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
       : '';
 
+    // Pre-compute whether this genre/subGenre combination triggers a spoken-word
+    // [Hablado] section. Two consumers need this flag:
+    //   1) The user-message template below (it builds the [Hablado] instruction)
+    //   2) The Mureka `desc` field (it gets primed BEFORE seeing the lyrics so
+    //      the vocal model expects a spoken interlude — see project memory on
+    //      Mureka treating [Hablado] as sung when not pre-cued).
+    // Conditions must stay in sync with the spokenWordConfig map below.
+    const hasSpokenWord =
+      (genre === 'ranchera' && subGenre === 'lenta') ||
+      (genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico')) ||
+      (genre === 'corrido' && subGenre === 'tradicional') ||
+      (genre === 'cumbia' && subGenre === 'sonidera') ||
+      (genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica')) ||
+      (genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico')) ||
+      (genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'));
+
+    // Pre-chorus structure ([Pre-Coro] between verse and chorus). Pop convention
+    // that builds tension before the chorus pays off — biggest single lever for
+    // catchiness in modern songs. But it doesn't fit every genre: narrative
+    // corridos lose their storytelling flow, dramatic ballads (ranchera lenta,
+    // bolero) need conversational intimacy without pop-structure scaffolding,
+    // ceremonial genres (vals, mariachi tradicional, balada clásica) feel wrong
+    // with a pop-style ramp-up. Skip those; everyone else gets it.
+    const skipPreChorus =
+      (genre === 'corrido' && (subGenre === 'tradicional' || subGenre === 'romantico')) ||
+      (genre === 'ranchera' && subGenre === 'lenta') ||
+      genre === 'sierreno' ||
+      genre === 'bolero' ||
+      genre === 'vals' ||
+      (genre === 'mariachi' && subGenre === 'tradicional') ||
+      (genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'));
+    const hasPreChorus = !skipPreChorus;
+
     // User message — DYNAMIC per request. Static composition rules (1-3, 5-8,
     // artist-name rule, emotionalModifiers compatibility rule, tool-delivery
     // contract) live in LYRICS_SYSTEM_PROMPT at module scope and are cached.
@@ -2010,57 +2116,110 @@ ${(() => {
     ranchera_lenta: {
       condition: genre === 'ranchera' && subGenre === 'lenta',
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS (no cantadas) — una dedicatoria emocional directa a ${recipientName}. Estilo ranchera dramática clásica: íntimo, con pausa dramática, como si le hablaras al oído. Ejemplo: "Escúchame bien, ${recipientName}... esto que siento no cabe en una canción... pero aquí va, con todo mi corazón."`,
+Incluye [Hablado] antes del [Coro Final]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, dramatic pause, intimate whisper)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS (no cantadas) — una dedicatoria emocional directa a ${recipientName}. Estilo ranchera dramática clásica: íntimo, con pausa dramática, como si le hablaras al oído. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, dramatic pause, intimate whisper)
+Escúchame bien, ${recipientName}... esto que siento no cabe en una canción... pero aquí va, con todo mi corazón.`,
       placement: 'before_coro_final',
-      sectionDesc: `- [Hablado]: Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.`
+      sectionDesc: `- [Hablado] (spoken, no melody, dramatic pause, intimate whisper): Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.`
     },
     bolero_clasico: {
       condition: genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico'),
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS en voz baja, íntima — una confesión romántica susurrada. Estilo trío romántico de los años 50: como si le hablaras al oído en la oscuridad. Ejemplo: "${recipientName}... si supieras lo que siento cada vez que te veo... estas palabras no alcanzan, pero mi corazón no se calla."`,
+Incluye [Hablado] antes del [Coro Final]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, whispered, intimate)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS en voz baja, íntima — una confesión romántica susurrada. Estilo trío romántico de los años 50: como si le hablaras al oído en la oscuridad. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, whispered, intimate)
+${recipientName}... si supieras lo que siento cada vez que te veo... estas palabras no alcanzan, pero mi corazón no se calla.`,
       placement: 'before_coro_final',
-      sectionDesc: `- [Hablado]: Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas, en voz baja.`
+      sectionDesc: `- [Hablado] (spoken, no melody, whispered, intimate): Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas, en voz baja.`
     },
     corrido_tradicional: {
       condition: genre === 'corrido' && subGenre === 'tradicional',
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. Son 2-3 líneas HABLADAS — el narrador presenta la historia al estilo corrido clásico. Ejemplo: "Señores, les voy a contar la historia de ${recipientName}... pongan atención, que esta es de las buenas."`,
+Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, narrator voice, storytelling)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS — el narrador presenta la historia al estilo corrido clásico. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, narrator voice, storytelling)
+Señores, les voy a contar la historia de ${recipientName}... pongan atención, que esta es de las buenas.`,
       placement: 'intro',
-      sectionDesc: `- [Hablado]: Narrador presenta la historia (NO cantado). 2-3 líneas al estilo "Señores, les voy a contar..."`
+      sectionDesc: `- [Hablado] (spoken, no melody, narrator voice, storytelling): Narrador presenta la historia (NO cantado). 2-3 líneas al estilo "Señores, les voy a contar..."`
     },
     cumbia_sonidera: {
       condition: genre === 'cumbia' && subGenre === 'sonidera',
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. Son 2-3 líneas HABLADAS al estilo MC sonidero — saludos y dedicatorias con energía de fiesta. Ejemplo: "¡Wepa! ¡Este saludo va dedicado para ${recipientName}! ¡Que se prenda la fiesta! ¡Desde el barrio con todo el corazón!"`,
+Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, MC shout, party energy)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS al estilo MC sonidero — saludos y dedicatorias con energía de fiesta. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, MC shout, party energy)
+¡Wepa! ¡Este saludo va dedicado para ${recipientName}! ¡Que se prenda la fiesta! ¡Desde el barrio con todo el corazón!`,
       placement: 'intro',
-      sectionDesc: `- [Hablado]: Saludo de sonidero MC (NO cantado). 2-3 líneas con energía de fiesta, saludos, "¡Wepa!"`
+      sectionDesc: `- [Hablado] (spoken, no melody, MC shout, party energy): Saludo de sonidero MC (NO cantado). 2-3 líneas con energía de fiesta, saludos, "¡Wepa!"`
     },
     balada_clasica: {
       condition: genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'),
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS en tono vulnerable — un momento íntimo donde el cantante baja la guardia y confiesa algo que no pudo cantar. Ejemplo: "${recipientName}... sé que las palabras nunca son suficientes... pero necesitaba que supieras esto..."`,
+Incluye [Hablado] antes del [Coro Final]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, vulnerable, soft)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS en tono vulnerable — un momento íntimo donde el cantante baja la guardia y confiesa algo que no pudo cantar. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, vulnerable, soft)
+${recipientName}... sé que las palabras nunca son suficientes... pero necesitaba que supieras esto...`,
       placement: 'before_coro_final',
-      sectionDesc: `- [Hablado]: Confesión vulnerable (NO cantada). 2-3 líneas en tono íntimo, bajando la guardia.`
+      sectionDesc: `- [Hablado] (spoken, no melody, vulnerable, soft): Confesión vulnerable (NO cantada). 2-3 líneas en tono íntimo, bajando la guardia.`
     },
     banda_romantica: {
       condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'),
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria dramática con la banda de fondo suave. Estilo banda romántica dramática clásica. Ejemplo: "Esto va para ti, ${recipientName}... porque no hay canción que alcance para decirte lo que significas..."`,
+Incluye [Hablado] antes del [Coro Final]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, dramatic dedication)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS — una dedicatoria dramática con la banda de fondo suave. Estilo banda romántica dramática clásica. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, dramatic dedication)
+Esto va para ti, ${recipientName}... porque no hay canción que alcance para decirte lo que significas...`,
       placement: 'before_coro_final',
-      sectionDesc: `- [Hablado]: Dedicatoria dramática (NO cantada). 2-3 líneas emotivas con banda suave de fondo.`
+      sectionDesc: `- [Hablado] (spoken, no melody, dramatic dedication): Dedicatoria dramática (NO cantada). 2-3 líneas emotivas con banda suave de fondo.`
     },
     norteno_romantico: {
       condition: genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'),
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
-Incluye [Hablado] antes del [Coro Final]. Son 2-3 líneas HABLADAS — una dedicatoria sincera y directa, con el acordeón suave de fondo. Estilo norteño de corazón. Ejemplo: "Con el corazón en la mano, ${recipientName}... esta canción la escribí pensando en ti... va con todo lo que soy."`,
+Incluye [Hablado] antes del [Coro Final]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, sincere, heart-felt)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS — una dedicatoria sincera y directa, con el acordeón suave de fondo. Estilo norteño de corazón. Ejemplo formato exacto:
+[Hablado] (spoken, no melody, sincere, heart-felt)
+Con el corazón en la mano, ${recipientName}... esta canción la escribí pensando en ti... va con todo lo que soy.`,
       placement: 'before_coro_final',
-      sectionDesc: `- [Hablado]: Dedicatoria sincera (NO cantada). 2-3 líneas directas, de corazón.`
+      sectionDesc: `- [Hablado] (spoken, no melody, sincere, heart-felt): Dedicatoria sincera (NO cantada). 2-3 líneas directas, de corazón.`
     }
   };
 
   const active = Object.values(spokenWordConfig).find(c => c.condition);
   if (!active) return '';
   return active.instruction + '\n';
+})()}${(() => {
+  // Corrido Tradicional ONLY: 90s rural Sinaloa lyrical conventions. These
+  // OVERRIDE the universal lyric rules where they conflict (especially the
+  // syllable budget — 90s corridos use strict octosyllabic meter for ALL
+  // lines, not the universal 8-14 verse / 4-7 chorus split). Fires only when
+  // genre+subGenre match; otherwise empty string so other genres are unaffected.
+  if (genre !== 'corrido' || subGenre !== 'tradicional') return '';
+  return `
+CONVENCIONES OBLIGATORIAS DEL CORRIDO TRADICIONAL (90s rural Sinaloa) — ESTAS REGLAS OVERRIDE LAS REGLAS UNIVERSALES:
+
+1. MÉTRICA OCTOSILÁBICA (ESTRICTA). TODAS las líneas (versos, pre-coro si existe, coro, coro final) DEBEN tener exactamente 8 sílabas. Esta es la métrica tradicional del corrido mexicano desde el siglo XIX. OVERRIDE la regla universal de 4-7 sílabas en coro — para corrido tradicional el coro también es 8 sílabas. Cuenta las sílabas LITERALMENTE (no las poéticas) — si tienes 7 o 9 sílabas, ajusta.
+
+2. ESTROFAS DE CUARTETA. Cada verso ([Verso 1], [Verso 2], [Puente]) debe ser una cuarteta de 4 líneas con rima ABAB o ABCB. La rima es CONSONANTE preferentemente. No improvises estrofas de 5 o 6 líneas — siempre 4.
+
+3. FÓRMULA TRADICIONAL DE APERTURA. El [Verso 1] (o el [Hablado] inicial si existe) DEBE abrir con una de estas fórmulas clásicas del corrido (escoge la más natural para el caso):
+   - "Voy a cantarles señores..."
+   - "Año del [año si se conoce]..."
+   - "En el rancho de [lugar]..."
+   - "Pongan mucha atención..."
+   - "Señores, voy a contarles..."
+   - "Aquí les traigo un corrido..."
+
+4. NARRATIVA CRONOLÓGICA. Cada verso avanza la historia EN TIEMPO. NO uses flashbacks. NO uses metáforas abstractas. SOLO acciones concretas, eventos reales, detalles del mundo físico (lugares, fechas, personas, objetos). El corrido es REPORTAJE cantado, no poesía.
+
+5. NOMBRE DEL PROTAGONISTA EN CADA VERSO. ${recipientName} debe aparecer en CADA cuarteta (Verso 1, Verso 2, Puente) — no solo al inicio. Override la regla universal de "4+ menciones distribuidas" — para corrido tradicional, el nombre se repite en cada estrofa porque el corrido ES la historia de esa persona.
+
+6. NOMBRES DE LUGARES. Si el usuario mencionó un lugar específico en los detalles personales, ÚSALO literalmente (su rancho, ciudad, estado). Si NO mencionó lugar, usa marcadores rurales genéricos: "el rancho", "la sierra", "el pueblo", "el palenque", "la cantina". NUNCA inventes un lugar de Sinaloa específico si el usuario no lo mencionó (puedes ofender o equivocarte).
+
+7. DESPEDIDA FINAL. El [Coro Final] o las últimas líneas del [Puente] deben incluir una fórmula de despedida tradicional:
+   - "Ya con esta me despido..."
+   - "Aquí termina el corrido de [nombre]..."
+   - "Y aquí acaba mi corrido..."
+   - "Vuela vuela palomita, lleva este corrido a..."
+   Es la marca tradicional del cierre del corrido del siglo XX.
+
+8. PROHIBIDO. NO uses jerga moderna (nada de "vibe", "flow", "real", "OG", anglicismos). NO uses suavidad romántica de balada moderna. NO uses metáforas abstractas tipo "eres la luz" — el corrido habla en CONCRETO. NO incluyas referencias a redes sociales, celulares, marcas de lujo modernas, ni nada post-2000s.
+
+Recuerda: el coro sigue la fórmula A-A'-B-A pero con métrica octosilábica — la línea-gancho es 8 sílabas, no 4-7. Las vocales abiertas al final del coro siguen aplicando.
+`;
 })()}FUNCIÓN DE CADA SECCIÓN:
 ${(() => {
   const isCorridoTrad = genre === 'corrido' && subGenre === 'tradicional';
@@ -2068,52 +2227,68 @@ ${(() => {
   const isIntroSpoken = isCorridoTrad || isCumbiaSonidera;
 
   const spokenConfigs: Record<string, { condition: boolean; sectionDesc: string }> = {
-    ranchera_lenta: { condition: genre === 'ranchera' && subGenre === 'lenta', sectionDesc: `- [Hablado]: Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}.` },
-    bolero_clasico: { condition: genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico'), sectionDesc: '- [Hablado]: Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas.' },
-    balada_clasica: { condition: genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'), sectionDesc: '- [Hablado]: Confesión vulnerable (NO cantada). 2-3 líneas íntimas.' },
-    banda_romantica: { condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'), sectionDesc: '- [Hablado]: Dedicatoria dramática (NO cantada). 2-3 líneas emotivas.' },
-    norteno_romantico: { condition: genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'), sectionDesc: '- [Hablado]: Dedicatoria sincera (NO cantada). 2-3 líneas directas.' },
-    corrido_trad: { condition: isCorridoTrad, sectionDesc: '- [Hablado]: Narrador presenta la historia (NO cantado). 2-3 líneas.' },
-    cumbia_sonidera: { condition: isCumbiaSonidera, sectionDesc: '- [Hablado]: Saludo de sonidero MC (NO cantado). 2-3 líneas con energía.' },
+    ranchera_lenta: { condition: genre === 'ranchera' && subGenre === 'lenta', sectionDesc: `- [Hablado] (spoken, no melody, dramatic pause, intimate whisper): Dedicatoria hablada (NO cantada). 2-3 líneas íntimas, dramáticas, directas a ${recipientName}. La pista en inglés DEBE ir en la misma línea que [Hablado].` },
+    bolero_clasico: { condition: genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico'), sectionDesc: '- [Hablado] (spoken, no melody, whispered, intimate): Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
+    balada_clasica: { condition: genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'), sectionDesc: '- [Hablado] (spoken, no melody, vulnerable, soft): Confesión vulnerable (NO cantada). 2-3 líneas íntimas. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
+    banda_romantica: { condition: genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico'), sectionDesc: '- [Hablado] (spoken, no melody, dramatic dedication): Dedicatoria dramática (NO cantada). 2-3 líneas emotivas. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
+    norteno_romantico: { condition: genre === 'norteno' && (subGenre === 'romantico' || subGenre === 'romantica'), sectionDesc: '- [Hablado] (spoken, no melody, sincere, heart-felt): Dedicatoria sincera (NO cantada). 2-3 líneas directas. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
+    corrido_trad: { condition: isCorridoTrad, sectionDesc: '- [Hablado] (spoken, no melody, narrator voice, storytelling): Narrador presenta la historia (NO cantado). 2-3 líneas. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
+    cumbia_sonidera: { condition: isCumbiaSonidera, sectionDesc: '- [Hablado] (spoken, no melody, MC shout, party energy): Saludo de sonidero MC (NO cantado). 2-3 líneas con energía. La pista en inglés DEBE ir en la misma línea que [Hablado].' },
   };
 
   const active = Object.values(spokenConfigs).find(c => c.condition);
   const habladoLine = active?.sectionDesc || '';
 
+  // Pre-chorus injection. preCoroLine is the section description Claude needs to
+  // understand what [Pre-Coro] is for. preCoroBeforeCoro is the structural slot
+  // that appears in the section list before each [Coro] (NOT before [Coro Final]
+  // — the [Puente] already serves the build/escalation role into the final chorus
+  // per modern pop convention). When hasPreChorus is false, both strings collapse
+  // to empty and the structure is unchanged.
+  const preCoroDesc = hasPreChorus
+    ? '- [Pre-Coro]: 2 líneas de PUENTE EMOCIONAL hacia el coro. Energía CRECIENTE — preparas al oyente para la "explosión" del coro. NO es verso (no narra), NO es coro (no es el gancho). Es la "rampa" que sube hacia el gancho. 4-7 sílabas por línea como el coro. Termina cada línea en vocal abierta (a/o/e).\n'
+    : '';
+  const preCoroSlot = hasPreChorus ? '- [Pre-Coro]: Rampa de tensión hacia el coro (2 líneas cortas, energía creciente).\n' : '';
+
   if (isIntroSpoken && habladoLine) {
-    // Corrido trad & Cumbia sonidera: [Hablado] IS the intro, just add [Outro]
+    // Corrido trad & Cumbia sonidera: [Hablado] IS the intro, just add [Outro].
+    // Corrido trad is in skipPreChorus list (preCoroSlot will be empty);
+    // Cumbia sonidera gets pre-chorus.
     return `${habladoLine}
 - [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
-- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+${preCoroSlot}- [Coro]: GANCHO emocional. Corto (4 líneas), memorable, repetible. Sigue la fórmula A-A'-B-A (línea 1 = gancho, línea 2 = variación, línea 3 = contraste, línea 4 = repetir gancho idéntico).
 - [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
-- [Coro]: Repetición del coro (misma letra).
+${preCoroSlot}- [Coro]: Repetición del coro (MISMA letra exacta — no improvisar nuevo coro).
 - [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
-- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
-- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+- [Coro Final]: Cierre con impacto. Misma fórmula A-A'-B-A. Puede tener una variación sutil en la línea 3 (B).
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.
+${preCoroDesc}`;
   }
 
   if (habladoLine) {
     // Genres with spoken dedication before final chorus
     return `- [Intro]: Apertura instrumental. NO escribir letra — solo poner "[Intro]" para que Mureka cree una entrada musical.
 - [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
-- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+${preCoroSlot}- [Coro]: GANCHO emocional. Corto (4 líneas), memorable, repetible. Sigue la fórmula A-A'-B-A (línea 1 = gancho, línea 2 = variación, línea 3 = contraste, línea 4 = repetir gancho idéntico).
 - [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
-- [Coro]: Repetición del coro (misma letra).
+${preCoroSlot}- [Coro]: Repetición del coro (MISMA letra exacta — no improvisar nuevo coro).
 - [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
 ${habladoLine}
-- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
-- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+- [Coro Final]: Cierre con impacto. Misma fórmula A-A'-B-A. Puede tener una variación sutil en la línea 3 (B).
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.
+${preCoroDesc}`;
   }
 
   // All other genres: standard structure with Intro and Outro
   return `- [Intro]: Apertura instrumental. NO escribir letra — solo poner "[Intro]" para que Mureka cree una entrada musical.
 - [Verso 1]: Presenta la historia. Contexto, escena, quién eres y qué sientes.
-- [Coro]: GANCHO emocional. Corto, memorable, repetible. Lo que el oyente tararea.
+${preCoroSlot}- [Coro]: GANCHO emocional. Corto (4 líneas), memorable, repetible. Sigue la fórmula A-A'-B-A (línea 1 = gancho, línea 2 = variación, línea 3 = contraste, línea 4 = repetir gancho idéntico).
 - [Verso 2]: Profundiza con detalles específicos. Momentos concretos, recuerdos.
-- [Coro]: Repetición del coro (misma letra).
+${preCoroSlot}- [Coro]: Repetición del coro (MISMA letra exacta — no improvisar nuevo coro).
 - [Puente]: Giro emocional. Lo más vulnerable o intenso de toda la canción.
-- [Coro Final]: Cierre con impacto. Puede tener una variación sutil.
-- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.`;
+- [Coro Final]: Cierre con impacto. Misma fórmula A-A'-B-A. Puede tener una variación sutil en la línea 3 (B).
+- [Outro]: Cierre instrumental. NO escribir letra — solo poner "[Outro]" para que Mureka añada un cierre musical.
+${preCoroDesc}`;
 })()}
 
 Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa y los emotionalModifiers en inglés. Recuerda todas las reglas del sistema (composición, nombres de artistas, compatibilidad de modifiers con el género).`;
@@ -2238,6 +2413,14 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     let finalStyle = stylePrompt;
     if (emotionalModifiers) {
       finalStyle = `${stylePrompt}, ${emotionalModifiers}`;
+    }
+    // Prime Mureka for a spoken-word interlude BEFORE it sees the lyrics. Putting
+    // the cue in `desc` (not just the lyric body) lets the vocal model expect the
+    // sung→spoken→sung transition. Combined with the English [Spoken Word] marker
+    // and the inline (spoken, no melody, …) hint in the lyrics, this gives the
+    // model three independent signals to switch vocal modes.
+    if (hasSpokenWord) {
+      finalStyle = `${finalStyle}, includes brief spoken-word dedication interlude with non-sung intimate vocal delivery`;
     }
     // Keep generous limit — final truncation happens in desc construction below
     finalStyle = finalStyle.substring(0, 1000);

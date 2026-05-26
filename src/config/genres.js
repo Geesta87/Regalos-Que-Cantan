@@ -237,6 +237,18 @@ const genres = {
     }
   },
 
+  cristiana: {
+    name: "Música Cristiana (Alabanza)",
+    emoji: "🙏",
+    description: "Alabanza y adoración cristiana en español",
+    subGenres: {
+      balada_intima: { name: "Balada Íntima", description: "Adoración lenta y emotiva estilo Marcos Witt balada" },
+      alabanza_celebratoria: { name: "Alabanza Celebratoria", description: "Praise alegre y vibrante estilo Marco Barrientos" },
+      adoracion_acustica: { name: "Adoración Acústica", description: "Worship íntimo con guitarra estilo Jesús Adrián Romero" },
+      worship_moderno: { name: "Worship Moderno", description: "Contemporary worship band con producción actual" }
+    }
+  },
+
   // ==========================================
   // ROCK
   // ==========================================
