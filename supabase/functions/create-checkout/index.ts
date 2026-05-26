@@ -308,8 +308,18 @@ serve(async (req) => {
       locale: 'es-419',
       submit_type: 'pay',
       custom_text: {
+        // Shown directly above the "Pay" button on Stripe Checkout. This is
+        // the very last thing the customer reads before clicking — so it
+        // does double duty: emotional reassurance + practical guarantees.
+        // Stripe supports basic markdown (bold). Soft line breaks keep it
+        // scannable on mobile where Stripe Checkout renders.
         submit: {
-          message: 'Estás a un paso de darle algo que va a quedar en su corazón para siempre — una canción hecha solo para ellos, con su nombre y su historia. Después del pago, tu canción te llega al correo al instante y el enlace nunca expira. ❤️',
+          message: '**Imagina su cara cuando la escuche por primera vez.** Esa pausa antes de las lágrimas. Esa sonrisa que no se va a borrar. Esa canción ya está hecha — con su nombre, su historia, su música. Y en 60 segundos, también es tuya.\n\n❤️ **Hecha solo para ellos** — no se vende en ningún otro lado\n✓ **Llega a tu correo al instante** — el enlace nunca expira\n✓ **Garantía total** — si algo no te encanta, lo arreglamos sin costo\n\nMás de 2,341 familias ya lloraron de emoción al escucharla. Hoy te toca a ti darles ese regalo.',
+        },
+        // Shown briefly after they hit Pay, before the redirect to /success.
+        // Final emotional close — they already committed, this seals it.
+        after_submit: {
+          message: '🎵 Tu canción ya viene. Prepárate para escucharla.',
         },
       },
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${allSongIds}`,
