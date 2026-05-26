@@ -75,12 +75,12 @@ const genreDNA: Record<string, GenreData> = {
       },
       belico: {
         name: 'Corrido Bélico',
-        style: 'corrido bélico, regional mexican, norteño-banda fusion, minor key',
-        tempo: '100-115 BPM, polka 2/4 rhythm',
-        instruments: 'tuba bassline, bajo sexto rhythm, requinto guitar lead with ornamental runs, accordion, trumpet section, trombone, charcheta, tarola snare with rim accents',
-        vibe: 'live-band acoustic feel, dark intense mood',
-        negative: 'happy melodies, romantic vibes, soft acoustic sounds, mariachi violins, cheerful major key, laid-back chill, slow tempo, gentle arpeggios',
-        vocalCharacter: 'gritty gravelly mid-range timbre, narrative storytelling delivery, group choruses on hooks, gritos and adlibs'
+        style: 'corrido bélico, modern movimiento alterado corrido, sierreño-based street corrido, requinto-driven acoustic regional Mexican, minor-key narrative bélico',
+        tempo: '95-120 BPM, 2/4 polka-derived groove, snare pops on backbeat, off-beat guitar chucks',
+        instruments: 'requinto 12-string acoustic guitar lead with rapid ornamental runs tremolos and parallel thirds, segunda 6-string rhythm guitar with rasgueado strumming, tololoche upright bass or electric bass, optional tuba for low end, snare-driven percussion with 2/4 rimshot accents',
+        vibe: 'dark intense minor-key mood, modern studio polish on acoustic sierreño backbone, taut forward momentum, street-informed bélico bravado',
+        negative: 'banda brass section, trumpets, trombones, clarinets, charcheta, tarola tambora banda kit, full mariachi, mariachi violins, accordion, norteño accordion polka, romantic softness, slow ballad, quebradita dance pace, EDM, dubstep',
+        vocalCharacter: 'tight speech-like cadences, gritty gravelly mid-range timbre, short declarative narrative lines, crew shouts and ad-libs on hooks, gritos'
       },
       alterados: {
         name: 'Corridos Alterados',
