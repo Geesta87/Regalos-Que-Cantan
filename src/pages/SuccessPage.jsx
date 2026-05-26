@@ -359,6 +359,17 @@ export default function SuccessPage() {
     }
   }, [songIdsParam]);
 
+  // Karaoke polling — when a customer paid for the karaoke add-on but it's
+  // still being prepared (status='pending'), refetch the song every 5s so
+  // the UI flips from "preparing" to "ready" without requiring a manual
+  // reload. Stops as soon as no song is pending anymore.
+  useEffect(() => {
+    const anyPending = songs.some((s) => s?.karaoke_status === 'pending');
+    if (!anyPending) return;
+    const id = setInterval(() => { loadSongs(); }, 5000);
+    return () => clearInterval(id);
+  }, [songs]);
+
   const loadSongs = async () => {
     try {
       setLoading(true);
@@ -1940,6 +1951,98 @@ export default function SuccessPage() {
                 📦 Descargar Todas ({songs.length})
               </button>
             )}
+
+            {/* ===== KARAOKE SECTION =====
+                Shows only when the customer bought the karaoke add-on
+                (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
+                Polled by the useEffect above so 'pending' auto-updates. */}
+            {(() => {
+              // Karaoke is attached to the FIRST song in the order (per stripe-webhook).
+              const karaokeSong = songs.find((s) => s?.karaoke_status);
+              if (!karaokeSong) return null;
+              const status = karaokeSong.karaoke_status;
+              const url = karaokeSong.karaoke_url;
+
+              if (status === 'ready' && url) {
+                return (
+                  <div style={{
+                    marginTop: '12px', marginBottom: '10px',
+                    padding: '16px',
+                    background: isLight ? 'rgba(245,158,11,0.06)' : 'rgba(245,158,11,0.10)',
+                    border: `1.5px solid ${isLight ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.4)'}`,
+                    borderRadius: '16px',
+                  }}>
+                    <p style={{
+                      margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
+                      color: isLight ? '#92400e' : '#fbbf24',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}>
+                      🎤 Tu versión karaoke está lista
+                    </p>
+                    <p style={{
+                      margin: '0 0 12px', fontSize: '12px',
+                      color: ts.textSecondary, lineHeight: 1.4,
+                    }}>
+                      La canción sin la voz — para cantarla tú en familia, fiestas o redes.
+                    </p>
+                    <a href={url} download={`karaoke-para-${karaokeSong.recipient_name || 'ti'}.wav`}
+                       style={{
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                         width: '100%', padding: '14px',
+                         background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                         color: 'white', fontWeight: 800, fontSize: '15px',
+                         border: 'none', borderRadius: '14px',
+                         textDecoration: 'none',
+                         boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
+                         fontFamily: ts.font,
+                       }}>
+                      ⬇️ Descargar Karaoke (sin voz)
+                    </a>
+                  </div>
+                );
+              }
+
+              if (status === 'pending') {
+                return (
+                  <div style={{
+                    marginTop: '12px', marginBottom: '10px',
+                    padding: '14px 16px',
+                    background: isLight ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.08)',
+                    border: `1px dashed ${isLight ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.35)'}`,
+                    borderRadius: '14px',
+                    textAlign: 'center',
+                  }}>
+                    <p style={{
+                      margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
+                      color: isLight ? '#92400e' : '#fbbf24',
+                    }}>
+                      🎤 Preparando tu versión karaoke…
+                    </p>
+                    <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
+                      Listo en ~1 minuto. La página se actualiza sola.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (status === 'failed') {
+                return (
+                  <div style={{
+                    marginTop: '12px', marginBottom: '10px',
+                    padding: '12px 16px',
+                    background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
+                    border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
+                    borderRadius: '14px',
+                    textAlign: 'center',
+                  }}>
+                    <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
+                      🎤 Hubo un problema preparando tu karaoke. Te lo enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* WhatsApp Share - Step 2 */}
             <div style={{

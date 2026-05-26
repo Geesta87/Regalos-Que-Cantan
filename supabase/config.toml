@@ -115,6 +115,13 @@ verify_jwt = false
 # context — must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.test-karaoke]
+# Ops trigger that forwards a karaoke fetch request to the Vercel API route
+# /api/karaoke-fetch, using the KARAOKE_TRIGGER_SECRET from Supabase env so
+# operators don't have to paste secrets manually. Called via curl from
+# admin/CLI — no user JWT.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # Affiliate dashboard auth — uses an HMAC token in Authorization, NOT a
 # Supabase JWT. The function verifies the token internally; the gateway
