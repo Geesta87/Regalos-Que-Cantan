@@ -1571,10 +1571,12 @@ export default function ComparisonPage() {
 
         {/* ══════════════════════════════════════════════════════
             SECTION 4b: KARAOKE ADDON — compact horizontal card.
-            Gated by VITE_KARAOKE_ENABLED. Only shown after the
-            customer has picked a song/bundle (hasSelection).
+            Gated by VITE_KARAOKE_ENABLED. Shown immediately (no
+            hasSelection gate) so customers see it on first scroll.
+            The Comprar button still requires a song to be picked,
+            so an "orphan" karaoke add-on without a song is impossible.
             ══════════════════════════════════════════════════════ */}
-        {KARAOKE_ENABLED && hasSelection && (
+        {KARAOKE_ENABLED && (
           <div
             onClick={() => setKaraokeAddon(v => !v)}
             style={{
