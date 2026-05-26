@@ -43,7 +43,7 @@ const genreIcons = {
 };
 
 // Primary genres to show first — balanced for all occasions
-const primaryGenreIds = ['corrido', 'banda', 'romantica', 'bachata', 'ranchera', 'reggaeton', 'balada', 'vals'];
+const primaryGenreIds = ['corrido', 'banda', 'romantica', 'cristiana', 'bachata', 'ranchera', 'reggaeton', 'balada', 'vals'];
 
 // Voice guidance configuration per genre/subgenre
 // default: pre-selected voice, femalePopular: show female as recommended
