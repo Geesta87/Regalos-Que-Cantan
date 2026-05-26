@@ -241,6 +241,12 @@ export default function ComparisonPage() {
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
 
+  // Karaoke add-on (single boolean — one karaoke per order, applied to first song)
+  // Gated by VITE_KARAOKE_ENABLED so we can ship the code dormant and flip on later.
+  const KARAOKE_ENABLED = import.meta.env.VITE_KARAOKE_ENABLED === 'true';
+  const [karaokeAddon, setKaraokeAddon] = useState(false);
+  const karaokeAddonPrice = 7.99;
+
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
 
@@ -727,7 +733,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon);
 
       if (result.url) {
         window.location.href = result.url;
@@ -776,9 +782,10 @@ export default function ComparisonPage() {
 
   const getCurrentPrice = () => {
     if (isFree) return 0;
-    const base = purchaseBoth ? bundlePrice : singlePrice;
-    if (videoAddonCount === 2) return base + videoDualAddonPrice;
-    if (videoAddonCount === 1) return base + videoAddonPrice;
+    let base = purchaseBoth ? bundlePrice : singlePrice;
+    if (videoAddonCount === 2) base += videoDualAddonPrice;
+    else if (videoAddonCount === 1) base += videoAddonPrice;
+    if (karaokeAddon) base += karaokeAddonPrice;
     return base;
   };
 
@@ -1558,6 +1565,104 @@ export default function ComparisonPage() {
                   : 'Toca "Agregar" para incluir el video en tu pedido'}
               </p>
             </div>
+          </div>
+        )}
+
+
+        {/* ══════════════════════════════════════════════════════
+            SECTION 4b: KARAOKE ADDON — compact horizontal card.
+            Gated by VITE_KARAOKE_ENABLED. Only shown after the
+            customer has picked a song/bundle (hasSelection).
+            ══════════════════════════════════════════════════════ */}
+        {KARAOKE_ENABLED && hasSelection && (
+          <div
+            onClick={() => setKaraokeAddon(v => !v)}
+            style={{
+              background: karaokeAddon
+                ? 'linear-gradient(135deg, rgba(34,197,94,0.18), rgba(15,11,14,0.7))'
+                : 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,11,14,0.5))',
+              border: karaokeAddon ? '2px solid #22c55e' : '2px solid rgba(251,191,36,0.55)',
+              borderRadius: '14px',
+              padding: '14px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.25s',
+              position: 'relative',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+            }}
+          >
+            {/* NEW badge */}
+            <div style={{
+              position: 'absolute', top: '-8px', left: '14px',
+              background: karaokeAddon
+                ? 'linear-gradient(90deg, #16a34a, #22c55e)'
+                : 'linear-gradient(90deg, #d97706, #f59e0b)',
+              color: 'white', padding: '3px 10px', borderRadius: '4px',
+              fontSize: '10px', fontWeight: '900', letterSpacing: '0.5px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+            }}>
+              🎤 NUEVO
+            </div>
+
+            {/* Small icon */}
+            <div style={{
+              width: '54px', height: '54px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #451a03, #78350f)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '28px', flexShrink: 0,
+            }}>
+              🎤
+            </div>
+
+            {/* Title + desc + price */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{
+                margin: '0 0 2px', fontSize: '14px', fontWeight: 800,
+                color: '#fef3c7', lineHeight: 1.2,
+              }}>
+                Versión sin voz · Karaoke
+              </p>
+              <p style={{
+                margin: '0 0 4px', fontSize: '11px',
+                color: 'rgba(255,255,255,0.55)', lineHeight: 1.3,
+              }}>
+                Para cantarla tú en familia o fiestas
+              </p>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{ fontSize: '16px', fontWeight: 900, color: '#fbbf24' }}>
+                  +${karaokeAddonPrice.toFixed(2)}
+                </span>
+                <span style={{
+                  fontSize: '11px', color: 'rgba(255,255,255,0.35)',
+                  textDecoration: 'line-through',
+                }}>
+                  $14.99
+                </span>
+              </div>
+            </div>
+
+            {/* Add/Added button — same pattern as video addon */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setKaraokeAddon(v => !v); }}
+              style={{
+                flexShrink: 0, padding: '10px 18px', borderRadius: '50px',
+                border: karaokeAddon ? '2px solid #22c55e' : '2px solid #fbbf24',
+                background: karaokeAddon
+                  ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                  : 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                color: 'white', fontSize: '13px', fontWeight: 800,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+                boxShadow: karaokeAddon
+                  ? '0 0 12px rgba(34,197,94,0.5)'
+                  : '0 0 12px rgba(251,191,36,0.5)',
+                transition: 'all 0.25s',
+              }}
+            >
+              {karaokeAddon ? '✓ Agregado' : '+ Agregar'}
+            </button>
           </div>
         )}
 

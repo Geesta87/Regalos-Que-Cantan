@@ -97,7 +97,7 @@ export async function generateSong(formData, overridePin = null) {
  * @param {string} couponCode - Optional coupon code
  * @param {boolean} purchaseBoth - Whether user is buying the bundle
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0) {
+export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false) {
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
@@ -125,6 +125,7 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       pricingTier,
       videoAddon,
       videoAddonCount,
+      karaokeAddon,
       fbc,
       fbp,
       clientUserAgent: navigator.userAgent,

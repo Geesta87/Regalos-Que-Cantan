@@ -27,7 +27,9 @@ serve(async (req) => {
   try {
     const body = await req.json();
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    const karaokeAddonBool: boolean = karaokeAddon === true || karaokeAddon === 'true';
+    const KARAOKE_PRICE_CENTS = 799; // $7.99 — applied to the FIRST song in the order
     // Normalize to a count: supports new videoAddonCount (0/1/2) or legacy videoAddon boolean
     const videoAddonCountNum: number = typeof rawVideoAddonCount === 'number' ? rawVideoAddonCount
       : typeof rawVideoAddonCount === 'string' ? parseInt(rawVideoAddonCount) || 0
@@ -167,23 +169,38 @@ serve(async (req) => {
       // (one video upsell = one flagged song) to avoid duplicate video orders.
       for (let idx = 0; idx < songIds.length; idx++) {
         const sid = songIds[idx];
-        await supabase
-          .from('songs')
-          .update({
-            paid: true,
-            payment_status: 'paid',
-            amount_paid: 0,
-            coupon_code: appliedCoupon.code,
-            paid_at: new Date().toISOString(),
-            has_video_addon: videoAddonCountNum > 0,
-            video_addon_count: videoAddonCountNum > 0 ? videoAddonCountNum : null,
-            utm_source: utm_source || null,
-            utm_medium: utm_medium || null,
-            utm_campaign: utm_campaign || null,
-            from_email_campaign: from_email_campaign || null,
-            affiliate_code: resolvedAffiliate || null
-          })
-          .eq('id', sid);
+        const updatePayload: Record<string, unknown> = {
+          paid: true,
+          payment_status: 'paid',
+          amount_paid: 0,
+          coupon_code: appliedCoupon.code,
+          paid_at: new Date().toISOString(),
+          has_video_addon: videoAddonCountNum > 0,
+          video_addon_count: videoAddonCountNum > 0 ? videoAddonCountNum : null,
+          utm_source: utm_source || null,
+          utm_medium: utm_medium || null,
+          utm_campaign: utm_campaign || null,
+          from_email_campaign: from_email_campaign || null,
+          affiliate_code: resolvedAffiliate || null,
+        };
+        // Karaoke add-on: flag the FIRST song so fetch-karaoke knows to run.
+        if (karaokeAddonBool && idx === 0) {
+          updatePayload.karaoke_status = 'pending';
+        }
+        await supabase.from('songs').update(updatePayload).eq('id', sid);
+      }
+      // For free coupon orders that include karaoke, kick the fetch-karaoke
+      // worker so the customer's instrumental is ready by the time they hit
+      // the success page. Fire-and-forget — failures fall back to status='failed'.
+      if (karaokeAddonBool && songIds[0]) {
+        fetch(`${SUPABASE_URL}/functions/v1/fetch-karaoke`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({ songId: songIds[0] }),
+        }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
       }
 
       // Increment coupon usage
@@ -262,6 +279,22 @@ serve(async (req) => {
       });
     }
 
+    // Karaoke add-on — one flat line item per order ($7.99). Applies to the
+    // first song. fetch-karaoke handles the actual stem extraction post-payment.
+    if (karaokeAddonBool) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Versión Karaoke (sin voz)',
+            description: 'La misma canción sin la voz — para cantarla tú en familia, fiestas o redes. MP3 calidad estudio, lista en ~1 minuto.',
+          },
+          unit_amount: KARAOKE_PRICE_CENTS,
+        },
+        quantity: 1,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer_email: email,
       line_items: lineItems,
@@ -288,6 +321,7 @@ serve(async (req) => {
         songCount: String(songCount),
         videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
         videoAddonCount: String(videoAddonCountNum),
+        karaokeAddon: karaokeAddonBool ? 'true' : 'false',
         affiliateCode: resolvedAffiliate || '',
         // Meta Conversions API identifiers — read by stripe-webhook on
         // checkout.session.completed. Stripe metadata cap is 500 chars/value.

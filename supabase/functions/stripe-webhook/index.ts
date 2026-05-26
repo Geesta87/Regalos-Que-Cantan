@@ -619,6 +619,10 @@ serve(async (req) => {
       const videoAddonCountMeta = parseInt(session.metadata?.videoAddonCount || '1');
       const isDualVideo = videoAddonPurchased && videoAddonCountMeta >= 2;
 
+      // Karaoke addon: one per order, applied to the first song.
+      // fetch-karaoke will run async after we update the DB row to pending.
+      const karaokeAddonPurchased = session.metadata?.karaokeAddon === 'true';
+
       // Update ALL songs in the bundle
       let firstSong = null;
       for (let idx = 0; idx < songIds.length; idx++) {
@@ -628,6 +632,11 @@ serve(async (req) => {
         if (videoAddonPurchased && (isDualVideo || idx === 0)) {
           updateData.has_video_addon = true;
           updateData.video_addon_count = isDualVideo ? 2 : 1;
+        }
+        // Karaoke: flag the FIRST song only. fetch-karaoke will populate
+        // karaoke_url and flip status to 'ready' a minute later.
+        if (karaokeAddonPurchased && idx === 0) {
+          updateData.karaoke_status = 'pending';
         }
         const { data: song, error: updateError } = await supabase
           .from('songs')
@@ -677,6 +686,32 @@ serve(async (req) => {
           }
         } catch (clipErr: any) {
           console.warn(`[render-social-clip] trigger failed for ${sid}:`, clipErr?.message || clipErr);
+        }
+
+        // Fire-and-forget: pull the karaoke (instrumental) stem from useapi.net
+        // and upload to Supabase Storage. Only on the FIRST song and only if
+        // the customer purchased the karaoke add-on. Failures funnel to
+        // karaoke_status='failed' inside fetch-karaoke; ops can re-trigger.
+        if (karaokeAddonPurchased && idx === 0) {
+          try {
+            const karaokePromise = fetch(`${SUPABASE_URL}/functions/v1/fetch-karaoke`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              },
+              body: JSON.stringify({ songId: sid }),
+            });
+            const karaokeTimeout = new Promise<Response>((_, reject) =>
+              setTimeout(() => reject(new Error('fetch-karaoke trigger timeout')), 3000)
+            );
+            const karaokeResponse = await Promise.race([karaokePromise, karaokeTimeout]);
+            if (!karaokeResponse.ok) {
+              console.warn(`[fetch-karaoke] non-2xx for ${sid}: ${karaokeResponse.status}`);
+            }
+          } catch (karaokeErr: any) {
+            console.warn(`[fetch-karaoke] trigger failed for ${sid}:`, karaokeErr?.message || karaokeErr);
+          }
         }
       }
 

@@ -75,6 +75,14 @@ verify_jwt = false
 # (no user JWT) — must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.preview-fathers-day-campaign]
+# One-off preview sender for the Father's Day 2026 campaign. Sends all 11
+# campaign emails (E0-E10) to a single hardcoded inbox so the visual + copy
+# can be reviewed before the real campaign is configured. Invoked manually
+# via curl — no user JWT context. Delete this function (and this block) once
+# the real campaign is set up.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # Internal generators invoked server-to-server from other edge functions
 # ---------------------------------------------------------------------------
@@ -98,6 +106,13 @@ verify_jwt = false
 [functions.post-to-ghl]
 # Called server-to-server from social-clip-callback once the Shotstack render
 # completes. No user JWT context.
+verify_jwt = false
+
+[functions.fetch-karaoke]
+# Called server-to-server from stripe-webhook when a customer pays for the
+# $7.99 karaoke add-on. Pulls the instrumental stem from useapi.net, extracts
+# it from the returned ZIP, and uploads to Supabase Storage. No user JWT
+# context — must stay verify_jwt = false.
 verify_jwt = false
 
 # ---------------------------------------------------------------------------
