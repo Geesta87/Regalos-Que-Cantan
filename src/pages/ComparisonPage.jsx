@@ -242,8 +242,6 @@ export default function ComparisonPage() {
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
 
   // Karaoke add-on (single boolean — one karaoke per order, applied to first song)
-  // Gated by VITE_KARAOKE_ENABLED so we can ship the code dormant and flip on later.
-  const KARAOKE_ENABLED = import.meta.env.VITE_KARAOKE_ENABLED === 'true';
   const [karaokeAddon, setKaraokeAddon] = useState(false);
   const karaokeAddonPrice = 7.99;
 
@@ -1571,12 +1569,12 @@ export default function ComparisonPage() {
 
         {/* ══════════════════════════════════════════════════════
             SECTION 4b: KARAOKE ADDON — compact horizontal card.
-            Gated by VITE_KARAOKE_ENABLED. Shown immediately (no
-            hasSelection gate) so customers see it on first scroll.
-            The Comprar button still requires a song to be picked,
-            so an "orphan" karaoke add-on without a song is impossible.
+            Shown immediately (no hasSelection gate) so customers
+            see it on first scroll. The Comprar button still
+            requires a song to be picked, so an "orphan"
+            karaoke-only order is impossible.
             ══════════════════════════════════════════════════════ */}
-        {KARAOKE_ENABLED && (
+        {true && (
           <div
             onClick={() => setKaraokeAddon(v => !v)}
             style={{
