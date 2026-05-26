@@ -75,12 +75,12 @@ const genreDNA: Record<string, GenreData> = {
       },
       belico: {
         name: 'Corrido Bélico',
-        style: 'corrido belico, dark aggressive corrido, sierreño-based street corrido, minor key brass corrido, propulsive norteño groove, polka-derived 2/4 rhythmic drive',
-        tempo: '95-120 BPM, brisk driving pace, propulsive polka-derived groove, fast norteño pulse',
-        instruments: 'requinto guitar with rapid ornamental runs, rhythm guitar, tololoche slap bass, tuba bass reinforcement, trombones, trumpets, charcheta alto horn, tarola snare, heavy kick drum, subtle trap hi-hats',
-        vibe: 'menacing, confrontational, dark minor key, street danger, propulsive, assertive, epic intensity, raw intimidation, terse and aggressive',
-        negative: 'happy melodies, romantic vibes, soft acoustic sounds, mariachi violins, cheerful major key, accordion, laid-back chill, slow tempo, gentle arpeggios',
-        vocalCharacter: 'assertive aggressive vocal, raw gritty delivery, street attitude, confrontational intensity, terse and sharp'
+        style: 'corrido bélico, regional mexican, norteño-banda fusion, minor key',
+        tempo: '100-115 BPM, polka 2/4 rhythm',
+        instruments: 'tuba bassline, bajo sexto rhythm, requinto guitar lead with ornamental runs, accordion, trumpet section, trombone, charcheta, tarola snare with rim accents',
+        vibe: 'live-band acoustic feel, dark intense mood',
+        negative: 'happy melodies, romantic vibes, soft acoustic sounds, mariachi violins, cheerful major key, laid-back chill, slow tempo, gentle arpeggios',
+        vocalCharacter: 'gritty gravelly mid-range timbre, narrative storytelling delivery, group choruses on hooks, gritos and adlibs'
       },
       alterados: {
         name: 'Corridos Alterados',
