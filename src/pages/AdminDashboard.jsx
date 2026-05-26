@@ -5522,9 +5522,9 @@ export default function AdminDashboard() {
                   <p className="text-xs text-gray-400 mb-3">🎵 Audio</p>
                   <audio controls className="w-full mb-3" src={selectedSong.audio_url} />
                   <div className="flex gap-2">
-                    <a 
-                      href={selectedSong.audio_url} 
-                      download 
+                    <a
+                      href={selectedSong.audio_url}
+                      download
                       className="flex-1 py-2 px-4 bg-amber-400 text-black rounded-lg font-medium text-center text-sm hover:bg-amber-300 transition"
                     >
                       ⬇️ Download MP3
@@ -5539,6 +5539,69 @@ export default function AdminDashboard() {
                       📋 Copy URL
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* Karaoke (instrumental) — only shows if the customer bought the add-on */}
+              {(selectedSong.karaoke_status || selectedSong.karaoke_url) && (
+                <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4">
+                  <p className="text-xs text-gray-400 mb-3">🎤 Karaoke (versión sin voz)</p>
+
+                  {selectedSong.karaoke_status === 'ready' && selectedSong.karaoke_url && (
+                    <>
+                      <audio controls className="w-full mb-3" src={selectedSong.karaoke_url} />
+                      <div className="flex gap-2">
+                        <a
+                          href={selectedSong.karaoke_url}
+                          download={`karaoke-para-${selectedSong.recipient_name || 'cliente'}.wav`}
+                          className="flex-1 py-2 px-4 bg-orange-400 text-black rounded-lg font-medium text-center text-sm hover:bg-orange-300 transition"
+                        >
+                          ⬇️ Download Karaoke
+                        </a>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedSong.karaoke_url);
+                            alert('Karaoke URL copied!');
+                          }}
+                          className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
+                        >
+                          📋 Copy URL
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {selectedSong.karaoke_status === 'pending' && (
+                    <p className="text-xs text-orange-300">⏳ Procesando… (vuelve a abrir este modal en ~1 minuto)</p>
+                  )}
+
+                  {selectedSong.karaoke_status === 'failed' && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-xs text-red-300">❌ La extracción falló. Toca el botón para reintentar.</p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-karaoke`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ songId: selectedSong.id }),
+                            });
+                            const data = await res.json();
+                            if (data?.vercel_response?.success) {
+                              alert('✅ Karaoke regenerated! Cierra y reabre este modal para verlo.');
+                            } else {
+                              alert('❌ Retry failed: ' + (data?.vercel_response?.error || data?.error || 'unknown'));
+                            }
+                          } catch (e) {
+                            alert('❌ Retry threw: ' + e.message);
+                          }
+                        }}
+                        className="py-2 px-4 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-400 transition"
+                      >
+                        🔄 Reintentar
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               

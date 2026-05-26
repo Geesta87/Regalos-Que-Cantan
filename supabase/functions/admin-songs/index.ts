@@ -53,7 +53,7 @@ const SONG_LIST_COLUMNS = [
   'paid', 'paid_at', 'amount_paid',
   'coupon_code', 'affiliate_code', 'utm_source',
   'audio_url', 'whatsapp_phone', 'whatsapp_sent_at', 'email_sent_at', 'download_count', 'downloaded',
-  'has_video_addon', 'admin_dismissed_at', 'status',
+  'has_video_addon', 'karaoke_url', 'karaoke_status', 'admin_dismissed_at', 'status',
   // version + mureka_job_id power the V1/V2 label in the admin orders list:
   // each song creation produces 2 rows that share a mureka_job_id, one per
   // generated audio variant (version 1, version 2).
