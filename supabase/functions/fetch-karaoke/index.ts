@@ -41,7 +41,10 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import JSZip from 'npm:jszip@3.10.1';
+// fflate's streaming Unzip processes the ZIP chunk-by-chunk so we never hold
+// the full 195MB ZIP in memory at once. JSZip (used initially) exceeded the
+// Supabase Edge Function 256MB memory cap and crashed with WORKER_RESOURCE_LIMIT.
+import { Unzip, UnzipInflate } from 'npm:fflate@0.8.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -108,29 +111,91 @@ async function requestStemsZipUrl(murekaSongId: string): Promise<string> {
   return data.oss_key;
 }
 
-// Step: download the ZIP and extract just instrumental.wav.
-// The full ZIP is ~195MB but we only return the ~45MB instrumental.
-// JSZip holds the full ZIP buffer in memory once during extraction — peak
-// memory is the bottleneck here. If we ever hit Edge Function memory limits
-// (~256MB), swap this for a streaming zip parser.
+// Step: stream the ZIP and extract just instrumental.wav.
+// The full ZIP is ~195MB. Loading the whole thing into memory (e.g. with
+// JSZip) exceeds the Supabase Edge Function 256MB cap and crashes with
+// WORKER_RESOURCE_LIMIT — confirmed in production on 2026-05-26.
+//
+// Streaming approach: pull the ZIP body as a stream, feed each chunk into
+// fflate's Unzip parser. For every file announcement, we either capture
+// (instrumental.wav) or drop. Peak memory ≈ the size of one stem (~45MB)
+// plus small in-flight chunks. Well under the 256MB cap.
 async function downloadAndExtractInstrumental(zipUrl: string): Promise<Uint8Array> {
   const resp = await fetch(zipUrl);
   if (!resp.ok) {
     throw new Error(`Mureka CDN returned ${resp.status} fetching stems zip`);
   }
-  const zipBytes = new Uint8Array(await resp.arrayBuffer());
-  console.log(`Stems ZIP downloaded: ${(zipBytes.byteLength / 1024 / 1024).toFixed(1)} MB`);
-
-  const zip = await JSZip.loadAsync(zipBytes);
-  const file = zip.file('instrumental.wav');
-  if (!file) {
-    // List what we DID find so we can debug if Mureka changes the file naming
-    const present = Object.keys(zip.files);
-    throw new Error(`instrumental.wav not in ZIP. Contents: ${present.join(', ')}`);
+  if (!resp.body) {
+    throw new Error('Mureka CDN response had no body');
   }
-  const wav = await file.async('uint8array');
-  console.log(`instrumental.wav extracted: ${(wav.byteLength / 1024 / 1024).toFixed(1)} MB`);
-  return wav;
+
+  const seenFiles: string[] = [];
+  // Single growable buffer. Mureka's instrumental.wav is ~44MB; pre-allocate
+  // 50MB to avoid any growth, then slice() at the end so we don't ship the
+  // overallocation to the uploader. Critical: avoid chunks[]+concat which
+  // doubles memory and tipped us over the 256MB Edge Function ceiling.
+  let outBuffer = new Uint8Array(50 * 1024 * 1024);
+  let outOffset = 0;
+  let foundInstrumental = false;
+
+  return new Promise<Uint8Array>((resolve, reject) => {
+    const unzip = new Unzip((file) => {
+      seenFiles.push(file.name);
+      if (file.name === 'instrumental.wav') {
+        foundInstrumental = true;
+        file.ondata = (err, data, final) => {
+          if (err) { reject(new Error(`Unzip stream error: ${err.message}`)); return; }
+          // Grow on the rare chance instrumental.wav exceeds 50MB
+          if (outOffset + data.byteLength > outBuffer.byteLength) {
+            const grown = new Uint8Array(outBuffer.byteLength * 2);
+            grown.set(outBuffer);
+            outBuffer = grown;
+          }
+          outBuffer.set(data, outOffset);
+          outOffset += data.byteLength;
+          if (final) {
+            // slice() so the uploader only ships the used portion
+            const wav = outBuffer.slice(0, outOffset);
+            outBuffer = new Uint8Array(0); // free the working buffer
+            console.log(`instrumental.wav extracted (streamed): ${(wav.byteLength / 1024 / 1024).toFixed(1)} MB`);
+            resolve(wav);
+          }
+        };
+        // file.start() must come AFTER ondata is set. Pass UnzipInflate
+        // explicitly so DEFLATE-compressed entries decode.
+        file.start(UnzipInflate);
+      }
+      // If we don't call file.start(), fflate skips this file's bytes
+      // entirely — no buffering, no decoding, no handler required.
+    });
+    unzip.register(UnzipInflate);
+
+    // Pump the response body into the unzip parser.
+    (async () => {
+      const reader = resp.body!.getReader();
+      let bytesIn = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            unzip.push(new Uint8Array(0), true);
+            // If we finished the whole ZIP and never saw instrumental.wav,
+            // bail out so the caller can mark karaoke_status='failed'.
+            if (!foundInstrumental) {
+              reject(new Error(`instrumental.wav not in ZIP. Saw: ${seenFiles.join(', ')}`));
+            }
+            return;
+          }
+          bytesIn += value.byteLength;
+          unzip.push(value, false);
+        }
+      } catch (e: any) {
+        reject(new Error(`ZIP stream read failed at ${bytesIn} bytes: ${e?.message || e}`));
+      } finally {
+        console.log(`ZIP stream complete: ${(bytesIn / 1024 / 1024).toFixed(1)} MB read`);
+      }
+    })();
+  });
 }
 
 // Step: upload to Supabase Storage and return the public URL.

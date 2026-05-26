@@ -688,29 +688,33 @@ serve(async (req) => {
           console.warn(`[render-social-clip] trigger failed for ${sid}:`, clipErr?.message || clipErr);
         }
 
-        // Fire-and-forget: pull the karaoke (instrumental) stem from useapi.net
-        // and upload to Supabase Storage. Only on the FIRST song and only if
-        // the customer purchased the karaoke add-on. Failures funnel to
-        // karaoke_status='failed' inside fetch-karaoke; ops can re-trigger.
+        // Fire-and-forget: trigger the Vercel karaoke worker for the first
+        // song if the customer bought the karaoke add-on. The work runs on
+        // Vercel (1GB memory) because Supabase Edge Functions ran out of
+        // memory extracting the 195MB Mureka stem ZIP. Authenticated with a
+        // shared secret (KARAOKE_TRIGGER_SECRET).
         if (karaokeAddonPurchased && idx === 0) {
-          try {
-            const karaokePromise = fetch(`${SUPABASE_URL}/functions/v1/fetch-karaoke`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-              },
-              body: JSON.stringify({ songId: sid }),
-            });
-            const karaokeTimeout = new Promise<Response>((_, reject) =>
-              setTimeout(() => reject(new Error('fetch-karaoke trigger timeout')), 3000)
-            );
-            const karaokeResponse = await Promise.race([karaokePromise, karaokeTimeout]);
-            if (!karaokeResponse.ok) {
-              console.warn(`[fetch-karaoke] non-2xx for ${sid}: ${karaokeResponse.status}`);
+          const karaokeSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
+          const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
+          if (!karaokeSecret) {
+            console.warn(`[karaoke] KARAOKE_TRIGGER_SECRET not set — skipping trigger for ${sid}`);
+          } else {
+            try {
+              const karaokePromise = fetch(`${vercelBase}/api/karaoke-fetch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ songId: sid, secret: karaokeSecret }),
+              });
+              const karaokeTimeout = new Promise<Response>((_, reject) =>
+                setTimeout(() => reject(new Error('karaoke-fetch trigger timeout')), 3000)
+              );
+              const karaokeResponse = await Promise.race([karaokePromise, karaokeTimeout]);
+              if (!karaokeResponse.ok) {
+                console.warn(`[karaoke] vercel non-2xx for ${sid}: ${karaokeResponse.status}`);
+              }
+            } catch (karaokeErr: any) {
+              console.warn(`[karaoke] vercel trigger failed for ${sid}:`, karaokeErr?.message || karaokeErr);
             }
-          } catch (karaokeErr: any) {
-            console.warn(`[fetch-karaoke] trigger failed for ${sid}:`, karaokeErr?.message || karaokeErr);
           }
         }
       }

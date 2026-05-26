@@ -189,18 +189,21 @@ serve(async (req) => {
         }
         await supabase.from('songs').update(updatePayload).eq('id', sid);
       }
-      // For free coupon orders that include karaoke, kick the fetch-karaoke
-      // worker so the customer's instrumental is ready by the time they hit
-      // the success page. Fire-and-forget — failures fall back to status='failed'.
+      // For free coupon orders that include karaoke, kick the Vercel worker
+      // so the customer's instrumental is ready by the time they hit the
+      // success page. Fire-and-forget — failures fall back to status='failed'.
+      // Routes to Vercel (not Supabase) because the 195MB ZIP extraction
+      // exceeds the Supabase Edge runtime's 256MB memory cap.
       if (karaokeAddonBool && songIds[0]) {
-        fetch(`${SUPABASE_URL}/functions/v1/fetch-karaoke`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({ songId: songIds[0] }),
-        }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
+        const karaokeSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
+        const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
+        if (karaokeSecret) {
+          fetch(`${vercelBase}/api/karaoke-fetch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ songId: songIds[0], secret: karaokeSecret }),
+          }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
+        }
       }
 
       // Increment coupon usage
