@@ -302,11 +302,14 @@ serve(async (req) => {
       customer_email: email,
       line_items: lineItems,
       mode: 'payment',
-      locale: 'es',
+      // 'es-419' = Latin American Spanish. Uses periods for decimals
+      // ($29.99 instead of $29,99) which is what the Latino US/Mexico
+      // market expects. 'es' defaults to Spain Spanish (comma decimals).
+      locale: 'es-419',
       submit_type: 'pay',
       custom_text: {
         submit: {
-          message: 'Después del pago te llevaremos directamente a tu canción y enviaremos el enlace permanente a tu correo. Guarda el correo — el enlace nunca expira.',
+          message: 'Estás a un paso de darle algo que va a quedar en su corazón para siempre — una canción hecha solo para ellos, con su nombre y su historia. Después del pago, tu canción te llega al correo al instante y el enlace nunca expira. ❤️',
         },
       },
       success_url: `${BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}&song_id=${allSongIds}`,
