@@ -390,13 +390,13 @@ export default function GenreStep() {
               href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
               target="_blank"
               rel="noopener noreferrer"
-              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-amber-500/20 via-amber-400/10 to-red-500/10 backdrop-blur-xl border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_25px_rgba(251,191,36,0.25)] hover:shadow-[0_0_35px_rgba(251,191,36,0.5)] hover:-translate-y-1"
+              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/20 via-bougainvillea/10 to-bougainvillea/5 backdrop-blur-xl border-2 border-bougainvillea shadow-[0_0_25px_rgba(242,13,128,0.3)] hover:shadow-[0_0_35px_rgba(242,13,128,0.6)] hover:-translate-y-1"
             >
-              <span className="absolute top-2 right-2 bg-amber-400 text-black text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">⭐ POPULAR</span>
+              <span className="absolute top-2 right-2 bg-bougainvillea text-white text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">⭐ POPULAR</span>
               <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
-              <span className="font-display text-xl md:text-2xl font-semibold tracking-wide text-amber-100">Inglés</span>
-              <span className="text-amber-200/80 text-[11px] md:text-xs text-center leading-tight font-medium">
-                Pop · Country · R&B · Rock<br/>en <span className="text-amber-300 font-extrabold">Gifts That Sing →</span>
+              <span className="font-display text-xl md:text-2xl font-bold tracking-wide text-white">Inglés</span>
+              <span className="text-white/80 text-[11px] md:text-xs text-center leading-tight font-medium">
+                Pop · Country · R&B · Rock<br/>en <span className="text-bougainvillea font-extrabold">Gifts That Sing →</span>
               </span>
             </a>
             {displayedGenres.map((genre) => (
