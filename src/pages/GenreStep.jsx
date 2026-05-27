@@ -334,7 +334,7 @@ export default function GenreStep() {
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 md:gap-2 bg-white hover:bg-white/90 text-forest text-sm md:text-base font-extrabold px-4 py-2 md:px-5 md:py-2.5 rounded-full transition-all shadow-lg ring-2 ring-gold/40 hover:ring-gold"
-              title="English version — MadeYouASong"
+              title="English version — Gifts That Sing"
             >
               <span aria-hidden="true" className="text-base md:text-lg">🇺🇸</span>
               <span>English</span>
@@ -385,6 +385,20 @@ export default function GenreStep() {
 
           {/* Genre Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {/* English songs — highlighted handoff to Gifts That Sing */}
+            <a
+              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-amber-500/20 via-amber-400/10 to-red-500/10 backdrop-blur-xl border-2 border-amber-400 hover:border-amber-300 shadow-[0_0_25px_rgba(251,191,36,0.25)] hover:shadow-[0_0_35px_rgba(251,191,36,0.5)] hover:-translate-y-1"
+            >
+              <span className="absolute top-2 right-2 bg-amber-400 text-black text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">⭐ POPULAR</span>
+              <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
+              <span className="font-display text-xl md:text-2xl font-semibold tracking-wide text-amber-100">Inglés</span>
+              <span className="text-amber-200/80 text-[11px] md:text-xs text-center leading-tight font-medium">
+                Pop · Country · R&B · Rock<br/>en <span className="text-amber-300 font-extrabold">Gifts That Sing →</span>
+              </span>
+            </a>
             {displayedGenres.map((genre) => (
               <button
                 key={genre.id}
@@ -429,25 +443,6 @@ export default function GenreStep() {
               </button>
             </div>
           )}
-
-          {/* English genres pivot — handoff to MadeYouASong */}
-          <a
-            href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_pivot&utm_campaign=genre_pivot"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block mt-10 p-6 md:p-7 rounded-2xl border-2 border-gold/50 hover:border-gold bg-gold/10 hover:bg-gold/15 transition-all text-center group shadow-lg shadow-gold/10 hover:shadow-gold/20"
-          >
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <span aria-hidden="true" className="text-3xl md:text-4xl">🇺🇸</span>
-              <span className="text-white group-hover:text-gold font-bold text-base md:text-lg transition-colors">
-                ¿Buscas géneros en inglés?
-              </span>
-            </div>
-            <p className="text-white/80 text-sm md:text-base font-medium">
-              Pop · Country · R&B · Rock · Hip-Hop · disponibles en{' '}
-              <span className="text-gold font-extrabold underline underline-offset-4">MadeYouASong →</span>
-            </p>
-          </a>
 
           {/* Sub-genre Selection */}
           {currentGenre && currentGenre.subGenres && currentGenre.subGenres.length > 0 && (

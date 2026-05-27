@@ -35,7 +35,7 @@ export default function Header({ variant = 'default' }) {
             target="_blank"
             rel="noopener noreferrer"
             className="glass-morphism text-white/90 hover:text-white px-3 md:px-4 py-2 rounded-full text-xs md:text-sm font-semibold hover:bg-white/20 transition-all inline-flex items-center gap-1.5"
-            title="English version — MadeYouASong"
+            title="English version — Gifts That Sing"
           >
             <span aria-hidden="true">🇺🇸</span>
             <span>English</span>
@@ -74,7 +74,7 @@ export default function Header({ variant = 'default' }) {
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-semibold text-white/70 hover:text-gold transition-colors inline-flex items-center gap-1.5"
-            title="English version — MadeYouASong"
+            title="English version — Gifts That Sing"
           >
             <span aria-hidden="true">🇺🇸</span> English
           </a>

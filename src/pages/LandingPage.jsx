@@ -89,7 +89,7 @@ export default function LandingPage() {
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 md:gap-2 bg-white hover:bg-white/90 text-landing-bg text-sm md:text-base font-extrabold px-4 py-2.5 md:px-5 md:py-3 rounded-lg transition-all shadow-lg ring-2 ring-white/40 hover:ring-white/70"
-            title="English version — MadeYouASong"
+            title="English version — Gifts That Sing"
           >
             <span aria-hidden="true" className="text-base md:text-lg">🇺🇸</span>
             <span>English</span>
@@ -216,7 +216,7 @@ export default function LandingPage() {
             className="mt-8 inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 border-2 border-white/30 hover:border-white text-white text-sm font-bold px-5 py-3 rounded-full transition-all shadow-md"
           >
             <span aria-hidden="true" className="text-lg">🇺🇸</span>
-            <span>¿Prefieres tu canción en inglés? Visita MadeYouASong</span>
+            <span>¿Prefieres tu canción en inglés? Visita Gifts That Sing</span>
             <span aria-hidden="true">→</span>
           </a>
         </div>

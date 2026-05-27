@@ -3228,7 +3228,7 @@ export default function SuccessPage() {
           </div>
           )}
 
-          {/* ===== ENGLISH CROSS-SELL — MadeYouASong (giftsthatsing.com) ===== */}
+          {/* ===== ENGLISH CROSS-SELL — Gifts That Sing (giftsthatsing.com) ===== */}
           {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <a
             href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=success_crosssell&utm_campaign=success_crosssell&coupon=RQC5"
@@ -3249,7 +3249,7 @@ export default function SuccessPage() {
               ¿Conoces a alguien que prefiera una canción en inglés?
             </h3>
             <p style={{ fontSize: '13px', color: ts.textSecondary, marginBottom: '14px', lineHeight: '1.5' }}>
-              Regálale una en MadeYouASong con <strong style={{ color: ts.textPrimary }}>$5 de descuento</strong> · código <strong style={{ color: ts.textPrimary }}>RQC5</strong>
+              Regálale una en Gifts That Sing con <strong style={{ color: ts.textPrimary }}>$5 de descuento</strong> · código <strong style={{ color: ts.textPrimary }}>RQC5</strong>
             </p>
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
@@ -3259,7 +3259,7 @@ export default function SuccessPage() {
               border: `2px solid ${ts.cardBorder}`, borderRadius: '14px',
               fontFamily: ts.font,
             }}>
-              Ver MadeYouASong →
+              Ver Gifts That Sing →
             </span>
           </a>
           )}

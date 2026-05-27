@@ -179,7 +179,7 @@ export default function LandingPagePremium() {
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               transition: 'all 0.3s',
             }}
-            title="English version — MadeYouASong"
+            title="English version — Gifts That Sing"
           >
             <span aria-hidden="true">🇺🇸</span>
             <span>English</span>
