@@ -191,3 +191,21 @@ verify_jwt = true
 # response on every code path so the endpoint can't be used for email
 # enumeration.
 verify_jwt = true
+
+# ---------------------------------------------------------------------------
+# Clone Mi Voz (regalosquecantan.com/clonamivoz) — voice-cloning tier
+# ---------------------------------------------------------------------------
+# Standalone route added 2026-05-27 that lets a customer record their voice,
+# get Claude-generated lyrics, and a Suno (via Kie.ai) song sung in THAT
+# voice. Functions below all live behind verify_jwt = true and are called
+# from the /clonamivoz frontend page with the public anon key. Each
+# function validates its own inputs and writes to the dedicated
+# voice_samples + cloned_voice_songs tables — completely isolated from
+# public.songs and the regular Mureka funnel.
+
+[functions.upload-customer-voice]
+# Customer voice recording → Supabase Storage (private 'customer-voices'
+# bucket) → public.voice_samples row → signed URL the frontend hands to
+# the song generator. Frontend posts with the Supabase anon JWT, identical
+# to recover-song's pattern.
+verify_jwt = true
