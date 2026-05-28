@@ -98,3 +98,24 @@ Las personas que quiero son lo más importante para mí. Por ellas vivimos, por 
 Cuando era pequeño, jugaba al aire libre con mucha alegría. El perro corría por el parque, los niños reían sin parar, y todo era simple. Esa libertad la llevo conmigo siempre. Cada canción que escucho me regresa a esos momentos felices.
 
 Ahora, con mi propia voz, quiero crear algo único. Algo hecho con sentimiento, desde lo más profundo. Gracias por escucharme. Gracias por permitirme compartir contigo este pequeño pedacito de mí.`;
+
+/**
+ * After reading the script, the customer should hum or sing wordlessly
+ * for ~15 seconds. This is the single biggest accuracy lift for voice
+ * cloning: Suno is a SINGING model, so a sung sample teaches it the
+ * customer's pitch and timbre far more directly than spoken-only input.
+ *
+ * Validated in suno-voice-clone-test — humming alone produced as-good
+ * or better clones than reading alone. Combining both is best of both
+ * worlds (humming captures pitch, reading captures phonemes).
+ *
+ * Shown in a distinct section after the reading script so customers
+ * see it as a clear additional ask. NO famous tunes — Suno's copyright
+ * filter rejects them.
+ */
+export const HUMMING_INSTRUCTION = {
+  title: 'Bonus: tararea 15 segundos',
+  subtitle: 'Esta es la parte secreta que hace que tu voz suene mucho mejor cantando.',
+  body: 'Después del texto, tararea cualquier melodía que se te ocurra por unos 15 segundos. No tiene que ser bonito. Solo "mmmm" o "lalala" con cualquier tonadita.',
+  warning: '⚠ NO tararees Cielito Lindo, Las Mañanitas, ni canciones famosas — la IA las detecta como copyright y rechaza la grabación.',
+};

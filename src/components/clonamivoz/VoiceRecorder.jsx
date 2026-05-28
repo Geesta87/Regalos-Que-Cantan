@@ -1,36 +1,272 @@
 // src/components/clonamivoz/VoiceRecorder.jsx
 //
-// Voice capture for the /clonamivoz tier. Ported (JSX, no TS) from
-// suno-voice-clone-test/web-app/components/VoiceRecorder.tsx.
+// Voice capture for the /clonamivoz tier.
 //
-// Encapsulates:
-//   - MediaRecorder lifecycle (start / stop / cleanup on unmount)
-//   - Live RMS analyser → 32-bar visualizer
-//   - Live timer + zoneFor() messaging
-//   - QualityProgressBar (30s/45s/75s tick marks)
-//   - Optional collapsible ReadingScriptPanel
-//   - Playback preview + length-quality copy
+// What this component does
+// ------------------------
+//   1. Manages MediaRecorder lifecycle (start / stop / cleanup on unmount)
+//   2. Live RMS frequency-spectrum visualizer (real soundwave from the mic)
+//   3. Live timer + zoneFor() encouragement messaging
+//   4. QualityProgressBar with 30s / 45s / 75s tick marks
+//   5. Collapsible ReadingScriptPanel with humming bonus instructions
+//   6. POST-RECORDING: decodes the audio Blob with Web Audio API and
+//      computes a quality verdict (duration, volume, noise floor, clipping,
+//      silence percentage, expressiveness). The "Continuar" button is GATED
+//      on a passable verdict — critical issues (too short, too quiet,
+//      heavy clipping, too noisy) hard-block; warnings show but allow
+//      proceed.
 //
-// All sub-components are co-located in this file so the parent page only
-// imports <VoiceRecorder />. They're stateless and small enough that
-// splitting them across files would only add file noise.
+// Why the verdict gating matters
+// ------------------------------
+// The Suno call costs ~$0.10 per generation. If we send it 8 seconds of
+// silence (because the customer's mic was muted), we burn money AND the
+// customer gets a useless preview. The verdict screen catches all of that
+// BEFORE we spend the quota, AND coaches them through a re-record with
+// specific advice ("acércate al micrófono", "busca un lugar más silencioso").
 
 import React, { useEffect, useRef, useState } from 'react';
-import { READING_SCRIPT, zoneFor } from './genres';
+import { READING_SCRIPT, HUMMING_INSTRUCTION, zoneFor } from './genres';
 
-// How many bars in the visualizer. 48 gives a smooth, dense waveform
-// without overwhelming low-end phones.
 const BAR_COUNT = 48;
+
+// ---------------------------------------------------------------------------
+// Quality verdict thresholds. Tuned to be strict on things that DEFINITELY
+// break voice cloning, lenient on cosmetic stuff.
+// ---------------------------------------------------------------------------
+const MIN_DURATION_SEC = 30;        // hard floor — Suno needs at least this
+const IDEAL_DURATION_SEC = 60;      // soft target
+const MIN_SIGNAL_LEVEL = 0.03;      // RMS — anything quieter is "muted mic"
+const GOOD_SIGNAL_LEVEL = 0.08;
+const MAX_CLIPPING_PCT = 0.005;     // >0.5% clipped samples = distortion
+const MAX_SILENCE_PCT = 0.55;       // >55% silence = mostly nothing recorded
+const MIN_SNR = 4;                  // signal:noise floor ratio for "noisy"
+const GOOD_SNR = 12;
+const MIN_EXPRESSIVENESS = 0.25;    // coefficient of variation of RMS
+
+// ---------------------------------------------------------------------------
+// Audio analysis. Reads the recorded Blob, decodes to PCM, walks 50ms
+// windows to compute the metrics the verdict screen needs.
+// ---------------------------------------------------------------------------
+async function analyzeAudioBlob(blob) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const data = audioBuffer.getChannelData(0); // mono first channel
+    const sampleRate = audioBuffer.sampleRate;
+    const durationSec = audioBuffer.duration;
+
+    const windowSize = Math.max(1, Math.floor(sampleRate * 0.05)); // 50ms
+    const numWindows = Math.floor(data.length / windowSize);
+
+    const rmsValues = [];
+    let peakAmplitude = 0;
+    let clippedSamples = 0;
+
+    for (let w = 0; w < numWindows; w++) {
+      let sum = 0;
+      for (let i = 0; i < windowSize; i++) {
+        const sample = data[w * windowSize + i];
+        sum += sample * sample;
+        const abs = Math.abs(sample);
+        if (abs > peakAmplitude) peakAmplitude = abs;
+        if (abs > 0.99) clippedSamples++;
+      }
+      rmsValues.push(Math.sqrt(sum / windowSize));
+    }
+
+    ctx.close().catch(() => {});
+
+    if (rmsValues.length === 0) {
+      return { durationSec, error: 'no_windows' };
+    }
+
+    const meanRms =
+      rmsValues.reduce((a, b) => a + b, 0) / rmsValues.length;
+    const sortedRms = [...rmsValues].sort((a, b) => a - b);
+    const noiseFloor = sortedRms[Math.floor(sortedRms.length * 0.1)] || 0;
+    const signalLevel = sortedRms[Math.floor(sortedRms.length * 0.9)] || 0;
+    const variance =
+      rmsValues.reduce((s, r) => s + (r - meanRms) ** 2, 0) / rmsValues.length;
+    const stdDev = Math.sqrt(variance);
+
+    const silenceThreshold = Math.max(noiseFloor * 2, 0.005);
+    const silentWindows = rmsValues.filter((r) => r < silenceThreshold).length;
+    const silentPct = silentWindows / rmsValues.length;
+
+    return {
+      durationSec,
+      meanRms,
+      peakAmplitude,
+      noiseFloor,
+      signalLevel,
+      snr: signalLevel / Math.max(noiseFloor, 0.001),
+      expressiveness: stdDev / Math.max(meanRms, 0.001),
+      clippedPct: clippedSamples / data.length,
+      silentPct,
+    };
+  } catch (e) {
+    console.warn('[VoiceRecorder] audio analysis failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Build a verdict from analysis numbers. Each metric becomes a "check"
+ * with status 'good' | 'warn' | 'fail'. Overall verdict:
+ *   - 'fail'   if ANY check is fail (blocks Continuar)
+ *   - 'warn'   if any check is warn (allows Continuar with caution)
+ *   - 'good'   if all checks are good
+ */
+function computeVerdict(analysis) {
+  if (!analysis) {
+    return {
+      overall: 'unknown',
+      checks: [
+        {
+          key: 'unknown',
+          status: 'warn',
+          label: 'No pudimos analizar tu grabación',
+          help: 'Si suena bien al reproducirla, continúa de todos modos.',
+        },
+      ],
+    };
+  }
+
+  const checks = [];
+
+  // Duration
+  if (analysis.durationSec < MIN_DURATION_SEC) {
+    checks.push({
+      key: 'duration',
+      status: 'fail',
+      label: `Muy corta (${Math.round(analysis.durationSec)}s)`,
+      help: `Necesitas grabar mínimo ${MIN_DURATION_SEC} segundos. Lo ideal son ${IDEAL_DURATION_SEC}-90 segundos.`,
+    });
+  } else if (analysis.durationSec < IDEAL_DURATION_SEC) {
+    checks.push({
+      key: 'duration',
+      status: 'warn',
+      label: `Duración aceptable (${Math.round(analysis.durationSec)}s)`,
+      help: `Vas bien, pero con 60-90 segundos la calidad mejora bastante.`,
+    });
+  } else {
+    checks.push({
+      key: 'duration',
+      status: 'good',
+      label: `Duración: ${Math.round(analysis.durationSec)} segundos`,
+    });
+  }
+
+  // Volume / signal level
+  if (analysis.signalLevel < MIN_SIGNAL_LEVEL) {
+    checks.push({
+      key: 'volume',
+      status: 'fail',
+      label: 'Volumen demasiado bajo',
+      help: 'Casi no se escucha tu voz. Acércate al micrófono o sube el volumen de tu mic.',
+    });
+  } else if (analysis.signalLevel < GOOD_SIGNAL_LEVEL) {
+    checks.push({
+      key: 'volume',
+      status: 'warn',
+      label: 'Volumen un poco bajo',
+      help: 'Se escucha, pero podría ser más fuerte. Acércate un poco al micrófono.',
+    });
+  } else {
+    checks.push({
+      key: 'volume',
+      status: 'good',
+      label: 'Volumen: bueno',
+    });
+  }
+
+  // Clipping
+  if (analysis.clippedPct > MAX_CLIPPING_PCT) {
+    checks.push({
+      key: 'clipping',
+      status: 'fail',
+      label: 'Audio saturado',
+      help: 'Tu voz está demasiado alta y se distorsiona. Aléjate un poco del micrófono.',
+    });
+  }
+
+  // Noise floor / SNR
+  if (analysis.snr < MIN_SNR) {
+    checks.push({
+      key: 'noise',
+      status: 'fail',
+      label: 'Mucho ruido de fondo',
+      help: 'Hay demasiado ruido ambiente. Busca un lugar más silencioso (cuarto cerrado, sin ventiladores).',
+    });
+  } else if (analysis.snr < GOOD_SNR) {
+    checks.push({
+      key: 'noise',
+      status: 'warn',
+      label: 'Algo de ruido de fondo',
+      help: 'Aceptable. Si puedes, intenta en un lugar más callado.',
+    });
+  } else {
+    checks.push({
+      key: 'noise',
+      status: 'good',
+      label: 'Ruido de fondo: bajo',
+    });
+  }
+
+  // Silence percentage
+  if (analysis.silentPct > MAX_SILENCE_PCT) {
+    checks.push({
+      key: 'silence',
+      status: 'fail',
+      label: 'Mucho silencio en la grabación',
+      help: 'Más de la mitad de la grabación está vacía. Habla o tararea durante todo el tiempo, sin pausas largas.',
+    });
+  }
+
+  // Expressiveness (variability of RMS — flat monotone won't clone well)
+  if (analysis.expressiveness < MIN_EXPRESSIVENESS) {
+    checks.push({
+      key: 'expressive',
+      status: 'warn',
+      label: 'Voz un poco monótona',
+      help: 'Para mejor calidad, intenta variar el tono. Tararear ayuda mucho con esto.',
+    });
+  } else {
+    checks.push({
+      key: 'expressive',
+      status: 'good',
+      label: 'Variabilidad de voz: buena',
+    });
+  }
+
+  const overall = checks.some((c) => c.status === 'fail')
+    ? 'fail'
+    : checks.some((c) => c.status === 'warn')
+    ? 'warn'
+    : 'good';
+
+  return { overall, checks };
+}
+
+// ===========================================================================
+// Main component
+// ===========================================================================
 
 export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120_000 }) {
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  // Live frequency spectrum sampled to BAR_COUNT bars (each 0-255).
-  // Drives the bar heights in the visualizer — actually reflects what
-  // the microphone is hearing.
   const [spectrum, setSpectrum] = useState(() => new Uint8Array(BAR_COUNT));
+
+  // After-recording state — held locally until customer clicks Continuar.
+  const [pendingBlob, setPendingBlob] = useState(null);
+  const [pendingDurationMs, setPendingDurationMs] = useState(0);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [verdict, setVerdict] = useState(null); // { overall, checks } or null
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -62,6 +298,9 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
   async function start() {
     setError(null);
     setPreviewUrl(null);
+    setPendingBlob(null);
+    setPendingDurationMs(0);
+    setVerdict(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -76,14 +315,18 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
       const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: mime || 'audio/webm' });
         const elapsed = Date.now() - startTimeRef.current;
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
-        if (typeof onRecordingComplete === 'function') {
-          onRecordingComplete(blob, elapsed);
-        }
+        setPendingBlob(blob);
+        setPendingDurationMs(elapsed);
+        // Run analysis in background; show verdict when done.
+        setAnalyzing(true);
+        const analysis = await analyzeAudioBlob(blob);
+        setVerdict(computeVerdict(analysis));
+        setAnalyzing(false);
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
@@ -98,17 +341,13 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
       }, 100);
 
       try {
-        // Real-time frequency-spectrum visualizer. fftSize=512 gives 256
-        // frequency bins. We sample the first ~96 bins (covers voice
-        // fundamental + first few harmonics ≈ 0-8 kHz) and average them
-        // down into BAR_COUNT bars so the rendering stays cheap on phones.
         const AC = window.AudioContext || window.webkitAudioContext;
         const ctx = new AC();
         audioCtxRef.current = ctx;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.75; // smoother bar motion
+        analyser.smoothingTimeConstant = 0.75;
         source.connect(analyser);
         analyserRef.current = analyser;
 
@@ -131,7 +370,7 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
         };
         animate();
       } catch (_e) {
-        /* analyzer is optional — recording still works without it */
+        /* analyzer is optional */
       }
     } catch (e) {
       setError(
@@ -146,6 +385,24 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
     setRecording(false);
   }
 
+  /** Discard the pending blob and let the customer start over. */
+  function discardAndRetry() {
+    setPendingBlob(null);
+    setPendingDurationMs(0);
+    setVerdict(null);
+    setPreviewUrl(null);
+    setElapsedMs(0);
+    // Don't auto-start — they tap GRABAR themselves.
+  }
+
+  /** Pass the pending blob up to the parent and continue the flow. */
+  function continueWithPending() {
+    if (!pendingBlob) return;
+    if (typeof onRecordingComplete === 'function') {
+      onRecordingComplete(pendingBlob, pendingDurationMs);
+    }
+  }
+
   const seconds = Math.floor(elapsedMs / 1000);
   const zone = zoneFor(seconds);
 
@@ -156,19 +413,16 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
     ideal: 'text-bougainvillea',
   }[zone.tone];
 
-  // Visualizer bar heights driven by the live frequency spectrum.
-  // Each bar maps to a slice of the FFT output → bars actually react to
-  // what the microphone is picking up (not a synthetic sine pattern).
   const bars = Array.from({ length: BAR_COUNT }, (_, i) => {
     if (!recording) return 4;
-    // Scale 0-255 spectrum value to a 4-72 px bar with a slight floor so
-    // the wave is always visible when audio is reaching the analyzer.
     const v = spectrum[i] || 0;
     return Math.max(4, Math.round(4 + (v / 255) * 68));
   });
 
-  // Progress bar caps visually at the 90-second "ideal" mark.
   const progressPct = Math.min(100, (seconds / 90) * 100);
+
+  // True when we have a take that needs verdict + customer decision.
+  const hasPendingTake = pendingBlob && !recording;
 
   return (
     <div className="space-y-5">
@@ -192,7 +446,7 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
 
         {/* Record button */}
         <div className="flex flex-col items-center gap-5">
-          {!recording && !previewUrl && (
+          {!recording && !pendingBlob && (
             <button
               type="button"
               onClick={start}
@@ -203,10 +457,10 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
               <span className="block text-xs mt-1 tracking-widest">GRABAR</span>
             </button>
           )}
-          {!recording && previewUrl && (
+          {!recording && pendingBlob && (
             <button
               type="button"
-              onClick={start}
+              onClick={discardAndRetry}
               className="rounded-full bg-white/10 hover:bg-white/20 border border-white/20 px-6 py-3 text-white font-semibold transition active:scale-95 flex items-center gap-2"
             >
               <span className="material-symbols-outlined">replay</span>
@@ -246,44 +500,35 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
         </div>
       )}
 
-      {previewUrl && !recording && (
-        <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 animate-fadeIn">
-          <div className="flex items-center justify-between mb-3">
+      {/* AFTER-RECORDING panel: preview + verdict + continue/retry */}
+      {hasPendingTake && (
+        <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between">
             <div className="font-semibold text-white flex items-center gap-2">
-              <span className="material-symbols-outlined text-bougainvillea">headphones</span>
+              <span className="material-symbols-outlined text-bougainvillea">
+                headphones
+              </span>
               Escucha tu grabación
             </div>
-            <div
-              className={`text-xs px-3 py-1 rounded-full font-semibold ${
-                seconds >= 75 ? 'bg-bougainvillea/20 text-bougainvillea'
-                  : seconds >= 45 ? 'bg-emerald-500/20 text-emerald-300'
-                  : seconds >= 30 ? 'bg-amber-500/20 text-amber-300'
-                  : 'bg-rose-500/20 text-rose-300'
-              }`}
-            >
-              {seconds}s
+            <div className="text-xs px-3 py-1 rounded-full font-semibold bg-white/10 text-white/70">
+              {Math.round(pendingDurationMs / 1000)}s
             </div>
           </div>
-          <audio controls src={previewUrl} className="w-full" />
-          {seconds < 30 && (
-            <p className="text-xs text-rose-300 mt-3">
-              Esta grabación es muy corta para clonar la voz. Re-graba con al menos 45 segundos.
-            </p>
+
+          {previewUrl && <audio controls src={previewUrl} className="w-full" />}
+
+          {/* Verdict panel */}
+          {analyzing && (
+            <div className="flex items-center gap-2 text-sm text-white/60 pt-2 border-t border-white/5">
+              <span className="material-symbols-outlined animate-spin text-bougainvillea">
+                progress_activity
+              </span>
+              Analizando la calidad de tu grabación…
+            </div>
           )}
-          {seconds >= 30 && seconds < 45 && (
-            <p className="text-xs text-amber-300 mt-3">
-              Aceptable, pero la calidad mejora mucho con 60-90 segundos.
-            </p>
-          )}
-          {seconds >= 45 && seconds < 75 && (
-            <p className="text-xs text-emerald-300 mt-3">
-              Buena duración. Si quieres calidad ideal, intenta 75-90 segundos.
-            </p>
-          )}
-          {seconds >= 75 && (
-            <p className="text-xs text-bougainvillea mt-3">
-              ✨ Excelente duración — calidad ideal para clonar la voz.
-            </p>
+
+          {!analyzing && verdict && (
+            <VerdictPanel verdict={verdict} onContinue={continueWithPending} onRetry={discardAndRetry} />
           )}
         </div>
       )}
@@ -291,11 +536,10 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
   );
 }
 
-/**
- * Collapsible 90-second reading-script panel. Defaults to open so the
- * customer sees the script before they hit record. Toggles closed for
- * customers who'd rather freestyle.
- */
+// ===========================================================================
+// Sub-components
+// ===========================================================================
+
 function ReadingScriptPanel() {
   const [open, setOpen] = useState(true);
   const wordCount = READING_SCRIPT.trim().split(/\s+/).length;
@@ -312,7 +556,7 @@ function ReadingScriptPanel() {
           <div>
             <div className="font-semibold text-white">Script para leer mientras grabas</div>
             <div className="text-xs text-white/50">
-              ~90 segundos · {wordCount} palabras · Lee despacio y con naturalidad
+              ~75 segundos · {wordCount} palabras · luego tararea 15 segundos
             </div>
           </div>
         </div>
@@ -325,13 +569,40 @@ function ReadingScriptPanel() {
       </button>
 
       {open && (
-        <div className="px-4 pb-4 animate-fadeIn">
+        <div className="px-4 pb-4 space-y-4 animate-fadeIn">
+          {/* Spoken script */}
           <div className="bg-landing-bg/60 border border-bougainvillea/10 rounded-xl p-5 sm:p-6 text-white text-lg sm:text-xl leading-loose font-body font-medium tracking-wide">
             {READING_SCRIPT.split('\n\n').map((para, i) => (
-              <p key={i} className="mb-4 last:mb-0">{para}</p>
+              <p key={i} className="mb-4 last:mb-0">
+                {para}
+              </p>
             ))}
           </div>
-          <p className="text-xs text-white/50 mt-3 flex items-start gap-1">
+
+          {/* Humming bonus — visually distinct so they don't miss it */}
+          <div className="rounded-xl bg-bougainvillea/10 border-2 border-bougainvillea/40 p-4 sm:p-5">
+            <div className="flex items-start gap-2 mb-2">
+              <span className="material-symbols-outlined text-bougainvillea text-2xl">
+                music_note
+              </span>
+              <div>
+                <div className="font-bold text-white text-base">
+                  {HUMMING_INSTRUCTION.title}
+                </div>
+                <div className="text-xs text-bougainvillea/90 font-semibold mt-0.5">
+                  {HUMMING_INSTRUCTION.subtitle}
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-white/90 leading-relaxed">
+              {HUMMING_INSTRUCTION.body}
+            </p>
+            <div className="mt-3 text-xs text-amber-200 bg-amber-500/10 border-l-4 border-amber-500 px-3 py-2 rounded">
+              {HUMMING_INSTRUCTION.warning}
+            </div>
+          </div>
+
+          <p className="text-xs text-white/50 flex items-start gap-1">
             <span className="material-symbols-outlined text-base text-bougainvillea">
               tips_and_updates
             </span>
@@ -343,11 +614,6 @@ function ReadingScriptPanel() {
   );
 }
 
-/**
- * Visual quality bar with zone tick-marks. Fills from amber → emerald →
- * bougainvillea as the customer keeps recording. Marker positions:
- * 30s = Mínimo, 45s = Bueno, 75s = Ideal (out of a 90s "full bar").
- */
 function QualityProgressBar({ progressPct }) {
   return (
     <div className="w-full max-w-md mt-2">
@@ -373,6 +639,116 @@ function QualityProgressBar({ progressPct }) {
         <span>Mín 30s</span>
         <span>Bueno 45s</span>
         <span>Ideal 75-90s</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Quality verdict panel. Shows the per-check results with color codes,
+ * an overall verdict banner, and the action buttons. "Continuar" is
+ * disabled when the verdict is 'fail' — forces the customer to re-record
+ * before they can waste a paid Suno call on garbage.
+ */
+function VerdictPanel({ verdict, onContinue, onRetry }) {
+  const overallStyles = {
+    good: {
+      bg: 'bg-emerald-500/15 border-emerald-500/40',
+      icon: 'check_circle',
+      iconColor: 'text-emerald-400',
+      title: 'Calidad: Excelente',
+      sub: 'Tu grabación está perfecta para clonar tu voz.',
+    },
+    warn: {
+      bg: 'bg-amber-500/15 border-amber-500/40',
+      icon: 'warning',
+      iconColor: 'text-amber-300',
+      title: 'Calidad: Aceptable',
+      sub: 'Puedes continuar, pero la calidad mejoraría con una mejor grabación.',
+    },
+    fail: {
+      bg: 'bg-rose-500/15 border-rose-500/40',
+      icon: 'error',
+      iconColor: 'text-rose-400',
+      title: 'Hay que volver a grabar',
+      sub: 'Detectamos problemas que afectarían mucho la calidad de tu canción.',
+    },
+    unknown: {
+      bg: 'bg-white/5 border-white/15',
+      icon: 'help',
+      iconColor: 'text-white/60',
+      title: 'No pudimos analizar',
+      sub: 'Si suena bien al reproducirla, continúa.',
+    },
+  }[verdict.overall];
+
+  const checkStyles = {
+    good: { icon: 'check_circle', color: 'text-emerald-400' },
+    warn: { icon: 'warning', color: 'text-amber-300' },
+    fail: { icon: 'error', color: 'text-rose-400' },
+  };
+
+  return (
+    <div className="space-y-3 pt-2 border-t border-white/5">
+      {/* Overall banner */}
+      <div className={`rounded-xl border ${overallStyles.bg} p-4 flex items-start gap-3`}>
+        <span className={`material-symbols-outlined ${overallStyles.iconColor} text-2xl`}>
+          {overallStyles.icon}
+        </span>
+        <div>
+          <div className="font-bold text-white">{overallStyles.title}</div>
+          <div className="text-xs text-white/70 mt-0.5">{overallStyles.sub}</div>
+        </div>
+      </div>
+
+      {/* Per-check list */}
+      <ul className="space-y-1.5">
+        {verdict.checks.map((c) => {
+          const s = checkStyles[c.status] || checkStyles.warn;
+          return (
+            <li key={c.key} className="flex items-start gap-2 text-sm">
+              <span className={`material-symbols-outlined ${s.color} text-base mt-0.5`}>
+                {s.icon}
+              </span>
+              <div className="flex-1">
+                <div className="text-white/90">{c.label}</div>
+                {c.help && c.status !== 'good' && (
+                  <div className="text-xs text-white/50 mt-0.5">{c.help}</div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row gap-2 pt-1">
+        {verdict.overall !== 'fail' ? (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="flex-1 rounded-xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold py-3 pink-glow transition active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined">arrow_forward</span>
+            Continuar con esta grabación
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="flex-1 rounded-xl bg-white/5 border border-white/10 text-white/40 font-semibold py-3 cursor-not-allowed"
+          >
+            Hay que grabar otra vez
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-white font-semibold px-5 py-3 transition active:scale-95 flex items-center justify-center gap-2"
+        >
+          <span className="material-symbols-outlined">replay</span>
+          Grabar otra vez
+        </button>
       </div>
     </div>
   );
