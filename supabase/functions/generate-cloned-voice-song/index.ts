@@ -122,6 +122,15 @@ interface RequestBody {
   lyrics_model_used?: string;
   customer_email?: string;
   vocal_gender?: 'm' | 'f' | '';
+
+  // When the caller already has a cloned_voice_songs row (the Stripe
+  // webhook or the testing-bypass path, both of which create a row at
+  // preview time and then mark it paid), they pass the existing id and
+  // we UPDATE that row instead of inserting a duplicate. Without this,
+  // the song generator creates a second row with the kie_task_id while
+  // the frontend keeps polling the first row — which never gets the
+  // kie_task_id — and the customer times out waiting.
+  cloned_voice_song_id?: string;
 }
 
 serve(async (req) => {
@@ -229,39 +238,66 @@ serve(async (req) => {
   }
   const voicePublicUrl = signed.data.signedUrl;
 
-  // ---------------- insert cloned_voice_songs row ----------------
-  const { data: songRow, error: insertError } = await supabase
-    .from('cloned_voice_songs')
-    .insert({
-      voice_sample_id: voiceRow.id,
-      customer_email: body.customer_email || null,
-      recipient_name: body.recipient_name!.trim(),
-      occasion: body.occasion!.trim(),
-      relationship: body.relationship!.trim(),
-      story: body.story!.trim(),
-      genre_slug: genreSlug,
-      language,
-      title: body.title?.trim() || null,
-      lyrics: body.lyrics!,
-      emotional_modifiers: body.emotional_modifiers || null,
-      lyrics_model_used: body.lyrics_model_used || null,
-      status: 'generating_song',
-    })
-    .select('id, created_at')
-    .single();
+  // ---------------- upsert cloned_voice_songs row ----------------
+  // If the caller passed an existing cloned_voice_song_id (Stripe webhook
+  // or testing bypass), UPDATE that row. Otherwise (direct frontend call),
+  // INSERT a new one. This prevents the duplicate-row bug where the song
+  // generator was always inserting a fresh row, leaving the original
+  // (paid) row stuck without a kie_task_id and the frontend polling
+  // forever.
+  const songFields = {
+    voice_sample_id: voiceRow.id,
+    customer_email: body.customer_email || null,
+    recipient_name: body.recipient_name!.trim(),
+    occasion: body.occasion!.trim(),
+    relationship: body.relationship!.trim(),
+    story: body.story!.trim(),
+    genre_slug: genreSlug,
+    language,
+    title: body.title?.trim() || null,
+    lyrics: body.lyrics!,
+    emotional_modifiers: body.emotional_modifiers || null,
+    lyrics_model_used: body.lyrics_model_used || null,
+    status: 'generating_song',
+  };
 
-  if (insertError || !songRow) {
-    console.error('[generate-cloned-voice-song] DB insert failed:', insertError);
-    return new Response(
-      JSON.stringify({
-        error: 'db_insert_failed',
-        message: insertError?.message || 'Could not record the song order.',
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  let clonedVoiceSongId: string;
+  if (body.cloned_voice_song_id) {
+    const { data: updatedRow, error: updateError } = await supabase
+      .from('cloned_voice_songs')
+      .update(songFields)
+      .eq('id', body.cloned_voice_song_id)
+      .select('id')
+      .single();
+    if (updateError || !updatedRow) {
+      console.error('[generate-cloned-voice-song] DB update failed:', updateError);
+      return new Response(
+        JSON.stringify({
+          error: 'db_update_failed',
+          message: updateError?.message || 'Could not update the song order.',
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    clonedVoiceSongId = updatedRow.id;
+  } else {
+    const { data: songRow, error: insertError } = await supabase
+      .from('cloned_voice_songs')
+      .insert(songFields)
+      .select('id, created_at')
+      .single();
+    if (insertError || !songRow) {
+      console.error('[generate-cloned-voice-song] DB insert failed:', insertError);
+      return new Response(
+        JSON.stringify({
+          error: 'db_insert_failed',
+          message: insertError?.message || 'Could not record the song order.',
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    clonedVoiceSongId = songRow.id;
   }
-
-  const clonedVoiceSongId: string = songRow.id;
 
   // ---------------- call Kie.ai upload-cover ----------------
   const kiePayload = {

@@ -111,6 +111,12 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        // CRITICAL: pass the existing row id so generate-cloned-voice-song
+        // UPDATES it (writing kie_task_id back) instead of inserting a new
+        // row. Without this, the frontend polls a row that never gets a
+        // kie_task_id and times out while Suno actually finishes on a
+        // different (orphan) row.
+        cloned_voice_song_id: body.cloned_voice_song_id,
         voice_sample_id: row.voice_sample_id,
         recipient_name: row.recipient_name,
         occasion: row.occasion,
