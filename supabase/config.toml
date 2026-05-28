@@ -253,3 +253,12 @@ verify_jwt = true
 # me?") and dramatically lifts conversion. Frontend posts with the
 # Supabase anon JWT.
 verify_jwt = true
+
+[functions.create-clonamivoz-checkout]
+# Stripe checkout session creation for the Clone Mi Voz $69 tier.
+# Separate from the main create-checkout (which handles the regular
+# $29.99 funnel with coupons / video addons / affiliate attribution).
+# Inline price_data — no Stripe Product needs to exist beforehand.
+# Metadata carries cloned_voice_song_id back to clonamivoz-stripe-webhook.
+# Frontend posts with the Supabase anon JWT after the preview is ready.
+verify_jwt = true
