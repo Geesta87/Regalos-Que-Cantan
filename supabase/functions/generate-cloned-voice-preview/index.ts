@@ -123,14 +123,41 @@ const GENRE_STYLES: Record<string, string> = {
 /**
  * Build the short preview lyric. 4 lines, mentions the recipient name,
  * vowel-open line endings (singalong rule from the main lyric prompt),
- * universal phrasing that fits all 6 launch genres.
+ * universal phrasing that fits the launch genres.
  *
  * Suno will produce roughly 30-60 seconds of audio from this — enough
  * for the customer to recognize their own voice + the chosen genre's
  * instrumentation.
+ *
+ * Language-aware: when a customer picks an English genre (or sets
+ * language='en' in the configure step), they get an English preview
+ * lyric — not the default Spanish one. Spanglish gets a code-switched
+ * version.
  */
-function buildPreviewLyric(recipientName: string): string {
-  const name = (recipientName || '').trim() || 'tú';
+function buildPreviewLyric(recipientName: string, language: string): string {
+  const lang = (language || 'es').toLowerCase();
+  const rawName = (recipientName || '').trim();
+
+  if (lang === 'en') {
+    const name = rawName || 'you';
+    return `[Verse]
+This song I sing just for you
+With my own voice, straight from the heart
+For ${name}, this is what I feel today
+Listen close, I sing with love`;
+  }
+
+  if (lang === 'spanglish') {
+    const name = rawName || 'tú';
+    return `[Verse]
+This song la canto para ti
+With my own voice, desde el corazón
+Para ${name}, this is what I feel today
+Listen close, te canto con amor`;
+  }
+
+  // Default: Spanish
+  const name = rawName || 'tú';
   return `[Verse]
 Esta canción la canto para ti
 Con mi propia voz, desde el corazón
@@ -340,7 +367,11 @@ serve(async (req) => {
   }
 
   // ---------------- call Kie.ai upload-cover with the preview lyric ------
-  const previewLyric = buildPreviewLyric(body.recipient_name!);
+  // Pass the resolved language so the preview matches what the customer
+  // configured. Previously the preview lyric was always Spanish even when
+  // an English genre / language was selected, which made the preview
+  // sound off-language from the customer's recording + lyrics.
+  const previewLyric = buildPreviewLyric(body.recipient_name!, language);
   const previewTitle = `preview-${clonedVoiceSongId.slice(0, 8)}`;
 
   const kiePayload = {
