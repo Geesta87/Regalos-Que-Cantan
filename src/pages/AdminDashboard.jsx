@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } 
 import { AppContext } from '../App';
 import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
+import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -2529,6 +2530,20 @@ export default function AdminDashboard() {
               >
                 🔍 Lookup
               </button>
+              {/* Clone Mi Voz tier — reads from cloned_voice_songs table
+                  via admin-cloned-voice-songs edge function. Separate from
+                  the main 'orders' tab so the Mureka funnel admin view
+                  stays untouched. */}
+              <button
+                onClick={() => setActiveTab('clonamivoz')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'clonamivoz'
+                    ? 'bg-pink-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎙️ Clone Mi Voz
+              </button>
             </div>
           </div>
         </div>
@@ -4735,6 +4750,11 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
+        ) : activeTab === 'clonamivoz' ? (
+          /* Clone Mi Voz tab — self-contained component. Reads from
+             admin-cloned-voice-songs edge function (separate from
+             admin-songs so the main funnel admin view is untouched). */
+          <ClonamivozAdminTab accessToken={accessToken} role={userRole} />
         ) : null}
       </main>
 

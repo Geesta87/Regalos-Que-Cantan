@@ -263,6 +263,14 @@ verify_jwt = true
 # Frontend posts with the Supabase anon JWT after the preview is ready.
 verify_jwt = true
 
+[functions.admin-cloned-voice-songs]
+# Admin-dashboard reader for the Clone Mi Voz tier. Mirrors admin-songs's
+# auth pattern (Supabase Auth JWT + admin_users.role lookup) but reads
+# from public.cloned_voice_songs instead of public.songs. Kept separate
+# so admin-songs/index.ts isn't modified. 'admin' sees revenue fields,
+# 'assistant' sees them wiped.
+verify_jwt = true
+
 [functions.find-customer-voices]
 # Returning-customer voice lookup. Given an email, returns previously-
 # uploaded voice samples so the customer can skip re-recording. Per-IP
