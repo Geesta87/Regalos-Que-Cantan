@@ -263,6 +263,14 @@ verify_jwt = true
 # Frontend posts with the Supabase anon JWT after the preview is ready.
 verify_jwt = true
 
+[functions.find-customer-voices]
+# Returning-customer voice lookup. Given an email, returns previously-
+# uploaded voice samples so the customer can skip re-recording. Per-IP
+# rate-limited (20 lookups / minute) to slow down email scraping.
+# Frontend posts with the Supabase anon JWT — same pattern as the other
+# clonamivoz functions.
+verify_jwt = true
+
 [functions.clonamivoz-stripe-webhook]
 # Stripe webhook for the Clone Mi Voz tier ONLY. Separate from the main
 # stripe-webhook so an issue here can't break the $29.99 funnel (see

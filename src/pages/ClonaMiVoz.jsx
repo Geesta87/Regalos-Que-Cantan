@@ -33,6 +33,7 @@ import StoryForm from '../components/clonamivoz/StoryForm';
 import SongResult from '../components/clonamivoz/SongResult';
 import { GENRES } from '../components/clonamivoz/genres';
 import {
+  findCustomerVoices,
   uploadCustomerVoice,
   generateClonedVoicePreview,
   createClonamivozCheckout,
@@ -208,12 +209,26 @@ export default function ClonaMiVoz() {
     setStage(STAGES.CONFIGURE);
   }
 
+  /**
+   * Called by SavedVoicePicker when the customer picks a previously
+   * saved voice sample by email. Skips the upload step entirely —
+   * submit() detects audioBlob is null and uses voiceSampleId directly.
+   */
+  function handlePickSavedVoice({ voiceSampleId: pickedId, durationSeconds, email }) {
+    setAudioBlob(null);
+    setVoiceSampleId(pickedId);
+    setAudioDurationMs((durationSeconds || 0) * 1000);
+    if (email) setCustomerEmail(email);
+    setStage(STAGES.CONFIGURE);
+  }
+
   // -------------------------------------------------------------------
-  // Step A — Generate preview (the cheap voice match)
+  // Step A — Generate preview (the cheap voice match — FREE, no email)
   // -------------------------------------------------------------------
   async function submit() {
-    if (!audioBlob) {
-      setError('Graba tu voz primero.');
+    // Need EITHER a fresh recording OR a previously-saved voice sample.
+    if (!audioBlob && !voiceSampleId) {
+      setError('Graba tu voz primero (o selecciona una grabación anterior).');
       setStage(STAGES.ERROR);
       return;
     }
@@ -222,33 +237,36 @@ export default function ClonaMiVoz() {
       setStage(STAGES.ERROR);
       return;
     }
-    if (!customerEmail || !customerEmail.includes('@')) {
-      setError('Necesitamos tu email para enviarte tu canción.');
-      setStage(STAGES.ERROR);
-      return;
-    }
+    // Email is NOT required here — only at the Stripe step. The preview
+    // is free, so we let anyone try it without committing an email.
 
     setError(null);
     pollAbortRef.current = false;
 
-    // 1. Upload voice
-    setStage(STAGES.UPLOADING);
-    const uploadRes = await uploadCustomerVoice(audioBlob, {
-      customerEmail,
-      durationSeconds: audioDurationMs / 1000,
-    });
-    if (!uploadRes.ok) {
-      setError(`No pudimos subir tu grabación: ${uploadRes.message || uploadRes.error}`);
-      setStage(STAGES.ERROR);
-      return;
+    // 1. Upload voice (only if it's a fresh recording — skip when re-using
+    //    a previously-saved voice_sample_id).
+    let activeVoiceSampleId = voiceSampleId;
+    if (audioBlob) {
+      setStage(STAGES.UPLOADING);
+      const uploadRes = await uploadCustomerVoice(audioBlob, {
+        customerEmail: customerEmail || undefined,
+        durationSeconds: audioDurationMs / 1000,
+      });
+      if (!uploadRes.ok) {
+        setError(`No pudimos subir tu grabación: ${uploadRes.message || uploadRes.error}`);
+        setStage(STAGES.ERROR);
+        return;
+      }
+      activeVoiceSampleId = uploadRes.voice_sample_id;
+      setVoiceSampleId(activeVoiceSampleId);
     }
-    setVoiceSampleId(uploadRes.voice_sample_id);
 
-    // 2. Submit preview Suno job
+    // 2. Submit preview Suno job (uses the freshly uploaded sample OR
+    //    a previously-saved one selected via "ya grabé antes").
     setStage(STAGES.SUBMITTING_PREVIEW);
     const previewRes = await generateClonedVoicePreview({
       clonedVoiceSongId: clonedVoiceSongId || undefined, // retry path
-      voiceSampleId: uploadRes.voice_sample_id,
+      voiceSampleId: activeVoiceSampleId,
       lyrics: lyrics.trim(),
       title: title || `cancion-${Date.now()}`,
       genreSlug,
@@ -256,7 +274,7 @@ export default function ClonaMiVoz() {
       relationship: storyContext?.relationship,
       occasion: storyContext?.occasion,
       story: storyContext?.story,
-      customerEmail,
+      customerEmail: customerEmail || undefined,
       vocalGender,
       emotionalModifiers,
       lyricsModelUsed,
@@ -461,6 +479,8 @@ export default function ClonaMiVoz() {
                 Tararea o canta por 45-90 segundos en un lugar tranquilo.
               </p>
             </div>
+            {/* Returning customer: skip recording by entering email */}
+            <SavedVoicePicker onPick={handlePickSavedVoice} />
             <VoiceRecorder onRecordingComplete={handleRecordingComplete} />
             <CoachingPanel />
           </section>
@@ -557,12 +577,14 @@ export default function ClonaMiVoz() {
               <div className="text-xs text-white/40 mt-1 text-right">{lyrics.length} / 5000</div>
             </div>
 
-            {/* Email (now REQUIRED — needed for Stripe checkout) */}
+            {/* Email — OPTIONAL here. Only required at the Stripe payment
+                step (or if reusing a saved voice). Letting them skip it
+                lowers friction for the free preview. */}
             <div>
               <label htmlFor="cv-email" className="block text-sm font-semibold text-white/80 mb-1">
-                Tu email <span className="text-bougainvillea">*</span>
-                <span className="text-white/40 font-normal ml-1">
-                  (para tu canción y recibo de pago)
+                Tu email{' '}
+                <span className="text-white/40 font-normal">
+                  (opcional — te lo pediremos cuando vayas a pagar)
                 </span>
               </label>
               <input
@@ -572,7 +594,6 @@ export default function ClonaMiVoz() {
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 maxLength={200}
                 placeholder="tu@email.com"
-                required
                 className="w-full rounded-lg bg-landing-bg/60 border border-white/10 focus:border-bougainvillea/50 focus:outline-none p-2.5 text-sm text-white placeholder-white/30"
               />
             </div>
@@ -681,7 +702,7 @@ export default function ClonaMiVoz() {
               </p>
             </div>
 
-            {/* CTA — Pay $69 */}
+            {/* CTA — Pay $69. Email is required HERE (Stripe needs it). */}
             <div className="rounded-3xl bg-gradient-to-br from-bougainvillea/10 to-[#d40b6e]/10 border border-bougainvillea/30 p-6 sm:p-8 space-y-4">
               <div className="text-center space-y-2">
                 <div className="font-display text-4xl sm:text-5xl font-bold text-white">
@@ -692,10 +713,31 @@ export default function ClonaMiVoz() {
                 </div>
               </div>
 
+              {/* Email required for payment */}
+              <div>
+                <label htmlFor="cv-pay-email" className="block text-sm font-semibold text-white/80 mb-1">
+                  Tu email <span className="text-bougainvillea">*</span>
+                  <span className="text-white/40 font-normal ml-1">
+                    (para tu canción y recibo)
+                  </span>
+                </label>
+                <input
+                  id="cv-pay-email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  maxLength={200}
+                  placeholder="tu@email.com"
+                  required
+                  className="w-full rounded-lg bg-landing-bg/60 border border-white/10 focus:border-bougainvillea/50 focus:outline-none p-3 text-sm text-white placeholder-white/30"
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={payNow}
-                className="w-full rounded-2xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold text-lg py-4 pink-glow transition active:scale-95 flex items-center justify-center gap-2"
+                disabled={!customerEmail || !customerEmail.includes('@')}
+                className="w-full rounded-2xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold text-lg py-4 pink-glow transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined">lock</span>
                 Comprar mi canción
@@ -961,6 +1003,190 @@ function PollingPanel({ title, subtitle, elapsedSec, songId, note }) {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Returning-customer voice picker. Collapsed by default — shows a small
+ * "¿Ya grabaste antes? Usar mi voz guardada" link.  When opened, asks
+ * for email, looks up saved voice samples via find-customer-voices,
+ * and lets the user pick one to skip the recording step entirely.
+ *
+ * Calls onPick({ voiceSampleId, durationSeconds, email }) when the user
+ * selects a saved voice. The parent skips upload and goes straight to
+ * the configure step.
+ */
+function SavedVoicePicker({ onPick }) {
+  const [open, setOpen] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [voices, setVoices] = useState(null); // null = not yet searched
+  const [error, setError] = useState(null);
+
+  async function search() {
+    setError(null);
+    setVoices(null);
+    if (!emailInput.trim() || !emailInput.includes('@')) {
+      setError('Escribe un email válido.');
+      return;
+    }
+    setSearching(true);
+    const res = await findCustomerVoices(emailInput.trim().toLowerCase());
+    setSearching(false);
+    if (!res.ok) {
+      setError(res.message || res.error || 'No pudimos buscar tus grabaciones.');
+      return;
+    }
+    setVoices(res.voices || []);
+  }
+
+  function formatDate(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-MX', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-sm text-bougainvillea hover:brightness-110 font-semibold inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
+        >
+          <span className="material-symbols-outlined text-base">history</span>
+          ¿Ya grabaste tu voz antes? Búscala con tu email
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl bg-white/[0.06] backdrop-blur-md border border-bougainvillea/30 p-5 space-y-3 animate-fadeIn">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-semibold text-white flex items-center gap-2">
+            <span className="material-symbols-outlined text-bougainvillea">
+              record_voice_over
+            </span>
+            Usa tu voz guardada
+          </div>
+          <p className="text-xs text-white/60 mt-1">
+            Si ya grabaste tu voz antes, escribe el email que usaste y la encontraremos.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-white/40 hover:text-white"
+          aria-label="Cerrar"
+        >
+          <span className="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="email"
+          value={emailInput}
+          onChange={(e) => setEmailInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              search();
+            }
+          }}
+          placeholder="tu@email.com"
+          maxLength={200}
+          className="flex-1 rounded-lg bg-landing-bg/60 border border-white/10 focus:border-bougainvillea/50 focus:outline-none p-2.5 text-sm text-white placeholder-white/30"
+        />
+        <button
+          type="button"
+          onClick={search}
+          disabled={searching}
+          className="rounded-lg bg-bougainvillea hover:brightness-110 text-white font-semibold px-4 py-2 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+        >
+          {searching ? (
+            <>
+              <span className="material-symbols-outlined animate-spin text-base">
+                progress_activity
+              </span>
+              Buscando…
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-base">search</span>
+              Buscar
+            </>
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-xs text-rose-300 flex items-start gap-1">
+          <span className="material-symbols-outlined text-sm text-rose-400">error</span>
+          {error}
+        </div>
+      )}
+
+      {/* Results */}
+      {voices !== null && voices.length === 0 && (
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-200">
+          No encontramos grabaciones con ese email. Recuerda que las
+          grabaciones se borran automáticamente después de 30 días.
+          Puedes grabar una nueva ahora abajo. ↓
+        </div>
+      )}
+
+      {voices && voices.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+            Tus grabaciones ({voices.length})
+          </div>
+          {voices.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() =>
+                onPick({
+                  voiceSampleId: v.id,
+                  durationSeconds: v.duration_seconds || 0,
+                  email: emailInput.trim().toLowerCase(),
+                })
+              }
+              className="w-full text-left rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-bougainvillea/40 p-3 transition active:scale-[0.99] flex items-center gap-3"
+            >
+              <span className="material-symbols-outlined text-bougainvillea">
+                graphic_eq
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-white">
+                  Grabación del {formatDate(v.created_at)}
+                </div>
+                <div className="text-xs text-white/50">
+                  {v.duration_seconds
+                    ? `${Math.round(v.duration_seconds)} segundos`
+                    : 'duración desconocida'}
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-white/40">
+                arrow_forward
+              </span>
+            </button>
+          ))}
+          <p className="text-[10px] text-white/40 text-center pt-1">
+            Las grabaciones se borran automáticamente 30 días después de subirse.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

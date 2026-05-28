@@ -43,6 +43,29 @@ async function safeJson(res) {
 }
 
 /**
+ * Find previously-uploaded voice samples for a customer by email.
+ * Lets returning customers skip the recording step.
+ *
+ * @param {string} email
+ * @returns {Promise<{ok:boolean, voices?:Array<{id:string, created_at:string,
+ *                    duration_seconds:number|null, source_mime:string|null}>,
+ *                    count?:number, error?:string, message?:string}>}
+ */
+export async function findCustomerVoices(email) {
+  const res = await fetch(`${FN_BASE}/find-customer-voices`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ email }),
+  });
+
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
  * Upload a recorded voice Blob to Supabase Storage via the
  * upload-customer-voice edge function.
  *
