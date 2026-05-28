@@ -84,12 +84,12 @@ const genreDNA: Record<string, GenreData> = {
       },
       alterados: {
         name: 'Corridos Alterados',
-        style: 'corridos alterados, corridos progresivos, movimiento alterado, high speed banda corrido, fast Sinaloa party corrido, rapid-fire 2/4 polka corrido, adrenaline-fueled narco corrido, loud saturated production',
-        tempo: '115-145 BPM, HIGH ENERGY, FAST 2/4 polka tempo, driving uptempo rush, breakneck speed',
-        instruments: 'brass section trumpets trombones clarinets, tuba bass, tambora, tarola Mexican snare, accordion, bajo sexto, fast polka rhythm section, optional requinto 12-string guitar',
-        vibe: 'party adrenaline, bold unapologetic bravado, celebratory chaos, fast driving intensity, Sinaloa fiesta brava, swagger, loud and bombastic',
-        negative: 'slow ballads, acoustic intimacy, sad sierreño, romantic softness, trap beats, 808 bass, half-time feel, dark brooding, laid-back tempo, corridos tumbados style',
-        vocalCharacter: 'bold loud vocal, rapid-fire delivery, high energy projection, unapologetic bravado, party shouting energy'
+        style: 'corridos alterados, movimiento alterado, late-2000s early-2010s Sinaloa-Los Angeles narcocorrido, Twiins Music Group era banda corrido, El Komander Buknas-style swaggering narcocorrido, banda sinaloense-led alterado',
+        tempo: '90-120 BPM, 2/4 polka norteña-banda two-step, emphatic downbeats, quarter-note tuba pulse, propulsive but NOT breakneck',
+        instruments: 'full banda sinaloense brass with tight trumpet trombone clarinet unison riffs, tambora bass drum, tarola Mexican snare with rolls and fills, tuba bassline driving quarter-note polka pulse',
+        vibe: 'menacing swagger, late-2000s narcocorrido bravado, tactical military aesthetic, first-person street narrative, loud saturated banda production, major-key I-IV-V brightness contrasted with menacing lyrics',
+        negative: 'sierreño 12-string requinto lead, acoustic intimacy, trap beats, 808 bass, half-time feel, modern 2020s corridos tumbados, modern corrido bélico, slow ballads, romantic softness, rapid-fire trap flow, breakneck quebradita tempo, electronic production, accordion-led conjunto, minor-key brooding',
+        vocalCharacter: 'confident male projection, swaggering narrative delivery, gritos and ad-libs, bold defiant tone, NOT rapid-fire NOT melodic-flow'
       },
       romantico: {
         name: 'Corrido Romántico',
