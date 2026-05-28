@@ -37,6 +37,7 @@ import {
   uploadCustomerVoice,
   generateClonedVoicePreview,
   createClonamivozCheckout,
+  bypassClonamivozPayment,
   getClonedVoiceStatus,
 } from '../services/clonamivoz';
 
@@ -346,6 +347,49 @@ export default function ClonaMiVoz() {
     }
     // Redirect to Stripe — page unloads, we resume via ?paid=1 on return.
     window.location.href = res.checkout_url;
+  }
+
+  /**
+   * TESTING-MODE bypass — skip Stripe entirely and fire the full song
+   * generation directly. Only works while the Supabase secret
+   * CLONAMIVOZ_BYPASS_ENABLED='true'. The frontend always exposes the
+   * button; the server-side env var is what actually gates access.
+   *
+   * Mirrors the post-Stripe path: marks the row paid, kicks off
+   * generate-cloned-voice-song, then polls for completion just like a
+   * real paid order would.
+   */
+  async function bypassPayNow() {
+    if (!clonedVoiceSongId) {
+      setError('Algo se perdió. Vuelve a empezar.');
+      setStage(STAGES.ERROR);
+      return;
+    }
+    if (!customerEmail || !customerEmail.includes('@')) {
+      setError('Necesitamos tu email para enviar la canción.');
+      setStage(STAGES.ERROR);
+      return;
+    }
+    setError(null);
+    setStage(STAGES.AWAITING_PAYMENT);
+
+    const res = await bypassClonamivozPayment({
+      clonedVoiceSongId,
+      email: customerEmail,
+    });
+    if (!res.ok) {
+      setError(
+        res.error === 'bypass_disabled'
+          ? 'El modo prueba está desactivado. Usa el botón de pago de Stripe.'
+          : `No pudimos saltar el pago: ${res.message || res.error}`
+      );
+      setStage(STAGES.PREVIEW_READY);
+      return;
+    }
+    // Row is now paid + generation kicked off. Poll just like a real
+    // paid order would.
+    setStage(STAGES.GENERATING_SONG);
+    pollUntilDone(clonedVoiceSongId, true);
   }
 
   // -------------------------------------------------------------------
@@ -779,24 +823,34 @@ export default function ClonaMiVoz() {
                 />
               </div>
 
+              {/* TESTING MODE banner — make it impossible to miss that
+                  this is a no-payment dev path. Remove this block (and
+                  the bypass button below) when launching the paid tier. */}
+              <div className="rounded-xl bg-amber-500/10 border border-amber-400/40 px-3 py-2 text-xs text-amber-200 text-center">
+                🧪 Modo prueba: el pago está desactivado mientras probamos
+                la calidad. Vamos directo a generar la canción.
+              </div>
+
               <button
                 type="button"
-                onClick={payNow}
+                onClick={bypassPayNow}
                 disabled={!customerEmail || !customerEmail.includes('@')}
                 className="w-full rounded-2xl bg-gradient-to-br from-bougainvillea to-[#d40b6e] hover:brightness-110 text-white font-bold text-lg py-4 pink-glow transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <span className="material-symbols-outlined">lock</span>
-                Comprar mi canción
+                <span className="material-symbols-outlined">music_note</span>
+                Generar canción completa (gratis – modo prueba)
                 <span className="material-symbols-outlined">arrow_forward</span>
               </button>
 
-              <div className="flex items-center justify-center gap-3 text-xs text-white/40">
-                <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm text-emerald-400">verified</span>
-                  Pago seguro con Stripe
-                </span>
-                <span>·</span>
-                <span>Visa / Mastercard / Amex</span>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={payNow}
+                  disabled={!customerEmail || !customerEmail.includes('@')}
+                  className="text-xs text-white/40 hover:text-white/70 underline disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  O pagar $69 con Stripe (modo producción)
+                </button>
               </div>
             </div>
 

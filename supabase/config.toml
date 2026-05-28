@@ -263,6 +263,16 @@ verify_jwt = true
 # Frontend posts with the Supabase anon JWT after the preview is ready.
 verify_jwt = true
 
+[functions.diagnose-voice-clone]
+# One-off diagnostic tool for voice-clone quality complaints. Given a
+# voice_sample_id, fires 6 Kie generations in parallel with different
+# param combinations (V5_5 vs V4_5, audioWeight 0.95 vs 1.0, with/without
+# genre style, with/without explicit vocalGender). Returns 6 task IDs;
+# operator polls Kie record-info to collect 12 audio variants and blind-
+# listens to pick which combo clones best. Burns ~$0.60 of Kie credits
+# per run. NOT in the customer flow.
+verify_jwt = true
+
 [functions.admin-cloned-voice-songs]
 # Admin-dashboard reader for the Clone Mi Voz tier. Mirrors admin-songs's
 # auth pattern (Supabase Auth JWT + admin_users.role lookup) but reads
@@ -293,3 +303,16 @@ verify_jwt = true
 # verify_jwt = false because Stripe can't attach a Supabase JWT.
 # Signature is verified internally via the webhook signing secret.
 verify_jwt = false
+
+[functions.clonamivoz-test-bypass-payment]
+# TEMPORARY testing-only endpoint added 2026-05-28 so the team can run
+# the /clonamivoz flow end-to-end without paying $69 every time.
+# Mirrors clonamivoz-stripe-webhook minus Stripe: marks the row paid,
+# server-to-server calls generate-cloned-voice-song. Gated by the
+# Supabase secret CLONAMIVOZ_BYPASS_ENABLED — set to 'true' to enable,
+# unset to immediately re-lock the paywall (function returns 403).
+# Frontend posts with the Supabase anon JWT (same as the other
+# clonamivoz functions); the env gate is what actually protects it.
+# Remove this function (and this block, and the Supabase secret) once
+# voice-cloning quality is validated and the paid tier launches.
+verify_jwt = true

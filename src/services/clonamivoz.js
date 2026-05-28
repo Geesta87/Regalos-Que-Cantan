@@ -258,6 +258,33 @@ export async function createClonamivozCheckout(args) {
 }
 
 /**
+ * Skip Stripe and fire the full song generation directly. Only works
+ * while the Supabase secret CLONAMIVOZ_BYPASS_ENABLED='true'. Production
+ * users should still go through createClonamivozCheckout.
+ *
+ * @param {object} args
+ * @param {string} args.clonedVoiceSongId
+ * @param {string} [args.email] — optional override for the email on the row
+ * @returns {Promise<{ok:boolean, bypassed_payment?:boolean, kie_task_id?:string,
+ *                    error?:string, message?:string}>}
+ */
+export async function bypassClonamivozPayment(args) {
+  const res = await fetch(`${FN_BASE}/clonamivoz-test-bypass-payment`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      cloned_voice_song_id: args.clonedVoiceSongId,
+      customer_email: args.email,
+    }),
+  });
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
  * Poll the cloned_voice_songs row + Kie for current status.
  *
  * @param {string} clonedVoiceSongId
