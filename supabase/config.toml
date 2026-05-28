@@ -209,3 +209,12 @@ verify_jwt = true
 # the song generator. Frontend posts with the Supabase anon JWT, identical
 # to recover-song's pattern.
 verify_jwt = true
+
+[functions.generate-cloned-voice-lyrics]
+# Claude lyric generation for the Clone Mi Voz tier. LYRICS_TOOL and
+# LYRICS_SYSTEM_PROMPT are copied verbatim from generate-song/index.ts
+# (lines 1701-1787 as of 2026-05-27) — keep them in sync if production
+# updates. Uses claude-sonnet-4-6 with claude-haiku-4-5-20251001 fallback,
+# matching production retry order. Frontend posts with the Supabase anon
+# JWT — same pattern as upload-customer-voice / recover-song.
+verify_jwt = true
