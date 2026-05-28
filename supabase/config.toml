@@ -243,3 +243,13 @@ verify_jwt = true
 # KIE_CALLBACK_URL is a webhook.site sink we never read (validated by
 # suno-voice-clone-test prototype).
 verify_jwt = true
+
+[functions.generate-cloned-voice-preview]
+# Generates a 30-60s voice-cloned PREVIEW for the Clone Mi Voz tier
+# BEFORE the customer is asked to pay $69. Same Kie/Suno upload-cover
+# endpoint + voice-fidelity tuning as generate-cloned-voice-song, but
+# with a hardcoded 4-line preview lyric instead of the full Claude
+# output. The preview closes the trust gap ("will it really sound like
+# me?") and dramatically lifts conversion. Frontend posts with the
+# Supabase anon JWT.
+verify_jwt = true
