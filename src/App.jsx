@@ -47,6 +47,7 @@ import TermsOfService from './pages/TermsOfService';
 import SmsConsentPreview from './pages/SmsConsentPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
+import ClonaMiVoz from './pages/ClonaMiVoz';
 import { captureAffiliateRef } from './services/tracking';
 
 // App State Context
@@ -100,7 +101,8 @@ const pathToPage = {
   '/afiliado/terminos': 'affiliateTerms',
   '/politica-de-privacidad': 'privacyPolicy',
   '/terminos-de-servicio': 'termsOfService',
-  '/sms-consent-preview': 'smsConsentPreview'
+  '/sms-consent-preview': 'smsConsentPreview',
+  '/clonamivoz': 'clonamivoz'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -288,7 +290,8 @@ export default function App() {
       affiliateTerms: '/afiliado/terminos',
       privacyPolicy: '/politica-de-privacidad',
       termsOfService: '/terminos-de-servicio',
-      smsConsentPreview: '/sms-consent-preview'
+      smsConsentPreview: '/sms-consent-preview',
+      clonamivoz: '/clonamivoz'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -389,6 +392,13 @@ export default function App() {
           {currentPage === 'privacyPolicy' && <PrivacyPolicy />}
           {currentPage === 'termsOfService' && <TermsOfService />}
           {currentPage === 'smsConsentPreview' && <SmsConsentPreview />}
+
+          {/* Clone Mi Voz — standalone voice-cloning tier (/clonamivoz).
+              Not part of the main genre→artist→subgenre funnel; runs its
+              own state, talks to its own edge functions (upload-customer-voice,
+              generate-cloned-voice-lyrics, generate-cloned-voice-song,
+              cloned-voice-status). Beta — no Stripe wiring yet. */}
+          {currentPage === 'clonamivoz' && <ClonaMiVoz />}
 
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}
