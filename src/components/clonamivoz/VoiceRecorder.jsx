@@ -30,18 +30,19 @@ import { READING_SCRIPT, HUMMING_INSTRUCTION, zoneFor } from './genres';
 const BAR_COUNT = 48;
 
 // ---------------------------------------------------------------------------
-// Quality verdict thresholds. Tuned to be strict on things that DEFINITELY
-// break voice cloning, lenient on cosmetic stuff.
+// Quality verdict thresholds. Tuned to be permissive — we warn but rarely
+// hard-block. The backend voice-clone pipeline is what really decides
+// quality; the recorder's job is to catch obviously broken inputs only.
 // ---------------------------------------------------------------------------
-const MIN_DURATION_SEC = 30;        // hard floor — Suno needs at least this
+const MIN_DURATION_SEC = 20;        // hard floor — minimum usable length
 const IDEAL_DURATION_SEC = 60;      // soft target
-const MIN_SIGNAL_LEVEL = 0.03;      // RMS — anything quieter is "muted mic"
-const GOOD_SIGNAL_LEVEL = 0.08;
-const MAX_CLIPPING_PCT = 0.005;     // >0.5% clipped samples = distortion
-const MAX_SILENCE_PCT = 0.55;       // >55% silence = mostly nothing recorded
-const MIN_SNR = 4;                  // signal:noise floor ratio for "noisy"
-const GOOD_SNR = 12;
-const MIN_EXPRESSIVENESS = 0.25;    // coefficient of variation of RMS
+const MIN_SIGNAL_LEVEL = 0.01;      // RMS — anything quieter is muted mic
+const GOOD_SIGNAL_LEVEL = 0.06;
+const MAX_CLIPPING_PCT = 0.03;      // >3% clipped samples = real distortion
+const MAX_SILENCE_PCT = 0.75;       // >75% silence = barely anything recorded
+const MIN_SNR = 1.5;                // signal:noise floor ratio for "noisy"
+const GOOD_SNR = 8;
+const MIN_EXPRESSIVENESS = 0.20;    // coefficient of variation of RMS
 
 // ---------------------------------------------------------------------------
 // Audio analysis. Reads the recorded Blob, decodes to PCM, walks 50ms
