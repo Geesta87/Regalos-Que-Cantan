@@ -483,7 +483,10 @@ export default function VoiceRecorder({
 
   return (
     <div className="space-y-5">
-      <ReadingScriptPanel />
+      <ReadingScriptPanel
+        readingScript={READING_SCRIPT}
+        hummingInstruction={HUMMING_INSTRUCTION}
+      />
 
       <div className="rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-6 sm:p-10">
         {/* Visualizer */}
@@ -597,7 +600,14 @@ export default function VoiceRecorder({
 // Sub-components
 // ===========================================================================
 
-function ReadingScriptPanel() {
+function ReadingScriptPanel({ readingScript, hummingInstruction }) {
+  // Accept the language-specific script + humming copy as props so this
+  // sub-component (defined OUTSIDE the VoiceRecorder function body) can
+  // access them. Without these props it can't see READING_SCRIPT /
+  // HUMMING_INSTRUCTION which now live inside VoiceRecorder's scope.
+  const READING_SCRIPT = readingScript;
+  const HUMMING_INSTRUCTION = hummingInstruction;
+
   const [open, setOpen] = useState(true);
   const wordCount = READING_SCRIPT.trim().split(/\s+/).length;
 
