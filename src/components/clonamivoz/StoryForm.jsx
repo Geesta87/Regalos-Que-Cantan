@@ -45,14 +45,16 @@ const RELATIONSHIPS = [
   'Otra relación',
 ];
 
-export default function StoryForm({ genreSlug, onLyricsGenerated }) {
+export default function StoryForm({ genreSlug, onLyricsGenerated, defaultLanguage = 'es' }) {
   const [recipient, setRecipient] = useState('');
   const [occasion, setOccasion] = useState(OCCASIONS[0]);
   const [occasionCustom, setOccasionCustom] = useState('');
   const [relationship, setRelationship] = useState(RELATIONSHIPS[0]);
   const [relationshipCustom, setRelationshipCustom] = useState('');
   const [story, setStory] = useState('');
-  const [language, setLanguage] = useState('es');
+  // Default to whatever the user picked at the recording stage so they
+  // don't have to choose language twice. They can still override here.
+  const [language, setLanguage] = useState(defaultLanguage);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);

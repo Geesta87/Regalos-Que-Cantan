@@ -121,6 +121,10 @@ export default function ClonaMiVoz() {
 
   // Generation inputs
   const [genreSlug, setGenreSlug] = useState(GENRES[0].slug);
+  // Recording-stage language ('es' or 'en') drives which reading script
+  // shows in the VoiceRecorder. Genre is picked later (in CONFIGURE) so
+  // this lets the customer choose their reading language up front.
+  const [recordingLanguage, setRecordingLanguage] = useState('es');
   const [lyrics, setLyrics] = useState('');
   const [title, setTitle] = useState('');
   const [emotionalModifiers, setEmotionalModifiers] = useState('');
@@ -473,15 +477,54 @@ export default function ClonaMiVoz() {
           <section className="space-y-4">
             <div className="text-center">
               <h2 className="font-display text-3xl sm:text-4xl font-bold text-white mb-2">
-                Graba tu voz
+                {recordingLanguage === 'en' ? 'Record your voice' : 'Graba tu voz'}
               </h2>
               <p className="text-white/60">
-                Tararea o canta por 45-90 segundos en un lugar tranquilo.
+                {recordingLanguage === 'en'
+                  ? 'Hum or sing for 45-90 seconds in a quiet place.'
+                  : 'Tararea o canta por 45-90 segundos en un lugar tranquilo.'}
               </p>
             </div>
+
+            {/* Recording language toggle. Spanish/English determines which
+                reading script + UI copy the recorder shows. Genre is picked
+                later in CONFIGURE. */}
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <span className="text-white/50">
+                {recordingLanguage === 'en' ? 'Reading language:' : 'Idioma de lectura:'}
+              </span>
+              <div className="inline-flex rounded-full bg-white/5 border border-white/10 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setRecordingLanguage('es')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    recordingLanguage === 'es'
+                      ? 'bg-bougainvillea text-white'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  Español
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecordingLanguage('en')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    recordingLanguage === 'en'
+                      ? 'bg-bougainvillea text-white'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+
             {/* Returning customer: skip recording by entering email */}
             <SavedVoicePicker onPick={handlePickSavedVoice} />
-            <VoiceRecorder onRecordingComplete={handleRecordingComplete} />
+            <VoiceRecorder
+              onRecordingComplete={handleRecordingComplete}
+              language={recordingLanguage}
+            />
             <CoachingPanel />
           </section>
         )}
@@ -535,9 +578,12 @@ export default function ClonaMiVoz() {
               </div>
             </div>
 
-            {/* Story → lyrics */}
+            {/* Story → lyrics. defaultLanguage flows from the recording
+                stage so the user doesn't have to pick language twice;
+                they can still override here. */}
             <StoryForm
               genreSlug={selectedGenre.slug}
+              defaultLanguage={recordingLanguage}
               onLyricsGenerated={(generatedLyrics, generatedTitle, emo, ctx) => {
                 setLyrics(generatedLyrics);
                 if (generatedTitle) setTitle(generatedTitle);

@@ -106,6 +106,18 @@ const GENRE_STYLES: Record<string, string> = {
     'mariachi instrumental: trompetas, violines, vihuela, guitarrón, ritmo tradicional mexicano',
   mariachi:
     'mariachi tradicional: trompetas, violines, guitarrón, vihuela, arreglo clásico mexicano',
+
+  // English-language genres (added 2026-05-28). Keep these in sync with
+  // generate-cloned-voice-song/index.ts GENRE_STYLES — any new slug must
+  // exist in both maps or song generation will mismatch the preview.
+  pop_ballad_en:
+    'modern pop ballad: piano-driven mid-tempo, soft acoustic guitar, lush strings, gentle hi-hat groove, sparse intimate arrangement',
+  country_en:
+    'modern country ballad: fingerpicked acoustic guitar, pedal steel, soft brushed drums, warm bass, sparse Americana arrangement',
+  rnb_soul_en:
+    'smooth R&B soul ballad: warm Rhodes electric piano, soft groove drums, melodic bass, subtle horn pads, mellow soul arrangement',
+  acoustic_singer_en:
+    'intimate acoustic singer-songwriter: solo fingerpicked acoustic guitar, optional light brushed snare, sparse minimal arrangement, vocal-forward mix',
 };
 
 /**

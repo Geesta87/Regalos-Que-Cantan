@@ -90,12 +90,22 @@ const NEGATIVE_TAGS = 'autotune, pitch correction, vocoder, robotic vocals, proc
 // voice can come through unfiltered. The cloned voice itself provides
 // the vocal style.
 const GENRE_STYLES: Record<string, string> = {
+  // Spanish-language genres
   romantico: 'romantic Latin ballad: acoustic guitar fingerpicking, soft strings, gentle mid-tempo, sparse arrangement',
   balada: 'balada latina clásica: piano grande, cuerdas orquestales, percusión cepillada, arreglo elegante',
   banda: 'banda sinaloense: tambora, tuba, trompetas, trombones, clarinetes, ritmo norteño festivo',
   corrido: 'corrido norteño: acordeón diatónico, bajo sexto, tololoche o bajo eléctrico, ritmo polka tradicional',
   ranchera: 'mariachi instrumental: trompetas, violines, vihuela, guitarrón, ritmo tradicional mexicano',
   mariachi: 'mariachi tradicional: trompetas, violines, guitarrón, vihuela, arreglo clásico mexicano',
+
+  // English-language genres (added 2026-05-28 for English customer testing).
+  // Same minimal-vocal-direction approach as the Spanish strings — describes
+  // ONLY instruments + arrangement so the cloned voice carries the vocal
+  // style, not Suno's defaults.
+  pop_ballad_en: 'modern pop ballad: piano-driven mid-tempo, soft acoustic guitar, lush strings, gentle hi-hat groove, sparse intimate arrangement',
+  country_en: 'modern country ballad: fingerpicked acoustic guitar, pedal steel, soft brushed drums, warm bass, sparse Americana arrangement',
+  rnb_soul_en: 'smooth R&B soul ballad: warm Rhodes electric piano, soft groove drums, melodic bass, subtle horn pads, mellow soul arrangement',
+  acoustic_singer_en: 'intimate acoustic singer-songwriter: solo fingerpicked acoustic guitar, optional light brushed snare, sparse minimal arrangement, vocal-forward mix',
 };
 
 interface RequestBody {

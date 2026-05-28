@@ -25,7 +25,11 @@
 // specific advice ("acércate al micrófono", "busca un lugar más silencioso").
 
 import React, { useEffect, useRef, useState } from 'react';
-import { READING_SCRIPT, HUMMING_INSTRUCTION, zoneFor } from './genres';
+import {
+  readingScriptFor,
+  hummingInstructionFor,
+  zoneFor,
+} from './genres';
 
 const BAR_COUNT = 48;
 
@@ -282,7 +286,16 @@ function computeVerdict(analysis) {
 // Main component
 // ===========================================================================
 
-export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120_000 }) {
+export default function VoiceRecorder({
+  onRecordingComplete,
+  maxDurationMs = 120_000,
+  language = 'es',
+}) {
+  // Pick the right language version of the script + UI copy. Defaults to
+  // Spanish if no language is passed (back-compat with earlier callers).
+  const READING_SCRIPT = readingScriptFor(language);
+  const HUMMING_INSTRUCTION = hummingInstructionFor(language);
+
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState(null);
@@ -448,7 +461,7 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
   }
 
   const seconds = Math.floor(elapsedMs / 1000);
-  const zone = zoneFor(seconds);
+  const zone = zoneFor(seconds, language);
 
   const zoneToneClass = {
     neutral: 'text-white/70',
