@@ -36,10 +36,12 @@ const BAR_COUNT = 48;
 // ---------------------------------------------------------------------------
 const MIN_DURATION_SEC = 20;        // hard floor — minimum usable length
 const IDEAL_DURATION_SEC = 60;      // soft target
-const MIN_SIGNAL_LEVEL = 0.01;      // RMS — anything quieter is muted mic
-const GOOD_SIGNAL_LEVEL = 0.06;
+const MIN_SIGNAL_LEVEL = 0.003;     // RMS — only block if mic was truly muted
+const LOW_SIGNAL_LEVEL = 0.01;      // below this we warn (quiet phone mic)
+const GOOD_SIGNAL_LEVEL = 0.04;
 const MAX_CLIPPING_PCT = 0.03;      // >3% clipped samples = real distortion
-const MAX_SILENCE_PCT = 0.75;       // >75% silence = barely anything recorded
+const MAX_SILENCE_PCT = 0.85;       // >85% silence = file is essentially empty
+const WARN_SILENCE_PCT = 0.65;      // 65-85% silence = warn but allow
 const MIN_SNR = 1.5;                // signal:noise floor ratio for "noisy"
 const GOOD_SNR = 8;
 const MIN_EXPRESSIVENESS = 0.20;    // coefficient of variation of RMS
@@ -93,7 +95,11 @@ async function analyzeAudioBlob(blob) {
       rmsValues.reduce((s, r) => s + (r - meanRms) ** 2, 0) / rmsValues.length;
     const stdDev = Math.sqrt(variance);
 
-    const silenceThreshold = Math.max(noiseFloor * 2, 0.005);
+    // Silence threshold is RELATIVE to the actual signal level of this
+    // recording — not an absolute floor. A quiet phone-mic recording where
+    // speaking is at 0.015 RMS is fine; we should detect silence relative
+    // to the speaker's own loudness, not against a desktop-mic assumption.
+    const silenceThreshold = Math.max(signalLevel * 0.12, noiseFloor * 1.5, 0.002);
     const silentWindows = rmsValues.filter((r) => r < silenceThreshold).length;
     const silentPct = silentWindows / rmsValues.length;
 
@@ -161,20 +167,31 @@ function computeVerdict(analysis) {
     });
   }
 
-  // Volume / signal level
+  // Volume / signal level. Only HARD-block if the mic was effectively
+  // muted (signal at noise floor). Quiet phone-mic recordings get a warn
+  // but proceed — the backend voice clone tolerates a wide range of input
+  // loudness, and false-blocking 60s of good vocals is worse than processing
+  // a quiet sample.
   if (analysis.signalLevel < MIN_SIGNAL_LEVEL) {
     checks.push({
       key: 'volume',
       status: 'fail',
-      label: 'Volumen demasiado bajo',
-      help: 'Casi no se escucha tu voz. Acércate al micrófono o sube el volumen de tu mic.',
+      label: 'Micrófono parece apagado',
+      help: 'No detectamos voz audible. Revisa que tu micrófono esté permitido y desactivado el modo silencio.',
+    });
+  } else if (analysis.signalLevel < LOW_SIGNAL_LEVEL) {
+    checks.push({
+      key: 'volume',
+      status: 'warn',
+      label: 'Volumen un poco bajo',
+      help: 'Tu voz se escucha pero suave. Para próximas grabaciones, acércate más al micrófono.',
     });
   } else if (analysis.signalLevel < GOOD_SIGNAL_LEVEL) {
     checks.push({
       key: 'volume',
       status: 'warn',
-      label: 'Volumen un poco bajo',
-      help: 'Se escucha, pero podría ser más fuerte. Acércate un poco al micrófono.',
+      label: 'Volumen aceptable',
+      help: 'Se escucha bien. Suficiente para clonar tu voz.',
     });
   } else {
     checks.push({
@@ -217,13 +234,22 @@ function computeVerdict(analysis) {
     });
   }
 
-  // Silence percentage
+  // Silence percentage. Only hard-block when the file is essentially
+  // empty (>85%). 65-85% warn but proceed. Anything below 65% counts as
+  // good — natural speech has breath pauses.
   if (analysis.silentPct > MAX_SILENCE_PCT) {
     checks.push({
       key: 'silence',
       status: 'fail',
-      label: 'Mucho silencio en la grabación',
-      help: 'Más de la mitad de la grabación está vacía. Habla o tararea durante todo el tiempo, sin pausas largas.',
+      label: 'Grabación casi vacía',
+      help: 'Casi no hay voz en la grabación. Asegúrate de hablar o tararear durante todo el tiempo.',
+    });
+  } else if (analysis.silentPct > WARN_SILENCE_PCT) {
+    checks.push({
+      key: 'silence',
+      status: 'warn',
+      label: 'Pausas largas detectadas',
+      help: 'Hubo varios momentos sin voz. Para mejor calidad, trata de hablar o tararear continuamente.',
     });
   }
 
