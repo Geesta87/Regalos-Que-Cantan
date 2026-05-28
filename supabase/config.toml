@@ -226,11 +226,20 @@ verify_jwt = true
 # (styleWeight=0.35, audioWeight=0.85, weirdnessConstraint=0.2, negativeTags
 # against autotune/vocoder) is the result of the suno-voice-clone-test
 # harness's 6-genre validation pass — DO NOT loosen those values without
-# re-running the test. Frontend posts with the Supabase anon JWT after
-# upload-customer-voice + generate-cloned-voice-lyrics have completed.
+# re-running the test.
+#
+# verify_jwt = false because this function is ONLY invoked server-to-server:
+#   - clonamivoz-stripe-webhook (real $69 paid path)
+#   - clonamivoz-test-bypass-payment (testing-mode bypass)
+# Neither caller can attach a Supabase user JWT — they use the
+# SUPABASE_SERVICE_ROLE_KEY as a Bearer token, which the Functions gateway
+# rejects with UNAUTHORIZED_INVALID_JWT_FORMAT when verify_jwt is true.
+# Flipped to false on 2026-05-28 after hitting that exact 401 from the
+# bypass path. CLAUDE.md §3.2 covers this rule: "Called by another edge
+# function with service-role context → verify_jwt = false."
 # Returns { cloned_voice_song_id, kie_task_id, status } — cloned-voice-status
 # is the polling endpoint that surfaces the finished audio URLs.
-verify_jwt = true
+verify_jwt = false
 
 [functions.cloned-voice-status]
 # Polling endpoint for the Clone Mi Voz tier. Frontend calls this every
