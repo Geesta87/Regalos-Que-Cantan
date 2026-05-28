@@ -262,3 +262,18 @@ verify_jwt = true
 # Metadata carries cloned_voice_song_id back to clonamivoz-stripe-webhook.
 # Frontend posts with the Supabase anon JWT after the preview is ready.
 verify_jwt = true
+
+[functions.clonamivoz-stripe-webhook]
+# Stripe webhook for the Clone Mi Voz tier ONLY. Separate from the main
+# stripe-webhook so an issue here can't break the $29.99 funnel (see
+# CLAUDE.md §2 outage history). Different Stripe webhook endpoint,
+# different signing secret (STRIPE_CLONAMIVOZ_WEBHOOK_SECRET).
+#
+# Uses constructEventAsync (sync constructEvent throws in Deno — see
+# CLAUDE.md §3.1). On checkout.session.completed, marks the row paid
+# and server-to-server calls generate-cloned-voice-song to start the
+# full Suno generation with the customer's actual lyrics.
+#
+# verify_jwt = false because Stripe can't attach a Supabase JWT.
+# Signature is verified internally via the webhook signing secret.
+verify_jwt = false
