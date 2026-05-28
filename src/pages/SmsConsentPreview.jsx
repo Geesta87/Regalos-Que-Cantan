@@ -3,11 +3,15 @@ import { Helmet } from 'react-helmet-async';
 
 export default function SmsConsentPreview() {
   const [phone, setPhone] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const handlePagar = () => {
     setSubmitted(true);
   };
+
+  const cleanPhone = phone.replace(/\D/g, '');
+  const willOptIn = cleanPhone.length >= 10 && smsConsent;
 
   return (
     <div style={{
@@ -31,7 +35,7 @@ export default function SmsConsentPreview() {
         borderBottom: '1px solid rgba(255,255,255,0.1)',
         lineHeight: 1.5
       }}>
-        <strong>Checkout preview for SMS consent / CTA compliance review.</strong> Customers see this exact opt-in surface when completing their purchase on regalosquecantan.com. Production customers are Spanish-speaking; English translations are shown in parentheses for reviewer convenience. The SMS disclosure paragraph below is in English exactly as shown to U.S. customers.
+        <strong>Checkout preview for SMS consent / CTA compliance review.</strong> Customers see this exact opt-in surface when completing their purchase on regalosquecantan.com. SMS opt-in is captured via a dedicated, unchecked-by-default consent checkbox shown below the phone field — clicking "Pagar" alone does not opt the customer into SMS. Production customers are Spanish-speaking; English translations are shown in parentheses for reviewer convenience. The SMS consent checkbox label is in English exactly as shown to U.S. customers.
       </div>
 
       {/* Brand header */}
@@ -189,13 +193,52 @@ export default function SmsConsentPreview() {
             }}
           />
 
-          <p style={{
-            margin: '12px 0 0',
-            color: 'rgba(255,255,255,0.78)',
-            fontSize: '13px',
-            lineHeight: 1.6
+          {/* SMS consent checkbox — unchecked by default, optional, dedicated to SMS only */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            marginTop: '16px',
+            padding: '14px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '10px'
           }}>
-            By providing your phone number, you agree to receive transactional text messages about your order from Regalos Que Cantan. Message frequency varies. Message and data rates may apply. Reply STOP to cancel or HELP for help. See our Privacy Policy (<a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/politica-de-privacidad</a>) and Terms of Service (<a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/terminos-de-servicio</a>).
+            <input
+              id="sms-consent-checkbox"
+              type="checkbox"
+              checked={smsConsent}
+              onChange={(e) => setSmsConsent(e.target.checked)}
+              style={{
+                marginTop: '3px',
+                width: '18px',
+                height: '18px',
+                flexShrink: 0,
+                accentColor: '#f74da6',
+                cursor: 'pointer'
+              }}
+            />
+            <label
+              htmlFor="sms-consent-checkbox"
+              style={{
+                color: 'rgba(255,255,255,0.85)',
+                fontSize: '13px',
+                lineHeight: 1.6,
+                cursor: 'pointer'
+              }}
+            >
+              I agree to receive transactional text messages (SMS) about my order from Regalos Que Cantan — order confirmation, song-ready delivery link, delivery status, and customer-care responses. Message frequency varies. Message and data rates may apply. Reply STOP to cancel or HELP for help. See our Privacy Policy (<a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/politica-de-privacidad</a>) and Terms of Service (<a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/terminos-de-servicio</a>).
+            </label>
+          </div>
+
+          <p style={{
+            margin: '10px 0 0',
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '12px',
+            lineHeight: 1.5,
+            fontStyle: 'italic'
+          }}>
+            The checkbox above is unchecked by default and is not required to complete checkout. The phone field is also optional. SMS opt-in is recorded server-side only when both the phone field is filled <em>and</em> the checkbox is checked at submit, together with a timestamp for audit purposes.
           </p>
         </div>
 
@@ -230,7 +273,9 @@ export default function SmsConsentPreview() {
             fontSize: '13px',
             lineHeight: 1.5
           }}>
-            <strong>Preview / Vista previa</strong> — In the live checkout, this button securely processes payment via Stripe and (if a phone number was entered) records the customer's SMS opt-in. This page is a reproduction of the production checkout for compliance verification only; no payment is processed and no SMS opt-in is recorded here.<br /><br /><em style={{ color: 'rgba(134,239,172,0.7)' }}>(En el checkout real, este botón procesa el pago de forma segura a través de Stripe. Esta página es una reproducción del checkout de producción para verificación de cumplimiento; no se procesa ningún pago aquí.)</em>
+            <strong>Preview / Vista previa</strong> — In the live checkout, clicking "Pagar" securely processes payment via Stripe. SMS opt-in is recorded server-side <strong>only when</strong> the customer has both (a) entered a phone number and (b) actively checked the dedicated SMS consent checkbox above. Submitting without checking the box completes the purchase but does <strong>not</strong> opt the customer into SMS.<br /><br />
+            <strong>Captured state for this preview submission:</strong> phone {cleanPhone.length >= 10 ? '✓ provided' : '✗ not provided'} · SMS consent checkbox {smsConsent ? '✓ checked' : '✗ unchecked'} → <strong>{willOptIn ? 'Customer WOULD be opted into SMS' : 'Customer would NOT be opted into SMS'}</strong>.<br /><br />
+            <em style={{ color: 'rgba(134,239,172,0.7)' }}>This page is a reproduction of the production checkout for compliance verification only; no payment is processed and no SMS opt-in is recorded here. (En el checkout real, este botón procesa el pago de forma segura a través de Stripe.)</em>
           </div>
         )}
 
