@@ -55,7 +55,7 @@ const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 // placeholder is fine. Override via env if a real receiver is set up later.
 const KIE_CALLBACK_URL = Deno.env.get('KIE_CLONED_VOICE_CALLBACK_URL') || 'https://webhook.site/00000000-0000-0000-0000-000000000000';
 
-const STORAGE_BUCKET = 'customer-voices';
+const STORAGE_BUCKET = 'customer-voice';
 const SIGNED_URL_TTL_SECONDS = 3600;
 
 // Suno model. V5_5 is what we validated in the test app for the cloned-voice

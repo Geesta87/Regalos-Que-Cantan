@@ -53,7 +53,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-const STORAGE_BUCKET = 'customer-voices';
+const STORAGE_BUCKET = 'customer-voice';
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB hard cap (matches bucket config)
 const SIGNED_URL_TTL_SECONDS = 3600; // 1 hour — long enough for Suno to fetch
 
