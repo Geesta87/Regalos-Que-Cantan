@@ -36,8 +36,8 @@ export default function CoachingPanel() {
       {open && (
         <div className="px-4 pb-4 space-y-3 text-sm animate-fadeIn">
           <p className="text-white/80">
-            No necesitas saber cantar bien. Nuestra IA solo necesita escuchar tu voz.
-            Escoge la opción más fácil para ti:
+            No necesitas saber cantar bien. Solo necesitamos escuchar tu voz por
+            unos segundos. Escoge la opción más fácil para ti:
           </p>
 
           <div className="bg-white/5 rounded-xl border border-white/10 p-4">
@@ -53,7 +53,7 @@ export default function CoachingPanel() {
               la melodía sobre la marcha. Solo sigue tarareando con la boca cerrada.
             </p>
             <div className="mt-2 bg-amber-500/10 border-l-4 border-amber-500 px-3 py-2 text-xs text-amber-200">
-              <strong>⚠ No tararees</strong> Cielito Lindo, Las Mañanitas, ni canciones famosas — la IA las detecta como copyright y rechaza la grabación.
+              <strong>⚠ No tararees</strong> Cielito Lindo, Las Mañanitas, ni canciones famosas — el sistema las detecta como copyright y rechaza la grabación.
             </div>
           </div>
 

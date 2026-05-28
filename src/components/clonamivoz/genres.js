@@ -82,18 +82,19 @@ export function zoneFor(seconds) {
  *   - Cover all 5 vowels in varied positions
  *   - Include rolled-r (rr), ñ, ll, ch, j, z, ci/ce sounds
  *   - Have natural sentence rhythm (not staccato or sing-song)
- *   - Be neutral/general (not a specific song melody — passes Suno copyright filter)
+ *   - Be neutral and universally relatable (not tied to one culture, no
+ *     famous song lyrics — copyright-safe)
  *   - Take ~85-95 seconds at moderate Spanish reading pace (~165 wpm)
  *
  * Customer reads this aloud while recording. If they freestyle / hum
  * instead, that's fine — the script is opt-in scaffolding.
  */
-export const READING_SCRIPT = `Hola, hoy quiero compartir un momento especial. Cada palabra que pronuncio viene desde lo más profundo del alma, con cariño y verdad.
+export const READING_SCRIPT = `Hola, hoy quiero compartir un momento especial. Cada palabra que digo viene desde el corazón, con calma y con cariño.
 
-Las mañanas en mi tierra siempre han sido cálidas. El sol pinta el cielo de naranja, las aves cantan en los árboles, y se respira aire puro. Recuerdo el aroma del café recién molido, las tortillas calientes, y las flores del jardín de mi abuela.
+Las mañanas tranquilas son las que más disfruto. El sol entra suave por la ventana, los pájaros cantan en el árbol, y se respira aire fresco. Me gusta el aroma del té recién hecho, el sonido suave de la lluvia sobre el techo, y las flores del jardín.
 
-La familia es lo más importante. Por ellos vivimos, por ellos soñamos, por ellos cantamos. Mi madre siempre decía: donde hay amor, hay música. Y tenía toda la razón. La música une corazones, atraviesa fronteras, y guarda los recuerdos más bellos.
+Las personas que quiero son lo más importante para mí. Por ellas vivimos, por ellas soñamos, por ellas seguimos adelante. Alguien me dijo una vez: donde hay amor, hay música. Y tenía toda la razón. La música une corazones, cruza fronteras, y guarda los recuerdos más bellos.
 
-Cuando era niño, jugaba en las calles del barrio. Reíamos sin preocupaciones, sin teléfonos, sin prisa. Esa libertad la llevo conmigo siempre. Cada canción que escucho me transporta a esos momentos felices.
+Cuando era pequeño, jugaba al aire libre con mucha alegría. El perro corría por el parque, los niños reían sin parar, y todo era simple. Esa libertad la llevo conmigo siempre. Cada canción que escucho me regresa a esos momentos felices.
 
-Ahora, con mi propia voz, quiero crear algo único. Una canción hecha desde el corazón, llena de sentimiento. Gracias por escucharme. Gracias por permitirme compartir contigo este pequeño pedacito de mí.`;
+Ahora, con mi propia voz, quiero crear algo único. Algo hecho con sentimiento, desde lo más profundo. Gracias por escucharme. Gracias por permitirme compartir contigo este pequeño pedacito de mí.`;

@@ -118,7 +118,7 @@ export default function StoryForm({ genreSlug, onLyricsGenerated }) {
         <div>
           <h3 className="font-display text-xl font-bold text-white">Cuéntanos tu historia</h3>
           <p className="text-sm text-white/60">
-            Llena los detalles y nuestra IA escribirá la letra de la canción por ti.
+            Llena los detalles y escribiremos la letra de la canción por ti.
             Después puedes editarla a mano si quieres.
           </p>
         </div>
@@ -243,12 +243,12 @@ export default function StoryForm({ genreSlug, onLyricsGenerated }) {
         {busy ? (
           <>
             <span className="material-symbols-outlined animate-spin">progress_activity</span>
-            Escribiendo la letra con IA…
+            Escribiendo la letra…
           </>
         ) : (
           <>
             <span className="material-symbols-outlined">auto_awesome</span>
-            Generar letra con IA
+            Generar letra
           </>
         )}
       </button>

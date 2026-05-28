@@ -67,7 +67,7 @@ const HOW_IT_WORKS = [
     num: '3',
     icon: 'auto_awesome',
     title: 'Recibe tu canción',
-    desc: 'La IA crea una canción única en tu voz en 2-3 minutos.',
+    desc: 'Creamos una canción única en tu voz en 2-3 minutos.',
   },
 ];
 
@@ -434,7 +434,7 @@ export default function ClonaMiVoz() {
               >
                 <span className="material-symbols-outlined">auto_awesome</span>
                 {stage === STAGES.UPLOADING && 'Subiendo tu grabación…'}
-                {stage === STAGES.SUBMITTING && 'Enviando a la IA…'}
+                {stage === STAGES.SUBMITTING && 'Procesando…'}
                 {stage !== STAGES.UPLOADING &&
                   stage !== STAGES.SUBMITTING &&
                   'Crear mi canción'}
@@ -464,7 +464,7 @@ export default function ClonaMiVoz() {
               Creando tu canción…
             </h2>
             <p className="text-white/60">
-              La IA está generando dos versiones. Esto toma 1-3 minutos.
+              Estamos generando dos versiones para ti. Esto toma 1-3 minutos.
             </p>
             <div className="flex items-center justify-center gap-2 text-sm text-white/50">
               <span className="w-2 h-2 rounded-full bg-bougainvillea animate-pulse" />
@@ -541,7 +541,7 @@ function IntroSection({ onStart }) {
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-white/70 max-w-2xl mx-auto leading-relaxed mt-6">
-          Graba tu voz por unos segundos y nuestra IA creará una canción personalizada
+          Graba tu voz por unos segundos y crearemos una canción personalizada
           <em className="text-white"> cantada por ti</em>. Para cumpleaños, aniversarios, o cualquier momento especial.
         </p>
         <button
@@ -657,9 +657,8 @@ function FooterDisclaimer() {
   return (
     <footer className="pt-8 border-t border-white/5 text-xs text-white/40 space-y-2 text-center">
       <p>
-        Al grabar tu voz aceptas que la procesemos con nuestros proveedores de IA
-        (Anthropic, Suno vía Kie.ai) para crear tu canción. Tu grabación se borra
-        automáticamente después de 30 días.
+        Al grabar tu voz aceptas que la procesemos para crear tu canción
+        personalizada. Tu grabación se borra automáticamente después de 30 días.
       </p>
       <p>
         <a

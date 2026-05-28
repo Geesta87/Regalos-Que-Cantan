@@ -18,12 +18,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { READING_SCRIPT, zoneFor } from './genres';
 
+// How many bars in the visualizer. 48 gives a smooth, dense waveform
+// without overwhelming low-end phones.
+const BAR_COUNT = 48;
+
 export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120_000 }) {
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [level, setLevel] = useState(0);
+  // Live frequency spectrum sampled to BAR_COUNT bars (each 0-255).
+  // Drives the bar heights in the visualizer — actually reflects what
+  // the microphone is hearing.
+  const [spectrum, setSpectrum] = useState(() => new Uint8Array(BAR_COUNT));
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -91,25 +98,35 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
       }, 100);
 
       try {
+        // Real-time frequency-spectrum visualizer. fftSize=512 gives 256
+        // frequency bins. We sample the first ~96 bins (covers voice
+        // fundamental + first few harmonics ≈ 0-8 kHz) and average them
+        // down into BAR_COUNT bars so the rendering stays cheap on phones.
         const AC = window.AudioContext || window.webkitAudioContext;
         const ctx = new AC();
         audioCtxRef.current = ctx;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.75; // smoother bar motion
         source.connect(analyser);
         analyserRef.current = analyser;
 
+        const binsToUse = Math.min(96, analyser.frequencyBinCount);
+        const binsPerBar = Math.max(1, Math.floor(binsToUse / BAR_COUNT));
         const data = new Uint8Array(analyser.frequencyBinCount);
+
         const animate = () => {
-          analyser.getByteTimeDomainData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sum += v * v;
+          analyser.getByteFrequencyData(data);
+          const sampled = new Uint8Array(BAR_COUNT);
+          for (let b = 0; b < BAR_COUNT; b++) {
+            let sum = 0;
+            for (let k = 0; k < binsPerBar; k++) {
+              sum += data[b * binsPerBar + k] || 0;
+            }
+            sampled[b] = Math.min(255, Math.round(sum / binsPerBar));
           }
-          const rms = Math.sqrt(sum / data.length);
-          setLevel(Math.min(1, rms * 2.5));
+          setSpectrum(sampled);
           rafRef.current = requestAnimationFrame(animate);
         };
         animate();
@@ -125,7 +142,7 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
 
   function stop() {
     cleanup();
-    setLevel(0);
+    setSpectrum(new Uint8Array(BAR_COUNT));
     setRecording(false);
   }
 
@@ -139,12 +156,15 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
     ideal: 'text-bougainvillea',
   }[zone.tone];
 
-  // Visualizer bars (32 thin pills, gradient-filled when recording).
-  const bars = Array.from({ length: 32 }, (_, i) => {
-    const peak = recording ? level : 0;
-    const variance = recording ? Math.sin(Date.now() / 100 + i * 0.4) * 0.2 + 0.85 : 0.05;
-    const h = Math.max(4, Math.min(72, peak * 72 * variance));
-    return h;
+  // Visualizer bar heights driven by the live frequency spectrum.
+  // Each bar maps to a slice of the FFT output → bars actually react to
+  // what the microphone is picking up (not a synthetic sine pattern).
+  const bars = Array.from({ length: BAR_COUNT }, (_, i) => {
+    if (!recording) return 4;
+    // Scale 0-255 spectrum value to a 4-72 px bar with a slight floor so
+    // the wave is always visible when audio is reaching the analyzer.
+    const v = spectrum[i] || 0;
+    return Math.max(4, Math.round(4 + (v / 255) * 68));
   });
 
   // Progress bar caps visually at the 90-second "ideal" mark.
@@ -306,16 +326,16 @@ function ReadingScriptPanel() {
 
       {open && (
         <div className="px-4 pb-4 animate-fadeIn">
-          <div className="bg-landing-bg/60 border border-bougainvillea/10 rounded-xl p-4 sm:p-5 text-white/90 text-base leading-relaxed font-display italic">
+          <div className="bg-landing-bg/60 border border-bougainvillea/10 rounded-xl p-5 sm:p-6 text-white text-lg sm:text-xl leading-loose font-body font-medium tracking-wide">
             {READING_SCRIPT.split('\n\n').map((para, i) => (
-              <p key={i} className="mb-3 last:mb-0">{para}</p>
+              <p key={i} className="mb-4 last:mb-0">{para}</p>
             ))}
           </div>
           <p className="text-xs text-white/50 mt-3 flex items-start gap-1">
             <span className="material-symbols-outlined text-base text-bougainvillea">
               tips_and_updates
             </span>
-            Tip: lee con voz natural, sin actuar. La IA solo necesita tu timbre real. Toma pausas si necesitas.
+            Tip: lee con tu voz natural, sin actuar. Solo necesitamos escuchar tu timbre real. Toma pausas si lo necesitas.
           </p>
         </div>
       )}
