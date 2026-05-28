@@ -2,57 +2,24 @@
 //
 // Polls the current state of a Clone Mi Voz song job.
 //
-// Why this function exists
-// ------------------------
-// generate-cloned-voice-song fires a Kie.ai upload-cover job and immediately
-// returns. The job typically takes 30-90 seconds, sometimes up to 4 minutes.
-// Suno can also send Kie a callback when it's done, but our test harness
-// found callbacks unreliable (the configured KIE_CALLBACK_URL is a
-// webhook.site sink that we never read), so we poll instead — same pattern
-// the standalone web-app prototype validated.
+// Handles TWO Kie polling paths now:
 //
-// The frontend calls this endpoint every ~5 seconds while the song is in
-// the 'generating_song' status. Each call:
-//   1. Looks up the cloned_voice_songs row.
-//   2. If status is already terminal ('success' or 'failed'), returns the
-//      row as-is — no Kie call (saves quota).
-//   3. Otherwise hits Kie /api/v1/generate/record-info?taskId=<kie_task_id>.
-//   4. Maps Kie's status to ours and, if it's now terminal, persists the
-//      audio URLs (or error) to the row.
-//   5. Returns the current state.
+//   1. PREVIEW path  — row.status = 'generating_preview', poll
+//                      preview_kie_task_id. On SUCCESS, copy the audio
+//                      to permanent storage, set preview_audio_url,
+//                      flip status to 'preview_ready'.
 //
-// Request
-// -------
-// GET  /functions/v1/cloned-voice-status?cloned_voice_song_id=<uuid>
-//   - or -
-// POST /functions/v1/cloned-voice-status
-//   Body: { cloned_voice_song_id: '<uuid>' }
+//   2. FULL SONG path — row.status = 'generating_song', poll
+//                       kie_task_id. On SUCCESS, copy both variants
+//                       to permanent storage, set permanent_audio_urls,
+//                       flip status to 'success'.
 //
-// Both are accepted because some browsers / CDNs handle GET caching badly
-// for this kind of polling endpoint. POST is the safer default.
+// Terminal states ('success', 'failed', 'preview_ready', 'awaiting_payment',
+// 'paid', 'lyrics_ready') return immediately from DB — no Kie call.
 //
-// Response (200)
-// --------------
-//   {
-//     cloned_voice_song_id,
-//     status: 'pending' | 'generating_lyrics' | 'generating_song' | 'success' | 'failed',
-//     audio_urls?: string[],   // present when status === 'success'
-//     title?: string,
-//     lyrics?: string,
-//     error_message?: string,  // present when status === 'failed'
-//   }
+// The frontend calls this every ~5s while a generation is in flight.
 //
-// Response (4xx/5xx)
-// ------------------
-//   { error: '<code>', message: '<human>' }
-//
-// Auth
-// ----
-// verify_jwt = true (see supabase/config.toml). Frontend posts with the
-// Supabase anon JWT — identical pattern to upload-customer-voice /
-// generate-cloned-voice-lyrics / generate-cloned-voice-song.
-//
-// Deploy with: supabase functions deploy cloned-voice-status --project-ref yzbvajungshqcpusfiia
+// Auth: verify_jwt = true (same as the other clonamivoz functions).
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -67,77 +34,13 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 const KIE_BASE_URL = Deno.env.get('KIE_BASE_URL') || 'https://api.kie.ai';
 
-const TERMINAL_STATUSES = new Set(['success', 'failed']);
-
-// Storage bucket where we permanently keep the finished songs.
-// Created by 20260527_clonamivoz_permanent_audio_storage.sql.
-// Public bucket — anyone with the URL can play it; we treat the URL as
-// semi-secret (it has the unguessable cloned_voice_song_id in the path).
 const PERMANENT_BUCKET = 'cloned-voice-songs';
 
-/**
- * Download a single Suno MP3 and upload it to our permanent Storage bucket.
- * Returns the public URL we can serve forever, or null if the copy failed.
- *
- * We swallow errors and return null so a single bad URL doesn't break the
- * whole status response — the caller falls back to the original Suno URL.
- */
-async function copyToPermanentStorage(
-  supabase: ReturnType<typeof createClient>,
-  sunoUrl: string,
-  clonedVoiceSongId: string,
-  variantIndex: number
-): Promise<string | null> {
-  try {
-    const resp = await fetch(sunoUrl);
-    if (!resp.ok) {
-      console.warn(
-        `[cloned-voice-status] Suno fetch returned ${resp.status} for variant ${variantIndex} of ${clonedVoiceSongId}`
-      );
-      return null;
-    }
-    const bytes = new Uint8Array(await resp.arrayBuffer());
-    if (bytes.length === 0) {
-      console.warn(
-        `[cloned-voice-status] Suno returned empty body for variant ${variantIndex} of ${clonedVoiceSongId}`
-      );
-      return null;
-    }
+// States where the frontend keeps polling. Anything NOT in this set is
+// either terminal-ish (preview_ready, awaiting_payment, paid, success,
+// failed) or doesn't need a Kie call.
+const ACTIVE_KIE_POLL_STATUSES = new Set(['generating_preview', 'generating_song']);
 
-    // Path layout: <song-uuid>/v<N>.mp3 — easy to grep in the dashboard,
-    // unguessable thanks to the uuid component.
-    const path = `${clonedVoiceSongId}/v${variantIndex}.mp3`;
-
-    const uploadRes = await supabase.storage
-      .from(PERMANENT_BUCKET)
-      .upload(path, bytes, {
-        contentType: 'audio/mpeg',
-        upsert: true, // re-runs of polling are safe
-      });
-
-    if (uploadRes.error) {
-      console.error(
-        `[cloned-voice-status] Storage upload failed for ${path}:`,
-        uploadRes.error
-      );
-      return null;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from(PERMANENT_BUCKET)
-      .getPublicUrl(path);
-
-    return publicData?.publicUrl || null;
-  } catch (e) {
-    console.error(
-      `[cloned-voice-status] Unexpected error copying variant ${variantIndex} of ${clonedVoiceSongId}:`,
-      e
-    );
-    return null;
-  }
-}
-
-// Kie response shape (a subset — we only read what we use).
 type SunoSong = {
   id?: string;
   audioId?: string;
@@ -176,25 +79,120 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-// Map Kie's status enum to our cloned_voice_songs.status enum.
-// Anything that isn't terminal stays as 'generating_song' so the frontend
-// keeps polling.
-function mapKieStatus(kieStatus: string | undefined): {
-  ours: 'generating_song' | 'success' | 'failed';
-  isTerminal: boolean;
-} {
+function mapKieTerminal(kieStatus: string | undefined): 'success' | 'failed' | 'pending' {
   switch (kieStatus) {
     case 'SUCCESS':
-      return { ours: 'success', isTerminal: true };
+      return 'success';
     case 'CREATE_TASK_FAILED':
     case 'GENERATE_AUDIO_FAILED':
     case 'CALLBACK_EXCEPTION':
     case 'SENSITIVE_WORD_ERROR':
-      return { ours: 'failed', isTerminal: true };
+      return 'failed';
     default:
-      // PENDING, FIRST_SUCCESS, TEXT_SUCCESS, or unknown — still cooking.
-      return { ours: 'generating_song', isTerminal: false };
+      return 'pending';
   }
+}
+
+/**
+ * Download a single Suno MP3 and upload it to our permanent Storage bucket.
+ * Returns the public URL we can serve forever, or null if the copy failed.
+ */
+async function copyToPermanentStorage(
+  supabase: ReturnType<typeof createClient>,
+  sunoUrl: string,
+  clonedVoiceSongId: string,
+  variantLabel: string
+): Promise<string | null> {
+  try {
+    const resp = await fetch(sunoUrl);
+    if (!resp.ok) {
+      console.warn(
+        `[cloned-voice-status] Suno fetch returned ${resp.status} for ${variantLabel} of ${clonedVoiceSongId}`
+      );
+      return null;
+    }
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.length === 0) {
+      console.warn(
+        `[cloned-voice-status] Suno returned empty body for ${variantLabel} of ${clonedVoiceSongId}`
+      );
+      return null;
+    }
+
+    const path = `${clonedVoiceSongId}/${variantLabel}.mp3`;
+
+    const uploadRes = await supabase.storage
+      .from(PERMANENT_BUCKET)
+      .upload(path, bytes, { contentType: 'audio/mpeg', upsert: true });
+
+    if (uploadRes.error) {
+      console.error(
+        `[cloned-voice-status] Storage upload failed for ${path}:`,
+        uploadRes.error
+      );
+      return null;
+    }
+
+    const { data: publicData } = supabase.storage
+      .from(PERMANENT_BUCKET)
+      .getPublicUrl(path);
+    return publicData?.publicUrl || null;
+  } catch (e) {
+    console.error(
+      `[cloned-voice-status] Unexpected error copying ${variantLabel} of ${clonedVoiceSongId}:`,
+      e
+    );
+    return null;
+  }
+}
+
+/**
+ * Hit Kie's record-info for a taskId. Returns null on network failure
+ * so the caller can return the last-known DB state instead of crashing.
+ */
+async function pollKieTask(taskId: string): Promise<RecordInfoResponse | null> {
+  try {
+    const resp = await fetch(
+      `${KIE_BASE_URL}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${KIE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return await resp.json();
+  } catch (e) {
+    console.error('[cloned-voice-status] Kie fetch failed:', e);
+    return null;
+  }
+}
+
+/**
+ * The standard response shape every code path returns. Includes both
+ * preview info and full-song info so the frontend has everything it
+ * needs in one round-trip.
+ */
+function buildResponse(row: any, overrides: Record<string, unknown> = {}) {
+  // Prefer permanent URLs for the full song; fall back to Suno URLs.
+  const audioUrls =
+    (row.permanent_audio_urls && row.permanent_audio_urls.length > 0)
+      ? row.permanent_audio_urls
+      : (row.suno_audio_urls || []);
+  return {
+    cloned_voice_song_id: row.id,
+    status: row.status,
+    title: row.title,
+    lyrics: row.lyrics,
+    preview_audio_url: row.preview_audio_url || null,
+    audio_urls: audioUrls,
+    paid: !!row.paid,
+    paid_at: row.paid_at || null,
+    error_message: row.error_message || null,
+    completed_at: row.completed_at || null,
+    ...overrides,
+  };
 }
 
 serve(async (req) => {
@@ -210,9 +208,8 @@ serve(async (req) => {
     );
   }
 
-  // ---------------- parse cloned_voice_song_id from GET or POST ----------------
+  // Parse cloned_voice_song_id from GET or POST.
   let clonedVoiceSongId: string | null = null;
-
   if (req.method === 'GET') {
     const url = new URL(req.url);
     clonedVoiceSongId = url.searchParams.get('cloned_voice_song_id');
@@ -221,7 +218,7 @@ serve(async (req) => {
       const body = await req.json();
       clonedVoiceSongId =
         typeof body?.cloned_voice_song_id === 'string' ? body.cloned_voice_song_id : null;
-    } catch (_e) {
+    } catch {
       return jsonResponse(
         { error: 'invalid_body', message: 'POST body must be JSON.' },
         400
@@ -248,21 +245,18 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  // ---------------- load the order row ----------------
+  // Load the row with everything we might need.
   const { data: row, error: loadError } = await supabase
     .from('cloned_voice_songs')
     .select(
-      'id, status, kie_task_id, title, lyrics, suno_audio_urls, permanent_audio_urls, error_message, completed_at'
+      'id, status, kie_task_id, preview_kie_task_id, title, lyrics, suno_audio_urls, permanent_audio_urls, preview_audio_url, paid, paid_at, error_message, completed_at'
     )
     .eq('id', clonedVoiceSongId)
     .maybeSingle();
 
   if (loadError) {
     console.error('[cloned-voice-status] DB lookup failed:', loadError);
-    return jsonResponse(
-      { error: 'db_error', message: loadError.message },
-      500
-    );
+    return jsonResponse({ error: 'db_error', message: loadError.message }, 500);
   }
 
   if (!row) {
@@ -275,62 +269,28 @@ serve(async (req) => {
     );
   }
 
-  // ---------------- already terminal: return as-is, no Kie call ----------------
-  if (TERMINAL_STATUSES.has(row.status)) {
-    // Prefer permanent URLs (never expire); fall back to Suno's if the
-    // earlier copy attempt didn't store them.
-    const audioUrls =
-      (row.permanent_audio_urls && row.permanent_audio_urls.length > 0)
-        ? row.permanent_audio_urls
-        : (row.suno_audio_urls || []);
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: row.status,
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: audioUrls,
-      error_message: row.error_message,
-      completed_at: row.completed_at,
-    });
+  // If this row isn't in an active polling state, return as-is. Covers
+  // pending, generating_lyrics, lyrics_ready, preview_ready,
+  // awaiting_payment, paid, success, failed.
+  if (!ACTIVE_KIE_POLL_STATUSES.has(row.status)) {
+    return jsonResponse(buildResponse(row));
   }
 
-  // ---------------- no Kie task id yet: still in lyrics/pre-generate phase ----
-  if (!row.kie_task_id) {
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: row.status,
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: [],
-      error_message: row.error_message,
-    });
+  // ====== Active polling: figure out which Kie task to query ======
+  const isPreviewPhase = row.status === 'generating_preview';
+  const taskId = isPreviewPhase ? row.preview_kie_task_id : row.kie_task_id;
+
+  // Active state but no taskId yet — the request to Kie hasn't been
+  // recorded yet. Return current state; frontend will poll again.
+  if (!taskId) {
+    return jsonResponse(buildResponse(row));
   }
 
-  // ---------------- poll Kie ----------------
-  let kieResponse: RecordInfoResponse;
-  try {
-    const kieResp = await fetch(
-      `${KIE_BASE_URL}/api/v1/generate/record-info?taskId=${encodeURIComponent(row.kie_task_id)}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${KIE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    kieResponse = await kieResp.json();
-  } catch (e) {
-    console.error('[cloned-voice-status] Kie fetch failed:', e);
-    // Non-fatal — return the last-known DB state so the frontend keeps polling.
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: row.status,
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: [],
-      poll_error: 'kie_fetch_failed',
-    });
+  const kieResponse = await pollKieTask(taskId);
+  if (!kieResponse) {
+    // Network failure → return DB state with a soft error flag so the
+    // frontend retries.
+    return jsonResponse(buildResponse(row, { poll_error: 'kie_fetch_failed' }));
   }
 
   if (kieResponse.code !== 200) {
@@ -339,138 +299,143 @@ serve(async (req) => {
       kieResponse.code,
       kieResponse.msg
     );
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: row.status,
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: [],
-      poll_error: `kie_code_${kieResponse.code}`,
-      poll_message: kieResponse.msg,
-    });
+    return jsonResponse(
+      buildResponse(row, {
+        poll_error: `kie_code_${kieResponse.code}`,
+        poll_message: kieResponse.msg,
+      })
+    );
   }
 
   const kieData = kieResponse.data || {};
-  const mapped = mapKieStatus(kieData.status);
+  const terminal = mapKieTerminal(kieData.status);
 
-  // Still cooking — return current state without persisting.
-  if (!mapped.isTerminal) {
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: 'generating_song',
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: [],
-      kie_status: kieData.status,
-    });
+  if (terminal === 'pending') {
+    // Still cooking. Return the current row plus a hint about which
+    // phase we're polling so the frontend can label its spinner.
+    return jsonResponse(
+      buildResponse(row, { kie_status: kieData.status, phase: isPreviewPhase ? 'preview' : 'full_song' })
+    );
   }
 
-  // ---------------- terminal: persist + return ----------------
-  if (mapped.ours === 'success') {
-    const songs: SunoSong[] = kieData.response?.sunoData || kieData.sunoData || [];
-    const audioUrls = songs
-      .map((s) => s.audioUrl || s.streamAudioUrl)
-      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+  if (terminal === 'failed') {
+    const errorMessage =
+      kieData.errorMessage ||
+      `Kie returned status ${kieData.status} (code ${kieData.errorCode ?? 'n/a'}).`;
 
-    if (audioUrls.length === 0) {
-      // Kie says SUCCESS but no URLs — treat as failed so the user gets a
-      // clean error rather than a stuck spinner.
-      const { error: updateError } = await supabase
-        .from('cloned_voice_songs')
-        .update({
-          status: 'failed',
-          error_message: 'Kie returned SUCCESS but no audio URLs were available.',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-
-      if (updateError) {
-        console.error('[cloned-voice-status] Failed to persist empty-success state:', updateError);
-      }
-
-      return jsonResponse({
-        cloned_voice_song_id: row.id,
+    const { error: updateError } = await supabase
+      .from('cloned_voice_songs')
+      .update({
         status: 'failed',
-        title: row.title,
-        lyrics: row.lyrics,
-        audio_urls: [],
-        error_message: 'Kie returned SUCCESS but no audio URLs were available.',
-      });
+        error_message: errorMessage,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+
+    if (updateError) {
+      console.error('[cloned-voice-status] Failed to persist failed state:', updateError);
     }
 
-    // ------- Copy each Suno MP3 into our permanent bucket -------
-    // We do this BEFORE marking the row 'success' so the customer's first
-    // SUCCESS poll already returns our permanent URLs. Each variant is
-    // copied independently; partial success is fine — the response falls
-    // back to Suno URLs for any variant we couldn't copy.
-    const permanentUrls: string[] = [];
-    for (let i = 0; i < audioUrls.length; i++) {
-      const permUrl = await copyToPermanentStorage(supabase, audioUrls[i], row.id, i + 1);
-      if (permUrl) permanentUrls.push(permUrl);
-    }
+    return jsonResponse(
+      buildResponse(row, {
+        status: 'failed',
+        error_message: errorMessage,
+        kie_status: kieData.status,
+        kie_error_code: kieData.errorCode,
+      })
+    );
+  }
 
-    if (permanentUrls.length < audioUrls.length) {
-      console.warn(
-        `[cloned-voice-status] Only copied ${permanentUrls.length}/${audioUrls.length} variants for ${row.id} into permanent storage`
-      );
-    }
+  // terminal === 'success' — extract Suno URLs and persist
+  const songs: SunoSong[] = kieData.response?.sunoData || kieData.sunoData || [];
+  const sunoUrls = songs
+    .map((s) => s.audioUrl || s.streamAudioUrl)
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
+
+  if (sunoUrls.length === 0) {
+    // Kie says SUCCESS but no URLs — fail cleanly.
+    const failMsg = isPreviewPhase
+      ? 'El sistema devolvió SUCCESS pero sin audio para la prueba.'
+      : 'El sistema devolvió SUCCESS pero sin URLs de audio.';
+    await supabase
+      .from('cloned_voice_songs')
+      .update({
+        status: 'failed',
+        error_message: failMsg,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+    return jsonResponse(
+      buildResponse(row, {
+        status: 'failed',
+        error_message: failMsg,
+      })
+    );
+  }
+
+  // ====== PREVIEW success path ======
+  if (isPreviewPhase) {
+    // Preview only needs 1 variant. Copy the first one to permanent storage.
+    const permUrl = await copyToPermanentStorage(supabase, sunoUrls[0], row.id, 'preview');
+    const previewUrl = permUrl || sunoUrls[0];
 
     const completedAtIso = new Date().toISOString();
     const { error: updateError } = await supabase
       .from('cloned_voice_songs')
       .update({
-        status: 'success',
-        suno_audio_urls: audioUrls,
-        permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
-        completed_at: completedAtIso,
+        status: 'preview_ready',
+        preview_audio_url: previewUrl,
+        preview_completed_at: completedAtIso,
       })
       .eq('id', row.id);
-
     if (updateError) {
-      console.error('[cloned-voice-status] Failed to persist success state:', updateError);
-      // Still return success to the frontend — the URLs are in Kie's response.
+      console.error('[cloned-voice-status] Failed to persist preview_ready state:', updateError);
     }
 
-    // Prefer permanent URLs in the response. Fall back to Suno URLs if we
-    // couldn't copy any (customer still gets a playable song, just temporarily).
-    const responseAudioUrls = permanentUrls.length > 0 ? permanentUrls : audioUrls;
-
-    return jsonResponse({
-      cloned_voice_song_id: row.id,
-      status: 'success',
-      title: row.title,
-      lyrics: row.lyrics,
-      audio_urls: responseAudioUrls,
-      completed_at: completedAtIso,
-    });
+    return jsonResponse(
+      buildResponse(row, {
+        status: 'preview_ready',
+        preview_audio_url: previewUrl,
+        preview_completed_at: completedAtIso,
+        phase: 'preview',
+      })
+    );
   }
 
-  // mapped.ours === 'failed'
-  const errorMessage =
-    kieData.errorMessage ||
-    `Kie returned status ${kieData.status} (code ${kieData.errorCode ?? 'n/a'}).`;
+  // ====== FULL SONG success path ======
+  // Copy each variant to permanent storage. Partial success OK.
+  const permanentUrls: string[] = [];
+  for (let i = 0; i < sunoUrls.length; i++) {
+    const permUrl = await copyToPermanentStorage(supabase, sunoUrls[i], row.id, `v${i + 1}`);
+    if (permUrl) permanentUrls.push(permUrl);
+  }
+  if (permanentUrls.length < sunoUrls.length) {
+    console.warn(
+      `[cloned-voice-status] Only copied ${permanentUrls.length}/${sunoUrls.length} variants for ${row.id} into permanent storage`
+    );
+  }
 
+  const completedAtIso = new Date().toISOString();
   const { error: updateError } = await supabase
     .from('cloned_voice_songs')
     .update({
-      status: 'failed',
-      error_message: errorMessage,
-      completed_at: new Date().toISOString(),
+      status: 'success',
+      suno_audio_urls: sunoUrls,
+      permanent_audio_urls: permanentUrls.length > 0 ? permanentUrls : null,
+      completed_at: completedAtIso,
     })
     .eq('id', row.id);
-
   if (updateError) {
-    console.error('[cloned-voice-status] Failed to persist failed state:', updateError);
+    console.error('[cloned-voice-status] Failed to persist success state:', updateError);
   }
 
-  return jsonResponse({
-    cloned_voice_song_id: row.id,
-    status: 'failed',
-    title: row.title,
-    lyrics: row.lyrics,
-    audio_urls: [],
-    error_message: errorMessage,
-    kie_status: kieData.status,
-    kie_error_code: kieData.errorCode,
-  });
+  const responseAudioUrls = permanentUrls.length > 0 ? permanentUrls : sunoUrls;
+  return jsonResponse(
+    buildResponse(row, {
+      status: 'success',
+      audio_urls: responseAudioUrls,
+      completed_at: completedAtIso,
+      phase: 'full_song',
+    })
+  );
 });
