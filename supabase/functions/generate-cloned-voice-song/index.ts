@@ -63,23 +63,39 @@ const SIGNED_URL_TTL_SECONDS = 3600;
 // env var; we intentionally pin V5_5 here for this tier.
 const SUNO_MODEL = 'V5_5';
 
-// Voice-fidelity tuning params — validated in the standalone test app
-// (suno-voice-clone-test/LAUNCH-PLANNING/01-VALIDATION-FINDINGS-SUNO.md).
-// Lower styleWeight + higher audioWeight = more of customer's voice in output.
-const STYLE_WEIGHT = 0.35;
-const AUDIO_WEIGHT = 0.85;
-const WEIRDNESS_CONSTRAINT = 0.2;
+// Voice-fidelity tuning — TIGHTENED 2026-05-27 after a production
+// complaint that the cloned voice "didn't sound like the user".
+// Original tuning (styleWeight 0.35, audioWeight 0.85, weirdness 0.2)
+// was validated on pre-recorded MP3 files in the test harness, but
+// production input (browser-captured WebM/Opus) is a weaker signal,
+// so Suno needs harder voice anchoring to lock onto the speaker.
+//
+// Direction of each knob:
+//   styleWeight ↓     → less genre influence, more voice
+//   audioWeight ↑     → more anchoring to the reference recording
+//   weirdness ↓       → less creative liberty, more faithful clone
+const STYLE_WEIGHT = 0.15;
+const AUDIO_WEIGHT = 0.95;
+const WEIRDNESS_CONSTRAINT = 0.10;
 const NEGATIVE_TAGS = 'autotune, pitch correction, vocoder, robotic vocals, processed vocals';
 
-// Per-launch-genre style strings handed to Suno's `style` param.
-// Mirrors LAUNCH-PLANNING/00-README.md (locked launch palette).
+// Per-launch-genre style strings — TRIMMED to instrumentation only.
+//
+// Old strings included vocal-style directives ("voz natural", "vibrato
+// dramático", "fuerte emocional", "voz fuerte y orgullosa", etc) which
+// FIGHT the cloned voice — Suno tries to overlay that vocal style on
+// top of the customer's actual delivery, drowning their character out.
+//
+// New strings describe ONLY instruments + arrangement so the customer's
+// voice can come through unfiltered. The cloned voice itself provides
+// the vocal style.
 const GENRE_STYLES: Record<string, string> = {
-  romantico: 'romantic Latin ballad, soft acoustic guitar, gentle warmth, mid-tempo emotional, raw natural vocals, clear voice',
-  balada: 'balada romántica clásica, piano y cuerdas, sentimental, voz natural emotiva, mid-tempo dramático',
-  banda: 'banda sinaloense, tambora, tuba, trompetas, festivo norteño, alegre y poderoso, voz natural',
-  corrido: 'corrido mexicano tradicional, acordeón y bajo sexto, narrativo, voz fuerte y orgullosa, ritmo norteño',
-  ranchera: 'ranchera tradicional mexicana, mariachi, fuerte emocional, vibrato dramático, trompetas y violines',
-  mariachi: 'mariachi tradicional mexicano, trompetas, violines, guitarrón, vihuela, romántico cálido',
+  romantico: 'romantic Latin ballad: acoustic guitar fingerpicking, soft strings, gentle mid-tempo, sparse arrangement',
+  balada: 'balada latina clásica: piano grande, cuerdas orquestales, percusión cepillada, arreglo elegante',
+  banda: 'banda sinaloense: tambora, tuba, trompetas, trombones, clarinetes, ritmo norteño festivo',
+  corrido: 'corrido norteño: acordeón diatónico, bajo sexto, tololoche o bajo eléctrico, ritmo polka tradicional',
+  ranchera: 'mariachi instrumental: trompetas, violines, vihuela, guitarrón, ritmo tradicional mexicano',
+  mariachi: 'mariachi tradicional: trompetas, violines, guitarrón, vihuela, arreglo clásico mexicano',
 };
 
 interface RequestBody {

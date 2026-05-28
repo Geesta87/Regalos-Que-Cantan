@@ -78,30 +78,34 @@ const KIE_CALLBACK_URL =
 const STORAGE_BUCKET = 'customer-voice';
 const SIGNED_URL_TTL_SECONDS = 3600;
 
-// Voice-fidelity tuning — SAME as the full song generator. The preview
-// must sound like the full song will, so tuning has to match.
+// Voice-fidelity tuning — SAME as the full song generator. Preview must
+// sound like the full song will, so tuning has to match. TIGHTENED
+// 2026-05-27 after the "voice didn't sound like the user" complaint.
+// See generate-cloned-voice-song/index.ts for the rationale.
 const SUNO_MODEL = 'V5_5';
-const STYLE_WEIGHT = 0.35;
-const AUDIO_WEIGHT = 0.85;
-const WEIRDNESS_CONSTRAINT = 0.2;
+const STYLE_WEIGHT = 0.15;
+const AUDIO_WEIGHT = 0.95;
+const WEIRDNESS_CONSTRAINT = 0.10;
 const NEGATIVE_TAGS =
   'autotune, pitch correction, vocoder, robotic vocals, processed vocals';
 
-// Genre style strings — must match generate-cloned-voice-song so the
-// preview accurately represents what the full song will sound like.
+// Genre style strings — TRIMMED to instrumentation only. Must match
+// generate-cloned-voice-song so the preview accurately represents what
+// the full song will sound like. See song function for the rationale
+// (vocal-style directives were drowning out the cloned voice).
 const GENRE_STYLES: Record<string, string> = {
   romantico:
-    'romantic Latin ballad, soft acoustic guitar, gentle warmth, mid-tempo emotional, raw natural vocals, clear voice',
+    'romantic Latin ballad: acoustic guitar fingerpicking, soft strings, gentle mid-tempo, sparse arrangement',
   balada:
-    'balada romántica clásica, piano y cuerdas, sentimental, voz natural emotiva, mid-tempo dramático',
+    'balada latina clásica: piano grande, cuerdas orquestales, percusión cepillada, arreglo elegante',
   banda:
-    'banda sinaloense, tambora, tuba, trompetas, festivo norteño, alegre y poderoso, voz natural',
+    'banda sinaloense: tambora, tuba, trompetas, trombones, clarinetes, ritmo norteño festivo',
   corrido:
-    'corrido mexicano tradicional, acordeón y bajo sexto, narrativo, voz fuerte y orgullosa, ritmo norteño',
+    'corrido norteño: acordeón diatónico, bajo sexto, tololoche o bajo eléctrico, ritmo polka tradicional',
   ranchera:
-    'ranchera tradicional mexicana, mariachi, fuerte emocional, vibrato dramático, trompetas y violines',
+    'mariachi instrumental: trompetas, violines, vihuela, guitarrón, ritmo tradicional mexicano',
   mariachi:
-    'mariachi tradicional mexicano, trompetas, violines, guitarrón, vihuela, romántico cálido',
+    'mariachi tradicional: trompetas, violines, guitarrón, vihuela, arreglo clásico mexicano',
 };
 
 /**

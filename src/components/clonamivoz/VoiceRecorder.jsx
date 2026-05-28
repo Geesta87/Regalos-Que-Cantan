@@ -302,8 +302,25 @@ export default function VoiceRecorder({ onRecordingComplete, maxDurationMs = 120
     setPendingDurationMs(0);
     setVerdict(null);
     try {
+      // CRITICAL for voice cloning: turn OFF browser audio processing.
+      //
+      // echoCancellation / noiseSuppression / autoGainControl are great for
+      // speech intelligibility (Zoom calls) but they aggressively flatten
+      // the spectral fingerprint that makes a voice distinctive. With them
+      // ON, Suno receives a "generic-sounding" signal and can't lock onto
+      // the speaker's actual timbre. Production complaint 2026-05-27:
+      // "voice didn't sound like the user" — these filters were the cause.
+      //
+      // Trade-off: customers in noisy environments will get noise in their
+      // recording. The post-record verdict screen catches truly bad noise
+      // via SNR check and forces a re-record. Light room noise is fine and
+      // Suno handles it.
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
       streamRef.current = stream;
 
