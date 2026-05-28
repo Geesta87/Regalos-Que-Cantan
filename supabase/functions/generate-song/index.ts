@@ -84,12 +84,12 @@ const genreDNA: Record<string, GenreData> = {
       },
       alterados: {
         name: 'Corridos Alterados',
-        style: 'corridos alterados, movimiento alterado, norteño-banda tubeña style, late-2000s early-2010s Sinaloa-Los Angeles narcocorrido, Twiins-era accordion-and-tuba alterado',
-        tempo: '90-120 BPM, 2/4 polka norteña-banda two-step, quarter-note tuba oom-pah pulse, propulsive NOT breakneck',
-        instruments: 'diatonic button accordion as MELODIC LEAD with rapid ornamental polka runs, bajo sexto twelve-string percussive downstroke rhythm, sousaphone tuba bass driving quarter-note polka oom-pah (replacing electric bass), pedal drum kit with tarola snare backbeat',
-        vibe: 'menacing swagger, late-2000s narcocorrido bravado, tactical military aesthetic, first-person street narrative, loud norteño-banda production, major-key I-IV-V brightness with menacing lyrics',
-        negative: 'full banda sinaloense 16-piece brass orchestra, no-accordion banda format, trumpet section lead, trombone section, clarinet section, charcheta, tambora-led banda kit, sierreño 12-string requinto lead, acoustic intimacy, trap beats, 808 bass, half-time feel, modern 2020s corridos tumbados, modern corrido bélico minor key, slow ballads, romantic softness, breakneck quebradita tempo, electronic production, minor-key brooding',
-        vocalCharacter: 'confident male projection, swaggering narrative delivery, gritos and ad-libs, bold defiant tone'
+        style: 'corridos alterados, movimiento alterado, norteño-sierreño instrumentation, Sinaloa narcocorrido sound, late 2000s early 2010s era, military jargon aesthetic, El Komander style, Los Buchones de Culiacan style',
+        tempo: 'polka-like two-step feel 115-135 BPM, propulsive NOT breakneck tempo',
+        instruments: 'diatonic button accordion as melodic lead with rapid polka ornamental runs, 12-string requinto guitar percussive downstroke rhythm, sousaphone tuba driving quarter-note oom-pah bass pulse, tarola snare backbeat, blasting brass section with tight trumpet and trombone unison riffs, breakneck brass fills between verses',
+        vibe: 'loud saturated brass and percussion production, bright functional I-IV-V major key harmony with menacing aggressive lyrics, hyper-violent adrenaline-charged storytelling',
+        negative: 'sierreño-only acoustic intimacy, trap beats, 808 bass, half-time feel, modern 2020s corridos tumbados, modern corrido bélico minor key, slow ballads, romantic softness, electronic production, minor-key brooding',
+        vocalCharacter: 'swaggering confident delivery with gritos and ad-libs, first-person narrative storytelling, aggressive bravado tone'
       },
       romantico: {
         name: 'Corrido Romántico',
