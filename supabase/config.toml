@@ -218,3 +218,16 @@ verify_jwt = true
 # matching production retry order. Frontend posts with the Supabase anon
 # JWT — same pattern as upload-customer-voice / recover-song.
 verify_jwt = true
+
+[functions.generate-cloned-voice-song]
+# Suno (via Kie.ai) song generation for the Clone Mi Voz tier. Calls the
+# /api/v1/generate/upload-cover endpoint with the customer's voice URL +
+# Claude-generated lyrics + a per-genre style string. Voice-fidelity tuning
+# (styleWeight=0.35, audioWeight=0.85, weirdnessConstraint=0.2, negativeTags
+# against autotune/vocoder) is the result of the suno-voice-clone-test
+# harness's 6-genre validation pass — DO NOT loosen those values without
+# re-running the test. Frontend posts with the Supabase anon JWT after
+# upload-customer-voice + generate-cloned-voice-lyrics have completed.
+# Returns { cloned_voice_song_id, kie_task_id, status } — cloned-voice-status
+# is the polling endpoint that surfaces the finished audio URLs.
+verify_jwt = true
