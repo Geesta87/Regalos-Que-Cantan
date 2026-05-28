@@ -84,12 +84,12 @@ const genreDNA: Record<string, GenreData> = {
       },
       alterados: {
         name: 'Corridos Alterados',
-        style: 'corridos alterados, movimiento alterado, late-2000s early-2010s Sinaloa-Los Angeles narcocorrido, Twiins Music Group era banda corrido, El Komander Buknas-style swaggering narcocorrido, banda sinaloense-led alterado',
-        tempo: '90-120 BPM, 2/4 polka norteña-banda two-step, emphatic downbeats, quarter-note tuba pulse, propulsive but NOT breakneck',
-        instruments: 'full banda sinaloense brass with tight trumpet trombone clarinet unison riffs, tambora bass drum, tarola Mexican snare with rolls and fills, tuba bassline driving quarter-note polka pulse',
-        vibe: 'menacing swagger, late-2000s narcocorrido bravado, tactical military aesthetic, first-person street narrative, loud saturated banda production, major-key I-IV-V brightness contrasted with menacing lyrics',
-        negative: 'sierreño 12-string requinto lead, acoustic intimacy, trap beats, 808 bass, half-time feel, modern 2020s corridos tumbados, modern corrido bélico, slow ballads, romantic softness, rapid-fire trap flow, breakneck quebradita tempo, electronic production, accordion-led conjunto, minor-key brooding',
-        vocalCharacter: 'confident male projection, swaggering narrative delivery, gritos and ad-libs, bold defiant tone, NOT rapid-fire NOT melodic-flow'
+        style: 'corridos alterados, movimiento alterado, norteño-banda tubeña style, late-2000s early-2010s Sinaloa-Los Angeles narcocorrido, Twiins-era accordion-and-tuba alterado',
+        tempo: '90-120 BPM, 2/4 polka norteña-banda two-step, quarter-note tuba oom-pah pulse, propulsive NOT breakneck',
+        instruments: 'diatonic button accordion as MELODIC LEAD with rapid ornamental polka runs, bajo sexto twelve-string percussive downstroke rhythm, sousaphone tuba bass driving quarter-note polka oom-pah (replacing electric bass), pedal drum kit with tarola snare backbeat',
+        vibe: 'menacing swagger, late-2000s narcocorrido bravado, tactical military aesthetic, first-person street narrative, loud norteño-banda production, major-key I-IV-V brightness with menacing lyrics',
+        negative: 'full banda sinaloense 16-piece brass orchestra, no-accordion banda format, trumpet section lead, trombone section, clarinet section, charcheta, tambora-led banda kit, sierreño 12-string requinto lead, acoustic intimacy, trap beats, 808 bass, half-time feel, modern 2020s corridos tumbados, modern corrido bélico minor key, slow ballads, romantic softness, breakneck quebradita tempo, electronic production, minor-key brooding',
+        vocalCharacter: 'confident male projection, swaggering narrative delivery, gritos and ad-libs, bold defiant tone'
       },
       romantico: {
         name: 'Corrido Romántico',
