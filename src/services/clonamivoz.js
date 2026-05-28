@@ -167,10 +167,79 @@ export async function generateClonedVoiceSong(args) {
 }
 
 /**
+ * Generate a short voice-cloned PREVIEW (~30-60s). Same shape as
+ * generateClonedVoiceSong but uses a hardcoded preview lyric so the
+ * customer hears themselves singing before paying. ~$0.10 of Suno
+ * quota; the trust lift is worth it.
+ *
+ * Returns immediately with preview_kie_task_id; poll getClonedVoiceStatus
+ * for the finished preview URL (status flips to 'preview_ready').
+ *
+ * @param {object} args  Same fields as generateClonedVoiceSong, PLUS
+ *   optional clonedVoiceSongId for retry (re-uses an existing row).
+ */
+export async function generateClonedVoicePreview(args) {
+  const res = await fetch(`${FN_BASE}/generate-cloned-voice-preview`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      cloned_voice_song_id: args.clonedVoiceSongId || undefined,
+      voice_sample_id: args.voiceSampleId,
+      recipient_name: args.recipientName,
+      relationship: args.relationship,
+      occasion: args.occasion,
+      story: args.story,
+      genre_slug: args.genreSlug,
+      language: args.language || 'es',
+      title: args.title,
+      lyrics: args.lyrics,
+      emotional_modifiers: args.emotionalModifiers,
+      lyrics_model_used: args.lyricsModelUsed,
+      customer_email: args.customerEmail,
+      vocal_gender: args.vocalGender || undefined,
+    }),
+  });
+
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
+ * Create a Stripe checkout session for the $69 Clone Mi Voz tier.
+ * Returns a checkout URL the frontend should redirect to.
+ *
+ * @param {object} args
+ * @param {string} args.clonedVoiceSongId   UUID of the song in preview_ready state
+ * @param {string} args.email               Customer email (for Stripe receipt)
+ * @returns {Promise<{ok:boolean, checkout_url?:string, stripe_session_id?:string,
+ *                    cloned_voice_song_id?:string, error?:string, message?:string}>}
+ */
+export async function createClonamivozCheckout(args) {
+  const res = await fetch(`${FN_BASE}/create-clonamivoz-checkout`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      cloned_voice_song_id: args.clonedVoiceSongId,
+      email: args.email,
+    }),
+  });
+
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
  * Poll the cloned_voice_songs row + Kie for current status.
  *
  * @param {string} clonedVoiceSongId
  * @returns {Promise<{ok:boolean, status?:string, audio_urls?:string[],
+ *                    preview_audio_url?:string, paid?:boolean,
  *                    title?:string, lyrics?:string, error_message?:string,
  *                    error?:string, message?:string}>}
  */
