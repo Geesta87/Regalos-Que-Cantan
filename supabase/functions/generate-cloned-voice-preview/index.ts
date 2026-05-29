@@ -107,101 +107,103 @@ interface GenreStyle {
   negativeTags: string;
 }
 
+// Kie.ai 1000-char cap on `style` — see generate-cloned-voice-song for full
+// documentation. Keep each style string under ~950 chars (safety margin).
 const GENRES: Record<string, GenreStyle> = {
   romantico: {
     style:
-      'intimate romantic Latin ballad, acoustic-forward gift dedication song, tender love confession ballad en español, wedding-ceremony-quality intimate ballad, candlelit intimacy, vocal-forward arrangement. ' +
-      'Instruments: nylon-string acoustic guitar primary with fingerpicked arpeggios as the central rhythmic and melodic engine, soft grand piano filling out chord progressions with sustained voicings, gentle string quartet sustained pads warming the harmonic bed, minimal soft brushed percussion or no drums at all in verses, upright or fretless bass sustained whole notes, optional flute or oboe answering melodic phrases in instrumental breaks. ' +
-      'Tempo: 65-85 BPM intimate ballad pace, breathing room between phrases, heartbeat rhythm, never rushed. ' +
-      'Vibe: deep romantic confession, eternal love vow, intimate two-people-in-the-world feeling, proposal moment warmth, forever love, wedding first dance. ' +
-      'Mix: clean modern production, vocal-forward, warm acoustic presence, subtle stereo width, tasteful reverb tail.',
+      'intimate romantic Latin ballad, acoustic-forward dedication song, wedding-ceremony quality, candlelit intimacy, vocal-forward. ' +
+      'Instruments: nylon acoustic guitar primary with fingerpicked arpeggios, soft grand piano with sustained voicings, gentle string quartet pads, minimal or no percussion in verses, upright bass sustained whole notes, optional flute or oboe answering melody in breaks. ' +
+      'Tempo: 65-85 BPM intimate ballad pace, breathing room between phrases, heartbeat rhythm. ' +
+      'Vibe: deep romantic confession, eternal love vow, proposal moment warmth, wedding first dance, forever love. ' +
+      'Mix: clean modern production, vocal-forward, warm acoustic presence, subtle tasteful reverb.',
     negativeTags:
-      'party music, fast dance rhythms, aggressive sounds, electronic production, brass-heavy banda, harsh loud, trap beats, 808 bass, EDM, rock distortion, reggaeton, uptempo dance',
+      'party music, fast dance, aggressive sounds, electronic production, brass-heavy banda, trap beats, 808 bass, EDM, rock distortion, reggaeton, uptempo',
   },
 
   balada: {
     style:
-      'classic orchestral Latin ballad, grand romantic 1970s and 1980s ballad en español, classic dramatic crooner-style Latin ballad, classical orchestral love ballad with full string section, theatrical emotional Latin ballad with cinematic orchestral arrangement, telenovela-climax cinematic love song. ' +
-      'Instruments: full string orchestra with sweeping legato arrangements as the central emotional engine, grand piano as primary harmonic anchor with sustained chord voicings and arpeggiated fills, soft timpani accents punctuating dramatic transitions, harp arpeggios on choruses, french horn warmth in mid-frequencies, flute or oboe answering melodies, brushed drums on later choruses, orchestral crescendo builds toward final chorus with full string swell. ' +
-      'Tempo: 60-80 BPM very slow, dramatic pauses between phrases, rubato phrasing, grand theatrical pacing. ' +
-      'Vibe: grand romantic gestures, theatrical tearjerker emotion, telenovela climax moment, standing ovation performance, goosebumps crescendo, classic Latin drama, golden-age romantic ballad. ' +
-      'Mix: cinematic orchestral production, wide stereo strings, vocal centered and present, lush reverb appropriate to a concert hall.',
+      'classic orchestral Latin ballad, grand 1970s-80s ballad en español, dramatic crooner-style Latin ballad with cinematic orchestra, telenovela-climax cinematic love song. ' +
+      'Instruments: full string orchestra with sweeping legato as central emotional engine, grand piano with sustained voicings and arpeggiated fills, soft timpani at dramatic transitions, harp arpeggios on choruses, french horn warmth, flute or oboe answering melodies, brushed drums on later choruses, full orchestral crescendo into final chorus. ' +
+      'Tempo: 60-80 BPM very slow, dramatic pauses, rubato phrasing, grand theatrical pacing. ' +
+      'Vibe: grand romantic gestures, theatrical tearjerker, telenovela climax, standing ovation, golden-age Latin drama. ' +
+      'Mix: cinematic orchestral production, wide stereo strings, vocal centered, lush concert-hall reverb.',
     negativeTags:
-      'fast rhythms, electronic beats, rock guitars, trap, party music, uptempo dance, modern urban production, lo-fi, hip-hop, EDM, reggaeton, banda brass, mariachi instrumentation',
+      'fast rhythms, electronic beats, rock guitars, trap, party music, uptempo dance, modern urban, lo-fi, hip-hop, EDM, reggaeton, banda brass, mariachi instrumentation',
   },
 
   banda: {
     style:
-      'classic banda sinaloense, traditional Sinaloa brass band, authentic 15-piece banda ensemble, ceremonial Mexican banda, polished classic banda style, golden-age banda recording quality, banda for romantic dedication. ' +
-      'Instruments: full 15-plus piece brass section with trumpet section playing fanfare lines and harmonized melodies, trombone section providing midrange counter-lines, clarinet section playing high ornamental runs and harmonized passages, sousaphone or tuba driving the oom-pah quarter-note bass pulse, tarola snare backbeat with rolls into chorus transitions, tambora rhythmic foundation. ' +
-      'Tempo: 90-110 BPM traditional moderate tempo, 2/4 polka-derived feel, festive but not breakneck. ' +
-      'Vibe: authentic Sinaloa pride, timeless festive elegance, classic polished banda, Mexican brass band heritage, plaza fiesta moment, family celebration. ' +
-      'Mix: live-band brass presence, midrange-forward, audible tuba on every quarter note, tarola crisp on backbeat, vocal sitting cleanly above the brass.',
+      'classic banda sinaloense, traditional Sinaloa brass band, authentic 15-piece banda, ceremonial Mexican banda, golden-age recording quality, banda for romantic dedication. ' +
+      'Instruments: full 15+ piece brass — trumpet section playing fanfare lines and harmonized melodies, trombone section providing midrange counter-lines, clarinet section playing high ornamental runs, sousaphone or tuba driving oom-pah quarter-note bass pulse, tarola snare backbeat with rolls into choruses, tambora rhythmic foundation. ' +
+      'Tempo: 90-110 BPM moderate, 2/4 polka-derived feel, festive but not breakneck. ' +
+      'Vibe: authentic Sinaloa pride, timeless festive elegance, classic polish, Mexican brass band heritage, plaza fiesta. ' +
+      'Mix: live-band brass presence, midrange-forward, audible tuba on every quarter, tarola crisp, vocal cleanly above brass.',
     negativeTags:
-      'lo-fi production, trap beats, 808 bass, electronic sounds, rock guitars, modern urban beats, slow ballads only, breakneck quebradita pace, sad sierreño, corridos tumbados, EDM, synthesizer pads, autotune',
+      'lo-fi production, trap beats, 808 bass, electronic sounds, rock guitars, modern urban beats, slow ballads only, quebradita pace, sad sierreño, corridos tumbados, EDM, synth pads, autotune',
   },
 
   corrido: {
     style:
-      'authentic 1990s Sinaloa corrido, pure Sinaloense rural rancho corrido, traditional Mexican corrido from the Sierra de Sinaloa with Culiacán and Mazatlán cantina roots, narrative balladeer storytelling corrido, accordion-and-bajo-sexto with slapped tololoche upright bass driving the oom-pah, cassette-tape direct-to-tape recording aesthetic, raw cantina corrido from rural Sinaloa palenques, four-line cuarteta narrative structure. ' +
-      'Instruments: diatonic three-row button accordion as the sole melodic lead with TREBLY midrange-forward reedy timbre (not bass-heavy modern accordion), every melody fill and short solo break on accordion with grace notes bellows shakes and scalar runs into cadences, bajo sexto twelve-string with percussive downstroke strums outlining roots and fifths, TOLOLOCHE acoustic upright bass with prominent SLAP technique driving the entire oom-pah pattern (this slapped tololoche is the central Sinaloa signature), optional requinto sierreño nylon guitar for short ornamental runs between verses, sparse minimal kick drum or no drums at all. ' +
-      'Tempo: 85-105 BPM deliberate mid-tempo storytelling pace, 2/4 polka corrido pulse with prominent oom-pah feel from the tololoche slap, never rushed, narrator-paced groove. ' +
-      'Vibe: rural Sinaloa rancho authenticity of the 1990s, Culiacán-Mazatlán cantina at midnight, working-class Sinaloense pride, weathered cantina balladeer feel, bone-dry vintage mix, raw unpolished 90s production, every word audible. ' +
-      'Mix: dry natural microphone placement, mono or narrow stereo image, present accordion midrange, audible slapped tololoche thump, no vocal doubling, no stereo widening, no compression pumping.',
+      'authentic 1990s Sinaloa corrido, pure rural rancho corrido from Sierra de Sinaloa, narrative balladeer storytelling, accordion-and-bajo-sexto with slapped tololoche oom-pah, cassette direct-to-tape aesthetic. ' +
+      'Instruments: diatonic 3-row button accordion as sole melodic lead with TREBLY reedy midrange timbre, accordion fills with grace notes and scalar runs, bajo sexto 12-string percussive downstrokes on roots and fifths, TOLOLOCHE upright bass with prominent SLAP technique driving the oom-pah pattern, optional requinto sierreño for ornaments, sparse or no drums. ' +
+      'Tempo: 85-105 BPM deliberate storytelling pace, 2/4 polka pulse with tololoche slap, never rushed. ' +
+      'Vibe: rural Sinaloa rancho 1990s, Culiacán cantina midnight, weathered balladeer, bone-dry vintage mix, raw 90s production. ' +
+      'Mix: dry mic placement, mono or narrow stereo, present accordion midrange, audible tololoche slap, no doubling, no compression pumping.',
     negativeTags:
-      'modern 2010s 2020s corrido production, slick radio polish, full drum kit polka beat, snare-heavy modern drum kit, electric bass guitar, saxophone, alto sax, tenor sax, brass section, trumpets, trombones, full banda brass, mariachi violins, strings, orchestral pads, trap beats, trap hi-hats, 808 bass, sub-bass, autotune, heavy reverb wash, vocal doubling, stereo widening, corridos tumbados, corridos alterados, sad sierreño melancholy, synthesizers, electronic drums, cumbia rhythm, EDM, K-pop',
+      'modern 2010s 2020s corrido production, slick radio polish, full drum kit, snare-heavy modern kit, electric bass guitar, saxophone, brass section, trumpets, full banda brass, mariachi violins, strings, trap beats, 808 bass, autotune, heavy reverb, vocal doubling, corridos tumbados, corridos alterados, sierreño melancholy, synthesizers, cumbia, EDM',
   },
 
   ranchera: {
     style:
-      'slow dramatic ranchera ballad, emotional Mexican ranchera, crying ranchera with dramatic pauses, golden-age ranchera tradition, mariachi-backed serenata ranchera for romantic dedication, theatrical emotional ranchera with sustained instrumental phrasing. ' +
-      'Instruments: mariachi violin section with sustained emotional bowing and legato passages, trumpet fanfare between verses transitioning to soft sustained notes during vocal lines, vihuela gentle strumming providing harmonic rhythm, guitarrón deep bass notes on beats one and three, classical guitar arpeggios, optional harp arpeggios on choruses for shimmer. ' +
-      'Tempo: 50-70 BPM very slow, dramatic pauses between phrases, rubato phrasing, ballad with generous breathing room. ' +
-      'Vibe: deep sorrow or deep love, dramatic heartbreak, crying-in-your-drink cantina emotion, tearful dedication, tequila and tears, mariachi at 3am, grito from the soul, eternal love declaration. ' +
-      'Mix: live mariachi room sound, violins front and center on melody, guitarrón warm in low end, vocal up front and clear.',
+      'slow dramatic ranchera ballad, emotional Mexican ranchera, golden-age ranchera tradition, mariachi-backed serenata ranchera for romantic dedication, theatrical sustained instrumental phrasing. ' +
+      'Instruments: mariachi violin section with sustained emotional legato bowing, trumpet fanfare between verses then soft sustained notes during vocal lines, vihuela gentle strumming, guitarrón deep bass on beats 1 and 3, classical guitar arpeggios, optional harp arpeggios on choruses. ' +
+      'Tempo: 50-70 BPM very slow, dramatic pauses, rubato phrasing, ballad with generous breathing room. ' +
+      'Vibe: deep sorrow or deep love, dramatic heartbreak, crying-in-your-drink cantina emotion, tearful dedication, tequila and tears, mariachi at 3am. ' +
+      'Mix: live mariachi room sound, violins front and center, guitarrón warm in low end, vocal up-front and clear.',
     negativeTags:
-      'upbeat rhythms, electronic beats, happy party vibes, trap, fast tempo, dance energy, modern urban production, rock, EDM, banda brass dominance, autotune, hip-hop, reggaeton, synthesizer pads',
+      'upbeat rhythms, electronic beats, happy party vibes, trap, fast tempo, dance energy, modern urban, rock, EDM, banda brass dominance, autotune, hip-hop, reggaeton, synth pads',
   },
 
   mariachi: {
     style:
-      'romantic mariachi ballad, serenata mariachi, soft tender mariachi love song, moonlit serenade, violin-led romantic mariachi, intimate courtship mariachi for dedication and proposal, classic Mexican romantic mariachi style. ' +
-      'Instruments: violin section prominent with sustained legato bowing and emotional vibrato carrying the melodic answer to vocal phrases, soft muted trumpets playing gentle sustained notes and occasional answering motifs (never blaring fanfares), delicate guitarrón bass on roots and fifths, vihuela soft arpeggios providing rhythmic harmonic foundation, classical guitar fingerpicking, optional cello sustained warmth in the low-mid register. ' +
+      'romantic mariachi ballad, serenata mariachi, soft tender mariachi love song, moonlit serenade, violin-led romantic mariachi, intimate courtship mariachi, classic Mexican romantic mariachi. ' +
+      'Instruments: violin section prominent with sustained legato bowing and vibrato carrying melodic answers to vocal phrases, soft muted trumpets playing gentle sustained notes (never blaring fanfares), delicate guitarrón bass on roots and fifths, vihuela soft arpeggios, classical guitar fingerpicking, optional cello sustained warmth. ' +
       'Tempo: 60-80 BPM slow tender pace, breathing room between phrases, serenata tempo. ' +
-      'Vibe: serenata under the balcony, moonlit courtship, deep vulnerable romance, tearful love dedications, wedding first dance, proposal moment, roses and candles, classic Mexican romance. ' +
-      'Mix: warm ensemble live-feel mariachi room sound, violins front-of-stage, vocal up-front and intimate, gentle reverb appropriate to a small venue.',
+      'Vibe: serenata under the balcony, moonlit courtship, deep vulnerable romance, tearful dedications, wedding first dance, proposal moment, roses and candles. ' +
+      'Mix: warm ensemble live-feel room sound, violins front-of-stage, vocal up-front and intimate, gentle small-venue reverb.',
     negativeTags:
-      'fast dance rhythms, brass-heavy banda, aggressive sounds, uptempo party, electronic production, trap, rock, EDM, banda quebradita pace, hip-hop, autotune, modern urban beats, K-pop',
+      'fast dance, brass-heavy banda, aggressive sounds, uptempo party, electronic production, trap, rock, EDM, quebradita pace, hip-hop, autotune, modern urban beats, K-pop',
   },
 
   pop_ballad_en: {
     style:
-      'modern English pop ballad, contemporary radio-ready pop ballad, intimate emotional pop ballad in the style of contemporary singer-songwriter pop (Ed Sheeran, Sam Smith, Lewis Capaldi, Adele ballads), piano-driven pop ballad, vocal-forward modern ballad for dedication. ' +
-      'Instruments: grand piano as the primary harmonic engine with sustained chord voicings and arpeggiated fills, soft fingerpicked acoustic guitar rhythm doubling the piano, lush string pad swells building on each chorus, gentle programmed kick on backbeat or no drums at all in verses, subtle bass guitar holding root notes, optional cello warmth in low-mid, occasional light reverb-tail effects. ' +
+      'modern English pop ballad, contemporary radio-ready pop ballad, intimate emotional pop ballad in the style of Ed Sheeran, Sam Smith, Lewis Capaldi, Adele ballads, piano-driven, vocal-forward dedication. ' +
+      'Instruments: grand piano as primary harmonic engine with sustained voicings and arpeggiated fills, soft fingerpicked acoustic guitar doubling the piano, lush string pad swells building on each chorus, gentle programmed kick on backbeat or no drums in verses, subtle bass holding root notes, optional cello warmth in low-mid, light reverb-tail effects. ' +
       'Tempo: 70-90 BPM modern emotional ballad pace, breathing room between phrases. ' +
-      'Vibe: intimate dedication, wedding first dance, gut-punch emotional climax, candlelit confession, modern Spotify-playlist heartfelt ballad. ' +
-      'Mix: clean modern studio production, vocal-forward presence, wide stereo strings on chorus, tight tasteful reverb.',
+      'Vibe: intimate dedication, wedding first dance, gut-punch emotional climax, candlelit confession, modern Spotify-playlist heartfelt. ' +
+      'Mix: clean modern studio production, vocal-forward, wide stereo strings on chorus, tight tasteful reverb.',
     negativeTags:
-      'trap beats, 808 bass, autotune-heavy, EDM drops, fast dance tempo, aggressive rock distortion, dubstep, hip-hop production, mariachi instrumentation, banda brass, country pedal steel, reggaeton',
+      'trap beats, 808 bass, autotune-heavy, EDM drops, fast dance, aggressive rock distortion, dubstep, hip-hop production, mariachi, banda brass, country pedal steel, reggaeton',
   },
 
   country_en: {
     style:
-      'modern country ballad, contemporary Nashville country dedication song in the style of modern country balladry (Luke Combs, Chris Stapleton, Tim McGraw, Lady A ballads), heartfelt country love ballad, acoustic-forward country with pedal steel, Americana-leaning radio country. ' +
-      'Instruments: fingerpicked acoustic guitar primary as rhythmic foundation, pedal steel guitar with sustained crying bends carrying emotional answers, gentle brushed snare on backbeat and warm kick, warm fretless or upright bass walking lines, optional fiddle answering melody in instrumental breaks, harmonica accent on bridges, dobro slide guitar adding texture under the vocal. ' +
-      'Tempo: 75-95 BPM modern country mid-tempo ballad pace, Americana rhythm. ' +
-      'Vibe: heartfelt small-town love story, front porch confession, wedding song, dirt road dedication, modern country radio heartfelt, faith and family warmth. ' +
-      'Mix: clean Nashville studio sheen, warm midrange, vocal up-front and present, pedal steel sitting just behind vocal, tasteful room reverb.',
+      'modern country ballad, contemporary Nashville country dedication in the style of Luke Combs, Chris Stapleton, Tim McGraw, Lady A ballads, heartfelt country love ballad, acoustic-forward with pedal steel, Americana-leaning radio country. ' +
+      'Instruments: fingerpicked acoustic guitar primary as rhythmic foundation, pedal steel with sustained crying bends carrying emotional answers, gentle brushed snare on backbeat and warm kick, warm fretless or upright bass walking lines, optional fiddle answering melody in breaks, harmonica on bridges, dobro slide guitar under vocal. ' +
+      'Tempo: 75-95 BPM modern country mid-tempo ballad pace. ' +
+      'Vibe: heartfelt small-town love story, front porch confession, wedding song, dirt road dedication, country radio heartfelt, faith and family warmth. ' +
+      'Mix: clean Nashville studio sheen, warm midrange, vocal up-front, pedal steel just behind vocal, tasteful room reverb.',
     negativeTags:
       'trap beats, 808 bass, EDM, autotune-heavy, mariachi, banda brass, reggaeton, dubstep, hip-hop, electronic dance, K-pop, heavy rock distortion, synthwave',
   },
 
   rnb_soul_en: {
     style:
-      'smooth modern R&B soul ballad, contemporary slow-jam R&B in the style of neo-soul (John Legend, H.E.R., Daniel Caesar, Anderson .Paak ballads), neo-soul love dedication, warm soulful R&B ballad. ' +
-      'Instruments: warm Rhodes electric piano with sustained chord voicings and subtle tremolo, soft groove drums with brushed-feel kick and snare and tasteful hi-hat shuffle, melodic fingered bass guitar with sliding fills and walking turnarounds, subtle horn pads sustained beneath the rhythm section, occasional Rhodes lead fills between vocal phrases, gentle clean electric guitar single-note licks, optional muted trumpet accent. ' +
+      'smooth modern R&B soul ballad, contemporary slow-jam R&B in the style of John Legend, H.E.R., Daniel Caesar, Anderson .Paak ballads, neo-soul love dedication, warm soulful R&B. ' +
+      'Instruments: warm Rhodes electric piano with sustained voicings and subtle tremolo, soft groove drums with brushed-feel kick and snare and tasteful hi-hat shuffle, melodic fingered bass with sliding fills and walking turnarounds, subtle horn pads sustained beneath rhythm section, occasional Rhodes lead fills between vocal phrases, gentle clean electric guitar single-note licks, optional muted trumpet accent. ' +
       'Tempo: 70-90 BPM slow-jam R&B pace, sensual groove. ' +
-      'Vibe: candlelit intimate confession, slow-dance soul, neo-soul warmth, late-night dedication, modern romantic R&B groove, sensual heartfelt. ' +
+      'Vibe: candlelit intimate confession, slow-dance soul, neo-soul warmth, late-night dedication, sensual heartfelt R&B groove. ' +
       'Mix: warm analog-leaning production, vocal-forward, lush low-mid presence on Rhodes, tasteful pocket groove.',
     negativeTags:
       'trap beats, mariachi, banda brass, country fiddle, country pedal steel, hardcore hip-hop, autotune-heavy, EDM, dubstep, rock distortion, fast dance, K-pop, reggaeton, heavy 808',
@@ -209,15 +211,25 @@ const GENRES: Record<string, GenreStyle> = {
 
   acoustic_singer_en: {
     style:
-      'intimate acoustic singer-songwriter ballad, sparse minimal solo acoustic dedication, raw honest acoustic confession ballad, vocal-forward acoustic ballad in the style of indie singer-songwriter intimacy (Phoebe Bridgers, Ben Howard, Damien Rice, Bon Iver acoustic moments). ' +
-      'Instruments: single fingerpicked acoustic guitar as the primary and often only instrument, optional light brushed snare with brushes (no full drum kit), no drums in verses, subtle upright bass sustained notes, optional cello sustained warmth or single sustained violin pad, room ambience and natural microphone bleed. ' +
+      'intimate acoustic singer-songwriter ballad, sparse minimal solo acoustic dedication, raw honest acoustic confession ballad, vocal-forward acoustic ballad in the style of Phoebe Bridgers, Ben Howard, Damien Rice, Bon Iver acoustic moments. ' +
+      'Instruments: single fingerpicked acoustic guitar as primary and often only instrument, optional light brushed snare (no full drum kit), no drums in verses, subtle upright bass sustained notes, optional cello sustained warmth or single sustained violin pad, room ambience and natural microphone bleed. ' +
       'Tempo: 65-85 BPM intimate confessional pace, generous breathing room between phrases. ' +
       'Vibe: stripped-down emotional confession, candlelit dedication, intimate room recording, raw honest vulnerability, modern indie folk warmth, wedding ceremony acoustic. ' +
-      'Mix: dry acoustic intimacy, vocal up-front and very present, minimal reverb (just natural room), close and intimate, no stereo widening tricks.',
+      'Mix: dry acoustic intimacy, vocal up-front and very present, minimal reverb (just natural room), close and intimate.',
     negativeTags:
       'trap, EDM, banda brass, mariachi, full band production, heavy drums, dance beats, autotune, electronic, K-pop, hip-hop, reggaeton, rock distortion, dubstep, heavy 808',
   },
 };
+
+// Sanity guard — see generate-cloned-voice-song for explanation.
+const KIE_STYLE_MAX = 1000;
+for (const [slug, g] of Object.entries(GENRES)) {
+  if (g.style.length > KIE_STYLE_MAX) {
+    console.error(
+      `[generate-cloned-voice-preview] FATAL: genre "${slug}" style is ${g.style.length} chars, exceeds Kie cap of ${KIE_STYLE_MAX}`
+    );
+  }
+}
 
 // Legacy mapping for any caller still expecting a string-only map.
 const GENRE_STYLES: Record<string, string> = Object.fromEntries(
