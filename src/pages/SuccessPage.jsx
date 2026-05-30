@@ -1140,7 +1140,9 @@ export default function SuccessPage() {
         const blobType = recordedMessage.blob.type || 'video/webm';
         const msgExt = blobType.includes('mp4') ? 'mp4' : 'webm';
         const msgPath = `${order.id}/message_${Date.now()}.${msgExt}`;
-        const contentType = blobType;
+        // iOS Safari records video as 'audio/mp4' — Shotstack rejects that content-type.
+        // Normalize it to 'video/mp4' so Shotstack can download and transcode correctly.
+        const contentType = blobType === 'audio/mp4' ? 'video/mp4' : blobType;
         console.log('Uploading message:', msgPath, 'size:', recordedMessage.blob.size, 'type:', contentType);
         const { error: msgUploadErr } = await supabase.storage
           .from('video-photos')
