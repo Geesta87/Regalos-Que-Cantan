@@ -163,8 +163,6 @@ export default function CorridosLanding() {
       subGenre: selectedStyle.id,
       subGenreName: selectedStyle.name
     }));
-    // Persist coupon so checkout pages auto-apply the $24.99 ad price
-    sessionStorage.setItem('rqc_coupon', 'CORRIDO5');
     navigateTo('occasion');
   };
 
@@ -226,7 +224,7 @@ export default function CorridosLanding() {
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-emerald-600 text-white text-lg font-bold shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 animate-[btnGlow_2s_ease-in-out_infinite]"
             style={{ animation: 'btnGlow 2s ease-in-out infinite' }}
           >
-            <span className="relative z-10">🎺 Crear Mi Corrido — $24.99</span>
+            <span className="relative z-10">🎺 Crear Mi Corrido — $29.99</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
@@ -235,7 +233,7 @@ export default function CorridosLanding() {
               ⚡ Listo en ~3 minutos · Entrega instantánea
             </span>
             <span className="text-sm text-white/60">
-              ✨ Desde <span className="line-through text-white/30">$49.99</span> <span className="text-white font-extrabold text-base">$24.99</span> · Preview gratis ✨
+              ✨ <span className="line-through text-white/30">$79.99</span> <span className="text-white font-extrabold text-base">$29.99</span> · Oferta por tiempo limitado · Preview gratis ✨
             </span>
           </div>
 
@@ -285,7 +283,6 @@ export default function CorridosLanding() {
                       subGenre: newStyle.id,
                       subGenreName: newStyle.name
                     }));
-                    sessionStorage.setItem('rqc_coupon', 'CORRIDO5');
                     setTimeout(() => navigateTo('occasion'), 300);
                   }
                 }}
@@ -326,7 +323,7 @@ export default function CorridosLanding() {
               }`}
             >
               {selectedStyle
-                ? `🎺 Crear Corrido ${selectedStyle.name} — $24.99`
+                ? `🎺 Crear Corrido ${selectedStyle.name} — $29.99`
                 : '👆 Selecciona un estilo arriba'
               }
             </button>
@@ -473,14 +470,14 @@ export default function CorridosLanding() {
 
           <div className="bg-white/[0.03] border-2 border-emerald-500/50 rounded-3xl p-8 text-center relative overflow-hidden">
             <div className="absolute top-4 -right-8 bg-emerald-500 text-black text-xs font-black px-10 py-1 rotate-45">
-              🔥 OFERTA
+              🔥 62% OFF
             </div>
 
             <div className="text-5xl mb-3">🎺</div>
             <div className="mb-6">
-              <span className="text-white/40 line-through text-lg">$49.99</span>
-              <div className="text-white text-5xl font-black">$24.99</div>
-              <span className="text-emerald-400 text-sm font-semibold">Pago único • Acceso de por vida</span>
+              <span className="text-white/40 line-through text-2xl">$79.99</span>
+              <div className="text-white text-5xl font-black">$29.99</div>
+              <span className="text-emerald-400 text-sm font-semibold">Precio por tiempo limitado • Ahorra $50</span>
             </div>
 
             <div className="space-y-3 text-left mb-8">
@@ -514,7 +511,7 @@ export default function CorridosLanding() {
 
           {/* Bundle upsell hint */}
           <div className="mt-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
-            <p className="text-emerald-400 text-sm font-bold">🎁 ¿Quieres 2 corridos? Ahorra $10 con el bundle por $39.99</p>
+            <p className="text-emerald-400 text-sm font-bold">🎁 ¿Quieres 2 corridos? Llévate ambos por $39.99 y ahorra $20</p>
           </div>
         </div>
       </section>
@@ -555,7 +552,7 @@ export default function CorridosLanding() {
             onClick={handleCreateCorrido}
             className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-xl font-bold shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95"
           >
-            <span className="relative z-10">🎺 Crear Mi Corrido — $24.99</span>
+            <span className="relative z-10">🎺 Crear Mi Corrido — $29.99</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
