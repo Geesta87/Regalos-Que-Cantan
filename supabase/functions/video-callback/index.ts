@@ -41,8 +41,13 @@ serve(async (req) => {
       .single();
 
     if (findError || !videoOrder) {
-      console.error('Video order not found for render:', renderId);
-      throw new Error('Video order not found');
+      // Unknown render ID — likely a stale callback for a render that was
+      // superseded or cancelled. Return 200 so Shotstack stops retrying.
+      console.warn('Video order not found for render (ignoring):', renderId);
+      return new Response(
+        JSON.stringify({ received: true, ignored: true }),
+        { headers: { 'Content-Type': 'application/json' }, status: 200 },
+      );
     }
 
     if (status === 'done' && videoUrl) {

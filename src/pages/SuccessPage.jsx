@@ -1165,7 +1165,9 @@ export default function SuccessPage() {
           : blobType.includes('ogg') ? 'ogg'
           : 'webm'; // fallback; server will handle gracefully
         const msgPath = `${order.id}/message_${Date.now()}.${msgExt}`;
-        const contentType = blobType;
+        // iOS Safari records video as 'audio/mp4' — Shotstack rejects that content-type.
+        // Normalize it to 'video/mp4' so Shotstack can download and transcode correctly.
+        const contentType = blobType === 'audio/mp4' ? 'video/mp4' : blobType;
         console.log('Uploading message:', msgPath, 'size:', recordedMessage.blob.size, 'type:', contentType);
         const { error: msgUploadErr } = await supabase.storage
           .from('video-photos')
@@ -1219,6 +1221,43 @@ export default function SuccessPage() {
       }
       console.log('Song duration for video:', actualSongDuration);
       const genRes = await generateVideo(order.id, messageUrl, messageDuration, actualSongDuration);
+
+      // For dual-video bundles: also populate + generate for every OTHER paid video_order
+      // that still has no photos. Without this, only the selected song's order gets photos
+      // and the second song's video never renders.
+      const otherOrders = Object.values(videoOrdersMap || {}).filter(
+        o => o?.id && o.id !== order.id && o.paid && (o.photo_count || 0) === 0
+      );
+      for (const otherOrder of otherOrders) {
+        try {
+          await supabase
+            .from('video_orders')
+            .update({ photo_urls: photoUrls, status: 'photos_uploaded', photo_count: photoUrls.length })
+            .eq('id', otherOrder.id);
+          // Probe the other song's actual duration
+          const otherSong = songs.find(s => s.id === otherOrder.song_id);
+          let otherSongDuration = null;
+          if (otherSong?.audio_url) {
+            try {
+              otherSongDuration = await new Promise((resolve) => {
+                const probe = new Audio();
+                probe.preload = 'metadata';
+                probe.onloadedmetadata = () => resolve(probe.duration && isFinite(probe.duration) ? probe.duration : null);
+                probe.onerror = () => resolve(null);
+                setTimeout(() => resolve(null), 8000);
+                probe.src = otherSong.audio_url;
+              });
+            } catch (e) { /* fall back to null — generate-video will probe server-side */ }
+          }
+          await generateVideo(otherOrder.id, messageUrl, messageDuration, otherSongDuration);
+          setVideoOrdersMap(prev => ({
+            ...prev,
+            [otherOrder.song_id]: { ...(prev[otherOrder.song_id] || {}), status: 'processing' },
+          }));
+        } catch (e) {
+          console.warn('Could not auto-generate video for bundled order', otherOrder.id, e);
+        }
+      }
 
       // Update local state
       const currentSongId = songs[selectedVideoSongIdx]?.id;

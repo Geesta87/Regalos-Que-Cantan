@@ -153,6 +153,31 @@ serve(async (req) => {
       }
     }
 
+    // Resolve actual message video duration when not supplied by the caller.
+    // The SuccessPage passes it via the request body (measured from the <video> element),
+    // but manual re-triggers and cron-based re-renders never pass it — those used to
+    // silently default to 15 s, cutting off any message longer than 15 s.
+    // Fix: probe the real duration from Shotstack's probe API so re-renders are always accurate.
+    let resolvedMessageDuration = messageDuration;
+    if (personalMessageUrl && !resolvedMessageDuration) {
+      try {
+        const encodedSrc = encodeURIComponent(personalMessageUrl);
+        const probeRes = await fetch(`${SHOTSTACK_API_URL}/probe/${encodedSrc}`, {
+          headers: { 'x-api-key': SHOTSTACK_API_KEY },
+        });
+        if (probeRes.ok) {
+          const probeData = await probeRes.json();
+          const dur = probeData?.response?.metadata?.format?.duration;
+          if (dur) {
+            resolvedMessageDuration = Math.ceil(parseFloat(dur));
+            console.log(`Probed message video duration: ${dur}s → using ${resolvedMessageDuration}s`);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not probe message video duration:', e);
+      }
+    }
+
     // Convert any HEIC/HEIF photos to WebP before building the timeline.
     // Shotstack checks URL file extensions and rejects .heic/.heif outright.
     // Strategy: fetch the image via Supabase's render endpoint (which converts
@@ -208,7 +233,7 @@ serve(async (req) => {
       filter,
       personalMessageUrl,   // show/hide message section
       resolvedMessageUrl,   // actual audio URL for Shotstack (may be null)
-      messageDuration,
+      resolvedMessageDuration,
       isAudioOnlyMessage
     );
 
