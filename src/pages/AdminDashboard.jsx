@@ -697,49 +697,62 @@ export default function AdminDashboard() {
         if (result.role) setUserRole(result.role);
 
         setSongs(data || []);
-      
-      // Calculate stats using robust isPaid check
-      const totalSongs = data?.length || 0;
-      const paidSongs = data?.filter(s => isPaid(s)) || [];
-      const paidOrders = paidSongs.length;
-      const pendingOrders = totalSongs - paidOrders;
-      
-      let totalRevenue = 0;
-      let freeOrders = 0;
-      
-      // Today's stats
+
+      // Lifetime totals come from result.stats, computed server-side over the
+      // FULL songs table. The function only ships the recent working set of
+      // rows (not all ~40k) so it stays under the edge runtime's memory limit —
+      // see admin-songs/index.ts. Today's numbers are still computed here from
+      // the returned rows (today's orders are always in the recent set), which
+      // keeps the viewer's-local-timezone behavior unchanged.
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       let todayRevenue = 0;
       let todayOrders = 0;
-      
-      paidSongs.forEach(song => {
-        const price = getSongPrice(song);
-        totalRevenue += price;
-        if (price === 0) freeOrders++;
-        
-        // Check if order is from today
+      (data || []).forEach(song => {
+        if (!isPaid(song)) return;
         const songDate = new Date(song.created_at);
         if (songDate >= today) {
-          todayRevenue += price;
+          todayRevenue += getSongPrice(song);
           todayOrders++;
         }
       });
 
-      // Count unique WhatsApp contacts
-      const whatsappContacts = new Set(
-        data?.filter(s => s.whatsapp_phone).map(s => s.whatsapp_phone)
-      ).size;
+      let lifetime;
+      if (result.stats && typeof result.stats.totalSongs === 'number') {
+        lifetime = result.stats;
+      } else {
+        // Fallback for an older server build that doesn't send stats: compute
+        // from the returned rows the way we always did. Correct as long as the
+        // function returned the full set; harmless otherwise.
+        const paidSongs = (data || []).filter(s => isPaid(s));
+        let rev = 0;
+        let free = 0;
+        paidSongs.forEach(s => {
+          const p = getSongPrice(s);
+          rev += p;
+          if (p === 0) free++;
+        });
+        lifetime = {
+          totalSongs: data?.length || 0,
+          paidOrders: paidSongs.length,
+          pendingOrders: (data?.length || 0) - paidSongs.length,
+          totalRevenue: rev,
+          freeOrders: free,
+          whatsappContacts: new Set(
+            (data || []).filter(s => s.whatsapp_phone).map(s => s.whatsapp_phone)
+          ).size,
+        };
+      }
 
       setStats({
-        totalSongs,
-        totalRevenue,
-        paidOrders,
-        pendingOrders,
-        freeOrders,
+        totalSongs: lifetime.totalSongs ?? 0,
+        totalRevenue: lifetime.totalRevenue ?? 0,
+        paidOrders: lifetime.paidOrders ?? 0,
+        pendingOrders: lifetime.pendingOrders ?? 0,
+        freeOrders: lifetime.freeOrders ?? 0,
         todayRevenue,
         todayOrders,
-        whatsappContacts
+        whatsappContacts: lifetime.whatsappContacts ?? 0
       });
         setIsLoading(false);
         return;

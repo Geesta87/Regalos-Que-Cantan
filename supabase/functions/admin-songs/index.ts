@@ -334,10 +334,14 @@ serve(async (req) => {
     }
 
     // For a search request, cap at 500 rows (matches the limit the dashboard
-    // requests). For the no-search dashboard fetch, keep the historical 50k
-    // ceiling so the Órdenes / Pending / Hot Leads tabs still see the full
-    // working set.
-    const maxRows = search ? 500 : 50000;
+    // requests). For the no-search dashboard fetch, return only the most recent
+    // working set. The songs table has grown past 40k rows; the old 50k ceiling
+    // meant this branch pulled essentially the whole table into the function,
+    // which blew past the edge runtime's ~256 MB memory limit and returned
+    // HTTP 546 (Resource Limit Exceeded) — the dashboard couldn't load at all.
+    // Lifetime totals now come from get_admin_song_stats() below (computed in
+    // Postgres), and all-history lookups go through the search branch above.
+    const maxRows = search ? 500 : 10000;
     const limit = Math.min(Math.max(requestedLimit ?? maxRows, 1), maxRows);
     query = query.range(0, limit - 1);
 
@@ -346,7 +350,24 @@ serve(async (req) => {
 
     const songs = isAssistant ? (data || []).map(redactForAssistant) : (data || []);
 
-    return json({ success: true, role, songs, total_count: count ?? songs.length });
+    // Lifetime stats over the FULL table, aggregated in the database so we never
+    // pull every row into the function. Revenue is redacted for the assistant
+    // role (same rule as the per-row amount_paid redaction above). Only needed
+    // for the dashboard's no-search fetch; the Lookup tab doesn't use it.
+    let stats = null;
+    if (!search) {
+      const { data: statsRow, error: statsErr } = await admin.rpc(
+        'get_admin_song_stats',
+        { redact_revenue: isAssistant }
+      );
+      if (statsErr) {
+        console.error('admin-songs stats rpc error:', statsErr);
+      } else {
+        stats = statsRow;
+      }
+    }
+
+    return json({ success: true, role, songs, stats, total_count: count ?? songs.length });
   } catch (err) {
     console.error('admin-songs error:', err);
     return json({ success: false, error: String(err?.message || err) }, 500);
