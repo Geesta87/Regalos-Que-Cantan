@@ -829,16 +829,182 @@ Deno.serve(async (req) => {
       console.log('[JOB 3] No stuck processing songs');
     }
 
+    // ========================================================================
+    // JOB 4: Rescue orphan rows.
+    //
+    // generate-song inserts the v1 row with status='processing' BEFORE calling
+    // Mureka. If the edge function dies between the insert and the row-update
+    // (user closes tab → client disconnect → worker killed; or wall-clock limit
+    // while useapi.net is slow), the row sits forever with task_id NULL.
+    //
+    // JOB 2 (active poll) and JOB 3 (re-submit) both filter on task_id IS NOT
+    // NULL, so they cannot see these orphans. Without JOB 4 they stay stuck.
+    //
+    // We submit fresh via generate-song-mureka (same useapi.net path as the
+    // primary flow), then mirror generate-song's "update v1 + insert v2"
+    // pattern so the callback fans out two song versions normally.
+    //
+    // Bounds (intentionally narrow — protect against false rescues):
+    //   - min age 3 min: never race a still-running normal submission
+    //   - max age 6 h:   don't email customers who ordered days ago
+    //   - lyrics/style_used must be non-null (we need them to re-submit)
+    //   - regenerate_count < MAX_RETRIES (same cap as JOB 3)
+    // ========================================================================
+    const ORPHAN_MIN_AGE_MIN = 3;
+    const ORPHAN_MAX_AGE_HOURS = 6;
+    const orphanMinAgeIso = new Date(Date.now() - ORPHAN_MIN_AGE_MIN * 60 * 1000).toISOString();
+    const orphanMaxAgeIso = new Date(Date.now() - ORPHAN_MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
+
+    const { data: orphanSongs, error: orphanErr } = await supabase
+      .from('songs')
+      .select('id, session_id, recipient_name, sender_name, relationship, relationship_custom, genre, genre_name, sub_genre, sub_genre_name, occasion, occasion_custom, emotional_tone, details, email, lyrics, image_url, style_used, voice_type, artist_inspiration, client_ip, regenerate_count, created_at')
+      .eq('status', 'processing')
+      .is('task_id', null)
+      .is('mureka_job_id', null)
+      .is('kie_task_id', null)
+      .not('lyrics', 'is', null)
+      .not('style_used', 'is', null)
+      .lt('created_at', orphanMinAgeIso)
+      .gt('created_at', orphanMaxAgeIso)
+      .lt('regenerate_count', MAX_RETRIES)
+      .order('created_at', { ascending: true })
+      .limit(5);
+
+    if (orphanErr) {
+      console.error('[JOB 4] Error fetching orphans:', orphanErr.message);
+    }
+
+    if (orphanSongs && orphanSongs.length > 0) {
+      console.log(`[JOB 4] ${orphanSongs.length} orphan row(s) to rescue (no task_id, age ${ORPHAN_MIN_AGE_MIN}min–${ORPHAN_MAX_AGE_HOURS}h)`);
+
+      for (const song of orphanSongs) {
+        const result: any = { id: song.id, job: 'rescue_orphan', retryCount: song.regenerate_count || 0 };
+
+        try {
+          // Reconstruct the desc Mureka expects (gender prefix + style_used).
+          // Mirrors generate-song.ts:1432-1441.
+          const voicePrefix = song.voice_type === 'female'
+            ? 'solo female lead vocal, single female singer'
+            : 'solo male lead vocal, single male singer';
+          const maxStyleChars = 1000 - voicePrefix.length - 4;
+          const stylePrompt = `${voicePrefix}, ${(song.style_used || '').substring(0, maxStyleChars)}`;
+          const songTitle = `Canción para ${song.recipient_name || 'ti'}`.substring(0, 50);
+          const vocalGender = song.voice_type === 'female' ? 'female' : 'male';
+
+          const submitResp = await fetch(`${SUPABASE_URL}/functions/v1/generate-song-mureka`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({
+              lyrics: song.lyrics,
+              title: songTitle,
+              stylePrompt,
+              vocalGender,
+              poll: false, // fire-and-forget; JOB 2 will pick up the new task_id and poll Mureka
+            }),
+          });
+
+          if (!submitResp.ok) {
+            const errText = await submitResp.text().catch(() => 'unknown');
+            console.error(`[JOB 4] Mureka submit failed for ${song.id}: ${submitResp.status} — ${errText.substring(0, 200)}`);
+            await supabase.from('songs').update({
+              regenerate_count: (song.regenerate_count || 0) + 1,
+              error_message: `Orphan rescue failed (${submitResp.status})`.substring(0, 200),
+            }).eq('id', song.id);
+            result.action = 'rescue_failed';
+            results.push(result);
+            continue;
+          }
+
+          const submitData = await submitResp.json().catch(() => ({}));
+          if (!submitData?.success || !submitData?.jobid) {
+            console.error(`[JOB 4] No jobid for ${song.id}: ${JSON.stringify(submitData).substring(0, 200)}`);
+            await supabase.from('songs').update({
+              regenerate_count: (song.regenerate_count || 0) + 1,
+              error_message: 'Orphan rescue returned no jobid',
+            }).eq('id', song.id);
+            result.action = 'rescue_no_jobid';
+            results.push(result);
+            continue;
+          }
+
+          const newJobid = submitData.jobid;
+
+          // v1 update — mirrors generate-song.ts:2612-2624. Once this lands, JOB 2
+          // can see the row and poll Mureka for completion.
+          await supabase.from('songs').update({
+            task_id: newJobid,
+            mureka_job_id: newJobid,
+            provider: 'mureka-useapi',
+            error_message: null,
+            regenerate_count: (song.regenerate_count || 0) + 1,
+          }).eq('id', song.id);
+
+          // v2 sibling — mirrors generate-song.ts:2628-2667 so the callback writes
+          // two song versions like a normal order. Failure here is non-fatal:
+          // v1 already has the task_id, customer still gets at least one song.
+          const { error: v2Err } = await supabase.from('songs').insert({
+            session_id: song.session_id,
+            version: 2,
+            recipient_name: song.recipient_name,
+            sender_name: song.sender_name,
+            relationship: song.relationship,
+            relationship_custom: song.relationship_custom,
+            genre: song.genre,
+            genre_name: song.genre_name,
+            sub_genre: song.sub_genre,
+            sub_genre_name: song.sub_genre_name,
+            occasion: song.occasion,
+            occasion_custom: song.occasion_custom,
+            emotional_tone: song.emotional_tone,
+            details: song.details,
+            email: song.email,
+            lyrics: song.lyrics,
+            audio_url: null,
+            preview_url: null,
+            image_url: song.image_url,
+            status: 'processing',
+            paid: false,
+            selected: false,
+            voice_type: song.voice_type,
+            artist_inspiration: song.artist_inspiration,
+            style_used: song.style_used,
+            task_id: newJobid,
+            mureka_job_id: newJobid,
+            provider: 'mureka-useapi',
+            client_ip: song.client_ip,
+          });
+          if (v2Err) console.error(`[JOB 4] v2 sibling insert failed for ${song.id}: ${v2Err.message}`);
+
+          result.action = 'orphan_rescued';
+          result.newTaskId = newJobid;
+          console.log(`[JOB 4] RESCUED ${song.id}: new jobid=${newJobid}`);
+
+        } catch (e: any) {
+          result.action = 'rescue_error';
+          result.error = e.message;
+          console.error(`[JOB 4] Error rescuing ${song.id}:`, e.message);
+        }
+
+        results.push(result);
+      }
+    } else {
+      console.log('[JOB 4] No orphan rows to rescue');
+    }
+
     // Summary
     const completed = results.filter(r => r.action === 'completed').length;
     const polled = results.filter(r => r.job === 'poll').length;
     const resubmitted = results.filter(r => r.action === 'resubmitted').length;
+    const rescued = results.filter(r => r.action === 'orphan_rescued').length;
     const failed = results.filter(r => r.action?.includes('failed') || r.action === 'timed_out' || r.action === 'max_retries' || r.action === 'task_failed').length;
 
-    console.log(`=== DONE: ${completed} completed, ${polled} polled, ${resubmitted} resubmitted, ${failed} failed ===`);
+    console.log(`=== DONE: ${completed} completed, ${polled} polled, ${resubmitted} resubmitted, ${rescued} orphans rescued, ${failed} failed ===`);
 
     return new Response(
-      JSON.stringify({ completed, polled, resubmitted, failed, results }),
+      JSON.stringify({ completed, polled, resubmitted, rescued, failed, results }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
 

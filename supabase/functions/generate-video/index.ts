@@ -119,25 +119,29 @@ serve(async (req) => {
             resolvedMessageUrl = personalMessageUrl;
             console.log('[generate-video] Audio format supported directly:', urlExt);
           } else if (urlExt === 'mp4') {
-            // iPhone Safari: audio/mp4 bytes are identical to m4a; just copy with .m4a extension
+            // iPhone Safari records voice as audio/mp4 (AAC in MPEG-4 container).
+            // Shotstack hangs indefinitely when asked to fetch audio/mp4 or .m4a files,
+            // but accepts the same bytes when stored as audio/mpeg (.mp3) — confirmed
+            // through production testing (2026-05-31). Re-upload with .mp3 extension
+            // and audio/mpeg content-type so Shotstack processes it without hanging.
             try {
               const bucketPrefix = '/storage/v1/object/public/video-photos/';
               const objectPath = new URL(personalMessageUrl).pathname.slice(bucketPrefix.length);
-              const m4aPath = objectPath.replace(/\.mp4$/, '.m4a');
+              const mp3Path = objectPath.replace(/\.mp4$/, '.mp3');
               const dlRes = await fetch(personalMessageUrl);
               const buffer = await dlRes.arrayBuffer();
               const { error: uploadErr } = await supabase.storage
                 .from('video-photos')
-                .upload(m4aPath, buffer, { contentType: 'audio/mp4', upsert: true });
+                .upload(mp3Path, buffer, { contentType: 'audio/mpeg', upsert: true });
               if (uploadErr) {
-                console.warn('[generate-video] .mp4→.m4a upload failed:', uploadErr.message, '— skipping voice audio');
+                console.warn('[generate-video] .mp4→.mp3 upload failed:', uploadErr.message, '— skipping voice audio');
                 resolvedMessageUrl = null;
               } else {
-                resolvedMessageUrl = `${SUPABASE_URL}/storage/v1/object/public/video-photos/${m4aPath}`;
-                console.log('[generate-video] .mp4→.m4a:', resolvedMessageUrl);
+                resolvedMessageUrl = `${SUPABASE_URL}/storage/v1/object/public/video-photos/${mp3Path}`;
+                console.log('[generate-video] .mp4→.mp3 (Shotstack compat):', resolvedMessageUrl);
               }
             } catch (copyErr) {
-              console.warn('[generate-video] .mp4→.m4a copy failed:', copyErr, '— skipping voice audio');
+              console.warn('[generate-video] .mp4→.mp3 copy failed:', copyErr, '— skipping voice audio');
               resolvedMessageUrl = null;
             }
           } else {

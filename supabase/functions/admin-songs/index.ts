@@ -134,6 +134,9 @@ serve(async (req) => {
       songId?: string;
       songIds?: string[];
       cutoff?: string;
+      search?: string;
+      searchField?: string;
+      limit?: number;
     } = {};
     if (req.method === 'POST') {
       try {
@@ -293,17 +296,57 @@ serve(async (req) => {
     }
 
     // ─── action: list (default) ──────────────────────────────────────────
-    const { data, error } = await admin
-      .from('songs')
-      .select(SONG_LIST_COLUMNS)
-      .order('created_at', { ascending: false })
-      .range(0, 49999);
+    // When `search` is provided we filter server-side across email,
+    // recipient_name, sender_name and whatsapp_phone (case-insensitive). This
+    // is what the admin dashboard's Lookup tab calls — without this branch
+    // the function returned the entire songs table (~40k rows) and the
+    // frontend rendered them all as "results for <whatever>", which felt
+    // like the page refreshing and losing the match the admin was about to
+    // click. See AdminDashboard.jsx → lookupServerResults useEffect.
+    const search = typeof body.search === 'string' ? body.search.trim() : '';
+    const searchField = typeof body.searchField === 'string' ? body.searchField : 'all';
+    const requestedLimit = typeof body.limit === 'number' && Number.isFinite(body.limit) ? body.limit : null;
 
+    let query = admin
+      .from('songs')
+      .select(SONG_LIST_COLUMNS, { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (search) {
+      // Strip PostgREST .or() syntax-breaking chars before interpolating.
+      // These never appear in real names / emails / phone numbers so dropping
+      // them is a no-op for valid lookup queries.
+      const safeSearch = search.replace(/["\\,()]/g, '');
+      if (safeSearch) {
+        const pattern = `%${safeSearch}%`;
+        if (searchField === 'email') {
+          query = query.ilike('email', pattern);
+        } else if (searchField === 'name') {
+          query = query.or(`recipient_name.ilike."${pattern}",sender_name.ilike."${pattern}"`);
+        } else if (searchField === 'phone') {
+          query = query.ilike('whatsapp_phone', pattern);
+        } else {
+          query = query.or(
+            `email.ilike."${pattern}",recipient_name.ilike."${pattern}",sender_name.ilike."${pattern}",whatsapp_phone.ilike."${pattern}"`
+          );
+        }
+      }
+    }
+
+    // For a search request, cap at 500 rows (matches the limit the dashboard
+    // requests). For the no-search dashboard fetch, keep the historical 50k
+    // ceiling so the Órdenes / Pending / Hot Leads tabs still see the full
+    // working set.
+    const maxRows = search ? 500 : 50000;
+    const limit = Math.min(Math.max(requestedLimit ?? maxRows, 1), maxRows);
+    query = query.range(0, limit - 1);
+
+    const { data, error, count } = await query;
     if (error) return json({ success: false, error: error.message }, 500);
 
     const songs = isAssistant ? (data || []).map(redactForAssistant) : (data || []);
 
-    return json({ success: true, role, songs });
+    return json({ success: true, role, songs, total_count: count ?? songs.length });
   } catch (err) {
     console.error('admin-songs error:', err);
     return json({ success: false, error: String(err?.message || err) }, 500);
