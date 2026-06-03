@@ -622,9 +622,6 @@ export default function ShareablePreviewPage() {
                   }}>
                     {vibe.emoji} Versión {index + 1}
                   </span>
-                  <span style={{fontSize: '13px', color: vibe.color, fontWeight: '700', letterSpacing: '0.5px'}}>
-                    {vibe.label}
-                  </span>
                 </div>
 
                 {/* Album art with glow */}
@@ -920,7 +917,7 @@ export default function ShareablePreviewPage() {
                     <p style={{color: 'rgba(255,255,255,0.55)', fontSize: '13px', margin: 0}}>
                       {isPickAnyTwoMode
                         ? `¿Quieres agregar más? Cada canción extra solo $${EXTRA_SONG_PRICE}.`
-                        : '💫 Emotiva + 🔥 Enérgica • Descarga instantánea'}
+                        : '🎵 Versión 1 + 🎶 Versión 2 • Descarga instantánea'}
                     </p>
                   </div>
                   <div style={{textAlign: 'right'}}>
