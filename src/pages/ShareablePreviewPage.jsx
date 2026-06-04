@@ -546,9 +546,9 @@ export default function ShareablePreviewPage() {
             lineHeight: '1.5'
           }}>
             <div style={{fontSize: '16px', fontWeight: 800, marginBottom: '4px'}}>
-              ✅ Garantía de satisfacción
+              ✅ Garantía de calidad
             </div>
-            ¿Hay un error en el nombre, la fecha o algún detalle? <strong>Lo corregimos sin costo</strong>. <strong>Compra con total tranquilidad.</strong>
+            Tu canción se crea con los datos que tú ingresaste. Si encuentras un error <strong>nuestro</strong> en la producción, lo corregimos sin costo.
           </div>
         </div>
 

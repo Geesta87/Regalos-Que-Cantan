@@ -109,6 +109,13 @@ export default function DetailsStep() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
             {/* Main textarea section */}
             <div className="lg:col-span-2 space-y-4">
+              {/* Accuracy reminder */}
+              <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4">
+                <p className="text-white/90 text-sm leading-relaxed">
+                  ⚠️ <strong>Revisa bien los nombres, las fechas y la ortografía.</strong> Tu canción se crea exactamente con la información que escribas aquí.
+                </p>
+              </div>
+
               {/* Active prompt hint */}
               {activePrompt && (
                 <div className="bg-gold/10 border border-gold/30 rounded-xl p-4 flex items-start gap-3">

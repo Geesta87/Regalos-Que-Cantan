@@ -272,6 +272,13 @@ export default function EmailStep() {
             )}
           </div>
 
+          {/* Review reminder */}
+          <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4 mb-8 text-center">
+            <p className="text-white/90 text-sm leading-relaxed">
+              ⚠️ <strong>Revisa bien los nombres, las fechas y la ortografía.</strong> Tu canción se crea exactamente con la información que escribiste arriba.
+            </p>
+          </div>
+
           {/* Email Input & Submit */}
           <div className="flex flex-col gap-6 items-center">
             <div className="w-full">
