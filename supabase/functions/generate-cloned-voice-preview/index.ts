@@ -89,6 +89,23 @@ const WEIRDNESS_CONSTRAINT = 0.10;
 const NEGATIVE_TAGS =
   'autotune, pitch correction, vocoder, robotic vocals, processed vocals';
 
+// Kie.ai (Suno) enforces a HARD 200-character cap on the `negativeTags` field.
+// The combined voice-clone-protection negatives (NEGATIVE_TAGS) + each genre's
+// musical negatives blow past it for EVERY genre (219-419 chars). When that
+// happens Kie returns HTTP 200 with the body
+// "the length of music negativeTags cannot exceed 200 characters" and the
+// preview fails to generate. Cap the combined list at 200 chars, keeping the
+// clone-protection tags (top priority for a voice product, and always < 200)
+// and dropping trailing genre tags at a comma boundary so we never ship a
+// half-written tag. KEEP IN SYNC with generate-cloned-voice-song.
+const KIE_NEGATIVE_TAGS_MAX = 200;
+function capNegativeTags(combined: string): string {
+  if (combined.length <= KIE_NEGATIVE_TAGS_MAX) return combined;
+  const truncated = combined.slice(0, KIE_NEGATIVE_TAGS_MAX);
+  const lastComma = truncated.lastIndexOf(',');
+  return (lastComma > 0 ? truncated.slice(0, lastComma) : truncated).trim();
+}
+
 // Genre style strings — TRIMMED to instrumentation only. Must match
 // generate-cloned-voice-song so the preview accurately represents what
 // the full song will sound like. See song function for the rationale
@@ -363,8 +380,9 @@ serve(async (req) => {
     );
   }
   const styleString = genre.style;
-  // Combined voice-clone-protection + per-genre musical negatives.
-  const negativeTagsCombined = `${NEGATIVE_TAGS}, ${genre.negativeTags}`;
+  // Combined voice-clone-protection + per-genre musical negatives, capped at
+  // Kie's 200-char limit (clone-protection tags always survive).
+  const negativeTagsCombined = capNegativeTags(`${NEGATIVE_TAGS}, ${genre.negativeTags}`);
   const language = (body.language || 'es').toLowerCase();
   const vocalGender =
     body.vocal_gender === 'm' || body.vocal_gender === 'f' ? body.vocal_gender : undefined;

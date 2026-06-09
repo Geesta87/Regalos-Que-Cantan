@@ -174,9 +174,34 @@ interface KieTrack {
   modelName?: string;
 }
 
+// Stored lyrics keep their SPANISH section markers ([Verso 1], [Coro], …) and
+// may carry legacy instruction artifacts (an English "(spoken, …)" cue or a
+// lowercase fill-in placeholder like [lugar]). Suno is English-trained and sings
+// those literally, so translate markers + strip artifacts before resubmitting —
+// same mapping generate-song applies. KEEP IN SYNC with generate-song.
+function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+function englishifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return stripSpokenProsodyCue(lyrics)
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
 async function submitToKie(lyrics: string, title: string, style: string, vocalGender: 'm' | 'f', callbackUrl: string): Promise<string> {
   const payload = {
-    prompt: lyrics.substring(0, 5000),
+    prompt: englishifyLyricsMarkers(lyrics).substring(0, 5000),
     customMode: true,
     instrumental: false,
     model: KIE_MODEL,
