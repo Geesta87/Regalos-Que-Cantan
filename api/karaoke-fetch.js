@@ -18,19 +18,34 @@
 // --------
 //   POST /api/karaoke-fetch
 //   body: { songId: "<rqc song uuid>", secret: "<KARAOKE_TRIGGER_SECRET>" }
-//   response: { success: true, karaoke_url: "<public storage URL>" }
+//   response: { success: true, karaoke_url: "https://regalosquecantan.com/karaoke/<songId>.mp3" }
+//
+// The instrumental is re-encoded WAV→MP3 before upload, and the returned link is
+// our own domain (vercel.json rewrites /karaoke/<file> to Supabase Storage).
 //
 // Idempotent — calling twice for the same songId is a no-op (returns the
 // existing karaoke_url). Failures funnel to songs.karaoke_status='failed' so
 // ops can retry without breaking the customer's payment flow.
 
 import JSZip from 'jszip';
+import { Mp3Encoder } from '@breezystack/lamejs';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const USEAPI_TOKEN = process.env.USEAPI_TOKEN;
 const KARAOKE_TRIGGER_SECRET = process.env.KARAOKE_TRIGGER_SECRET;
 const STORAGE_BUCKET = 'audio';
+
+// Public site base. The karaoke link we hand customers/admins points at our own
+// domain, and vercel.json rewrites /karaoke/<file> to the Supabase Storage object
+// (same pattern as the existing /videos/:songId proxy). Keeps the brand domain on
+// the link instead of leaking the raw *.supabase.co storage URL.
+const PUBLIC_BASE_URL = (process.env.PUBLIC_SITE_URL || 'https://regalosquecantan.com').replace(/\/$/, '');
+
+// MP3 bitrate for the karaoke download. Mureka ships the instrumental as a ~44MB
+// 16-bit WAV; re-encoding to 192kbps MP3 drops it to ~5MB with no audible loss for
+// a backing track, so the customer download is fast.
+const KARAOKE_MP3_KBPS = 192;
 
 // Vercel function config — bump memory and timeout for the extraction work.
 export const config = {
@@ -61,6 +76,83 @@ async function markFailed(songId, errorMsg) {
   } catch (e) {
     console.error(`[karaoke-fetch] failed to mark song ${songId} as failed:`, e?.message || e);
   }
+}
+
+// Parse a 16-bit PCM WAV Buffer into { sampleRate, channels, samples }.
+// Walks the RIFF chunks rather than assuming a fixed 44-byte header, since
+// Mureka's WAVs sometimes carry extra metadata chunks before 'data'.
+export function parseWav(buf) {
+  if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new Error('Karaoke source is not a RIFF/WAVE file');
+  }
+  let fmt = null;
+  let dataStart = -1;
+  let dataLen = 0;
+  let offset = 12;
+  while (offset + 8 <= buf.length) {
+    const chunkId = buf.toString('ascii', offset, offset + 4);
+    const chunkSize = buf.readUInt32LE(offset + 4);
+    const bodyStart = offset + 8;
+    if (chunkId === 'fmt ') {
+      fmt = {
+        audioFormat: buf.readUInt16LE(bodyStart),
+        channels: buf.readUInt16LE(bodyStart + 2),
+        sampleRate: buf.readUInt32LE(bodyStart + 4),
+        bitsPerSample: buf.readUInt16LE(bodyStart + 14),
+      };
+    } else if (chunkId === 'data') {
+      dataStart = bodyStart;
+      dataLen = chunkSize;
+    }
+    // RIFF chunks are word-aligned — pad odd sizes by one byte.
+    offset = bodyStart + chunkSize + (chunkSize & 1);
+  }
+  if (!fmt) throw new Error('WAV missing fmt chunk');
+  if (dataStart < 0) throw new Error('WAV missing data chunk');
+  if (fmt.audioFormat !== 1) throw new Error(`WAV is not PCM (audioFormat=${fmt.audioFormat})`);
+  if (fmt.bitsPerSample !== 16) throw new Error(`WAV is not 16-bit (bitsPerSample=${fmt.bitsPerSample})`);
+
+  const end = Math.min(dataStart + dataLen, buf.length);
+  const byteLen = (end - dataStart) & ~1; // round down to whole samples
+  // Copy into a dedicated, 2-byte-aligned buffer so the Int16Array view is valid
+  // regardless of where 'data' landed inside the ZIP-extracted Buffer.
+  const copy = Buffer.allocUnsafeSlow(byteLen);
+  buf.copy(copy, 0, dataStart, dataStart + byteLen);
+  const samples = new Int16Array(copy.buffer, copy.byteOffset, byteLen >> 1);
+  return { sampleRate: fmt.sampleRate, channels: fmt.channels, samples };
+}
+
+// Re-encode a 16-bit PCM WAV Buffer to an MP3 Buffer (pure-JS, no native deps).
+export function wavToMp3(wavBuf, kbps = KARAOKE_MP3_KBPS) {
+  const { sampleRate, channels, samples } = parseWav(wavBuf);
+  const encoder = new Mp3Encoder(channels, sampleRate, kbps);
+  const BLOCK = 1152; // LAME's natural frame size
+  const chunks = [];
+
+  if (channels === 2) {
+    const total = samples.length >> 1; // frames per channel
+    const left = new Int16Array(BLOCK);
+    const right = new Int16Array(BLOCK);
+    for (let i = 0; i < total; i += BLOCK) {
+      const n = Math.min(BLOCK, total - i);
+      for (let j = 0; j < n; j++) {
+        left[j] = samples[(i + j) * 2];
+        right[j] = samples[(i + j) * 2 + 1];
+      }
+      const l = n === BLOCK ? left : left.subarray(0, n);
+      const r = n === BLOCK ? right : right.subarray(0, n);
+      const enc = encoder.encodeBuffer(l, r);
+      if (enc.length) chunks.push(Buffer.from(enc));
+    }
+  } else {
+    for (let i = 0; i < samples.length; i += BLOCK) {
+      const enc = encoder.encodeBuffer(samples.subarray(i, i + BLOCK));
+      if (enc.length) chunks.push(Buffer.from(enc));
+    }
+  }
+  const tail = encoder.flush();
+  if (tail.length) chunks.push(Buffer.from(tail));
+  return Buffer.concat(chunks);
 }
 
 export default async function handler(req, res) {
@@ -159,26 +251,32 @@ export default async function handler(req, res) {
     const wavBuf = await instrumental.async('nodebuffer');
     console.log(`[karaoke-fetch] instrumental.wav extracted: ${(wavBuf.length / 1024 / 1024).toFixed(1)} MB`);
 
-    // ---- 6. Upload to Supabase Storage ----
-    const storagePath = `karaoke/${songId}.wav`;
+    // ---- 6. Re-encode WAV → MP3 (smaller, friendlier download) ----
+    const mp3Buf = wavToMp3(wavBuf);
+    console.log(`[karaoke-fetch] encoded MP3: ${(mp3Buf.length / 1024 / 1024).toFixed(1)} MB`);
+
+    // ---- 7. Upload to Supabase Storage ----
+    const storagePath = `karaoke/${songId}.mp3`;
     const uploadResp = await fetch(
       `${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${storagePath}?upsert=true`,
       {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'Content-Type': 'audio/wav',
+          'Content-Type': 'audio/mpeg',
           'x-upsert': 'true',
           'cache-control': '31536000',
         },
-        body: wavBuf,
+        body: mp3Buf,
       },
     );
     if (!uploadResp.ok) {
       const txt = await uploadResp.text().catch(() => '<no body>');
       throw new Error(`Supabase Storage upload ${uploadResp.status}: ${txt.slice(0, 300)}`);
     }
-    const karaokeUrl = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${storagePath}`;
+    // Hand out our own domain — vercel.json rewrites /karaoke/<file> to the
+    // Supabase Storage object, so the customer never sees the raw storage host.
+    const karaokeUrl = `${PUBLIC_BASE_URL}/karaoke/${songId}.mp3`;
     console.log(`[karaoke-fetch] uploaded: ${karaokeUrl}`);
 
     // ---- 7. Mark song row as ready ----

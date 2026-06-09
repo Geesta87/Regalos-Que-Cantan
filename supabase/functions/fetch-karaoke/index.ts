@@ -1,5 +1,13 @@
 // supabase/functions/fetch-karaoke/index.ts
 //
+// ⚠️ LEGACY / NOT THE PRODUCTION WORKER. The live karaoke job is the Vercel
+// function at api/karaoke-fetch.js — stripe-webhook calls THAT one. This Deno
+// twin remains only for local invocation/testing and is intentionally out of
+// sync: the Vercel worker re-encodes the instrumental to MP3 and stores a
+// regalosquecantan.com proxy URL, whereas this one still uploads raw .wav and
+// returns the raw *.supabase.co storage URL. Do NOT wire this back into the
+// payment flow without bringing it to parity first.
+//
 // Fetches and stores the karaoke (instrumental) version of a completed song.
 //
 // Why this function exists

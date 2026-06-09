@@ -5586,7 +5586,7 @@ export default function AdminDashboard() {
                       <div className="flex gap-2">
                         <a
                           href={selectedSong.karaoke_url}
-                          download={`karaoke-para-${selectedSong.recipient_name || 'cliente'}.wav`}
+                          download={`karaoke-para-${selectedSong.recipient_name || 'cliente'}.mp3`}
                           className="flex-1 py-2 px-4 bg-orange-400 text-black rounded-lg font-medium text-center text-sm hover:bg-orange-300 transition"
                         >
                           ⬇️ Download Karaoke
