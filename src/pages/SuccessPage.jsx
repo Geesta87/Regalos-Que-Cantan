@@ -2024,7 +2024,7 @@ export default function SuccessPage() {
                     }}>
                       La canción sin la voz — para cantarla tú en familia, fiestas o redes.
                     </p>
-                    <a href={url} download={`karaoke-para-${karaokeSong.recipient_name || 'ti'}.wav`}
+                    <a href={url} download={`karaoke-para-${karaokeSong.recipient_name || 'ti'}.mp3`}
                        style={{
                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                          width: '100%', padding: '14px',
