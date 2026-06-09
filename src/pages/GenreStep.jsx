@@ -390,7 +390,7 @@ export default function GenreStep() {
               href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
               target="_blank"
               rel="noopener noreferrer"
-              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/20 via-bougainvillea/10 to-bougainvillea/5 backdrop-blur-xl border-2 border-bougainvillea shadow-[0_0_25px_rgba(242,13,128,0.3)] hover:shadow-[0_0_35px_rgba(242,13,128,0.6)] hover:-translate-y-1"
+              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/10 via-bougainvillea/5 to-transparent backdrop-blur-xl border border-bougainvillea/40 hover:border-bougainvillea hover:shadow-[0_0_25px_rgba(242,13,128,0.35)] hover:-translate-y-1"
             >
               <span className="absolute top-2 right-2 bg-bougainvillea text-white text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">⭐ POPULAR</span>
               <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
