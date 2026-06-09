@@ -47,16 +47,32 @@ export async function generateSong(formData, overridePin = null) {
   const payload = {
     genre: formData.genre,
     genreStyle: stylePrompt,
+    // Display names + custom write-ins the edge function reads. Previously these
+    // were collected by the funnel but never forwarded here, so the backend fell
+    // back to the raw slug ("norteno") for the genre label and — worse — silently
+    // dropped the customer's own text when they picked "Otro" relationship/occasion
+    // (e.g. "mi madrina que me crió" / "celebrar que venció el cáncer"). Forwarding
+    // them restores that personalization. Unknown/empty fields are harmless: the
+    // backend already guards each with `=== 'otro' && <field>` or `|| fallback`.
+    genreName: formData.genreName || '',
     subGenre: formData.subGenre || '',
+    subGenreName: formData.subGenreName || '',
     occasion: formData.occasion,
     occasionPrompt: occasionPrompts[formData.occasion],
+    customOccasion: formData.customOccasion || '',
+    emotionalTone: formData.emotionalTone || '',
     recipientName: formData.recipientName,
     senderName: formData.senderName,
     relationship: formData.relationship,
+    customRelationship: formData.customRelationship || '',
     details: formData.details,
     email: formData.email,
     voiceType: formData.voiceType || 'male',
-    artistInspiration: formData.artistInspiration || ''
+    artistInspiration: formData.artistInspiration || '',
+    // Links Song 2 to Song 1's session on the direct-Mureka path (GeneratingPage
+    // passes sessionId through formData for the v2 call). Omitted on v1 → backend
+    // generates a fresh session id, unchanged from before.
+    ...(formData.sessionId ? { sessionId: formData.sessionId } : {})
   };
 
   // Optional admin override PIN — bypasses anti-abuse rate limits when the
