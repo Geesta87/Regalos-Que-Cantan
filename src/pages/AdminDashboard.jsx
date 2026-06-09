@@ -5593,12 +5593,17 @@ export default function AdminDashboard() {
                         </a>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(selectedSong.karaoke_url);
-                            alert('Karaoke URL copied!');
+                            // Share the branded KARAOKE PAGE (not the raw audio file) —
+                            // /karaoke/<id> renders the decorated "instrumental, sin voz"
+                            // page with player + download. Derived from the id so it works
+                            // regardless of what karaoke_url points at.
+                            const pageUrl = `https://www.regalosquecantan.com/karaoke/${selectedSong.id}`;
+                            navigator.clipboard.writeText(pageUrl);
+                            alert('Karaoke share link copied!\n' + pageUrl);
                           }}
                           className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
                         >
-                          📋 Copy URL
+                          📋 Copy Share Link
                         </button>
                       </div>
                     </>

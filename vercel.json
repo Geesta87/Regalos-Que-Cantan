@@ -8,7 +8,7 @@
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/:songId"
     },
     {
-      "source": "/karaoke/:file",
+      "source": "/karaoke/:file(.+\\.[a-zA-Z0-9]+)",
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/audio/karaoke/:file"
     },
     { "source": "/share/:ids", "destination": "/api/share?ids=:ids" },
