@@ -122,10 +122,35 @@ interface UseApiJobResponse {
   code?: string;
 }
 
+// Lyrics may arrive with SPANISH section markers ([Verso 1], [Coro], …) and
+// legacy instruction artifacts (an English "(spoken, …)" cue or a lowercase
+// fill-in placeholder like [lugar]). Mureka is English-trained and sings those
+// literally, so translate markers + strip artifacts before sending. Idempotent
+// if the caller already cleaned them. KEEP IN SYNC with generate-song.
+function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+function englishifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return stripSpokenProsodyCue(lyrics)
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
 async function callMurekaApi(lyrics: string, title: string, desc: string, model: string, vocalGender?: string): Promise<Response> {
   const payload: Record<string, unknown> = {
     account: MUREKA_ACCOUNT,
-    lyrics: lyrics.substring(0, 5000),
+    lyrics: englishifyLyricsMarkers(lyrics).substring(0, 5000),
     title: title,
     desc: desc.substring(0, 1000),
     model,

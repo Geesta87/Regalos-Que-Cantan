@@ -1307,6 +1307,19 @@ function sanitizeArtistNames(input: string): string {
   return out;
 }
 
+// Trim a string to at most `max` chars WITHOUT slicing through a word: cut back
+// to the last comma or space within range. Keeps the style prompt clean when the
+// combined genre description exceeds the music provider's character budget.
+function clampAtBoundary(s: string, max: number): string {
+  if (!s) return '';
+  if (s.length <= max) return s;
+  const slice = s.slice(0, max);
+  const lastComma = slice.lastIndexOf(', ');
+  const lastSpace = slice.lastIndexOf(' ');
+  const cut = lastComma > 0 ? lastComma : lastSpace;
+  return (cut > max * 0.5 ? slice.slice(0, cut) : slice).replace(/[,\s]+$/, '');
+}
+
 function buildStylePrompt(
   genre: string,
   subGenre: string | null,
@@ -1327,27 +1340,30 @@ function buildStylePrompt(
   const subGenreData = subGenre ? genreData.subGenres[subGenre] : null;
   const artistData = artistInspiration ? findArtist(artistInspiration) : null;
 
-  const styleParts: string[] = [];
+  // "Lead" = everything except vibe; vibe is held back as a reserved tail so it
+  // can't be truncated away (see assembly note below).
+  const leadParts: string[] = [];
   const negativeParts: string[] = [genreData.negativeTags];
+  let vibePart = '';
 
   // Primary: Sub-genre style (most specific)
   if (subGenreData) {
-    styleParts.push(subGenreData.style);
-    styleParts.push(subGenreData.tempo); // CRITICAL: tempo enforcement
-    styleParts.push(subGenreData.instruments);
-    styleParts.push(subGenreData.vibe);
+    leadParts.push(subGenreData.style);
+    leadParts.push(subGenreData.tempo); // CRITICAL: tempo enforcement
+    leadParts.push(subGenreData.instruments);
+    vibePart = subGenreData.vibe;       // reserved tail — see assembly below
     negativeParts.push(subGenreData.negative);
   } else {
     // Fallback to genre defaults
-    styleParts.push(genreData.baseStyle);
-    styleParts.push(genreData.defaultTempo);
-    styleParts.push(genreData.instruments);
+    leadParts.push(genreData.baseStyle);
+    leadParts.push(genreData.defaultTempo);
+    leadParts.push(genreData.instruments);
   }
 
   // Secondary: Artist sonic signature (if specified) — NO artist names sent to API
   if (artistData) {
-    styleParts.push(artistData.signatureSound);
-    styleParts.push(artistData.keyElements);
+    leadParts.push(artistData.signatureSound);
+    leadParts.push(artistData.keyElements);
   }
 
   // Voice type (male or female only — duet not supported by Mureka API)
@@ -1356,9 +1372,29 @@ function buildStylePrompt(
   // Vocal character: gender-neutral delivery style (gender handled by vocal_gender API param)
   const vocalCharacter = subGenreData?.vocalCharacter || genreData.defaultVocalCharacter || '';
 
+  // Assemble within the provider char budget. Previously we joined
+  // [style, tempo, instruments, vibe] and hard-cut at 980 — for the most verbose
+  // genres (e.g. corrido tradicional, whose `style` alone is ~590 chars) that cut
+  // landed inside `instruments` and dropped `vibe` (the atmosphere/emotion cues)
+  // entirely. Now: if everything fits, output is byte-identical to before; only
+  // when it would overflow do we reserve a slice for `vibe` so the emotional
+  // character always reaches the model.
+  const STYLE_BUDGET = 980;
+  const VIBE_RESERVE = 170;
+  const lead = leadParts.filter(Boolean).join(', ');
+  const fullJoin = [lead, vibePart].filter(Boolean).join(', ');
+  let stylePrompt: string;
+  if (fullJoin.length <= STYLE_BUDGET) {
+    stylePrompt = fullJoin; // fits whole — identical to previous behavior
+  } else {
+    const trimmedLead = clampAtBoundary(lead, STYLE_BUDGET - VIBE_RESERVE - 2);
+    const trimmedVibe = clampAtBoundary(vibePart, VIBE_RESERVE);
+    stylePrompt = (trimmedVibe ? `${trimmedLead}, ${trimmedVibe}` : trimmedLead).substring(0, STYLE_BUDGET);
+  }
+
   return {
     vocalCharacter,
-    stylePrompt: styleParts.join(', ').substring(0, 980),
+    stylePrompt,
     // Note: negativeTags are not sent to Mureka (API has no negative prompt field)
     // Kept for documentation/logging purposes only
     negativeTags: [...new Set(negativeParts.join(', ').split(', '))].join(', ').substring(0, 200),
@@ -1556,7 +1592,7 @@ async function callMurekaProvider(ctx: ProviderCtx): Promise<ProviderResult> {
 // Spanish (since the site is Spanish-only).
 function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
-  return lyrics
+  return stripSpokenProsodyCue(lyrics)
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
     .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
     .replace(/\[Verso\]/gi, '[Verse]')
@@ -1565,6 +1601,29 @@ function englishifyLyricsMarkers(lyrics: string): string {
     .replace(/\[Puente\]/gi, '[Bridge]')
     .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
     .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
+// Mureka and Suno vocalize ANY parenthetical in the lyric body — it's the
+// ad-lib / backing-vocal convention, NOT a silent stage direction. The genre
+// prompts ask Claude to tag spoken sections with an English prosody cue like
+// "(spoken, no melody, narrator voice, storytelling)" on the [Hablado] line,
+// and the models were literally singing those English words. It's most audible
+// in Corrido Tradicional, where [Hablado] is the FIRST section — customers
+// heard unintelligible English before the song even started. The [Spoken Word]
+// marker and the desc interlude cue already switch the model into spoken mode,
+// so the inline cue is pure downside: strip it before it can be vocalized (or
+// shown in the lyrics we display to the customer).
+function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '') // drop "(spoken, no melody, …)" cues
+    // Drop any leaked fill-in placeholder like [lugar], [nombre], [año si se
+    // conoce] that a prompt example left behind. Real section markers are ALWAYS
+    // capitalized ([Verso 1], [Coro], [Verse], [Chorus]); a bracket that starts
+    // with a lowercase letter is never a marker, so it can only be an
+    // instruction artifact the model would otherwise sing.
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');                 // tidy trailing space left on the marker line
 }
 
 async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
@@ -1772,6 +1831,22 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 9. VOCALES ABIERTAS AL FINAL DEL CORO — regla física, no estilística. Cada línea de [Coro], [Coro Final], y [Pre-Coro] (si existe) DEBE terminar en vocal abierta: a, o, e. NUNCA terminar línea del coro en consonante final, ni en "s" plural, ni en sílabas cerradas (-r, -n, -d, -l, -z, etc.).
    Razón: las vocales abiertas se pueden SOSTENER al cantar — son donde vive el "singalong". Las consonantes cortan el sonido y matan la cantabilidad en grupo. Compara: "te quiero a ti" (cantable) vs "te quiero más" (cortante).
    Si una línea del coro termina en consonante, REESCRÍBELA invirtiendo el orden o cambiando la palabra final para que termine en vocal abierta. Esta regla es INNEGOCIABLE para [Coro], [Coro Final], [Pre-Coro]. En versos no aplica (puedes terminar como quieras).
+
+REGLA ABSOLUTA — FIDELIDAD A LOS HECHOS (NO DISTORSIONAR, NO INVENTAR DATOS):
+La letra NUNCA debe afirmar un hecho que contradiga o cambie el significado de lo que el usuario escribió. Un solo dato equivocado (fecha, lugar, relación, evento) ARRUINA el regalo y rompe la confianza del cliente. Esta regla pesa MÁS que la rima, la métrica o la belleza de la frase: si para que rime tienes que cambiar un hecho, cambia la frase, NUNCA el hecho.
+
+- PRESERVA EL SIGNIFICADO EXACTO de cada dato. NO cambies el VERBO ni la RELACIÓN entre los datos. El verbo es el hecho — cambiarlo es mentir. Errores PROHIBIDOS (ejemplos reales):
+  • "se conocieron en 2019" → PROHIBIDO escribir "llegaron en 2019" (conocerse ≠ llegar)
+  • "casados hace 10 años" → PROHIBIDO escribir "se conocieron hace 10 años" (casarse ≠ conocerse)
+  • "es de Jalisco" → PROHIBIDO escribir "vive en Jalisco" (origen ≠ residencia actual)
+  • "su papá / su hijo" → PROHIBIDO cambiarlo a "su abuelo / su hermano" (cada parentesco es exacto)
+  • un nombre, número, fecha o lugar → cópialo TAL CUAL, no lo "mejores" ni lo aproximes.
+- NO INVENTES datos concretos nuevos (fechas, lugares, edades, números, nombres, eventos) que el usuario NO dio. Está PROHIBIDO agregar un hecho específico falso solo porque "suena bien" o porque ayuda a la rima.
+- SÍ tienes libertad TOTAL para la EMOCIÓN: atmósfera, imágenes sensoriales, sentimiento, metáforas. Tu creatividad es sobre CÓMO se siente la historia, NUNCA sobre QUÉ pasó. Adorna el sentimiento, no los hechos.
+- Si un detalle es AMBIGUO o incompleto, déjalo GENERAL en vez de inventar una versión específica que podría ser falsa. Mejor verdadero y vago que específico y equivocado.
+- EXCEPCIÓN ÚNICA: si el usuario NO proporcionó NINGÚN detalle personal, entonces SÍ puedes inventar momentos verosímiles (se te indica explícitamente en el mensaje del usuario cuando aplica). La prohibición de inventar/distorsionar aplica SOLO a los datos que el usuario SÍ escribió.
+
+ANTES DE ENTREGAR — AUTO-VERIFICACIÓN OBLIGATORIA: relee cada línea de la letra que mencione un dato (fecha, lugar, nombre, parentesco, edad, evento, apodo) y confírmalo contra los DETALLES PERSONALES del mensaje del usuario, palabra por palabra. Si alguna línea cambia, exagera o inventa un hecho, REESCRÍBELA antes de llamar a la herramienta. La letra que entregas debe poder leerse junto a los detalles del cliente sin una sola contradicción.
 
 REGLA ABSOLUTA — NOMBRES DE ARTISTAS:
 NUNCA escribas el nombre de un artista, banda, cantante o grupo musical real (ni en las letras, ni en emotionalModifiers, ni en ningún otro campo). Esto incluye nombres como "Christian Nodal", "Vicente Fernández", "Alacranes Musical", "Banda MS", "Carin León", "Peso Pluma", "K-Paz", "Diomedes Díaz", etc. — si pensaste mencionar un artista para describir el estilo, REEMPLÁZALO por una descripción del SONIDO ("modern romantic ranchera style", "techno-banda style") sin mencionar al artista. El proveedor de música RECHAZA cualquier referencia a artistas reales y la canción FALLA.
@@ -2195,10 +2270,10 @@ CONVENCIONES OBLIGATORIAS DEL CORRIDO TRADICIONAL (90s rural Sinaloa) — ESTAS 
 
 2. ESTROFAS DE CUARTETA. Cada verso ([Verso 1], [Verso 2], [Puente]) debe ser una cuarteta de 4 líneas con rima ABAB o ABCB. La rima es CONSONANTE preferentemente. No improvises estrofas de 5 o 6 líneas — siempre 4.
 
-3. FÓRMULA TRADICIONAL DE APERTURA. El [Verso 1] (o el [Hablado] inicial si existe) DEBE abrir con una de estas fórmulas clásicas del corrido (escoge la más natural para el caso):
+3. FÓRMULA TRADICIONAL DE APERTURA. El [Verso 1] (o el [Hablado] inicial si existe) DEBE abrir con una de estas fórmulas clásicas del corrido (escoge la más natural para el caso). IMPORTANTE: rellena los datos con el valor real (año, lugar) ya escrito — NUNCA dejes corchetes ni instrucciones en la letra:
    - "Voy a cantarles señores..."
-   - "Año del [año si se conoce]..."
-   - "En el rancho de [lugar]..."
+   - "Año del dos mil veinte..." (usa el año real solo si el usuario lo dio; si no, omite esta fórmula)
+   - "En el rancho de San Miguel..." (usa el lugar real del usuario, o un marcador rural genérico como "el rancho")
    - "Pongan mucha atención..."
    - "Señores, voy a contarles..."
    - "Aquí les traigo un corrido..."
@@ -2211,7 +2286,7 @@ CONVENCIONES OBLIGATORIAS DEL CORRIDO TRADICIONAL (90s rural Sinaloa) — ESTAS 
 
 7. DESPEDIDA FINAL. El [Coro Final] o las últimas líneas del [Puente] deben incluir una fórmula de despedida tradicional:
    - "Ya con esta me despido..."
-   - "Aquí termina el corrido de [nombre]..."
+   - "Aquí termina el corrido de ${recipientName}..."
    - "Y aquí acaba mi corrido..."
    - "Vuela vuela palomita, lleva este corrido a..."
    Es la marca tradicional del cierre del corrido del siglo XX.
@@ -2401,7 +2476,11 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
 
     // Tool input has been schema-validated by the Anthropic API. No parsing
     // on our side, no possibility of malformed JSON leaking through.
-    const lyrics: string = toolUseBlock.input.lyrics;
+    // Strip the inline English prosody cue (e.g. "(spoken, no melody, …)") the
+    // genre prompts inject on [Hablado] lines — the music models sing it aloud
+    // (most audibly at the start of corridos) and we also display these lyrics
+    // to the customer, so clean it before storing or sending to any provider.
+    const lyrics: string = stripSpokenProsodyCue(toolUseBlock.input.lyrics);
     const emotionalModifiers: string = toolUseBlock.input.emotionalModifiers || '';
 
     console.log('✓ Lyrics extracted from tool_use block');
@@ -2415,10 +2494,11 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       finalStyle = `${stylePrompt}, ${emotionalModifiers}`;
     }
     // Prime Mureka for a spoken-word interlude BEFORE it sees the lyrics. Putting
-    // the cue in `desc` (not just the lyric body) lets the vocal model expect the
-    // sung→spoken→sung transition. Combined with the English [Spoken Word] marker
-    // and the inline (spoken, no melody, …) hint in the lyrics, this gives the
-    // model three independent signals to switch vocal modes.
+    // the cue in `desc` (not the lyric body) lets the vocal model expect the
+    // sung→spoken→sung transition WITHOUT any English leaking into the vocal.
+    // This and the English [Spoken Word] marker are the two signals that switch
+    // vocal modes; the old inline "(spoken, no melody, …)" hint was removed
+    // because the models sang it aloud (see stripSpokenProsodyCue).
     if (hasSpokenWord) {
       finalStyle = `${finalStyle}, includes brief spoken-word dedication interlude with non-sung intimate vocal delivery`;
     }

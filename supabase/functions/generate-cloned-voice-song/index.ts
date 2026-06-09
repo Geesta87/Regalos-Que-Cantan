@@ -79,6 +79,51 @@ const AUDIO_WEIGHT = 0.95;
 const WEIRDNESS_CONSTRAINT = 0.10;
 const NEGATIVE_TAGS = 'autotune, pitch correction, vocoder, robotic vocals, processed vocals';
 
+// Kie.ai (Suno) enforces a HARD 200-character cap on the `negativeTags` field.
+// The combined voice-clone-protection negatives (NEGATIVE_TAGS) + each genre's
+// musical negatives blow past it for EVERY genre (219-419 chars). When that
+// happens Kie returns HTTP 200 with the body
+// "the length of music negativeTags cannot exceed 200 characters" and the
+// generation fails. Cap the combined list at 200 chars, keeping the
+// clone-protection tags (top priority for a voice product, and always < 200)
+// and dropping trailing genre tags at a comma boundary so we never ship a
+// half-written tag. KEEP IN SYNC with generate-cloned-voice-preview.
+const KIE_NEGATIVE_TAGS_MAX = 200;
+function capNegativeTags(combined: string): string {
+  if (combined.length <= KIE_NEGATIVE_TAGS_MAX) return combined;
+  const truncated = combined.slice(0, KIE_NEGATIVE_TAGS_MAX);
+  const lastComma = truncated.lastIndexOf(',');
+  return (lastComma > 0 ? truncated.slice(0, lastComma) : truncated).trim();
+}
+
+// Lyrics arrive from generate-cloned-voice-lyrics with SPANISH section markers
+// ([Verso 1], [Coro], [Puente], …) regardless of the lyric language. Suno is
+// English-trained and sings unrecognized Spanish markers literally (or blurs
+// the section boundary), so translate them to the English equivalents before
+// submitting — exactly what generate-song does on its provider path. Also strip
+// any leaked instruction artifact (an English "(spoken, …)" cue, or a lowercase
+// fill-in placeholder like [lugar]) that the model would otherwise vocalize.
+// KEEP IN SYNC with generate-song's stripSpokenProsodyCue + englishifyLyricsMarkers.
+function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+function englishifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return stripSpokenProsodyCue(lyrics)
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
 // Per-launch-genre style strings — TRIMMED to instrumentation only.
 //
 // Old strings included vocal-style directives ("voz natural", "vibrato
@@ -335,7 +380,7 @@ serve(async (req) => {
   // Combine the always-on voice-clone-protection negatives with the
   // genre-specific musical negatives. Suno accepts a long comma-separated
   // list here.
-  const negativeTagsCombined = `${NEGATIVE_TAGS}, ${genre.negativeTags}`;
+  const negativeTagsCombined = capNegativeTags(`${NEGATIVE_TAGS}, ${genre.negativeTags}`);
   if (body.lyrics!.length > 5000) {
     return new Response(
       JSON.stringify({ error: 'lyrics_too_long', message: 'lyrics must be at most 5000 characters.' }),
@@ -455,7 +500,7 @@ serve(async (req) => {
   // ---------------- call Kie.ai upload-cover ----------------
   const kiePayload = {
     uploadUrl: voicePublicUrl,
-    prompt: body.lyrics!,
+    prompt: englishifyLyricsMarkers(body.lyrics!),
     customMode: true,
     instrumental: false,
     model: SUNO_MODEL,
