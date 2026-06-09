@@ -21,6 +21,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import ShareablePreviewPage from './pages/ShareablePreviewPage';
 import SongPage from './pages/SongPage';
+import KaraokePage from './pages/KaraokePage';
 import RecoverSongPage from './pages/RecoverSongPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
@@ -118,6 +119,12 @@ function getInitialPage() {
   // Handle /song/:id shareable pages
   if (path.startsWith('/song/')) {
     return 'songPage';
+  }
+
+  // Handle /karaoke/:id shareable instrumental page. The .mp3 file path is
+  // proxied by vercel.json before this app loads, so only the bare id lands here.
+  if (path.startsWith('/karaoke/')) {
+    return 'karaokePage';
   }
 
   // Handle /preview/:id links (from emails) → redirect to listen page
@@ -374,6 +381,7 @@ export default function App() {
           {currentPage === 'success' && <SuccessPage />}
           {currentPage === 'listen' && <ShareablePreviewPage />}
           {currentPage === 'songPage' && <SongPage />}
+          {currentPage === 'karaokePage' && <KaraokePage />}
           {currentPage === 'recoverSong' && <RecoverSongPage />}
           
           {/* Admin pages */}
