@@ -55,7 +55,7 @@ export default function KaraokePage() {
   const downloadHref = audioSrc.replace(/^https?:\/\/(www\.)?regalosquecantan\.com/i, '');
   const recipient = (song?.recipient_name || '').trim();
   const ready = !!song && song.karaoke_status === 'ready' && !!audioSrc;
-  const downloadName = `karaoke-${(recipient || 'regalosquecantan').replace(/\s+/g, '-').toLowerCase()}.mp3`;
+  const downloadName = `pista-instrumental-${(recipient || 'regalosquecantan').replace(/\s+/g, '-').toLowerCase()}.mp3`;
 
   return (
     <div
@@ -67,7 +67,7 @@ export default function KaraokePage() {
       }}
     >
       <Helmet>
-        <title>{recipient ? `Karaoke para ${recipient} · Regalos Que Cantan` : 'Versión Karaoke · Regalos Que Cantan'}</title>
+        <title>{recipient ? `Pista Instrumental para ${recipient} · Regalos Que Cantan` : 'Pista Instrumental · Regalos Que Cantan'}</title>
         <meta name="robots" content="noindex" />
       </Helmet>
 
@@ -107,7 +107,7 @@ export default function KaraokePage() {
             color: '#fff', fontSize: 28, lineHeight: 1.2, margin: '0 0 10px', fontWeight: 800,
           }}
         >
-          {recipient ? `Versión Karaoke para ${recipient}` : 'Versión Karaoke'}
+          {recipient ? `Pista Instrumental para ${recipient}` : 'Pista Instrumental'}
         </h1>
 
         <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, lineHeight: 1.55, margin: '0 0 24px' }}>
@@ -116,7 +116,7 @@ export default function KaraokePage() {
         </p>
 
         {loading && (
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, padding: '24px 0' }}>Cargando tu karaoke…</p>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, padding: '24px 0' }}>Cargando tu pista instrumental…</p>
         )}
 
         {!loading && ready && (
@@ -139,14 +139,14 @@ export default function KaraokePage() {
                 boxShadow: '0 10px 28px rgba(242,13,128,0.4)',
               }}
             >
-              ⬇️ Descargar Karaoke (MP3)
+              ⬇️ Descargar Pista Instrumental (MP3)
             </a>
           </>
         )}
 
         {!loading && !ready && (
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 1.5, padding: '12px 0' }}>
-            🎤 Tu versión karaoke aún se está preparando o no está disponible.
+            🎤 Tu pista instrumental aún se está preparando o no está disponible.
             <br />
             Escríbenos a{' '}
             <a href="mailto:hola@regalosquecantan.com" style={{ color: '#ffb3d8', fontWeight: 700 }}>

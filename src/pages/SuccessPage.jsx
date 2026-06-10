@@ -2016,7 +2016,7 @@ export default function SuccessPage() {
                       color: isLight ? '#92400e' : '#fbbf24',
                       display: 'flex', alignItems: 'center', gap: '6px',
                     }}>
-                      🎤 Tu versión karaoke está lista
+                      🎤 Tu pista instrumental está lista
                     </p>
                     <p style={{
                       margin: '0 0 12px', fontSize: '12px',
@@ -2024,7 +2024,7 @@ export default function SuccessPage() {
                     }}>
                       La canción sin la voz — para cantarla tú en familia, fiestas o redes.
                     </p>
-                    <a href={url} download={`karaoke-para-${karaokeSong.recipient_name || 'ti'}.mp3`}
+                    <a href={url} download={`pista-instrumental-para-${karaokeSong.recipient_name || 'ti'}.mp3`}
                        style={{
                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                          width: '100%', padding: '14px',
@@ -2035,7 +2035,7 @@ export default function SuccessPage() {
                          boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
                          fontFamily: ts.font,
                        }}>
-                      ⬇️ Descargar Karaoke (sin voz)
+                      ⬇️ Descargar Pista Instrumental (sin voz)
                     </a>
                   </div>
                 );
@@ -2055,7 +2055,7 @@ export default function SuccessPage() {
                       margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
                       color: isLight ? '#92400e' : '#fbbf24',
                     }}>
-                      🎤 Preparando tu versión karaoke…
+                      🎤 Preparando tu pista instrumental…
                     </p>
                     <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
                       Listo en ~1 minuto. La página se actualiza sola.
@@ -2075,7 +2075,7 @@ export default function SuccessPage() {
                     textAlign: 'center',
                   }}>
                     <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
-                      🎤 Hubo un problema preparando tu karaoke. Te lo enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                      🎤 Hubo un problema preparando tu pista instrumental. Te la enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
                     </p>
                   </div>
                 );
