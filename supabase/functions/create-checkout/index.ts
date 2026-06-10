@@ -289,8 +289,8 @@ serve(async (req) => {
         price_data: {
           currency: 'usd',
           product_data: {
-            name: 'Versión Karaoke (sin voz)',
-            description: 'La misma canción sin la voz — para cantarla tú en familia, fiestas o redes. MP3 calidad estudio, lista en ~1 minuto.',
+            name: 'Pista Instrumental (sin voz)',
+            description: 'La misma canción solo con la música, sin la voz. No incluye letras en pantalla ni video. MP3 calidad estudio, lista en ~1 minuto.',
           },
           unit_amount: KARAOKE_PRICE_CENTS,
         },
