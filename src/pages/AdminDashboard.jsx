@@ -2086,12 +2086,9 @@ export default function AdminDashboard() {
       <header className="bg-[#1a1f26] border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-xl">
-              🎵
-            </div>
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                Admin Dashboard
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'Mensajes SMS', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -2107,7 +2104,6 @@ export default function AdminDashboard() {
                   </span>
                 )}
               </h1>
-              <p className="text-xs text-gray-400">RegalosQueCantan</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -2353,24 +2349,24 @@ export default function AdminDashboard() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-2xl p-5 border border-blue-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-blue-400 text-2xl">🎵</span>
-              <span className="text-xs text-blue-400 bg-blue-500/20 px-2 py-1 rounded-full">Total</span>
+              <span className="text-2xl">🎵</span>
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Total</span>
             </div>
-            <p className="text-3xl font-bold">{stats.totalSongs}</p>
+            <p className="text-3xl font-bold text-white">{stats.totalSongs}</p>
             <p className="text-sm text-gray-400">Songs</p>
           </div>
 
-          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-2xl p-5 border border-green-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-green-400 text-2xl">💰</span>
-              <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded-full">Revenue</span>
+              <span className="text-2xl">💰</span>
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Revenue</span>
             </div>
-            <p className="text-3xl font-bold">
+            <p className="text-3xl font-bold text-white">
               {userRole === 'admin'
                 ? formatCurrency(stats.totalRevenue)
-                : <span className="text-green-400 animate-pulse">Calculating...</span>}
+                : <span className="text-gray-400 animate-pulse">Calculating...</span>}
             </p>
             <p className="text-sm text-gray-400">
               {userRole === 'admin'
@@ -2379,28 +2375,28 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-2xl p-5 border border-emerald-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-emerald-400 text-2xl">✅</span>
-              <span className="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-full">Paid</span>
+              <span className="text-2xl">✅</span>
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Paid</span>
             </div>
-            <p className="text-3xl font-bold">{stats.paidOrders}</p>
+            <p className="text-3xl font-bold text-white">{stats.paidOrders}</p>
             <p className="text-sm text-gray-400">Completed orders</p>
           </div>
 
-          <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-2xl p-5 border border-amber-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-amber-400 text-2xl">⏳</span>
-              <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-1 rounded-full">Pending</span>
+              <span className="text-2xl">⏳</span>
+              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Pending</span>
             </div>
-            <p className="text-3xl font-bold">{stats.pendingOrders}</p>
+            <p className="text-3xl font-bold text-white">{stats.pendingOrders}</p>
             <p className="text-sm text-gray-400">Unpaid</p>
           </div>
         </div>
 
         {/* WhatsApp Contacts Banner */}
         {stats.whatsappContacts > 0 && (
-          <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-2xl p-4 mb-6 border border-green-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-4 mb-6 border border-white/5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">💬</span>
@@ -2429,7 +2425,7 @@ export default function AdminDashboard() {
 
         {/* Today's Stats Banner — admin only (hidden from assistant role) */}
         {userRole === 'admin' && stats.todayOrders > 0 && (
-          <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-2xl p-4 mb-6 border border-purple-500/20">
+          <div className="bg-[#1a1f26] rounded-2xl p-4 mb-6 border border-white/5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">🔥</span>
@@ -2459,7 +2455,7 @@ export default function AdminDashboard() {
               disabled={pendingSendCount === 0}
               className={`text-left rounded-2xl p-4 border transition ${
                 pendingSendCount > 0
-                  ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/30 hover:border-green-400 hover:from-green-500/20'
+                  ? 'bg-green-500/5 border-green-500/20 hover:bg-green-500/10 hover:border-green-400/40'
                   : 'bg-white/3 border-white/5 opacity-60 cursor-default'
               }`}
             >
@@ -2475,7 +2471,7 @@ export default function AdminDashboard() {
               disabled={hotLeadsCount === 0}
               className={`text-left rounded-2xl p-4 border transition ${
                 hotLeadsCount > 0
-                  ? 'bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/30 hover:border-orange-400 hover:from-orange-500/20'
+                  ? 'bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10 hover:border-orange-400/40'
                   : 'bg-white/3 border-white/5 opacity-60 cursor-default'
               }`}
             >
@@ -2491,7 +2487,7 @@ export default function AdminDashboard() {
               disabled={stuckSongsCount === 0}
               className={`text-left rounded-2xl p-4 border transition ${
                 stuckSongsCount > 0
-                  ? 'bg-gradient-to-br from-red-500/10 to-rose-500/10 border-red-500/30 hover:border-red-400 hover:from-red-500/20'
+                  ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-400/40'
                   : 'bg-white/3 border-white/5 opacity-60 cursor-default'
               }`}
             >
