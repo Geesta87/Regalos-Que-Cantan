@@ -1623,13 +1623,13 @@ export default function ComparisonPage() {
                 margin: '0 0 2px', fontSize: '14px', fontWeight: 800,
                 color: '#fef3c7', lineHeight: 1.2,
               }}>
-                Versión sin voz · Karaoke
+                Pista Instrumental · sin voz
               </p>
               <p style={{
                 margin: '0 0 4px', fontSize: '11px',
                 color: 'rgba(255,255,255,0.55)', lineHeight: 1.3,
               }}>
-                Para cantarla tú en familia o fiestas
+                Solo la música, sin letras en pantalla — para cantar tú encima
               </p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                 <span style={{ fontSize: '16px', fontWeight: 900, color: '#fbbf24' }}>
