@@ -2220,9 +2220,9 @@ export default function AdminDashboard() {
         {murekaCredits && (() => {
           const c = murekaCredits;
           const bg =
-            c.status === 'critical' ? 'from-red-500/20 to-red-600/10 border-red-500/40' :
-            c.status === 'low' ? 'from-amber-500/20 to-amber-600/10 border-amber-500/40' :
-            'from-violet-500/15 to-purple-600/10 border-violet-500/30';
+            c.status === 'critical' ? 'bg-red-500/5 border-red-500/30' :
+            c.status === 'low' ? 'bg-amber-500/5 border-amber-500/30' :
+            'bg-[#1a1f26] border-white/5';
           const numColor =
             c.status === 'critical' ? 'text-red-400' :
             c.status === 'low' ? 'text-amber-400' :
@@ -2232,7 +2232,7 @@ export default function AdminDashboard() {
             ? Math.max(0, Math.floor((Date.now() - new Date(c.anchored_at).getTime()) / 86400000))
             : null;
           return (
-            <div className={`mb-6 rounded-2xl bg-gradient-to-br ${bg} border p-5`}>
+            <div className={`mb-6 rounded-2xl ${bg} border p-5`}>
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-4">
                   <span className={`text-3xl ${pulse}`}>🎵</span>
@@ -2296,13 +2296,13 @@ export default function AdminDashboard() {
           const enabled = !!socialPipeline.enabled;
           const isAdmin = socialPipeline.role === 'admin';
           const cardBg = enabled
-            ? 'from-emerald-500/15 to-green-600/10 border-emerald-500/30'
-            : 'from-rose-500/15 to-red-600/10 border-rose-500/30';
+            ? 'bg-emerald-500/5 border-emerald-500/20'
+            : 'bg-[#1a1f26] border-white/5';
           const updatedLabel = socialPipeline.updated_at
             ? new Date(socialPipeline.updated_at).toLocaleString()
             : null;
           return (
-            <div className={`mb-6 rounded-2xl bg-gradient-to-br ${cardBg} border p-5`}>
+            <div className={`mb-6 rounded-2xl ${cardBg} border p-5`}>
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">{enabled ? '📣' : '⏸️'}</span>
