@@ -4,6 +4,7 @@ import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music } from 'lucide-react';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -1970,37 +1971,37 @@ export default function AdminDashboard() {
           so behavior is identical — this is purely a layout change. */}
       <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-[#12161c] border-r border-white/5 py-5 px-3 overflow-y-auto z-40">
         <div className="flex items-center gap-2.5 px-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black text-lg">🎵</div>
+          <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black"><Music size={18} /></div>
           <div className="leading-tight">
             <p className="text-sm font-semibold text-white">Regalos</p>
             <p className="text-[11px] text-gray-500">Admin</p>
           </div>
         </div>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 px-2">Daily ops</p>
-        <button onClick={() => setActiveTab('orders')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'orders' ? 'bg-amber-400/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>📦</span> Orders
+        <button onClick={() => setActiveTab('orders')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'orders' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Package size={18} className={`flex-shrink-0 ${activeTab === 'orders' ? 'text-amber-400' : ''}`} /> Orders
         </button>
-        <button onClick={() => setActiveTab('pendingsend')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'pendingsend' ? 'bg-green-500/15 text-green-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>📤</span><span className="flex-1">Pending to Send</span>
+        <button onClick={() => setActiveTab('pendingsend')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'pendingsend' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Send size={18} className={`flex-shrink-0 ${activeTab === 'pendingsend' ? 'text-amber-400' : ''}`} /><span className="flex-1">Pending to Send</span>
           {pendingSendCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{pendingSendCount}</span>}
         </button>
-        <button onClick={() => setActiveTab('hotleads')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'hotleads' ? 'bg-orange-500/15 text-orange-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>🔥</span><span className="flex-1">Hot Leads</span>
+        <button onClick={() => setActiveTab('hotleads')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'hotleads' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Flame size={18} className={`flex-shrink-0 ${activeTab === 'hotleads' ? 'text-amber-400' : ''}`} /><span className="flex-1">Hot Leads</span>
           {hotLeadsCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{hotLeadsCount}</span>}
         </button>
-        <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-emerald-500/15 text-emerald-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>💬</span> Mensajes SMS
+        <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> Mensajes SMS
         </button>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Marketing</p>
-        <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-blue-500/15 text-blue-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>🤝</span> Affiliates
+        <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Users size={18} className={`flex-shrink-0 ${activeTab === 'affiliates' ? 'text-amber-400' : ''}`} /> Affiliates
         </button>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Insights</p>
-        <button onClick={() => setActiveTab('lookup')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'lookup' ? 'bg-amber-400/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>🔍</span> Lookup
+        <button onClick={() => setActiveTab('lookup')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'lookup' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Search size={18} className={`flex-shrink-0 ${activeTab === 'lookup' ? 'text-amber-400' : ''}`} /> Lookup
         </button>
-        <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-pink-500/15 text-pink-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <span>🎙️</span> Clone Mi Voz
+        <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Mic size={18} className={`flex-shrink-0 ${activeTab === 'clonamivoz' ? 'text-amber-400' : ''}`} /> Clone Mi Voz
         </button>
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
@@ -2350,47 +2351,30 @@ export default function AdminDashboard() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">🎵</span>
-              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Total</span>
-            </div>
+            <p className="text-[13px] text-gray-400 mb-1.5">Total songs</p>
             <p className="text-3xl font-bold text-white">{stats.totalSongs}</p>
-            <p className="text-sm text-gray-400">Songs</p>
           </div>
 
           <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">💰</span>
-              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Revenue</span>
-            </div>
+            <p className="text-[13px] text-gray-400 mb-1.5">Revenue</p>
             <p className="text-3xl font-bold text-white">
               {userRole === 'admin'
                 ? formatCurrency(stats.totalRevenue)
                 : <span className="text-gray-400 animate-pulse">Calculating...</span>}
             </p>
-            <p className="text-sm text-gray-400">
-              {userRole === 'admin'
-                ? (stats.freeOrders > 0 && `${stats.freeOrders} free`)
-                : 'auditing'}
-            </p>
+            {userRole === 'admin' && stats.freeOrders > 0 && (
+              <p className="text-xs text-gray-500 mt-1">{stats.freeOrders} free</p>
+            )}
           </div>
 
           <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">✅</span>
-              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Paid</span>
-            </div>
+            <p className="text-[13px] text-gray-400 mb-1.5">Paid orders</p>
             <p className="text-3xl font-bold text-white">{stats.paidOrders}</p>
-            <p className="text-sm text-gray-400">Completed orders</p>
           </div>
 
           <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">⏳</span>
-              <span className="text-[11px] text-gray-500 uppercase tracking-wide">Pending</span>
-            </div>
+            <p className="text-[13px] text-gray-400 mb-1.5">Pending</p>
             <p className="text-3xl font-bold text-white">{stats.pendingOrders}</p>
-            <p className="text-sm text-gray-400">Unpaid</p>
           </div>
         </div>
 
