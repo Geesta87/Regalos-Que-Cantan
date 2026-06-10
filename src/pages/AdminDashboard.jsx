@@ -1964,7 +1964,45 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1419] text-white">
+    <div className="min-h-screen bg-[#0f1419] text-white md:pl-56">
+      {/* Left sidebar navigation (desktop only). The grouped pill-tabs further
+          down are kept for mobile (md:hidden); both call the same setActiveTab,
+          so behavior is identical — this is purely a layout change. */}
+      <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-[#12161c] border-r border-white/5 py-5 px-3 overflow-y-auto z-40">
+        <div className="flex items-center gap-2.5 px-2 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center text-black text-lg">🎵</div>
+          <div className="leading-tight">
+            <p className="text-sm font-semibold text-white">Regalos</p>
+            <p className="text-[11px] text-gray-500">Admin</p>
+          </div>
+        </div>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 px-2">Daily ops</p>
+        <button onClick={() => setActiveTab('orders')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'orders' ? 'bg-amber-400/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>📦</span> Orders
+        </button>
+        <button onClick={() => setActiveTab('pendingsend')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'pendingsend' ? 'bg-green-500/15 text-green-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>📤</span><span className="flex-1">Pending to Send</span>
+          {pendingSendCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{pendingSendCount}</span>}
+        </button>
+        <button onClick={() => setActiveTab('hotleads')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'hotleads' ? 'bg-orange-500/15 text-orange-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>🔥</span><span className="flex-1">Hot Leads</span>
+          {hotLeadsCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{hotLeadsCount}</span>}
+        </button>
+        <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-emerald-500/15 text-emerald-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>💬</span> Mensajes SMS
+        </button>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Marketing</p>
+        <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-blue-500/15 text-blue-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>🤝</span> Affiliates
+        </button>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Insights</p>
+        <button onClick={() => setActiveTab('lookup')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'lookup' ? 'bg-amber-400/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>🔍</span> Lookup
+        </button>
+        <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-pink-500/15 text-pink-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span>🎙️</span> Clone Mi Voz
+        </button>
+      </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
         {toasts.map((t) => (
@@ -2467,7 +2505,7 @@ export default function AdminDashboard() {
             Group 1: Día a día (Órdenes / Por Enviar / Hot Leads).
             Group 2: Marketing (Emails / Blast / Afiliados).
             Group 3: Datos (Funnel / Lookup). */}
-        <div className="space-y-3 mb-6">
+        <div className="space-y-3 mb-6 md:hidden">
           {/* Group 1: Día a día */}
           <div>
             <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-1.5 ml-1">
