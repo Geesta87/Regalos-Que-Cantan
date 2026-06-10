@@ -110,6 +110,23 @@ export default function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedSong, setSelectedSong] = useState(null);
   const [activeTab, setActiveTab] = useState('orders');
+  // Toast notifications — replaces blocking window.alert() popups. showToast
+  // keeps showToast()'s single-string call signature, so call sites swap 1:1.
+  // Type (success/error/info) is auto-detected from the message when omitted.
+  const [toasts, setToasts] = useState([]);
+  const showToast = useCallback((message, type) => {
+    const msg = String(message);
+    let kind = type;
+    if (!kind) {
+      if (msg.includes('✅') || /(copiad|copied|sent|enviad|updated|saved|marked|regenerat)/i.test(msg)) kind = 'success';
+      else if (msg.includes('❌') || /(error|failed|falta|no se|invalid|could not|cannot)/i.test(msg)) kind = 'error';
+      else kind = 'info';
+    }
+    const clean = msg.replace(/[✅❌⚠️]/g, '').trim();
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message: clean, type: kind }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }, []);
   const [blastStatus, setBlastStatus] = useState(null); // null | 'loading' | 'preview' | 'sending' | 'done'
   const [blastData, setBlastData] = useState(null);
   const [dateRange, setDateRange] = useState('7days');
@@ -610,7 +627,7 @@ export default function AdminDashboard() {
   };
 
   const retryVideoRender = async (songId, videoOrderId) => {
-    if (!videoOrderId) { alert('No se encontró la orden de video.'); return; }
+    if (!videoOrderId) { showToast('No se encontró la orden de video.'); return; }
     setRetryingVideo(true);
     try {
       // 1. Reset status back to photos_uploaded
@@ -644,11 +661,11 @@ export default function AdminDashboard() {
       const genData = await genRes.json();
       if (!genRes.ok || !genData.success) throw new Error(genData.error || `HTTP ${genRes.status}`);
 
-      alert(`✅ Video re-enviado a Shotstack. Render ID: ${genData.renderId}`);
+      showToast(`✅ Video re-enviado a Shotstack. Render ID: ${genData.renderId}`);
       // 3. Refresh the video order panel
       await fetchVideoOrder(songId);
     } catch (err) {
-      alert(`Error al reintentar: ${err.message}`);
+      showToast(`Error al reintentar: ${err.message}`);
     } finally {
       setRetryingVideo(false);
     }
@@ -974,7 +991,7 @@ export default function AdminDashboard() {
     if (!token) return;
     const balance = parseInt(murekaForm.balance, 10);
     if (!Number.isFinite(balance) || balance < 0) {
-      alert('Please enter a valid credit amount');
+      showToast('Please enter a valid credit amount');
       return;
     }
     setMurekaSaving(true);
@@ -994,7 +1011,7 @@ export default function AdminDashboard() {
       );
       const result = await response.json();
       if (!result.success) {
-        alert(`Error: ${result.error || 'could not save'}`);
+        showToast(`Error: ${result.error || 'could not save'}`);
       } else {
         setMurekaCredits(result);
         // Optionally update thresholds / per-gen if user changed them
@@ -1029,7 +1046,7 @@ export default function AdminDashboard() {
         setMurekaModalOpen(false);
       }
     } catch (err) {
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
     } finally {
       setMurekaSaving(false);
     }
@@ -1089,12 +1106,12 @@ export default function AdminDashboard() {
       );
       const result = await response.json();
       if (!result.success) {
-        alert(`Error: ${result.error || 'could not change state'}`);
+        showToast(`Error: ${result.error || 'could not change state'}`);
       } else {
         setSocialPipeline(result);
       }
     } catch (err) {
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
     } finally {
       setSocialToggling(false);
     }
@@ -1129,7 +1146,7 @@ export default function AdminDashboard() {
       );
     } catch (err) {
       console.error('Error toggling campaign:', err);
-      alert('Error changing state');
+      showToast('Error changing state');
     }
   };
 
@@ -1154,10 +1171,10 @@ export default function AdminDashboard() {
         prev.map(c => c.id === campaign.id ? campaign : c)
       );
       setEditingCampaign(null);
-      alert('✅ Campaign updated');
+      showToast('✅ Campaign updated');
     } catch (err) {
       console.error('Error saving campaign:', err);
-      alert('Error saving');
+      showToast('Error saving');
     } finally {
       setSavingCampaign(false);
     }
@@ -1190,13 +1207,13 @@ export default function AdminDashboard() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ Email sent to ${testEmail}`);
+        showToast(`✅ Email sent to ${testEmail}`);
         fetchEmailLogs();
       } else {
-        alert(`❌ Error: ${result.error}`);
+        showToast(`❌ Error: ${result.error}`);
       }
     } catch (err) {
-      alert(`❌ Error: ${err.message}`);
+      showToast(`❌ Error: ${err.message}`);
     } finally {
       setSendingTestEmail(false);
     }
@@ -1221,13 +1238,13 @@ export default function AdminDashboard() {
 
       const result = await response.json();
       if (result.success) {
-        alert(`✅ Email resent to ${log.email}`);
+        showToast(`✅ Email resent to ${log.email}`);
         fetchEmailLogs();
       } else {
-        alert(`❌ Error: ${result.error}`);
+        showToast(`❌ Error: ${result.error}`);
       }
     } catch (err) {
-      alert(`❌ Error: ${err.message}`);
+      showToast(`❌ Error: ${err.message}`);
     } finally {
       setResendingEmail(null);
     }
@@ -1647,7 +1664,7 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error('markSongAsSent error:', err);
-      alert(`Error marking as sent: ${err.message}`);
+      showToast(`Error marking as sent: ${err.message}`);
       setSongs(previous); // rollback
     } finally {
       setMarkSendBusy(null);
@@ -1679,7 +1696,7 @@ export default function AdminDashboard() {
       if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
     } catch (err) {
       console.error('unmarkSongAsSent error:', err);
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
       setSongs(previous);
     }
   }, [accessToken, userRole, songs]);
@@ -1726,7 +1743,7 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       console.error('toggleEmailSent error:', err);
-      alert(`Error marking email as sent: ${err.message}`);
+      showToast(`Error marking email as sent: ${err.message}`);
       setSongs(previous);
     } finally {
       setEmailSendBusy(null);
@@ -1741,7 +1758,7 @@ export default function AdminDashboard() {
     // stripe_payment_id is null for all orders; the real bundle key is stripe_session_id
     const groupKey = song?.stripe_payment_id || song?.stripe_session_id;
     if (!song?.email || !groupKey) {
-      alert('Falta email o ID de pago — no se puede enviar.');
+      showToast('Falta email o ID de pago — no se puede enviar.');
       return;
     }
     setSendingLinkEmail(song.id);
@@ -1766,12 +1783,12 @@ export default function AdminDashboard() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.emailSent) {
         if (!song.email_sent_at) await toggleEmailSent(song.id, false);
-        alert('✅ Link enviado por email al cliente');
+        showToast('✅ Link enviado por email al cliente');
       } else {
-        alert(`❌ Error al enviar: ${data?.error || 'intenta de nuevo'}`);
+        showToast(`❌ Error al enviar: ${data?.error || 'intenta de nuevo'}`);
       }
     } catch (err) {
-      alert(`❌ Error: ${err.message}`);
+      showToast(`❌ Error: ${err.message}`);
     } finally {
       setSendingLinkEmail(null);
     }
@@ -1780,7 +1797,7 @@ export default function AdminDashboard() {
   // Save a corrected WhatsApp phone number for a song
   const savePhone = async (songId, newPhone) => {
     const digits = newPhone.replace(/\D/g, '');
-    if (!digits) { alert('Enter a valid phone number.'); return; }
+    if (!digits) { showToast('Enter a valid phone number.'); return; }
     setPhoneSaving(true);
     try {
       const res = await fetch(
@@ -1801,7 +1818,7 @@ export default function AdminDashboard() {
       setSelectedSong(prev => prev ? { ...prev, whatsapp_phone: digits } : prev);
       setEditingPhone(false);
     } catch (err) {
-      alert(`Error saving phone: ${err.message}`);
+      showToast(`Error saving phone: ${err.message}`);
     } finally {
       setPhoneSaving(false);
     }
@@ -1840,7 +1857,7 @@ export default function AdminDashboard() {
       if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
     } catch (err) {
       console.error('markGroupAsSent error:', err);
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
       setSongs(previous);
     } finally {
       setBulkSendBusy(false);
@@ -1875,10 +1892,10 @@ export default function AdminDashboard() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
       setSelectedPendingIds(new Set());
-      alert(`✅ ${result.updated || 0} song${result.updated === 1 ? '' : 's'} marked as sent.`);
+      showToast(`✅ ${result.updated || 0} song${result.updated === 1 ? '' : 's'} marked as sent.`);
     } catch (err) {
       console.error('bulkMarkAsSent error:', err);
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
       setSongs(previous);
     } finally {
       setBulkSendBusy(false);
@@ -1922,10 +1939,10 @@ export default function AdminDashboard() {
         return s;
       }));
       setBackfillModalOpen(false);
-      alert(`✅ ${result.updated || 0} historical songs marked as sent.`);
+      showToast(`✅ ${result.updated || 0} historical songs marked as sent.`);
     } catch (err) {
       console.error('backfillSent error:', err);
-      alert(`Error: ${err.message}`);
+      showToast(`Error: ${err.message}`);
     } finally {
       setBackfillBusy(false);
     }
@@ -1948,6 +1965,27 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#0f1419] text-white">
+      {/* Toast notifications — non-blocking replacement for window.alert(). */}
+      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            role="status"
+            className={`pointer-events-auto flex items-start gap-2.5 px-4 py-3 rounded-xl border text-sm shadow-lg ${
+              t.type === 'success'
+                ? 'bg-green-500/15 border-green-500/30 text-green-200'
+                : t.type === 'error'
+                ? 'bg-red-500/15 border-red-500/30 text-red-200'
+                : 'bg-white/10 border-white/20 text-gray-100'
+            }`}
+          >
+            <span className="mt-0.5 flex-shrink-0 font-bold">
+              {t.type === 'success' ? '✓' : t.type === 'error' ? '!' : 'i'}
+            </span>
+            <span className="whitespace-pre-line break-words">{t.message}</span>
+          </div>
+        ))}
+      </div>
       {/* Live payment-alert toasts. Stack in the top-right; admin can
           dismiss each individually. Auto-dismiss after 12s. Tapping the
           toast jumps to the song detail panel for one-click follow-up. */}
@@ -2337,7 +2375,7 @@ export default function AdminDashboard() {
                     .filter((v, i, a) => a.indexOf(v) === i);
                   const csv = 'Phone\tEmail\tRecipient\tSender\n' + contacts.join('\n');
                   navigator.clipboard.writeText(csv);
-                  alert(`✅ ${contacts.length} contacts copied to clipboard (TSV format)`);
+                  showToast(`✅ ${contacts.length} contacts copied to clipboard (TSV format)`);
                 }}
                 className="px-4 py-2 bg-green-500/20 text-green-400 rounded-xl text-sm font-medium hover:bg-green-500/30 transition border border-green-500/30"
               >
@@ -3120,7 +3158,7 @@ export default function AdminDashboard() {
                           onClick={() => {
                             opens.slice(0, 5).forEach(href => window.open(href, '_blank', 'noopener'));
                             if (opens.length > 5) {
-                              alert(`Opened 5 chats. Select fewer customers to open them all at once (browsers block more).`);
+                              showToast(`Opened 5 chats. Select fewer customers to open them all at once (browsers block more).`);
                             }
                           }}
                           className="px-3 py-1.5 rounded-lg bg-green-500/15 text-green-300 text-xs font-medium hover:bg-green-500/25 border border-green-500/30"
@@ -3861,7 +3899,7 @@ export default function AdminDashboard() {
                           return `${l.phone},${l.email},${l.senderName || ''},${s?.recipient_name || ''},${s?.genre || ''},${s?.occasion || ''},${new Date(l.latestDate).toLocaleDateString()},${l.songs.length}`;
                         }).join('\n');
                       navigator.clipboard.writeText(csv);
-                      alert(`✅ ${leads.length} leads copied (CSV)`);
+                      showToast(`✅ ${leads.length} leads copied (CSV)`);
                     }}
                     className="px-4 py-2 bg-white/5 text-gray-400 rounded-xl text-sm font-medium hover:bg-white/10 transition border border-white/10"
                   >
@@ -4929,7 +4967,7 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(selectedSong.whatsapp_phone);
-                          alert('Number copied!');
+                          showToast('Number copied!');
                         }}
                         className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                       >
@@ -4993,7 +5031,7 @@ export default function AdminDashboard() {
                     {vo?.status === 'completed' && vo?.video_url && (
                       <div className="flex gap-2">
                         <input type="text" readOnly value={vo.video_url} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
-                        <button onClick={() => { navigator.clipboard.writeText(vo.video_url); alert('Video URL copiada!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition">Copy</button>
+                        <button onClick={() => { navigator.clipboard.writeText(vo.video_url); showToast('Video URL copiada!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition">Copy</button>
                         <a href={vo.video_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition">👁️</a>
                       </div>
                     )}
@@ -5001,7 +5039,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-gray-500 mb-1">📸 Link para subir fotos (enviar al cliente):</p>
                       <div className="flex gap-2">
                         <input type="text" readOnly value={photoUploadUrl} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
-                        <button onClick={() => { navigator.clipboard.writeText(photoUploadUrl); alert('Link copiado!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap">📋 Copiar</button>
+                        <button onClick={() => { navigator.clipboard.writeText(photoUploadUrl); showToast('Link copiado!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap">📋 Copiar</button>
                       </div>
                     </div>
                   </div>
@@ -5040,7 +5078,7 @@ export default function AdminDashboard() {
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(selectedSong.audio_url);
-                        alert('URL copied!');
+                        showToast('URL copied!');
                       }}
                       className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
                     >
@@ -5074,7 +5112,7 @@ export default function AdminDashboard() {
                             // regardless of what karaoke_url points at.
                             const pageUrl = `https://www.regalosquecantan.com/karaoke/${selectedSong.id}`;
                             navigator.clipboard.writeText(pageUrl);
-                            alert('Karaoke share link copied!\n' + pageUrl);
+                            showToast('Karaoke share link copied!\n' + pageUrl);
                           }}
                           className="py-2 px-4 bg-white/10 text-white rounded-lg font-medium text-sm hover:bg-white/20 transition"
                         >
@@ -5101,12 +5139,12 @@ export default function AdminDashboard() {
                             });
                             const data = await res.json();
                             if (data?.vercel_response?.success) {
-                              alert('✅ Karaoke regenerated! Cierra y reabre este modal para verlo.');
+                              showToast('✅ Karaoke regenerated! Cierra y reabre este modal para verlo.');
                             } else {
-                              alert('❌ Retry failed: ' + (data?.vercel_response?.error || data?.error || 'unknown'));
+                              showToast('❌ Retry failed: ' + (data?.vercel_response?.error || data?.error || 'unknown'));
                             }
                           } catch (e) {
-                            alert('❌ Retry threw: ' + e.message);
+                            showToast('❌ Retry threw: ' + e.message);
                           }
                         }}
                         className="py-2 px-4 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-400 transition"
@@ -5135,7 +5173,7 @@ export default function AdminDashboard() {
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${window.location.origin}/listen?song_id=${selectedSong.id}`);
-                        alert('Preview link copied!');
+                        showToast('Preview link copied!');
                       }}
                       className="px-4 py-2 bg-amber-500 text-black rounded-lg text-sm font-medium hover:bg-amber-400 transition"
                     >
@@ -5157,7 +5195,7 @@ export default function AdminDashboard() {
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${window.location.origin}/success?song_id=${selectedSong.id}`);
-                        alert('Download link copied!');
+                        showToast('Download link copied!');
                       }}
                       className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-400 transition"
                     >
@@ -5181,7 +5219,7 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(`${window.location.origin}/song/${selectedSong.id}`);
-                      alert('Polaroid link copied!');
+                      showToast('Polaroid link copied!');
                     }}
                     className="px-4 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium hover:bg-pink-400 transition"
                   >
