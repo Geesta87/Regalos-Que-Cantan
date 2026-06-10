@@ -2515,16 +2515,6 @@ export default function AdminDashboard() {
             </p>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => setActiveTab('funnel')}
-                className={`px-5 py-2.5 rounded-xl font-medium transition ${
-                  activeTab === 'funnel'
-                    ? 'bg-amber-400 text-black'
-                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                }`}
-              >
-                📊 Funnel Analytics
-              </button>
-              <button
                 onClick={() => setActiveTab('lookup')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
                   activeTab === 'lookup'
@@ -3416,118 +3406,6 @@ export default function AdminDashboard() {
                 </div>
               </>
             )}
-          </div>
-        ) : activeTab === 'funnel' ? (
-          /* Funnel Analytics Tab */
-          <div className="space-y-6">
-            {/* Date Range Selector */}
-            <div className="flex gap-2">
-              {[
-                { key: 'today', label: 'Hoy' },
-                { key: '7days', label: '7 días' },
-                { key: '14days', label: '14 días' },
-                { key: '30days', label: '30 días' }
-              ].map((range) => (
-                <button
-                  key={range.key}
-                  onClick={() => setDateRange(range.key)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                    dateRange === range.key 
-                      ? 'bg-amber-400 text-black' 
-                      : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                  }`}
-                >
-                  {range.label}
-                </button>
-              ))}
-              <button
-                onClick={fetchFunnelData}
-                className="ml-auto px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-400 hover:bg-white/10 transition flex items-center gap-2"
-              >
-                🔄 Refresh
-              </button>
-            </div>
-
-            {/* Funnel Visualization */}
-            <div className="bg-[#1a1f26] rounded-2xl p-6 border border-white/5">
-              <h3 className="text-lg font-semibold mb-6">Conversion Funnel</h3>
-              <div className="space-y-3">
-                {FUNNEL_STEPS.map((step, index) => {
-                  const count = funnelData[step.key] || 0;
-                  const maxCount = Math.max(...Object.values(funnelData), 1);
-                  const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                  const landingCount = funnelData['landing'] || funnelData['landing_v2'] || 1;
-                  const conversionRate = landingCount > 0 ? ((count / landingCount) * 100).toFixed(1) : 0;
-                  
-                  // Calculate drop-off from previous step
-                  const prevStep = FUNNEL_STEPS[index - 1];
-                  const prevCount = prevStep ? (funnelData[prevStep.key] || 0) : count;
-                  const dropOff = prevCount > 0 ? (((prevCount - count) / prevCount) * 100).toFixed(0) : 0;
-
-                  return (
-                    <div key={step.key} className="flex items-center gap-4">
-                      <div className="w-28 text-sm text-gray-400 flex items-center gap-2">
-                        <span>{step.icon}</span>
-                        <span>{step.label}</span>
-                      </div>
-                      <div className="flex-1 h-10 bg-white/5 rounded-lg overflow-hidden relative">
-                        <div 
-                          className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg transition-all duration-500 flex items-center justify-end pr-3"
-                          style={{ width: `${Math.max(percentage, 5)}%` }}
-                        >
-                          <span className="text-sm font-semibold text-white">
-                            {count}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="w-20 text-right">
-                        <span className="text-sm text-gray-400">{conversionRate}%</span>
-                      </div>
-                      {index > 0 && dropOff > 0 && (
-                        <div className="w-16 text-right">
-                          <span className="text-xs text-red-400">-{dropOff}%</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-                <p className="text-gray-400 text-sm mb-1">Sesiones Únicas</p>
-                <p className="text-3xl font-bold">{funnelData['landing'] || funnelData['landing_v2'] || 0}</p>
-              </div>
-              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-                <p className="text-gray-400 text-sm mb-1">Tasa de Conversión</p>
-                <p className="text-3xl font-bold text-green-400">
-                  {((funnelData['purchase'] || 0) / Math.max(funnelData['landing'] || funnelData['landing_v2'] || 1, 1) * 100).toFixed(1)}%
-                </p>
-              </div>
-              <div className="bg-[#1a1f26] rounded-2xl p-5 border border-white/5">
-                <p className="text-gray-400 text-sm mb-1">Mayor Drop-off</p>
-                <p className="text-xl font-bold text-red-400">
-                  {(() => {
-                    let maxDrop = 0;
-                    let maxDropStep = '';
-                    FUNNEL_STEPS.forEach((step, i) => {
-                      if (i === 0) return;
-                      const prev = FUNNEL_STEPS[i - 1];
-                      const prevCount = funnelData[prev.key] || 0;
-                      const currCount = funnelData[step.key] || 0;
-                      const drop = prevCount > 0 ? ((prevCount - currCount) / prevCount) * 100 : 0;
-                      if (drop > maxDrop) {
-                        maxDrop = drop;
-                        maxDropStep = `${prev.label} → ${step.label}`;
-                      }
-                    });
-                    return maxDropStep || 'N/A';
-                  })()}
-                </p>
-              </div>
-            </div>
           </div>
         ) : activeTab === 'lookup' ? (
           /* Customer Lookup Tab */
