@@ -2211,6 +2211,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Home overview (credits + social + stat cards + WhatsApp + today +
+            attention) is shown ONLY on the Orders tab, which acts as the home
+            screen. Every other tab renders just its own content. */}
+        {activeTab === 'orders' && (<>
         {/* Song-credits banner. Visible to both admin + assistant roles so
             anyone can spot a low balance. Only admins see the "Actualizar
             saldo" edit button (the edge function rejects writes from
@@ -2500,6 +2504,7 @@ export default function AdminDashboard() {
             </button>
           </div>
         )}
+        </>)}
 
         {/* Tabs — visually grouped so a new admin's eye knows where to start.
             Group 1: Día a día (Órdenes / Por Enviar / Hot Leads).
