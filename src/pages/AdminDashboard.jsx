@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
+import SmsInboxTab from '../components/admin/SmsInboxTab';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -2475,6 +2476,16 @@ export default function AdminDashboard() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setActiveTab('sms')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'sms'
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
+                }`}
+              >
+                💬 Mensajes SMS
+              </button>
             </div>
           </div>
 
@@ -4768,6 +4779,11 @@ export default function AdminDashboard() {
              admin-cloned-voice-songs edge function (separate from
              admin-songs so the main funnel admin view is untouched). */
           <ClonamivozAdminTab accessToken={accessToken} role={userRole} />
+        ) : activeTab === 'sms' ? (
+          /* SMS Inbox — two-way Twilio texting. Self-contained component.
+             Talks to a future `sms-admin` edge function; until that ships it
+             renders clearly-labeled demo threads so the UX is reviewable. */
+          <SmsInboxTab accessToken={accessToken} />
         ) : null}
       </main>
 
