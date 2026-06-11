@@ -733,13 +733,21 @@ export default function AdminDashboard() {
       today.setHours(0, 0, 0, 0);
       let todayRevenue = 0;
       let todayOrders = 0;
+      // Count each checkout's revenue ONCE — a 2-pack stamps the full total on
+      // both song rows, so summing per-row would double-count the sale.
+      const todaySeenSessions = new Set();
       (data || []).forEach(song => {
         if (!isPaid(song)) return;
         const songDate = new Date(song.created_at);
-        if (songDate >= today) {
-          todayRevenue += getSongPrice(song);
-          todayOrders++;
-        }
+        if (songDate < today) return;
+        todayOrders++;
+        const key = song.stripe_session_id || song.session_id || ('solo:' + song.id);
+        if (todaySeenSessions.has(key)) return;
+        todaySeenSessions.add(key);
+        const group = (data || []).filter(
+          s => (s.stripe_session_id || s.session_id || ('solo:' + s.id)) === key
+        );
+        todayRevenue += Math.max(...group.map(getSongPrice));
       });
 
       let lifetime;
@@ -752,8 +760,16 @@ export default function AdminDashboard() {
         const paidSongs = (data || []).filter(s => isPaid(s));
         let rev = 0;
         let free = 0;
+        // One amount per checkout (bundles stamp the full total on every row).
+        const seenSessions = new Set();
         paidSongs.forEach(s => {
-          const p = getSongPrice(s);
+          const key = s.stripe_session_id || s.session_id || ('solo:' + s.id);
+          if (seenSessions.has(key)) return;
+          seenSessions.add(key);
+          const group = paidSongs.filter(
+            x => (x.stripe_session_id || x.session_id || ('solo:' + x.id)) === key
+          );
+          const p = Math.max(...group.map(getSongPrice));
           rev += p;
           if (p === 0) free++;
         });
@@ -1617,6 +1633,34 @@ export default function AdminDashboard() {
     if (song.is_bundle) return 34.99;
     return 29.99;
   };
+
+  // Bundle-aware revenue. A 2-pack stamps the FULL checkout total on BOTH song
+  // rows (e.g. $39.99 on each), so counting per-row double-counts the sale.
+  // This map records, per song, whether it's the "primary" row of its checkout
+  // (earliest in the Stripe session) and the one-time total for that purchase —
+  // so revenue and the orders list count each checkout exactly once.
+  const purchaseInfoBySong = useMemo(() => {
+    const bySession = new Map();
+    for (const s of songs) {
+      const key = s.stripe_session_id || s.session_id || ('solo:' + s.id);
+      if (!bySession.has(key)) bySession.set(key, []);
+      bySession.get(key).push(s);
+    }
+    const info = new Map();
+    for (const [, group] of bySession) {
+      const primary = group.slice().sort(
+        (a, b) => (new Date(a.created_at) - new Date(b.created_at)) || (a.id < b.id ? -1 : 1)
+      )[0];
+      const total = Math.max(...group.map(getSongPrice));
+      for (const s of group) {
+        info.set(s.id, { isPrimary: s.id === primary.id, total, count: group.length });
+      }
+    }
+    return info;
+  }, [songs]);
+
+  const purchaseOf = (song) =>
+    purchaseInfoBySong.get(song.id) || { isPrimary: true, total: getSongPrice(song), count: 1 };
 
   const getVoiceLabel = (song) => {
     const voice = song.voice_type || song.voiceType || 'male';
@@ -2803,9 +2847,16 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3 text-right">
                             {isPaid(song) ? (
                               userRole === 'admin' ? (
-                                <span className="font-semibold text-green-400">
-                                  {formatCurrency(getSongPrice(song))}
-                                </span>
+                                purchaseOf(song).isPrimary ? (
+                                  <span className="font-semibold text-green-400">
+                                    {formatCurrency(purchaseOf(song).total)}
+                                    {purchaseOf(song).count > 1 && (
+                                      <span className="block text-[10px] text-gray-400 font-normal">paquete · {purchaseOf(song).count} canciones</span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-gray-500">↳ incluido</span>
+                                )
                               ) : (
                                 <span className="font-semibold text-green-400 animate-pulse">Calculating...</span>
                               )
@@ -3039,7 +3090,9 @@ export default function AdminDashboard() {
                         )}
                         <span>{formatOccasion(song.occasion)}</span>
                         {isPaid(song) && userRole === 'admin' && (
-                          <span className="text-green-400">{formatCurrency(getSongPrice(song))}</span>
+                          purchaseOf(song).isPrimary
+                            ? <span className="text-green-400">{formatCurrency(purchaseOf(song).total)}{purchaseOf(song).count > 1 ? ' · paquete' : ''}</span>
+                            : <span className="text-gray-500">↳ incluido en paquete</span>
                         )}
                         {song.whatsapp_phone && (
                           <span className="text-green-400">💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span>
@@ -4865,7 +4918,7 @@ export default function AdminDashboard() {
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                     ✓ Paid — {userRole === 'admin'
-                      ? formatCurrency(getSongPrice(selectedSong))
+                      ? <>{formatCurrency(purchaseOf(selectedSong).total)}{purchaseOf(selectedSong).count > 1 ? ` · paquete de ${purchaseOf(selectedSong).count}` : ''}</>
                       : <span className="animate-pulse">Calculating...</span>}
                   </span>
                 ) : (

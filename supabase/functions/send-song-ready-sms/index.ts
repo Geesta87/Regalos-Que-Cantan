@@ -68,7 +68,7 @@ serve(async () => {
     // Candidate set is tiny (consented + not-yet-texted); filter paid in code.
     const { data: rows, error } = await admin
       .from('songs')
-      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid')
+      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid, has_video_addon')
       .is('song_sms_sent_at', null)
       .not('sms_consent_at', 'is', null)
       .gt('sms_consent_at', thirtyDaysAgo)
@@ -113,18 +113,35 @@ serve(async () => {
       const name = String(primary.sender_name || '').trim();
       const greet = name ? `¡Gracias ${name}!` : '¡Gracias!';
 
-      // Short branded link. Generate a code for the primary song if it has none;
-      // fall back to the full URL on any issue so a customer always gets a link.
-      let code = primary.short_code as string | undefined;
-      if (!code) {
-        code = genShortCode();
-        const { error: codeErr } = await admin
-          .from('songs').update({ short_code: code }).eq('id', primary.id).is('short_code', null);
-        if (codeErr) code = undefined;
+      // Build the link. A 2-pack must get ONE link that opens BOTH songs
+      // (/song/id1,id2 — or /success?song_ids= when a video addon is present),
+      // exactly like the manual WhatsApp/email delivery. A single song keeps the
+      // short branded /s/<code> link.
+      let link: string;
+      let songLine: string;
+      if (group.length > 1) {
+        const allIds = group.map((g) => g.id as string).join(',');
+        const hasVideo = group.some((g) => g.has_video_addon === true);
+        link = hasVideo ? `${SITE}/success?song_ids=${allIds}` : `${SITE}/song/${allIds}`;
+        const names = group
+          .map((g) => String(g.recipient_name || '').trim())
+          .filter(Boolean)
+          .join(' y ');
+        songLine = names ? `Tus canciones para ${names} ya están listas` : 'Tus canciones ya están listas';
+      } else {
+        // Generate a short code for the primary song if it has none; fall back
+        // to the full URL on any issue so a customer always gets a link.
+        let code = primary.short_code as string | undefined;
+        if (!code) {
+          code = genShortCode();
+          const { error: codeErr } = await admin
+            .from('songs').update({ short_code: code }).eq('id', primary.id).is('short_code', null);
+          if (codeErr) code = undefined;
+        }
+        link = code ? `${SITE}/s/${code}` : `${SITE}/success?song_id=${primary.id}`;
+        const recipient = String(primary.recipient_name || '').trim();
+        songLine = recipient ? `Tu canción para ${recipient} ya está lista` : 'Tu canción ya está lista';
       }
-      const link = code ? `${SITE}/s/${code}` : `${SITE}/success?song_id=${primary.id}`;
-      const recipient = String(primary.recipient_name || '').trim();
-      const songLine = recipient ? `Tu canción para ${recipient} ya está lista` : 'Tu canción ya está lista';
       const body = `${greet} ❤️\n🎵 ${songLine}: ${link}\n¿Preguntas? Escríbenos por WhatsApp: ${WA_SUPPORT}\nregalosquecantan.com\nResponde STOP para dejar de recibir mensajes.`;
 
       const result = await sendSms(to, body);
