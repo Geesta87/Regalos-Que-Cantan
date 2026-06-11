@@ -1575,10 +1575,17 @@ export default function AdminDashboard() {
     const paidEmails = new Set(
       songs.filter(s => isPaid(s) && s.email).map(s => s.email.toLowerCase())
     );
+    // Mirror the Hot Leads list exactly: also exclude anyone who paid under this
+    // phone number, even if a different email was used. Without this the badge
+    // counted a lead the list filtered out → "1 hot lead" but an empty tab.
+    const paidPhones = new Set(
+      songs.filter(s => isPaid(s) && s.whatsapp_phone).map(s => s.whatsapp_phone)
+    );
     const phones = new Set();
     songs.forEach(s => {
       if (!s.whatsapp_phone || !s.recipient_name || !s.email) return;
       if (paidEmails.has(s.email.toLowerCase())) return;
+      if (paidPhones.has(s.whatsapp_phone)) return;
       if (s.whatsapp_sent_at) return; // already contacted via WhatsApp
       phones.add(s.whatsapp_phone);
     });
