@@ -72,6 +72,12 @@ verify_jwt = false
 # Fully isolated from stripe-webhook/checkout; only reads/updates songs + sends.
 verify_jwt = false
 
+[functions.notify-new-sales]
+# Runs every minute via pg_cron — pushes a "💰 Nueva venta" web notification
+# to admin devices for songs newly confirmed paid. Reads/stamps songs only;
+# never touches stripe-webhook/checkout. No JWT context.
+verify_jwt = false
+
 [functions.recover-temp-videos]
 # Cron-driven recovery job.
 verify_jwt = false

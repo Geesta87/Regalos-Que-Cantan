@@ -51,6 +51,22 @@ async function opaque(size, name) {
   console.log('wrote', name);
 }
 
+// Android status-bar badge: must be WHITE-on-TRANSPARENT silhouette only —
+// Android discards color and renders the alpha channel, so a colored square
+// shows up as a solid white box. viewBox crops to the music note, centered.
+async function badge(size, name) {
+  const badgeSvg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="95 125 250 250">' +
+    '<path d="M280 140v160c0 33.1-26.9 60-60 60s-60-26.9-60-60 26.9-60 60-60c11 0 21.3 3 30 8.2V140h30z" fill="#FFFFFF"/>' +
+    '</svg>'
+  );
+  await sharp(badgeSvg, { density: 300 })
+    .resize(size, size)
+    .png()
+    .toFile(path.join(iconsDir, name));
+  console.log('wrote', name);
+}
+
 await plain(16, 'icon-16.png');
 await plain(32, 'icon-32.png');
 await plain(192, 'icon-192.png');
@@ -58,4 +74,5 @@ await plain(512, 'icon-512.png');
 await maskable(192, 'icon-maskable-192.png');
 await maskable(512, 'icon-maskable-512.png');
 await opaque(180, 'apple-touch-icon.png');
+await badge(96, 'badge-96.png');
 console.log('done');
