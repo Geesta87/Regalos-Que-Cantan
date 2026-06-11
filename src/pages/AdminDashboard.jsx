@@ -4041,6 +4041,7 @@ export default function AdminDashboard() {
                                 href={buildWhatsAppUrl(lead)}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                onClick={() => markGroupAsSent(lead.songs.map(s => s.id))}
                                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366] text-white rounded-xl font-medium text-sm hover:bg-[#20bd5a] transition"
                               >
                                 💬 Send WhatsApp
@@ -4066,6 +4067,13 @@ export default function AdminDashboard() {
                                 className="px-4 py-2.5 bg-white/5 text-gray-400 rounded-xl font-medium text-sm hover:bg-white/10 transition border border-white/10"
                               >
                                 👁️ View
+                              </button>
+                              <button
+                                onClick={() => markGroupAsSent(lead.songs.map(s => s.id))}
+                                className="px-3 py-2.5 bg-white/5 text-gray-500 rounded-xl font-medium text-sm hover:text-red-300 hover:bg-red-500/10 transition border border-white/10"
+                                title="Mark contacted — remove from hot leads"
+                              >
+                                <X size={16} />
                               </button>
                             </div>
                           </div>
