@@ -6,3 +6,6 @@ node_modules
 .DS_Store
 .env
 .env.local
+
+# Web-push VAPID key pair (private half - never commit; public half is in src/services/push.js)
+.vapid-keys.local.txt
