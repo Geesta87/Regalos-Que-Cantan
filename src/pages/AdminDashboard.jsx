@@ -110,7 +110,13 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedSong, setSelectedSong] = useState(null);
-  const [activeTab, setActiveTab] = useState('orders');
+  // ?tab=sms deep link: push notifications + the installed PWA open straight
+  // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'affiliates', 'lookup', 'clonamivoz'];
+    return valid.includes(tab) ? tab : 'orders';
+  });
   // Toast notifications — replaces blocking window.alert() popups. showToast
   // keeps showToast()'s single-string call signature, so call sites swap 1:1.
   // Type (success/error/info) is auto-detected from the message when omitted.

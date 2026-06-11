@@ -1,8 +1,8 @@
 {
-  "name": "RegalosQueCantan - Canciones Personalizadas",
-  "short_name": "RegalosQueCantan",
-  "description": "Crea canciones personalizadas con IA para tus seres queridos",
-  "start_url": "/",
+  "name": "RQC Admin - Regalos Que Cantan",
+  "short_name": "RQC Admin",
+  "description": "Panel de administración: pedidos, mensajes SMS y más",
+  "start_url": "/admin/dashboard?tab=sms",
   "scope": "/",
   "display": "standalone",
   "background_color": "#181114",
@@ -34,7 +34,6 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["entertainment", "music"],
   "lang": "es",
   "dir": "ltr"
 }

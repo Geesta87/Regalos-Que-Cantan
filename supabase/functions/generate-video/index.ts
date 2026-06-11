@@ -410,7 +410,15 @@ function buildShotstackTimeline(
 
   // ---- PERSONAL MESSAGE CLIP (optional) ----
   // Appended after the photo slideshow. Song fades out, message plays with its own audio.
-  const messageDuration = msgDuration && msgDuration > 0 ? msgDuration + 2 : 15; // actual duration + 2s buffer
+  //
+  // Audio-only messages extend a STILL photo for the message duration, so a +2s buffer
+  // is safe (and avoids clipping the last words). Video messages must play their NATURAL
+  // length: padding a video clip past its real duration makes Shotstack freeze the last
+  // frame, and because iPhone recordings carry an audio track slightly longer than the
+  // video track, the audio keeps playing over the frozen frame — the "video freezes but
+  // audio continues" bug. So no buffer for video messages.
+  const baseMsgDuration = msgDuration && msgDuration > 0 ? msgDuration : 15;
+  const messageDuration = isAudioOnlyMessage ? baseMsgDuration + 2 : baseMsgDuration;
   const tracks = [];
   const messageClips = [];
 

@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+  getPushSupport,
+  getCurrentSubscription,
+  enablePushNotifications,
+} from '../../services/push';
 
 // ──────────────────────────────────────────────────────────────────────────
 // SMS Inbox (Admin)
@@ -155,10 +160,44 @@ export default function SmsInboxTab({ accessToken }) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
+  // Push-notification button state:
+  // 'hidden' (unsupported desktop browser), 'ios-install' (iPhone Safari tab —
+  // must add to home screen first), 'off', 'busy', 'on', 'denied'.
+  const [notifState, setNotifState] = useState('hidden');
+  const [showIosHint, setShowIosHint] = useState(false);
   const scrollRef = useRef(null);
 
-  const loadConversations = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    const { supported, isIos, isStandalone } = getPushSupport();
+    if (!supported) {
+      setNotifState(isIos && !isStandalone ? 'ios-install' : 'hidden');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setNotifState('denied');
+      return;
+    }
+    getCurrentSubscription()
+      .then((sub) => setNotifState(sub ? 'on' : 'off'))
+      .catch(() => setNotifState('off'));
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    if (notifState === 'ios-install') {
+      setShowIosHint((v) => !v);
+      return;
+    }
+    setNotifState('busy');
+    try {
+      await enablePushNotifications(accessToken);
+      setNotifState('on');
+    } catch (e) {
+      setNotifState(e?.message === 'permission-denied' ? 'denied' : 'off');
+    }
+  };
+
+  const loadConversations = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
@@ -174,15 +213,34 @@ export default function SmsInboxTab({ accessToken }) {
       setConversations(Array.isArray(data?.conversations) ? data.conversations : []);
       setIsDemo(false);
     } catch (_e) {
-      // Backend not deployed yet — show demo threads so the UX is reviewable.
-      setConversations(DEMO_CONVERSATIONS);
-      setIsDemo(true);
+      // Quiet background polls must never clobber the live inbox with demo
+      // data over a flaky connection — keep whatever is on screen.
+      if (!silent) {
+        // Backend not deployed yet — show demo threads so the UX is reviewable.
+        setConversations(DEMO_CONVERSATIONS);
+        setIsDemo(true);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [accessToken]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // Keep the inbox fresh without manual refreshes: poll quietly every 25s and
+  // re-sync whenever the tab/app regains focus (key for the phone PWA, where
+  // the app wakes from background when a notification is tapped).
+  useEffect(() => {
+    const tick = () => {
+      if (!document.hidden) loadConversations({ silent: true });
+    };
+    const intervalId = setInterval(tick, 25000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [loadConversations]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -318,7 +376,7 @@ export default function SmsInboxTab({ accessToken }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             💬 Mensajes SMS
@@ -328,21 +386,64 @@ export default function SmsInboxTab({ accessToken }) {
               </span>
             )}
           </h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 hidden sm:block">
             Conversaciones de texto con clientes · responde igual que en WhatsApp
           </p>
         </div>
-        <button
-          onClick={loadConversations}
-          className="px-4 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition"
-        >
-          🔄 Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {notifState !== 'hidden' && (
+            <button
+              onClick={handleEnableNotifications}
+              disabled={notifState === 'busy' || notifState === 'on' || notifState === 'denied'}
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition ${
+                notifState === 'on'
+                  ? 'bg-green-500/15 text-green-300 cursor-default'
+                  : notifState === 'denied'
+                  ? 'bg-white/5 text-gray-500 cursor-not-allowed'
+                  : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
+              }`}
+            >
+              {notifState === 'on' ? '🔔 Avisos activados'
+                : notifState === 'busy' ? '🔔 Activando…'
+                : notifState === 'denied' ? '🔕 Avisos bloqueados'
+                : '🔔 Activar avisos'}
+            </button>
+          )}
+          <button
+            onClick={() => loadConversations()}
+            className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition"
+          >
+            🔄 <span className="hidden sm:inline">Actualizar</span>
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[340px_1fr] gap-4 h-[640px]">
+      {/* iPhone: web push only works once the site is installed on the home
+          screen (iOS 16.4+), so walk the user through that first. */}
+      {showIosHint && notifState === 'ios-install' && (
+        <div className="bg-amber-400/10 border border-amber-400/25 rounded-xl px-4 py-3 mb-4 text-sm text-amber-200">
+          <strong>Para recibir avisos en iPhone:</strong> primero instala la app.
+          Toca el botón <strong>Compartir</strong> (cuadro con flecha ↑) de Safari y
+          elige <strong>"Agregar a pantalla de inicio"</strong>. Luego abre la app
+          <strong> RQC Admin</strong> desde tu pantalla de inicio y vuelve a tocar
+          "Activar avisos".
+        </div>
+      )}
+      {notifState === 'denied' && (
+        <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 mb-4 text-xs text-gray-400">
+          Los avisos están bloqueados para este sitio. Para activarlos, permite las
+          notificaciones en la configuración de tu navegador (Ajustes del sitio →
+          Notificaciones → Permitir) y recarga la página.
+        </div>
+      )}
+
+      {/* Mobile (under md): WhatsApp-style master-detail — the list fills the
+          screen until a thread is opened, then the thread takes over with a
+          back arrow. Desktop (md+): classic two-pane side by side.
+          100dvh-based height keeps the composer above the phone keyboard. */}
+      <div className="grid grid-cols-1 md:grid-cols-[340px_1fr] gap-4 h-[calc(100dvh-15rem)] min-h-[420px] md:h-[640px]">
         {/* ── Left: conversation list ── */}
-        <div className="bg-[#1a1f26] rounded-2xl flex flex-col overflow-hidden">
+        <div className={`bg-[#1a1f26] rounded-2xl flex-col overflow-hidden ${selected ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-3 border-b border-white/5">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
@@ -411,7 +512,7 @@ export default function SmsInboxTab({ accessToken }) {
         </div>
 
         {/* ── Right: open conversation ── */}
-        <div className="bg-[#1a1f26] rounded-2xl flex flex-col overflow-hidden">
+        <div className={`bg-[#1a1f26] rounded-2xl flex-col overflow-hidden ${selected ? 'flex' : 'hidden md:flex'}`}>
           {!selected ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2">
               <div className="text-5xl">💬</div>
@@ -422,6 +523,13 @@ export default function SmsInboxTab({ accessToken }) {
               {/* Thread header */}
               <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="md:hidden -ml-1 px-2 py-1.5 rounded-lg text-gray-300 hover:bg-white/10 transition flex-shrink-0"
+                    aria-label="Volver a la lista"
+                  >
+                    ←
+                  </button>
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500/40 to-purple-500/30 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                     {(selected.customer_name || '?').trim().charAt(0).toUpperCase()}
                   </div>
