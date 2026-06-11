@@ -46,6 +46,7 @@ import AffiliateTerms from './pages/AffiliateTerms';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import SmsConsentPreview from './pages/SmsConsentPreview';
+import SmsConsentMarketingPreview from './pages/SmsConsentMarketingPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
@@ -103,6 +104,7 @@ const pathToPage = {
   '/politica-de-privacidad': 'privacyPolicy',
   '/terminos-de-servicio': 'termsOfService',
   '/sms-consent-preview': 'smsConsentPreview',
+  '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz'
 };
 
@@ -298,6 +300,7 @@ export default function App() {
       privacyPolicy: '/politica-de-privacidad',
       termsOfService: '/terminos-de-servicio',
       smsConsentPreview: '/sms-consent-preview',
+      smsConsentMarketingPreview: '/sms-consent-marketing-preview',
       clonamivoz: '/clonamivoz'
     };
 
@@ -400,6 +403,7 @@ export default function App() {
           {currentPage === 'privacyPolicy' && <PrivacyPolicy />}
           {currentPage === 'termsOfService' && <TermsOfService />}
           {currentPage === 'smsConsentPreview' && <SmsConsentPreview />}
+          {currentPage === 'smsConsentMarketingPreview' && <SmsConsentMarketingPreview />}
 
           {/* Clone Mi Voz — standalone voice-cloning tier (/clonamivoz).
               Not part of the main genre→artist→subgenre funnel; runs its
