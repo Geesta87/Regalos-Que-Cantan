@@ -101,6 +101,9 @@ serve(async () => {
             body,
             url: '/admin/dashboard?tab=orders',
             tag: `sale-${key}`,
+            // Sale pushes carry the $ amount — admins only. Assistants must
+            // never receive pricing (same rule as the dashboard's redaction).
+            audience: 'admin',
           }),
         });
         if (!res.ok) throw new Error(`notify-admin-push ${res.status}`);
