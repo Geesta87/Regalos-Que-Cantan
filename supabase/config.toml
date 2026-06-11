@@ -43,6 +43,13 @@ verify_jwt = false
 # Shotstack render-completion webhook for social clips. No JWT available.
 verify_jwt = false
 
+[functions.twilio-sms-webhook]
+# Inbound SMS receiver. Twilio POSTs here when a customer texts our A2P number;
+# Twilio cannot attach a Supabase JWT, so verification must be OFF. The function
+# authenticates instead via Twilio's X-Twilio-Signature (HMAC of url + params,
+# keyed by TWILIO_AUTH_TOKEN) — gated by TWILIO_VALIDATE_SIGNATURE.
+verify_jwt = false
+
 # ---------------------------------------------------------------------------
 # pg_cron / internal schedulers — invoked from inside Postgres without a JWT
 # ---------------------------------------------------------------------------
@@ -59,8 +66,20 @@ verify_jwt = false
 # Runs every 15 minutes via pg_cron — abandoned-cart + 30-min purchase reminders.
 verify_jwt = false
 
+[functions.send-song-ready-sms]
+# Runs every minute via pg_cron — texts the song-ready link to newly-paid,
+# SMS-consented customers on the approved transactional campaign. No JWT context.
+# Fully isolated from stripe-webhook/checkout; only reads/updates songs + sends.
+verify_jwt = false
+
 [functions.recover-temp-videos]
 # Cron-driven recovery job.
+verify_jwt = false
+
+[functions.poll-processing-videos]
+# Runs every 5 minutes via pg_cron — polls Shotstack directly for video_orders
+# stuck in 'processing' longer than 10 minutes. Recovers renders where
+# Shotstack completed but the webhook callback was never delivered.
 verify_jwt = false
 
 [functions.poll-pending-videos]
@@ -73,6 +92,15 @@ verify_jwt = false
 # One-shot recovery for the 2026-05-01 Mureka quota-cap outage. Re-submits failed
 # songs through Kie.ai/Suno and emails the customer. Invoked from the admin/CLI
 # (no user JWT) — must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.regenerate-paid-song-kie]
+# Targeted in-place re-generation of an already-PAID song pair through
+# Kie.ai/Suno ONLY, for small post-purchase lyric edits (e.g. a wrong year).
+# Edits the two existing rows in place (preserves paid/paid_at/stripe link),
+# sends no email, re-uses recover-mureka-cap-songs' submitToKie+poll flow.
+# Invoked manually from admin/CLI with the anon key (no user JWT) — must stay
+# verify_jwt = false so a service-role/anon Bearer isn't rejected.
 verify_jwt = false
 
 [functions.preview-fathers-day-campaign]
@@ -150,6 +178,14 @@ verify_jwt = false
 # Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
 # The platform gateway verifies the JWT before our handler runs; the handler
 # then looks up the caller's role in admin_users to decide what to return.
+verify_jwt = true
+
+[functions.sms-admin]
+# Called from the admin dashboard "Mensajes SMS" tab with a logged-in Supabase
+# Auth user's JWT. Same pattern as admin-songs: gateway verifies the JWT, the
+# handler requires a row in admin_users. Lists SMS conversations and sends
+# replies (via _shared/send-sms.ts → Twilio). Both 'admin' and 'assistant' may
+# use it — no revenue fields are exposed.
 verify_jwt = true
 
 [functions.admin-affiliates]
