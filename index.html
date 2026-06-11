@@ -52,6 +52,14 @@
     <meta name="apple-mobile-web-app-title" content="RegalosQueCantan" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="format-detection" content="telephone=no" />
+    <script>
+      // Admin pages install as their own app ("RQC Admin") that opens straight
+      // into the dashboard, while the public site keeps the customer manifest.
+      if (location.pathname.indexOf('/admin') === 0) {
+        document.querySelector('link[rel="manifest"]').setAttribute('href', '/manifest-admin.json');
+        document.querySelector('meta[name="apple-mobile-web-app-title"]').setAttribute('content', 'RQC Admin');
+      }
+    </script>
     
     <!-- Preconnect for Performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -234,19 +242,15 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     
-    <!-- Service Worker kill-switch: unregister any existing SW + clear caches.
-         Old SWs were causing stale HTML on production. Run on every page load
-         until enough time has passed that we're confident every visitor was hit. -->
+    <!-- Service worker: push notifications only — it has NO fetch handler and
+         caches nothing (the 2026 stale-HTML incident must never repeat). It
+         replaces the old kill-switch; its activate step still clears any
+         leftover caches from older SWs. -->
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations()
-          .then((regs) => regs.forEach((reg) => reg.unregister()))
-          .catch(() => {});
-      }
-      if (window.caches) {
-        caches.keys()
-          .then((keys) => keys.forEach((k) => caches.delete(k)))
-          .catch(() => {});
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
       }
     </script>
   </body>

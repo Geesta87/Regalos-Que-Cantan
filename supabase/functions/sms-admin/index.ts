@@ -14,6 +14,10 @@
 //   GET                                   → { success, role, conversations: [...] }
 //   POST { action: 'send', conversation_id, body }   → { success, message }
 //   POST { action: 'mark-read', conversation_id }     → { success }
+//   POST { action: 'save-push-subscription', subscription }  → { success }
+//       (stores the device's web-push subscription + fires a confirmation
+//        push so the admin instantly sees notifications working)
+//   POST { action: 'remove-push-subscription', endpoint }    → { success }
 //
 // Each conversation in the list carries its full message history:
 //   { id, customer_name, phone, order_id, unread, opted_out,
@@ -24,6 +28,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendSms } from '../_shared/send-sms.ts';
+import { sendPush } from '../_shared/web-push.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -80,7 +85,13 @@ serve(async (req) => {
     const role = roleRow.role as 'admin' | 'assistant';
 
     // ─── Parse action (GET = list) ───────────────────────────────────────
-    let body: { action?: string; conversation_id?: string; body?: string } = {};
+    let body: {
+      action?: string;
+      conversation_id?: string;
+      body?: string;
+      subscription?: { endpoint?: string };
+      endpoint?: string;
+    } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
     }
@@ -177,6 +188,49 @@ serve(async (req) => {
         .update({ unread: 0 })
         .eq('id', body.conversation_id);
       if (updErr) return json({ success: false, error: updErr.message }, 500);
+      return json({ success: true });
+    }
+
+    // ─── action: save-push-subscription ──────────────────────────────────
+    if (action === 'save-push-subscription') {
+      const sub = body.subscription;
+      if (!sub?.endpoint) {
+        return json({ success: false, error: 'subscription with endpoint required' }, 400);
+      }
+      const { error: upsertErr } = await admin
+        .from('push_subscriptions')
+        .upsert(
+          {
+            user_id: userData.user.id,
+            endpoint: sub.endpoint,
+            subscription: sub,
+            user_agent: req.headers.get('user-agent') || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'endpoint' },
+        );
+      if (upsertErr) return json({ success: false, error: upsertErr.message }, 500);
+
+      // Confirmation push — proves the whole pipeline end-to-end on the spot.
+      const test = await sendPush(sub, {
+        title: '🔔 Notificaciones activadas',
+        body: 'Te avisaremos aquí cuando un cliente mande un mensaje.',
+        url: '/admin/dashboard?tab=sms',
+        tag: 'rqc-confirm',
+      });
+      return json({ success: true, test_push_ok: test.ok, test_push_error: test.error });
+    }
+
+    // ─── action: remove-push-subscription ────────────────────────────────
+    if (action === 'remove-push-subscription') {
+      if (!body.endpoint) {
+        return json({ success: false, error: 'endpoint required' }, 400);
+      }
+      const { error: delErr } = await admin
+        .from('push_subscriptions')
+        .delete()
+        .eq('endpoint', body.endpoint);
+      if (delErr) return json({ success: false, error: delErr.message }, 500);
       return json({ success: true });
     }
 

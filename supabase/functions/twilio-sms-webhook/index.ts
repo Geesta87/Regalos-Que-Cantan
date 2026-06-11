@@ -116,10 +116,12 @@ serve(async (req) => {
     const isStart = START_WORDS.has(upper);
 
     let conversationId: string;
+    let displayName: string | null = null;
     const nowIso = new Date().toISOString();
 
     if (existing) {
       conversationId = existing.id;
+      displayName = existing.customer_name || null;
       const update: Record<string, unknown> = {
         unread: (existing.unread || 0) + 1,
         last_message_at: nowIso,
@@ -168,6 +170,7 @@ serve(async (req) => {
         return twiml(); // ack anyway; do not make Twilio retry-storm
       }
       conversationId = created.id;
+      displayName = customerName;
     }
 
     // Store the inbound message.
@@ -178,6 +181,27 @@ serve(async (req) => {
       status: 'received',
       twilio_sid: twilioSid,
     });
+
+    // Notify admin devices via web push (best effort — never blocks capture).
+    try {
+      const preview =
+        messageBody.length > 110 ? messageBody.slice(0, 110) + '…' : messageBody;
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          title: `💬 ${displayName || phone}`,
+          body: preview || '(mensaje vacío)',
+          url: '/admin/dashboard?tab=sms',
+          tag: `sms-${conversationId}`,
+        }),
+      });
+    } catch (pushErr) {
+      console.warn('twilio-sms-webhook: push notify failed', pushErr);
+    }
 
     return twiml();
   } catch (e) {

@@ -131,6 +131,13 @@ verify_jwt = false
 # the moment a song is marked paid. No user JWT context.
 verify_jwt = false
 
+[functions.notify-admin-push]
+# Web-push fan-out to admin devices (new inbound SMS alerts). Called
+# server-to-server from twilio-sms-webhook with the service-role key as the
+# Bearer token — no user JWT context. The handler itself rejects any caller
+# whose Bearer is not the service-role key.
+verify_jwt = false
+
 [functions.post-to-ghl]
 # Called server-to-server from social-clip-callback once the Shotstack render
 # completes. No user JWT context.

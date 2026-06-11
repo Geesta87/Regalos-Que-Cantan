@@ -1,38 +1,57 @@
-// SELF-DESTRUCTING SERVICE WORKER
-// This SW's only job is to uninstall itself and clear all caches.
-// Browsers re-fetch /sw.js on every navigation, so any client that
-// previously had a stale SW will pick this up and auto-uninstall.
+// Service worker for Regalos Que Cantan.
 //
-// Once we're confident every visitor has been hit (a few weeks),
-// this file can be deleted entirely.
+// SCOPE: push notifications ONLY. There is intentionally NO fetch handler and
+// NO caching here — a previous cached-HTML incident served stale pages in
+// production, so every request must keep going straight to the network.
+// (The activate handler also clears any cache an older SW may have left.)
 
-self.addEventListener('install', (event) => {
-  // Skip waiting so we can activate immediately on next load
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      // 1. Delete every cache this origin has
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch (e) {}
-
-      // 2. Unregister ourselves. We deliberately do NOT force-reload open
-      // tabs — that caused an install→activate→navigate loop on every
-      // page load (the page would re-register /sw.js, which would install
-      // a fresh SW, which would activate and navigate again). The next
-      // natural navigation will pick up an SW-free page.
-      try {
-        await self.registration.unregister();
-      } catch (e) {}
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.clients.claim();
     })()
   );
 });
 
-// Fetch handler: pass everything straight to network, touch nothing
-self.addEventListener('fetch', (event) => {
-  // No-op — let the browser handle it normally
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_e) {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  const title = data.title || 'Regalos Que Cantan';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-maskable-192.png',
+      tag: data.tag || 'rqc',
+      data: { url: data.url || '/admin/dashboard?tab=sms' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/admin/dashboard?tab=sms';
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of windows) {
+        if (client.url.includes('/admin')) {
+          await client.focus();
+          if (client.navigate) await client.navigate(url);
+          return;
+        }
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
 });
