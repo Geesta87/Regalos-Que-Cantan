@@ -245,20 +245,29 @@ serve(async (req) => {
   const xfwd = req.headers.get('x-forwarded-for') || '';
   const clientIp = xfwd.split(',')[0]?.trim() || req.headers.get('cf-connecting-ip') || 'unknown';
 
+  // Trusted server-to-server caller (auto-send-paid-email cron). The gateway
+  // only accepts anon/user JWTs as Bearer, so internal callers authenticate
+  // via this extra header instead. Bypasses ONLY the per-IP rate limit —
+  // every other code path is identical to a customer request.
+  const isInternal =
+    (req.headers.get('x-internal-auth') || '') === SUPABASE_SERVICE_ROLE_KEY;
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   // Per-IP rate limit using funnel_events as a lightweight counter.
-  const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
-  const { count: attemptCount } = await supabase
-    .from('funnel_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('step', 'song_recovery_attempt')
-    .gte('created_at', sinceIso)
-    .filter('metadata->>ip', 'eq', clientIp);
+  if (!isInternal) {
+    const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+    const { count: attemptCount } = await supabase
+      .from('funnel_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('step', 'song_recovery_attempt')
+      .gte('created_at', sinceIso)
+      .filter('metadata->>ip', 'eq', clientIp);
 
-  if ((attemptCount ?? 0) >= RATE_LIMIT_MAX_PER_IP) {
-    console.log('[recover-song] rate-limited', { ip: clientIp, count: attemptCount });
-    return respondJson(429, { ok: false, error: 'rate_limited', songs: [], emailSent: false });
+    if ((attemptCount ?? 0) >= RATE_LIMIT_MAX_PER_IP) {
+      console.log('[recover-song] rate-limited', { ip: clientIp, count: attemptCount });
+      return respondJson(429, { ok: false, error: 'rate_limited', songs: [], emailSent: false });
+    }
   }
 
   // Log the attempt (also serves as the rate-limit counter).
