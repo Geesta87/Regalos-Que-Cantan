@@ -3209,7 +3209,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Empty state */}
-            {pendingSendSongs.length === 0 ? (
+            {pendingSendGroups.length === 0 ? (
               <div className="bg-[#1a1f26] rounded-2xl p-10 text-center border border-white/5">
                 <div className="text-5xl mb-3">🎉</div>
                 <p className="text-lg font-semibold text-white">No songs waiting to be sent</p>
