@@ -13,6 +13,7 @@
     },
     { "source": "/share/:ids", "destination": "/api/share?ids=:ids" },
     { "source": "/video", "destination": "/api/video" },
+    { "source": "/s/:code", "destination": "/api/s?code=:code" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
