@@ -4,7 +4,7 @@ import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X } from 'lucide-react';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -3365,6 +3365,16 @@ export default function AdminDashboard() {
                                 >
                                   <span className="material-symbols-outlined text-gray-400 text-base">visibility</span>
                                 </button>
+                                {userRole === 'admin' && (
+                                  <button
+                                    onClick={() => markGroupAsSent(group.songIds)}
+                                    disabled={groupBusy || bulkSendBusy}
+                                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 flex-shrink-0 disabled:opacity-50"
+                                    title="Clear from queue (already delivered)"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -3460,6 +3470,16 @@ export default function AdminDashboard() {
                           >
                             👁️ Details
                           </button>
+                          {userRole === 'admin' && (
+                            <button
+                              onClick={() => markGroupAsSent(group.songIds)}
+                              disabled={groupBusy || bulkSendBusy}
+                              className="p-1.5 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                              title="Clear from queue (already delivered)"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
