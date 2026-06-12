@@ -40,6 +40,7 @@ import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
 import CorridosLanding from './pages/CorridosLanding';
 import AffiliateLogin from './pages/AffiliateLogin';
+import AffiliateResetPassword from './pages/AffiliateResetPassword';
 import AffiliateOnboarding from './pages/AffiliateOnboarding';
 import AffiliateDashboard from './pages/AffiliateDashboard';
 import AffiliateTerms from './pages/AffiliateTerms';
@@ -98,6 +99,7 @@ const pathToPage = {
   '/afiliados': 'affiliateLanding',
   '/partners': 'affiliateVSL',
   '/afiliado': 'affiliateLogin',
+  '/afiliado/reset': 'affiliateResetPassword',
   '/afiliado/bienvenida': 'affiliateOnboarding',
   '/afiliado/dashboard': 'affiliateDashboard',
   '/afiliado/terminos': 'affiliateTerms',
@@ -294,6 +296,7 @@ export default function App() {
       affiliateLanding: '/afiliados',
       affiliateVSL: '/partners',
       affiliateLogin: '/afiliado',
+      affiliateResetPassword: '/afiliado/reset',
       affiliateOnboarding: '/afiliado/bienvenida',
       affiliateDashboard: '/afiliado/dashboard',
       affiliateTerms: '/afiliado/terminos',
@@ -395,6 +398,7 @@ export default function App() {
           {currentPage === 'affiliateLanding' && <AffiliateLanding />}
           {currentPage === 'affiliateVSL' && <AffiliateVSL />}
           {currentPage === 'affiliateLogin' && <AffiliateLogin />}
+          {currentPage === 'affiliateResetPassword' && <AffiliateResetPassword />}
           {currentPage === 'affiliateOnboarding' && <AffiliateOnboarding />}
           {currentPage === 'affiliateDashboard' && <AffiliateDashboard />}
           {currentPage === 'affiliateTerms' && <AffiliateTerms />}

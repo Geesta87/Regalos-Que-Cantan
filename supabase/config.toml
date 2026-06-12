@@ -198,6 +198,21 @@ verify_jwt = false
 # JWT or every call will 401.
 verify_jwt = false
 
+[functions.affiliate-request-reset]
+# "Forgot password" — the login page posts an email with the Supabase anon
+# key (the partner has no session yet). Same shape as affiliate-login: the
+# gateway accepts the anon JWT, so verify_jwt stays at the default (true).
+# Always returns generic success (no email enumeration) and emails a 1-hour
+# signed reset link via SendGrid.
+verify_jwt = true
+
+[functions.affiliate-reset-password]
+# Completes the reset from /afiliado/reset. Posts the emailed HMAC token + new
+# password with the anon key (still no session). Gateway accepts the anon JWT
+# (verify_jwt = true default); the real check is the internal token
+# verification (must be purpose='pwreset' and unexpired).
+verify_jwt = true
+
 # ---------------------------------------------------------------------------
 # Frontend-authenticated functions — verify_jwt = true (default, explicit)
 # ---------------------------------------------------------------------------

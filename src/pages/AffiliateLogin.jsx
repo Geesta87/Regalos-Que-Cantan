@@ -95,6 +95,9 @@ export default function AffiliateLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // 'login' = normal sign-in form; 'forgot' = request-a-reset-link form.
+  const [mode, setMode] = useState('login');
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     const auth = localStorage.getItem('rqc_affiliate_auth');
@@ -107,6 +110,12 @@ export default function AffiliateLogin() {
       } catch { /* ignore */ }
     }
   }, []);
+
+  const switchMode = (next) => {
+    setMode(next);
+    setError('');
+    setResetSent(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -126,6 +135,23 @@ export default function AffiliateLogin() {
     finally { setLoading(false); }
   };
 
+  const handleResetRequest = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-request-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      // Always succeeds server-side (no email enumeration); just confirm to the user.
+      await response.json().catch(() => ({}));
+      setResetSent(true);
+    } catch { setError('Error de conexion. Intenta de nuevo.'); }
+    finally { setLoading(false); }
+  };
+
   return (
     <>
       <style>{css}</style>
@@ -137,24 +163,55 @@ export default function AffiliateLogin() {
             <p style={{ fontSize: 13, color: '#64748b', margin: 0, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase' }}>Partner Portal</p>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>CORREO ELECTRONICO</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required />
+          {mode === 'login' ? (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>CORREO ELECTRONICO</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>CONTRASENA</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+              </div>
+              {error && <p style={{ color: '#dc2626', fontSize: 13, margin: 0, padding: '10px 14px', background: '#fef2f2', borderRadius: 10, border: '1px solid #fecaca' }}>{error}</p>}
+              <button type="submit" disabled={loading} className="aff-login-btn">
+                {loading ? 'Ingresando...' : 'Iniciar Sesion'}
+              </button>
+              <p style={{ textAlign: 'center', fontSize: 13, margin: '4px 0 0' }}>
+                <a href="#" onClick={e => { e.preventDefault(); switchMode('forgot'); }} style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>¿Olvidaste tu contraseña?</a>
+              </p>
+            </form>
+          ) : resetSent ? (
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: '#059669', fontSize: 15, fontWeight: 600, padding: '14px 16px', background: '#ecfdf5', borderRadius: 12, border: '1px solid #a7f3d0', margin: '0 0 24px' }}>
+                ✓ Si tu correo está registrado, te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja de entrada (y spam). El enlace expira en 1 hora.
+              </p>
+              <button onClick={() => switchMode('login')} className="aff-login-btn">Volver a Iniciar Sesión</button>
             </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>CONTRASENA</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
-            </div>
-            {error && <p style={{ color: '#dc2626', fontSize: 13, margin: 0, padding: '10px 14px', background: '#fef2f2', borderRadius: 10, border: '1px solid #fecaca' }}>{error}</p>}
-            <button type="submit" disabled={loading} className="aff-login-btn">
-              {loading ? 'Ingresando...' : 'Iniciar Sesion'}
-            </button>
-          </form>
+          ) : (
+            <form onSubmit={handleResetRequest} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6, margin: 0, textAlign: 'center' }}>
+                Ingresa tu correo y te enviaremos un enlace para crear una nueva contraseña.
+              </p>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>CORREO ELECTRONICO</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="tu@email.com" required />
+              </div>
+              {error && <p style={{ color: '#dc2626', fontSize: 13, margin: 0, padding: '10px 14px', background: '#fef2f2', borderRadius: 10, border: '1px solid #fecaca' }}>{error}</p>}
+              <button type="submit" disabled={loading} className="aff-login-btn">
+                {loading ? 'Enviando...' : 'Enviar enlace de restablecimiento'}
+              </button>
+              <p style={{ textAlign: 'center', fontSize: 13, margin: '4px 0 0' }}>
+                <a href="#" onClick={e => { e.preventDefault(); switchMode('login'); }} style={{ color: '#94a3b8', textDecoration: 'none', fontWeight: 600 }}>← Volver a Iniciar Sesión</a>
+              </p>
+            </form>
+          )}
 
-          <p style={{ textAlign: 'center', fontSize: 13, color: '#94a3b8', marginTop: 28 }}>
-            ¿No tienes cuenta? <a href="mailto:hola@regalosquecantan.com" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>Contactanos</a>
-          </p>
+          {mode === 'login' && (
+            <p style={{ textAlign: 'center', fontSize: 13, color: '#94a3b8', marginTop: 28 }}>
+              ¿No tienes cuenta? <a href="mailto:hola@regalosquecantan.com" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>Contactanos</a>
+            </p>
+          )}
           <p style={{ textAlign: 'center', fontSize: 12, color: '#cbd5e1', marginTop: 12 }}>
             <a href="/afiliado/terminos" onClick={e => { e.preventDefault(); navigateTo('affiliateTerms'); }} style={{ color: '#94a3b8', textDecoration: 'none' }}>Terminos y condiciones</a>
           </p>
