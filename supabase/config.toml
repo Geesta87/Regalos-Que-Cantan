@@ -134,6 +134,14 @@ verify_jwt = false
 # the function validates videoOrder.paid internally instead.
 verify_jwt = false
 
+[functions.download-video]
+# Video-download proxy that adds Content-Disposition: attachment so the
+# browser saves the file instead of opening it. Invoked via a plain <a> link
+# click from SuccessPage — a bare GET with NO Authorization header at all,
+# so the gateway must not require a JWT. Was live with JWT off only because
+# of a legacy --no-verify-jwt deploy; pinned here 2026-06-11.
+verify_jwt = false
+
 [functions.generate-song-mureka]
 # Called server-to-server from generate-song with service-role context, not
 # from a user session. Historically deployed with --no-verify-jwt.

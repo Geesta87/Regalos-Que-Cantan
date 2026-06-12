@@ -1294,7 +1294,6 @@ export default function SongPage({ songId: propSongId }) {
                     btn.style.minWidth = btn.offsetWidth + 'px';
                     const progressBar = btn.querySelector('.dl-progress');
                     const progressText = btn.querySelector('.dl-text');
-                    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
                     if (progressBar) progressBar.style.width = '0%';
                     if (progressText) progressText.textContent = '⏳ Preparando...';
                     try {
@@ -1322,27 +1321,8 @@ export default function SongPage({ songId: propSongId }) {
                       const blob = new Blob(chunks, { type: 'video/mp4' });
                       const fileName = `video-para-${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
 
-                      // On mobile, use navigator.share to let user save to gallery/files
-                      if (isMobile && navigator.share && navigator.canShare) {
-                        const file = new File([blob], fileName, { type: 'video/mp4' });
-                        if (navigator.canShare({ files: [file] })) {
-                          await navigator.share({
-                            files: [file],
-                            title: `Video para ${recipient || 'ti'}`,
-                          });
-                          if (progressBar) progressBar.style.width = '100%';
-                          if (progressBar) progressBar.style.background = 'rgba(34,197,94,0.3)';
-                          if (progressText) progressText.textContent = '✅ ¡Listo!';
-                          setTimeout(() => {
-                            if (progressBar) { progressBar.style.width = '0%'; progressBar.style.background = 'rgba(139,92,246,0.3)'; }
-                            if (progressText) progressText.textContent = '🎬 Descargar Video';
-                            btn.style.pointerEvents = 'auto';
-                          }, 3000);
-                          return;
-                        }
-                      }
-
-                      // Desktop: use blob download
+                      // Direct blob download on all devices — the share-sheet
+                      // path confused users (looked like "send to a contact").
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = url;
@@ -1366,13 +1346,6 @@ export default function SongPage({ songId: propSongId }) {
                         btn.style.pointerEvents = 'auto';
                       }, 3000);
                     } catch (err) {
-                      // If share was cancelled by user, that's fine
-                      if (err?.name === 'AbortError') {
-                        if (progressText) progressText.textContent = '🎬 Descargar Video';
-                        if (progressBar) progressBar.style.width = '0%';
-                        btn.style.pointerEvents = 'auto';
-                        return;
-                      }
                       // Fallback: open in new tab
                       window.open(videoData.video_url, '_blank');
                       if (progressText) progressText.textContent = '🎬 Descargar Video';
