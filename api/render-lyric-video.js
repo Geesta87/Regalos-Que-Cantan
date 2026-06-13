@@ -159,7 +159,12 @@ function toAssTime(s) {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
 }
 
-function buildAss(alignedWords, lyrics) {
+// libass-safe text: drop braces (ASS override blocks) and newlines.
+function assText(s) {
+  return String(s || '').replace(/[{}]/g, '').replace(/\s*\n\s*/g, ' ').trim();
+}
+
+function buildAss(alignedWords, lyrics, title, brand) {
   // sung words only, strip any leading [marker] glued to a word
   const words = alignedWords
     .map((w) => ({ ...w, text: norm(w.word).replace(/^\s*\[[^\]]*\]\s*/, '') }))
@@ -196,6 +201,17 @@ function buildAss(alignedWords, lyrics) {
     events += `Dialogue: 0,${toAssTime(start)},${toAssTime(end)},Karaoke,,0,0,0,,${text}\n`;
   }
 
+  // Title (top) + brand (bottom) are rendered by libass too, since the static
+  // ffmpeg build has no drawtext/libfreetype filter. Shown the whole video
+  // (end far beyond song length; ffmpeg -shortest trims to the audio).
+  const FULL = '9:59:59.00';
+  const titleEv = title
+    ? `Dialogue: 0,0:00:00.00,${FULL},Title,,0,0,0,,${assText(title)}\n`
+    : '';
+  const brandEv = brand
+    ? `Dialogue: 0,0:00:00.00,${FULL},Brand,,0,0,0,,${assText(brand)}\n`
+    : '';
+
   return `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -205,10 +221,12 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Karaoke,Montserrat,78,&H002B8AC9,&H00FFFFFF,&H00141414,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,5,60,60,0,1
+Style: Title,Montserrat,52,&H00D8E8F2,&H00D8E8F2,&H00141414,&H80000000,-1,0,0,0,100,100,0,0,1,3,2,8,60,60,120,1
+Style: Brand,Montserrat,34,&H0073828A,&H0073828A,&H00141414,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,60,60,80,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-${events}`;
+${titleEv}${brandEv}${events}`;
 }
 
 // ===========================================================================
@@ -367,17 +385,14 @@ export default async function handler(req, res) {
         })();
     await download(audioUrl, audioFile);
 
-    // ---- subtitle ----
-    fs.writeFileSync(assFile, buildAss(timed, song.lyrics), 'utf8');
-
-    // ---- ffmpeg render ----
+    // ---- subtitle (lyrics + title + brand — all via libass; the static
+    //      ffmpeg build has no drawtext/libfreetype filter) ----
     const title = `Canción para ${song.recipient_name || 'ti'}`;
     const brand = 'regalosquecantan.com';
-    const fontFile = path.join(fontDir, 'Montserrat-Bold.ttf').replace(/\\/g, '/');
-    const titleDraw = `drawtext=fontfile='${fontFile}':text='${dtText(title)}':fontcolor=0xf2e8d8:fontsize=58:x=(w-text_w)/2:y=150`;
-    const brandDraw = `drawtext=fontfile='${fontFile}':text='${dtText(brand)}':fontcolor=0x8a8273:fontsize=38:x=(w-text_w)/2:y=1770`;
-    const subDraw = `subtitles='${assFile.replace(/\\/g, '/')}':fontsdir='${fontDir.replace(/\\/g, '/')}'`;
-    const filter = `[0:v]${titleDraw},${brandDraw},${subDraw}[v]`;
+    fs.writeFileSync(assFile, buildAss(timed, song.lyrics, title, brand), 'utf8');
+
+    // ---- ffmpeg render — only the subtitles (libass) filter ----
+    const filter = `[0:v]subtitles='${assFile.replace(/\\/g, '/')}':fontsdir='${fontDir.replace(/\\/g, '/')}'[v]`;
 
     const args = [
       '-y',
