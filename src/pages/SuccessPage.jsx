@@ -364,7 +364,11 @@ export default function SuccessPage() {
   // the UI flips from "preparing" to "ready" without requiring a manual
   // reload. Stops as soon as no song is pending anymore.
   useEffect(() => {
-    const anyPending = songs.some((s) => s?.karaoke_status === 'pending');
+    const anyPending = songs.some((s) =>
+      s?.karaoke_status === 'pending' ||
+      s?.lyric_video_status === 'pending' ||
+      s?.karaoke_video_status === 'pending'
+    );
     if (!anyPending) return;
     const id = setInterval(() => { loadSongs(); }, 5000);
     return () => clearInterval(id);
@@ -2081,6 +2085,111 @@ export default function SuccessPage() {
                 );
               }
               return null;
+            })()}
+
+            {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====
+                Each shows only if purchased: status 'pending' → 'ready' → 'failed'.
+                Attached to the FIRST song in the order (per stripe-webhook),
+                same as the instrumental. Polled by the useEffect above. */}
+            {(() => {
+              const videoProducts = [
+                {
+                  key: 'lyric',
+                  song: songs.find((s) => s?.lyric_video_status),
+                  statusOf: (s) => s?.lyric_video_status,
+                  urlOf: (s) => s?.lyric_video_url,
+                  emoji: '📝',
+                  title: 'Tu Video con Letra',
+                  blurb: 'Tu canción completa en video, con la letra iluminándose al ritmo.',
+                  fileLabel: 'video-con-letra',
+                  prep: 'Creando tu video con letra…',
+                },
+                {
+                  key: 'karaoke',
+                  song: songs.find((s) => s?.karaoke_video_status),
+                  statusOf: (s) => s?.karaoke_video_status,
+                  urlOf: (s) => s?.karaoke_video_url,
+                  emoji: '🎤',
+                  title: 'Tu Video Karaoke',
+                  blurb: 'La letra en pantalla, sin la voz — para que se la canten ustedes.',
+                  fileLabel: 'video-karaoke',
+                  prep: 'Creando tu video karaoke…',
+                },
+              ];
+
+              return videoProducts.map((p) => {
+                if (!p.song) return null;
+                const status = p.statusOf(p.song);
+                const url = p.urlOf(p.song);
+                const name = p.song.recipient_name || 'ti';
+
+                if (status === 'ready' && url) {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '16px',
+                      background: isLight ? 'rgba(34,197,94,0.06)' : 'rgba(34,197,94,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.4)'}`,
+                      borderRadius: '16px',
+                    }}>
+                      <p style={{
+                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
+                        color: isLight ? '#166534' : '#4ade80',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                      }}>
+                        {p.emoji} {p.title} está listo
+                      </p>
+                      <video src={url} controls playsInline preload="metadata" style={{
+                        width: '100%', maxHeight: '360px', borderRadius: '12px',
+                        background: '#000', marginBottom: '12px', display: 'block',
+                      }} />
+                      <a href={url} download={`${p.fileLabel}-para-${name}.mp4`} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        width: '100%', padding: '14px',
+                        background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+                        color: 'white', fontWeight: 800, fontSize: '15px',
+                        border: 'none', borderRadius: '14px', textDecoration: 'none',
+                        boxShadow: '0 6px 20px rgba(34,197,94,0.35)', fontFamily: ts.font,
+                      }}>
+                        ⬇️ Descargar {p.title.replace('Tu ', '')} (MP4)
+                      </a>
+                    </div>
+                  );
+                }
+
+                if (status === 'pending') {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '14px 16px',
+                      background: isLight ? 'rgba(34,197,94,0.05)' : 'rgba(34,197,94,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.35)'}`,
+                      borderRadius: '14px', textAlign: 'center',
+                    }}>
+                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: isLight ? '#166534' : '#4ade80' }}>
+                        {p.emoji} {p.prep}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
+                        Listo en unos minutos. La página se actualiza sola — también te lo enviamos por correo.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (status === 'failed') {
+                  return (
+                    <div key={p.key} style={{
+                      marginTop: '12px', marginBottom: '10px', padding: '12px 16px',
+                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
+                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
+                      borderRadius: '14px', textAlign: 'center',
+                    }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
+                        {p.emoji} Hubo un problema creando {p.title.toLowerCase()}. Te lo enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              });
             })()}
 
             {/* WhatsApp Share - Step 2 */}

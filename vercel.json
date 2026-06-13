@@ -2,10 +2,24 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/render-lyric-video.js": {
+      "maxDuration": 300,
+      "includeFiles": "{api/assets/**,node_modules/ffmpeg-static/**}"
+    }
+  },
   "rewrites": [
     {
       "source": "/videos/:songId",
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/:songId"
+    },
+    {
+      "source": "/lyric-video/:file(.+\\.[a-zA-Z0-9]+)",
+      "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/lyric/:file"
+    },
+    {
+      "source": "/karaoke-video/:file(.+\\.[a-zA-Z0-9]+)",
+      "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/karaoke/:file"
     },
     {
       "source": "/karaoke/:file(.+\\.[a-zA-Z0-9]+)",

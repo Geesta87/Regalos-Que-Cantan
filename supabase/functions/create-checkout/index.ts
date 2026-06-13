@@ -27,9 +27,16 @@ serve(async (req) => {
   try {
     const body = await req.json();
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
     const karaokeAddonBool: boolean = karaokeAddon === true || karaokeAddon === 'true';
-    const KARAOKE_PRICE_CENTS = 799; // $7.99 — applied to the FIRST song in the order
+    const KARAOKE_PRICE_CENTS = 799; // $7.99 — instrumental MP3, applied to the FIRST song
+    // Phase 4 music-video upsells — synced lyric video + karaoke video (no voice).
+    // $9.99 each, applied to the FIRST song. Distinct from karaokeAddon (the
+    // instrumental MP3) and from videoAddon (the photo slideshow).
+    const lyricVideoBool: boolean = lyricVideoAddon === true || lyricVideoAddon === 'true';
+    const karaokeVideoBool: boolean = karaokeVideoAddon === true || karaokeVideoAddon === 'true';
+    const LYRIC_VIDEO_PRICE_CENTS = 999;   // $9.99
+    const KARAOKE_VIDEO_PRICE_CENTS = 999; // $9.99
     // Normalize to a count: supports new videoAddonCount (0/1/2) or legacy videoAddon boolean
     const videoAddonCountNum: number = typeof rawVideoAddonCount === 'number' ? rawVideoAddonCount
       : typeof rawVideoAddonCount === 'string' ? parseInt(rawVideoAddonCount) || 0
@@ -187,6 +194,13 @@ serve(async (req) => {
         if (karaokeAddonBool && idx === 0) {
           updatePayload.karaoke_status = 'pending';
         }
+        // Music-video add-ons: flag the FIRST song for render-lyric-video.
+        if (lyricVideoBool && idx === 0) {
+          updatePayload.lyric_video_status = 'pending';
+        }
+        if (karaokeVideoBool && idx === 0) {
+          updatePayload.karaoke_video_status = 'pending';
+        }
         await supabase.from('songs').update(updatePayload).eq('id', sid);
       }
       // For free coupon orders that include karaoke, kick the Vercel worker
@@ -203,6 +217,26 @@ serve(async (req) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ songId: songIds[0], secret: karaokeSecret }),
           }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
+        }
+      }
+
+      // Free-path music-video triggers — fire-and-forget render-lyric-video.
+      if ((lyricVideoBool || karaokeVideoBool) && songIds[0]) {
+        const karaokeSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
+        const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
+        if (karaokeSecret) {
+          if (lyricVideoBool) {
+            fetch(`${vercelBase}/api/render-lyric-video`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ songId: songIds[0], mode: 'lyric', secret: karaokeSecret }),
+            }).catch((err) => console.warn('[lyric-video] free-path trigger failed:', err?.message || err));
+          }
+          if (karaokeVideoBool) {
+            fetch(`${vercelBase}/api/render-lyric-video`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ songId: songIds[0], mode: 'karaoke', secret: karaokeSecret }),
+            }).catch((err) => console.warn('[karaoke-video] free-path trigger failed:', err?.message || err));
+          }
         }
       }
 
@@ -298,6 +332,38 @@ serve(async (req) => {
       });
     }
 
+    // Lyric video add-on ($9.99) — full song video with synced highlighted
+    // lyrics. render-lyric-video (Vercel) builds it post-payment.
+    if (lyricVideoBool) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Video con Letra',
+            description: 'Tu canción completa en video vertical, con la letra apareciendo e iluminándose al ritmo de la música. MP4 HD, listo para compartir.',
+          },
+          unit_amount: LYRIC_VIDEO_PRICE_CENTS,
+        },
+        quantity: 1,
+      });
+    }
+
+    // Karaoke video add-on ($9.99) — same lyric video but with the voice
+    // removed (instrumental audio). render-lyric-video mode='karaoke'.
+    if (karaokeVideoBool) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Video Karaoke (sin voz)',
+            description: 'El mismo video con letra en pantalla pero sin la voz — para que lo canten ustedes. MP4 HD vertical.',
+          },
+          unit_amount: KARAOKE_VIDEO_PRICE_CENTS,
+        },
+        quantity: 1,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer_email: email,
       line_items: lineItems,
@@ -338,6 +404,8 @@ serve(async (req) => {
         videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
         videoAddonCount: String(videoAddonCountNum),
         karaokeAddon: karaokeAddonBool ? 'true' : 'false',
+        lyricVideoAddon: lyricVideoBool ? 'true' : 'false',
+        karaokeVideoAddon: karaokeVideoBool ? 'true' : 'false',
         affiliateCode: resolvedAffiliate || '',
         // Meta Conversions API identifiers — read by stripe-webhook on
         // checkout.session.completed. Stripe metadata cap is 500 chars/value.

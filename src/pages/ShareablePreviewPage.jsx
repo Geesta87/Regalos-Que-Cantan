@@ -23,6 +23,9 @@ const BUNDLE_PRICE = 39.99;
 const EXTRA_SONG_PRICE = 9.99;
 const VIDEO_ADDON_PRICE = 9.99;
 const VIDEO_DUAL_ADDON_PRICE = 17.99;
+// Phase 4 upsells (Suno-era): synced lyric video + karaoke video (no voice).
+const LYRIC_VIDEO_ADDON_PRICE = 9.99;
+const KARAOKE_VIDEO_ADDON_PRICE = 9.99;
 const DEFAULT_BUNDLE_SIZE = 2;
 
 // selectedCount → price. Single at 1, bundle at 2, bundle+extras at 3+.
@@ -157,6 +160,9 @@ export default function ShareablePreviewPage() {
   // Video addon (0 = none, 1 = one video, 2 = both videos)
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
+  // Phase 4 upsells: synced lyric video / karaoke video (no voice)
+  const [lyricVideoAddon, setLyricVideoAddon] = useState(false);
+  const [karaokeVideoAddon, setKaraokeVideoAddon] = useState(false);
 
   // Social proof
   const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120);
@@ -323,7 +329,7 @@ export default function ShareablePreviewPage() {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, videoAddonCount, couponCode: couponApplied?.code || null })
+        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, videoAddonCount, lyricVideoAddon, karaokeVideoAddon, couponCode: couponApplied?.code || null })
       });
       const data = await res.json();
       if (!data.success || !data.url) throw new Error(data.error || 'Error al crear checkout.');
@@ -347,7 +353,10 @@ export default function ShareablePreviewPage() {
     : rawPrice
     : rawPrice;
   const basePrice = discountedPrice;
-  const currentPrice = basePrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0);
+  const currentPrice = basePrice
+    + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0)
+    + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0)
+    + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0);
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
@@ -973,7 +982,7 @@ export default function ShareablePreviewPage() {
             <div style={{textAlign: 'right'}}>
               {couponApplied && rawPrice !== discountedPrice && (
                 <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
-                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0)).toFixed(2)}
+                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0) + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0)).toFixed(2)}
                 </p>
               )}
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
@@ -1278,6 +1287,73 @@ export default function ShareablePreviewPage() {
                 </div>
               </div>
             </div>
+
+            {/* ===== MUSIC VIDEO UPSELLS: lyric video + karaoke video ===== */}
+            <div style={{
+              marginBottom: '20px',
+              background: 'linear-gradient(135deg, rgba(212,175,55,0.10), rgba(20,16,28,0.6))',
+              borderRadius: '18px', padding: '18px',
+              border: '1px solid rgba(212,175,55,0.3)',
+              animation: isVisible ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none',
+            }}>
+              <div style={{ fontSize: '16px', fontWeight: 900, color: 'white', marginBottom: '2px' }}>
+                🎵 Videos musicales de tu canción
+              </div>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '14px' }}>
+                La letra aparece en pantalla iluminándose al ritmo de la música — listos para compartir por WhatsApp
+              </div>
+
+              {[
+                {
+                  key: 'lyric', selected: lyricVideoAddon, toggle: () => setLyricVideoAddon(v => !v),
+                  emoji: '📝', title: 'Video con Letra',
+                  sub: 'Tu canción completa en video, con cada palabra iluminándose mientras se canta',
+                  price: LYRIC_VIDEO_ADDON_PRICE,
+                },
+                {
+                  key: 'karaoke', selected: karaokeVideoAddon, toggle: () => setKaraokeVideoAddon(v => !v),
+                  emoji: '🎤', title: 'Video Karaoke (sin voz)',
+                  sub: 'El mismo video con letra pero sin el cantante — para que se la canten ustedes',
+                  price: KARAOKE_VIDEO_ADDON_PRICE,
+                },
+              ].map(({ key, selected, toggle, emoji, title, sub, price }) => (
+                <button
+                  key={key}
+                  onClick={toggle}
+                  style={{
+                    width: '100%', padding: '13px 14px', borderRadius: '13px', marginBottom: '8px',
+                    border: selected ? '2px solid #22c55e' : '2px solid rgba(212,175,55,0.4)',
+                    background: selected ? 'linear-gradient(135deg, rgba(22,163,74,0.35), rgba(34,197,94,0.18))' : 'rgba(255,255,255,0.04)',
+                    color: 'white', cursor: 'pointer', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                    transition: 'all 0.2s',
+                    boxShadow: selected ? '0 0 18px rgba(34,197,94,0.25)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <span style={{
+                      width: '22px', height: '22px', borderRadius: '7px', flexShrink: 0,
+                      border: selected ? '2px solid #22c55e' : '2px solid rgba(255,255,255,0.35)',
+                      background: selected ? '#22c55e' : 'rgba(0,0,0,0.35)',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {selected && <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 800 }}>{emoji} {title}</div>
+                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: 400, marginTop: '2px' }}>{sub}</div>
+                    </div>
+                  </div>
+                  <span style={{ fontWeight: 900, fontSize: '15px', flexShrink: 0, color: selected ? '#4ade80' : '#d4af37' }}>
+                    ${price.toFixed(2)}
+                  </span>
+                </button>
+              ))}
+
+              <p style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.35)', margin: '6px 0 0' }}>
+                Hechos con la letra exacta de tu canción — entrega en minutos después de tu compra
+              </p>
+            </div>
           </>
         )}
 
@@ -1429,7 +1505,7 @@ export default function ShareablePreviewPage() {
                     !isPickAnyTwoMode
                       ? (isBundleSelected ? 'Ambas' : 'Canción')
                       : (selectedCount === 1 ? 'Canción' : `Bundle de ${selectedCount}`)
-                  }${videoAddon ? ' + Video' : ''} — $${currentPrice.toFixed(2)}`
+                  }${videoAddon ? ' + Video' : ''}${lyricVideoAddon ? ' + V.Letra' : ''}${karaokeVideoAddon ? ' + Karaoke' : ''} — $${currentPrice.toFixed(2)}`
                 )}
               </button>
 

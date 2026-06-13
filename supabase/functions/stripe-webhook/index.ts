@@ -239,8 +239,10 @@ async function recordAffiliatePurchase(
   }
   console.log(`[affiliate] purchase event recorded — code=${affiliateCode} song=${song.id} amount=${amount}`);
 
-  // Bump coupon usage ONCE per song. Safe even if multiple webhooks race —
-  // the SELECT above gates this whole branch behind a successful INSERT.
+  // Bump coupon usage once per recorded purchase. The caller invokes this
+  // exactly once per order (see affiliatePurchaseLogged), so a 2-pack bumps
+  // the coupon a single time. Safe even if multiple webhooks race — the
+  // SELECT above gates this whole branch behind a successful INSERT.
   if (song.coupon_code) {
     const { data: coupon } = await supabase
       .from('coupons')
@@ -622,9 +624,20 @@ serve(async (req) => {
       // Karaoke addon: one per order, applied to the first song.
       // fetch-karaoke will run async after we update the DB row to pending.
       const karaokeAddonPurchased = session.metadata?.karaokeAddon === 'true';
+      // Music-video addons (Phase 4): synced lyric video / karaoke video.
+      // render-lyric-video (Vercel) builds them async after we flag pending.
+      const lyricVideoPurchased = session.metadata?.lyricVideoAddon === 'true';
+      const karaokeVideoPurchased = session.metadata?.karaokeVideoAddon === 'true';
 
       // Update ALL songs in the bundle
       let firstSong = null;
+      // Affiliate commission must be counted ONCE per order, not per song.
+      // For a 2-pack both song rows carry the full order total in amount_paid,
+      // so recording per song would double the partner's revenue/commission
+      // (and double-bump coupon usage). This one-shot flag ensures a single
+      // purchase event per order — same "count once per stripe_session_id"
+      // doctrine the revenue dashboard uses.
+      let affiliatePurchaseLogged = false;
       for (let idx = 0; idx < songIds.length; idx++) {
         const sid = songIds[idx];
         const updateData = { ...baseUpdateData };
@@ -637,6 +650,14 @@ serve(async (req) => {
         // karaoke_url and flip status to 'ready' a minute later.
         if (karaokeAddonPurchased && idx === 0) {
           updateData.karaoke_status = 'pending';
+        }
+        // Music videos: flag the FIRST song only. render-lyric-video will
+        // populate the *_video_url and flip status to 'ready'.
+        if (lyricVideoPurchased && idx === 0) {
+          updateData.lyric_video_status = 'pending';
+        }
+        if (karaokeVideoPurchased && idx === 0) {
+          updateData.karaoke_video_status = 'pending';
         }
         const { data: song, error: updateError } = await supabase
           .from('songs')
@@ -653,14 +674,20 @@ serve(async (req) => {
         console.log('Song marked as paid:', song.id);
         if (!firstSong) firstSong = song;
 
-        // Affiliate attribution: record the purchase event + bump coupon
-        // usage. Idempotent against webhook retries. Wrapped so a failure
-        // never blocks the payment flow — the customer has paid and
-        // everything downstream (email, social clip) must still run.
-        try {
-          await recordAffiliatePurchase(supabase, song, session.metadata?.affiliateCode || null);
-        } catch (affErr: any) {
-          console.error(`[affiliate] recordAffiliatePurchase threw for song ${sid}:`, affErr?.message || affErr);
+        // Affiliate attribution: record ONE purchase event per order (against
+        // the first paid song, carrying the full order total) + bump coupon
+        // usage once. Recording per song would double-count bundle revenue and
+        // coupon usage. Idempotent against webhook retries (one event per
+        // song_id). Wrapped so a failure never blocks the payment flow — the
+        // customer has paid and everything downstream (email, social clip)
+        // must still run.
+        if (!affiliatePurchaseLogged) {
+          affiliatePurchaseLogged = true;
+          try {
+            await recordAffiliatePurchase(supabase, song, session.metadata?.affiliateCode || null);
+          } catch (affErr: any) {
+            console.error(`[affiliate] recordAffiliatePurchase threw for song ${sid}:`, affErr?.message || affErr);
+          }
         }
 
         // Fire-and-forget: render a 60s social media clip for this paid song.
@@ -714,6 +741,43 @@ serve(async (req) => {
               }
             } catch (karaokeErr: any) {
               console.warn(`[karaoke] vercel trigger failed for ${sid}:`, karaokeErr?.message || karaokeErr);
+            }
+          }
+        }
+
+        // Fire-and-forget: trigger the Vercel video renderer for the first
+        // song when a music-video addon was bought. Same timeout-guarded
+        // pattern as the karaoke trigger above — the render itself runs to
+        // completion on Vercel (2-4 min) independent of this 3s race, so the
+        // webhook response is never delayed. Auth: KARAOKE_TRIGGER_SECRET.
+        if ((lyricVideoPurchased || karaokeVideoPurchased) && idx === 0) {
+          const videoSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
+          const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
+          if (!videoSecret) {
+            console.warn(`[lyric-video] KARAOKE_TRIGGER_SECRET not set — skipping trigger for ${sid}`);
+          } else {
+            const modes: string[] = [];
+            if (lyricVideoPurchased) modes.push('lyric');
+            if (karaokeVideoPurchased) modes.push('karaoke');
+            for (const mode of modes) {
+              try {
+                const vidPromise = fetch(`${vercelBase}/api/render-lyric-video`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ songId: sid, mode, secret: videoSecret }),
+                });
+                const vidTimeout = new Promise<Response>((_, reject) =>
+                  setTimeout(() => reject(new Error('render-lyric-video trigger timeout')), 3000)
+                );
+                const vidResponse = await Promise.race([vidPromise, vidTimeout]);
+                if (!vidResponse.ok) {
+                  console.warn(`[lyric-video:${mode}] vercel non-2xx for ${sid}: ${vidResponse.status}`);
+                }
+              } catch (vidErr: any) {
+                // Timeout is EXPECTED here — the render runs minutes; the
+                // Vercel function keeps going after our 3s race resolves.
+                console.warn(`[lyric-video:${mode}] trigger race ended for ${sid}:`, vidErr?.message || vidErr);
+              }
             }
           }
         }
