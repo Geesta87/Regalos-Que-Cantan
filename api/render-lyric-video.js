@@ -27,11 +27,16 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
 const execFileAsync = promisify(execFile);
+
+// This file is ESM ("type":"module" in package.json), so __dirname doesn't
+// exist. Recreate it from import.meta.url for path resolution (fonts).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ffmpeg-static is CommonJS (`module.exports = "<path>"`). An ESM default
 // import of it can yield a namespace object instead of the string in some
