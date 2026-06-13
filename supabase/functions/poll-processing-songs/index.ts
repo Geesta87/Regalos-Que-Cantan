@@ -28,6 +28,14 @@ const RETRY_AFTER_MINUTES = 15;  // Re-submit after 15 min without callback (Mur
 const MAX_RETRIES = 3;           // Max re-submission attempts
 const TIMEOUT_MINUTES = 90;      // Absolute timeout
 
+// Kie/Suno (primary provider since 2026-06-12) — JOB 2 polls record-info as
+// the backup for missed song-callback deliveries.
+const KIE_API_KEY = Deno.env.get('KIE_API_KEY') || '';
+const KIE_FAILED_STATUSES = new Set([
+  'CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION',
+  'SENSITIVE_WORD_ERROR', 'FAILED',
+]);
+
 // ============================================================================
 // EMAIL HELPERS
 // ============================================================================
@@ -511,7 +519,7 @@ Deno.serve(async (req) => {
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
-      .select('id, task_id, recipient_name, email, genre, occasion, provider')
+      .select('id, task_id, version, recipient_name, email, genre, occasion, provider')
       .eq('status', 'processing')
       .not('task_id', 'is', null)
       .lt('updated_at', pollThreshold)
@@ -528,6 +536,59 @@ Deno.serve(async (req) => {
       for (const song of pollSongs) {
         try {
           console.log(`Polling task ${song.task_id} for song ${song.id} (provider: ${song.provider})`);
+
+          // ---- Kie/Suno polling (primary provider) — record-info by taskId.
+          // This is the backup for missed song-callback deliveries: each row
+          // maps to its take by version (track[version-1]), mirroring the
+          // callback's fan-out.
+          if (song.provider === 'kie') {
+            if (!KIE_API_KEY) {
+              console.warn(`KIE_API_KEY missing — cannot poll ${song.id}`);
+              results.push({ id: song.id, job: 'poll', action: 'kie_no_key' });
+              continue;
+            }
+            const kieResp = await fetch(
+              `https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(song.task_id)}`,
+              { headers: { 'Authorization': `Bearer ${KIE_API_KEY}` } },
+            );
+            if (!kieResp.ok) {
+              console.warn(`Kie poll failed for ${song.task_id}: HTTP ${kieResp.status}`);
+              results.push({ id: song.id, job: 'poll', action: 'poll_failed', status: kieResp.status });
+              continue;
+            }
+            const kieJson = await kieResp.json().catch(() => null);
+            const kieStatus = kieJson?.data?.status || 'unknown';
+
+            if (kieStatus === 'SUCCESS') {
+              const tracks = kieJson?.data?.response?.sunoData ?? [];
+              const idx = (song.version || 1) - 1;
+              const track = tracks[idx] || tracks[0];
+              const kieAudioUrl = track?.audioUrl || track?.audio_url || track?.streamAudioUrl;
+              if (kieAudioUrl) {
+                console.log(`FOUND AUDIO via Kie polling for ${song.id}`);
+                await supabase.from('songs').update({
+                  original_audio_url: kieAudioUrl,
+                  kie_payload: JSON.stringify(track),
+                }).eq('id', song.id);
+                const completed = await completeSong(supabase, song, kieAudioUrl);
+                results.push({ id: song.id, job: 'poll', action: completed ? 'completed' : 'failed_to_complete', provider: 'kie' });
+              } else {
+                console.warn(`Kie task SUCCESS but no audio for ${song.id} (v${song.version})`);
+                results.push({ id: song.id, job: 'poll', action: 'complete_no_audio', provider: 'kie' });
+              }
+            } else if (KIE_FAILED_STATUSES.has(kieStatus)) {
+              await supabase.from('songs').update({
+                status: 'failed',
+                error_message: `kie.ai task ${kieStatus}`.substring(0, 500),
+              }).eq('id', song.id);
+              results.push({ id: song.id, job: 'poll', action: 'task_failed', provider: 'kie', kieStatus });
+            } else {
+              // Still generating — bump updated_at so JOB 3 doesn't touch it
+              await supabase.from('songs').update({ updated_at: new Date().toISOString() }).eq('id', song.id);
+              results.push({ id: song.id, job: 'poll', action: 'still_processing', provider: 'kie', kieStatus });
+            }
+            continue;
+          }
 
           // Mureka polling endpoint
           const taskResponse = await fetch(`https://api.mureka.ai/v1/song/query?ids=${song.task_id}`, {
@@ -719,15 +780,26 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // Determine which payload to use for retry
-          const rawPayload = song.mureka_payload || song.evolink_payload || song.kie_payload;
+          // Kie/Suno songs (primary provider since 2026-06-12): JOB 2 polls
+          // them and keeps updated_at fresh while they generate. Never kill
+          // or Mureka-resubmit them here — the pre-flip version of this
+          // branch failed them as "deprecated", which would have executed
+          // any Suno song whose callback was missed.
+          if (song.provider === 'kie' || (!song.mureka_payload && song.kie_payload)) {
+            result.action = 'kie_left_for_poll';
+            results.push(result);
+            continue;
+          }
 
-          // Legacy Evolink/Kie songs without Mureka payload — just fail them
-          if (!song.mureka_payload && (song.evolink_payload || song.kie_payload)) {
+          // Determine which payload to use for retry
+          const rawPayload = song.mureka_payload || song.evolink_payload;
+
+          // Legacy Evolink songs without Mureka payload — just fail them
+          if (!song.mureka_payload && song.evolink_payload) {
             console.log(`Song ${song.id} is legacy ${song.provider || 'unknown'} — marking failed (Evolink deprecated)`);
             await supabase.from('songs').update({
               status: 'failed',
-              error_message: 'Evolink/Kie.ai deprecated — migrated to Mureka'
+              error_message: 'Evolink deprecated — migrated to Mureka'
             }).eq('id', song.id);
             result.action = 'legacy_deprecated';
             results.push(result);
