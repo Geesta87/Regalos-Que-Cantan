@@ -26,12 +26,27 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import ffmpegPath from 'ffmpeg-static';
 
 const execFileAsync = promisify(execFile);
+
+// ffmpeg-static is CommonJS (`module.exports = "<path>"`). An ESM default
+// import of it can yield a namespace object instead of the string in some
+// bundler/runtime combos — and fs.existsSync(<object>) throws synchronously.
+// Require it explicitly and coerce to a string so it's always safe to use.
+const require = createRequire(import.meta.url);
+let ffmpegPath = null;
+let ffmpegImportError = null;
+try {
+  const mod = require('ffmpeg-static');
+  ffmpegPath = typeof mod === 'string' ? mod : (mod && typeof mod.default === 'string' ? mod.default : null);
+  if (!ffmpegPath) ffmpegImportError = `ffmpeg-static resolved to ${typeof mod} (not a path string)`;
+} catch (e) {
+  ffmpegImportError = e?.message || String(e);
+}
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -252,24 +267,29 @@ export default async function handler(req, res) {
 
   // ---- Environment diagnostic (no render) — POST { diag:true, secret } ----
   // Confirms the ffmpeg binary + font shipped in the lambda and ffmpeg runs.
+  // Fully guarded so it can never crash (FUNCTION_INVOCATION_FAILED).
   if (req.body?.diag) {
-    const fontDir = resolveFontDir();
-    const fontFile = path.join(fontDir, 'Montserrat-Bold.ttf');
-    const out = {
-      ffmpegPath,
-      ffmpegExists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
-      fontDir,
-      fontExists: fs.existsSync(fontFile),
-      cwd: process.cwd(),
-      tmp: os.tmpdir(),
-    };
+    const out = { ffmpegPath, ffmpegImportError, ffmpegPathType: typeof ffmpegPath };
     try {
-      const { stdout } = await execFileAsync(ffmpegPath, ['-version'], { timeout: 15000 });
-      out.ffmpegVersion = String(stdout).split('\n')[0];
-      out.ffmpegRuns = true;
+      out.ffmpegExists = (typeof ffmpegPath === 'string') ? fs.existsSync(ffmpegPath) : false;
+      const fontDir = resolveFontDir();
+      out.fontDir = fontDir;
+      out.fontExists = fs.existsSync(path.join(fontDir, 'Montserrat-Bold.ttf'));
+      out.cwd = process.cwd();
+      out.tmp = os.tmpdir();
+      try { out.nodeModulesFfmpeg = fs.existsSync('/var/task/node_modules/ffmpeg-static'); } catch { out.nodeModulesFfmpeg = 'err'; }
     } catch (e) {
-      out.ffmpegRuns = false;
-      out.ffmpegError = e?.message || String(e);
+      out.diagSetupError = e?.message || String(e);
+    }
+    if (typeof ffmpegPath === 'string' && out.ffmpegExists) {
+      try {
+        const { stdout } = await execFileAsync(ffmpegPath, ['-version'], { timeout: 15000 });
+        out.ffmpegVersion = String(stdout).split('\n')[0];
+        out.ffmpegRuns = true;
+      } catch (e) {
+        out.ffmpegRuns = false;
+        out.ffmpegError = e?.message || String(e);
+      }
     }
     return res.status(200).json({ diag: true, ...out });
   }
