@@ -101,6 +101,11 @@ verify_jwt = false
 # the render call (closed tab, network drop, etc).
 verify_jwt = false
 
+[functions.retry-queued-songs]
+# Runs every 5 minutes via pg_cron — resubmits rate-limited songs stuck in
+# 'queued_retry' to whichever provider's payload was saved (Mureka or Kie).
+verify_jwt = false
+
 [functions.recover-mureka-cap-songs]
 # One-shot recovery for the 2026-05-01 Mureka quota-cap outage. Re-submits failed
 # songs through Kie.ai/Suno and emails the customer. Invoked from the admin/CLI

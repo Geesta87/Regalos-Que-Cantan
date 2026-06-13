@@ -1248,6 +1248,11 @@ const ADDITIONAL_ARTIST_NAMES = [
   'Don Omar', 'Anuel', 'Ozuna', 'Ricardo Arjona', 'Juan Gabriel',
   'Sebastián Yatra', 'Sebastian Yatra', 'Camilo',
   // Regional Mexicano (corrido / norteño / sierreño / banda / mariachi)
+  // El Komander / Los Buchones appear in the alterados genre DNA, Montéz
+  // (accented spelling) in duranguense, Fania (label) in salsa — all slip
+  // past the scrubber otherwise and Suno rejects artist references.
+  'El Komander', 'Los Buchones de Culiacan', 'Los Buchones',
+  'Montéz de Durango', 'Fania',
   'Fuerza Regida', 'Eslabón Armado', 'Eslabon Armado', 'Espinoza Paz',
   'Pepe Aguilar', 'Joan Sebastian', 'Joss Favela', 'Yahritza',
   'Edén Muñoz', 'Eden Munoz', 'Ariel Camacho', 'Lupillo Rivera',
@@ -1301,7 +1306,10 @@ function sanitizeArtistNames(input: string): string {
     .replace(/,\s*style\b/gi, ' style')       // ", style" → " style" (was "X style")
     .replace(/\s*,\s*,/g, ',')                // double commas
     .replace(/\(\s*,/g, '(').replace(/,\s*\)/g, ')')
-    .replace(/\s+/g, ' ')                     // collapse whitespace
+    // Collapse spaces/tabs ONLY — never newlines. This sanitizer also runs on
+    // LYRICS in the Kie path; the old /\s+/ collapse flattened every song into
+    // one line, destroying the phrasing cues Suno needs (2026-06-12 bake-off).
+    .replace(/[^\S\r\n]+/g, ' ')
     .replace(/^\s*,\s*|\s*,\s*$/g, '')        // trim leading/trailing commas
     .trim();
   return out;
@@ -1626,9 +1634,43 @@ function stripSpokenProsodyCue(lyrics: string): string {
     .replace(/[ \t]+$/gm, '');                 // tidy trailing space left on the marker line
 }
 
+// ============================================================================
+// Suno (Kie) genre recipes — validated against real paid orders in the
+// 2026-06-12 bake-off (owner-approved A/B listening, see bakeoff/ + memory).
+// The genreDNA styles were tuned for Mureka, which treats production words as
+// vibe; Suno takes them literally ("cassette lo-fi" → bad audio) and drifts to
+// its own priors (bélico → tumbado, sierreño → romantic ballad). These
+// override the style/negatives on the KIE PATH ONLY — Mureka is untouched.
+// Recipes are gender-neutral: the gender label + Spanish lock are prepended at
+// payload build time. All validated on model V5_5 (V4_5 failed corridos).
+// ============================================================================
+const KIE_SPANISH_LOCK = 'sung entirely in Spanish, letra completamente en español, Mexican Spanish pronunciation';
+const KIE_ENGLISH_NEGATIVES = 'English lyrics, English vocals, spoken English';
+
+const KIE_GENRE_OVERRIDES: Record<string, { style: string; negatives: string }> = {
+  'corrido/tradicional': {
+    style: 'authentic 1990s Sinaloa corrido tradicional, classic conjunto corrido, narrative corrido balladeer storytelling, diatonic button accordion lead with bright reedy treble timbre, bajo sexto twelve-string rhythm, slapped tololoche upright bass driving a 2/4 oom-pah pulse, sparse minimal drums, live cantina band feel, 85-105 BPM deliberate storytelling pace, grave declamatory corridista narrator vocal, clear diction, every word audible, warm vintage 90s analog recording character, classic-era corrido production',
+    negatives: 'trap, 808, auto-tune, EDM, synthesizer, brass section, saxophone, modern pop production, reggaeton',
+  },
+  'ranchera/lenta': {
+    style: 'classic Mexican ranchera ballad, golden-age ranchera tradition, full mariachi ensemble, mariachi violin section with sustained emotional bowing, soft trumpet fanfares between verses, vihuela gentle strumming, guitarrón deep bass, 60-75 BPM very slow dramatic ballad, dramatic pauses between phrases, powerful dramatic vocal with deep vibrato, theatrical heartfelt delivery, every word clear and audible, warm vintage analog recording character, classic 1960s-70s ranchera era production',
+    negatives: 'trap, 808, auto-tune, EDM, synthesizer, modern pop, rock, accordion, upbeat rhythms, fast tempo, dance energy',
+  },
+  'corrido/belico': {
+    style: 'corrido bélico, movimiento alterado street corrido, requinto twelve-string acoustic guitar lead with rapid ornamental runs tremolos and parallel thirds, segunda rhythm guitar with percussive rasgueado strumming, tololoche upright bass, tuba bass accents on the low end, snare-driven 2/4 polka groove with rimshot backbeat pops, driving uptempo forward momentum 100-120 BPM, dark minor-key narrative intensity, tight speech-like aggressive narrative vocal cadences, gritty gravelly mid-range voice, crew shouts gritos and ad-libs on hooks, modern studio clarity on an acoustic backbone',
+    negatives: 'corridos tumbados, trap, 808, trap hi-hats, half-time feel, auto-tune, laid-back melodic flow, slow ballad, banda brass, accordion',
+  },
+  'sierreno/tradicional': {
+    style: 'traditional sierreño trio, three-guitar sierreño ensemble from the Sierra Madre, requinto sierreño nylon guitar lead with ornamental bending trills hammer-ons and rapid melodic runs between verses, twelve-string rhythm guitar strumming, tololoche acoustic upright bass with slap technique driving the rhythm, no drums or minimal cajón, rural rancho storytelling feel, mountain cantina atmosphere, 90-110 BPM moderate storytelling pace, earnest direct vocal with rancho sincerity, clear diction',
+    negatives: 'romantic pop ballad, piano, string orchestra, soft pop production, bolero, banda brass, accordion, trap, 808, heavy drums',
+  },
+};
+
 async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
-  const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
+  // V5_5 is the only model validated for regional Mexican genres (2026-06-12
+  // bake-off: V4_5 corridos rejected by owner). Keep any env override in sync.
+  const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V5_5';
 
   if (!KIE_API_KEY) {
     return { ok: false, provider: 'kie', classification: 'auth_broken', errorMessage: 'KIE_API_KEY env var missing' };
@@ -1642,30 +1684,46 @@ async function callKieProvider(ctx: ProviderCtx): Promise<ProviderResult> {
   const genderLabel = ctx.vocalGender === 'f'
     ? 'solo female vocalist, female voice'
     : 'solo male vocalist, male voice, masculine vocal';
+  // Short form on purpose: negatives are capped at 200 chars and the genre
+  // blockers (e.g. "corridos tumbados, half-time feel") must always fit.
   const oppositeGenderTags = ctx.vocalGender === 'f'
-    ? 'male voice, male vocal, baritone, bass voice, deep male voice'
-    : 'female voice, female vocal, soprano, female harmony, high female voice';
+    ? 'male voice, male vocal, baritone'
+    : 'female voice, female vocal, soprano';
 
-  const vocalStyle = ctx.vocalCharacter || 'expressive vocal';
+  // Suno-specific recipe for this genre/sub-genre, if one was validated.
+  const override = ctx.genre && ctx.subGenre
+    ? KIE_GENRE_OVERRIDES[`${ctx.genre}/${ctx.subGenre}`]
+    : undefined;
+
   // Gender at the START gives it positional priority in Suno's tag parsing.
-  const voicePrefix = `${genderLabel}, ${vocalStyle}`;
-  const maxStyleChars = 1000 - voicePrefix.length - 4;
-  const styleWithVoice = `${voicePrefix}, ${ctx.finalStyle.substring(0, maxStyleChars)}`;
+  // The Spanish lock right after it pins the vocal language — Suno is
+  // English-trained and drifts into English/garbled vocals without it (the
+  // regenerate-paid-song-kie tool had this for months; now the main path does).
+  const styleBody = override
+    ? override.style
+    : `${ctx.vocalCharacter || 'expressive vocal'}, ${ctx.finalStyle}`;
+  const styleWithVoice = `${genderLabel}, ${KIE_SPANISH_LOCK}, ${styleBody}`;
   const title = (ctx.isForSelf ? `Mi canción — ${ctx.recipientName}` : `Canción para ${ctx.recipientName}`).substring(0, 80);
 
   // Defense-in-depth: Suno (Kie) rejects any request whose tags reference a
   // real artist by name. Strip artist names from style AND lyrics before sending.
   // Also translate Spanish section markers ([Verso 1] → [Verse 1]) so Suno
-  // recognizes the song structure.
-  const safeStyle = sanitizeArtistNames(styleWithVoice).substring(0, 1000);
+  // recognizes the song structure. clampAtBoundary (not substring) so the
+  // style never ends in a sliced word fragment — Suno can sing dangling
+  // fragments aloud (2026-06-12 corrido incident).
+  const safeStyle = clampAtBoundary(sanitizeArtistNames(styleWithVoice), 1000);
   const safeLyrics = sanitizeArtistNames(englishifyLyricsMarkers(ctx.lyrics)).substring(0, 5000);
 
-  // Combine genre-level negatives (computed by buildStylePrompt) with the
-  // opposite-gender exclusion list. Capped at 200 chars per Kie API limits.
-  const combinedNegatives = [ctx.negativeTags, oppositeGenderTags]
-    .filter((s): s is string => Boolean(s && s.trim()))
-    .join(', ')
-    .substring(0, 200);
+  // Negatives, priority order under the 200-char Kie cap: language lock first,
+  // wrong-gender block second, genre blockers last (truncated if they must be).
+  // The old order put genre negatives first — verbose genres (corrido) filled
+  // the cap and silently dropped the gender block entirely.
+  const combinedNegatives = clampAtBoundary(
+    [KIE_ENGLISH_NEGATIVES, oppositeGenderTags, override ? override.negatives : ctx.negativeTags]
+      .filter((s): s is string => Boolean(s && s.trim()))
+      .join(', '),
+    200
+  );
 
   const payload: Record<string, unknown> = {
     prompt: safeLyrics,

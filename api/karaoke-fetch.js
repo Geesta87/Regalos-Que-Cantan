@@ -33,6 +33,7 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const USEAPI_TOKEN = process.env.USEAPI_TOKEN;
+const KIE_API_KEY = process.env.KIE_API_KEY;
 const KARAOKE_TRIGGER_SECRET = process.env.KARAOKE_TRIGGER_SECRET;
 const STORAGE_BUCKET = 'audio';
 
@@ -76,6 +77,53 @@ async function markFailed(songId, errorMsg) {
   } catch (e) {
     console.error(`[karaoke-fetch] failed to mark song ${songId} as failed:`, e?.message || e);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Suno (Kie) stem separation — for songs generated on the Kie provider.
+// Kie has a dedicated vocal-removal endpoint (validated 2026-06-12): submit
+// taskId+audioId, poll until SUCCESS, download instrumentalUrl (already MP3 —
+// no ZIP, no WAV, no re-encode). ~10 credits and ~90s per song.
+// ---------------------------------------------------------------------------
+
+// Kie requires a callBackUrl even when polling; this throwaway target just
+// absorbs the POST (same pattern as the generation test harness).
+const KIE_DUMMY_CALLBACK = 'https://webhook.site/00000000-0000-0000-0000-000000000000';
+
+async function kieSeparateInstrumental(taskId, audioId) {
+  const submitResp = await fetch('https://api.kie.ai/api/v1/vocal-removal/generate', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskId, audioId, type: 'separate_vocal', callBackUrl: KIE_DUMMY_CALLBACK }),
+  });
+  const submitData = await submitResp.json().catch(() => ({}));
+  if (!submitResp.ok || submitData.code !== 200 || !submitData.data?.taskId) {
+    throw new Error(`kie.ai vocal-removal submit failed: http=${submitResp.status} code=${submitData.code} ${submitData.msg || ''}`);
+  }
+  const sepTaskId = submitData.data.taskId;
+  console.log(`[karaoke-fetch] kie separation task ${sepTaskId}`);
+
+  // Poll up to ~4 minutes (separation typically completes in 60-120s;
+  // Vercel maxDuration is 300s, leave headroom for download + upload).
+  const deadline = Date.now() + 240 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 8000));
+    const pollResp = await fetch(
+      `https://api.kie.ai/api/v1/vocal-removal/record-info?taskId=${encodeURIComponent(sepTaskId)}`,
+      { headers: { Authorization: `Bearer ${KIE_API_KEY}` } },
+    );
+    const poll = await pollResp.json().catch(() => null);
+    const flag = poll?.data?.successFlag;
+    if (flag === 'SUCCESS') {
+      const url = poll.data.response?.instrumentalUrl;
+      if (!url) throw new Error('kie.ai separation SUCCESS but no instrumentalUrl');
+      return url;
+    }
+    if (flag && flag !== 'PENDING') {
+      throw new Error(`kie.ai separation failed: ${flag} ${poll?.data?.errorMessage || ''}`);
+    }
+  }
+  throw new Error('kie.ai separation timed out after 240s');
 }
 
 // Parse a 16-bit PCM WAV Buffer into { sampleRate, channels, samples }.
@@ -181,7 +229,7 @@ export default async function handler(req, res) {
   let song;
   try {
     const r = await supa(
-      `/songs?id=eq.${songId}&select=id,status,mureka_payload,karaoke_url,karaoke_status`,
+      `/songs?id=eq.${songId}&select=id,status,version,provider,mureka_payload,kie_task_id,kie_payload,karaoke_url,karaoke_status`,
     );
     const rows = await r.json();
     song = rows?.[0];
@@ -199,6 +247,18 @@ export default async function handler(req, res) {
     return res.status(409).json({ success: false, error: `Song not completed (status=${song.status})` });
   }
 
+  // ---- Provider routing ----
+  // Kie/Suno songs carry kie_task_id + kie_payload (track object incl. its
+  // audio id); Mureka songs carry mureka_payload with song_id. A song could
+  // theoretically have both (regenerated across providers) — the provider
+  // column stamped at completion wins.
+  let kieAudioId = null;
+  try {
+    const kp = typeof song.kie_payload === 'string' ? JSON.parse(song.kie_payload) : song.kie_payload;
+    kieAudioId = kp?.id || null;
+  } catch { /* ignore */ }
+  const isKieSong = song.provider === 'kie' && Boolean(song.kie_task_id);
+
   let murekaSongId;
   try {
     const payload = typeof song.mureka_payload === 'string'
@@ -206,8 +266,12 @@ export default async function handler(req, res) {
       : song.mureka_payload;
     murekaSongId = payload?.song_id;
   } catch { /* ignore */ }
-  if (!murekaSongId) {
-    return res.status(409).json({ success: false, error: 'No Mureka song_id in payload' });
+
+  if (!isKieSong && !murekaSongId) {
+    return res.status(409).json({ success: false, error: 'No Mureka song_id or Kie task id on song' });
+  }
+  if (isKieSong && !KIE_API_KEY) {
+    return res.status(500).json({ success: false, error: 'KIE_API_KEY not configured' });
   }
 
   // ---- 3. Claim — set status to 'pending' (idempotent) ----
@@ -217,43 +281,71 @@ export default async function handler(req, res) {
   });
 
   try {
-    // ---- 4. Get stems ZIP URL from useapi.net ----
-    console.log(`[karaoke-fetch] requesting stems for Mureka song ${murekaSongId}`);
-    const dlResp = await fetch('https://api.useapi.net/v1/mureka/music/download', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${USEAPI_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ song_id: murekaSongId, type: 'stem' }),
-    });
-    if (!dlResp.ok) {
-      const txt = await dlResp.text().catch(() => '<no body>');
-      throw new Error(`useapi.net /music/download ${dlResp.status}: ${txt.slice(0, 300)}`);
+    let mp3Buf;
+
+    if (isKieSong) {
+      // ==== KIE / SUNO PATH — dedicated separation endpoint, returns MP3 ====
+      let audioId = kieAudioId;
+      if (!audioId) {
+        // Older rows may lack the track id in kie_payload — resolve it from
+        // the generation record (track index = version - 1).
+        const ri = await fetch(
+          `https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(song.kie_task_id)}`,
+          { headers: { Authorization: `Bearer ${KIE_API_KEY}` } },
+        );
+        const rj = await ri.json().catch(() => null);
+        const trackList = rj?.data?.response?.sunoData || [];
+        const idx = (song.version || 1) - 1;
+        audioId = trackList[idx]?.id || trackList[0]?.id || null;
+      }
+      if (!audioId) throw new Error('Could not resolve Kie audioId for song');
+
+      const instrumentalUrl = await kieSeparateInstrumental(song.kie_task_id, audioId);
+      console.log(`[karaoke-fetch] downloading Kie instrumental`);
+      const dl = await fetch(instrumentalUrl);
+      if (!dl.ok) throw new Error(`Kie instrumental download ${dl.status}`);
+      mp3Buf = Buffer.from(await dl.arrayBuffer());
+      console.log(`[karaoke-fetch] Kie instrumental MP3: ${(mp3Buf.length / 1024 / 1024).toFixed(1)} MB`);
+    } else {
+      // ==== MUREKA PATH (unchanged) — stems ZIP via useapi.net ====
+      // ---- 4. Get stems ZIP URL from useapi.net ----
+      console.log(`[karaoke-fetch] requesting stems for Mureka song ${murekaSongId}`);
+      const dlResp = await fetch('https://api.useapi.net/v1/mureka/music/download', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${USEAPI_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ song_id: murekaSongId, type: 'stem' }),
+      });
+      if (!dlResp.ok) {
+        const txt = await dlResp.text().catch(() => '<no body>');
+        throw new Error(`useapi.net /music/download ${dlResp.status}: ${txt.slice(0, 300)}`);
+      }
+      const dlData = await dlResp.json();
+      const zipUrl = dlData.oss_key;
+      if (!zipUrl) throw new Error(`useapi.net returned no oss_key: ${JSON.stringify(dlData)}`);
+
+      // ---- 5. Download ZIP + extract instrumental.wav ----
+      console.log(`[karaoke-fetch] downloading ZIP from ${zipUrl}`);
+      const zipResp = await fetch(zipUrl);
+      if (!zipResp.ok) throw new Error(`Mureka CDN ${zipResp.status}`);
+      const zipBuf = Buffer.from(await zipResp.arrayBuffer());
+      console.log(`[karaoke-fetch] ZIP downloaded: ${(zipBuf.length / 1024 / 1024).toFixed(1)} MB`);
+
+      const zip = await JSZip.loadAsync(zipBuf);
+      const instrumental = zip.file('instrumental.wav');
+      if (!instrumental) {
+        const present = Object.keys(zip.files);
+        throw new Error(`instrumental.wav not in ZIP. Contents: ${present.join(', ')}`);
+      }
+      const wavBuf = await instrumental.async('nodebuffer');
+      console.log(`[karaoke-fetch] instrumental.wav extracted: ${(wavBuf.length / 1024 / 1024).toFixed(1)} MB`);
+
+      // ---- 6. Re-encode WAV → MP3 (smaller, friendlier download) ----
+      mp3Buf = wavToMp3(wavBuf);
+      console.log(`[karaoke-fetch] encoded MP3: ${(mp3Buf.length / 1024 / 1024).toFixed(1)} MB`);
     }
-    const dlData = await dlResp.json();
-    const zipUrl = dlData.oss_key;
-    if (!zipUrl) throw new Error(`useapi.net returned no oss_key: ${JSON.stringify(dlData)}`);
-
-    // ---- 5. Download ZIP + extract instrumental.wav ----
-    console.log(`[karaoke-fetch] downloading ZIP from ${zipUrl}`);
-    const zipResp = await fetch(zipUrl);
-    if (!zipResp.ok) throw new Error(`Mureka CDN ${zipResp.status}`);
-    const zipBuf = Buffer.from(await zipResp.arrayBuffer());
-    console.log(`[karaoke-fetch] ZIP downloaded: ${(zipBuf.length / 1024 / 1024).toFixed(1)} MB`);
-
-    const zip = await JSZip.loadAsync(zipBuf);
-    const instrumental = zip.file('instrumental.wav');
-    if (!instrumental) {
-      const present = Object.keys(zip.files);
-      throw new Error(`instrumental.wav not in ZIP. Contents: ${present.join(', ')}`);
-    }
-    const wavBuf = await instrumental.async('nodebuffer');
-    console.log(`[karaoke-fetch] instrumental.wav extracted: ${(wavBuf.length / 1024 / 1024).toFixed(1)} MB`);
-
-    // ---- 6. Re-encode WAV → MP3 (smaller, friendlier download) ----
-    const mp3Buf = wavToMp3(wavBuf);
-    console.log(`[karaoke-fetch] encoded MP3: ${(mp3Buf.length / 1024 / 1024).toFixed(1)} MB`);
 
     // ---- 7. Upload to Supabase Storage ----
     const storagePath = `karaoke/${songId}.mp3`;
