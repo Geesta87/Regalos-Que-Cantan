@@ -42,15 +42,17 @@ serve(async (req) => {
   let songId: string;
   let endpoint = 'karaoke-fetch';
   let mode: string | undefined;
+  let diag = false;
   try {
     const body = await req.json();
-    songId = body?.songId;
-    if (!songId) throw new Error('songId required');
+    songId = body?.songId || 'diag';
     // Optional passthrough to the lyric/karaoke VIDEO renderer for ops testing.
     if (body?.endpoint === 'render-lyric-video') {
       endpoint = 'render-lyric-video';
       mode = body?.mode || 'lyric';
+      diag = body?.diag === true;
     }
+    if (!songId) throw new Error('songId required');
   } catch (e) {
     return new Response(
       JSON.stringify({ success: false, error: `Bad request: ${(e as Error).message}` }),
@@ -63,6 +65,7 @@ serve(async (req) => {
   try {
     const fwdBody: Record<string, unknown> = { songId, secret: KARAOKE_TRIGGER_SECRET };
     if (mode) fwdBody.mode = mode;
+    if (diag) fwdBody.diag = true;
     const r = await fetch(`${VERCEL_BASE_URL}/api/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
