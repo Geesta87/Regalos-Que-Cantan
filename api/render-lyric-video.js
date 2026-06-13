@@ -249,6 +249,31 @@ export default async function handler(req, res) {
   const cols = MODE_COLS[mode];
   if (!cols) return res.status(400).json({ success: false, error: 'mode must be "lyric" or "karaoke"' });
   if (!KIE_API_KEY) return res.status(500).json({ success: false, error: 'KIE_API_KEY not configured' });
+
+  // ---- Environment diagnostic (no render) — POST { diag:true, secret } ----
+  // Confirms the ffmpeg binary + font shipped in the lambda and ffmpeg runs.
+  if (req.body?.diag) {
+    const fontDir = resolveFontDir();
+    const fontFile = path.join(fontDir, 'Montserrat-Bold.ttf');
+    const out = {
+      ffmpegPath,
+      ffmpegExists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
+      fontDir,
+      fontExists: fs.existsSync(fontFile),
+      cwd: process.cwd(),
+      tmp: os.tmpdir(),
+    };
+    try {
+      const { stdout } = await execFileAsync(ffmpegPath, ['-version'], { timeout: 15000 });
+      out.ffmpegVersion = String(stdout).split('\n')[0];
+      out.ffmpegRuns = true;
+    } catch (e) {
+      out.ffmpegRuns = false;
+      out.ffmpegError = e?.message || String(e);
+    }
+    return res.status(200).json({ diag: true, ...out });
+  }
+
   if (!ffmpegPath) return res.status(500).json({ success: false, error: 'ffmpeg binary unavailable' });
 
   console.log(`[render-lyric-video] songId=${songId} mode=${mode}`);
@@ -277,15 +302,24 @@ export default async function handler(req, res) {
     return res.status(409).json({ success: false, error: 'No timing source (not a Kie song and no cached Whisper words)' });
   }
 
-  await setStatus(songId, cols.status, 'pending');
-
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rlv-'));
-  const audioFile = path.join(tmp, 'audio.mp3');
-  const assFile = path.join(tmp, 'sub.ass');
-  const outFile = path.join(tmp, 'out.mp4');
-  const fontDir = resolveFontDir();
-
+  // Everything below is guarded so NO failure can produce a bare
+  // FUNCTION_INVOCATION_FAILED — the catch always returns a readable error and
+  // flips status to 'failed'. (Earlier crashes happened in the unguarded setup
+  // lines, which left status stuck on 'pending'.)
+  let tmp = null;
   try {
+    await setStatus(songId, cols.status, 'pending');
+
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rlv-'));
+    const audioFile = path.join(tmp, 'audio.mp3');
+    const assFile = path.join(tmp, 'sub.ass');
+    const outFile = path.join(tmp, 'out.mp4');
+    const fontDir = resolveFontDir();
+
+    if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+      throw new Error(`ffmpeg binary missing in lambda (path=${ffmpegPath}, exists=${ffmpegPath ? fs.existsSync(ffmpegPath) : false})`);
+    }
+
     // ---- timing ----
     let timed;
     if (song.provider === 'kie' && song.kie_task_id) {
@@ -361,9 +395,9 @@ export default async function handler(req, res) {
   } catch (err) {
     const msg = err?.message || String(err);
     console.error(`[render-lyric-video] failed (${mode}) for ${songId}: ${msg}`);
-    await setStatus(songId, cols.status, 'failed');
+    try { await setStatus(songId, cols.status, 'failed'); } catch { /* never let this crash */ }
     return res.status(500).json({ success: false, error: msg });
   } finally {
-    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+    if (tmp) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
   }
 }

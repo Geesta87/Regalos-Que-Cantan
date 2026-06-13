@@ -40,10 +40,17 @@ serve(async (req) => {
   }
 
   let songId: string;
+  let endpoint = 'karaoke-fetch';
+  let mode: string | undefined;
   try {
     const body = await req.json();
     songId = body?.songId;
     if (!songId) throw new Error('songId required');
+    // Optional passthrough to the lyric/karaoke VIDEO renderer for ops testing.
+    if (body?.endpoint === 'render-lyric-video') {
+      endpoint = 'render-lyric-video';
+      mode = body?.mode || 'lyric';
+    }
   } catch (e) {
     return new Response(
       JSON.stringify({ success: false, error: `Bad request: ${(e as Error).message}` }),
@@ -51,13 +58,15 @@ serve(async (req) => {
     );
   }
 
-  console.log(`[test-karaoke] forwarding songId=${songId} to ${VERCEL_BASE_URL}/api/karaoke-fetch`);
+  console.log(`[test-karaoke] forwarding songId=${songId} to ${VERCEL_BASE_URL}/api/${endpoint}`);
 
   try {
-    const r = await fetch(`${VERCEL_BASE_URL}/api/karaoke-fetch`, {
+    const fwdBody: Record<string, unknown> = { songId, secret: KARAOKE_TRIGGER_SECRET };
+    if (mode) fwdBody.mode = mode;
+    const r = await fetch(`${VERCEL_BASE_URL}/api/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ songId, secret: KARAOKE_TRIGGER_SECRET }),
+      body: JSON.stringify(fwdBody),
     });
     const text = await r.text();
     let parsed: unknown;

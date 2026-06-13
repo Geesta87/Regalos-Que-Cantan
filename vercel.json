@@ -5,6 +5,7 @@
   "functions": {
     "api/render-lyric-video.js": {
       "maxDuration": 300,
+      "memory": 3008,
       "includeFiles": "{api/assets/**,node_modules/ffmpeg-static/**}"
     }
   },
