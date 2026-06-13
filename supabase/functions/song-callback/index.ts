@@ -160,17 +160,20 @@ Deno.serve(async (req) => {
 
     console.log(`Found ${dbSongs.length} processing songs for kie_task_id ${taskId}`);
 
-    // ---- ERROR stage (or non-200 code) — mark all matching rows failed ----
+    // ---- ERROR stage (or non-200 code) ----
+    // Do NOT mark failed here: leave the rows in 'processing' (annotated) so
+    // poll-processing-songs' recovery picks them up within ~5 min — it
+    // retries the job once on Kie and then hands the order to Mureka. Only
+    // that recovery (or the 90-min absolute timeout) decides a song is dead.
     if (callbackType === 'error' || body.code !== 200) {
       const errMsg = (body.msg || `kie.ai code=${body.code}` || 'unknown error').toString();
-      console.log(`Task ${taskId} FAILED: ${errMsg}`);
+      console.log(`Task ${taskId} reported error: ${errMsg} — leaving for poll-processing-songs recovery`);
       for (const dbSong of dbSongs) {
         await supabase.from('songs').update({
-          status: 'failed',
-          error_message: `kie.ai callback: ${errMsg}`.substring(0, 500),
+          error_message: `kie.ai callback: ${errMsg} (awaiting auto-recovery)`.substring(0, 500),
         }).eq('id', dbSong.id).eq('status', 'processing');
       }
-      return new Response(JSON.stringify({ ok: true, action: 'marked_failed', error: errMsg }),
+      return new Response(JSON.stringify({ ok: true, action: 'left_for_recovery', error: errMsg }),
         { headers: responseHeaders, status: 200 });
     }
 

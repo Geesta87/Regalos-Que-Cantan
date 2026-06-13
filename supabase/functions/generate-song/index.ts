@@ -1789,10 +1789,14 @@ async function callMusicProvider(name: ProviderName, ctx: ProviderCtx): Promise<
 }
 
 // Whether a failure on the primary should trigger a fallback to the other provider.
+// content_rejection added 2026-06-12 (Suno-primary era): Suno's content filter is
+// stricter than Mureka's — a Suno rejection very often succeeds on Mureka, so
+// give the customer that chance instead of failing the order.
 function shouldFallback(classification: ProviderErrorClass): boolean {
   return classification === 'provider_broken'
     || classification === 'credits_depleted'
     || classification === 'auth_broken'
+    || classification === 'content_rejection'
     || classification === 'unknown';
 }
 
