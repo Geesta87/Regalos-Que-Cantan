@@ -190,6 +190,8 @@ export default function App() {
     senderName: '',
     relationship: '',
     details: '',
+    useCustomLyrics: false,
+    customLyrics: '',
     email: '',
     voiceType: 'male',
     pricingTier: ''

@@ -66,6 +66,12 @@ export async function generateSong(formData, overridePin = null) {
     relationship: formData.relationship,
     customRelationship: formData.customRelationship || '',
     details: formData.details,
+    // "Escribir mi propia letra": when the buyer wrote their own lyrics, the
+    // backend skips AI generation and sings these EXACT words. `details` is
+    // empty in that case (the UI hides the story box), which is fine — the
+    // backend keys off useCustomLyrics, not details.
+    useCustomLyrics: !!formData.useCustomLyrics,
+    customLyrics: formData.customLyrics || '',
     email: formData.email,
     voiceType: formData.voiceType || 'male',
     artistInspiration: formData.artistInspiration || '',

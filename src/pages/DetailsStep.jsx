@@ -16,26 +16,57 @@ export default function DetailsStep() {
   const [details, setDetails] = useState(formData.details || '');
   const [activePrompt, setActivePrompt] = useState(null);
   const [showQualityWarning, setShowQualityWarning] = useState(false);
+  // "Usar mi propia letra" — when on, the buyer pastes/writes the exact lyrics
+  // and we skip the AI story-based generation entirely.
+  const [useOwnLyrics, setUseOwnLyrics] = useState(formData.useCustomLyrics || false);
+  const [customLyrics, setCustomLyrics] = useState(formData.customLyrics || '');
+  const [lyricsError, setLyricsError] = useState(false);
+  const maxLyricsChars = 4000;
+  const minLyricsChars = 20;   // hard floor — below this, block (basically empty)
+  const shortLyricsChars = 120; // soft nudge — below this, warn it may be too short for a full song
 
   // Track page view
   useEffect(() => {
     trackStep('details');
   }, []);
 
+  // Persist the right fields for the chosen mode, then advance. In own-lyrics
+  // mode we clear `details` (and vice-versa) so stale text from the other mode
+  // never reaches the backend.
+  const saveAndGo = () => {
+    updateFormData('useCustomLyrics', useOwnLyrics);
+    updateFormData('customLyrics', useOwnLyrics ? customLyrics : '');
+    updateFormData('details', useOwnLyrics ? '' : details);
+    navigateTo('email');
+  };
+
   const handleContinue = () => {
-    // If details are short, show quality warning
+    if (useOwnLyrics) {
+      const len = customLyrics.trim().length;
+      // The song is sung with these exact words — block if essentially empty.
+      if (len < minLyricsChars) {
+        setLyricsError(true);
+        return;
+      }
+      // Soft nudge: a few words won't fill a song — the music app would just
+      // loop/stretch them. Warn once, but let them continue if they insist.
+      if (len < shortLyricsChars && !showQualityWarning) {
+        setShowQualityWarning(true);
+        return;
+      }
+      saveAndGo();
+      return;
+    }
+    // Story mode — nudge if the story is very short, otherwise continue.
     if (details.length > 0 && details.length < 50 && !showQualityWarning) {
       setShowQualityWarning(true);
       return;
     }
-    
-    updateFormData('details', details);
-    navigateTo('email');
+    saveAndGo();
   };
 
   const handleContinueAnyway = () => {
-    updateFormData('details', details);
-    navigateTo('email');
+    saveAndGo();
   };
 
   const handleBack = () => {
@@ -109,6 +140,31 @@ export default function DetailsStep() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
             {/* Main textarea section */}
             <div className="lg:col-span-2 space-y-4">
+              {/* Mode toggle: tell us the story (AI writes the lyrics) vs. use
+                  your own lyrics (sung exactly as submitted). */}
+              <div className="bg-white/[0.03] border border-gold/20 rounded-2xl p-2 flex gap-2">
+                <button
+                  onClick={() => { setUseOwnLyrics(false); setLyricsError(false); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${!useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
+                >
+                  <span className="material-symbols-outlined text-base align-middle mr-1">auto_awesome</span>
+                  Cuéntanos la historia
+                </button>
+                <button
+                  onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
+                >
+                  <span className="material-symbols-outlined text-base align-middle mr-1">edit_note</span>
+                  Usar mi propia letra
+                </button>
+              </div>
+
+              {/* Disclaimer steering each buyer to the right option. */}
+              <p className="text-white/55 text-xs leading-relaxed px-1">
+                ¿Ya tienes tu letra escrita? Elige <span className="text-gold/90 font-semibold">"Usar mi propia letra"</span> y copia y pega tu letra aquí — la cantaremos tal cual. ¿No tienes una letra propia? Quédate en <span className="text-gold/90 font-semibold">"Cuéntanos la historia"</span>, escríbenos los detalles y nosotros la creamos por ti.
+              </p>
+
+              {!useOwnLyrics && (<>
               {/* Accuracy reminder */}
               <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4">
                 <p className="text-white/90 text-sm leading-relaxed">
@@ -179,6 +235,43 @@ export default function DetailsStep() {
                   ))}
                 </div>
               </div>
+              </>)}
+
+              {/* Own-lyrics mode: the song is sung with these EXACT words. */}
+              {useOwnLyrics && (
+                <div className="space-y-4">
+                  <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4">
+                    <p className="text-white/90 text-sm leading-relaxed">
+                      ✍️ <strong>Pega aquí la letra que ya tienes.</strong> Tu canción se cantará con estas palabras exactas — no las modificaremos. Escríbela completa, tal como quieres escucharla.
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <textarea
+                      value={customLyrics}
+                      onChange={(e) => {
+                        setCustomLyrics(e.target.value.slice(0, maxLyricsChars));
+                        setLyricsError(false);
+                      }}
+                      placeholder={`Pega o escribe aquí tu letra completa...\n\n[Verso 1]\nTu primera estrofa...\n\n[Coro]\nEl gancho que se repite...\n\nPuedes incluir o no las etiquetas como [Verso], [Coro], [Puente].`}
+                      className="w-full h-96 bg-white/5 border border-gold/20 rounded-2xl p-6 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-base leading-relaxed placeholder:italic placeholder:text-gold/40 whitespace-pre-wrap"
+                    />
+                    <div className="absolute bottom-4 right-6">
+                      <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
+                        {customLyrics.length} / {maxLyricsChars}
+                      </span>
+                    </div>
+                  </div>
+                  {lyricsError && (
+                    <p className="text-yellow-400 text-sm flex items-center gap-2">
+                      <span className="material-symbols-outlined text-base">info</span>
+                      Escribe la letra completa de tu canción para continuar (mínimo {minLyricsChars} caracteres).
+                    </p>
+                  )}
+                  <p className="text-white/40 text-xs leading-relaxed">
+                    El género que elegiste ({formData.subGenreName || formData.genreName || formData.genre || 'tu estilo'}) define la música; tu letra define las palabras. Consejo: las etiquetas <span className="text-gold/70">[Verso]</span>, <span className="text-gold/70">[Coro]</span> ayudan a que suene mejor, pero son opcionales.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -268,20 +361,46 @@ export default function DetailsStep() {
           <div className="relative bg-forest border border-gold/30 rounded-3xl p-8 max-w-md w-full shadow-2xl">
             <div className="text-center mb-6">
               <span className="material-symbols-outlined text-yellow-400 text-5xl mb-4">info</span>
-              <h3 className="font-display text-2xl font-bold text-white mb-2">¿Pocos detalles?</h3>
-              <p className="text-white/60 text-sm">
-                Las canciones con más detalles son mucho más personales y emotivas. 
-                ¿Te gustaría agregar más información sobre {formData.recipientName}?
-              </p>
+              {useOwnLyrics ? (
+                <>
+                  <h3 className="font-display text-2xl font-bold text-white mb-2">¿Letra muy corta?</h3>
+                  <p className="text-white/60 text-sm">
+                    Una canción completa suele tener varias estrofas y un coro. Con tan poca letra,
+                    la música puede repetirla o sonar muy corta. Puedes agregar más, o si prefieres
+                    que nosotros la escribamos, vuelve y elige <strong className="text-gold/90">"Cuéntanos la historia"</strong>.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-display text-2xl font-bold text-white mb-2">¿Pocos detalles?</h3>
+                  <p className="text-white/60 text-sm">
+                    Las canciones con más detalles son mucho más personales y emotivas.
+                    ¿Te gustaría agregar más información sobre {formData.recipientName}?
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="bg-white/5 rounded-xl p-4 mb-6">
-              <p className="text-gold text-xs uppercase tracking-widest font-bold mb-2">Ideas:</p>
-              <ul className="text-white/70 text-sm space-y-1">
-                <li>• Un recuerdo especial que compartieron</li>
-                <li>• Un apodo cariñoso</li>
-                <li>• Algo que hace única a esta persona</li>
-              </ul>
+              {useOwnLyrics ? (
+                <>
+                  <p className="text-gold text-xs uppercase tracking-widest font-bold mb-2">Una letra completa suele incluir:</p>
+                  <ul className="text-white/70 text-sm space-y-1">
+                    <li>• Uno o dos versos (estrofas)</li>
+                    <li>• Un coro que se repite</li>
+                    <li>• Las palabras tal como quieres escucharlas</li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="text-gold text-xs uppercase tracking-widest font-bold mb-2">Ideas:</p>
+                  <ul className="text-white/70 text-sm space-y-1">
+                    <li>• Un recuerdo especial que compartieron</li>
+                    <li>• Un apodo cariñoso</li>
+                    <li>• Algo que hace única a esta persona</li>
+                  </ul>
+                </>
+              )}
             </div>
 
             <div className="flex gap-3">

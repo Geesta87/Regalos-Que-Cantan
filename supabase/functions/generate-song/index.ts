@@ -1940,7 +1940,19 @@ serve(async (req) => {
       emotionalTone, recipientName, senderName, relationship,
       relationshipContext, customRelationship, details,
       email, voiceType, sessionId, overridePin,
+      customLyrics, useCustomLyrics,
     } = body;
+
+    // "Escribir mi propia letra" path: when the buyer supplies their own lyrics,
+    // the song MUST be sung with their exact words — we skip Claude generation
+    // entirely (see the lyrics step below). The genre/subGenre still drive the
+    // musical style; only the words come from the customer. We require a real
+    // (non-blank) string before honoring the flag so a stray `true` with empty
+    // text can never produce a wordless song.
+    const wantsCustomLyrics =
+      useCustomLyrics === true &&
+      typeof customLyrics === 'string' &&
+      customLyrics.trim().length > 0;
 
     // Artist inspiration UX step was removed on 2026-05-01: customers complained
     // songs didn't actually sound like the picked artist, AND it was the vector
@@ -2430,6 +2442,25 @@ ${preCoroDesc}`;
 
 Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa y los emotionalModifiers en inglés. Recuerda todas las reglas del sistema (composición, nombres de artistas, compatibilidad de modifiers con el género).`;
 
+    // ==========================================================================
+    // STEP 2 (lyrics): either pass the customer's own lyrics through verbatim,
+    // or have Claude compose them. Declared as `let` because both branches
+    // assign them; everything downstream (DB insert, provider call) is identical.
+    // ==========================================================================
+    let lyrics: string;
+    let emotionalModifiers: string;
+
+    if (wantsCustomLyrics) {
+      // CUSTOMER-SUPPLIED LYRICS — sung with their exact words. No Claude call.
+      // Light auto-clean only: strip real artist names (Suno/Mureka reject them
+      // outright) and enforce the same hard length cap the provider payloads use.
+      // We deliberately do NOT run stripSpokenProsodyCue here — that helper also
+      // removes lowercase [bracketed] text, which would silently delete a
+      // customer's own legitimate bracketed words. Verbatim means verbatim.
+      lyrics = sanitizeArtistNames(customLyrics).trim().substring(0, 4000);
+      emotionalModifiers = '';
+      console.log(`Using customer-supplied lyrics verbatim (${lyrics.length} chars) — Claude skipped`);
+    } else {
     console.log('Calling Claude (structured tool output)...');
 
     // claude-sonnet-4-6 = Sonnet 4.6 (current production Sonnet, replaced
@@ -2542,8 +2573,9 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     // genre prompts inject on [Hablado] lines — the music models sing it aloud
     // (most audibly at the start of corridos) and we also display these lyrics
     // to the customer, so clean it before storing or sending to any provider.
-    const lyrics: string = stripSpokenProsodyCue(toolUseBlock.input.lyrics);
-    const emotionalModifiers: string = toolUseBlock.input.emotionalModifiers || '';
+    lyrics = stripSpokenProsodyCue(toolUseBlock.input.lyrics);
+    emotionalModifiers = toolUseBlock.input.emotionalModifiers || '';
+    } // end Claude lyrics branch
 
     console.log('✓ Lyrics extracted from tool_use block');
     console.log('Emotional modifiers:', emotionalModifiers);
