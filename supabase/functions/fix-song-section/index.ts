@@ -207,10 +207,38 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
 - section_text son únicamente las líneas corregidas que caen dentro de la ventana.
 - Para nombres mal pronunciados: reescribe el nombre con ortografía española fonética para que el modelo lo cante bien (p. ej. "Yareli" → "Yarelí", "Joaquin" → "Joaquín", "Yetzaeli" → "Yetsaelí"), tanto en full_lyrics como en section_text, manteniendo el nombre legible.
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
+- La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
 Devuelve SIEMPRE tu respuesta llamando a la herramienta submit_section_fix.`;
 
-async function callClaudeForFix(userMessage: string): Promise<any | null> {
+// Conversational assistant used BEFORE running the fix — helps the owner nail
+// down exactly what to change (reads a pasted WhatsApp screenshot, asks short
+// clarifying questions). It does NOT edit anything; the actual fix runs when the
+// owner clicks "Generar arreglo".
+const CHAT_SYSTEM_PROMPT = `Eres un asistente que ayuda al dueño de una tienda de canciones personalizadas en español a entender EXACTAMENTE qué arreglar en una canción ya generada, ANTES de regenerar la sección (eso cuesta, así que primero hay que tener claro el cambio).
+
+El dueño puede pegarte una captura de pantalla de WhatsApp del cliente o escribirte directamente. Tienes la letra actual de la canción.
+
+Tu trabajo:
+- Lee la captura/mensaje y di con tus palabras qué entiendes que hay que cambiar (qué palabra, nombre o línea está mal y cómo debería decir).
+- Si falta información para hacer el cambio (por ejemplo, el cliente dice "está mal el nombre" pero no cómo se escribe/pronuncia), haz UNA pregunta corta para aclararlo.
+- Cuando ya esté claro, resume en una sola frase qué vas a cambiar y dile: "Cuando quieras, dale a Generar arreglo."
+- NO inventes datos. NO edites la canción tú mismo (eso pasa cuando el dueño presiona el botón).
+- Responde corto, claro y en español.`;
+
+type InlineImage = { media_type: string; data: string };
+
+// Build a Claude message content array: optional image first (so the model
+// reads the screenshot), then the text.
+function buildUserContent(text: string, image?: InlineImage): any {
+  if (!image?.data) return text;
+  return [
+    { type: 'image', source: { type: 'base64', media_type: image.media_type || 'image/png', data: image.data } },
+    { type: 'text', text },
+  ];
+}
+
+async function callClaudeForFix(userMessage: string, image?: InlineImage): Promise<any | null> {
   if (!ANTHROPIC_API_KEY) {
     console.error('[fix-song-section] ANTHROPIC_API_KEY not configured');
     return null;
@@ -234,7 +262,7 @@ async function callClaudeForFix(userMessage: string): Promise<any | null> {
           system: [{ type: 'text', text: FIX_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
           tools: [FIX_TOOL],
           tool_choice: { type: 'tool', name: 'submit_section_fix' },
-          messages: [{ role: 'user', content: userMessage }],
+          messages: [{ role: 'user', content: buildUserContent(userMessage, image) }],
         }),
       });
     } catch (e) {
@@ -259,6 +287,57 @@ async function callClaudeForFix(userMessage: string): Promise<any | null> {
     lastErr = 'no submit_section_fix tool_use in response';
   }
   console.error('[fix-song-section] Claude failed:', lastErr);
+  return null;
+}
+
+// Conversational turn — the owner chats with the AI (optionally with a pasted
+// screenshot) to clarify the fix before running it. No tool, no Kie cost.
+type ChatMsg = { role: string; text: string };
+async function callClaudeChat(lyrics: string, conversation: ChatMsg[], image?: InlineImage): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const msgs: any[] = conversation.map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: String(m.text || ''),
+  }));
+  // Attach the image to the most recent owner (user) turn so the model sees it.
+  if (image?.data) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        msgs[i] = { role: 'user', content: buildUserContent(String(msgs[i].content || 'Mira esta captura.'), image) };
+        break;
+      }
+    }
+  }
+  if (msgs.length === 0) return null;
+
+  const system = `${CHAT_SYSTEM_PROMPT}\n\nLETRA ACTUAL DE LA CANCIÓN:\n${lyrics}`;
+  const MAX_RETRIES = 2;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    let resp: Response;
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1024,
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          messages: msgs,
+        }),
+      });
+    } catch {
+      if (attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, 2000)); continue; }
+      return null;
+    }
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !Array.isArray(data.content)) {
+      if (attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, 2000)); continue; }
+      return null;
+    }
+    const text = data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim();
+    if (text) return text;
+  }
   return null;
 }
 
@@ -400,14 +479,42 @@ Deno.serve(async (req) => {
     }
 
     // -----------------------------------------------------------------
+    // CHAT — clarify the fix with the owner (text + optional screenshot)
+    // before spending any Kie credits. No transcription, no Kie call.
+    // -----------------------------------------------------------------
+    if (action === 'chat') {
+      if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
+      const songId: string | undefined = body?.songId;
+      const conversation: ChatMsg[] = Array.isArray(body?.conversation) ? body.conversation : [];
+      const image: InlineImage | undefined = body?.image?.data ? { media_type: body.image.media_type, data: body.image.data } : undefined;
+      if (!songId) return json({ ok: false, error: 'songId is required' });
+      if (conversation.length === 0 && !image) return json({ ok: false, error: 'Escribe un mensaje o pega una captura.' });
+
+      const { data: song } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
+      const reply = await callClaudeChat(song?.lyrics || '(sin letra guardada)', conversation, image);
+      if (!reply) return json({ ok: false, error: 'El asistente no respondió. Intenta de nuevo.' });
+      return json({ ok: true, reply });
+    }
+
+    // -----------------------------------------------------------------
     // PREVIEW — transcribe -> Claude -> Kie replace-section -> poll.
     // -----------------------------------------------------------------
     if (!KIE_API_KEY) return json({ ok: false, error: 'KIE_API_KEY missing on Supabase' });
     if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
 
     const songId: string | undefined = body?.songId;
+    // Accept a plain note, a chat conversation, and/or a pasted screenshot.
     const note: string | undefined = body?.note;
-    if (!songId || !note || !note.trim()) return json({ ok: false, error: 'songId and note (the complaint) are required' });
+    const conversation: ChatMsg[] = Array.isArray(body?.conversation) ? body.conversation : [];
+    const fixImage: InlineImage | undefined = body?.image?.data ? { media_type: body.image.media_type, data: body.image.data } : undefined;
+    const complaint = (note && note.trim())
+      ? note.trim()
+      : conversation.length
+        ? conversation.map((m) => `${m.role === 'assistant' ? 'AI' : 'Dueño'}: ${m.text}`).join('\n')
+        : (fixImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
+    if (!songId || (!complaint && !fixImage)) {
+      return json({ ok: false, error: 'songId y una instrucción (texto, conversación o captura) son obligatorios.' });
+    }
 
     const { data: song, error: songErr } = await supabase
       .from('songs')
@@ -463,10 +570,10 @@ Deno.serve(async (req) => {
       `Duración del audio: ${duration.toFixed(2)} segundos\n\n` +
       `LETRA ORIGINAL (estructurada):\n${song.lyrics}\n\n` +
       `TRANSCRIPCIÓN CANTADA con marcas de tiempo (palabra[inicio-fin] en segundos):\n${timedWords}\n\n` +
-      `QUEJA DEL DUEÑO (qué está mal y cómo debería ser):\n${note.trim()}\n\n` +
+      `QUEJA / INSTRUCCIÓN (qué está mal y cómo debería ser; puede incluir conversación con el dueño y/o una captura adjunta):\n${complaint}\n\n` +
       `Define la ventana mínima a regenerar y entrega la letra completa corregida llamando a submit_section_fix.`;
 
-    const fix = await callClaudeForFix(userMessage);
+    const fix = await callClaudeForFix(userMessage, fixImage);
     if (!fix) return json({ ok: false, error: 'Claude no devolvió un arreglo. Intenta de nuevo.' });
     if (fix.can_fix === false) {
       return json({ ok: false, eligible: false, canFix: false, reason: fix.reason || 'No se puede arreglar por sección.' });

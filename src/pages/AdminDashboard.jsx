@@ -26,27 +26,76 @@ function useDebounce(value, delay = 350) {
 // regenerate-paid-song-kie.
 // ---------------------------------------------------------------------------
 function FixSongCard({ song, showToast, onApplied }) {
-  const [note, setNote] = useState('');
+  const [messages, setMessages] = useState([]); // {role:'user'|'assistant', text}
+  const [input, setInput] = useState('');
+  const [image, setImage] = useState(null); // { dataUrl, base64, media_type }
+  const [chatting, setChatting] = useState(false);
   const [phase, setPhase] = useState('idle'); // idle | working | preview | applying
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const busy = chatting || phase === 'working' || phase === 'applying';
 
   // Only Kie/Suno songs that still carry their Kie ids can be section-fixed.
   const eligible = !!song?.kie_task_id;
 
+  function readImageFile(file) {
+    if (!file || !file.type?.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+      if (m) setImage({ dataUrl, media_type: m[1], base64: m[2] });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function onPaste(e) {
+    const items = e.clipboardData?.items || [];
+    for (const it of items) {
+      if (it.type?.startsWith('image/')) { readImageFile(it.getAsFile()); e.preventDefault(); return; }
+    }
+  }
+
+  const imagePayload = () => (image ? { media_type: image.media_type, data: image.base64 } : undefined);
+
+  async function sendChat() {
+    if (!input.trim() && !image) { setError('Escribe algo o pega una captura.'); return; }
+    setError('');
+    const newMsgs = [...messages, { role: 'user', text: input.trim() || '(captura adjunta)' }];
+    setMessages(newMsgs);
+    setInput('');
+    setChatting(true);
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        body: JSON.stringify({ action: 'chat', songId: song.id, conversation: newMsgs, image: imagePayload() }),
+      });
+      const data = await res.json();
+      if (data.ok) setMessages((m) => [...m, { role: 'assistant', text: data.reply }]);
+      else setError(data.error || 'El asistente no respondió.');
+    } catch (e) {
+      setError('Error de red: ' + (e?.message || 'desconocido'));
+    } finally {
+      setChatting(false);
+    }
+  }
+
   async function runPreview() {
-    if (!note.trim()) { setError('Escribe qué está mal y cómo debería ser.'); return; }
+    const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
+    if (convo.length === 0 && !image) { setError('Escribe qué corregir, chatea con el AI, o pega una captura.'); return; }
     setError('');
     setResult(null);
+    setInput('');
     setPhase('working');
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON}`, 'apikey': ANON },
-        body: JSON.stringify({ action: 'preview', songId: song.id, note: note.trim() }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        body: JSON.stringify({ action: 'preview', songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -89,7 +138,9 @@ function FixSongCard({ song, showToast, onApplied }) {
       if (onApplied) onApplied(result.fixedAudioUrl, result.fullLyrics);
       setPhase('idle');
       setResult(null);
-      setNote('');
+      setMessages([]);
+      setImage(null);
+      setInput('');
     } catch (e) {
       setError('Error de red al aplicar: ' + (e?.message || 'desconocido'));
       setPhase('preview');
@@ -107,25 +158,58 @@ function FixSongCard({ song, showToast, onApplied }) {
       ) : (
         <>
           <p className="text-[11px] text-gray-400 mb-2">
-            Escribe en español qué está mal y cómo debería ser. La IA encuentra el momento exacto y regenera
-            solo esa parte. Ej.: <em>"dice mal el nombre, debe sonar 'ya-RE-li'"</em> o
-            <em> "el coro dice 'tus ojos' pero debe decir 'tu sonrisa'"</em>.
+            Pega la captura de WhatsApp del cliente o escribe qué corregir. Puedes <strong>chatear con el AI</strong> para
+            aclarar antes de arreglar, luego dale a <strong>Generar arreglo</strong>. Ej.: <em>"dice mal el nombre, debe sonar 'ya-RE-li'"</em>.
           </p>
+
+          {/* Chat thread */}
+          {messages.length > 0 && (
+            <div className="space-y-2 mb-2 max-h-56 overflow-y-auto">
+              {messages.map((m, i) => (
+                <div key={i} className={`text-xs rounded-lg px-3 py-2 whitespace-pre-wrap ${m.role === 'assistant' ? 'bg-white/10 text-gray-100' : 'bg-purple-500/20 text-purple-50 ml-6'}`}>
+                  <span className="opacity-60 mr-1">{m.role === 'assistant' ? '🤖' : '🧑'}</span>{m.text}
+                </div>
+              ))}
+              {chatting && <p className="text-xs text-gray-400">🤖 escribiendo…</p>}
+            </div>
+          )}
+
+          {/* Pasted/attached screenshot */}
+          {image && (
+            <div className="relative inline-block mb-2">
+              <img src={image.dataUrl} alt="captura" className="max-h-28 rounded-lg border border-white/20" />
+              <button onClick={() => setImage(null)} className="absolute -top-2 -right-2 bg-black/80 text-white rounded-full w-5 h-5 text-xs leading-none">✕</button>
+            </div>
+          )}
+
           <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            disabled={phase === 'working' || phase === 'applying'}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onPaste={onPaste}
+            disabled={busy}
             rows={2}
-            placeholder="¿Qué hay que corregir?"
+            placeholder="Escribe aquí… (o pega una captura con Ctrl/Cmd+V)"
             className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-100 mb-2 disabled:opacity-50"
           />
+
+          <div className="flex gap-2 mb-2">
+            <label className={`py-2 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition ${busy ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+              📎 Captura
+              <input type="file" accept="image/*" className="hidden" disabled={busy}
+                onChange={(e) => { readImageFile(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            <button onClick={sendChat} disabled={busy}
+              className="flex-1 py-2 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition disabled:opacity-50">
+              💬 Preguntar al AI
+            </button>
+          </div>
 
           {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
 
           {(phase === 'idle' || phase === 'working') && (
             <button
               onClick={runPreview}
-              disabled={phase === 'working'}
+              disabled={busy}
               className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
             >
               {phase === 'working' ? '⏳ Arreglando… (puede tardar 1-3 min, no cierres)' : '✨ Generar arreglo'}
