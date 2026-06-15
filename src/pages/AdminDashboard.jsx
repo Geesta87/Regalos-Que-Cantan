@@ -4,7 +4,7 @@ import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench } from 'lucide-react';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -173,6 +173,142 @@ function FixSongCard({ song, showToast, onApplied }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// "Arreglar una canción" — dedicated full-page tab. Search any song, hear it,
+// and fix one part inline via FixSongCard. Self-contained (own state); reuses
+// admin-songs (action:'list' search + action:'detail') with the admin JWT,
+// exactly like the Lookup tab.
+// ---------------------------------------------------------------------------
+function FixSongTab({ accessToken, showToast }) {
+  const [q, setQ] = useState('');
+  const dq = useDebounce(q);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const BASE = import.meta.env.VITE_SUPABASE_URL;
+  const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  useEffect(() => {
+    if (!dq.trim() || !accessToken) { setResults([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`${BASE}/functions/v1/admin-songs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      body: JSON.stringify({ action: 'list', search: dq.trim(), limit: 50 }),
+    })
+      .then((r) => r.json())
+      .then((res) => { if (!cancelled && res.success) setResults(res.songs || []); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [dq, accessToken]);
+
+  async function pick(songId) {
+    setLoadingDetail(true);
+    setSelected(null);
+    try {
+      const r = await fetch(`${BASE}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        body: JSON.stringify({ action: 'detail', songId }),
+      });
+      const res = await r.json();
+      if (res.success && res.song) setSelected(res.song);
+      else showToast('❌ No se pudo cargar la canción.');
+    } catch {
+      showToast('❌ Error cargando la canción.');
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
+  const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } };
+
+  return (
+    <div className="max-w-3xl">
+      <div className="mb-5">
+        <h2 className="text-xl font-bold text-white mb-1">🔧 Arreglar una canción</h2>
+        <p className="text-sm text-gray-400">Busca la canción, escúchala, y deja que la IA corrija una parte (un nombre mal dicho, una línea equivocada) sin rehacerla completa.</p>
+      </div>
+
+      {/* Search */}
+      <div className="relative mb-4">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Busca por nombre, email, teléfono o ID…"
+          className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+        />
+        {q && (
+          <button onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white">✕</button>
+        )}
+      </div>
+
+      {selected ? (
+        <div className="bg-[#1a1f26] rounded-2xl p-4 border border-white/10">
+          <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-white mb-3">← Volver a la búsqueda</button>
+          <h3 className="font-bold text-base text-white">🎵 {selected.recipient_name || 'Sin nombre'}{selected.sender_name && <span className="text-gray-500 font-normal text-sm"> ← {selected.sender_name}</span>}</h3>
+          <p className="text-xs text-gray-500 mt-1 mb-3">{(selected.genre_name || selected.genre || '').replace(/_/g, ' ')} • {fmtDate(selected.created_at)} • {selected.email || ''}</p>
+
+          {selected.audio_url ? (
+            <>
+              <p className="text-[11px] text-gray-400 mb-1">🎵 Canción actual:</p>
+              <audio controls className="w-full mb-3" src={selected.audio_url} />
+              {selected.lyrics && (
+                <details className="mb-3">
+                  <summary className="text-xs text-gray-400 cursor-pointer">Ver letra</summary>
+                  <p className="text-xs whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded-lg p-3">{selected.lyrics}</p>
+                </details>
+              )}
+              <FixSongCard
+                song={selected}
+                showToast={showToast}
+                onApplied={(newUrl, newLyrics) => setSelected((p) => (p ? { ...p, audio_url: newUrl, ...(newLyrics ? { lyrics: newLyrics } : {}) } : p))}
+              />
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">Esta canción todavía no tiene audio generado, no se puede arreglar.</p>
+          )}
+        </div>
+      ) : loadingDetail ? (
+        <p className="text-sm text-gray-500">Cargando canción…</p>
+      ) : (
+        <>
+          {loading && <p className="text-sm text-gray-500">Buscando…</p>}
+          {!loading && dq.trim() && results.length === 0 && <p className="text-sm text-gray-500">Sin resultados para "{dq.trim()}".</p>}
+          {!loading && !dq.trim() && <p className="text-sm text-gray-500">Empieza a escribir para buscar una canción.</p>}
+          <div className="space-y-2">
+            {results.map((song) => {
+              const paid = isPaid(song);
+              const hasAudio = !!song.audio_url;
+              return (
+                <button
+                  key={song.id}
+                  onClick={() => pick(song.id)}
+                  className="w-full text-left bg-[#1a1f26] rounded-xl p-3 border border-white/5 hover:border-amber-400/40 transition flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-white truncate">🎵 {song.recipient_name || 'Sin nombre'}{song.sender_name && <span className="text-gray-500 font-normal"> ← {song.sender_name}</span>}</p>
+                    <p className="text-xs text-gray-500 truncate">{(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {fmtDate(song.created_at)} • {song.email || ''}</p>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${paid ? 'bg-green-500/20 text-green-400' : hasAudio ? 'bg-amber-500/20 text-amber-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                    {paid ? '✓ Pagada' : hasAudio ? '⏳ Sin pagar' : '🔄 Generando'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ✅ STRICT: Check if a song row is actually paid. Pure function — kept at
 // module scope so any hook/effect/useMemo inside the component can call it
 // without worrying about temporal-dead-zone (referencing a const defined
@@ -271,7 +407,7 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'affiliates', 'lookup', 'clonamivoz'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -2206,6 +2342,9 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> Mensajes SMS
         </button>
+        <button onClick={() => setActiveTab('fixsong')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'fixsong' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Arreglar Canción
+        </button>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Marketing</p>
         <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Users size={18} className={`flex-shrink-0 ${activeTab === 'affiliates' ? 'text-amber-400' : ''}`} /> Affiliates
@@ -2760,6 +2899,16 @@ export default function AdminDashboard() {
                 }`}
               >
                 💬 Mensajes SMS
+              </button>
+              <button
+                onClick={() => setActiveTab('fixsong')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'fixsong'
+                    ? 'bg-purple-500 text-white'
+                    : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30'
+                }`}
+              >
+                🔧 Arreglar Canción
               </button>
             </div>
           </div>
@@ -4555,6 +4704,11 @@ export default function AdminDashboard() {
              Talks to a future `sms-admin` edge function; until that ships it
              renders clearly-labeled demo threads so the UX is reviewable. */
           <SmsInboxTab accessToken={accessToken} />
+        ) : activeTab === 'fixsong' ? (
+          /* Arreglar Canción — dedicated workspace. Search any song, hear it,
+             and fix one part via fix-song-section (Whisper + Claude + Kie
+             replace-section). Self-contained component. */
+          <FixSongTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 
