@@ -16,6 +16,163 @@ function useDebounce(value, delay = 350) {
   return debouncedValue;
 }
 
+// ---------------------------------------------------------------------------
+// "Arreglar una parte" — AI-assisted section fix for ONE song. Self-contained
+// (owns all its state) so it slots into the song-detail modal without touching
+// the giant AdminDashboard component. Talks to the fix-song-section edge
+// function: action:'preview' (Whisper + Claude + Kie replace-section) returns
+// the fixed audio for review; action:'apply' swaps it into the customer's row.
+// Called with the anon key — fix-song-section is verify_jwt = false, same as
+// regenerate-paid-song-kie.
+// ---------------------------------------------------------------------------
+function FixSongCard({ song, showToast, onApplied }) {
+  const [note, setNote] = useState('');
+  const [phase, setPhase] = useState('idle'); // idle | working | preview | applying
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
+  const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Only Kie/Suno songs that still carry their Kie ids can be section-fixed.
+  const eligible = !!song?.kie_task_id;
+
+  async function runPreview() {
+    if (!note.trim()) { setError('Escribe qué está mal y cómo debería ser.'); return; }
+    setError('');
+    setResult(null);
+    setPhase('working');
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON}`, 'apikey': ANON },
+        body: JSON.stringify({ action: 'preview', songId: song.id, note: note.trim() }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.reason || data.error || 'No se pudo generar el arreglo.');
+        setPhase('idle');
+        return;
+      }
+      setResult(data);
+      setPhase('preview');
+    } catch (e) {
+      setError('Error de red: ' + (e?.message || 'desconocido'));
+      setPhase('idle');
+    }
+  }
+
+  async function applyFix() {
+    if (!result) return;
+    setPhase('applying');
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON}`, 'apikey': ANON },
+        body: JSON.stringify({
+          action: 'apply',
+          songId: song.id,
+          fixedAudioUrl: result.fixedAudioUrl,
+          fixTaskId: result.fixTaskId,
+          fixAudioId: result.fixAudioId,
+          fullLyrics: result.fullLyrics,
+          imageUrl: result.fixImageUrl,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error || 'No se pudo aplicar el arreglo.');
+        setPhase('preview');
+        return;
+      }
+      showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
+      if (onApplied) onApplied(result.fixedAudioUrl, result.fullLyrics);
+      setPhase('idle');
+      setResult(null);
+      setNote('');
+    } catch (e) {
+      setError('Error de red al aplicar: ' + (e?.message || 'desconocido'));
+      setPhase('preview');
+    }
+  }
+
+  return (
+    <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+      <p className="text-xs text-gray-300 mb-1">🔧 Arreglar una parte (sin rehacer toda la canción)</p>
+      {!eligible ? (
+        <p className="text-xs text-purple-200/80">
+          Esta canción no se puede arreglar por sección (no es de Suno/Kie o ya no está en sus servidores).
+          Usa la regeneración completa.
+        </p>
+      ) : (
+        <>
+          <p className="text-[11px] text-gray-400 mb-2">
+            Escribe en español qué está mal y cómo debería ser. La IA encuentra el momento exacto y regenera
+            solo esa parte. Ej.: <em>"dice mal el nombre, debe sonar 'ya-RE-li'"</em> o
+            <em> "el coro dice 'tus ojos' pero debe decir 'tu sonrisa'"</em>.
+          </p>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={phase === 'working' || phase === 'applying'}
+            rows={2}
+            placeholder="¿Qué hay que corregir?"
+            className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-100 mb-2 disabled:opacity-50"
+          />
+
+          {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
+
+          {(phase === 'idle' || phase === 'working') && (
+            <button
+              onClick={runPreview}
+              disabled={phase === 'working'}
+              className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
+            >
+              {phase === 'working' ? '⏳ Arreglando… (puede tardar 1-3 min, no cierres)' : '✨ Generar arreglo'}
+            </button>
+          )}
+
+          {phase !== 'idle' && phase !== 'working' && result && (
+            <div className="mt-1">
+              {result.changeSummary && (
+                <p className="text-xs text-purple-100 mb-1">📝 {result.changeSummary}</p>
+              )}
+              {result.window && (
+                <p className="text-[11px] text-gray-400 mb-2">
+                  Parte regenerada: {Math.round(result.window.startS)}s – {Math.round(result.window.endS)}s
+                </p>
+              )}
+              {result.staleWarning && (
+                <p className="text-[11px] text-amber-300 mb-2">⚠️ {result.staleWarning}</p>
+              )}
+              <p className="text-[11px] text-gray-500 mb-1">Original (antes):</p>
+              <audio controls className="w-full mb-2" src={result.originalAudioUrl} />
+              <p className="text-[11px] text-gray-300 mb-1">✅ Corregida (escucha antes de aplicar):</p>
+              <audio controls className="w-full mb-3" src={result.fixedAudioUrl} />
+              <div className="flex gap-2">
+                <button
+                  onClick={applyFix}
+                  disabled={phase === 'applying'}
+                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
+                >
+                  {phase === 'applying' ? '⏳ Aplicando…' : '✅ Aplicar (reemplaza la del cliente)'}
+                </button>
+                <button
+                  onClick={() => { setResult(null); setPhase('idle'); }}
+                  disabled={phase === 'applying'}
+                  className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ✅ STRICT: Check if a song row is actually paid. Pure function — kept at
 // module scope so any hook/effect/useMemo inside the component can call it
 // without worrying about temporal-dead-zone (referencing a const defined
@@ -5203,6 +5360,19 @@ export default function AdminDashboard() {
                     </button>
                   </div>
                 </div>
+              )}
+
+              {/* Arreglar una parte (AI section fix via fix-song-section) */}
+              {selectedSong.audio_url && (
+                <FixSongCard
+                  song={selectedSong}
+                  showToast={showToast}
+                  onApplied={(newUrl, newLyrics) =>
+                    setSelectedSong((prev) =>
+                      prev ? { ...prev, audio_url: newUrl, ...(newLyrics ? { lyrics: newLyrics } : {}) } : prev
+                    )
+                  }
+                />
               )}
 
               {/* Karaoke (instrumental) — only shows if the customer bought the add-on */}

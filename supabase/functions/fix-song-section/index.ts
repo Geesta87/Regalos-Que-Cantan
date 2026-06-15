@@ -1,0 +1,512 @@
+// supabase/functions/fix-song-section/index.ts
+//
+// "Fix a Song" — surgical, AI-assisted repair of ONE bad slice of an
+// already-generated Suno/Kie song, WITHOUT re-rolling the whole track.
+//
+// How it works (full-auto):
+//   1. The owner types a plain-language complaint ("dice mal el nombre, debe
+//      sonar 'ya-RE-li'" / "el coro dice 'tus ojos' pero debe decir 'tu
+//      sonrisa'").
+//   2. We get word-level timestamps for the song from OpenAI Whisper
+//      (reusing songs.lyrics_timestamps if render-social-clip already cached
+//      them — same shape, written back if we have to compute fresh).
+//   3. Claude (claude-opus-4-8, sonnet-4-6 fallback) reads the timed
+//      transcript + the stored lyrics + the complaint and decides the minimal
+//      contiguous time window to redo, writes the corrected FULL lyrics
+//      (with Spanish-orthography phonetic respelling for mispronounced names),
+//      and a short change summary.
+//   4. We call Kie's Replace-Section endpoint
+//      (POST /api/v1/generate/replace-section) which regenerates ONLY that
+//      window and blends it into the untouched audio before/after.
+//   5. We poll record-info until SUCCESS and return the fixed audio as a
+//      PREVIEW. Nothing on the customer's row changes until the owner approves.
+//
+//   action: 'preview' (default) -> does steps 1-5, returns the fixed audio URL
+//   action: 'apply'             -> swaps the approved fixed audio into the row
+//
+// Hard constraints from Kie (enforced/clamped here):
+//   - replaced window must be 6-60 seconds AND <= 50% of the song length
+//   - the source song must still be on Kie's servers (audio is purged after
+//     ~14 days) — needs the parent kie_task_id + the per-track audioId, which
+//     we read from songs.kie_task_id + songs.kie_payload.id. Songs older than
+//     ~14 days (or made on Mureka) can't be section-fixed; the caller is told
+//     to use regenerate-paid-song-kie (full re-roll) instead.
+//
+// Auth: verify_jwt = false. Mirrors regenerate-paid-song-kie — invoked from the
+// admin dashboard / CLI with the anon (publishable) key as Bearer. The secrets
+// (KIE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY) only exist in the edge
+// runtime, which is why this is a function and not a browser-side script.
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+// V5_5 only — V4_5 failed the 2026-06-12 regional-Mexican bake-off. Replace-
+// section must run on the same model family the source song was made with.
+const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V5_5';
+
+// Best model for the reasoning (locate the window + rewrite lyrics + phonetic
+// name respelling). Sonnet fallback matches the codebase's Claude retry order.
+const CLAUDE_PRIMARY_MODEL = 'claude-opus-4-8';
+const CLAUDE_FALLBACK_MODEL = 'claude-sonnet-4-6';
+
+// Kie hard limits for replace-section.
+const MIN_WINDOW_S = 6;
+const MAX_WINDOW_S = 60;
+
+// ---------------------------------------------------------------------------
+// Lyric marker / prosody normalization — identical to regenerate-paid-song-kie
+// so the regenerated slice matches how the original paid song was produced.
+// ---------------------------------------------------------------------------
+function stripSpokenProsodyCue(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return lyrics
+    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
+    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+
+function englishifyLyricsMarkers(lyrics: string): string {
+  if (!lyrics) return lyrics;
+  return stripSpokenProsodyCue(lyrics)
+    .replace(/\[Verso Final\]/gi, '[Final Verse]')
+    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
+    .replace(/\[Verso\]/gi, '[Verse]')
+    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
+    .replace(/\[Coro\]/gi, '[Chorus]')
+    .replace(/\[Puente\]/gi, '[Bridge]')
+    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
+    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+}
+
+// Gender + Spanish-language locks, same construction regenerate-paid-song-kie
+// uses, so the replaced section keeps the same voice and stays in Spanish.
+function buildStyleAndNegatives(styleUsed: string, voiceType: string): { tags: string; negativeTags: string } {
+  const vocalGender: 'm' | 'f' = voiceType === 'female' ? 'f' : 'm';
+  const genderLabel = vocalGender === 'f'
+    ? 'solo female vocalist, female voice'
+    : 'solo male vocalist, male voice, masculine vocal';
+  const oppositeGenderTags = vocalGender === 'f'
+    ? 'male voice, male vocal, baritone, bass voice, deep male voice'
+    : 'female voice, female vocal, soprano, female harmony, high female voice';
+  const languageTags = 'Spanish-language vocals, sung entirely in Spanish, letra completamente en español, Mexican Spanish pronunciation';
+  const englishNegatives = 'English lyrics, English language, English vocals, English words, spoken English, English ad-libs';
+
+  return {
+    tags: `${genderLabel}, ${languageTags}, ${styleUsed}`.substring(0, 1000),
+    negativeTags: `${oppositeGenderTags}, ${englishNegatives}`.substring(0, 200),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Whisper — word-level timestamps. Copied from render-social-clip so the cache
+// shape in songs.lyrics_timestamps stays interchangeable between the two.
+// ---------------------------------------------------------------------------
+type WhisperWord = { word: string; start: number; end: number };
+type WhisperResult = { words: WhisperWord[]; duration: number; language: string };
+
+async function transcribeAudio(audioUrl: string): Promise<WhisperResult | null> {
+  if (!OPENAI_API_KEY) return null;
+  try {
+    const audioRes = await fetch(audioUrl);
+    if (!audioRes.ok) throw new Error(`audio fetch failed: ${audioRes.status}`);
+    const audioBlob = await audioRes.blob();
+
+    const form = new FormData();
+    form.append('file', audioBlob, 'song.mp3');
+    form.append('model', 'whisper-1');
+    form.append('language', 'es');
+    form.append('response_format', 'verbose_json');
+    form.append('timestamp_granularities[]', 'word');
+
+    const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: form,
+    });
+    if (!resp.ok) {
+      console.error(`[whisper] API error ${resp.status}: ${(await resp.text()).substring(0, 300)}`);
+      return null;
+    }
+    const data = await resp.json();
+    const words: WhisperWord[] = (data.words || [])
+      .map((w: any) => ({ word: String(w.word || ''), start: Number(w.start), end: Number(w.end) }))
+      .filter((w: WhisperWord) => w.word && !Number.isNaN(w.start) && !Number.isNaN(w.end));
+    return { words, duration: Number(data.duration) || 0, language: String(data.language || 'spanish') };
+  } catch (e: any) {
+    console.error('[whisper] error:', e.message);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Claude — decides the time window + writes the corrected full lyrics.
+// Uses the codebase's proven tool_use + forced tool_choice pattern (no
+// thinking/sampling params, so it's valid on opus-4-8) rather than output_config.
+// ---------------------------------------------------------------------------
+const FIX_TOOL = {
+  name: 'submit_section_fix',
+  description: 'Return the exact time window of the song to regenerate and the corrected full lyrics that fix the reported problem.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      can_fix: {
+        type: 'boolean',
+        description: 'true if the reported problem is localized to ONE contiguous stretch that is at most half the song; false if it is spread across the whole song or cannot be located in the transcript.',
+      },
+      reason: {
+        type: 'string',
+        description: 'If can_fix is false, one short sentence (Spanish) explaining why a section fix is not possible. If true, one short note on the window you chose.',
+      },
+      infill_start_s: {
+        type: 'number',
+        description: 'Start time, in seconds (up to 2 decimals), of the slice to regenerate. Take it from the word timestamps; start a hair before the first wrong word.',
+      },
+      infill_end_s: {
+        type: 'number',
+        description: 'End time, in seconds, of the slice to regenerate. End a hair after the last wrong word. The window (end - start) must be between 6 and 60 seconds and no more than half the song duration.',
+      },
+      section_text: {
+        type: 'string',
+        description: 'ONLY the corrected lyric lines that fall inside this window, in Spanish, exactly as they should now be sung. This becomes the replacement-section prompt.',
+      },
+      full_lyrics: {
+        type: 'string',
+        description: 'The COMPLETE corrected lyrics for the whole song, all sections, with section markers like [Coro]/[Verso] preserved. Apply ONLY the fix — every untouched line must stay identical to the original lyrics provided.',
+      },
+      change_summary: {
+        type: 'string',
+        description: 'One short sentence in Spanish describing exactly what changed, shown to the shop owner (e.g. "Corregí la pronunciación del nombre Yareli en el coro").',
+      },
+    },
+    required: ['can_fix', 'reason', 'infill_start_s', 'infill_end_s', 'section_text', 'full_lyrics', 'change_summary'],
+    additionalProperties: false,
+  },
+} as const;
+
+const FIX_SYSTEM_PROMPT = `Eres un editor musical experto en canciones regionales mexicanas (corridos, bachata, norteño, etc.) generadas por IA y cantadas en español.
+
+Te dan tres cosas:
+1. La letra estructurada original de la canción (con marcadores como [Coro], [Verso]).
+2. Una transcripción palabra-por-palabra de lo que SE CANTÓ en el audio, con marcas de tiempo en segundos (lo que de verdad suena, que puede diferir de la letra).
+3. Una queja en lenguaje natural del dueño de la tienda sobre un error puntual.
+
+Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sola sección, sin rehacer toda la canción:
+
+- Usa las marcas de tiempo de la transcripción para encontrar el momento exacto del error y define una ventana contigua [infill_start_s, infill_end_s] que lo cubra.
+- La ventana DEBE durar entre 6 y 60 segundos y NO más de la mitad de la canción. Si el error es una sola palabra muy corta, amplía la ventana a una frase o verso completo para que el empalme suene natural (mínimo 6s).
+- full_lyrics debe ser la letra COMPLETA ya corregida: aplica SOLO el cambio pedido y deja idéntico todo lo demás. Conserva los marcadores de sección.
+- section_text son únicamente las líneas corregidas que caen dentro de la ventana.
+- Para nombres mal pronunciados: reescribe el nombre con ortografía española fonética para que el modelo lo cante bien (p. ej. "Yareli" → "Yarelí", "Joaquin" → "Joaquín", "Yetzaeli" → "Yetsaelí"), tanto en full_lyrics como en section_text, manteniendo el nombre legible.
+- Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
+
+Devuelve SIEMPRE tu respuesta llamando a la herramienta submit_section_fix.`;
+
+async function callClaudeForFix(userMessage: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) {
+    console.error('[fix-song-section] ANTHROPIC_API_KEY not configured');
+    return null;
+  }
+  const MAX_RETRIES = 3;
+  let lastErr = '';
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    let resp: Response;
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 3000,
+          system: [{ type: 'text', text: FIX_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+          tools: [FIX_TOOL],
+          tool_choice: { type: 'tool', name: 'submit_section_fix' },
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+      if (attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, attempt * 4000)); continue; }
+      break;
+    }
+
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !Array.isArray(data.content)) {
+      const overloaded = data?.error?.type === 'overloaded_error' || resp.status === 529;
+      lastErr = `HTTP ${resp.status}: ${JSON.stringify(data).slice(0, 300)}`;
+      if (overloaded && attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, attempt * 4000)); continue; }
+      if (attempt === MAX_RETRIES) break;
+      continue;
+    }
+
+    const block = data.content.find((b: any) => b && b.type === 'tool_use' && b.name === 'submit_section_fix');
+    if (block && block.input && typeof block.input.full_lyrics === 'string') {
+      return block.input;
+    }
+    lastErr = 'no submit_section_fix tool_use in response';
+  }
+  console.error('[fix-song-section] Claude failed:', lastErr);
+  return null;
+}
+
+// Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
+function clampWindow(startIn: number, endIn: number, duration: number): { start: number; end: number } {
+  const dur = duration > 0 ? duration : 180;
+  const maxLen = Math.max(MIN_WINDOW_S, Math.min(MAX_WINDOW_S, dur * 0.5));
+  let start = Math.max(0, Math.min(startIn, dur));
+  let end = Math.max(0, Math.min(endIn, dur));
+  if (end <= start) end = start + MIN_WINDOW_S;
+  let len = end - start;
+
+  if (len > maxLen) {
+    const center = (start + end) / 2;
+    start = center - maxLen / 2;
+    end = center + maxLen / 2;
+  } else if (len < MIN_WINDOW_S) {
+    const center = (start + end) / 2;
+    start = center - MIN_WINDOW_S / 2;
+    end = center + MIN_WINDOW_S / 2;
+  }
+  // Re-seat inside [0, dur] after centering.
+  if (start < 0) { end -= start; start = 0; }
+  if (end > dur) { start -= (end - dur); end = dur; }
+  start = Math.max(0, start);
+  len = end - start;
+  if (len > maxLen) end = start + maxLen;
+
+  return { start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 };
+}
+
+// ---------------------------------------------------------------------------
+// Kie — Replace Section + poll. Reuses the same poll loop as the rest of the app.
+// ---------------------------------------------------------------------------
+interface KieTrack { id?: string; audioUrl?: string; imageUrl?: string; title?: string; duration?: number }
+
+async function submitReplaceSection(args: {
+  taskId: string; audioId: string; prompt: string; tags: string; title: string;
+  infillStartS: number; infillEndS: number; fullLyrics: string; negativeTags: string; callbackUrl: string;
+}): Promise<string> {
+  const payload = {
+    taskId: args.taskId,
+    audioId: args.audioId,
+    prompt: args.prompt.substring(0, 1000),
+    tags: args.tags,
+    title: args.title.substring(0, 80),
+    infillStartS: args.infillStartS,
+    infillEndS: args.infillEndS,
+    fullLyrics: args.fullLyrics.substring(0, 5000),
+    negativeTags: args.negativeTags,
+    model: KIE_MODEL,
+    callBackUrl: args.callbackUrl,
+  };
+  const resp = await fetch('https://api.kie.ai/api/v1/generate/replace-section', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => 'unknown');
+    throw new Error(`kie replace-section ${resp.status}: ${t.substring(0, 250)}`);
+  }
+  const data = await resp.json();
+  if (data.code !== 200 || !data.data?.taskId) {
+    throw new Error(`kie replace-section code=${data.code}: ${data.msg || 'no taskId'}`);
+  }
+  return data.data.taskId;
+}
+
+async function pollKieUntilDone(taskId: string, maxAttempts = 24, intervalMs = 8000): Promise<KieTrack[]> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { 'Authorization': `Bearer ${KIE_API_KEY}` },
+    });
+    if (resp.ok) {
+      const json = await resp.json();
+      const status = json?.data?.status;
+      const tracks: KieTrack[] = json?.data?.response?.sunoData ?? [];
+      console.log(`[fix] poll ${attempt}/${maxAttempts}: status=${status}, tracks=${tracks.length}`);
+      if (status === 'SUCCESS') return tracks;
+      if (['GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED', 'SENSITIVE_WORD_ERROR', 'CALLBACK_EXCEPTION'].includes(status)) {
+        throw new Error(`kie replace-section task ${taskId} ended in status ${status}`);
+      }
+    } else {
+      console.warn(`[fix] poll ${attempt}/${maxAttempts}: HTTP ${resp.status}`);
+    }
+    if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`kie replace-section task ${taskId} did not complete in time`);
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const body = await req.json().catch(() => ({}));
+    const action: string = body?.action || 'preview';
+
+    // -----------------------------------------------------------------
+    // APPLY — swap the approved fixed audio into the customer's row.
+    // -----------------------------------------------------------------
+    if (action === 'apply') {
+      const songId: string | undefined = body?.songId;
+      const fixedAudioUrl: string | undefined = body?.fixedAudioUrl;
+      const fixTaskId: string | undefined = body?.fixTaskId;
+      const fixAudioId: string | undefined = body?.fixAudioId;
+      const fullLyrics: string | undefined = body?.fullLyrics;
+      const imageUrl: string | undefined = body?.imageUrl;
+      if (!songId || !fixedAudioUrl) return json({ ok: false, error: 'songId and fixedAudioUrl are required' });
+
+      const update: Record<string, unknown> = {
+        audio_url: fixedAudioUrl,
+        preview_url: fixedAudioUrl,
+        original_audio_url: fixedAudioUrl,
+        status: 'completed',
+        needs_reupload: true,
+        provider: 'kie',
+        error_message: null,
+      };
+      if (imageUrl) update.image_url = imageUrl;
+      if (typeof fullLyrics === 'string' && fullLyrics.trim()) update.lyrics = fullLyrics;
+      // Chain future fixes off the corrected version.
+      if (fixTaskId) { update.kie_task_id = fixTaskId; update.task_id = fixTaskId; }
+      if (fixTaskId || fixAudioId) update.kie_payload = JSON.stringify({ id: fixAudioId, audioUrl: fixedAudioUrl });
+      // The audio changed, so the cached transcript is stale.
+      update.lyrics_timestamps = null;
+
+      const { error } = await supabase.from('songs').update(update).eq('id', songId);
+      if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
+      return json({ ok: true, songId, applied: true, songLink: `https://regalosquecantan.com/song/${songId}` });
+    }
+
+    // -----------------------------------------------------------------
+    // PREVIEW — transcribe -> Claude -> Kie replace-section -> poll.
+    // -----------------------------------------------------------------
+    if (!KIE_API_KEY) return json({ ok: false, error: 'KIE_API_KEY missing on Supabase' });
+    if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
+
+    const songId: string | undefined = body?.songId;
+    const note: string | undefined = body?.note;
+    if (!songId || !note || !note.trim()) return json({ ok: false, error: 'songId and note (the complaint) are required' });
+
+    const { data: song, error: songErr } = await supabase
+      .from('songs')
+      .select('id, recipient_name, voice_type, style_used, genre, lyrics, audio_url, original_audio_url, kie_task_id, kie_payload, lyrics_timestamps, provider, created_at')
+      .eq('id', songId)
+      .single();
+    if (songErr || !song) return json({ ok: false, error: `song lookup failed: ${songErr?.message || 'not found'}` });
+
+    // ---- Eligibility: must be a Kie song still on Kie's servers ----
+    const audioForFix: string | undefined = song.original_audio_url || song.audio_url;
+    if (!audioForFix) return json({ ok: false, error: 'song has no audio to fix' });
+    if (!song.kie_task_id) {
+      return json({ ok: false, eligible: false, error: 'No tiene kie_task_id (probablemente se hizo con Mureka). Usa "regenerar canción completa" en su lugar.' });
+    }
+    let kiePayload: any = song.kie_payload;
+    if (typeof kiePayload === 'string') { try { kiePayload = JSON.parse(kiePayload); } catch { kiePayload = null; } }
+    const audioId: string | undefined = kiePayload?.id;
+    if (!audioId) {
+      return json({ ok: false, eligible: false, error: 'No se encontró el audioId de Kie en kie_payload. No se puede arreglar por sección; usa regeneración completa.' });
+    }
+    if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
+    if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
+
+    const ageDays = song.created_at ? (Date.now() - new Date(song.created_at).getTime()) / 86400000 : null;
+    const staleWarning = ageDays !== null && ageDays > 14
+      ? `La canción tiene ~${Math.round(ageDays)} días; Kie borra el audio después de ~14 días, así que el arreglo por sección podría fallar. Si falla, usa regeneración completa.`
+      : null;
+
+    // ---- Word-level timestamps (reuse cache or compute + cache) ----
+    let whisper: WhisperResult | null = null;
+    const cached = song.lyrics_timestamps as WhisperResult | null;
+    if (cached && Array.isArray(cached.words) && cached.words.length > 0) {
+      whisper = cached;
+    } else {
+      whisper = await transcribeAudio(audioForFix);
+      if (whisper && whisper.words.length > 0) {
+        await supabase.from('songs').update({ lyrics_timestamps: whisper }).eq('id', song.id);
+      }
+    }
+    if (!whisper || whisper.words.length === 0) {
+      return json({ ok: false, error: 'No se pudo transcribir el audio (Whisper). Revisa OPENAI_API_KEY o intenta de nuevo.' });
+    }
+
+    const duration = whisper.duration || (whisper.words.length ? whisper.words[whisper.words.length - 1].end : 0);
+
+    // ---- Ask Claude where + what to fix ----
+    const timedWords = whisper.words
+      .map((w) => `${w.word.trim()}[${w.start.toFixed(2)}-${w.end.toFixed(2)}]`)
+      .join(' ');
+    const userMessage =
+      `Canción para: ${song.recipient_name || '(sin nombre)'}\n` +
+      `Género/estilo: ${song.genre || ''} ${song.style_used}\n` +
+      `Duración del audio: ${duration.toFixed(2)} segundos\n\n` +
+      `LETRA ORIGINAL (estructurada):\n${song.lyrics}\n\n` +
+      `TRANSCRIPCIÓN CANTADA con marcas de tiempo (palabra[inicio-fin] en segundos):\n${timedWords}\n\n` +
+      `QUEJA DEL DUEÑO (qué está mal y cómo debería ser):\n${note.trim()}\n\n` +
+      `Define la ventana mínima a regenerar y entrega la letra completa corregida llamando a submit_section_fix.`;
+
+    const fix = await callClaudeForFix(userMessage);
+    if (!fix) return json({ ok: false, error: 'Claude no devolvió un arreglo. Intenta de nuevo.' });
+    if (fix.can_fix === false) {
+      return json({ ok: false, eligible: false, canFix: false, reason: fix.reason || 'No se puede arreglar por sección.' });
+    }
+
+    const { start, end } = clampWindow(Number(fix.infill_start_s), Number(fix.infill_end_s), duration);
+    const { tags, negativeTags } = buildStyleAndNegatives(song.style_used, song.voice_type);
+    const title = `Canción para ${song.recipient_name || 'ti'}`;
+    const fullLyrics = englishifyLyricsMarkers(String(fix.full_lyrics));
+    const sectionPrompt = String(fix.section_text || '').trim() || fullLyrics;
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
+
+    // ---- Kie replace-section + poll ----
+    const fixTaskId = await submitReplaceSection({
+      taskId: song.kie_task_id, audioId, prompt: sectionPrompt, tags, title,
+      infillStartS: start, infillEndS: end, fullLyrics, negativeTags, callbackUrl,
+    });
+    console.log(`[fix] replace-section taskId=${fixTaskId} for song=${songId} window=${start}-${end}s`);
+
+    const tracks = await pollKieUntilDone(fixTaskId);
+    const fixed = tracks.find((t) => t.audioUrl) || tracks[0];
+    if (!fixed?.audioUrl) return json({ ok: false, fixTaskId, error: 'replace-section no devolvió audio' });
+
+    return json({
+      ok: true,
+      songId,
+      changeSummary: fix.change_summary || '',
+      window: { startS: start, endS: end },
+      originalAudioUrl: audioForFix,
+      fixedAudioUrl: fixed.audioUrl,
+      fixTaskId,
+      fixAudioId: fixed.id || null,
+      fixImageUrl: fixed.imageUrl || null,
+      fullLyrics,
+      staleWarning,
+      // The owner reviews fixedAudioUrl, then POSTs action:'apply' with these
+      // fields to commit the swap into the customer's row.
+    });
+  } catch (e: any) {
+    console.error('[fix-song-section] error:', e?.message);
+    return json({ ok: false, error: e?.message });
+  }
+});

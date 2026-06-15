@@ -127,6 +127,18 @@ verify_jwt = false
 # verify_jwt = false so a service-role/anon Bearer isn't rejected.
 verify_jwt = false
 
+[functions.fix-song-section]
+# AI-assisted, surgical "Fix a Song" repair: regenerates ONLY a bad slice of an
+# already-generated Kie/Suno song via Kie's /api/v1/generate/replace-section,
+# instead of re-rolling the whole track. Full-auto pipeline — OpenAI Whisper for
+# word-level timestamps, Claude (opus-4-8) to pick the window + rewrite the
+# lyrics, then Kie replace-section + record-info poll. action:'preview' returns
+# the fixed audio for owner review; action:'apply' swaps it into the song row.
+# Same invocation model as regenerate-paid-song-kie: called from the admin
+# dashboard / CLI with the anon (publishable) key as Bearer, never a user JWT,
+# so the gateway must NOT verify a Supabase JWT or every call 401s.
+verify_jwt = false
+
 [functions.preview-fathers-day-campaign]
 # One-off preview sender for the Father's Day 2026 campaign. Sends all 11
 # campaign emails (E0-E10) to a single hardcoded inbox so the visual + copy
