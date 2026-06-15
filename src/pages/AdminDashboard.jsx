@@ -31,6 +31,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [image, setImage] = useState(null); // { dataUrl, base64, media_type }
   const [chatting, setChatting] = useState(false);
   const [phase, setPhase] = useState('idle'); // idle | working | preview | applying
+  const [pendingMode, setPendingMode] = useState('section'); // which button is running
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -84,18 +85,19 @@ function FixSongCard({ song, showToast, onApplied }) {
     }
   }
 
-  async function runPreview() {
+  async function runPreview(mode = 'section') {
     const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
     if (convo.length === 0 && !image) { setError('Escribe qué corregir, chatea con el AI, o pega una captura.'); return; }
     setError('');
     setResult(null);
     setInput('');
+    setPendingMode(mode);
     setPhase('working');
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-        body: JSON.stringify({ action: 'preview', songId: song.id, conversation: convo, image: imagePayload() }),
+        body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -149,18 +151,17 @@ function FixSongCard({ song, showToast, onApplied }) {
 
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
-      <p className="text-xs text-gray-300 mb-1">🔧 Arreglar una parte (sin rehacer toda la canción)</p>
-      {!eligible ? (
-        <p className="text-xs text-purple-200/80">
-          Esta canción no se puede arreglar por sección (no es de Suno/Kie o ya no está en sus servidores).
-          Usa la regeneración completa.
-        </p>
-      ) : (
-        <>
+      <p className="text-xs text-gray-300 mb-1">🔧 Arreglar o rehacer la canción</p>
+      <>
           <p className="text-[11px] text-gray-400 mb-2">
             Pega la captura de WhatsApp del cliente o escribe qué corregir. Puedes <strong>chatear con el AI</strong> para
-            aclarar antes de arreglar, luego dale a <strong>Generar arreglo</strong>. Ej.: <em>"dice mal el nombre, debe sonar 'ya-RE-li'"</em>.
+            aclarar, y luego <strong>arreglar solo esa parte</strong> o <strong>rehacer la canción completa</strong> con las correcciones.
           </p>
+          {!eligible && (
+            <p className="text-[11px] text-amber-300 mb-2">
+              Esta canción se hizo con Mureka, así que no se puede arreglar solo una parte — pero sí puedes <strong>rehacerla completa</strong> en Kie con las correcciones.
+            </p>
+          )}
 
           {/* Chat thread */}
           {messages.length > 0 && (
@@ -207,13 +208,24 @@ function FixSongCard({ song, showToast, onApplied }) {
           {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
 
           {(phase === 'idle' || phase === 'working') && (
-            <button
-              onClick={runPreview}
-              disabled={busy}
-              className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
-            >
-              {phase === 'working' ? '⏳ Arreglando… (puede tardar 1-3 min, no cierres)' : '✨ Generar arreglo'}
-            </button>
+            <div className="flex flex-col gap-2">
+              {eligible && (
+                <button
+                  onClick={() => runPreview('section')}
+                  disabled={busy}
+                  className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
+                >
+                  {phase === 'working' && pendingMode === 'section' ? '⏳ Arreglando esa parte… (1-3 min, no cierres)' : '✨ Arreglar solo esa parte'}
+                </button>
+              )}
+              <button
+                onClick={() => runPreview('full')}
+                disabled={busy}
+                className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition disabled:opacity-60 ${eligible ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-purple-500 text-white hover:bg-purple-400'}`}
+              >
+                {phase === 'working' && pendingMode === 'full' ? '⏳ Rehaciendo la canción… (1-3 min, no cierres)' : '🔄 Rehacer canción completa con las correcciones'}
+              </button>
+            </div>
           )}
 
           {phase !== 'idle' && phase !== 'working' && result && (
@@ -221,11 +233,13 @@ function FixSongCard({ song, showToast, onApplied }) {
               {result.changeSummary && (
                 <p className="text-xs text-purple-100 mb-1">📝 {result.changeSummary}</p>
               )}
-              {result.window && (
+              {result.mode === 'full' ? (
+                <p className="text-[11px] text-gray-400 mb-2">🔁 Canción completa rehecha con las correcciones</p>
+              ) : result.window ? (
                 <p className="text-[11px] text-gray-400 mb-2">
                   Parte regenerada: {Math.round(result.window.startS)}s – {Math.round(result.window.endS)}s
                 </p>
-              )}
+              ) : null}
               {result.staleWarning && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ {result.staleWarning}</p>
               )}
@@ -252,7 +266,6 @@ function FixSongCard({ song, showToast, onApplied }) {
             </div>
           )}
         </>
-      )}
     </div>
   );
 }

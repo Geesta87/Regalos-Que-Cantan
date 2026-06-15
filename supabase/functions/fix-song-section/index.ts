@@ -226,6 +226,25 @@ Tu trabajo:
 - NO inventes datos. NO edites la canción tú mismo (eso pasa cuando el dueño presiona el botón).
 - Responde corto, claro y en español.`;
 
+// Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
+// or the owner chooses to remake the whole song. Claude returns the complete
+// corrected lyrics; we then generate a fresh Kie song from them.
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+
+const FULL_FIX_TOOL = {
+  name: 'submit_corrected_lyrics',
+  description: 'Return the complete corrected lyrics for the whole song with the requested fix applied.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      full_lyrics: { type: 'string', description: 'La letra COMPLETA corregida, con marcadores de sección. Aplica SOLO el cambio pedido; deja igual lo demás.' },
+      change_summary: { type: 'string', description: 'Una frase corta en español de lo que cambió.' },
+    },
+    required: ['full_lyrics', 'change_summary'],
+    additionalProperties: false,
+  },
+} as const;
+
 type InlineImage = { media_type: string; data: string };
 
 // Build a Claude message content array: optional image first (so the model
@@ -341,6 +360,48 @@ async function callClaudeChat(lyrics: string, conversation: ChatMsg[], image?: I
   return null;
 }
 
+// Claude rewrites the FULL lyrics with the fix applied (for the whole-song
+// re-roll path). Same tool_use pattern as callClaudeForFix.
+async function callClaudeForFullLyrics(currentLyrics: string, complaint: string, image?: InlineImage): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const userMessage =
+    `LETRA ACTUAL:\n${currentLyrics}\n\n` +
+    `QUEJA / INSTRUCCIÓN (puede incluir conversación con el dueño y/o una captura adjunta):\n${complaint}\n\n` +
+    `Devuelve la letra completa corregida llamando a submit_corrected_lyrics.`;
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const model = attempt === MAX_RETRIES ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    let resp: Response;
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 3000,
+          system: [{ type: 'text', text: FULL_FIX_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+          tools: [FULL_FIX_TOOL],
+          tool_choice: { type: 'tool', name: 'submit_corrected_lyrics' },
+          messages: [{ role: 'user', content: buildUserContent(userMessage, image) }],
+        }),
+      });
+    } catch {
+      if (attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, attempt * 3000)); continue; }
+      return null;
+    }
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !Array.isArray(data.content)) {
+      const overloaded = data?.error?.type === 'overloaded_error' || resp.status === 529;
+      if (overloaded && attempt < MAX_RETRIES) { await new Promise((r) => setTimeout(r, attempt * 3000)); continue; }
+      if (attempt === MAX_RETRIES) return null;
+      continue;
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'submit_corrected_lyrics');
+    if (block?.input?.full_lyrics) return block.input;
+  }
+  return null;
+}
+
 // Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
 function clampWindow(startIn: number, endIn: number, duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
@@ -404,6 +465,40 @@ async function submitReplaceSection(args: {
   if (data.code !== 200 || !data.data?.taskId) {
     throw new Error(`kie replace-section code=${data.code}: ${data.msg || 'no taskId'}`);
   }
+  return data.data.taskId;
+}
+
+// Full new Kie generation from corrected lyrics (whole-song re-roll). Mirrors
+// regenerate-paid-song-kie's submitToKie tuning so the remake matches how paid
+// songs are produced.
+async function submitFullGenerate(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string): Promise<string> {
+  const vocalGender: 'm' | 'f' = voiceType === 'female' ? 'f' : 'm';
+  const { tags, negativeTags } = buildStyleAndNegatives(styleUsed, voiceType);
+  const payload = {
+    prompt: englishifyLyricsMarkers(lyrics).substring(0, 5000),
+    customMode: true,
+    instrumental: false,
+    model: KIE_MODEL,
+    callBackUrl: callbackUrl,
+    style: tags,
+    title: title.substring(0, 80),
+    vocalGender,
+    negativeTags,
+    styleWeight: 0.85,
+    weirdnessConstraint: 0.3,
+    audioWeight: 0.7,
+  };
+  const resp = await fetch('https://api.kie.ai/api/v1/generate', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => 'unknown');
+    throw new Error(`kie generate ${resp.status}: ${t.substring(0, 250)}`);
+  }
+  const data = await resp.json();
+  if (data.code !== 200 || !data.data?.taskId) throw new Error(`kie generate code=${data.code}: ${data.msg || 'no taskId'}`);
   return data.data.taskId;
 }
 
@@ -523,9 +618,39 @@ Deno.serve(async (req) => {
       .single();
     if (songErr || !song) return json({ ok: false, error: `song lookup failed: ${songErr?.message || 'not found'}` });
 
-    // ---- Eligibility: must be a Kie song still on Kie's servers ----
     const audioForFix: string | undefined = song.original_audio_url || song.audio_url;
     if (!audioForFix) return json({ ok: false, error: 'song has no audio to fix' });
+
+    // ---- FULL re-roll path — remake the whole song on Kie from corrected
+    // lyrics. Works for any song (incl. Mureka), since it generates fresh. ----
+    const mode = body?.mode === 'full' ? 'full' : 'section';
+    if (mode === 'full') {
+      if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
+      if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
+      const corrected = await callClaudeForFullLyrics(song.lyrics, complaint || '(ver captura adjunta)', fixImage);
+      if (!corrected?.full_lyrics) return json({ ok: false, error: 'Claude no devolvió la letra corregida. Intenta de nuevo.' });
+      const title = `Canción para ${song.recipient_name || 'ti'}`;
+      const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
+      const taskId = await submitFullGenerate(corrected.full_lyrics, title, song.style_used, song.voice_type, callbackUrl);
+      console.log(`[fix] FULL re-roll taskId=${taskId} for song=${songId}`);
+      const tracks = await pollKieUntilDone(taskId);
+      const made = tracks.find((t) => t.audioUrl) || tracks[0];
+      if (!made?.audioUrl) return json({ ok: false, fixTaskId: taskId, error: 'la regeneración no devolvió audio' });
+      return json({
+        ok: true,
+        mode: 'full',
+        songId,
+        changeSummary: corrected.change_summary || 'Canción rehecha con las correcciones.',
+        originalAudioUrl: audioForFix,
+        fixedAudioUrl: made.audioUrl,
+        fixTaskId: taskId,
+        fixAudioId: made.id || null,
+        fixImageUrl: made.imageUrl || null,
+        fullLyrics: corrected.full_lyrics,
+      });
+    }
+
+    // ---- SECTION path — eligibility: must be a Kie song still on Kie's servers ----
     if (!song.kie_task_id) {
       return json({ ok: false, eligible: false, error: 'No tiene kie_task_id (probablemente se hizo con Mureka). Usa "regenerar canción completa" en su lugar.' });
     }
