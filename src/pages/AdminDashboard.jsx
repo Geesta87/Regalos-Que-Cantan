@@ -30,14 +30,16 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [input, setInput] = useState('');
   const [image, setImage] = useState(null); // { dataUrl, base64, media_type }
   const [chatting, setChatting] = useState(false);
-  const [phase, setPhase] = useState('idle'); // idle | working | preview | applying
+  const [phase, setPhase] = useState('idle'); // idle | planning | plan | working | preview | applying
   const [pendingMode, setPendingMode] = useState('section'); // which button is running
+  const [plan, setPlan] = useState(null); // { changeSummary, approvedLyrics, changes }
   const [result, setResult] = useState(null);
+  const [canUndo, setCanUndo] = useState(!!song?.fix_backup);
   const [error, setError] = useState('');
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const busy = chatting || phase === 'working' || phase === 'applying';
+  const busy = chatting || phase === 'planning' || phase === 'working' || phase === 'applying';
 
   // Only Kie/Suno songs that still carry their Kie ids can be section-fixed.
   const eligible = !!song?.kie_task_id;
@@ -85,31 +87,73 @@ function FixSongCard({ song, showToast, onApplied }) {
     }
   }
 
-  async function runPreview(mode = 'section') {
+  // Step 1: cheap, instant — propose the lyric change for the owner to confirm
+  // BEFORE spending any Kie credits / waiting on audio.
+  async function runPlan(mode = 'section') {
     const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
     if (convo.length === 0 && !image) { setError('Escribe qué corregir, chatea con el AI, o pega una captura.'); return; }
     setError('');
     setResult(null);
-    setInput('');
+    setPlan(null);
     setPendingMode(mode);
+    setPhase('planning');
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        body: JSON.stringify({ action: 'plan', mode, songId: song.id, conversation: convo, image: imagePayload() }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || 'No se pudo proponer el cambio.'); setPhase('idle'); return; }
+      setPlan(data);
+      setPhase('plan');
+    } catch (e) {
+      setError('Error de red: ' + (e?.message || 'desconocido'));
+      setPhase('idle');
+    }
+  }
+
+  // Step 2: generate the audio, singing the confirmed lyrics verbatim.
+  async function runPreview(mode, approvedLyrics) {
+    setError('');
+    setResult(null);
+    setInput('');
     setPhase('working');
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-        body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: convo, image: imagePayload() }),
+        body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics }),
       });
       const data = await res.json();
       if (!data.ok) {
         setError(data.reason || data.error || 'No se pudo generar el arreglo.');
-        setPhase('idle');
+        setPhase('plan');
         return;
       }
       setResult(data);
       setPhase('preview');
     } catch (e) {
       setError('Error de red: ' + (e?.message || 'desconocido'));
-      setPhase('idle');
+      setPhase('plan');
+    }
+  }
+
+  async function undoFix() {
+    setError('');
+    try {
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        body: JSON.stringify({ action: 'undo', songId: song.id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || 'No se pudo deshacer.'); return; }
+      showToast('↩️ Arreglo deshecho. La canción volvió a la versión anterior.');
+      setCanUndo(false);
+      if (onApplied) onApplied(data.audioUrl, data.lyrics);
+    } catch (e) {
+      setError('Error de red al deshacer: ' + (e?.message || 'desconocido'));
     }
   }
 
@@ -138,8 +182,10 @@ function FixSongCard({ song, showToast, onApplied }) {
       }
       showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
       if (onApplied) onApplied(result.fixedAudioUrl, result.fullLyrics);
+      setCanUndo(true);
       setPhase('idle');
       setResult(null);
+      setPlan(null);
       setMessages([]);
       setImage(null);
       setInput('');
@@ -207,28 +253,72 @@ function FixSongCard({ song, showToast, onApplied }) {
 
           {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
 
-          {(phase === 'idle' || phase === 'working') && (
+          {(phase === 'idle' || phase === 'planning') && (
             <div className="flex flex-col gap-2">
               {eligible && (
                 <button
-                  onClick={() => runPreview('section')}
+                  onClick={() => runPlan('section')}
                   disabled={busy}
                   className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
                 >
-                  {phase === 'working' && pendingMode === 'section' ? '⏳ Arreglando esa parte… (1-3 min, no cierres)' : '✨ Arreglar solo esa parte'}
+                  {phase === 'planning' && pendingMode === 'section' ? '⏳ Revisando el cambio…' : '✨ Arreglar solo esa parte'}
                 </button>
               )}
               <button
-                onClick={() => runPreview('full')}
+                onClick={() => runPlan('full')}
                 disabled={busy}
                 className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition disabled:opacity-60 ${eligible ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-purple-500 text-white hover:bg-purple-400'}`}
               >
-                {phase === 'working' && pendingMode === 'full' ? '⏳ Rehaciendo la canción… (1-3 min, no cierres)' : '🔄 Rehacer canción completa con las correcciones'}
+                {phase === 'planning' && pendingMode === 'full' ? '⏳ Revisando el cambio…' : '🔄 Rehacer canción completa con las correcciones'}
               </button>
             </div>
           )}
 
-          {phase !== 'idle' && phase !== 'working' && result && (
+          {/* Step 1 confirmation: show the proposed lyric change before generating audio */}
+          {phase === 'plan' && plan && (
+            <div className="mt-1 bg-white/5 border border-white/10 rounded-lg p-3">
+              {plan.changeSummary && <p className="text-xs text-purple-100 mb-2">📝 {plan.changeSummary}</p>}
+              {Array.isArray(plan.changes) && plan.changes.length > 0 ? (
+                <div className="space-y-2 mb-3">
+                  {plan.changes.map((c, i) => (
+                    <div key={i} className="text-xs">
+                      <p className="text-red-300/90"><span className="opacity-60">Antes:</span> <span className="line-through">{c.before}</span></p>
+                      <p className="text-green-300"><span className="opacity-60">Ahora:</span> {c.after}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400 mb-3">Revisa la letra corregida abajo antes de generar.</p>
+              )}
+              <details className="mb-3">
+                <summary className="text-[11px] text-gray-400 cursor-pointer">Ver letra completa corregida</summary>
+                <p className="text-[11px] whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded p-2">{plan.approvedLyrics}</p>
+              </details>
+              <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'Se rehará la canción completa. Tarda 1-3 min.' : 'Se regenerará solo la parte afectada. Tarda 1-3 min.'}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => runPreview(pendingMode, plan.approvedLyrics)}
+                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
+                >
+                  ✅ Confirmar y generar
+                </button>
+                <button
+                  onClick={() => { setPlan(null); setPhase('idle'); }}
+                  className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
+                >
+                  ✏️ Seguir editando
+                </button>
+              </div>
+            </div>
+          )}
+
+          {phase === 'working' && (
+            <p className="text-sm text-purple-100 mt-1">
+              {pendingMode === 'full' ? '⏳ Rehaciendo la canción…' : '⏳ Arreglando esa parte…'} (1-3 min, no cierres esta ventana)
+            </p>
+          )}
+
+          {(phase === 'preview' || phase === 'applying') && result && (
             <div className="mt-1">
               {result.changeSummary && (
                 <p className="text-xs text-purple-100 mb-1">📝 {result.changeSummary}</p>
@@ -256,7 +346,7 @@ function FixSongCard({ song, showToast, onApplied }) {
                   {phase === 'applying' ? '⏳ Aplicando…' : '✅ Aplicar (reemplaza la del cliente)'}
                 </button>
                 <button
-                  onClick={() => { setResult(null); setPhase('idle'); }}
+                  onClick={() => { setResult(null); setPlan(null); setPhase('idle'); }}
                   disabled={phase === 'applying'}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
@@ -264,6 +354,16 @@ function FixSongCard({ song, showToast, onApplied }) {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Undo the last applied fix (restores the pre-fix version) */}
+          {phase === 'idle' && canUndo && (
+            <button
+              onClick={undoFix}
+              className="w-full mt-2 py-2 px-4 bg-white/5 text-gray-300 border border-white/10 rounded-lg text-xs font-medium hover:bg-white/10 transition"
+            >
+              ↩️ Deshacer el último arreglo (volver a la versión anterior)
+            </button>
           )}
         </>
     </div>

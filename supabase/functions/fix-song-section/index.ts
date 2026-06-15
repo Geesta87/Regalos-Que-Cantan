@@ -229,18 +229,31 @@ Tu trabajo:
 // Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
 // or the owner chooses to remake the whole song. Claude returns the complete
 // corrected lyrics; we then generate a fresh Kie song from them.
-const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
 
 const FULL_FIX_TOOL = {
   name: 'submit_corrected_lyrics',
-  description: 'Return the complete corrected lyrics for the whole song with the requested fix applied.',
+  description: 'Return the complete corrected lyrics for the whole song with the requested fix applied, plus a list of the exact before/after changes.',
   input_schema: {
     type: 'object',
     properties: {
       full_lyrics: { type: 'string', description: 'La letra COMPLETA corregida, con marcadores de sección. Aplica SOLO el cambio pedido; deja igual lo demás.' },
       change_summary: { type: 'string', description: 'Una frase corta en español de lo que cambió.' },
+      changes: {
+        type: 'array',
+        description: 'Cada cambio puntual con el texto exacto antes y después. Vacío si no hubo cambios.',
+        items: {
+          type: 'object',
+          properties: {
+            before: { type: 'string', description: 'La línea o frase original.' },
+            after: { type: 'string', description: 'La misma línea ya corregida.' },
+          },
+          required: ['before', 'after'],
+          additionalProperties: false,
+        },
+      },
     },
-    required: ['full_lyrics', 'change_summary'],
+    required: ['full_lyrics', 'change_summary', 'changes'],
     additionalProperties: false,
   },
 } as const;
@@ -551,6 +564,13 @@ Deno.serve(async (req) => {
       const imageUrl: string | undefined = body?.imageUrl;
       if (!songId || !fixedAudioUrl) return json({ ok: false, error: 'songId and fixedAudioUrl are required' });
 
+      // Snapshot the current state so the owner can Deshacer (undo) this fix.
+      const { data: prev } = await supabase
+        .from('songs')
+        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps')
+        .eq('id', songId)
+        .single();
+
       const update: Record<string, unknown> = {
         audio_url: fixedAudioUrl,
         preview_url: fixedAudioUrl,
@@ -559,6 +579,7 @@ Deno.serve(async (req) => {
         needs_reupload: true,
         provider: 'kie',
         error_message: null,
+        fix_backup: prev ? { ...prev, backed_up_at: new Date().toISOString() } : null,
       };
       if (imageUrl) update.image_url = imageUrl;
       if (typeof fullLyrics === 'string' && fullLyrics.trim()) update.lyrics = fullLyrics;
@@ -570,7 +591,65 @@ Deno.serve(async (req) => {
 
       const { error } = await supabase.from('songs').update(update).eq('id', songId);
       if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
-      return json({ ok: true, songId, applied: true, songLink: `https://regalosquecantan.com/song/${songId}` });
+      return json({ ok: true, songId, applied: true, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+    }
+
+    // -----------------------------------------------------------------
+    // UNDO — restore the snapshot taken before the last apply.
+    // -----------------------------------------------------------------
+    if (action === 'undo') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId is required' });
+      const { data: row } = await supabase.from('songs').select('fix_backup').eq('id', songId).single();
+      const b: any = row?.fix_backup;
+      if (!b || !b.audio_url) return json({ ok: false, error: 'No hay un arreglo previo que deshacer en esta canción.' });
+      const restore: Record<string, unknown> = {
+        audio_url: b.audio_url,
+        preview_url: b.preview_url ?? b.audio_url,
+        original_audio_url: b.original_audio_url ?? b.audio_url,
+        image_url: b.image_url ?? null,
+        lyrics: b.lyrics ?? null,
+        kie_task_id: b.kie_task_id ?? null,
+        task_id: b.task_id ?? null,
+        kie_payload: b.kie_payload ?? null,
+        provider: b.provider ?? null,
+        lyrics_timestamps: b.lyrics_timestamps ?? null,
+        needs_reupload: true,
+        status: 'completed',
+        fix_backup: null,
+      };
+      const { error } = await supabase.from('songs').update(restore).eq('id', songId);
+      if (error) return json({ ok: false, error: `undo failed: ${error.message}` });
+      return json({ ok: true, songId, undone: true, audioUrl: b.audio_url, lyrics: b.lyrics ?? null });
+    }
+
+    // -----------------------------------------------------------------
+    // PLAN — cheap, instant: show the proposed lyric change(s) before
+    // spending any Kie credits. No transcription, no audio generation.
+    // -----------------------------------------------------------------
+    if (action === 'plan') {
+      if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
+      const songId: string | undefined = body?.songId;
+      const note: string | undefined = body?.note;
+      const conversation: ChatMsg[] = Array.isArray(body?.conversation) ? body.conversation : [];
+      const planImage: InlineImage | undefined = body?.image?.data ? { media_type: body.image.media_type, data: body.image.data } : undefined;
+      const planComplaint = (note && note.trim())
+        ? note.trim()
+        : conversation.length
+          ? conversation.map((m) => `${m.role === 'assistant' ? 'AI' : 'Dueño'}: ${m.text}`).join('\n')
+          : (planImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
+      if (!songId || (!planComplaint && !planImage)) return json({ ok: false, error: 'songId y una instrucción son obligatorios.' });
+
+      const { data: song } = await supabase.from('songs').select('lyrics').eq('id', songId).single();
+      if (!song?.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
+      const plan = await callClaudeForFullLyrics(song.lyrics, planComplaint, planImage);
+      if (!plan?.full_lyrics) return json({ ok: false, error: 'Claude no pudo proponer el cambio. Intenta de nuevo.' });
+      return json({
+        ok: true,
+        changeSummary: plan.change_summary || '',
+        approvedLyrics: plan.full_lyrics,
+        changes: Array.isArray(plan.changes) ? plan.changes : [],
+      });
     }
 
     // -----------------------------------------------------------------
@@ -602,6 +681,9 @@ Deno.serve(async (req) => {
     const note: string | undefined = body?.note;
     const conversation: ChatMsg[] = Array.isArray(body?.conversation) ? body.conversation : [];
     const fixImage: InlineImage | undefined = body?.image?.data ? { media_type: body.image.media_type, data: body.image.data } : undefined;
+    // If the owner already confirmed the lyric change in the PLAN step, sing
+    // exactly those words (don't re-derive them).
+    const approvedLyrics: string | undefined = (typeof body?.approvedLyrics === 'string' && body.approvedLyrics.trim()) ? body.approvedLyrics : undefined;
     const complaint = (note && note.trim())
       ? note.trim()
       : conversation.length
@@ -627,11 +709,17 @@ Deno.serve(async (req) => {
     if (mode === 'full') {
       if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
       if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
-      const corrected = await callClaudeForFullLyrics(song.lyrics, complaint || '(ver captura adjunta)', fixImage);
-      if (!corrected?.full_lyrics) return json({ ok: false, error: 'Claude no devolvió la letra corregida. Intenta de nuevo.' });
+      let correctedLyrics = approvedLyrics;
+      let correctedSummary = 'Canción rehecha con las correcciones.';
+      if (!correctedLyrics) {
+        const corrected = await callClaudeForFullLyrics(song.lyrics, complaint || '(ver captura adjunta)', fixImage);
+        if (!corrected?.full_lyrics) return json({ ok: false, error: 'Claude no devolvió la letra corregida. Intenta de nuevo.' });
+        correctedLyrics = corrected.full_lyrics;
+        correctedSummary = corrected.change_summary || correctedSummary;
+      }
       const title = `Canción para ${song.recipient_name || 'ti'}`;
       const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-      const taskId = await submitFullGenerate(corrected.full_lyrics, title, song.style_used, song.voice_type, callbackUrl);
+      const taskId = await submitFullGenerate(correctedLyrics, title, song.style_used, song.voice_type, callbackUrl);
       console.log(`[fix] FULL re-roll taskId=${taskId} for song=${songId}`);
       const tracks = await pollKieUntilDone(taskId);
       const made = tracks.find((t) => t.audioUrl) || tracks[0];
@@ -640,13 +728,13 @@ Deno.serve(async (req) => {
         ok: true,
         mode: 'full',
         songId,
-        changeSummary: corrected.change_summary || 'Canción rehecha con las correcciones.',
+        changeSummary: correctedSummary,
         originalAudioUrl: audioForFix,
         fixedAudioUrl: made.audioUrl,
         fixTaskId: taskId,
         fixAudioId: made.id || null,
         fixImageUrl: made.imageUrl || null,
-        fullLyrics: corrected.full_lyrics,
+        fullLyrics: correctedLyrics,
       });
     }
 
@@ -696,6 +784,7 @@ Deno.serve(async (req) => {
       `LETRA ORIGINAL (estructurada):\n${song.lyrics}\n\n` +
       `TRANSCRIPCIÓN CANTADA con marcas de tiempo (palabra[inicio-fin] en segundos):\n${timedWords}\n\n` +
       `QUEJA / INSTRUCCIÓN (qué está mal y cómo debería ser; puede incluir conversación con el dueño y/o una captura adjunta):\n${complaint}\n\n` +
+      (approvedLyrics ? `LETRA YA APROBADA POR EL DUEÑO (devuélvela EXACTA como full_lyrics; solo necesitas ubicar la ventana de tiempo donde ocurre el cambio):\n${approvedLyrics}\n\n` : '') +
       `Define la ventana mínima a regenerar y entrega la letra completa corregida llamando a submit_section_fix.`;
 
     const fix = await callClaudeForFix(userMessage, fixImage);
@@ -707,7 +796,7 @@ Deno.serve(async (req) => {
     const { start, end } = clampWindow(Number(fix.infill_start_s), Number(fix.infill_end_s), duration);
     const { tags, negativeTags } = buildStyleAndNegatives(song.style_used, song.voice_type);
     const title = `Canción para ${song.recipient_name || 'ti'}`;
-    const fullLyrics = englishifyLyricsMarkers(String(fix.full_lyrics));
+    const fullLyrics = englishifyLyricsMarkers(String(approvedLyrics || fix.full_lyrics));
     const sectionPrompt = String(fix.section_text || '').trim() || fullLyrics;
     const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
