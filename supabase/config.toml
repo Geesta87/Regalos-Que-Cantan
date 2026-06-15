@@ -101,6 +101,12 @@ verify_jwt = false
 # the render call (closed tab, network drop, etc).
 verify_jwt = false
 
+[functions.remind-upload-photos]
+# Runs every 30 minutes via pg_cron — emails customers who paid for the video
+# addon but never uploaded their photos (so no video was ever made). Cron has
+# no user JWT; also called manually for dry-run/test sends.
+verify_jwt = false
+
 [functions.retry-queued-songs]
 # Runs every 5 minutes via pg_cron — resubmits rate-limited songs stuck in
 # 'queued_retry' to whichever provider's payload was saved (Mureka or Kie).
