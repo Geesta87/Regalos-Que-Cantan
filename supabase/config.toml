@@ -30,6 +30,15 @@ verify_jwt = false
 # Shotstack render-completion webhook. No JWT available.
 verify_jwt = false
 
+[functions.inhouse-video-callback]
+# Completion hook for the in-house FFmpeg renderer (Cloud Run service
+# rqc-video-renderer), the replacement for Shotstack's video-callback. Called
+# server-to-server by Cloud Run when a render finishes — no Supabase JWT. The
+# handler authenticates via the shared X-Render-Token header instead. Persists
+# the render into the `videos` bucket and marks the order completed, mirroring
+# video-callback. Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.mureka-useapi-callback]
 # useapi.net webhook when a Mureka music job finishes. Validated internally
 # via USEAPI_WEBHOOK_SECRET. No JWT available.
@@ -48,6 +57,22 @@ verify_jwt = false
 # Twilio cannot attach a Supabase JWT, so verification must be OFF. The function
 # authenticates instead via Twilio's X-Twilio-Signature (HMAC of url + params,
 # keyed by TWILIO_AUTH_TOKEN) — gated by TWILIO_VALIDATE_SIGNATURE.
+verify_jwt = false
+
+[functions.unsubscribe]
+# Email unsubscribe handler. Hit by (a) Gmail/Yahoo/Apple one-click POST
+# (RFC 8058), (b) the user clicking the List-Unsubscribe link (GET), and
+# (c) admin manual suppression. None of those carry a Supabase JWT, so
+# verification must be OFF. The public paths authenticate via an HMAC token
+# (UNSUBSCRIBE_SECRET) bound to the email; the admin path requires a
+# service-role JWT checked inside the handler.
+verify_jwt = false
+
+[functions.sendgrid-event-webhook]
+# SendGrid Event Webhook receiver. SendGrid POSTs delivery events (bounce,
+# spamreport, dropped, unsubscribe, group_unsubscribe) here; it cannot attach
+# a Supabase JWT. Authenticated internally via SENDGRID_EVENT_TOKEN in the
+# query string. Records hard opt-out events into email_unsubscribes.
 verify_jwt = false
 
 # ---------------------------------------------------------------------------
@@ -116,6 +141,12 @@ verify_jwt = false
 # One-shot recovery for the 2026-05-01 Mureka quota-cap outage. Re-submits failed
 # songs through Kie.ai/Suno and emails the customer. Invoked from the admin/CLI
 # (no user JWT) — must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.recover-outage-songs]
+# One-shot recovery sender for an outage backlog — re-sends song-ready emails
+# to affected customers. Invoked manually from the admin/CLI (no user JWT),
+# same pattern as recover-mureka-cap-songs — must stay verify_jwt = false.
 verify_jwt = false
 
 [functions.regenerate-paid-song-kie]

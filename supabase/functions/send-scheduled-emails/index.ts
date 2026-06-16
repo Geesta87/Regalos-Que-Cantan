@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { buildEmailParts } from '../_shared/email.ts';
+import { buildUnsubscribeHeaders, isMarketingSuppressed } from '../_shared/unsubscribe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,8 +40,19 @@ serve(async (req) => {
       } catch (err) { console.error('Failed to log email:', err) }
     }
 
-    async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'rqc_drip', preheader: string = ''): Promise<boolean> {
+    // Every flow in this function is marketing/drip (checkout recovery,
+    // abandoned cart, follow-ups, supplemental purchase reminder), so each send
+    // is gated on the suppression list. Returns:
+    //   'suppressed' — recipient opted out; nothing sent
+    //   'sent'       — SendGrid accepted (202)
+    //   'failed'     — SendGrid rejected
+    async function sendEmail(to: string, subject: string, htmlContent: string, category: string = 'rqc_drip', preheader: string = ''): Promise<'sent' | 'suppressed' | 'failed'> {
+      if (await isMarketingSuppressed(supabase, to)) {
+        console.log('[suppressed] skipping marketing email to', to, '(', category, ')')
+        return 'suppressed'
+      }
       const { html: finalHtml, text: finalText } = buildEmailParts(htmlContent, preheader);
+      const unsubHeaders = await buildUnsubscribeHeaders(to);
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${sendgridApiKey}`, 'Content-Type': 'application/json' },
@@ -59,13 +71,10 @@ serve(async (req) => {
             open_tracking: { enable: true },
             subscription_tracking: { enable: false },
           },
-          headers: {
-            'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-          },
+          headers: unsubHeaders,
         }),
       })
-      return response.status === 202
+      return response.status === 202 ? 'sent' : 'failed'
     }
 
     function groupSongs(songs: any[]): Map<string, any[]> {
@@ -132,12 +141,14 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=checkout_recovery`
         const subject = `\u{1F3B5} Tu pago no se complet\u00f3 \u2014 la canci\u00f3n de ${recipientName} te espera`
         const html = buildCheckoutRecoveryEmail(recipientName, songIds.length, url)
-        const success = await sendEmail(email, subject, html)
+        const result = await sendEmail(email, subject, html)
 
-        if (success) {
+        if (result === 'sent') {
           await logEmail(email, recipientName, 'checkout_recovery', subject, 'sent', songIds)
           checkoutRecoverySent++
           emailsSent++
+        } else if (result === 'suppressed') {
+          await logEmail(email, recipientName, 'checkout_recovery', subject, 'suppressed', songIds)
         } else {
           await logEmail(email, recipientName, 'checkout_recovery', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed checkout recovery to ${email}`)
@@ -175,13 +186,13 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/listen?song_id=${primary.id}&utm_source=email&utm_medium=transactional&utm_campaign=purchase_reminder_30min`
         const subject = `Por si no la viste: tu canci\u00f3n para ${primary.recipient_name}`
         const html = build30MinPurchaseReminderEmail(primary.recipient_name, songs.length, url)
-        const success = await sendEmail(primary.email, subject, html)
-        if (success) {
+        const result = await sendEmail(primary.email, subject, html)
+        if (result === 'sent' || result === 'suppressed') {
           await supabase.from('songs')
             .update({ purchase_reminder_30min_sent: true, purchase_reminder_30min_sent_at: new Date().toISOString() })
             .in('id', songIds)
-          await logEmail(primary.email, primary.recipient_name, 'purchase_reminder_30min', subject, 'sent', songIds)
-          emailsSent++
+          await logEmail(primary.email, primary.recipient_name, 'purchase_reminder_30min', subject, result, songIds)
+          if (result === 'sent') emailsSent++
         } else {
           await logEmail(primary.email, primary.recipient_name, 'purchase_reminder_30min', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed 30min purchase reminder to ${primary.email}`)
@@ -211,11 +222,11 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
         const subject = `Tu canci\u00f3n para ${primary.recipient_name} en RegalosQueCantan`
         const html = build15MinEmail(primary.recipient_name, songs.length, url)
-        const success = await sendEmail(primary.email, subject, html)
-        if (success) {
+        const result = await sendEmail(primary.email, subject, html)
+        if (result === 'sent' || result === 'suppressed') {
           await supabase.from('songs').update({ abandoned_cart_15min_sent: true }).in('id', songIds)
-          await logEmail(primary.email, primary.recipient_name, 'abandoned_15min', subject, 'sent', songIds)
-          emailsSent++
+          await logEmail(primary.email, primary.recipient_name, 'abandoned_15min', subject, result, songIds)
+          if (result === 'sent') emailsSent++
         } else {
           await logEmail(primary.email, primary.recipient_name, 'abandoned_15min', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed 15min email to ${primary.email}`)
@@ -246,11 +257,11 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
         const subject = `Tu regalo para ${primary.recipient_name} te est\u00e1 esperando`
         const html = build1HrEmail(primary.recipient_name, songs.length, url)
-        const success = await sendEmail(primary.email, subject, html)
-        if (success) {
+        const result = await sendEmail(primary.email, subject, html)
+        if (result === 'sent' || result === 'suppressed') {
           await supabase.from('songs').update({ abandoned_cart_1hr_sent: true }).in('id', songIds)
-          await logEmail(primary.email, primary.recipient_name, 'abandoned_1hr', subject, 'sent', songIds)
-          emailsSent++
+          await logEmail(primary.email, primary.recipient_name, 'abandoned_1hr', subject, result, songIds)
+          if (result === 'sent') emailsSent++
         } else {
           await logEmail(primary.email, primary.recipient_name, 'abandoned_1hr', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed 1hr email to ${primary.email}`)
@@ -280,11 +291,11 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/comparison?song_ids=${songIds.join(',')}&from=email`
         const subject = `Tu canci\u00f3n para ${primary.recipient_name} sigue aqu\u00ed`
         const html = build24HrEmail(primary.recipient_name, songs.length, url)
-        const success = await sendEmail(primary.email, subject, html)
-        if (success) {
+        const result = await sendEmail(primary.email, subject, html)
+        if (result === 'sent' || result === 'suppressed') {
           await supabase.from('songs').update({ abandoned_cart_24hr_sent: true }).in('id', songIds)
-          await logEmail(primary.email, primary.recipient_name, 'abandoned_24hr', subject, 'sent', songIds)
-          emailsSent++
+          await logEmail(primary.email, primary.recipient_name, 'abandoned_24hr', subject, result, songIds)
+          if (result === 'sent') emailsSent++
         } else {
           await logEmail(primary.email, primary.recipient_name, 'abandoned_24hr', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed 24hr email to ${primary.email}`)
@@ -315,14 +326,14 @@ serve(async (req) => {
         const url = `https://regalosquecantan.com/listen?song_ids=${songIds.join(',')}&coupon=VUELVE10&from=email_3day`
         const subject = `Para ti: un detalle en tu canci\u00f3n para ${primary.recipient_name}`
         const html = build3DayEmail(primary.recipient_name, songs.length, url)
-        const success = await sendEmail(primary.email, subject, html)
-        if (success) {
+        const result = await sendEmail(primary.email, subject, html)
+        if (result === 'sent' || result === 'suppressed') {
           await supabase.from('songs').update({
             followup_3day_sent: true,
             followup_3day_sent_at: new Date().toISOString()
           }).in('id', songIds)
-          await logEmail(primary.email, primary.recipient_name, 'followup_3day', subject, 'sent', songIds)
-          emailsSent++
+          await logEmail(primary.email, primary.recipient_name, 'followup_3day', subject, result, songIds)
+          if (result === 'sent') emailsSent++
         } else {
           await logEmail(primary.email, primary.recipient_name, 'followup_3day', subject, 'failed', songIds, 'SendGrid error')
           errors.push(`Failed 3-day followup to ${primary.email}`)

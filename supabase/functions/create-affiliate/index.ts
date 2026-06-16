@@ -8,6 +8,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { encode as hexEncode } from 'https://deno.land/std@0.168.0/encoding/hex.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 
@@ -224,10 +225,7 @@ serve(async (req) => {
               open_tracking: { enable: true },
               subscription_tracking: { enable: false }
             },
-            headers: {
-              'List-Unsubscribe': '<mailto:hola@regalosquecantan.com?subject=unsubscribe>',
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            }
+            headers: await buildUnsubscribeHeaders(email.toLowerCase().trim())
           })
         });
 

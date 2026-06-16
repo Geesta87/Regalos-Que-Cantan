@@ -5,6 +5,7 @@
 // Deploy with: supabase functions deploy mureka-useapi-callback --no-verify-jwt
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
@@ -55,10 +56,7 @@ async function sendEmail(
           open_tracking: { enable: true },
           subscription_tracking: { enable: false }
         },
-        headers: {
-          'List-Unsubscribe': `<mailto:hola@regalosquecantan.com?subject=unsubscribe>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
-        }
+        headers: await buildUnsubscribeHeaders(to)
       }),
     });
     if (!response.ok) {

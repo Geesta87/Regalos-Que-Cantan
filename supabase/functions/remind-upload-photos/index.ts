@@ -31,6 +31,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -119,10 +120,7 @@ async function sendEmail(to: string, subject: string, html: string, plaintext: s
         open_tracking: { enable: true },
         subscription_tracking: { enable: false },
       },
-      headers: {
-        'List-Unsubscribe': '<mailto:hola@regalosquecantan.com?subject=unsubscribe>',
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
+      headers: await buildUnsubscribeHeaders(to),
     }),
   });
   if (!response.ok) {

@@ -1,19 +1,12 @@
-// supabase/functions/recover-mureka-cap-songs/index.ts
-// One-shot recovery for songs that failed during the 2026-05-01 Mureka quota-cap outage.
-// Resubmits via Kie.ai (Suno V4_5) and sends an apology email with the preview link.
-//
-// Invocation: POST with optional ?songId=<uuid> to force a specific row, or ?dryRun=1
-// to see who would be processed without acting. Without songId, picks the most recent
-// failed row per (lower(email), recipient_name) that hasn't already been recovered.
-//
-// Idempotent — skips customers who already have a completed song after the outage start.
-// Processes ONE customer per invocation. Caller loops until remaining=0.
-//
-// Deploy with: supabase functions deploy recover-mureka-cap-songs --project-ref yzbvajungshqcpusfiia
+// supabase/functions/recover-outage-songs/index.ts
+// One-shot recovery for songs that failed during the 2026-04-26 Mureka balance outage.
+// Processes ONE customer per invocation: locks the most recent failed row per (email, recipient),
+// regenerates via generate-song-mureka, updates v1 + creates v2 sibling, sends apology email.
+// Idempotent: skips customers who already have a completed song after the outage.
+// Deploy: supabase functions deploy recover-outage-songs --no-verify-jwt
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
-import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,17 +15,15 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
-const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V4_5';
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const SENDER_EMAIL = 'hola@regalosquecantan.com';
 const SENDER_NAME = 'RegalosQueCantan';
 
-// Mureka quota cap began at ~14:04 UTC on 2026-05-01. Window upper-bound left open.
-const OUTAGE_START = '2026-05-01 14:00:00+00';
+const OUTAGE_START = '2026-04-26 12:30:00+00';
+const OUTAGE_END = '2026-04-26 16:30:00+00';
 
 // ---------------------------------------------------------------------------
-// APOLOGY EMAIL — adapted from recover-outage-songs (2026-04-26 outage)
+// EMAIL TEMPLATE — apology + preview link
 // ---------------------------------------------------------------------------
 
 function getApologyEmailHtml(song: any, previewLink: string) {
@@ -51,11 +42,13 @@ function getApologyEmailHtml(song: any, previewLink: string) {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
 
+        <!-- Apology Banner -->
         <tr><td style="background:linear-gradient(135deg,#3a1d10 0%,#2a1408 100%);padding:24px 30px;text-align:center;border-bottom:2px solid #ff6b35;">
           <p style="color:#ffd23f;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">&iexcl;Disc&uacute;lpanos!</p>
           <p style="color:#ffffff;font-size:15px;line-height:1.6;margin:0;">Tuvimos un problema t&eacute;cnico que ya est&aacute; resuelto.<br>Tu canci&oacute;n para <strong style="color:#ffd23f;">${recipient}</strong> ya est&aacute; lista para escuchar.</p>
         </td></tr>
 
+        <!-- Hero -->
         <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:40px 30px 30px;text-align:center;">
           <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 16px;">&#10024; TU REGALO TE EST&Aacute; ESPERANDO &#10024;</p>
           <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:34px;margin:0 0 4px;font-weight:400;">Hola, ${firstName}...</h1>
@@ -63,22 +56,21 @@ function getApologyEmailHtml(song: any, previewLink: string) {
           <p style="color:#c9b99a;font-size:15px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo est&aacute; listo.<br>Haz clic abajo para escucharla.</p>
         </td></tr>
 
+        <!-- CTA Button -->
         <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
-            <tr><td align="center" style="border-radius:8px;background-color:#ff6b35;">
-              <a href="${previewLink}" target="_blank" style="display:inline-block;padding:18px 44px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:8px;">
-                &#127925; Escuchar Mi Canci&oacute;n
-              </a>
-            </td></tr>
-          </table>
+          <a href="${previewLink}" style="display:inline-block;background:linear-gradient(135deg,#ff6b35 0%,#ff8c42 100%);color:#ffffff;padding:18px 44px;border-radius:50px;text-decoration:none;font-weight:800;font-size:18px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;box-shadow:0 4px 20px rgba(255,107,53,0.4);">
+            &#127925; Escuchar Mi Canci&oacute;n
+          </a>
         </td></tr>
 
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
           <p style="color:#a67c52;font-size:13px;margin:0;">&#127873; Tu canci&oacute;n est&aacute; guardada y lista para preview &middot; Sin compromiso</p>
         </td></tr>
 
+        <!-- Gradient Divider -->
         <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
 
+        <!-- Song Card -->
         <tr><td style="background-color:#1a0e08;padding:30px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:16px;overflow:hidden;">
             <tr>
@@ -95,12 +87,14 @@ function getApologyEmailHtml(song: any, previewLink: string) {
           </table>
         </td></tr>
 
+        <!-- Price -->
         <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
           <p style="color:#c9b99a;font-size:15px;margin:0;">&iquest;Te gusta? Compra la canci&oacute;n completa por solo <strong style="color:#ff6b35;">$29.99 USD</strong></p>
         </td></tr>
 
         <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
 
+        <!-- Footer -->
         <tr><td style="background-color:#1a0e08;padding:30px;text-align:center;">
           <p style="color:#a67c52;font-size:12px;margin:0 0 10px;">Gracias por tu paciencia. Si tienes preguntas escr&iacute;benos a<br>
             <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a>
@@ -121,11 +115,7 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
     return false;
   }
   const subject = `🎧 ¡Disculpa la espera! Tu canción para ${recipientName} ya está lista`;
-  const rawHtml = getApologyEmailHtml(song, previewLink);
-  const { html: finalHtml, text: finalText } = buildEmailParts(
-    rawHtml,
-    `Disculpa la espera — tu canción para ${recipientName} ya está lista. Escúchala aquí.`,
-  );
+  const html = getApologyEmailHtml(song, previewLink);
   const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -137,12 +127,8 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
       from: { email: SENDER_EMAIL, name: SENDER_NAME },
       reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
       subject,
-      // text/plain MUST come before text/html (RFC 2046 multipart/alternative).
-      content: [
-        { type: 'text/plain', value: finalText },
-        { type: 'text/html', value: finalHtml },
-      ],
-      categories: ['outage_recovery_2026_05_01', 'transactional', 'rqc'],
+      content: [{ type: 'text/html', value: html }],
+      categories: ['outage_recovery_2026_04_26', 'transactional', 'rqc'],
       tracking_settings: {
         click_tracking: { enable: true, enable_text: false },
         open_tracking: { enable: true },
@@ -160,98 +146,6 @@ async function sendApologyEmail(to: string, recipientName: string, song: any, pr
 }
 
 // ---------------------------------------------------------------------------
-// KIE.AI helpers
-// ---------------------------------------------------------------------------
-
-interface KieTrack {
-  id?: string;
-  audioUrl?: string;
-  imageUrl?: string;
-  title?: string;
-  duration?: number;
-  modelName?: string;
-}
-
-// Stored lyrics keep their SPANISH section markers ([Verso 1], [Coro], …) and
-// may carry legacy instruction artifacts (an English "(spoken, …)" cue or a
-// lowercase fill-in placeholder like [lugar]). Suno is English-trained and sings
-// those literally, so translate markers + strip artifacts before resubmitting —
-// same mapping generate-song applies. KEEP IN SYNC with generate-song.
-function stripSpokenProsodyCue(lyrics: string): string {
-  if (!lyrics) return lyrics;
-  return lyrics
-    .replace(/[ \t]*\(\s*spoken[^)]*\)/gi, '')
-    .replace(/[ \t]*\[[a-záéíóúñ][^\]]*\]/g, '')
-    .replace(/[ \t]+$/gm, '');
-}
-function englishifyLyricsMarkers(lyrics: string): string {
-  if (!lyrics) return lyrics;
-  return stripSpokenProsodyCue(lyrics)
-    .replace(/\[Verso Final\]/gi, '[Final Verse]')
-    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
-    .replace(/\[Verso\]/gi, '[Verse]')
-    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
-    .replace(/\[Coro\]/gi, '[Chorus]')
-    .replace(/\[Puente\]/gi, '[Bridge]')
-    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
-    .replace(/\[Hablado\]/gi, '[Spoken Word]');
-}
-
-async function submitToKie(lyrics: string, title: string, style: string, vocalGender: 'm' | 'f', callbackUrl: string): Promise<string> {
-  const payload = {
-    prompt: englishifyLyricsMarkers(lyrics).substring(0, 5000),
-    customMode: true,
-    instrumental: false,
-    model: KIE_MODEL,
-    callBackUrl: callbackUrl,
-    style: style.substring(0, 1000),
-    title: title.substring(0, 80),
-    vocalGender,
-  };
-  const resp = await fetch('https://api.kie.ai/api/v1/generate', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${KIE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => 'unknown');
-    throw new Error(`kie.ai generate ${resp.status}: ${errText.substring(0, 200)}`);
-  }
-  const data = await resp.json();
-  if (data.code !== 200 || !data.data?.taskId) {
-    throw new Error(`kie.ai code=${data.code}: ${data.msg || 'no taskId'}`);
-  }
-  return data.data.taskId;
-}
-
-async function pollKieUntilDone(taskId: string, maxAttempts = 24, intervalMs = 8000): Promise<KieTrack[]> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
-      headers: { 'Authorization': `Bearer ${KIE_API_KEY}` },
-    });
-    if (!resp.ok) {
-      console.warn(`Poll ${attempt}/${maxAttempts}: HTTP ${resp.status}`);
-    } else {
-      const json = await resp.json();
-      const status = json?.data?.status;
-      const tracks: KieTrack[] = json?.data?.response?.sunoData ?? [];
-      console.log(`Poll ${attempt}/${maxAttempts}: status=${status}, tracks=${tracks.length}`);
-
-      if (status === 'SUCCESS') return tracks;
-
-      if (status === 'GENERATE_AUDIO_FAILED' || status === 'CREATE_TASK_FAILED' || status === 'SENSITIVE_WORD_ERROR' || status === 'CALLBACK_EXCEPTION') {
-        throw new Error(`kie.ai task ${taskId} ended in status ${status}`);
-      }
-    }
-    if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(`kie.ai task ${taskId} did not complete within ${(maxAttempts * intervalMs) / 1000}s`);
-}
-
-// ---------------------------------------------------------------------------
 // HANDLER
 // ---------------------------------------------------------------------------
 
@@ -260,11 +154,6 @@ Deno.serve(async (req) => {
   const responseHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
   try {
-    if (!KIE_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: 'KIE_API_KEY env var missing on Supabase' }),
-        { headers: responseHeaders, status: 200 });
-    }
-
     const url = new URL(req.url);
     const dryRun = url.searchParams.get('dryRun') === '1';
     const targetSongId = url.searchParams.get('songId') || undefined;
@@ -272,10 +161,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // ---- Pick next candidate ----
+    // Most recent failed row per (lower(email), recipient_name) within outage window,
+    // skipping customers who already have a completed song after outage end.
     let candidate: any = null;
 
     if (targetSongId) {
-      const { data, error } = await supabase.from('songs').select('*').eq('id', targetSongId).single();
+      const { data, error } = await supabase
+        .from('songs')
+        .select('*')
+        .eq('id', targetSongId)
+        .single();
       if (error) throw new Error(`Lookup by songId failed: ${error.message}`);
       if (data?.status !== 'failed') {
         return new Response(JSON.stringify({
@@ -284,46 +179,49 @@ Deno.serve(async (req) => {
       }
       candidate = data;
     } else {
-      // Most recent failed row per (lower(email), recipient_name) within outage window,
-      // matching the known failure-message patterns, skipping customers who have a
-      // completed song after the outage start.
-      const { data: allFailed, error: fbErr } = await supabase
-        .from('songs')
-        .select('*')
-        .eq('status', 'failed')
-        .gte('created_at', OUTAGE_START)
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (fbErr) throw new Error(`Candidate query failed: ${fbErr.message}`);
+      // Find candidates via SQL (most recent failed per customer, not yet rescued)
+      const { data: candidates, error: candErr } = await supabase.rpc('get_outage_recovery_candidates', {
+        outage_start: OUTAGE_START,
+        outage_end: OUTAGE_END,
+      }).limit(1);
 
-      const matches = (allFailed || []).filter((row) => {
-        const e = (row.error_message || '').toLowerCase();
-        return (
-          e.includes('unexpected state: 4') ||
-          e.includes('exceed limit') ||
-          e.includes('no retry payload saved') ||
-          e.includes('generate multiple task exceed limit')
-        );
-      });
-
-      const latestPerCustomer = new Map<string, any>();
-      for (const row of matches) {
-        const key = `${(row.email || '').toLowerCase().trim()}|${row.recipient_name || ''}`;
-        if (!latestPerCustomer.has(key)) latestPerCustomer.set(key, row);
-      }
-
-      for (const row of latestPerCustomer.values()) {
-        const { count } = await supabase
+      if (candErr) {
+        // RPC might not exist — fall back to direct query.
+        // Fetch ALL failed rows in outage window (cap 500) and dedupe by (email, recipient)
+        // keeping the most recent per customer. Avoids the "limit 50 hides remaining customers"
+        // bug where rows from already-recovered customers fill the result window.
+        const { data: allFailed, error: fbErr } = await supabase
           .from('songs')
-          .select('id', { count: 'exact', head: true })
-          .ilike('email', row.email)
-          .eq('recipient_name', row.recipient_name)
-          .eq('status', 'completed')
-          .gt('created_at', OUTAGE_START);
-        if ((count ?? 0) === 0) {
-          candidate = row;
-          break;
+          .select('*')
+          .eq('status', 'failed')
+          .gte('created_at', OUTAGE_START)
+          .lte('created_at', OUTAGE_END)
+          .ilike('error_message', '%balance is not enough%')
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (fbErr) throw new Error(`Candidate query failed: ${fbErr.message}`);
+
+        const latestPerCustomer = new Map<string, any>();
+        for (const row of allFailed || []) {
+          const key = `${(row.email || '').toLowerCase().trim()}|${row.recipient_name || ''}`;
+          if (!latestPerCustomer.has(key)) latestPerCustomer.set(key, row);
         }
+
+        for (const row of latestPerCustomer.values()) {
+          const { count } = await supabase
+            .from('songs')
+            .select('id', { count: 'exact', head: true })
+            .ilike('email', row.email)
+            .eq('recipient_name', row.recipient_name)
+            .eq('status', 'completed')
+            .gt('created_at', OUTAGE_END);
+          if ((count ?? 0) === 0) {
+            candidate = row;
+            break;
+          }
+        }
+      } else {
+        candidate = candidates?.[0];
       }
     }
 
@@ -342,7 +240,7 @@ Deno.serve(async (req) => {
       }), { headers: responseHeaders, status: 200 });
     }
 
-    // ---- LOCK the row ----
+    // ---- LOCK the row by setting status='recovering' (atomic claim) ----
     const { data: locked, error: lockErr } = await supabase
       .from('songs')
       .update({ status: 'recovering' })
@@ -360,75 +258,76 @@ Deno.serve(async (req) => {
 
     console.log(`[RECOVERY] Locked row ${locked.id} for ${locked.email} / ${locked.recipient_name}`);
 
+    // ---- Validate inputs ----
     if (!locked.lyrics || !locked.style_used) {
       await supabase.from('songs').update({
         status: 'failed',
         error_message: 'Recovery aborted: missing lyrics or style_used',
       }).eq('id', locked.id);
       return new Response(JSON.stringify({
-        ok: false, processed: 0, songId: locked.id, error: 'missing lyrics or style_used',
+        ok: false, processed: 0, songId: locked.id,
+        error: 'missing lyrics or style_used',
       }), { headers: responseHeaders, status: 200 });
     }
 
-    // ---- Submit to Kie ----
-    const vocalGender: 'm' | 'f' = locked.voice_type === 'female' ? 'f' : 'm';
+    // ---- Call generate-song-mureka ----
+    // Mureka API expects full words: 'female' or 'male' (not 'f'/'m')
+    const vocalGender = locked.voice_type === 'female' ? 'female' : 'male';
     const title = `Canción para ${locked.recipient_name || 'ti'}`;
-    const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
-    let taskId: string;
-    try {
-      taskId = await submitToKie(locked.lyrics, title, locked.style_used, vocalGender, callbackUrl);
-      console.log(`[RECOVERY] Kie taskId: ${taskId}`);
-    } catch (e: any) {
+    console.log(`[RECOVERY] Calling generate-song-mureka for row ${locked.id}`);
+    const genResp = await fetch(`${SUPABASE_URL}/functions/v1/generate-song-mureka`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        lyrics: locked.lyrics,
+        title,
+        stylePrompt: locked.style_used,
+        vocalGender,
+        poll: true,
+      }),
+    });
+
+    const genData = await genResp.json().catch(() => ({}));
+    if (!genResp.ok || !genData.success) {
+      const errMsg = genData.error || `HTTP ${genResp.status}`;
+      console.error(`[RECOVERY] generate-song-mureka failed for ${locked.id}: ${errMsg}`);
+      // Reset status back to failed so we can retry
       await supabase.from('songs').update({
         status: 'failed',
-        error_message: `Recovery submit failed: ${e.message}`.substring(0, 500),
+        error_message: `Recovery attempt failed: ${errMsg}`.substring(0, 500),
       }).eq('id', locked.id);
-      return new Response(JSON.stringify({ ok: false, songId: locked.id, error: e.message }),
+      return new Response(JSON.stringify({
+        ok: false, processed: 0, songId: locked.id, error: errMsg,
+      }), { headers: responseHeaders, status: 200 });
+    }
+
+    const song1 = genData.song1;
+    const song2 = genData.song2;
+    const jobId = genData.jobid;
+
+    if (!song1?.song_url) {
+      await supabase.from('songs').update({
+        status: 'failed',
+        error_message: `Recovery: generate-song-mureka returned no song1`,
+      }).eq('id', locked.id);
+      return new Response(JSON.stringify({ ok: false, songId: locked.id, error: 'no song1' }),
         { headers: responseHeaders, status: 200 });
     }
 
-    // ---- Poll until done ----
-    let tracks: KieTrack[];
-    try {
-      tracks = await pollKieUntilDone(taskId);
-    } catch (e: any) {
-      await supabase.from('songs').update({
-        status: 'failed',
-        error_message: `Recovery poll failed: ${e.message}`.substring(0, 500),
-        kie_task_id: taskId,
-        provider: 'kie',
-      }).eq('id', locked.id);
-      return new Response(JSON.stringify({ ok: false, songId: locked.id, taskId, error: e.message }),
-        { headers: responseHeaders, status: 200 });
-    }
-
-    const track1 = tracks[0];
-    const track2 = tracks[1];
-
-    if (!track1?.audioUrl) {
-      await supabase.from('songs').update({
-        status: 'failed',
-        error_message: `Recovery: no audioUrl in track[0]`,
-        kie_task_id: taskId,
-        provider: 'kie',
-      }).eq('id', locked.id);
-      return new Response(JSON.stringify({ ok: false, songId: locked.id, taskId, error: 'no track[0].audioUrl' }),
-        { headers: responseHeaders, status: 200 });
-    }
-
-    // ---- UPDATE v1 row ----
+    // ---- UPDATE v1 row with song1 ----
     const { error: updateErr } = await supabase.from('songs').update({
-      audio_url: track1.audioUrl,
-      preview_url: track1.audioUrl,
-      original_audio_url: track1.audioUrl,
-      ...(track1.imageUrl ? { image_url: track1.imageUrl } : {}),
+      audio_url: song1.song_url,
+      preview_url: song1.song_url,
+      original_audio_url: song1.song_url,
       status: 'completed',
       needs_reupload: true,
-      kie_task_id: taskId,
-      task_id: taskId,
-      kie_payload: JSON.stringify(track1),
-      provider: 'kie',
+      mureka_job_id: jobId,
+      mureka_payload: JSON.stringify(song1),
+      provider: 'mureka-useapi',
       version: 1,
       error_message: null,
       regenerate_count: (locked.regenerate_count || 0) + 1,
@@ -436,13 +335,13 @@ Deno.serve(async (req) => {
 
     if (updateErr) {
       console.error(`[RECOVERY] Failed to update v1 row ${locked.id}: ${updateErr.message}`);
-      return new Response(JSON.stringify({ ok: false, songId: locked.id, taskId, error: updateErr.message }),
+      return new Response(JSON.stringify({ ok: false, songId: locked.id, error: updateErr.message }),
         { headers: responseHeaders, status: 200 });
     }
 
-    // ---- INSERT v2 sibling ----
+    // ---- INSERT v2 sibling (clone v1's metadata, attach song2) ----
     let v2Id: string | null = null;
-    if (track2?.audioUrl) {
+    if (song2?.song_url) {
       const { data: v2Row, error: insertErr } = await supabase.from('songs').insert({
         recipient_name: locked.recipient_name,
         sender_name: locked.sender_name,
@@ -464,16 +363,14 @@ Deno.serve(async (req) => {
         session_id: locked.session_id,
         coupon_code: locked.coupon_code,
         version: 2,
-        audio_url: track2.audioUrl,
-        preview_url: track2.audioUrl,
-        original_audio_url: track2.audioUrl,
-        image_url: track2.imageUrl || locked.image_url,
+        audio_url: song2.song_url,
+        preview_url: song2.song_url,
+        original_audio_url: song2.song_url,
         status: 'completed',
         needs_reupload: true,
-        kie_task_id: taskId,
-        task_id: taskId,
-        kie_payload: JSON.stringify(track2),
-        provider: 'kie',
+        mureka_job_id: jobId,
+        mureka_payload: JSON.stringify(song2),
+        provider: 'mureka-useapi',
         paid: false,
         platform: locked.platform,
         utm_source: locked.utm_source,
@@ -497,24 +394,13 @@ Deno.serve(async (req) => {
     }
 
     // ---- Count remaining ----
-    const { data: remainingRows } = await supabase
+    const { count: remaining } = await supabase
       .from('songs')
-      .select('email, recipient_name, error_message')
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'failed')
       .gte('created_at', OUTAGE_START)
-      .limit(500);
-    const remainingMatches = (remainingRows || []).filter((row) => {
-      const e = (row.error_message || '').toLowerCase();
-      return (
-        e.includes('unexpected state: 4') ||
-        e.includes('exceed limit') ||
-        e.includes('no retry payload saved') ||
-        e.includes('generate multiple task exceed limit')
-      );
-    });
-    const remainingDistinct = new Set(
-      remainingMatches.map((r) => `${(r.email || '').toLowerCase().trim()}|${r.recipient_name || ''}`)
-    ).size;
+      .lte('created_at', OUTAGE_END)
+      .ilike('error_message', '%balance is not enough%');
 
     return new Response(JSON.stringify({
       ok: true,
@@ -525,13 +411,13 @@ Deno.serve(async (req) => {
       recipient: locked.recipient_name,
       previewLink: `https://regalosquecantan.com/preview/${locked.id}`,
       emailSent,
-      taskId,
-      remainingDistinct,
+      jobId,
+      remainingFailed: remaining ?? null,
     }), { headers: responseHeaders, status: 200 });
 
   } catch (e: any) {
-    console.error('[RECOVERY] Unexpected error:', e?.message);
-    return new Response(JSON.stringify({ ok: false, error: e?.message }),
+    console.error('[RECOVERY] Unexpected error:', e.message);
+    return new Response(JSON.stringify({ ok: false, error: e.message }),
       { headers: responseHeaders, status: 500 });
   }
 });
