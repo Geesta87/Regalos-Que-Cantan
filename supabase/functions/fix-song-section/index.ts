@@ -527,7 +527,14 @@ async function pollKieUntilDone(taskId: string, maxAttempts = 24, intervalMs = 8
       console.log(`[fix] poll ${attempt}/${maxAttempts}: status=${status}, tracks=${tracks.length}`);
       if (status === 'SUCCESS') return tracks;
       if (['GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED', 'SENSITIVE_WORD_ERROR', 'CALLBACK_EXCEPTION'].includes(status)) {
-        throw new Error(`kie replace-section task ${taskId} ended in status ${status}`);
+        // Surface Kie's ACTUAL message (was being thrown away before) so the
+        // owner — and our logs — see exactly why it failed.
+        const kieMsg = json?.data?.errorMessage || json?.data?.error_message || json?.msg || '';
+        console.error(`[fix] Kie terminal status=${status} taskId=${taskId} msg=${kieMsg}`);
+        if (status === 'SENSITIVE_WORD_ERROR') {
+          throw new Error(`Suno bloqueó el contenido (filtro de letra/derechos de autor)${kieMsg ? `: ${kieMsg}` : ''}. Reformula esa parte o usa "Rehacer canción completa".`);
+        }
+        throw new Error(`Kie falló (${status})${kieMsg ? `: ${kieMsg}` : ''}.`);
       }
     } else {
       console.warn(`[fix] poll ${attempt}/${maxAttempts}: HTTP ${resp.status}`);
@@ -797,15 +804,25 @@ Deno.serve(async (req) => {
     const { tags, negativeTags } = buildStyleAndNegatives(song.style_used, song.voice_type);
     const title = `Canción para ${song.recipient_name || 'ti'}`;
     const fullLyrics = englishifyLyricsMarkers(String(approvedLyrics || fix.full_lyrics));
-    const sectionPrompt = String(fix.section_text || '').trim() || fullLyrics;
+    // Kie's replace-section `prompt` is the content for ONLY the infill window —
+    // it must be the corrected lines of THAT section, never the whole song.
+    // Sending the full lyrics here made Kie sing unrelated words (root cause of
+    // "the words never made it"). If we can't isolate the section, refuse and
+    // point the owner to the reliable full re-roll instead of sending garbage.
+    const sectionText = String(fix.section_text || '').trim();
+    if (!sectionText) {
+      return json({ ok: false, eligible: false, error: 'No se pudo aislar la parte exacta a cambiar. Usa "Rehacer canción completa" para este cambio (más confiable para letras).' });
+    }
+    const sectionPrompt = sectionText.substring(0, 800);
     const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
+    console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${fullLyrics.length} section="${sectionPrompt.slice(0, 140)}"`);
     // ---- Kie replace-section + poll ----
     const fixTaskId = await submitReplaceSection({
       taskId: song.kie_task_id, audioId, prompt: sectionPrompt, tags, title,
       infillStartS: start, infillEndS: end, fullLyrics, negativeTags, callbackUrl,
     });
-    console.log(`[fix] replace-section taskId=${fixTaskId} for song=${songId} window=${start}-${end}s`);
+    console.log(`[fix] replace-section taskId=${fixTaskId}`);
 
     const tracks = await pollKieUntilDone(fixTaskId);
     const fixed = tracks.find((t) => t.audioUrl) || tracks[0];
