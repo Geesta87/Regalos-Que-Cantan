@@ -53,6 +53,17 @@ serve(async (req) => {
       throw new Error('Missing songId');
     }
 
+    // Per-song instrumental selection. The frontend may pass karaokeSongIds —
+    // the subset of songs the customer wants an instrumental for (e.g. one or
+    // both songs of a 2-pack). Legacy single-toggle clients send only
+    // karaokeAddon=true, so we fall back to the first song.
+    const rawKaraokeIds: string[] = Array.isArray(body.karaokeSongIds)
+      ? body.karaokeSongIds.filter((id: string) => songIds.includes(id))
+      : [];
+    const effectiveKaraokeIds: string[] = karaokeAddonBool
+      ? (rawKaraokeIds.length ? rawKaraokeIds : [songIds[0]])
+      : [];
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Defense in depth: if the frontend didn't send an email (e.g. the user
@@ -190,8 +201,8 @@ serve(async (req) => {
           from_email_campaign: from_email_campaign || null,
           affiliate_code: resolvedAffiliate || null,
         };
-        // Karaoke add-on: flag the FIRST song so fetch-karaoke knows to run.
-        if (karaokeAddonBool && idx === 0) {
+        // Karaoke add-on: flag each song the customer chose an instrumental for.
+        if (effectiveKaraokeIds.includes(sid)) {
           updatePayload.karaoke_status = 'pending';
         }
         // Music-video add-ons: flag the FIRST song for render-lyric-video.
@@ -208,15 +219,17 @@ serve(async (req) => {
       // success page. Fire-and-forget — failures fall back to status='failed'.
       // Routes to Vercel (not Supabase) because the 195MB ZIP extraction
       // exceeds the Supabase Edge runtime's 256MB memory cap.
-      if (karaokeAddonBool && songIds[0]) {
+      if (effectiveKaraokeIds.length) {
         const karaokeSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
         const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
         if (karaokeSecret) {
-          fetch(`${vercelBase}/api/karaoke-fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ songId: songIds[0], secret: karaokeSecret }),
-          }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
+          for (const ksid of effectiveKaraokeIds) {
+            fetch(`${vercelBase}/api/karaoke-fetch`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ songId: ksid, secret: karaokeSecret }),
+            }).catch((err) => console.warn('[karaoke] free-path trigger failed:', err?.message || err));
+          }
         }
       }
 
@@ -316,19 +329,23 @@ serve(async (req) => {
       });
     }
 
-    // Karaoke add-on — one flat line item per order ($7.99). Applies to the
-    // first song. fetch-karaoke handles the actual stem extraction post-payment.
-    if (karaokeAddonBool) {
+    // Karaoke add-on — $7.99 per instrumental. A 2-song order can buy an
+    // instrumental for one or both songs (effectiveKaraokeIds), so quantity
+    // scales with how many were chosen. fetch-karaoke runs per song post-payment.
+    if (effectiveKaraokeIds.length) {
+      const karaokeQty = effectiveKaraokeIds.length;
       lineItems.push({
         price_data: {
           currency: 'usd',
           product_data: {
-            name: 'Pista Instrumental (sin voz)',
+            name: karaokeQty > 1
+              ? `${karaokeQty} Pistas Instrumentales (sin voz)`
+              : 'Pista Instrumental (sin voz)',
             description: 'La misma canción solo con la música, sin la voz. No incluye letras en pantalla ni video. MP3 calidad estudio, lista en ~1 minuto.',
           },
           unit_amount: KARAOKE_PRICE_CENTS,
         },
-        quantity: 1,
+        quantity: karaokeQty,
       });
     }
 
@@ -403,7 +420,9 @@ serve(async (req) => {
         songCount: String(songCount),
         videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
         videoAddonCount: String(videoAddonCountNum),
-        karaokeAddon: karaokeAddonBool ? 'true' : 'false',
+        karaokeAddon: effectiveKaraokeIds.length ? 'true' : 'false',
+        // Which song(s) get an instrumental — read per-song by stripe-webhook.
+        karaokeSongIds: effectiveKaraokeIds.join(','),
         lyricVideoAddon: lyricVideoBool ? 'true' : 'false',
         karaokeVideoAddon: karaokeVideoBool ? 'true' : 'false',
         affiliateCode: resolvedAffiliate || '',

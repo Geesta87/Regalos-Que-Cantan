@@ -621,9 +621,14 @@ serve(async (req) => {
       const videoAddonCountMeta = parseInt(session.metadata?.videoAddonCount || '1');
       const isDualVideo = videoAddonPurchased && videoAddonCountMeta >= 2;
 
-      // Karaoke addon: one per order, applied to the first song.
-      // fetch-karaoke will run async after we update the DB row to pending.
+      // Karaoke addon: instrumental(s). karaokeSongIds lists exactly which songs
+      // the customer bought an instrumental for (one or both of a 2-pack).
+      // fetch-karaoke runs per flagged song after we set status to pending.
       const karaokeAddonPurchased = session.metadata?.karaokeAddon === 'true';
+      const karaokeSongIdSet = new Set(
+        (session.metadata?.karaokeSongIds || '')
+          .split(',').map((s: string) => s.trim()).filter(Boolean),
+      );
       // Music-video addons (Phase 4): synced lyric video / karaoke video.
       // render-lyric-video (Vercel) builds them async after we flag pending.
       const lyricVideoPurchased = session.metadata?.lyricVideoAddon === 'true';
@@ -646,9 +651,12 @@ serve(async (req) => {
           updateData.has_video_addon = true;
           updateData.video_addon_count = isDualVideo ? 2 : 1;
         }
-        // Karaoke: flag the FIRST song only. fetch-karaoke will populate
-        // karaoke_url and flip status to 'ready' a minute later.
-        if (karaokeAddonPurchased && idx === 0) {
+        // Karaoke: flag each song the customer chose (karaokeSongIds). Legacy
+        // orders with no per-song list fall back to the first song only.
+        const wantsKaraoke = karaokeSongIdSet.size > 0
+          ? karaokeSongIdSet.has(sid)
+          : (karaokeAddonPurchased && idx === 0);
+        if (wantsKaraoke) {
           updateData.karaoke_status = 'pending';
         }
         // Music videos: flag the FIRST song only. render-lyric-video will
@@ -720,7 +728,7 @@ serve(async (req) => {
         // Vercel (1GB memory) because Supabase Edge Functions ran out of
         // memory extracting the 195MB Mureka stem ZIP. Authenticated with a
         // shared secret (KARAOKE_TRIGGER_SECRET).
-        if (karaokeAddonPurchased && idx === 0) {
+        if (wantsKaraoke) {
           const karaokeSecret = Deno.env.get('KARAOKE_TRIGGER_SECRET') || '';
           const vercelBase = Deno.env.get('VERCEL_BASE_URL') || 'https://regalosquecantan.com';
           if (!karaokeSecret) {

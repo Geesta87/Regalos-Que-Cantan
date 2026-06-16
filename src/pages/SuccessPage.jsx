@@ -2002,91 +2002,100 @@ export default function SuccessPage() {
                 (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
                 Polled by the useEffect above so 'pending' auto-updates. */}
             {(() => {
-              // Karaoke is attached to the FIRST song in the order (per stripe-webhook).
-              const karaokeSong = songs.find((s) => s?.karaoke_status);
-              if (!karaokeSong) return null;
-              const status = karaokeSong.karaoke_status;
-              const url = karaokeSong.karaoke_url;
+              // One box per song that has the instrumental add-on. A 2-song order
+              // can have an instrumental for each song (chosen at checkout), so we
+              // render every song with a karaoke_status — not just the first.
+              const karaokeSongs = songs.filter((s) => s?.karaoke_status);
+              if (karaokeSongs.length === 0) return null;
+              const multi = songs.length > 1;
 
-              if (status === 'ready' && url) {
-                return (
-                  <div style={{
-                    marginTop: '12px', marginBottom: '10px',
-                    padding: '16px',
-                    background: isLight ? 'rgba(245,158,11,0.06)' : 'rgba(245,158,11,0.10)',
-                    border: `1.5px solid ${isLight ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.4)'}`,
-                    borderRadius: '16px',
-                  }}>
-                    <p style={{
-                      margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
-                      color: isLight ? '#92400e' : '#fbbf24',
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}>
-                      🎤 Tu pista instrumental está lista
-                    </p>
-                    <p style={{
-                      margin: '0 0 12px', fontSize: '12px',
-                      color: ts.textSecondary, lineHeight: 1.4,
-                    }}>
-                      La canción sin la voz — para cantarla tú en familia, fiestas o redes.
-                    </p>
-                    <a href={url} download={`pista-instrumental-para-${karaokeSong.recipient_name || 'ti'}.mp3`}
-                       style={{
-                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                         width: '100%', padding: '14px',
-                         background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
-                         color: 'white', fontWeight: 800, fontSize: '15px',
-                         border: 'none', borderRadius: '14px',
-                         textDecoration: 'none',
-                         boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
-                         fontFamily: ts.font,
-                       }}>
-                      ⬇️ Descargar Pista Instrumental (sin voz)
-                    </a>
-                  </div>
-                );
-              }
+              return karaokeSongs.map((ks) => {
+                const status = ks.karaoke_status;
+                const url = ks.karaoke_url;
+                const songIdx = songs.findIndex((s) => s.id === ks.id);
+                const label = multi ? ` (Canción ${songIdx + 1})` : '';
+                const fileTag = multi ? `cancion-${songIdx + 1}-` : '';
 
-              if (status === 'pending') {
-                return (
-                  <div style={{
-                    marginTop: '12px', marginBottom: '10px',
-                    padding: '14px 16px',
-                    background: isLight ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.08)',
-                    border: `1px dashed ${isLight ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.35)'}`,
-                    borderRadius: '14px',
-                    textAlign: 'center',
-                  }}>
-                    <p style={{
-                      margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
-                      color: isLight ? '#92400e' : '#fbbf24',
+                if (status === 'ready' && url) {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '16px',
+                      background: isLight ? 'rgba(245,158,11,0.06)' : 'rgba(245,158,11,0.10)',
+                      border: `1.5px solid ${isLight ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.4)'}`,
+                      borderRadius: '16px',
                     }}>
-                      🎤 Preparando tu pista instrumental…
-                    </p>
-                    <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
-                      Listo en ~1 minuto. La página se actualiza sola.
-                    </p>
-                  </div>
-                );
-              }
+                      <p style={{
+                        margin: '0 0 8px', fontSize: '14px', fontWeight: 800,
+                        color: isLight ? '#92400e' : '#fbbf24',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                      }}>
+                        🎤 Tu pista instrumental está lista{label}
+                      </p>
+                      <p style={{
+                        margin: '0 0 12px', fontSize: '12px',
+                        color: ts.textSecondary, lineHeight: 1.4,
+                      }}>
+                        La canción sin la voz — para cantarla tú en familia, fiestas o redes.
+                      </p>
+                      <a href={url} download={`pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`}
+                         style={{
+                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                           width: '100%', padding: '14px',
+                           background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                           color: 'white', fontWeight: 800, fontSize: '15px',
+                           border: 'none', borderRadius: '14px',
+                           textDecoration: 'none',
+                           boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
+                           fontFamily: ts.font,
+                         }}>
+                        ⬇️ Descargar Pista Instrumental (sin voz){label}
+                      </a>
+                    </div>
+                  );
+                }
 
-              if (status === 'failed') {
-                return (
-                  <div style={{
-                    marginTop: '12px', marginBottom: '10px',
-                    padding: '12px 16px',
-                    background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
-                    border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
-                    borderRadius: '14px',
-                    textAlign: 'center',
-                  }}>
-                    <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
-                      🎤 Hubo un problema preparando tu pista instrumental. Te la enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
-                    </p>
-                  </div>
-                );
-              }
-              return null;
+                if (status === 'pending') {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '14px 16px',
+                      background: isLight ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.08)',
+                      border: `1px dashed ${isLight ? 'rgba(245,158,11,0.3)' : 'rgba(245,158,11,0.35)'}`,
+                      borderRadius: '14px',
+                      textAlign: 'center',
+                    }}>
+                      <p style={{
+                        margin: '0 0 4px', fontSize: '13px', fontWeight: 700,
+                        color: isLight ? '#92400e' : '#fbbf24',
+                      }}>
+                        🎤 Preparando tu pista instrumental{label}…
+                      </p>
+                      <p style={{ margin: 0, fontSize: '11px', color: ts.textSecondary }}>
+                        Listo en ~1 minuto. La página se actualiza sola.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (status === 'failed') {
+                  return (
+                    <div key={ks.id} style={{
+                      marginTop: '12px', marginBottom: '10px',
+                      padding: '12px 16px',
+                      background: isLight ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.10)',
+                      border: `1px solid ${isLight ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.3)'}`,
+                      borderRadius: '14px',
+                      textAlign: 'center',
+                    }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: ts.textSecondary }}>
+                        🎤 Hubo un problema preparando tu pista instrumental{label}. Te la enviamos por correo en unos minutos — o escribe a <a href="mailto:hola@regalosquecantan.com" style={{ color: ts.accent }}>hola@regalosquecantan.com</a>.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              });
             })()}
 
             {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====

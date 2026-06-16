@@ -243,6 +243,9 @@ export default function ComparisonPage() {
 
   // Karaoke add-on (single boolean — one karaoke per order, applied to first song)
   const [karaokeAddon, setKaraokeAddon] = useState(false);
+  // For a 2-song (A/B) order: which versions get an instrumental. When the
+  // master toggle turns on we default to both; the chips let them drop one.
+  const [karaokeVersionIds, setKaraokeVersionIds] = useState([]);
   const karaokeAddonPrice = 7.99;
 
   // Check if something is selected
@@ -731,7 +734,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds());
 
       if (result.url) {
         window.location.href = result.url;
@@ -768,6 +771,48 @@ export default function ComparisonPage() {
     }, 350);
   };
 
+  // Keep the instrumental selection coherent with the song selection.
+  useEffect(() => {
+    if (purchaseBoth) {
+      if (karaokeAddon && karaokeVersionIds.length === 0) {
+        setKaraokeVersionIds(songs.map((s) => s.id));
+      }
+    } else if (karaokeVersionIds.length) {
+      setKaraokeVersionIds([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchaseBoth, karaokeAddon]);
+
+  // Master instrumental toggle: add for all selected songs, or clear.
+  const toggleKaraoke = () => {
+    setKaraokeAddon((prev) => {
+      const next = !prev;
+      if (next && purchaseBoth) setKaraokeVersionIds(songs.map((s) => s.id));
+      if (!next) setKaraokeVersionIds([]);
+      return next;
+    });
+  };
+
+  // Per-version toggle (2-song order): choose which song(s) get the instrumental.
+  const toggleKaraokeVersion = (id) => {
+    setKaraokeVersionIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      setKaraokeAddon(next.length > 0);
+      return next;
+    });
+  };
+
+  // Final list of song ids that should get an instrumental (sent to checkout).
+  const resolveKaraokeSongIds = () => {
+    if (!karaokeAddon) return [];
+    if (purchaseBoth) return karaokeVersionIds.length ? karaokeVersionIds : songs.map((s) => s.id);
+    if (selectedSongId) return [selectedSongId];
+    return songs[0] ? [songs[0].id] : [];
+  };
+
+  // How many instrumentals are in the cart (drives the price).
+  const karaokeQty = !karaokeAddon ? 0 : (purchaseBoth ? (karaokeVersionIds.length || 2) : 1);
+
   const getSelectionLabel = () => {
     const videoLabel = videoAddon ? ' + Video' : '';
     if (purchaseBoth) return `2 Canciones${videoLabel}`;
@@ -783,7 +828,7 @@ export default function ComparisonPage() {
     let base = purchaseBoth ? bundlePrice : singlePrice;
     if (videoAddonCount === 2) base += videoDualAddonPrice;
     else if (videoAddonCount === 1) base += videoAddonPrice;
-    if (karaokeAddon) base += karaokeAddonPrice;
+    base += karaokeAddonPrice * karaokeQty;
     return base;
   };
 
@@ -1576,7 +1621,7 @@ export default function ComparisonPage() {
             ══════════════════════════════════════════════════════ */}
         {true && (
           <div
-            onClick={() => setKaraokeAddon(v => !v)}
+            onClick={toggleKaraoke}
             style={{
               background: karaokeAddon
                 ? 'linear-gradient(135deg, rgba(34,197,94,0.18), rgba(15,11,14,0.7))'
@@ -1641,12 +1686,17 @@ export default function ComparisonPage() {
                 }}>
                   $14.99
                 </span>
+                {purchaseBoth && (
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                    cada canción
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Add/Added button — same pattern as video addon */}
             <button
-              onClick={(e) => { e.stopPropagation(); setKaraokeAddon(v => !v); }}
+              onClick={(e) => { e.stopPropagation(); toggleKaraoke(); }}
               style={{
                 flexShrink: 0, padding: '10px 18px', borderRadius: '50px',
                 border: karaokeAddon ? '2px solid #22c55e' : '2px solid #fbbf24',
@@ -1663,6 +1713,41 @@ export default function ComparisonPage() {
             >
               {karaokeAddon ? '✓ Agregado' : '+ Agregar'}
             </button>
+          </div>
+        )}
+
+        {/* Per-song instrumental picker — only for a 2-song (A/B) order. Lets the
+            customer buy an instrumental for one version, the other, or both. */}
+        {karaokeAddon && purchaseBoth && songs.length > 1 && (
+          <div style={{
+            marginTop: '-6px', marginBottom: '16px', padding: '12px 14px',
+            background: 'rgba(245,158,11,0.06)',
+            border: '1px solid rgba(251,191,36,0.3)', borderRadius: '12px',
+          }}>
+            <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#fef3c7' }}>
+              ¿Para cuál canción quieres la pista? Puedes elegir una o ambas.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {songs.map((s, i) => {
+                const on = karaokeVersionIds.includes(s.id);
+                return (
+                  <button key={s.id} type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleKaraokeVersion(s.id); }}
+                    style={{
+                      flex: 1, minWidth: '130px', padding: '10px 12px', borderRadius: '10px',
+                      border: on ? '2px solid #22c55e' : '2px solid rgba(251,191,36,0.5)',
+                      background: on ? 'rgba(34,197,94,0.15)' : 'transparent',
+                      color: 'white', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}>
+                    {on ? '✓ ' : '+ '}Versión {s.version || i + 1} · ${karaokeAddonPrice.toFixed(2)}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={{ margin: '8px 0 0', fontSize: '12px', fontWeight: 800, color: '#fbbf24' }}>
+              {karaokeVersionIds.length} {karaokeVersionIds.length === 1 ? 'pista' : 'pistas'} · ${(karaokeAddonPrice * karaokeVersionIds.length).toFixed(2)}
+            </p>
           </div>
         )}
 
