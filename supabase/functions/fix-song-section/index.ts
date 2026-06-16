@@ -488,7 +488,7 @@ function isContentError(e: any): boolean {
 // names, song titles, strong profanity) and return cleaned lyrics for one retry.
 async function sanitizeLyricsForFilter(lyrics: string): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) return null;
-  const sys = 'Eres un editor. Quita o reemplaza cualquier cosa que pueda activar el filtro de derechos de autor o contenido sensible de un generador de música por IA: nombres de artistas o bandas reales, marcas, títulos de canciones famosas, groserías fuertes o referencias explícitas. Mantén el mismo significado, el español y los marcadores de sección como [Coro]. Devuelve SOLO la letra corregida, sin explicaciones ni comillas.';
+  const sys = 'El filtro anti-plagio de un generador de música por IA rechazó esta letra como "contenido con derechos de autor". Casi siempre es un FALSO POSITIVO: alguna frase se parece a la letra de una canción existente. Reescríbela para esquivar el filtro: PARAFRASEA con otras palabras cualquier verso o frase que pudiera sonar a una canción famosa, y quita nombres de artistas/bandas/marcas, títulos de canciones reales y groserías fuertes. Conserva EXACTAMENTE el mismo significado y emoción, el idioma español, los nombres propios del cliente (destinatario), y los marcadores de sección como [Coro]/[Verso]. Cambia el fraseo, no la historia. Devuelve SOLO la letra reescrita, sin explicaciones ni comillas.';
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -645,6 +645,32 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const body = await req.json().catch(() => ({}));
     const action: string = body?.action || 'preview';
+
+    // -----------------------------------------------------------------
+    // DIAG — pull Kie's record-info for any taskId (status + errorCode +
+    // errorMessage). Permanent tool for diagnosing why a Kie job failed.
+    // -----------------------------------------------------------------
+    if (action === 'diag') {
+      if (!KIE_API_KEY) return json({ ok: false, error: 'KIE_API_KEY missing on Supabase' });
+      const taskId: string | undefined = body?.taskId;
+      if (!taskId) return json({ ok: false, error: 'taskId required' });
+      const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
+        headers: { 'Authorization': `Bearer ${KIE_API_KEY}` },
+      });
+      const raw = await resp.json().catch(() => null);
+      return json({
+        ok: resp.ok,
+        httpStatus: resp.status,
+        code: raw?.code,
+        msg: raw?.msg,
+        status: raw?.data?.status,
+        type: raw?.data?.type,
+        operationType: raw?.data?.operationType,
+        errorCode: raw?.data?.errorCode,
+        errorMessage: raw?.data?.errorMessage,
+        tracks: raw?.data?.response?.sunoData?.length ?? 0,
+      });
+    }
 
     // -----------------------------------------------------------------
     // APPLY — swap the approved fixed audio into the customer's row.
