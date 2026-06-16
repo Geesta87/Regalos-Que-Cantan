@@ -114,7 +114,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   }
 
   // Step 2: generate the audio, singing the confirmed lyrics verbatim.
-  async function runPreview(mode, approvedLyrics) {
+  async function runPreview(mode, approvedLyrics, verifyPhrases) {
     setError('');
     setResult(null);
     setInput('');
@@ -123,7 +123,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       const res = await fetch(FN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-        body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics }),
+        body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -297,7 +297,7 @@ function FixSongCard({ song, showToast, onApplied }) {
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'Se rehará la canción completa. Tarda 1-3 min.' : 'Se regenerará solo la parte afectada. Tarda 1-3 min.'}</p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => runPreview(pendingMode, plan.approvedLyrics)}
+                  onClick={() => runPreview(pendingMode, plan.approvedLyrics, plan.verifyPhrases)}
                   className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                 >
                   ✅ Confirmar y generar
@@ -332,6 +332,9 @@ function FixSongCard({ song, showToast, onApplied }) {
               ) : null}
               {result.staleWarning && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ {result.staleWarning}</p>
+              )}
+              {result.verifyNote && (
+                <p className={`text-xs mb-2 font-medium ${result.verified ? 'text-green-300' : 'text-amber-300'}`}>{result.verifyNote}</p>
               )}
               <p className="text-[11px] text-gray-500 mb-1">Original (antes):</p>
               <audio controls className="w-full mb-2" src={result.originalAudioUrl} />

@@ -186,8 +186,13 @@ const FIX_TOOL = {
         type: 'string',
         description: 'One short sentence in Spanish describing exactly what changed, shown to the shop owner (e.g. "Corregí la pronunciación del nombre Yareli en el coro").',
       },
+      verify_phrases: {
+        type: 'array',
+        description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la parte corregida (el nombre o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
+        items: { type: 'string' },
+      },
     },
-    required: ['can_fix', 'reason', 'infill_start_s', 'infill_end_s', 'section_text', 'full_lyrics', 'change_summary'],
+    required: ['can_fix', 'reason', 'infill_start_s', 'infill_end_s', 'section_text', 'full_lyrics', 'change_summary', 'verify_phrases'],
     additionalProperties: false,
   },
 } as const;
@@ -252,8 +257,13 @@ const FULL_FIX_TOOL = {
           additionalProperties: false,
         },
       },
+      verify_phrases: {
+        type: 'array',
+        description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la versión corregida (p. ej. el nombre corregido o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
+        items: { type: 'string' },
+      },
     },
-    required: ['full_lyrics', 'change_summary', 'changes'],
+    required: ['full_lyrics', 'change_summary', 'changes', 'verify_phrases'],
     additionalProperties: false,
   },
 } as const;
@@ -413,6 +423,83 @@ async function callClaudeForFullLyrics(currentLyrics: string, complaint: string,
     if (block?.input?.full_lyrics) return block.input;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail — every attempt lands in song_fix_attempts so failures stay
+// debuggable long after the 24h edge-log window. Best-effort: never throws.
+// ---------------------------------------------------------------------------
+async function logAttempt(supabase: any, row: Record<string, unknown>) {
+  try { await supabase.from('song_fix_attempts').insert(row); } catch (_) { /* ignore */ }
+}
+
+// ---------------------------------------------------------------------------
+// Whisper verification — confirm the corrected words actually got sung in the
+// NEW audio. Fuzzy matching reused in spirit from render-social-clip (Whisper
+// mishears Spanish names, so exact match is too strict).
+// ---------------------------------------------------------------------------
+function normalizeForMatch(w: string): string {
+  return w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function levenshtein(a: string, b: string): number {
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = new Array(b.length + 1);
+  const curr = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) curr[j] = a[i - 1] === b[j - 1] ? prev[j - 1] : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
+}
+function fuzzyEq(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length < 3 || b.length < 3) return a === b;
+  if (Math.abs(a.length - b.length) > 3) return false;
+  return levenshtein(a, b) <= Math.max(1, Math.floor(Math.max(a.length, b.length) * 0.3));
+}
+async function verifyPhrasesInAudio(audioUrl: string, phrases: string[]): Promise<{ checked: boolean; allFound: boolean; missing: string[]; found: string[] }> {
+  const clean = (phrases || []).map((p) => String(p || '').trim()).filter(Boolean);
+  if (!clean.length) return { checked: false, allFound: true, missing: [], found: [] };
+  const w = await transcribeAudio(audioUrl);
+  if (!w || !w.words.length) return { checked: false, allFound: true, missing: [], found: [] };
+  const audioTokens = w.words.map((x) => normalizeForMatch(x.word)).filter(Boolean);
+  const found: string[] = [];
+  const missing: string[] = [];
+  for (const phrase of clean) {
+    const tokens = phrase.split(/\s+/).map(normalizeForMatch).filter((t) => t.length > 1);
+    if (!tokens.length) continue;
+    const ok = tokens.every((t) => audioTokens.some((a) => fuzzyEq(a, t)));
+    (ok ? found : missing).push(phrase);
+  }
+  return { checked: true, allFound: missing.length === 0, missing, found };
+}
+
+// Is a thrown error Kie's content/copyright filter?
+function isContentError(e: any): boolean {
+  const m = String(e?.message || e || '').toLowerCase();
+  return m.includes('sensitive') || m.includes('content') || m.includes('filtro') || m.includes('derechos') || m.includes('copyright') || m.includes('bloque');
+}
+
+// On a content-filter rejection, strip likely triggers (artist/band/brand
+// names, song titles, strong profanity) and return cleaned lyrics for one retry.
+async function sanitizeLyricsForFilter(lyrics: string): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const sys = 'Eres un editor. Quita o reemplaza cualquier cosa que pueda activar el filtro de derechos de autor o contenido sensible de un generador de música por IA: nombres de artistas o bandas reales, marcas, títulos de canciones famosas, groserías fuertes o referencias explícitas. Mantén el mismo significado, el español y los marcadores de sección como [Coro]. Devuelve SOLO la letra corregida, sin explicaciones ni comillas.';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: CLAUDE_FALLBACK_MODEL, max_tokens: 3000, system: sys, messages: [{ role: 'user', content: lyrics }] }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !Array.isArray(data.content)) return null;
+    const text = data.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim();
+    return text && text.length > 20 ? text : null;
+  } catch { return null; }
 }
 
 // Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
@@ -598,6 +685,7 @@ Deno.serve(async (req) => {
 
       const { error } = await supabase.from('songs').update(update).eq('id', songId);
       if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
+      await logAttempt(supabase, { song_id: songId, action: 'apply', kie_task_id: fixTaskId || null, fixed_audio_url: fixedAudioUrl, outcome: 'applied' });
       return json({ ok: true, songId, applied: true, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
     }
 
@@ -627,6 +715,7 @@ Deno.serve(async (req) => {
       };
       const { error } = await supabase.from('songs').update(restore).eq('id', songId);
       if (error) return json({ ok: false, error: `undo failed: ${error.message}` });
+      await logAttempt(supabase, { song_id: songId, action: 'undo', fixed_audio_url: b.audio_url, outcome: 'undone' });
       return json({ ok: true, songId, undone: true, audioUrl: b.audio_url, lyrics: b.lyrics ?? null });
     }
 
@@ -651,11 +740,13 @@ Deno.serve(async (req) => {
       if (!song?.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
       const plan = await callClaudeForFullLyrics(song.lyrics, planComplaint, planImage);
       if (!plan?.full_lyrics) return json({ ok: false, error: 'Claude no pudo proponer el cambio. Intenta de nuevo.' });
+      await logAttempt(supabase, { song_id: songId, action: 'plan', complaint: planComplaint.slice(0, 2000), outcome: 'success', detail: (plan.change_summary || '').slice(0, 500) });
       return json({
         ok: true,
         changeSummary: plan.change_summary || '',
         approvedLyrics: plan.full_lyrics,
         changes: Array.isArray(plan.changes) ? plan.changes : [],
+        verifyPhrases: Array.isArray(plan.verify_phrases) ? plan.verify_phrases : [],
       });
     }
 
@@ -691,6 +782,7 @@ Deno.serve(async (req) => {
     // If the owner already confirmed the lyric change in the PLAN step, sing
     // exactly those words (don't re-derive them).
     const approvedLyrics: string | undefined = (typeof body?.approvedLyrics === 'string' && body.approvedLyrics.trim()) ? body.approvedLyrics : undefined;
+    const verifyPhrases: string[] = Array.isArray(body?.verifyPhrases) ? body.verifyPhrases : [];
     const complaint = (note && note.trim())
       ? note.trim()
       : conversation.length
@@ -726,23 +818,51 @@ Deno.serve(async (req) => {
       }
       const title = `Canción para ${song.recipient_name || 'ti'}`;
       const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-      const taskId = await submitFullGenerate(correctedLyrics, title, song.style_used, song.voice_type, callbackUrl);
-      console.log(`[fix] FULL re-roll taskId=${taskId} for song=${songId}`);
-      const tracks = await pollKieUntilDone(taskId);
-      const made = tracks.find((t) => t.audioUrl) || tracks[0];
-      if (!made?.audioUrl) return json({ ok: false, fixTaskId: taskId, error: 'la regeneración no devolvió audio' });
-      return json({
-        ok: true,
-        mode: 'full',
-        songId,
-        changeSummary: correctedSummary,
-        originalAudioUrl: audioForFix,
-        fixedAudioUrl: made.audioUrl,
-        fixTaskId: taskId,
-        fixAudioId: made.id || null,
-        fixImageUrl: made.imageUrl || null,
-        fullLyrics: correctedLyrics,
-      });
+      try {
+        // Generate; on a content-filter block, sanitize the lyrics once and retry.
+        let usedLyrics = correctedLyrics;
+        let taskId = '';
+        let tracks: KieTrack[] = [];
+        try {
+          taskId = await submitFullGenerate(usedLyrics, title, song.style_used, song.voice_type, callbackUrl);
+          tracks = await pollKieUntilDone(taskId);
+        } catch (e) {
+          if (!isContentError(e)) throw e;
+          const cleaned = await sanitizeLyricsForFilter(usedLyrics);
+          if (!cleaned || cleaned === usedLyrics) throw e;
+          console.log('[fix] FULL content-filter retry with sanitized lyrics');
+          usedLyrics = cleaned;
+          taskId = await submitFullGenerate(usedLyrics, title, song.style_used, song.voice_type, callbackUrl);
+          tracks = await pollKieUntilDone(taskId);
+        }
+        const made = tracks.find((t) => t.audioUrl) || tracks[0];
+        if (!made?.audioUrl) {
+          await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'failed', detail: 'no audio returned' });
+          return json({ ok: false, fixTaskId: taskId, error: 'la regeneración no devolvió audio' });
+        }
+        const v = await verifyPhrasesInAudio(made.audioUrl, verifyPhrases);
+        const verifyNote = !v.checked ? null : v.allFound
+          ? '✅ Verificado: la corrección sí se canta.'
+          : `⚠️ No pude confirmar en el audio: "${v.missing.join('", "')}". Escucha con atención; si está mal, descarta y reintenta.`;
+        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, kie_status: 'SUCCESS', fixed_audio_url: made.audioUrl, verified: v.checked ? v.allFound : null, verify_note: verifyNote, outcome: 'success' });
+        return json({
+          ok: true,
+          mode: 'full',
+          songId,
+          changeSummary: correctedSummary,
+          originalAudioUrl: audioForFix,
+          fixedAudioUrl: made.audioUrl,
+          fixTaskId: taskId,
+          fixAudioId: made.id || null,
+          fixImageUrl: made.imageUrl || null,
+          fullLyrics: usedLyrics,
+          verified: v.checked ? v.allFound : null,
+          verifyNote,
+        });
+      } catch (e: any) {
+        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
+        return json({ ok: false, error: String(e?.message || e) });
+      }
     }
 
     // ---- SECTION path — eligibility: must be a Kie song still on Kie's servers ----
@@ -817,32 +937,57 @@ Deno.serve(async (req) => {
     const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
     console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${fullLyrics.length} section="${sectionPrompt.slice(0, 140)}"`);
-    // ---- Kie replace-section + poll ----
-    const fixTaskId = await submitReplaceSection({
-      taskId: song.kie_task_id, audioId, prompt: sectionPrompt, tags, title,
-      infillStartS: start, infillEndS: end, fullLyrics, negativeTags, callbackUrl,
-    });
-    console.log(`[fix] replace-section taskId=${fixTaskId}`);
-
-    const tracks = await pollKieUntilDone(fixTaskId);
-    const fixed = tracks.find((t) => t.audioUrl) || tracks[0];
-    if (!fixed?.audioUrl) return json({ ok: false, fixTaskId, error: 'replace-section no devolvió audio' });
-
-    return json({
-      ok: true,
-      songId,
-      changeSummary: fix.change_summary || '',
-      window: { startS: start, endS: end },
-      originalAudioUrl: audioForFix,
-      fixedAudioUrl: fixed.audioUrl,
-      fixTaskId,
-      fixAudioId: fixed.id || null,
-      fixImageUrl: fixed.imageUrl || null,
-      fullLyrics,
-      staleWarning,
-      // The owner reviews fixedAudioUrl, then POSTs action:'apply' with these
-      // fields to commit the swap into the customer's row.
-    });
+    const phrasesToVerify = verifyPhrases.length ? verifyPhrases : (Array.isArray(fix.verify_phrases) ? fix.verify_phrases : []);
+    try {
+      // ---- Kie replace-section + poll (sanitize+retry once on content filter) ----
+      let promptUsed = sectionPrompt;
+      let lyricsUsed = fullLyrics;
+      let fixTaskId = '';
+      let tracks: KieTrack[] = [];
+      try {
+        fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+        tracks = await pollKieUntilDone(fixTaskId);
+      } catch (e) {
+        if (!isContentError(e)) throw e;
+        const cleanedSection = await sanitizeLyricsForFilter(promptUsed);
+        const cleanedFull = await sanitizeLyricsForFilter(lyricsUsed);
+        if ((!cleanedSection || cleanedSection === promptUsed) && (!cleanedFull || cleanedFull === lyricsUsed)) throw e;
+        console.log('[fix] SECTION content-filter retry with sanitized lyrics');
+        promptUsed = (cleanedSection || promptUsed).substring(0, 800);
+        lyricsUsed = englishifyLyricsMarkers(cleanedFull || lyricsUsed);
+        fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+        tracks = await pollKieUntilDone(fixTaskId);
+      }
+      console.log(`[fix] replace-section taskId=${fixTaskId}`);
+      const fixed = tracks.find((t) => t.audioUrl) || tracks[0];
+      if (!fixed?.audioUrl) {
+        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, outcome: 'failed', detail: 'no audio returned' });
+        return json({ ok: false, fixTaskId, error: 'replace-section no devolvió audio' });
+      }
+      const v = await verifyPhrasesInAudio(fixed.audioUrl, phrasesToVerify);
+      const verifyNote = !v.checked ? null : v.allFound
+        ? '✅ Verificado: la corrección sí se canta.'
+        : `⚠️ No pude confirmar en el audio: "${v.missing.join('", "')}". Para letras exactas, considera "Rehacer canción completa".`;
+      await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, kie_status: 'SUCCESS', fixed_audio_url: fixed.audioUrl, verified: v.checked ? v.allFound : null, verify_note: verifyNote, outcome: 'success' });
+      return json({
+        ok: true,
+        songId,
+        changeSummary: fix.change_summary || '',
+        window: { startS: start, endS: end },
+        originalAudioUrl: audioForFix,
+        fixedAudioUrl: fixed.audioUrl,
+        fixTaskId,
+        fixAudioId: fixed.id || null,
+        fixImageUrl: fixed.imageUrl || null,
+        fullLyrics: lyricsUsed,
+        staleWarning,
+        verified: v.checked ? v.allFound : null,
+        verifyNote,
+      });
+    } catch (e: any) {
+      await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
+      return json({ ok: false, error: String(e?.message || e) });
+    }
   } catch (e: any) {
     console.error('[fix-song-section] error:', e?.message);
     return json({ ok: false, error: e?.message });
