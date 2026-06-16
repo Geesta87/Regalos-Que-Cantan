@@ -962,12 +962,24 @@ Deno.serve(async (req) => {
     const sectionPrompt = sectionText.substring(0, 800);
     const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
-    console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${fullLyrics.length} section="${sectionPrompt.slice(0, 140)}"`);
+    // Pre-emptively paraphrase the CONTEXT lyrics we hand Suno so its copyright
+    // filter is far less likely to false-positive on a 1-line edit. This does
+    // NOT change the customer's song: only the infill window is re-sung (from
+    // sectionPrompt); the rest stays the original audio, and fullLyrics is only
+    // context. We still STORE the real corrected lyrics (fullLyrics), not this.
+    let lyricsForKie = fullLyrics;
+    const preSafe = await sanitizeLyricsForFilter(fullLyrics);
+    if (preSafe && preSafe !== fullLyrics) {
+      lyricsForKie = englishifyLyricsMarkers(preSafe);
+      console.log('[fix] SECTION pre-emptive paraphrase of context lyrics applied');
+    }
+
+    console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${lyricsForKie.length} section="${sectionPrompt.slice(0, 140)}"`);
     const phrasesToVerify = verifyPhrases.length ? verifyPhrases : (Array.isArray(fix.verify_phrases) ? fix.verify_phrases : []);
     try {
       // ---- Kie replace-section + poll (sanitize+retry once on content filter) ----
       let promptUsed = sectionPrompt;
-      let lyricsUsed = fullLyrics;
+      let lyricsUsed = lyricsForKie;
       let fixTaskId = '';
       let tracks: KieTrack[] = [];
       try {
@@ -1005,7 +1017,7 @@ Deno.serve(async (req) => {
         fixTaskId,
         fixAudioId: fixed.id || null,
         fixImageUrl: fixed.imageUrl || null,
-        fullLyrics: lyricsUsed,
+        fullLyrics, // store the REAL corrected lyrics, not the filter-dodging paraphrase
         staleWarning,
         verified: v.checked ? v.allFound : null,
         verifyNote,
