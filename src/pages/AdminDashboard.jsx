@@ -34,6 +34,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [pendingMode, setPendingMode] = useState('section'); // which button is running
   const [plan, setPlan] = useState(null); // { changeSummary, approvedLyrics, changes }
   const [result, setResult] = useState(null);
+  const [selectedTakeIdx, setSelectedTakeIdx] = useState(0);
   const [canUndo, setCanUndo] = useState(!!song?.fix_backup);
   const [error, setError] = useState('');
 
@@ -132,6 +133,7 @@ function FixSongCard({ song, showToast, onApplied }) {
         return;
       }
       setResult(data);
+      setSelectedTakeIdx(0);
       setPhase('preview');
     } catch (e) {
       setError('Error de red: ' + (e?.message || 'desconocido'));
@@ -167,11 +169,11 @@ function FixSongCard({ song, showToast, onApplied }) {
         body: JSON.stringify({
           action: 'apply',
           songId: song.id,
-          fixedAudioUrl: result.fixedAudioUrl,
+          fixedAudioUrl: take.audioUrl,
           fixTaskId: result.fixTaskId,
-          fixAudioId: result.fixAudioId,
-          fullLyrics: result.fullLyrics,
-          imageUrl: result.fixImageUrl,
+          fixAudioId: take.id,
+          fullLyrics: take.lyrics || result.fullLyrics,
+          imageUrl: take.imageUrl,
         }),
       });
       const data = await res.json();
@@ -181,7 +183,7 @@ function FixSongCard({ song, showToast, onApplied }) {
         return;
       }
       showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
-      if (onApplied) onApplied(result.fixedAudioUrl, result.fullLyrics);
+      if (onApplied) onApplied(take.audioUrl, take.lyrics || result.fullLyrics);
       setCanUndo(true);
       setPhase('idle');
       setResult(null);
@@ -194,6 +196,19 @@ function FixSongCard({ song, showToast, onApplied }) {
       setPhase('preview');
     }
   }
+
+  // Takes for the preview (best-of-N). Fall back to a single take for older shapes.
+  const takes = result?.takes?.length
+    ? result.takes
+    : (result ? [{ audioUrl: result.fixedAudioUrl, id: result.fixAudioId, imageUrl: result.fixImageUrl, verified: result.verified, lyrics: result.fullLyrics }] : []);
+  const take = takes[selectedTakeIdx] || takes[0] || null;
+  const curVerifyNote = take
+    ? (take.verified === true
+      ? '✅ Verificado: la corrección sí se canta.'
+      : take.verified === false
+        ? '⚠️ No pude confirmar la corrección en esta versión — escucha con atención.'
+        : null)
+    : null;
 
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
@@ -333,13 +348,26 @@ function FixSongCard({ song, showToast, onApplied }) {
               {result.staleWarning && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ {result.staleWarning}</p>
               )}
-              {result.verifyNote && (
-                <p className={`text-xs mb-2 font-medium ${result.verified ? 'text-green-300' : 'text-amber-300'}`}>{result.verifyNote}</p>
+              {takes.length > 1 && (
+                <div className="flex gap-2 mb-2">
+                  {takes.map((t, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedTakeIdx(i)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition ${i === selectedTakeIdx ? 'bg-purple-500 text-white border-purple-400' : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'}`}
+                    >
+                      Versión {i + 1} {t.verified === true ? '✅' : t.verified === false ? '⚠️' : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {curVerifyNote && (
+                <p className={`text-xs mb-2 font-medium ${take?.verified ? 'text-green-300' : 'text-amber-300'}`}>{curVerifyNote}</p>
               )}
               <p className="text-[11px] text-gray-500 mb-1">Original (antes):</p>
               <audio controls className="w-full mb-2" src={result.originalAudioUrl} />
               <p className="text-[11px] text-gray-300 mb-1">✅ Corregida (escucha antes de aplicar):</p>
-              <audio controls className="w-full mb-3" src={result.fixedAudioUrl} />
+              <audio key={selectedTakeIdx} controls className="w-full mb-3" src={take?.audioUrl} />
               <div className="flex gap-2">
                 <button
                   onClick={applyFix}

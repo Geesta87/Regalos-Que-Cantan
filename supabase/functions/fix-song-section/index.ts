@@ -502,6 +502,44 @@ async function sanitizeLyricsForFilter(lyrics: string): Promise<string | null> {
   } catch { return null; }
 }
 
+// ---------------------------------------------------------------------------
+// Best-of-N — Kie returns up to 2 takes per generation; verify each and pick
+// the one where the correction actually landed (auto-pick), keeping the others
+// as alternates the owner can switch to.
+// ---------------------------------------------------------------------------
+type Take = { audioUrl: string; id: string | null; imageUrl: string | null; verified: boolean | null; missing: string[]; lyrics?: string };
+async function annotateTake(t: KieTrack, phrases: string[], lyrics?: string): Promise<Take | null> {
+  if (!t.audioUrl) return null;
+  const v = await verifyPhrasesInAudio(t.audioUrl, phrases);
+  return { audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified: v.checked ? v.allFound : null, missing: v.missing, lyrics };
+}
+// Best first: verified, then unverifiable (null), then failed.
+function orderTakesBest(takes: Take[]): Take[] {
+  const rank = (t: Take) => (t.verified === true ? 0 : t.verified === null ? 1 : 2);
+  return [...takes].sort((a, b) => rank(a) - rank(b));
+}
+function takeVerifyNote(t: Take | undefined, sectionMode: boolean): string | null {
+  if (!t) return null;
+  if (t.verified === true) return '✅ Verificado: la corrección sí se canta.';
+  if (t.verified === false) return `⚠️ No pude confirmar la corrección${t.missing.length ? `: "${t.missing.join('", "')}"` : ''}.${sectionMode ? ' Para letras exactas, considera "Rehacer canción completa".' : ' Revisa las versiones o reintenta.'}`;
+  return null;
+}
+// One full-generation round, with content-filter sanitize+retry baked in.
+async function generateFullRound(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string): Promise<{ taskId: string; tracks: KieTrack[]; usedLyrics: string }> {
+  let usedLyrics = lyrics;
+  try {
+    const taskId = await submitFullGenerate(usedLyrics, title, styleUsed, voiceType, callbackUrl);
+    return { taskId, tracks: await pollKieUntilDone(taskId), usedLyrics };
+  } catch (e) {
+    if (!isContentError(e)) throw e;
+    const cleaned = await sanitizeLyricsForFilter(usedLyrics);
+    if (!cleaned || cleaned === usedLyrics) throw e;
+    usedLyrics = cleaned;
+    const taskId = await submitFullGenerate(usedLyrics, title, styleUsed, voiceType, callbackUrl);
+    return { taskId, tracks: await pollKieUntilDone(taskId), usedLyrics };
+  }
+}
+
 // Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
 function clampWindow(startIn: number, endIn: number, duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
@@ -845,45 +883,39 @@ Deno.serve(async (req) => {
       const title = `Canción para ${song.recipient_name || 'ti'}`;
       const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
       try {
-        // Generate; on a content-filter block, sanitize the lyrics once and retry.
-        let usedLyrics = correctedLyrics;
-        let taskId = '';
-        let tracks: KieTrack[] = [];
-        try {
-          taskId = await submitFullGenerate(usedLyrics, title, song.style_used, song.voice_type, callbackUrl);
-          tracks = await pollKieUntilDone(taskId);
-        } catch (e) {
-          if (!isContentError(e)) throw e;
-          const cleaned = await sanitizeLyricsForFilter(usedLyrics);
-          if (!cleaned || cleaned === usedLyrics) throw e;
-          console.log('[fix] FULL content-filter retry with sanitized lyrics');
-          usedLyrics = cleaned;
-          taskId = await submitFullGenerate(usedLyrics, title, song.style_used, song.voice_type, callbackUrl);
-          tracks = await pollKieUntilDone(taskId);
+        // Best-of-N: each round returns ~2 takes; verify each, auto-pick the one
+        // that got the correction right. 2nd round only if the 1st didn't verify.
+        const takes: Take[] = [];
+        let lastTaskId = '';
+        const maxRounds = verifyPhrases.length ? 2 : 1;
+        for (let round = 1; round <= maxRounds; round++) {
+          const r = await generateFullRound(correctedLyrics, title, song.style_used, song.voice_type, callbackUrl);
+          lastTaskId = r.taskId;
+          for (const t of r.tracks) { const a = await annotateTake(t, verifyPhrases, r.usedLyrics); if (a) takes.push(a); }
+          if (!verifyPhrases.length || takes.some((t) => t.verified === true)) break;
         }
-        const made = tracks.find((t) => t.audioUrl) || tracks[0];
-        if (!made?.audioUrl) {
-          await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'failed', detail: 'no audio returned' });
-          return json({ ok: false, fixTaskId: taskId, error: 'la regeneración no devolvió audio' });
+        if (!takes.length) {
+          await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: lastTaskId, outcome: 'failed', detail: 'no audio returned' });
+          return json({ ok: false, fixTaskId: lastTaskId, error: 'la regeneración no devolvió audio' });
         }
-        const v = await verifyPhrasesInAudio(made.audioUrl, verifyPhrases);
-        const verifyNote = !v.checked ? null : v.allFound
-          ? '✅ Verificado: la corrección sí se canta.'
-          : `⚠️ No pude confirmar en el audio: "${v.missing.join('", "')}". Escucha con atención; si está mal, descarta y reintenta.`;
-        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, kie_status: 'SUCCESS', fixed_audio_url: made.audioUrl, verified: v.checked ? v.allFound : null, verify_note: verifyNote, outcome: 'success' });
+        const ordered = orderTakesBest(takes);
+        const best = ordered[0];
+        const verifyNote = takeVerifyNote(best, false);
+        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: lastTaskId, kie_status: 'SUCCESS', fixed_audio_url: best.audioUrl, verified: best.verified, verify_note: verifyNote, outcome: 'success', detail: `${ordered.length} takes` });
         return json({
           ok: true,
           mode: 'full',
           songId,
           changeSummary: correctedSummary,
           originalAudioUrl: audioForFix,
-          fixedAudioUrl: made.audioUrl,
-          fixTaskId: taskId,
-          fixAudioId: made.id || null,
-          fixImageUrl: made.imageUrl || null,
-          fullLyrics: usedLyrics,
-          verified: v.checked ? v.allFound : null,
+          fixedAudioUrl: best.audioUrl,
+          fixTaskId: lastTaskId,
+          fixAudioId: best.id,
+          fixImageUrl: best.imageUrl,
+          fullLyrics: best.lyrics || correctedLyrics,
+          verified: best.verified,
           verifyNote,
+          takes: ordered.map((t) => ({ audioUrl: t.audioUrl, id: t.id, imageUrl: t.imageUrl, verified: t.verified, lyrics: t.lyrics || correctedLyrics })),
         });
       } catch (e: any) {
         await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'full', complaint: complaint.slice(0, 2000), kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
@@ -977,50 +1009,60 @@ Deno.serve(async (req) => {
     console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${lyricsForKie.length} section="${sectionPrompt.slice(0, 140)}"`);
     const phrasesToVerify = verifyPhrases.length ? verifyPhrases : (Array.isArray(fix.verify_phrases) ? fix.verify_phrases : []);
     try {
-      // ---- Kie replace-section + poll (sanitize+retry once on content filter) ----
-      let promptUsed = sectionPrompt;
-      let lyricsUsed = lyricsForKie;
-      let fixTaskId = '';
-      let tracks: KieTrack[] = [];
-      try {
-        fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
-        tracks = await pollKieUntilDone(fixTaskId);
-      } catch (e) {
-        if (!isContentError(e)) throw e;
-        const cleanedSection = await sanitizeLyricsForFilter(promptUsed);
-        const cleanedFull = await sanitizeLyricsForFilter(lyricsUsed);
-        if ((!cleanedSection || cleanedSection === promptUsed) && (!cleanedFull || cleanedFull === lyricsUsed)) throw e;
-        console.log('[fix] SECTION content-filter retry with sanitized lyrics');
-        promptUsed = (cleanedSection || promptUsed).substring(0, 800);
-        lyricsUsed = englishifyLyricsMarkers(cleanedFull || lyricsUsed);
-        fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
-        tracks = await pollKieUntilDone(fixTaskId);
+      // One replace-section round (2 takes), with content-filter sanitize+retry.
+      const sectionRound = async (): Promise<{ taskId: string; tracks: KieTrack[] }> => {
+        let promptUsed = sectionPrompt;
+        let lyricsUsed = lyricsForKie;
+        try {
+          const taskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          return { taskId, tracks: await pollKieUntilDone(taskId) };
+        } catch (e) {
+          if (!isContentError(e)) throw e;
+          const cs = await sanitizeLyricsForFilter(promptUsed);
+          const cf = await sanitizeLyricsForFilter(lyricsUsed);
+          if ((!cs || cs === promptUsed) && (!cf || cf === lyricsUsed)) throw e;
+          console.log('[fix] SECTION content-filter retry with sanitized lyrics');
+          promptUsed = (cs || promptUsed).substring(0, 800);
+          lyricsUsed = englishifyLyricsMarkers(cf || lyricsUsed);
+          const taskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          return { taskId, tracks: await pollKieUntilDone(taskId) };
+        }
+      };
+
+      // Best-of-N: verify each take, auto-pick the one that landed; 2nd round
+      // only if the 1st didn't verify.
+      const takes: Take[] = [];
+      let lastTaskId = '';
+      const maxRounds = phrasesToVerify.length ? 2 : 1;
+      for (let round = 1; round <= maxRounds; round++) {
+        const r = await sectionRound();
+        lastTaskId = r.taskId;
+        for (const t of r.tracks) { const a = await annotateTake(t, phrasesToVerify, fullLyrics); if (a) takes.push(a); }
+        if (!phrasesToVerify.length || takes.some((t) => t.verified === true)) break;
       }
-      console.log(`[fix] replace-section taskId=${fixTaskId}`);
-      const fixed = tracks.find((t) => t.audioUrl) || tracks[0];
-      if (!fixed?.audioUrl) {
-        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, outcome: 'failed', detail: 'no audio returned' });
-        return json({ ok: false, fixTaskId, error: 'replace-section no devolvió audio' });
+      if (!takes.length) {
+        await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: lastTaskId, outcome: 'failed', detail: 'no audio returned' });
+        return json({ ok: false, fixTaskId: lastTaskId, error: 'replace-section no devolvió audio' });
       }
-      const v = await verifyPhrasesInAudio(fixed.audioUrl, phrasesToVerify);
-      const verifyNote = !v.checked ? null : v.allFound
-        ? '✅ Verificado: la corrección sí se canta.'
-        : `⚠️ No pude confirmar en el audio: "${v.missing.join('", "')}". Para letras exactas, considera "Rehacer canción completa".`;
-      await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, kie_status: 'SUCCESS', fixed_audio_url: fixed.audioUrl, verified: v.checked ? v.allFound : null, verify_note: verifyNote, outcome: 'success' });
+      const ordered = orderTakesBest(takes);
+      const best = ordered[0];
+      const verifyNote = takeVerifyNote(best, true);
+      await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: lastTaskId, kie_status: 'SUCCESS', fixed_audio_url: best.audioUrl, verified: best.verified, verify_note: verifyNote, outcome: 'success', detail: `${ordered.length} takes` });
       return json({
         ok: true,
         songId,
         changeSummary: fix.change_summary || '',
         window: { startS: start, endS: end },
         originalAudioUrl: audioForFix,
-        fixedAudioUrl: fixed.audioUrl,
-        fixTaskId,
-        fixAudioId: fixed.id || null,
-        fixImageUrl: fixed.imageUrl || null,
+        fixedAudioUrl: best.audioUrl,
+        fixTaskId: lastTaskId,
+        fixAudioId: best.id,
+        fixImageUrl: best.imageUrl,
         fullLyrics, // store the REAL corrected lyrics, not the filter-dodging paraphrase
         staleWarning,
-        verified: v.checked ? v.allFound : null,
+        verified: best.verified,
         verifyNote,
+        takes: ordered.map((t) => ({ audioUrl: t.audioUrl, id: t.id, imageUrl: t.imageUrl, verified: t.verified, lyrics: fullLyrics })),
       });
     } catch (e: any) {
       await logAttempt(supabase, { song_id: songId, action: 'preview', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
