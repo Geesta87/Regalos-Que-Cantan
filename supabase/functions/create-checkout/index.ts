@@ -29,7 +29,8 @@ serve(async (req) => {
     let { email } = body;
     const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
     const karaokeAddonBool: boolean = karaokeAddon === true || karaokeAddon === 'true';
-    const KARAOKE_PRICE_CENTS = 799; // $7.99 — instrumental MP3, applied to the FIRST song
+    const KARAOKE_PRICE_CENTS = 799;        // $7.99 — one instrumental MP3
+    const KARAOKE_BUNDLE_PRICE_CENTS = 1499; // $14.99 — both instrumentals (2-song order)
     // Phase 4 music-video upsells — synced lyric video + karaoke video (no voice).
     // $9.99 each, applied to the FIRST song. Distinct from karaokeAddon (the
     // instrumental MP3) and from videoAddon (the photo slideshow).
@@ -334,6 +335,9 @@ serve(async (req) => {
     // scales with how many were chosen. fetch-karaoke runs per song post-payment.
     if (effectiveKaraokeIds.length) {
       const karaokeQty = effectiveKaraokeIds.length;
+      // 1 instrumental = $7.99; both = $14.99 bundle. One line item carrying the
+      // total (quantity 1) so the bundle discount shows as a single price.
+      const karaokeTotalCents = karaokeQty >= 2 ? KARAOKE_BUNDLE_PRICE_CENTS : KARAOKE_PRICE_CENTS;
       lineItems.push({
         price_data: {
           currency: 'usd',
@@ -343,9 +347,9 @@ serve(async (req) => {
               : 'Pista Instrumental (sin voz)',
             description: 'La misma canción solo con la música, sin la voz. No incluye letras en pantalla ni video. MP3 calidad estudio, lista en ~1 minuto.',
           },
-          unit_amount: KARAOKE_PRICE_CENTS,
+          unit_amount: karaokeTotalCents,
         },
-        quantity: karaokeQty,
+        quantity: 1,
       });
     }
 

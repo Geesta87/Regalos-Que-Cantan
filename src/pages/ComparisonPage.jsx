@@ -246,7 +246,8 @@ export default function ComparisonPage() {
   // For a 2-song (A/B) order: which versions get an instrumental. When the
   // master toggle turns on we default to both; the chips let them drop one.
   const [karaokeVersionIds, setKaraokeVersionIds] = useState([]);
-  const karaokeAddonPrice = 7.99;
+  const karaokeAddonPrice = 7.99;   // one instrumental
+  const karaokeBundlePrice = 14.99; // both instrumentals (2-song order)
 
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
@@ -828,7 +829,7 @@ export default function ComparisonPage() {
     let base = purchaseBoth ? bundlePrice : singlePrice;
     if (videoAddonCount === 2) base += videoDualAddonPrice;
     else if (videoAddonCount === 1) base += videoAddonPrice;
-    base += karaokeAddonPrice * karaokeQty;
+    base += karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty;
     return base;
   };
 
@@ -1746,7 +1747,12 @@ export default function ComparisonPage() {
               })}
             </div>
             <p style={{ margin: '8px 0 0', fontSize: '12px', fontWeight: 800, color: '#fbbf24' }}>
-              {karaokeVersionIds.length} {karaokeVersionIds.length === 1 ? 'pista' : 'pistas'} · ${(karaokeAddonPrice * karaokeVersionIds.length).toFixed(2)}
+              {karaokeVersionIds.length} {karaokeVersionIds.length === 1 ? 'pista' : 'pistas'} · ${(karaokeVersionIds.length === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeVersionIds.length).toFixed(2)}
+              {karaokeVersionIds.length === 2 && (
+                <span style={{ color: '#22c55e', marginLeft: '6px', fontWeight: 800 }}>
+                  ¡Ahorras ${(karaokeAddonPrice * 2 - karaokeBundlePrice).toFixed(2)}!
+                </span>
+              )}
             </p>
           </div>
         )}
