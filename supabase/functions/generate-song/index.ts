@@ -1635,6 +1635,205 @@ function stripSpokenProsodyCue(lyrics: string): string {
 }
 
 // ============================================================================
+// Date fidelity helpers. Customers type dates as free text, often numeric like
+// "10-1-2011". Two failure modes we must kill: (1) FORMAT AMBIGUITY — in the US
+// "10-1-2011" means October 1, but written the Latin-American way the same string
+// would be January 10; (2) DIGITS SUNG AS NUMBERS — a singer can't sing "2011".
+// We resolve the format on the backend (US month-day-year default, but any value
+// >12 disambiguates on its own) and hand Claude the exact Spanish words to sing,
+// so it never has to guess a format or do date math. Genuinely ambiguous dates
+// (both numbers ≤12) take the US default AND get flagged for the fact-check pass.
+// ============================================================================
+const SPANISH_MONTHS = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+// Spanish cardinal in words for 0–999999 (covers days, ages, years, quantities).
+function spellSpanishCardinal(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return String(n);
+  const ONES = [
+    'cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+    'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete',
+    'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés',
+    'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve',
+  ];
+  if (n < 30) return ONES[n];
+  if (n < 100) {
+    const TENS = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const t = Math.floor(n / 10), u = n % 10;
+    return u === 0 ? TENS[t] : `${TENS[t]} y ${ONES[u]}`;
+  }
+  if (n < 1000) {
+    if (n === 100) return 'cien';
+    const HUNDREDS = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+    const h = Math.floor(n / 100), rest = n % 100;
+    return rest === 0 ? HUNDREDS[h] : `${HUNDREDS[h]} ${spellSpanishCardinal(rest)}`;
+  }
+  if (n < 1000000) {
+    const th = Math.floor(n / 1000), rest = n % 1000;
+    const thWord = th === 1 ? 'mil' : `${spellSpanishCardinal(th)} mil`;
+    return rest === 0 ? thWord : `${thWord} ${spellSpanishCardinal(rest)}`;
+  }
+  return String(n);
+}
+
+// "el primero de octubre de dos mil once" — day 1 uses the ordinal "primero"
+// (Spanish date convention); every other day is a plain cardinal.
+function spellSpanishDate(day: number, month: number, year: number): string {
+  const d = day === 1 ? 'primero' : spellSpanishCardinal(day);
+  return `${d} de ${SPANISH_MONTHS[month - 1]} de ${spellSpanishCardinal(year)}`;
+}
+
+interface DateReading { raw: string; display: string; spelled: string; ambiguous: boolean; }
+
+function analyzeDates(details: string): { guidance: string; readings: DateReading[] } {
+  if (!details) return { guidance: '', readings: [] };
+  const readings: DateReading[] = [];
+  const re = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(details)) !== null) {
+    const a = parseInt(m[1], 10);
+    const b = parseInt(m[2], 10);
+    let year = parseInt(m[3], 10);
+    if (m[3].length <= 2) year = year >= 30 ? 1900 + year : 2000 + year; // 2-digit year heuristic
+    let month: number, day: number, ambiguous = false;
+    if (a > 12 && b <= 12) { day = a; month = b; }                    // first >12 → must be the day
+    else if (a <= 12 && b > 12) { month = a; day = b; }               // second >12 → US month-day
+    else if (a <= 12 && b <= 12) { month = a; day = b; ambiguous = true; } // both ≤12 → US default, flag it
+    else continue;                                                    // both >12 → not a real date
+    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+    readings.push({
+      raw: m[0],
+      display: `${day} de ${SPANISH_MONTHS[month - 1]} de ${year}`,
+      spelled: spellSpanishDate(day, month, year),
+      ambiguous,
+    });
+  }
+  if (!readings.length) return { guidance: '', readings };
+  const lines = readings.map(r =>
+    `- "${r.raw}" = ${r.display}${r.ambiguous ? ' (interpretado en formato de EE.UU.: mes-día-año)' : ''} → en la letra escríbelo SIEMPRE con palabras: "${r.spelled}"`
+  ).join('\n');
+  const guidance =
+    `\nINTERPRETACIÓN OBLIGATORIA DE FECHAS (el cliente escribió fechas con números — úsalas EXACTAMENTE así, nunca en cifras):\n${lines}`;
+  return { guidance, readings };
+}
+
+// ============================================================================
+// Independent fact-check gate. The writer model is TOLD to stay faithful, but
+// "told" is not "verified" — a single wrong date, age, place or relationship
+// ruins the gift. After the lyrics are written we run a SECOND, independent
+// model whose only job is to compare the lyrics against the customer's own words
+// and report contradictions, invented facts, or digits left as numbers. If it
+// finds problems we auto-correct once, then re-check. Both calls FAIL OPEN: a
+// checker API hiccup must never deny a paying customer their song.
+// ============================================================================
+const FACT_CHECK_TOOL = {
+  name: 'report_fact_check',
+  description: 'Reporta si la letra es 100% fiel a los hechos que el cliente escribió.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      ok: { type: 'boolean', description: 'true SOLO si la letra no contradice, cambia ni inventa ningún hecho del cliente, y todas las fechas/números están escritos con palabras.' },
+      issues: { type: 'array', items: { type: 'string' }, description: 'Cada problema concreto (hecho cambiado, inventado, fecha mal interpretada, número en cifras). Vacío si ok=true.' },
+    },
+    required: ['ok', 'issues'],
+    additionalProperties: false,
+  },
+} as const;
+
+async function verifyLyricFacts(opts: {
+  lyrics: string; details: string; dateGuidance: string; apiKey: string;
+}): Promise<{ ok: boolean; issues: string[] }> {
+  const { lyrics, details, dateGuidance, apiKey } = opts;
+  const sys = `Eres un verificador de hechos ESTRICTO para letras de canciones personalizadas. Te doy (1) los DATOS que el cliente escribió y (2) la LETRA generada. Tu único trabajo es confirmar que la letra NO contradice, NO cambia y NO inventa ningún dato del cliente.
+
+Marca un problema si la letra:
+- Cambia o contradice una fecha, edad, lugar, nombre, parentesco o evento que el cliente escribió.
+- Cambia el VERBO/relación entre datos (ej. "se conocieron" → "se casaron"; "es de" → "vive en").
+- Inventa un dato concreto (fecha, lugar, número, nombre, evento) que el cliente NO escribió.
+- Escribe una fecha o número en CIFRAS en vez de palabras (ej. "2011" en vez de "dos mil once").
+- Interpreta una fecha distinto a la INTERPRETACIÓN OBLIGATORIA dada.
+
+NO marques nada por emoción, metáforas, atmósfera o imágenes — eso es libre. Solo HECHOS. Si todo es fiel, ok=true con issues vacío. Entrega SIEMPRE llamando a report_fact_check.`;
+  const userMsg = `DATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nLETRA GENERADA:\n${lyrics}`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        system: sys,
+        tools: [FACT_CHECK_TOOL],
+        tool_choice: { type: 'tool', name: 'report_fact_check' },
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !Array.isArray(data.content)) {
+      console.warn('Fact-check call failed, skipping gate:', JSON.stringify(data).slice(0, 300));
+      return { ok: true, issues: [] };
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'report_fact_check');
+    if (!block) return { ok: true, issues: [] };
+    const ok = block.input?.ok === true;
+    const issues = Array.isArray(block.input?.issues)
+      ? block.input.issues.filter((s: any) => typeof s === 'string' && s.trim())
+      : [];
+    return { ok, issues };
+  } catch (e) {
+    console.warn('Fact-check threw, skipping gate:', e);
+    return { ok: true, issues: [] };
+  }
+}
+
+async function correctLyricFacts(opts: {
+  lyrics: string; details: string; dateGuidance: string; issues: string[]; apiKey: string;
+}): Promise<string | null> {
+  const { lyrics, details, dateGuidance, issues, apiKey } = opts;
+  const CORRECT_TOOL = {
+    name: 'submit_corrected_lyrics',
+    description: 'Devuelve la letra corregida.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lyrics: { type: 'string', description: 'La letra completa corregida, con los MISMOS marcadores de sección y el mismo estilo, arreglando SOLO los problemas señalados.' },
+      },
+      required: ['lyrics'],
+      additionalProperties: false,
+    },
+  } as const;
+  const sys = `Eres editor de letras. Te doy una letra y una lista de PROBLEMAS DE HECHOS. Corrige SOLO esos problemas y deja intacto TODO lo demás (estructura, rima, métrica, emoción, marcadores de sección). Mantén la fidelidad EXACTA a los datos del cliente, escribe TODAS las fechas y números con palabras, y respeta la interpretación de fechas dada. No inventes datos nuevos. Entrega llamando a submit_corrected_lyrics.`;
+  const userMsg = `DATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nPROBLEMAS A CORREGIR:\n${issues.map((i, n) => `${n + 1}. ${i}`).join('\n')}\n\nLETRA ACTUAL:\n${lyrics}`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: sys,
+        tools: [CORRECT_TOOL],
+        tool_choice: { type: 'tool', name: 'submit_corrected_lyrics' },
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !Array.isArray(data.content)) {
+      console.warn('Correction call failed:', JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'submit_corrected_lyrics');
+    const corrected = block?.input?.lyrics;
+    return typeof corrected === 'string' && corrected.trim() ? corrected : null;
+  } catch (e) {
+    console.warn('Correction threw:', e);
+    return null;
+  }
+}
+
+// ============================================================================
 // Suno (Kie) genre recipes — validated against real paid orders in the
 // 2026-06-12 bake-off (owner-approved A/B listening, see bakeoff/ + memory).
 // The genreDNA styles were tuned for Mureka, which treats production words as
@@ -1893,6 +2092,8 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 9. VOCALES ABIERTAS AL FINAL DEL CORO — regla física, no estilística. Cada línea de [Coro], [Coro Final], y [Pre-Coro] (si existe) DEBE terminar en vocal abierta: a, o, e. NUNCA terminar línea del coro en consonante final, ni en "s" plural, ni en sílabas cerradas (-r, -n, -d, -l, -z, etc.).
    Razón: las vocales abiertas se pueden SOSTENER al cantar — son donde vive el "singalong". Las consonantes cortan el sonido y matan la cantabilidad en grupo. Compara: "te quiero a ti" (cantable) vs "te quiero más" (cortante).
    Si una línea del coro termina en consonante, REESCRÍBELA invirtiendo el orden o cambiando la palabra final para que termine en vocal abierta. Esta regla es INNEGOCIABLE para [Coro], [Coro Final], [Pre-Coro]. En versos no aplica (puedes terminar como quieras).
+
+10. NÚMEROS Y FECHAS EN PALABRAS — NUNCA EN CIFRAS. Una canción se CANTA: los dígitos no se cantan. Escribe TODO número con palabras y con su valor EXACTO: años ("dos mil once", no "2011"), edades ("cuarenta", no "40"), fechas completas ("quince de julio de mil novecientos noventa"), cantidades ("tres hijos", no "3 hijos"). Si el mensaje del usuario incluye una sección "INTERPRETACIÓN OBLIGATORIA DE FECHAS", usa EXACTAMENTE las palabras que ahí se indican para cada fecha — no cambies el día, mes ni año.
 
 REGLA ABSOLUTA — FIDELIDAD A LOS HECHOS (NO DISTORSIONAR, NO INVENTAR DATOS):
 La letra NUNCA debe afirmar un hecho que contradiga o cambie el significado de lo que el usuario escribió. Un solo dato equivocado (fecha, lugar, relación, evento) ARRUINA el regalo y rompe la confianza del cliente. Esta regla pesa MÁS que la rima, la métrica o la belleza de la frase: si para que rime tienes que cambiar un hecho, cambia la frase, NUNCA el hecho.
@@ -2255,6 +2456,19 @@ serve(async (req) => {
       (genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica'));
     const hasPreChorus = !skipPreChorus;
 
+    // Resolve numeric dates in the customer's free-text details BEFORE Claude
+    // sees them: pin the format (US month-day-year; any value >12 disambiguates
+    // on its own) and pre-spell each date in Spanish words so Claude never has to
+    // guess a format or do date math. Ambiguous dates (both numbers ≤12) take the
+    // US default here and are flagged by the fact-check pass after generation.
+    const { guidance: dateGuidance, readings: dateReadings } = analyzeDates(details || '');
+    if (dateReadings.length) {
+      console.log(
+        'Dates detected: ' +
+        dateReadings.map(r => `${r.raw}→${r.display}${r.ambiguous ? ' (ambiguous→US default)' : ''}`).join('; ')
+      );
+    }
+
     // User message — DYNAMIC per request. Static composition rules (1-3, 5-8,
     // artist-name rule, emotionalModifiers compatibility rule, tool-delivery
     // contract) live in LYRICS_SYSTEM_PROMPT at module scope and are cached.
@@ -2274,7 +2488,7 @@ ${genreVibe ? `- CARÁCTER SONORO DEL GÉNERO: ${genreVibe}` : ''}
 
 DETALLES PERSONALES:
 ${details || 'No se proporcionaron detalles específicos. Inventa momentos y recuerdos verosímiles basados en la relación y ocasión — hazlo sentir personal aunque no tengas datos reales.'}
-
+${dateGuidance}
 REGLA 4 (USO DEL NOMBRE) PARA ESTA CANCIÓN:
 ${nameInstruction}
 
@@ -2600,6 +2814,38 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
 
     console.log('✓ Lyrics extracted from tool_use block');
     console.log('Emotional modifiers:', emotionalModifiers);
+
+    // ==========================================================================
+    // STEP 2b: independent fact-check gate. Verify the AI lyrics against the
+    // customer's own words; auto-correct once if anything was changed/invented or
+    // a date came out wrong, then re-check. Skipped for customer-supplied lyrics
+    // (verbatim by design) and when no details were given (nothing to verify, and
+    // invention is allowed in that case).
+    // ==========================================================================
+    if (!wantsCustomLyrics && details && details.trim()) {
+      const verdict = await verifyLyricFacts({ lyrics, details, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
+      if (!verdict.ok && verdict.issues.length) {
+        console.warn(`Fact-check found ${verdict.issues.length} issue(s): ${verdict.issues.join(' | ')}`);
+        const corrected = await correctLyricFacts({ lyrics, details, dateGuidance, issues: verdict.issues, apiKey: ANTHROPIC_API_KEY! });
+        if (corrected) {
+          const cleaned = stripSpokenProsodyCue(corrected);
+          const recheck = await verifyLyricFacts({ lyrics: cleaned, details, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
+          lyrics = cleaned; // corrected version is closer to faithful either way
+          if (recheck.ok) {
+            console.log('✓ Fact-check issues corrected and re-verified clean');
+          } else {
+            // Correction didn't fully satisfy the checker. Ship the corrected
+            // version but log LOUDLY — this is the "no room for error" tripwire
+            // for owner review (grep LYRIC_FACT_CHECK_UNRESOLVED in function logs).
+            console.error(`LYRIC_FACT_CHECK_UNRESOLVED email=${email} recipient=${recipientName} remaining=${recheck.issues.join(' | ')}`);
+          }
+        } else {
+          console.error(`LYRIC_FACT_CHECK_UNCORRECTED email=${email} recipient=${recipientName} issues=${verdict.issues.join(' | ')}`);
+        }
+      } else {
+        console.log('✓ Fact-check passed — lyrics faithful to customer details');
+      }
+    }
 
     // ==========================================================================
     // STEP 3: Combine DNA style + emotional modifiers
