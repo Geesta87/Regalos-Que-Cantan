@@ -2653,6 +2653,11 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       details: details,
       email: email,
       lyrics: lyrics,
+      // Immutable record of exactly what the customer typed in "write my own
+      // lyrics" mode + a flag for which input path they used. Lets us later
+      // compare "what they submitted" vs "what was produced" with certainty.
+      submitted_lyrics: wantsCustomLyrics ? customLyrics : null,
+      used_custom_lyrics: wantsCustomLyrics,
       audio_url: null,
       preview_url: null,
       image_url: imageUrl,
@@ -2816,6 +2821,9 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       details: details,
       email: email,
       lyrics: lyrics,
+      // Same immutable submission record as the v1 insert.
+      submitted_lyrics: wantsCustomLyrics ? customLyrics : null,
+      used_custom_lyrics: wantsCustomLyrics,
       audio_url: null,
       preview_url: null,
       image_url: imageUrl,

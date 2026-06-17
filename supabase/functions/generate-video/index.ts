@@ -71,6 +71,65 @@ serve(async (req) => {
     // Get message URL from request or DB
     const personalMessageUrl = messageUrl || videoOrder.message_url || null;
 
+    // ---- IN-HOUSE RENDERER SWITCH ----
+    // VIDEO_RENDERER defaults to 'shotstack' (no behavior change). Set the
+    // Supabase secret VIDEO_RENDERER=inhouse to route renders to our own
+    // Cloud Run FFmpeg service instead. The service renders in the background
+    // and calls inhouse-video-callback on completion (mirrors Shotstack's
+    // video-callback). Flip back to 'shotstack' for instant rollback.
+    const VIDEO_RENDERER = Deno.env.get('VIDEO_RENDERER') || 'shotstack';
+    if (VIDEO_RENDERER === 'inhouse') {
+      const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
+      const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
+      if (!RENDERER_URL) throw new Error('INHOUSE_RENDERER_URL not configured');
+
+      const payload = {
+        videoOrderId,
+        song_id: videoOrder.song_id,
+        photo_urls: photoUrls,
+        audio_url: song.audio_url,
+        message_url: personalMessageUrl,
+        aspect_ratio: aspectRatio,
+        video_filter: filter,
+        recipient_name: song.recipient_name,
+        sender_name: song.sender_name,
+      };
+
+      // Fire-and-forget. The in-house Cloud Run service holds the connection for
+      // the whole ~6-min render (so Cloud Run scales one render per instance), so
+      // we must NOT await it — the edge function would time out. EdgeRuntime
+      // .waitUntil keeps this worker alive just long enough to send the request;
+      // the render then runs to completion on Cloud Run regardless of our
+      // disconnect, and inhouse-video-callback marks the order completed.
+      const fire = fetch(`${RENDERER_URL}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+        body: JSON.stringify(payload),
+      })
+        .then((r) => console.log(`[generate-video] in-house render finished: ${r.status}`))
+        .catch((e) => console.error('[generate-video] in-house dispatch/render error:', e.message));
+      try {
+        // @ts-ignore — EdgeRuntime is provided by the Supabase edge runtime
+        EdgeRuntime.waitUntil(fire);
+      } catch (_) { /* runtime without waitUntil — fetch still dispatched */ }
+
+      await supabase
+        .from('video_orders')
+        .update({
+          status: 'processing',
+          video_filter: filter,
+          aspect_ratio: aspectRatio,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', videoOrderId);
+
+      console.log(`[generate-video] dispatched to in-house renderer: ${videoOrderId}`);
+      return new Response(
+        JSON.stringify({ success: true, videoOrderId, status: 'processing', renderer: 'inhouse' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      );
+    }
+
     // Resolve actual song duration. Caller may pass it (SuccessPage probes the
     // audio element), but manual re-triggers and edge cases won't. If missing,
     // probe the audio file's Content-Length and estimate from 128 kbps bitrate.
@@ -173,7 +232,10 @@ serve(async (req) => {
           const probeData = await probeRes.json();
           const dur = probeData?.response?.metadata?.format?.duration;
           if (dur) {
-            resolvedMessageDuration = Math.ceil(parseFloat(dur));
+            // Keep float precision — do NOT round up. Math.ceil (e.g. 30.21 → 31)
+            // padded the message clip ~0.8s past the real footage, which made
+            // Shotstack freeze the last video frame while audio continued.
+            resolvedMessageDuration = parseFloat(dur);
             console.log(`Probed message video duration: ${dur}s → using ${resolvedMessageDuration}s`);
           }
         }
