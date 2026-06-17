@@ -127,120 +127,67 @@ const HERO_SVG = `<!--[if !mso]><!-->
 
 // Hero video mockup — "tu canción + tus fotos en video" preview. Used by the
 // urgency emails (Tomorrow + Sameday) in place of the plain waveform hero.
-const HERO_VIDEO_SVG = `<!--[if !mso]><!-->
-              <div style="width:100%;max-width:440px;margin:0 auto;">
-                <svg width="100%" viewBox="0 0 440 268" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista previa: tu canci&oacute;n con tus fotos en video" style="display:block;">
-                  <defs>
-                    <linearGradient id="vScreen" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#1a2436"/>
-                      <stop offset="1" stop-color="#0d1320"/>
-                    </linearGradient>
-                    <radialGradient id="vGlow" cx="50%" cy="42%" r="62%">
-                      <stop offset="0" stop-color="#4f93dd" stop-opacity="0.30"/>
-                      <stop offset="1" stop-color="#0d1320" stop-opacity="0"/>
-                    </radialGradient>
-                    <linearGradient id="vFrame" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0" stop-color="#28323f"/>
-                      <stop offset="0.5" stop-color="#4f93dd"/>
-                      <stop offset="1" stop-color="#1d4f88"/>
-                    </linearGradient>
-                    <linearGradient id="photoA" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#d8bca0"/>
-                      <stop offset="1" stop-color="#b98e6e"/>
-                    </linearGradient>
-                    <linearGradient id="photoB" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#cdb094"/>
-                      <stop offset="1" stop-color="#a07a5c"/>
-                    </linearGradient>
-                    <linearGradient id="photoC" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stop-color="#a8c2dc"/>
-                      <stop offset="1" stop-color="#8fa9c4"/>
-                    </linearGradient>
-                    <clipPath id="clipScreen"><rect x="20" y="16" width="400" height="200" rx="16"/></clipPath>
-                  </defs>
-
-                  <!-- player frame -->
-                  <rect x="13" y="9" width="414" height="214" rx="22" fill="url(#vFrame)" opacity="0.55"/>
-                  <rect x="16" y="12" width="408" height="208" rx="20" fill="#141b27"/>
-                  <rect x="20" y="16" width="400" height="200" rx="16" fill="url(#vScreen)"/>
-
-                  <g clip-path="url(#clipScreen)">
-                    <rect x="20" y="16" width="400" height="200" fill="url(#vGlow)"/>
-
-                    <!-- photo collage: three family snapshots -->
-                    <!-- left photo -->
-                    <g transform="translate(44,52)">
-                      <rect x="-3" y="-3" width="114" height="128" rx="12" fill="#0d1320" opacity="0.55"/>
-                      <rect width="108" height="122" rx="10" fill="url(#photoB)"/>
-                      <g fill="#5f4633" opacity="0.92">
-                        <circle cx="54" cy="44" r="21"/>
-                        <path d="M18 122 C18 92 38 76 54 76 C70 76 90 92 90 122 Z"/>
-                      </g>
-                      <rect width="108" height="122" rx="10" fill="none" stroke="#eef3fa" stroke-width="2" opacity="0.5"/>
-                    </g>
-                    <!-- center photo (raised, hero) -->
-                    <g transform="translate(166,38)">
-                      <rect x="-3" y="-3" width="114" height="150" rx="12" fill="#0d1320" opacity="0.6"/>
-                      <rect width="108" height="144" rx="10" fill="url(#photoA)"/>
-                      <g fill="#6e503a" opacity="0.92">
-                        <circle cx="54" cy="50" r="24"/>
-                        <path d="M14 144 C14 108 38 90 54 90 C70 90 94 108 94 144 Z"/>
-                      </g>
-                      <rect width="108" height="144" rx="10" fill="none" stroke="#eef3fa" stroke-width="2" opacity="0.55"/>
-                    </g>
-                    <!-- right photo -->
-                    <g transform="translate(288,52)">
-                      <rect x="-3" y="-3" width="114" height="128" rx="12" fill="#0d1320" opacity="0.55"/>
-                      <rect width="108" height="122" rx="10" fill="url(#photoC)"/>
-                      <g fill="#46586b" opacity="0.9">
-                        <circle cx="54" cy="44" r="21"/>
-                        <path d="M18 122 C18 92 38 76 54 76 C70 76 90 92 90 122 Z"/>
-                      </g>
-                      <rect width="108" height="122" rx="10" fill="none" stroke="#eef3fa" stroke-width="2" opacity="0.5"/>
-                    </g>
-
-                    <!-- warm accents -->
-                    <path d="M132 44 c-4 -7 -15 -4 -15 4 c0 6 9 11 15 16 c6 -5 15 -10 15 -16 c0 -8 -11 -11 -15 -4 z" fill="#f0d8c0" opacity="0.85"/>
-                    <g fill="#9cc4f2" opacity="0.85">
-                      <circle cx="300" cy="40" r="3.4"/>
-                      <rect x="302" y="24" width="2.4" height="18" rx="1.2"/>
-                      <path d="M302 24 h11 v4 h-11 z"/>
-                    </g>
-                  </g>
-
-                  <!-- play button -->
-                  <circle cx="220" cy="116" r="38" fill="#0d1320" opacity="0.42"/>
-                  <circle cx="220" cy="116" r="31" fill="#eef3fa"/>
-                  <circle cx="220" cy="116" r="31" fill="none" stroke="#4f93dd" stroke-width="2" opacity="0.6"/>
-                  <path d="M211 100 L238 116 L211 132 Z" fill="#1d4f88"/>
-
-                  <!-- now-playing bar -->
-                  <g transform="translate(20,180)">
-                    <rect x="0" y="0" width="400" height="36" rx="0" fill="#0d1320" opacity="0.62"/>
-                    <!-- progress track -->
-                    <rect x="20" y="11" width="300" height="3" rx="1.5" fill="#28323f"/>
-                    <rect x="20" y="11" width="96" height="3" rx="1.5" fill="#4f93dd"/>
-                    <circle cx="116" cy="12.5" r="4" fill="#9cc4f2"/>
-                    <!-- equalizer -->
-                    <g fill="#4f93dd">
-                      <rect x="332" y="9" width="3" height="9" rx="1.5"/>
-                      <rect x="338" y="5" width="3" height="13" rx="1.5"/>
-                      <rect x="344" y="11" width="3" height="7" rx="1.5"/>
-                      <rect x="350" y="3" width="3" height="15" rx="1.5"/>
-                      <rect x="356" y="8" width="3" height="10" rx="1.5"/>
-                      <rect x="362" y="12" width="3" height="6" rx="1.5"/>
-                      <rect x="368" y="6" width="3" height="12" rx="1.5"/>
-                    </g>
-                    <!-- label -->
-                    <text x="20" y="30" fill="#aebccd" font-family="Inter, Arial, sans-serif" font-size="10" letter-spacing="0.4">Para Pap&aacute; &middot; 0:12 / 3:04</text>
-                  </g>
-                </svg>
-                <div style="text-align:center;font-family:'Inter',Arial,sans-serif;font-size:11px;font-weight:300;color:#5d6b7e;letter-spacing:.4px;padding-top:12px;">As&iacute; se ve: tu canci&oacute;n + tus fotos en video</div>
-              </div>
-              <!--<![endif]-->
-              <!--[if mso]>
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td align="center" style="font-family:Georgia,serif;font-size:13px;color:#aebccd;line-height:1.5;">&#9654;&nbsp;Tu canci&oacute;n + tus fotos en video</td></tr></table>
-              <![endif]-->`;
+// Real-photo, email-safe HTML table version (no SVG / no background-image for the
+// photos — real <img> tags so they render everywhere, Outlook included).
+const HERO_VIDEO_HTML = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:520px;margin:0 auto;">
+                <tr>
+                  <td style="background:#141b27;border:1px solid #2f6fb5;border-radius:16px;padding:14px;">
+                    <!-- film strip: three real photos -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td width="33%" valign="top" style="width:33%;padding-right:5px;">
+                          <img src="https://www.regalosquecantan.com/images/reactions/papa/papa-1.png" alt="Foto de pap&aacute;" width="100%" style="display:block;width:100%;border-radius:10px;border:1px solid #28323f;" />
+                        </td>
+                        <td width="34%" valign="top" style="width:34%;padding-left:5px;padding-right:5px;">
+                          <img src="https://www.regalosquecantan.com/images/reactions/papa/papa-4.png" alt="Foto de pap&aacute;" width="100%" style="display:block;width:100%;border-radius:10px;border:1px solid #28323f;" />
+                        </td>
+                        <td width="33%" valign="top" style="width:33%;padding-left:5px;">
+                          <img src="https://www.regalosquecantan.com/images/reactions/papa/papa-5.png" alt="Foto de pap&aacute;" width="100%" style="display:block;width:100%;border-radius:10px;border:1px solid #28323f;" />
+                        </td>
+                      </tr>
+                    </table>
+                    <!-- now-playing control bar -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+                      <tr>
+                        <!-- play button -->
+                        <td width="34" valign="middle" style="width:34px;padding-right:12px;">
+                          <table role="presentation" width="34" height="34" cellpadding="0" cellspacing="0" border="0" style="width:34px;height:34px;background:#4f93dd;border-radius:50%;">
+                            <tr><td align="center" valign="middle" style="width:34px;height:34px;text-align:center;vertical-align:middle;color:#ffffff;font-size:13px;line-height:34px;font-family:Arial,sans-serif;">&#9658;</td></tr>
+                          </table>
+                        </td>
+                        <!-- progress track + label -->
+                        <td valign="middle" style="vertical-align:middle;">
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="height:3px;line-height:3px;font-size:0;background:#28323f;border-radius:2px;">
+                                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:25%;"><tr><td style="height:3px;line-height:3px;font-size:0;background:#4f93dd;border-radius:2px;">&nbsp;</td></tr></table>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding-top:7px;font-family:'Inter',Arial,sans-serif;font-size:12px;color:#aebccd;letter-spacing:.3px;">Para Pap&aacute; &middot; 0:12 / 3:04</td>
+                            </tr>
+                          </table>
+                        </td>
+                        <!-- mini equalizer -->
+                        <td width="44" valign="middle" align="right" style="width:44px;padding-left:10px;vertical-align:middle;text-align:right;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>
+                            <td style="width:3px;height:9px;background:#4f93dd;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;height:15px;background:#4f93dd;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;height:7px;background:#4f93dd;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td style="width:3px;height:12px;background:#4f93dd;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                          </tr></table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="text-align:center;font-family:'Inter',Arial,sans-serif;font-size:12px;font-weight:300;color:#5d6b7e;letter-spacing:.4px;padding-top:12px;">As&iacute; se ve: tu canci&oacute;n + tus fotos en video</td>
+                </tr>
+              </table>`;
 
 // Shared footer block — identical across all four templates except the unsub href.
 function footerBlock(unsubUrl: string): string {
@@ -754,7 +701,7 @@ function templateTomorrow(ctaUrl: string, unsubUrl: string): string {
           <!-- ====== HERO: video-of-your-photos product mockup ====== -->
           <tr>
             <td align="center" class="hero-pad" style="padding:36px 40px 4px;">
-              ${HERO_VIDEO_SVG}
+              ${HERO_VIDEO_HTML}
             </td>
           </tr>
 
@@ -946,7 +893,7 @@ function templateSameday(ctaUrl: string, unsubUrl: string): string {
           <!-- ====== HERO: video-of-your-photos product mockup ====== -->
           <tr>
             <td align="center" class="hero-pad" style="padding:36px 40px 4px;">
-              ${HERO_VIDEO_SVG}
+              ${HERO_VIDEO_HTML}
             </td>
           </tr>
 
