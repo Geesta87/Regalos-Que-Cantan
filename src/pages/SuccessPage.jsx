@@ -1139,17 +1139,44 @@ export default function SuccessPage() {
     try {
       const photoUrls = [];
 
-      // Upload each photo to Supabase Storage
+      // Upload each photo to Supabase Storage.
+      // Mobile connections drop requests mid-flight, which surfaces as a
+      // "Failed to fetch" TypeError and used to abort the entire upload on the
+      // first hiccup. Retry each photo a few times with backoff so a transient
+      // network blip doesn't lose the customer's whole batch.
+      const uploadWithRetry = async (filePath, file, attempts = 3) => {
+        let lastErr;
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+          try {
+            const { error: uploadErr } = await supabase.storage
+              .from('video-photos')
+              .upload(filePath, file, { cacheControl: '31536000', upsert: true });
+            if (!uploadErr) return; // success
+            lastErr = uploadErr;
+          } catch (e) {
+            // "Failed to fetch" / network TypeError lands here
+            lastErr = e;
+          }
+          if (attempt < attempts) {
+            await new Promise((r) => setTimeout(r, 800 * attempt)); // 0.8s, 1.6s backoff
+          }
+        }
+        throw lastErr || new Error('upload failed');
+      };
+
       for (let i = 0; i < videoPhotos.length; i++) {
         const photo = videoPhotos[i];
-        const ext = photo.file.name.split('.').pop();
+        const ext = (photo.file.name.split('.').pop() || 'jpg').toLowerCase();
         const filePath = `${order.id}/${i}_${Date.now()}.${ext}`;
 
-        const { error: uploadErr } = await supabase.storage
-          .from('video-photos')
-          .upload(filePath, photo.file, { cacheControl: '31536000', upsert: true });
-
-        if (uploadErr) throw new Error(`Error subiendo foto ${i + 1}: ${uploadErr.message}`);
+        try {
+          await uploadWithRetry(filePath, photo.file);
+        } catch (uploadErr) {
+          throw new Error(
+            `Error subiendo foto ${i + 1}: ${uploadErr?.message || 'conexión interrumpida'}. ` +
+            `Revisa tu conexión a internet e inténtalo de nuevo.`
+          );
+        }
 
         const { data: urlData } = supabase.storage.from('video-photos').getPublicUrl(filePath);
         photoUrls.push(urlData.publicUrl);
