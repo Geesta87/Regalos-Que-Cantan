@@ -1970,6 +1970,27 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     const currentSessionId = sessionId || crypto.randomUUID();
 
+    // ---- IMMUTABLE SUBMISSION AUDIT (write FIRST, before any generation) ----
+    // Capture exactly what the customer submitted the moment we receive it, so
+    // their words survive even if AI/Suno generation later fails or the song row
+    // never gets inserted. Append-only; never overwritten. Failure here must not
+    // block song generation, so it's best-effort.
+    try {
+      await supabase.from('lyric_submissions').insert({
+        email: email || null,
+        recipient_name: recipientName || null,
+        sender_name: senderName || null,
+        occasion: occasion || null,
+        genre: genre || null,
+        session_id: currentSessionId,
+        used_custom_lyrics: wantsCustomLyrics,
+        submitted_lyrics: wantsCustomLyrics ? customLyrics : null,
+        submitted_details: details || null,
+      });
+    } catch (auditErr) {
+      console.warn('[generate-song] lyric_submissions audit insert failed (non-blocking):', auditErr);
+    }
+
     // Anti-abuse caps. Three independent rate limits — caller is rejected if
     // ANY of them trips. We layer them because earlier we had a single per-
     // email cap and a determined abuser bypassed it by rotating emails
