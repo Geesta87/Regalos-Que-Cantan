@@ -735,7 +735,7 @@ function templateTomorrow(ctaUrl: string, unsubUrl: string): string {
                   <span style="font-size:12.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9cc4f2;font-family:'Inter',Arial,sans-serif;">10% de descuento &mdash; hoy y ma&ntilde;ana</span>
                 </td></tr>
               </table>
-              <p style="margin:9px 0 0;font-size:11.5px;color:#5d6b7e;font-family:'Inter',Arial,sans-serif;">Se aplica autom&aacute;ticamente al pagar &middot; c&oacute;digo PAPA10</p>
+              <p style="margin:9px 0 0;font-size:11.5px;color:#5d6b7e;font-family:'Inter',Arial,sans-serif;">El 10% se aplica solo al hacer clic &mdash; sin c&oacute;digo que ingresar</p>
             </td>
           </tr>
 
@@ -927,7 +927,7 @@ function templateSameday(ctaUrl: string, unsubUrl: string): string {
                   <span style="font-size:12.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9cc4f2;font-family:'Inter',Arial,sans-serif;">10% de descuento &mdash; solo hoy</span>
                 </td></tr>
               </table>
-              <p style="margin:9px 0 0;font-size:11.5px;color:#5d6b7e;font-family:'Inter',Arial,sans-serif;">Se aplica autom&aacute;ticamente al pagar &middot; c&oacute;digo PAPA10</p>
+              <p style="margin:9px 0 0;font-size:11.5px;color:#5d6b7e;font-family:'Inter',Arial,sans-serif;">El 10% se aplica solo al hacer clic &mdash; sin c&oacute;digo que ingresar</p>
             </td>
           </tr>
 
