@@ -170,6 +170,16 @@ verify_jwt = false
 # so the gateway must NOT verify a Supabase JWT or every call 401s.
 verify_jwt = false
 
+[functions.send-fathers-day-campaign]
+# REAL Father's Day 2026 campaign sender (4-email sequence). Triggered by
+# pg_cron / operator, never a logged-in browser, so it cannot carry a Supabase
+# JWT — verify_jwt = false. It authenticates itself by requiring the
+# 'x-campaign-secret' header to equal the CAMPAIGN_TRIGGER_SECRET project
+# secret (returns 401 otherwise, and fails closed if the secret is unset).
+# Audience comes from the v_fathers_day_audience view (excludes unsubscribed +
+# recent Father's Day buyers); sends honor the shared unsubscribe system.
+verify_jwt = false
+
 [functions.preview-fathers-day-campaign]
 # One-off preview sender for the Father's Day 2026 campaign. Sends all 11
 # campaign emails (E0-E10) to a single hardcoded inbox so the visual + copy

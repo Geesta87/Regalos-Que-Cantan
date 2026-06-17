@@ -221,6 +221,17 @@ export default function App() {
     // Capture affiliate ref code from URL and log a visit (one per session)
     captureAffiliateRef();
 
+    // Capture coupon code from the landing URL so it survives the funnel.
+    // The checkout/comparison page reads sessionStorage['rqc_coupon'] as a
+    // fallback when ?coupon= is no longer in the URL (e.g. the visitor landed
+    // from an email on the homepage, then created a song before paying).
+    const couponParam = urlParams.get('coupon');
+    if (couponParam) {
+      try {
+        sessionStorage.setItem('rqc_coupon', couponParam.toUpperCase().trim());
+      } catch { /* sessionStorage unavailable — ignore */ }
+    }
+
     // Load form data from localStorage if not a direct URL navigation
     const savedFormData = localStorage.getItem(STORAGE_KEYS.FORM_DATA);
     const savedSongData = localStorage.getItem(STORAGE_KEYS.SONG_DATA);
