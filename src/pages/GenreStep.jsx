@@ -53,6 +53,7 @@ const voiceGuidance = {
     _default: { default: 'male', femalePopular: false, tip: 'Los corridos tradicionalmente usan voz masculina' },
     tradicional: { default: 'male', femalePopular: false },
     tumbados: { default: 'male', femalePopular: false, tip: 'Estilo Peso Pluma = voz masculina' },
+    romantico: { default: 'male', femalePopular: true, tip: 'Corrido romántico funciona con ambas voces' },
     belico: { default: 'male', femalePopular: false, maleOnly: true, tip: 'Género exclusivamente masculino' },
     alterados: { default: 'male', femalePopular: false }
   },

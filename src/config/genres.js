@@ -14,6 +14,7 @@ const genres = {
     subGenres: {
       tradicional: { name: "Tradicional", description: "Corrido clásico estilo Los Tigres del Norte" },
       tumbados: { name: "Tumbados", description: "Moderno con 808 y AutoTune estilo Peso Pluma" },
+      romantico: { name: "Romántico", description: "Sentimental, dedicatoria de amor estilo norteño-banda" },
       belico: { name: "Bélico", description: "Agresivo y pesado estilo Luis R Conriquez" },
       alterados: { name: "Alterados", description: "Rápido e intenso estilo El Komander" }
     }
