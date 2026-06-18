@@ -4,7 +4,8 @@ import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench } from 'lucide-react';
+import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film } from 'lucide-react';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -635,7 +636,7 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'needsapproval'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -2583,6 +2584,9 @@ export default function AdminDashboard() {
         </button>
         <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Mic size={18} className={`flex-shrink-0 ${activeTab === 'clonamivoz' ? 'text-amber-400' : ''}`} /> Clone Mi Voz
+        </button>
+        <button onClick={() => setActiveTab('needsapproval')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'needsapproval' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'needsapproval' ? 'text-amber-400' : ''}`} /> Videos Animados
         </button>
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
@@ -4937,6 +4941,11 @@ export default function AdminDashboard() {
              and fix one part via fix-song-section (Whisper + Claude + Kie
              replace-section). Self-contained component. */
           <FixSongTab accessToken={accessToken} showToast={showToast} />
+        ) : activeTab === 'needsapproval' ? (
+          /* Videos Animados — Needs Approval. Two gates: pick 1 of 2 likeness
+             options, then approve/reject the final auto-built story video.
+             Talks to admin-story-videos edge function. */
+          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 
