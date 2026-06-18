@@ -1833,6 +1833,61 @@ async function correctLyricFacts(opts: {
   }
 }
 
+// Safety net for the universal "name must be sung" rule. The lyric prompt
+// REQUIRES the recipient's name in the opening lines, but a soft model can
+// still drop it — most easily on the first-person "para mí mismo" path, where
+// it once shipped a fully pronoun-based corrido ("este soy yo") with the
+// buyer's name nowhere in it. This does ONE targeted rewrite that inserts the
+// name while preserving structure/rhyme/emotion. Returns null on any failure
+// so the caller can fail open (ship the original) rather than block the order.
+async function ensureNameInLyrics(opts: {
+  lyrics: string; recipientName: string; isForSelf: boolean; apiKey: string;
+}): Promise<string | null> {
+  const { lyrics, recipientName, isForSelf, apiKey } = opts;
+  const NAME_TOOL = {
+    name: 'submit_named_lyrics',
+    description: 'Devuelve la letra con el nombre del protagonista insertado.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lyrics: { type: 'string', description: 'La letra completa con el nombre insertado, conservando los MISMOS marcadores de sección, estructura, rima, métrica y emoción.' },
+      },
+      required: ['lyrics'],
+      additionalProperties: false,
+    },
+  } as const;
+  const perspective = isForSelf
+    ? 'La canción va en PRIMERA persona (el protagonista habla de sí mismo). Inserta el nombre en primera persona: "yo soy NOMBRE", "aquí anda NOMBRE", "me dicen NOMBRE". NO la conviertas en un regalo para otra persona.'
+    : 'La canción es una dedicatoria para esa persona. Inserta el nombre nombrándola como protagonista o dirigiéndote a ella.';
+  const sys = `Eres editor de letras. La letra que te doy NO menciona el nombre del protagonista y DEBE mencionarlo. Inserta el nombre "${recipientName}" (puedes usar solo el primer nombre o el apodo si el nombre completo es largo o difícil de rimar) de forma natural: una vez DENTRO de las primeras 4 líneas cantadas (en el [Hablado] inicial si existe, si no en el [Verso 1]) y al menos 2 veces más en el resto de la canción. ${perspective} Cambia lo MÍNIMO necesario: conserva la estructura, los marcadores de sección, la rima, la métrica y la emoción. No inventes datos nuevos. Entrega llamando a submit_named_lyrics.`;
+  const userMsg = `NOMBRE A INSERTAR: ${recipientName}\n\nLETRA ACTUAL (sin el nombre):\n${lyrics}`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: sys,
+        tools: [NAME_TOOL],
+        tool_choice: { type: 'tool', name: 'submit_named_lyrics' },
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !Array.isArray(data.content)) {
+      console.warn('Name-insert call failed:', JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'submit_named_lyrics');
+    const revised = block?.input?.lyrics;
+    return typeof revised === 'string' && revised.trim() ? revised : null;
+  } catch (e) {
+    console.warn('Name-insert threw:', e);
+    return null;
+  }
+}
+
 // ============================================================================
 // Suno (Kie) genre recipes — validated against real paid orders in the
 // 2026-06-12 bake-off (owner-approved A/B listening, see bakeoff/ + memory).
@@ -2416,7 +2471,7 @@ serve(async (req) => {
     const genreVibe = subGenreDNAData?.vibe || '';
 
     const nameInstruction = isForSelf
-      ? `Menciona "${recipientName}" como protagonista 1-2 veces de forma natural. Tono principal en primera persona: "yo soy", "mi vida", "este soy yo". NO escribir como regalo para otra persona.`
+      ? `REGLA CRÍTICA DEL NOMBRE (canción para uno mismo): aunque la canción va en PRIMERA persona, el nombre "${recipientName}" DEBE CANTARSE — no basta con pronombres. El nombre (puedes usar solo el primer nombre o el apodo si el nombre completo es largo o difícil de rimar) DEBE aparecer dentro de las primeras 4 líneas cantadas — en el [Hablado] inicial si existe, o si no, en el [Verso 1] — para que el comprador escuche SU nombre desde el inicio. Luego repítelo al menos 2 veces más a lo largo de la canción (3+ menciones en total). Mantén el tono en primera persona ("yo soy ${recipientName}", "aquí anda ${recipientName}", "me dicen..."). NO la conviertas en un regalo para otra persona. PROHIBIDO cantar la canción entera solo con pronombres ("este soy yo", "soy yo") sin decir el nombre ni una vez. NUNCA fuerces el nombre donde rompa el ritmo — si es difícil de rimar, colócalo al INICIO de la línea.`
       : `REGLA CRÍTICA DEL NOMBRE: "${recipientName}" DEBE aparecer en las primeras 4 líneas del [Verso 1] — el comprador necesita escuchar el nombre desde el inicio para sentir la personalización. Luego menciona el nombre 2-3 veces más en el coro y/o versos posteriores (4+ menciones totales). NUNCA forzar el nombre donde no fluye rítmicamente — si el nombre es difícil de rimar, úsalo al INICIO de la línea.`;
 
     const perspectiveInstruction = isForSelf
@@ -2844,6 +2899,44 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
         }
       } else {
         console.log('✓ Fact-check passed — lyrics faithful to customer details');
+      }
+    }
+
+    // ==========================================================================
+    // STEP 2c: name-presence guard. The prompt requires the recipient's name in
+    // the sung lyrics, but the model can still omit it (it once shipped a fully
+    // first-person corrido with the buyer's name nowhere in it — Vicente, paid
+    // 2-pack, 2026-06-18). Verify the name is actually present; if not, do ONE
+    // targeted rewrite to insert it. Runs AFTER fact-check so the inserted name
+    // can't be reworded away. Skipped for customer-supplied lyrics (verbatim)
+    // and for placeholder/generic recipients ("El señor del cerro") where there
+    // is no real first name to look for. Fails open — never blocks the order.
+    if (!wantsCustomLyrics) {
+      const firstName = (recipientName || '').trim().split(/\s+/)[0] || '';
+      const NAME_STOPWORDS = new Set([
+        'el', 'la', 'los', 'las', 'mi', 'tu', 'su', 'un', 'una',
+        'señor', 'senor', 'señora', 'senora', 'sr', 'sra', 'don', 'doña', 'dona',
+        'mr', 'mrs', 'ms',
+      ]);
+      const skipNameGuard = firstName.length < 3 || NAME_STOPWORDS.has(firstName.toLowerCase());
+      const nameInLyrics = lyrics.toLowerCase().includes(firstName.toLowerCase());
+
+      if (!skipNameGuard && !nameInLyrics) {
+        console.warn(`LYRIC_NAME_MISSING (pre-fix) recipient="${recipientName}" genre=${genre}/${subGenre} isForSelf=${isForSelf} email=${email} — inserting name`);
+        const named = await ensureNameInLyrics({ lyrics, recipientName, isForSelf, apiKey: ANTHROPIC_API_KEY! });
+        if (named) {
+          const cleaned = stripSpokenProsodyCue(named);
+          lyrics = cleaned; // closer to correct either way
+          if (cleaned.toLowerCase().includes(firstName.toLowerCase())) {
+            console.log('✓ Name inserted into lyrics and verified present');
+          } else {
+            // Rewrite still missing the name — ship it but flag LOUDLY for the
+            // owner (grep LYRIC_NAME_MISSING in function logs).
+            console.error(`LYRIC_NAME_MISSING (post-fix STILL absent) recipient="${recipientName}" email=${email}`);
+          }
+        } else {
+          console.error(`LYRIC_NAME_INSERT_FAILED recipient="${recipientName}" email=${email} — shipping original without name`);
+        }
       }
     }
 
