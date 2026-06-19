@@ -18,6 +18,16 @@
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Auth token for the raw storage REST/TUS fetch calls.
+// Both SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY in this project's edge
+// env are the newer NON-JWS key format (sb_secret_/sb_publishable_), which the
+// storage REST/TUS endpoints reject as "Invalid Compact JWS" when sent as a
+// Bearer token — that silently broke every streaming upload and left large
+// videos stuck in "processing". The endpoints DO accept the legacy JWT anon
+// key. It's a public key (already shipped in the web app bundle), so it's safe
+// to embed here. Allow an env override if a JWT key is ever provided.
+const STORAGE_AUTH_KEY = Deno.env.get('STORAGE_JWT_ANON_KEY')
+  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 
 const VIDEOS_BUCKET = 'videos';
 
@@ -39,12 +49,19 @@ export async function storeRenderedVideo(
   sourceUrl: string,
   supabase: any,
 ): Promise<StoreVideoResult> {
+  // Collect each path's failure so the final thrown error (which lands in the
+  // video_order's error_message) names exactly WHY streaming failed — otherwise
+  // we only see the generic last-resort message and can't diagnose.
+  let tusErr = '';
+  let restErr = '';
+
   // ── Path 1: TUS resumable (handles any file size, ≈12 MB peak RAM) ──────────
   try {
     const result = await tusUpload(fileKey, sourceUrl);
     console.log(`[store-video] TUS OK: ${fileKey} (${result.bytes} bytes)`);
     return result;
   } catch (err) {
+    tusErr = (err as Error)?.message || String(err);
     console.error(`[store-video] TUS FAILED for ${fileKey}, trying REST stream:`, err);
   }
 
@@ -54,13 +71,20 @@ export async function storeRenderedVideo(
     console.log(`[store-video] REST stream OK: ${fileKey} (${result.bytes} bytes)`);
     return result;
   } catch (err) {
+    restErr = (err as Error)?.message || String(err);
     console.error(`[store-video] REST stream FAILED for ${fileKey}, trying SDK buffer:`, err);
   }
 
-  // ── Path 3: SDK buffer (last resort — may OOM on large videos) ──────────────
-  const result = await sdkBufferUpload(fileKey, sourceUrl, supabase);
-  console.log(`[store-video] SDK buffer OK: ${fileKey} (${result.bytes} bytes)`);
-  return result;
+  // ── Path 3: SDK buffer (last resort — refuses large files to avoid OOM) ──────
+  try {
+    const result = await sdkBufferUpload(fileKey, sourceUrl, supabase);
+    console.log(`[store-video] SDK buffer OK: ${fileKey} (${result.bytes} bytes)`);
+    return result;
+  } catch (bufErr) {
+    const bufMsg = (bufErr as Error)?.message || String(bufErr);
+    // Surface all three failures together so error_message is actionable.
+    throw new Error(`all upload paths failed — TUS: [${tusErr}] | REST: [${restErr}] | buffer: [${bufMsg}]`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +118,14 @@ async function tusUpload(
   const totalBytes = parseInt(contentLengthStr, 10);
 
   // Build TUS Upload-Metadata (base64-encoded key/value pairs).
-  const filename = fileKey.split('/').pop() || fileKey;
+  // IMPORTANT: Supabase Storage's resumable (TUS) endpoint keys off `objectName`
+  // (the full object path within the bucket) — NOT `filename`. Sending `filename`
+  // made every resumable upload fail, so large videos fell through to the REST
+  // and in-memory buffer paths and never persisted. `objectName` must be the
+  // full fileKey (including any subfolders), not just the basename.
   const metadata = [
-    `filename ${btoa(filename)}`,
     `bucketName ${btoa(VIDEOS_BUCKET)}`,
+    `objectName ${btoa(fileKey)}`,
     `contentType ${btoa('video/mp4')}`,
     `cacheControl ${btoa('31536000')}`,
   ].join(',');
@@ -106,7 +134,7 @@ async function tusUpload(
   const createRes = await fetch(`${SUPABASE_URL}/storage/v1/upload/resumable`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Authorization': `Bearer ${STORAGE_AUTH_KEY}`,
       'Content-Type': 'application/offset+octet-stream',
       'Upload-Length': contentLengthStr,
       'Upload-Metadata': metadata,
@@ -161,7 +189,7 @@ async function tusUpload(
     const patchRes = await fetch(uploadUrl, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Authorization': `Bearer ${STORAGE_AUTH_KEY}`,
         'Content-Type': 'application/offset+octet-stream',
         'Upload-Offset': String(offset),
         'Tus-Resumable': '1.0.0',
@@ -208,7 +236,7 @@ async function restStreamUpload(
   const uploadRes = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Authorization': `Bearer ${STORAGE_AUTH_KEY}`,
       'Content-Type': 'video/mp4',
       'Cache-Control': '31536000',
       'x-upsert': 'true',
