@@ -72,6 +72,7 @@ export default function NeedsApprovalTab({ accessToken, showToast }) {
                   <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
                     className="text-xs text-gray-400 hover:text-rose-400">Rechazar / pedir otra foto</button>
                 </div>
+                <Assumptions items={o.assumptions} />
                 <div className="grid grid-cols-2 gap-4">
                   {(o.character_options || []).map((opt, i) => (
                     <div key={i} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
@@ -114,6 +115,27 @@ export default function NeedsApprovalTab({ accessToken, showToast }) {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// Shows the AI's flagged guesses (details it depicted that the customer didn't state),
+// so the admin can catch a wrong assumption (e.g. "construction worker") BEFORE the build.
+function Assumptions({ items }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2.5">
+      <p className="text-xs font-bold text-amber-300 mb-1.5">⚠️ La IA asumió cosas no dichas en la historia — revisa antes de aprobar:</p>
+      <ul className="space-y-1">
+        {items.map((a, i) => (
+          <li key={i} className="text-xs text-amber-100/90 leading-snug">
+            • <span className="font-semibold">{a.assumed}</span>
+            {a.image_id ? <span className="text-amber-200/60"> ({a.image_id})</span> : null}
+            {a.reason ? <span className="text-amber-200/60"> — {a.reason}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-amber-200/60 mt-1.5">Si algo está mal, rechaza y pide una foto o ajusta la historia.</p>
     </div>
   );
 }

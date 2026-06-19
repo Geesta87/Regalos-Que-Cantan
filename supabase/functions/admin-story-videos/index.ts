@@ -46,11 +46,16 @@ serve(async (req) => {
       // attach recipient name
       const songIds = [...new Set((rows || []).map((r: any) => r.song_id).filter(Boolean))];
       const names: Record<string, string> = {};
+      const assumptionsBySong: Record<string, any[]> = {};
       if (songIds.length) {
-        const { data: songs } = await admin.from('songs').select('id, recipient_name, genre_name').in('id', songIds);
-        (songs || []).forEach((s: any) => { names[s.id] = `${s.recipient_name || ''}${s.genre_name ? ' · ' + s.genre_name : ''}`; });
+        const { data: songs } = await admin.from('songs').select('id, recipient_name, genre_name, storyboard').in('id', songIds);
+        (songs || []).forEach((s: any) => {
+          names[s.id] = `${s.recipient_name || ''}${s.genre_name ? ' · ' + s.genre_name : ''}`;
+          const a = s.storyboard?.assumptions;
+          if (Array.isArray(a) && a.length) assumptionsBySong[s.id] = a;
+        });
       }
-      const out = (rows || []).map((r: any) => ({ ...r, recipient: names[r.song_id] || '—' }));
+      const out = (rows || []).map((r: any) => ({ ...r, recipient: names[r.song_id] || '—', assumptions: assumptionsBySong[r.song_id] || [] }));
       return json({ success: true, role: roleRow.role, count: out.length, orders: out });
     }
 

@@ -68,6 +68,16 @@ serve(async (req) => {
         body: JSON.stringify({ songId: order.song_id, recipient_photo_url: primaryUrl, story_video_order_id }),
       }).catch((e) => console.error('generate-likeness kick failed:', e.message));
 
+      // also generate the storyboard early (best-effort) so its 'assumptions' are ready
+      // for the admin to review at Gate 1 — BEFORE the expensive build runs.
+      if (order.song_id) {
+        fetch(`${SUPABASE_URL}/functions/v1/generate-storyboard`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ songId: order.song_id }),
+        }).catch((e) => console.error('generate-storyboard kick failed:', e.message));
+      }
+
       return json(200, { success: true, state: 'generating_likeness' });
     }
 

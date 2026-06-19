@@ -31,11 +31,12 @@ HARD RULES (learned from production — never violate):
 2. DENSE + REUSE: cover the WHOLE song so no single shot would hold longer than ~16s. Songs have long/repeated choruses — REUSE earlier scene images on repeated chorus lines (lyrically natural) rather than inventing filler. Aim for 18-24 scenes total mapping to ~12-16 unique images.
 3. CHILD-SAFE: text-prompting a child's face gets blocked. For any child: show them FROM BEHIND, or focus on OBJECTS (a toy, shoes), or a baby as a wrapped BUNDLE — UNLESS the character comes from cartoonifying a real family photo (then the child is fine). State the technique in the prompt.
 4. GENDER/AGE ACCURACY: read the story to know each person's gender and age, and bake it into every prompt ("a little girl with long hair", "the toddler boy"). Name siblings correctly.
-5. OCCUPATION/SETTING from the story — never assume. (e.g. office/business owner vs manual labor.)
+5. NO INVENTED SPECIFICS — CRITICAL. If the customer's story/lyrics do NOT explicitly state a concrete visual fact (their JOB, what they wear, the kind of car, a specific city/place), DO NOT guess one. Turning "trabaja mucho"/"works hard" into a CONSTRUCTION WORKER, or a vague line into a specific landmark, is a FAILURE — it's a stereotype, not their story. Instead depict the CONCEPT abstractly: "works hard" with no named job → a tired parent coming home at sunset, the sacrifice for family, a neutral everyday workplace — NOT a specific trade or uniform. Keep people in neutral everyday clothing unless their look is described. Only show an occupation/uniform/vehicle/landmark when the customer EXPLICITLY named it. When unsure, lean on what you KNOW (the family, the emotion, the relationship) instead of guessing.
 6. CONSISTENCY: every scene prompt references "the same <person> from the reference" so the character stays identical. For a FAMILY, the recurring character is the whole family group.
 7. FAMILY MORPH + OPENER: if the recipient is a family/group, the FIRST scene must be the family group itself (a pose-matched cartoon), held through the instrumental intro, so the real→cartoon morph flows straight into it. Do not open a family video on an unrelated establishing shot.
 8. HERO SCENES: mark exactly 3 scenes as hero=true — the most emotional or motion-worthy moments (an embrace, driving, the signature image) — these get animated. Don't pick scenes whose window would be <5s.
 9. STYLE: every prompt is warm, wholesome, "Pixar-style 3D", "mature adults" where relevant, soft cinematic light. Keep prompts ~1-2 sentences.
+10. FLAG YOUR GUESSES: whenever a scene depicts ANY detail the customer did NOT explicitly state (an inferred setting, occupation, object, or activity), add an entry to "assumptions" naming the image_id, exactly what you assumed, and why. If you stuck strictly to stated facts, leave assumptions empty. This lets a human catch a wrong guess BEFORE we build.
 
 You will be given: the recipient, sender, relationship, occasion, genre, the customer's own story (details), the lyrics, and the exact sung word list with timestamps. Output ONLY via the emit_storyboard tool.`;
 
@@ -46,7 +47,19 @@ const TOOL = {
     type: 'object',
     properties: {
       is_family: { type: 'boolean', description: 'true if the recipient is a family/group (multiple people)' },
-      occupation: { type: 'string', description: "the recipient's real job/role from the story, or empty" },
+      occupation: { type: 'string', description: "the recipient's real job/role ONLY if the customer explicitly stated it, else empty (do NOT guess)" },
+      assumptions: {
+        type: 'array',
+        description: 'every visual detail you depicted that the customer did NOT explicitly state (empty array if you invented nothing). A human reviews these before the build.',
+        items: {
+          type: 'object',
+          properties: {
+            image_id: { type: 'string', description: 'the scene where the assumption appears' },
+            assumed: { type: 'string', description: 'what you depicted that was not stated, e.g. "office/business setting"' },
+            reason: { type: 'string', description: 'why, e.g. "story says \'trabaja mucho\' but names no job"' },
+          }, required: ['assumed'],
+        },
+      },
       characters: {
         type: 'array',
         items: {
@@ -91,9 +104,20 @@ serve(async (req) => {
       .eq('id', songId).single();
     if (error || !song) throw new Error(`Song not found: ${error?.message || 'no row'}`);
 
-    const ts = song.lyrics_timestamps as any;
-    if (!ts || !Array.isArray(ts.words) || ts.words.length === 0)
-      throw new Error('No lyrics_timestamps — run transcribe-song first');
+    let ts = song.lyrics_timestamps as any;
+    // self-ensure timings so this can run EARLY (at the likeness stage, before the
+    // build) — if they're missing, transcribe first and re-read.
+    if (!ts || !Array.isArray(ts.words) || ts.words.length === 0) {
+      await fetch(`${SUPABASE_URL}/functions/v1/transcribe-song`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId }),
+      }).catch(() => {});
+      const { data: refreshed } = await supabase.from('songs').select('lyrics_timestamps').eq('id', songId).single();
+      ts = refreshed?.lyrics_timestamps;
+      if (!ts || !Array.isArray(ts.words) || ts.words.length === 0)
+        throw new Error('No lyrics_timestamps — transcribe-song did not produce timings');
+    }
 
     // flatten Kie word tokens (it glues "[Verse 1]\nErica," -> "verse 1 erica")
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -105,7 +129,7 @@ serve(async (req) => {
       `STORY (customer's own words):\n${song.details}\n\n` +
       `LYRICS:\n${song.lyrics}\n\n` +
       `SUNG WORDS (token@second; '|' joins multi-word tokens):\n${wordList}\n\n` +
-      `Produce the storyboard. Remember: distinctive anchors only, dense coverage with image reuse on repeated choruses, child-safe + gender-correct prompts, exactly 3 hero scenes.`;
+      `Produce the storyboard. Remember: distinctive anchors only, dense coverage with image reuse on repeated choruses, child-safe + gender-correct prompts, exactly 3 hero scenes. NEVER invent an occupation, uniform, vehicle, or place the story didn't state — depict unstated concepts abstractly and list every guess in "assumptions".`;
 
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
