@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { AnimadoPhotoUpload } from './AnimadoUpsell';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -287,6 +288,10 @@ export default function SuccessPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
 
+  // Animado (animated story-video) — orders the customer paid for this checkout.
+  // confirm-animado-order verifies payment server-side and returns the order(s).
+  const [animadoOrders, setAnimadoOrders] = useState([]);
+
   // Video upsell states
   // selectedVideoSongIdx must be declared BEFORE videoOrdersMap so the derived videoOrder can reference it.
   const [selectedVideoSongIdx, setSelectedVideoSongIdx] = useState(0);
@@ -450,6 +455,41 @@ export default function SuccessPage() {
     };
     verifyPayment();
   }, [songs]);
+
+  // ------ ANIMADO: confirm the paid order(s) + handle photo upload ------
+  // confirm-animado-order verifies (server-side, via Stripe) that this session
+  // paid for Animado and returns the order(s) so we can ask for the photo.
+  useEffect(() => {
+    const sessionId = urlParams.get('session_id');
+    if (!sessionId) return;
+    let cancelled = false;
+    supabase.functions.invoke('confirm-animado-order', { body: { session_id: sessionId } })
+      .then(({ data }) => {
+        if (!cancelled && data?.eligible && Array.isArray(data.orders) && data.orders.length) {
+          setAnimadoOrders(data.orders.filter((o) => o.order_id));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const uploadAnimadoFile = async (orderId, which, file) => {
+    const { data: sign, error: se } = await supabase.functions.invoke('animado-photo', {
+      body: { action: 'sign', story_video_order_id: orderId, which },
+    });
+    if (se || !sign?.signed_url) throw new Error('No se pudo preparar la subida. Intenta de nuevo.');
+    const put = await fetch(sign.signed_url, { method: 'PUT', headers: { 'Content-Type': file.type || 'image/jpeg' }, body: file });
+    if (!put.ok) throw new Error('No se pudo subir la foto. Revisa tu conexión e intenta de nuevo.');
+  };
+
+  const submitAnimadoPhotos = async (orderId, { mainFile, familyFile, phone }) => {
+    await uploadAnimadoFile(orderId, 'main', mainFile);
+    if (familyFile) await uploadAnimadoFile(orderId, 'family', familyFile);
+    const { data, error } = await supabase.functions.invoke('animado-photo', {
+      body: { action: 'attach', story_video_order_id: orderId, has_family: !!familyFile, phone: phone || null },
+    });
+    if (error || !data?.success) throw new Error(data?.error || 'No se pudo procesar la foto.');
+  };
 
   // ------ 🔥 META PIXEL: Track Purchase after Stripe payment ------
   // Guard uses sessionStorage keyed by Stripe session_id so the pixel
@@ -1729,6 +1769,18 @@ export default function SuccessPage() {
           transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
           position: 'relative', zIndex: 10,
         }}>
+
+          {/* ===== ANIMADO photo upload — shown when the customer bought the
+              animated story video. Time-sensitive, so it sits at the top. ===== */}
+          {animadoOrders.filter((o) => o.state === 'awaiting_photo').map((o) => (
+            <div key={o.order_id} style={{ marginBottom: '28px' }}>
+              <AnimadoPhotoUpload
+                recipientName={o.recipient_name || 'tu ser querido'}
+                askPhone={!o.has_phone}
+                onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
+              />
+            </div>
+          ))}
 
           {/* ===== HERO HEADER ===== */}
           <div style={{ textAlign: 'center', marginBottom: '32px', animation: 'fadeInUp 0.7s ease-out' }}>

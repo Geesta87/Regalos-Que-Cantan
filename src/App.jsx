@@ -51,6 +51,7 @@ import SmsConsentMarketingPreview from './pages/SmsConsentMarketingPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
+import AnimadoUpsell from './pages/AnimadoUpsell';
 import { captureAffiliateRef } from './services/tracking';
 
 // App State Context
@@ -107,7 +108,8 @@ const pathToPage = {
   '/terminos-de-servicio': 'termsOfService',
   '/sms-consent-preview': 'smsConsentPreview',
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
-  '/clonamivoz': 'clonamivoz'
+  '/clonamivoz': 'clonamivoz',
+  '/animado-demo': 'animadoDemo'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -428,6 +430,10 @@ export default function App() {
               generate-cloned-voice-lyrics, generate-cloned-voice-song,
               cloned-voice-status). Beta — no Stripe wiring yet. */}
           {currentPage === 'clonamivoz' && <ClonaMiVoz />}
+
+          {/* Local preview of the Animado story-video upsell (offer + photo upload).
+              Demo-only route; not linked from the funnel yet. */}
+          {currentPage === 'animadoDemo' && <AnimadoUpsell />}
 
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}

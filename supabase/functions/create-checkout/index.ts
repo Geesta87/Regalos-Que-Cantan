@@ -42,6 +42,13 @@ serve(async (req) => {
     const videoAddonCountNum: number = typeof rawVideoAddonCount === 'number' ? rawVideoAddonCount
       : typeof rawVideoAddonCount === 'string' ? parseInt(rawVideoAddonCount) || 0
       : videoAddon ? 1 : 0;
+    // Animado (animated story-video upsell). 0 = none, 1 = one video, 2 = both songs.
+    // Premium tier, distinct from the photo-slideshow videoAddon. Fulfilled by the
+    // story-video pipeline (confirm-animado-order creates the order post-payment).
+    const animadoCount: number = typeof body.animadoCount === 'number' ? body.animadoCount
+      : typeof body.animadoCount === 'string' ? parseInt(body.animadoCount) || 0 : 0;
+    const ANIMADO_ONE_CENTS = 4900;   // $49.00 — one animated video
+    const ANIMADO_BOTH_CENTS = 6999;  // $69.99 — both songs animated
     // Client IP for Meta Conversions API. Cloudflare/Vercel/Supabase set
     // x-forwarded-for to "<client>, <proxy>, ..." — first hop is the user.
     const xfwd = req.headers.get('x-forwarded-for') || '';
@@ -64,6 +71,16 @@ serve(async (req) => {
     const effectiveKaraokeIds: string[] = karaokeAddonBool
       ? (rawKaraokeIds.length ? rawKaraokeIds : [songIds[0]])
       : [];
+
+    // Which song(s) get the Animado video. count 2 = both; count 1 = the chosen
+    // one (animadoSongIds from the frontend, fallback to the first song).
+    const rawAnimadoIds: string[] = Array.isArray(body.animadoSongIds)
+      ? body.animadoSongIds.filter((id: string) => songIds.includes(id))
+      : [];
+    const effectiveAnimadoIds: string[] = animadoCount >= 2 ? songIds
+      : animadoCount === 1 ? (rawAnimadoIds.length ? [rawAnimadoIds[0]] : [songIds[0]])
+      : [];
+    const animadoCents = animadoCount >= 2 ? ANIMADO_BOTH_CENTS : animadoCount === 1 ? ANIMADO_ONE_CENTS : 0;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -330,6 +347,26 @@ serve(async (req) => {
       });
     }
 
+    // Animado add-on — $49 one video / $69.99 both songs. The story-video
+    // pipeline fulfills it post-payment (confirm-animado-order on the success page).
+    if (animadoCount > 0 && animadoCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: animadoCount >= 2
+              ? 'Película Animada — Ambas Canciones'
+              : 'Película Animada (Edición Premium)',
+            description: animadoCount >= 2
+              ? 'Las 2 canciones convertidas en películas animadas estilo Pixar, con su rostro y su historia, HD descargable'
+              : 'Su canción convertida en película animada estilo Pixar — su rostro, su historia, con movimiento, HD descargable',
+          },
+          unit_amount: animadoCents,
+        },
+        quantity: 1,
+      });
+    }
+
     // Karaoke add-on — $7.99 per instrumental. A 2-song order can buy an
     // instrumental for one or both songs (effectiveKaraokeIds), so quantity
     // scales with how many were chosen. fetch-karaoke runs per song post-payment.
@@ -424,6 +461,9 @@ serve(async (req) => {
         songCount: String(songCount),
         videoAddon: videoAddonCountNum > 0 ? 'true' : 'false',
         videoAddonCount: String(videoAddonCountNum),
+        // Animado upsell — read by confirm-animado-order on the success page.
+        animadoCount: String(animadoCount),
+        animadoSongIds: effectiveAnimadoIds.join(','),
         karaokeAddon: effectiveKaraokeIds.length ? 'true' : 'false',
         // Which song(s) get an instrumental — read per-song by stripe-webhook.
         karaokeSongIds: effectiveKaraokeIds.join(','),

@@ -4,6 +4,7 @@ import { createCheckout, supabase, checkSongStatus, validateCoupon } from '../se
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import ExitIntentPopup from '../components/ExitIntentPopup';
+import { AnimadoOffer } from './AnimadoUpsell';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -241,6 +242,14 @@ export default function ComparisonPage() {
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
 
+  // Animado (animated story-video upsell). Gated by animado-availability (master
+  // switch + in-progress cap); only renders when available. 0/1/2 like the video addon.
+  const [animadoAvailable, setAnimadoAvailable] = useState(false);
+  const [animadoPriceOne, setAnimadoPriceOne] = useState(49);
+  const [animadoPriceBoth, setAnimadoPriceBoth] = useState(69.99);
+  const [animadoCount, setAnimadoCount] = useState(0);
+  const [animadoVideoSongId, setAnimadoVideoSongId] = useState(null);
+
   // Karaoke add-on (single boolean — one karaoke per order, applied to first song)
   const [karaokeAddon, setKaraokeAddon] = useState(false);
   // For a 2-song (A/B) order: which versions get an instrumental. When the
@@ -255,6 +264,26 @@ export default function ComparisonPage() {
   // Track page view
   useEffect(() => {
     trackStep('comparison');
+  }, []);
+
+  // Soft-launch gate: only show the Animado upsell when the server says it's
+  // available (master switch on + under the in-progress cap). Fails closed.
+  useEffect(() => {
+    // Local preview: ?demo=1 forces the offer on so we can see it without enabling prod.
+    if (new URLSearchParams(window.location.search).get('demo') === '1') {
+      setAnimadoAvailable(true);
+      return;
+    }
+    let cancelled = false;
+    supabase.functions.invoke('animado-availability', { body: {} })
+      .then(({ data }) => {
+        if (cancelled || !data || !data.available) return;
+        setAnimadoAvailable(true);
+        if (data.price_one_cents) setAnimadoPriceOne(data.price_one_cents / 100);
+        if (data.price_both_cents) setAnimadoPriceBoth(data.price_both_cents / 100);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // ✅ NEW: Entrance animation trigger
@@ -735,7 +764,7 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds());
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds(), animadoCount, resolveAnimadoSongIds());
 
       if (result.url) {
         window.location.href = result.url;
@@ -814,6 +843,22 @@ export default function ComparisonPage() {
   // How many instrumentals are in the cart (drives the price).
   const karaokeQty = !karaokeAddon ? 0 : (purchaseBoth ? (karaokeVersionIds.length || 2) : 1);
 
+  // The song(s) the customer is buying — the Animado offer applies to these.
+  const purchasedSongs = purchaseBoth
+    ? songs
+    : (selectedSongId ? songs.filter((s) => s.id === selectedSongId) : songs);
+
+  // Which song(s) get the Animado video (sent to checkout).
+  const resolveAnimadoSongIds = () => {
+    if (!animadoCount) return [];
+    if (animadoCount >= 2) return purchasedSongs.map((s) => s.id);
+    return [animadoVideoSongId || purchasedSongs[0]?.id].filter(Boolean);
+  };
+
+  // Reset the Animado selection whenever the song selection changes, so the
+  // offer never carries a stale "both" choice into a single-song purchase.
+  useEffect(() => { setAnimadoCount(0); setAnimadoVideoSongId(null); }, [selectedSongId, purchaseBoth]);
+
   const getSelectionLabel = () => {
     const videoLabel = videoAddon ? ' + Video' : '';
     if (purchaseBoth) return `2 Canciones${videoLabel}`;
@@ -830,6 +875,8 @@ export default function ComparisonPage() {
     if (videoAddonCount === 2) base += videoDualAddonPrice;
     else if (videoAddonCount === 1) base += videoAddonPrice;
     base += karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty;
+    if (animadoCount === 2) base += animadoPriceBoth;
+    else if (animadoCount === 1) base += animadoPriceOne;
     return base;
   };
 
@@ -1757,6 +1804,22 @@ export default function ComparisonPage() {
           </div>
         )}
 
+
+        {/* ══════════════════════════════════════════════════════
+            Animado upsell — animated story video (soft-launch gated by
+            animado-availability; applies to the song(s) being purchased).
+            ══════════════════════════════════════════════════════ */}
+        {animadoAvailable && hasSelection && purchasedSongs.length > 0 && (
+          <div style={{ marginBottom: '16px', animation: 'fadeIn 0.6s ease-out both' }}>
+            <AnimadoOffer
+              recipientName={recipientName}
+              songs={purchasedSongs}
+              count={animadoCount}
+              selectedVideoSongId={animadoVideoSongId}
+              onChange={(c, id) => { setAnimadoCount(c); setAnimadoVideoSongId(id); }}
+            />
+          </div>
+        )}
 
         {/* ══════════════════════════════════════════════════════
             SECTION 5: WhatsApp Phone Input

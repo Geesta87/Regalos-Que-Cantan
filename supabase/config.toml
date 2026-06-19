@@ -30,6 +30,91 @@ verify_jwt = false
 # Shotstack render-completion webhook. No JWT available.
 verify_jwt = false
 
+[functions.transcribe-song]
+# Word-level Whisper transcription helper for the story-video / lyric-video
+# pipeline. Called manually / server-to-server (no Supabase JWT); reads
+# OPENAI_API_KEY + service-role key from its own env. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.test-kie-video]
+# Throwaway TEST harness evaluating Kie.ai's unified video API (Seedance 2.0)
+# as a cheaper/faster alternative to Higgsfield for the story-video upsell.
+# Curl'd server-to-server during testing (no Supabase JWT); reads KIE_API_KEY
+# from its own env. verify_jwt = false so the test calls don't need a token.
+verify_jwt = false
+
+[functions.generate-storyboard]
+# Auto-storyboard "brain" for the animated story-video pipeline. Given a songId,
+# reads details+lyrics+lyrics_timestamps and asks Claude (ANTHROPIC_API_KEY) to
+# emit the structured scene plan. Called server-to-server by the orchestrator /
+# admin (no Supabase JWT). Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.generate-likeness]
+# Story-video pipeline STAGE 1: creates a story_video_orders row and generates 2
+# Pixar-cartoon likeness options of the recipient via Kie (nano-banana-edit), then
+# parks it in 'likeness_review' for the admin approval tab. Server-to-server
+# (no Supabase JWT); reads KIE_API_KEY + service-role from env. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.approve-likeness]
+# Story-video ADMIN GATE 1 exit: admin picks one of the 2 likeness options (or rejects).
+# Sets approved_character_url + state='building'. Admin/server call (no Supabase JWT).
+# Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.story-build-context]
+# Feeds the auto-build engine everything from one order id (config, storyboard, timing,
+# audio) so the engine needs no DB secrets. Ensures storyboard exists. Server-to-server
+# (no Supabase JWT); reads service-role from env. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.story-build-finalize]
+# Engine hands the finished video back: signed upload-url -> complete (sets video_url +
+# state='final_review', GATE 2) / fail. Server-to-server (no Supabase JWT); service-role
+# from env. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.admin-story-videos]
+# Powers the admin "Needs Approval" tab (likeness pick + final approve/reject). Called by
+# the dashboard with the logged-in admin's JWT and verifies admin_users membership, so
+# verify_jwt = true (default) — do NOT set false here (unlike the server-to-server fns).
+verify_jwt = true
+
+[functions.deliver-story-video]
+# Pipeline EXIT: emails the customer their finished animated story video via SendGrid +
+# marks delivered. Called by admin-story-videos.approve_final (server-to-server, no
+# Supabase JWT); reads SENDGRID_API_KEY + service-role from env. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.create-story-video-order]
+# Pipeline ENTRY: creates a story_video_order for a song (Animado upsell) and, if a
+# photo is supplied, kicks off generate-likeness. Called server-to-server by the Stripe
+# webhook / a cron / the admin dashboard (no Supabase JWT). Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.animado-availability]
+# Public read-only check the comparison page calls to decide whether to show the
+# Animado upsell (master switch + in-progress cap). No auth. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.confirm-animado-order]
+# Success-page handler: verifies the Stripe session is paid + included Animado, then
+# creates the story_video_order(s). Called from the browser with the session_id (no
+# Supabase JWT); verifies payment server-side via Stripe. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.animado-photo]
+# Customer photo upload for the Animado pipeline (signed upload URL + attach/kick
+# likeness). Called from the success page with the anon key. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.animado-notify]
+# Fulfillment nudges for the Animado pipeline via SendGrid: 'reminders' (pg_cron — chases
+# paid-but-no-photo orders) and 'redo' (admin-triggered — asks for a better photo). Called
+# by pg_cron / another edge function (no Supabase JWT). Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.inhouse-video-callback]
 # Completion hook for the in-house FFmpeg renderer (Cloud Run service
 # rqc-video-renderer), the replacement for Shotstack's video-callback. Called
