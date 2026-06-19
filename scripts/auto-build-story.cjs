@@ -228,7 +228,6 @@ function prependMorph(total) {
 }
 
 (async () => {
-  if (sb.is_family) await genFaithfulRef();
   await genImages();
   const { flat, total } = windows();
   console.log(`${flat.length} render-scenes, ${total}s`);

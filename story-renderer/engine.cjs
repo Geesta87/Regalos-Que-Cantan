@@ -244,7 +244,6 @@ function prependMorph(total) {
 }
 
 (async () => {
-  if (sb.is_family) await genFaithfulRef(); // pose-matched faithful family cartoon drives scenes + morph
   await genImages();
   const { flat, total } = windows();
   console.log(`${flat.length} render-scenes, ${total}s`);
