@@ -5714,8 +5714,24 @@ export default function AdminDashboard() {
               {/* Details */}
               {selectedSong.details && (
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Details</p>
+                  <p className="text-xs text-gray-500 mb-2">Details (su historia)</p>
                   <p className="text-sm whitespace-pre-wrap">{selectedSong.details}</p>
+                </div>
+              )}
+
+              {/* Songwriter notes — story-mode buyer's requests for the AI composer */}
+              {selectedSong.songwriter_notes && (
+                <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl p-4">
+                  <p className="text-xs text-amber-300/80 mb-2">📝 Notas para el compositor</p>
+                  <p className="text-sm whitespace-pre-wrap text-amber-50/90">{selectedSong.songwriter_notes}</p>
+                </div>
+              )}
+
+              {/* Submitted lyrics — the customer's own verbatim lyrics (own-lyrics mode) */}
+              {selectedSong.submitted_lyrics && (
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-2">Letra que el cliente envió (se canta tal cual)</p>
+                  <p className="text-sm whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300">{selectedSong.submitted_lyrics}</p>
                 </div>
               )}
 

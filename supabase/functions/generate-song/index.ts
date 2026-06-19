@@ -2276,6 +2276,7 @@ serve(async (req) => {
         used_custom_lyrics: wantsCustomLyrics,
         submitted_lyrics: wantsCustomLyrics ? customLyrics : null,
         submitted_details: details || null,
+        songwriter_notes: songwriterNotesClean || null,
       });
     } catch (auditErr) {
       console.warn('[generate-song] lyric_submissions audit insert failed (non-blocking):', auditErr);
@@ -3058,6 +3059,7 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       occasion_custom: customOccasion || null,
       emotional_tone: emotionalTone || null,
       details: details,
+      songwriter_notes: songwriterNotesClean || null,
       email: email,
       lyrics: lyrics,
       // Immutable record of exactly what the customer typed in "write my own
@@ -3226,6 +3228,7 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       occasion_custom: customOccasion || null,
       emotional_tone: emotionalTone || null,
       details: details,
+      songwriter_notes: songwriterNotesClean || null,
       email: email,
       lyrics: lyrics,
       // Same immutable submission record as the v1 insert.
