@@ -75,7 +75,7 @@ async function genImages() {
   for (let i = 0; i < ids.length; i += POOL) {
     await Promise.all(ids.slice(i, i + POOL).map(async (id) => {
       const url = await kieRun('google/nano-banana-edit', firstPromptFor[id],
-        { image_urls: [cfg.approved_character_url], aspect_ratio: '9:16', output_format: 'png' }, id);
+        { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, id);
       sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok`);
     }));
   }
@@ -117,7 +117,7 @@ async function genHeroes(flat) {
     let url = sceneUrls[id];
     if (!url) {
       const prompt = sb.scenes.find((s) => s.image_id === id).visual_prompt;
-      url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [cfg.approved_character_url], aspect_ratio: '9:16', output_format: 'png' }, `${id}(re)`);
+      url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(re)`);
       sceneUrls[id] = url; dl(url, `${id}.png`);
     }
     console.log(`animating hero ${id} (window ${L}s)...`);
@@ -142,13 +142,29 @@ function wrapHero(motionFile, outFile, L) {
   }
   ['_mv.mp4', '_last.png', '_freeze.mp4'].forEach((f) => { try { fs.unlinkSync(path.join(DIR, f)); } catch {} });
 }
+// Reference image fed into every scene + used as the morph end-frame. For FAMILIES
+// it's replaced with a pose-matched faithful cartoon of the exact photo (genFaithfulRef).
+let CHAR_REF = cfg.approved_character_url;
+let MORPH_END = cfg.approved_character_url;
+
+async function genFaithfulRef() {
+  if (fs.existsSync(path.join(DIR, 'morph-target.png'))) return;
+  try {
+    const url = await kieRun('google/nano-banana-edit',
+      'Turn this exact photo into a warm Pixar-style 3D animated version. Keep the IDENTICAL composition, pose, framing and background, and EVERY person in the same position with their face, hair, age and clothing faithful and recognizable. Do not add, remove, or change anyone. Wholesome, soft cinematic light.',
+      { image_urls: [cfg.recipient_photo_url], aspect_ratio: '3:4', output_format: 'png' }, 'faithful-ref');
+    dl(url, 'morph-target.png'); CHAR_REF = url; MORPH_END = url;
+    console.log('  faithful family reference ready (drives scenes + morph)');
+  } catch (e) { console.log('  faithful-ref gen failed, using approved likeness:', e.message); }
+}
+
 async function genMorph() {
   const out = 'BOOKEND.mp4';
   if (fs.existsSync(path.join(DIR, out))) return;
   console.log('generating morph (Kie Seedance)...');
   const url = await kieRun('bytedance/seedance-2',
-    'A real photograph slowly and magically transforms into a warm 3D Pixar-style animated version of the same subject. Smooth seamless morph, same pose and framing, gentle glow. Wholesome.',
-    { first_frame_url: cfg.recipient_photo_url, last_frame_url: cfg.approved_character_url, resolution: '720p', aspect_ratio: '3:4', duration: 5, generate_audio: false }, 'morph');
+    'A real photograph slowly and magically transforms into a warm 3D Pixar-style animated version of the same subjects, keeping every person and the exact pose and framing. Smooth seamless morph, gentle glow. Wholesome.',
+    { first_frame_url: cfg.recipient_photo_url, last_frame_url: MORPH_END, resolution: '720p', aspect_ratio: '3:4', duration: 5, generate_audio: false }, 'morph');
   dl(url, out); console.log('  morph ok');
 }
 
@@ -191,6 +207,7 @@ function prependMorph(total) {
 }
 
 (async () => {
+  if (sb.is_family) await genFaithfulRef();
   await genImages();
   const { flat, total } = windows();
   console.log(`${flat.length} render-scenes, ${total}s`);
