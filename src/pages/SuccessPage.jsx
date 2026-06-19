@@ -704,6 +704,28 @@ export default function SuccessPage() {
     }
   };
 
+  // Force a real download for any file URL (e.g. the instrumental track).
+  // A plain <a download> is ignored by browsers for cross-origin URLs (our
+  // files live on the Supabase domain), so it just opens/plays the file. We
+  // fetch the bytes and download via a same-origin blob URL, which downloads.
+  const handleDownloadFile = async (fileUrl, filename) => {
+    if (!fileUrl) return;
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const objUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(objUrl);
+    } catch (err) {
+      window.open(fileUrl, '_blank'); // fallback if the fetch is blocked
+    }
+  };
+
   const handleDownloadAll = async () => {
     for (const song of songs) {
       await handleDownload(song);
@@ -2119,7 +2141,11 @@ export default function SuccessPage() {
                       }}>
                         La canción sin la voz — para cantarla tú en familia, fiestas o redes.
                       </p>
-                      <a href={url} download={`pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`}
+                      <a href={url}
+                         onClick={(e) => {
+                           e.preventDefault();
+                           handleDownloadFile(url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`);
+                         }}
                          style={{
                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                            width: '100%', padding: '14px',
