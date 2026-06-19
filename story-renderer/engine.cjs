@@ -67,6 +67,22 @@ async function kieRun(model, prompt, input, label) {
 const dl = (url, file) => execFileSync('curl', ['-s', '-o', path.join(DIR, file), url]);
 const sceneUrls = {}; // image_id -> Kie public URL (used as Kling motion input)
 
+// one scene image, resilient to content blocks: try as-written, then a strictly
+// child-safe rephrase, then give up (caller substitutes a fallback image).
+async function genOneImage(id, prompt) {
+  try {
+    const url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, id);
+    sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok`); return true;
+  } catch (e) {
+    // most likely a child-content false block — retry once, strictly child-safe
+    try {
+      const safe = `Wholesome family scene. Any children appear ONLY from behind or as small distant figures with NO visible child faces; focus on warmth and togetherness. ${prompt}`;
+      const url = await kieRun('google/nano-banana-edit', safe, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(safe)`);
+      sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok (child-safe retry)`); return true;
+    } catch (e2) { console.log(`  ${id} blocked (${e2.message}) -> will reuse a fallback image`); return false; }
+  }
+}
+
 // ---- 1. generate every unique scene image (Kie nano-banana-edit, character ref) ----
 async function genImages() {
   const firstPromptFor = {};
@@ -74,12 +90,18 @@ async function genImages() {
   const ids = Object.keys(firstPromptFor).filter((id) => !fs.existsSync(path.join(DIR, `${id}.png`)));
   const POOL = 4; // Kie rate-limits high call frequency — throttle
   console.log(`generating ${ids.length} unique scene images via Kie (pool=${POOL})...`);
+  const failed = [];
   for (let i = 0; i < ids.length; i += POOL) {
-    await Promise.all(ids.slice(i, i + POOL).map(async (id) => {
-      const url = await kieRun('google/nano-banana-edit', firstPromptFor[id],
-        { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, id);
-      sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok`);
-    }));
+    const results = await Promise.all(ids.slice(i, i + POOL).map((id) => genOneImage(id, firstPromptFor[id]).then((ok) => ({ id, ok }))));
+    results.forEach((r) => { if (!r.ok) failed.push(r.id); });
+  }
+  // a build must never die because one scene got content-flagged: reuse a safe
+  // existing image (prefer the faithful family/character cartoon) for any failure.
+  if (failed.length) {
+    const have = ids.filter((id) => fs.existsSync(path.join(DIR, `${id}.png`)));
+    const fb = fs.existsSync(path.join(DIR, 'morph-target.png')) ? 'morph-target.png' : (have[0] ? `${have[0]}.png` : null);
+    if (!fb) throw new Error('all scene images failed to generate');
+    for (const id of failed) { fs.copyFileSync(path.join(DIR, fb), path.join(DIR, `${id}.png`)); console.log(`  ${id} <- reused ${fb}`); }
   }
 }
 
@@ -115,18 +137,22 @@ async function genHeroes(flat) {
     const fe = flat.find((f) => f.src === `${id}_full.mp4`);
     if (!fe) continue;
     const L = +(fe.dur + 1.0).toFixed(2);
-    // ensure a public URL for the scene image (regenerate if this was a cached run)
-    let url = sceneUrls[id];
-    if (!url) {
-      const prompt = sb.scenes.find((s) => s.image_id === id).visual_prompt;
-      url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(re)`);
-      sceneUrls[id] = url; dl(url, `${id}.png`);
-    }
-    console.log(`animating hero ${id} (window ${L}s)...`);
-    const motionUrl = await kieRun('kling/v2-1-standard', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, no distortion.', { image_url: url, duration: '5' }, `${id}-motion`);
-    dl(motionUrl, `motion-${id}.mp4`);
-    wrapHero(`motion-${id}.mp4`, `${id}_full.mp4`, L);
-    console.log(`  hero ${id} done`);
+    // a blocked/failed hero must NOT crash the build — downgrade it to a still.
+    const downgrade = (why) => { console.log(`  hero ${id} -> still (${why})`); fe.src = `${id}.png`; fe.isVideo = false; };
+    try {
+      // need a public URL of the scene image to animate; regenerate if missing
+      let url = sceneUrls[id];
+      if (!url) {
+        const prompt = sb.scenes.find((s) => s.image_id === id).visual_prompt;
+        url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(re)`);
+        sceneUrls[id] = url; dl(url, `${id}.png`);
+      }
+      console.log(`animating hero ${id} (window ${L}s)...`);
+      const motionUrl = await kieRun('kling/v2-1-standard', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, no distortion.', { image_url: url, duration: '5' }, `${id}-motion`);
+      dl(motionUrl, `motion-${id}.mp4`);
+      wrapHero(`motion-${id}.mp4`, `${id}_full.mp4`, L);
+      console.log(`  hero ${id} done`);
+    } catch (e) { downgrade(e.message); }
   }
 }
 function wrapHero(motionFile, outFile, L) {
