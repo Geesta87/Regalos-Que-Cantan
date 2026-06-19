@@ -166,28 +166,102 @@ Deno.serve(async (req) => {
   const responseHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ======================================================================
+    // MODE 2 — KIE COMPLETION CALLBACK (this function registers ITSELF as the
+    // callBackUrl on the Kie job). Identified by a Kie payload (data.task_id)
+    // with no v1Id. Swaps the new audio onto the EXISTING paid rows in place:
+    // NO email, and status stays 'completed' so the customer keeps the old
+    // audio until the new one lands. This replaces the old synchronous poll,
+    // which got killed at the 150s gateway timeout on slow renders and silently
+    // left the OLD recording while the DB read "done".
+    // ======================================================================
+    if (!body?.v1Id && body?.data?.task_id) {
+      const taskId: string = body.data.task_id;
+      const callbackType: string | undefined = body?.data?.callbackType;
+      const tracks: any[] = Array.isArray(body?.data?.data) ? body.data.data : [];
+
+      // Only act on terminal stages (Kie sends text→first→complete).
+      if (callbackType !== 'complete' && callbackType !== 'error' && body.code === 200) {
+        return new Response(JSON.stringify({ ok: true, action: 'stage_ignored', stage: callbackType }),
+          { headers: responseHeaders, status: 200 });
+      }
+
+      // The re-sing task_id is unique to the rows we stamped at initiate time.
+      const { data: rows } = await supabase
+        .from('songs')
+        .select('id, version, regenerate_count, original_audio_url')
+        .eq('kie_task_id', taskId);
+
+      if (!rows || rows.length === 0) {
+        console.warn(`[REGEN-CB] no rows for task ${taskId}`);
+        return new Response(JSON.stringify({ ok: true, action: 'no_matching_rows', taskId }),
+          { headers: responseHeaders, status: 200 });
+      }
+
+      // Re-sing failed on Kie: keep the customer's existing audio untouched.
+      if (callbackType === 'error' || body.code !== 200) {
+        const errMsg = (body.msg || `kie code=${body.code}`).toString().substring(0, 300);
+        for (const r of rows) {
+          await supabase.from('songs').update({ error_message: `REGEN failed: ${errMsg}` }).eq('id', r.id);
+        }
+        console.error(`[REGEN-CB] task ${taskId} failed: ${errMsg} — kept old audio`);
+        return new Response(JSON.stringify({ ok: true, action: 'regen_failed', error: errMsg }),
+          { headers: responseHeaders, status: 200 });
+      }
+
+      // COMPLETE — map track[version-1] -> row and swap in place.
+      const results: any[] = [];
+      for (const r of rows) {
+        const track = tracks[(r.version || 1) - 1];
+        if (!track?.audio_url) { results.push({ id: r.id, action: 'no_track' }); continue; }
+        // Idempotent: a Kie retry re-delivering the same track is a no-op.
+        if (r.original_audio_url === track.audio_url) { results.push({ id: r.id, action: 'already_applied' }); continue; }
+        const { error: uErr } = await supabase.from('songs').update({
+          audio_url: track.audio_url,
+          preview_url: track.audio_url,
+          original_audio_url: track.audio_url,
+          ...(track.image_url ? { image_url: track.image_url } : {}),
+          status: 'completed',
+          needs_reupload: true,   // poll-processing-songs re-hosts (upsert) to permanent storage
+          kie_payload: JSON.stringify(track),
+          provider: 'kie',
+          error_message: null,
+          regenerate_count: (r.regenerate_count || 0) + 1,
+        }).eq('id', r.id);
+        results.push({ id: r.id, version: r.version, action: uErr ? `error: ${uErr.message}` : 'swapped' });
+      }
+      console.log(`[REGEN-CB] task ${taskId} applied: ${JSON.stringify(results)}`);
+      return new Response(JSON.stringify({ ok: true, action: 'regen_applied', results }),
+        { headers: responseHeaders, status: 200 });
+    }
+
+    // ======================================================================
+    // MODE 1 — INITIATE re-sing (admin/CLI). Persist corrected lyrics, submit
+    // to Kie with THIS function as the callback, stamp the task_id on both rows,
+    // and return IMMEDIATELY. No synchronous poll → no 150s timeout, so the
+    // audio swap can't be silently lost. The callback (MODE 2) finishes it.
+    // ======================================================================
     if (!KIE_API_KEY) {
       return new Response(JSON.stringify({ ok: false, error: 'KIE_API_KEY env var missing on Supabase' }),
         { headers: responseHeaders, status: 200 });
     }
 
-    const body = await req.json().catch(() => ({}));
     const v1Id: string | undefined = body?.v1Id;
     const v2Id: string | undefined = body?.v2Id;
     const lyrics: string | undefined = body?.lyrics;
     const details: string | undefined = body?.details;
-
     if (!v1Id || !lyrics) {
       return new Response(JSON.stringify({ ok: false, error: 'v1Id and lyrics are required' }),
         { headers: responseHeaders, status: 200 });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
     // ---- Load the v1 row for style / voice / metadata ----
     const { data: v1, error: v1Err } = await supabase
       .from('songs')
-      .select('id, recipient_name, voice_type, style_used, regenerate_count, image_url, paid')
+      .select('id, recipient_name, voice_type, style_used, paid')
       .eq('id', v1Id)
       .single();
     if (v1Err || !v1) {
@@ -205,76 +279,33 @@ Deno.serve(async (req) => {
     await supabase.from('songs').update(lyricEdit).eq('id', v1Id);
     if (v2Id) await supabase.from('songs').update(lyricEdit).eq('id', v2Id);
 
-    // ---- Submit to Kie / Suno ----
+    // ---- Submit to Kie with THIS function as the async callback ----
     const title = `Canción para ${v1.recipient_name || 'ti'}`;
-    const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-    const { taskId, styleSent } = await submitToKie(lyrics, title, v1.style_used, v1.voice_type, callbackUrl);
-    console.log(`[REGEN] Kie taskId: ${taskId} for v1=${v1Id} v2=${v2Id ?? 'none'}`);
-
-    // ---- Poll until done ----
-    const tracks = await pollKieUntilDone(taskId);
-    const track1 = tracks[0];
-    const track2 = tracks[1];
-
-    if (!track1?.audioUrl) {
-      return new Response(JSON.stringify({ ok: false, taskId, error: 'no audioUrl in track[0]' }),
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/regenerate-paid-song-kie`;
+    let taskId: string, styleSent: string;
+    try {
+      ({ taskId, styleSent } = await submitToKie(lyrics, title, v1.style_used, v1.voice_type, callbackUrl));
+    } catch (e: any) {
+      return new Response(JSON.stringify({ ok: false, error: `kie submit failed: ${e?.message || e}` }),
         { headers: responseHeaders, status: 200 });
     }
+    console.log(`[REGEN] initiated task ${taskId} for v1=${v1Id} v2=${v2Id ?? 'none'} (async, awaiting callback)`);
 
-    const newRegenCount = (v1.regenerate_count || 0) + 1;
-
-    // ---- Swap v1 audio in place (preserve paid / version / stripe link) ----
-    const { error: u1 } = await supabase.from('songs').update({
-      audio_url: track1.audioUrl,
-      preview_url: track1.audioUrl,
-      original_audio_url: track1.audioUrl,
-      ...(track1.imageUrl ? { image_url: track1.imageUrl } : {}),
-      status: 'completed',
-      needs_reupload: true,
-      kie_task_id: taskId,
-      task_id: taskId,
-      kie_payload: JSON.stringify(track1),
-      provider: 'kie',
-      error_message: null,
-      regenerate_count: newRegenCount,
-    }).eq('id', v1Id);
-    if (u1) {
-      return new Response(JSON.stringify({ ok: false, taskId, error: `v1 update failed: ${u1.message}` }),
-        { headers: responseHeaders, status: 200 });
-    }
-
-    // ---- Swap v2 audio in place (if a v2 row + a second track exist) ----
-    let v2Updated = false;
-    if (v2Id && track2?.audioUrl) {
-      const { error: u2 } = await supabase.from('songs').update({
-        audio_url: track2.audioUrl,
-        preview_url: track2.audioUrl,
-        original_audio_url: track2.audioUrl,
-        ...(track2.imageUrl ? { image_url: track2.imageUrl } : {}),
-        status: 'completed',
-        needs_reupload: true,
-        kie_task_id: taskId,
-        task_id: taskId,
-        kie_payload: JSON.stringify(track2),
-        provider: 'kie',
-        error_message: null,
-        regenerate_count: newRegenCount,
-      }).eq('id', v2Id);
-      if (u2) console.warn(`[REGEN] v2 update failed: ${u2.message}`);
-      else v2Updated = true;
-    }
+    // ---- Stamp the task on both rows so the callback (MODE 2) finds them.
+    // Keep status='completed' — the customer keeps the OLD audio until the swap. ----
+    const stamp = { kie_task_id: taskId, task_id: taskId, provider: 'kie', error_message: null };
+    await supabase.from('songs').update(stamp).eq('id', v1Id);
+    if (v2Id) await supabase.from('songs').update(stamp).eq('id', v2Id);
 
     return new Response(JSON.stringify({
       ok: true,
+      async: true,
       taskId,
       styleSent,
       v1Id,
-      v1Url: track1.audioUrl,
       v2Id: v2Id ?? null,
-      v2Url: v2Updated ? track2?.audioUrl : null,
-      v2Updated,
+      message: 'Re-sing started. The corrected audio swaps in automatically when Suno finishes (~1-3 min); the old audio keeps playing until then.',
       songLink: `https://regalosquecantan.com/song/${v1Id}`,
-      tracksReturned: tracks.length,
     }), { headers: responseHeaders, status: 200 });
 
   } catch (e: any) {
