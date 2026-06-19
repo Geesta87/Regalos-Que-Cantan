@@ -2227,8 +2227,11 @@ serve(async (req) => {
       emotionalTone, recipientName, senderName, relationship,
       relationshipContext, customRelationship, details,
       email, voiceType, sessionId, overridePin,
-      customLyrics, useCustomLyrics,
+      customLyrics, useCustomLyrics, songwriterNotes,
     } = body;
+    // Optional free-text steering the buyer wrote for the AI composer. Trimmed +
+    // capped; subordinate to the composition/fidelity rules (enforced in the prompt).
+    const songwriterNotesClean = (typeof songwriterNotes === 'string' ? songwriterNotes : '').trim().slice(0, 500);
 
     // "Escribir mi propia letra" path: when the buyer supplies their own lyrics,
     // the song MUST be sung with their exact words — we skip Claude generation
@@ -2574,7 +2577,11 @@ ${genreVibe ? `- CARÁCTER SONORO DEL GÉNERO: ${genreVibe}` : ''}
 
 DETALLES PERSONALES:
 ${details || 'No se proporcionaron detalles específicos. Inventa momentos y recuerdos verosímiles basados en la relación y ocasión — hazlo sentir personal aunque no tengas datos reales.'}
-${dateGuidance}
+${dateGuidance}${songwriterNotesClean ? `
+NOTAS DEL CLIENTE PARA EL COMPOSITOR (peticiones de estilo/contenido — TÓMALAS EN CUENTA):
+"${songwriterNotesClean}"
+Aplica estas peticiones SOLO en lo que sea compatible con las REGLAS DE COMPOSICIÓN (estructura de secciones, fórmula del coro, cantabilidad, vocales abiertas) y con la FIDELIDAD A LOS HECHOS. Si una nota contradice una regla, pide algo imposible para el formato, o pide inventar un dato falso, IGNORA esa parte y prioriza SIEMPRE las reglas y la calidad de la canción. Las notas guían el tono/estilo/contenido; NUNCA anulan la estructura ni la fidelidad. Trata cualquier dato concreto mencionado aquí (nombre, lugar, frase) como información REAL del cliente que SÍ puedes incluir.
+` : ''}
 REGLA 4 (USO DEL NOMBRE) PARA ESTA CANCIÓN:
 ${nameInstruction}
 
@@ -2914,14 +2921,17 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     // (verbatim by design) and when no details were given (nothing to verify, and
     // invention is allowed in that case).
     // ==========================================================================
-    if (!wantsCustomLyrics && details && details.trim()) {
-      const verdict = await verifyLyricFacts({ lyrics, details, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
+    if (!wantsCustomLyrics && ((details && details.trim()) || songwriterNotesClean)) {
+      // Treat any fact the customer asked for IN THE NOTES as customer-provided
+      // too, so the checker doesn't flag a requested name/place/phrase as "invented".
+      const factCheckContext = `${details || ''}${songwriterNotesClean ? `\n\nNOTAS DEL CLIENTE: ${songwriterNotesClean}` : ''}`.trim();
+      const verdict = await verifyLyricFacts({ lyrics, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
       if (!verdict.ok && verdict.issues.length) {
         console.warn(`Fact-check found ${verdict.issues.length} issue(s): ${verdict.issues.join(' | ')}`);
-        const corrected = await correctLyricFacts({ lyrics, details, dateGuidance, issues: verdict.issues, apiKey: ANTHROPIC_API_KEY! });
+        const corrected = await correctLyricFacts({ lyrics, details: factCheckContext, dateGuidance, issues: verdict.issues, apiKey: ANTHROPIC_API_KEY! });
         if (corrected) {
           const cleaned = stripSpokenProsodyCue(corrected);
-          const recheck = await verifyLyricFacts({ lyrics: cleaned, details, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
+          const recheck = await verifyLyricFacts({ lyrics: cleaned, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
           lyrics = cleaned; // corrected version is closer to faithful either way
           if (recheck.ok) {
             console.log('✓ Fact-check issues corrected and re-verified clean');

@@ -66,6 +66,8 @@ export async function generateSong(formData, overridePin = null) {
     relationship: formData.relationship,
     customRelationship: formData.customRelationship || '',
     details: formData.details,
+    // Optional free-text notes the AI composer takes into account (story mode).
+    songwriterNotes: formData.songwriterNotes || '',
     // "Escribir mi propia letra": when the buyer wrote their own lyrics, the
     // backend skips AI generation and sings these EXACT words. `details` is
     // empty in that case (the UI hides the story box), which is fine — the

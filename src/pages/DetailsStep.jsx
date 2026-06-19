@@ -21,6 +21,9 @@ export default function DetailsStep() {
   const [useOwnLyrics, setUseOwnLyrics] = useState(formData.useCustomLyrics || false);
   const [customLyrics, setCustomLyrics] = useState(formData.customLyrics || '');
   const [lyricsError, setLyricsError] = useState(false);
+  // Optional free-text notes the AI composer takes into account (story mode only).
+  const [songwriterNotes, setSongwriterNotes] = useState(formData.songwriterNotes || '');
+  const maxNotesChars = 500;
   const maxLyricsChars = 4000;
   const minLyricsChars = 20;   // hard floor — below this, block (basically empty)
   const shortLyricsChars = 120; // soft nudge — below this, warn it may be too short for a full song
@@ -37,6 +40,8 @@ export default function DetailsStep() {
     updateFormData('useCustomLyrics', useOwnLyrics);
     updateFormData('customLyrics', useOwnLyrics ? customLyrics : '');
     updateFormData('details', useOwnLyrics ? '' : details);
+    // Notes only apply when WE compose (story mode); cleared in own-lyrics mode.
+    updateFormData('songwriterNotes', useOwnLyrics ? '' : songwriterNotes.trim());
     navigateTo('email');
   };
 
@@ -233,6 +238,33 @@ export default function DetailsStep() {
                       {prompt.label}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Notes for our songwriter — optional steering the AI composer
+                  takes into account while still honoring the song structure. */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-gold text-base">edit_note</span>
+                  <span className="text-xs font-bold text-white/60 uppercase tracking-widest">
+                    Notas para nuestro compositor <span className="text-white/30 normal-case font-normal">(opcional)</span>
+                  </span>
+                </div>
+                <p className="text-white/45 text-xs leading-relaxed">
+                  ¿Algún pedido especial para la letra? Ej: "que sea alegre", "que mencione a sus nietos",
+                  "tono más romántico", o incluir una frase especial. Lo tomamos en cuenta al componer,
+                  siempre dentro de la estructura de la canción.
+                </p>
+                <textarea
+                  value={songwriterNotes}
+                  onChange={(e) => setSongwriterNotes(e.target.value.slice(0, maxNotesChars))}
+                  placeholder="Ej: que el tono sea alegre y esperanzador; si se puede, que mencione su rancho..."
+                  className="w-full h-24 bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-gold/40"
+                />
+                <div className="text-right">
+                  <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
+                    {songwriterNotes.length} / {maxNotesChars}
+                  </span>
                 </div>
               </div>
               </>)}
