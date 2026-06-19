@@ -245,15 +245,36 @@ serve(async (req) => {
     }
 
     // Convert any HEIC/HEIF photos to WebP before building the timeline.
-    // Shotstack checks URL file extensions and rejects .heic/.heif outright.
-    // Strategy: fetch the image via Supabase's render endpoint (which converts
-    // on the fly) and re-upload to storage with a .webp extension so the URL
-    // Shotstack receives has a supported extension.
+    // Shotstack can't decode HEIC and fails the whole render with "unsupported
+    // format". iPhone photos frequently arrive MISLABELED — a .jpeg/.webp/.png
+    // extension (and matching content-type) but real HEIC bytes inside — so we
+    // can't trust the extension. Detect HEIC by the file's actual magic bytes
+    // (ISO-BMFF "ftyp" box + a HEIF brand) as well as the extension, then run it
+    // through Supabase's render endpoint (which decodes by content) and re-upload
+    // as a genuine .webp so the URL Shotstack receives is both valid and supported.
+    const HEIF_BRANDS = ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'];
+    const looksLikeHeic = async (u: string): Promise<boolean> => {
+      if (/\.(heic|heif)$/i.test(u)) return true;
+      try {
+        // Cheap: only the first 24 bytes are needed to read the ftyp brand.
+        const res = await fetch(u, { headers: { Range: 'bytes=0-23' } });
+        if (!res.ok) return false;
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (buf.length < 12) return false;
+        const box = String.fromCharCode(buf[4], buf[5], buf[6], buf[7]);
+        if (box !== 'ftyp') return false;
+        const brand = String.fromCharCode(buf[8], buf[9], buf[10], buf[11]).toLowerCase();
+        return HEIF_BRANDS.includes(brand);
+      } catch (_) {
+        return false;
+      }
+    };
+
     const resolvedPhotoUrls = await Promise.all(
       photoUrls.map(async (url) => {
-        if (!/\.heic$/i.test(url) && !/\.heif$/i.test(url)) return url;
+        if (!(await looksLikeHeic(url))) return url;
         try {
-          // Supabase render endpoint converts HEIC → WebP on the fly
+          // Supabase render endpoint decodes HEIC (by content) → WebP on the fly
           const renderUrl = url.replace(
             '/storage/v1/object/public/',
             '/storage/v1/render/image/public/',
@@ -263,10 +284,12 @@ serve(async (req) => {
           if (!res.ok) throw new Error(`Render fetch ${res.status}`);
           const buffer = await res.arrayBuffer();
 
-          // Re-upload with .webp extension (upsert so reruns are idempotent)
+          // Write to a FRESH .webp object name. Using a new name (rather than
+          // overwriting the original, which may carry a misleading extension)
+          // guarantees Shotstack sees a .webp URL backed by real WebP bytes.
           const bucketPrefix = '/storage/v1/object/public/video-photos/';
           const objectPath = new URL(url).pathname.slice(bucketPrefix.length);
-          const webpPath = objectPath.replace(/\.heic$/i, '.webp').replace(/\.heif$/i, '.webp');
+          const webpPath = objectPath.replace(/\.[^./]+$/, '') + '.heicfix.webp';
 
           const { error: uploadErr } = await supabase.storage
             .from('video-photos')
