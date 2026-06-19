@@ -240,9 +240,23 @@ export default function DetailsStep() {
               {/* Own-lyrics mode: the song is sung with these EXACT words. */}
               {useOwnLyrics && (
                 <div className="space-y-4">
-                  <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4">
-                    <p className="text-white/90 text-sm leading-relaxed">
-                      ✍️ <strong>Pega aquí la letra que ya tienes.</strong> Tu canción se cantará con estas palabras exactas — no las modificaremos. Escríbela completa, tal como quieres escucharla.
+                  <div className="bg-yellow-400/15 border-2 border-yellow-400/70 rounded-2xl px-6 py-5 shadow-lg shadow-yellow-400/10">
+                    <p className="text-yellow-300 text-base md:text-lg font-extrabold uppercase tracking-wide mb-2 flex items-center gap-2">
+                      <span className="text-2xl leading-none">⚠️</span> Importante — solo para letras completas
+                    </p>
+                    <p className="text-white text-sm md:text-base leading-relaxed">
+                      Usa esta opción <strong>SOLO si ya tienes la letra COMPLETA de una canción</strong> — con sus <strong>versos, coro (el gancho que se repite) y puente</strong>. Cantaremos <strong>exactamente</strong> lo que escribas aquí, palabra por palabra — y <strong>solo eso, aunque sea corto</strong>. No la modificaremos.
+                    </p>
+                    <p className="text-white/85 text-sm leading-relaxed mt-3">
+                      ¿Solo tienes datos, fechas o anécdotas (no una letra ya compuesta)? <strong>No los pegues aquí</strong> — usa{' '}
+                      <button
+                        type="button"
+                        onClick={() => { setUseOwnLyrics(false); setLyricsError(false); }}
+                        className="text-gold font-bold underline underline-offset-2 hover:text-gold/80"
+                      >
+                        "Cuéntanos la historia"
+                      </button>{' '}
+                      y nosotros componemos la letra por ti.
                     </p>
                   </div>
                   <div className="relative">

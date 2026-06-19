@@ -1719,6 +1719,37 @@ function analyzeDates(details: string): { guidance: string; readings: DateReadin
   return { guidance, readings };
 }
 
+// Spell every digit in a CUSTOM-LYRICS submission into Spanish words, in place,
+// without changing any other word. The custom-lyrics path is sung verbatim and
+// skips Claude entirely, so the AI-side number rule never runs — a customer who
+// types "10 de noviembre del 2012" would have Suno sing the digits (often in
+// English or one-by-one). This is the same idea as the artist-name cleanup that
+// already runs on custom lyrics: same words, just made singable. Numeric dates
+// (e.g. "10-1-2011") resolve US month-day-year (>12 auto-disambiguates); any
+// other standalone integer (years, ages, counts) becomes its cardinal in words.
+function spellOutNumbersInLyrics(text: string): string {
+  if (!text) return text;
+  // 1) Numeric slash/dash/dot dates → spelled Spanish date.
+  let out = text.replace(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g, (m, a, b, y) => {
+    const A = parseInt(a, 10), B = parseInt(b, 10);
+    let Y = parseInt(y, 10);
+    if (y.length <= 2) Y = Y >= 30 ? 1900 + Y : 2000 + Y;
+    let month: number, day: number;
+    if (A > 12 && B <= 12) { day = A; month = B; }
+    else if (A <= 12 && B > 12) { month = A; day = B; }
+    else if (A <= 12 && B <= 12) { month = A; day = B; } // ambiguous → US month-day
+    else return m;                                       // both >12 → not a real date
+    if (month < 1 || month > 12 || day < 1 || day > 31) return m;
+    return spellSpanishDate(day, month, Y);
+  });
+  // 2) Any remaining standalone integers → spelled cardinal (years, ages, counts).
+  out = out.replace(/\d+/g, (m) => {
+    const n = parseInt(m, 10);
+    return Number.isFinite(n) ? spellSpanishCardinal(n) : m;
+  });
+  return out;
+}
+
 // ============================================================================
 // Independent fact-check gate. The writer model is TOLD to stay faithful, but
 // "told" is not "verified" — a single wrong date, age, place or relationship
@@ -2747,9 +2778,15 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       // We deliberately do NOT run stripSpokenProsodyCue here — that helper also
       // removes lowercase [bracketed] text, which would silently delete a
       // customer's own legitimate bracketed words. Verbatim means verbatim.
-      lyrics = sanitizeArtistNames(customLyrics).trim().substring(0, 4000);
+      // ONE transform we DO apply: spell digits into Spanish words (dates/years/
+      // ages), so a custom-lyrics date like "10 de noviembre del 2012" isn't sung
+      // as digits (Suno often voices them in English or one-by-one). Same words,
+      // just singable — same spirit as the artist-name clean.
+      const spelledCustom = spellOutNumbersInLyrics(customLyrics);
+      if (spelledCustom !== customLyrics) console.log('Custom lyrics: spelled out digit(s) into words for singability');
+      lyrics = sanitizeArtistNames(spelledCustom).trim().substring(0, 4000);
       emotionalModifiers = '';
-      console.log(`Using customer-supplied lyrics verbatim (${lyrics.length} chars) — Claude skipped`);
+      console.log(`Using customer-supplied lyrics (${lyrics.length} chars, numbers spelled) — Claude skipped`);
     } else {
     console.log('Calling Claude (structured tool output)...');
 
