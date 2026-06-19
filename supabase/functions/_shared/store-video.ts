@@ -77,9 +77,19 @@ async function tusUpload(
     throw new Error(`Failed to fetch source video: HTTP ${videoResponse.status}`);
   }
 
-  const contentLengthStr = videoResponse.headers.get('content-length');
+  // TUS needs the total size up front. The streaming GET sometimes omits
+  // Content-Length (chunked transfer / proxied S3), which previously made TUS
+  // bail straight to the in-memory blob fallback and OOM on large videos. If
+  // the GET didn't include it, fetch it with a cheap HEAD request instead.
+  let contentLengthStr = videoResponse.headers.get('content-length');
   if (!contentLengthStr) {
-    throw new Error('Source response missing Content-Length — required for TUS upload');
+    try {
+      const headRes = await fetch(sourceUrl, { method: 'HEAD' });
+      contentLengthStr = headRes.headers.get('content-length');
+    } catch (_) { /* fall through to the error below */ }
+  }
+  if (!contentLengthStr) {
+    throw new Error('Source response missing Content-Length (GET and HEAD) — required for TUS upload');
   }
   const totalBytes = parseInt(contentLengthStr, 10);
 
@@ -227,6 +237,21 @@ async function sdkBufferUpload(
   sourceUrl: string,
   supabase: any,
 ): Promise<StoreVideoResult> {
+  // Guard: this path loads the ENTIRE file into memory. On the edge runtime
+  // (~150 MB worker limit) buffering a large video crashes the whole function
+  // (WORKER_RESOURCE_LIMIT / HTTP 546), which is worse than failing cleanly —
+  // a crash takes down the callback/poll mid-flight and leaves the order stuck.
+  // Refuse anything that won't comfortably fit so the caller can retry/recover.
+  const MAX_BUFFER_BYTES = 45 * 1024 * 1024; // 45 MB
+  const headRes = await fetch(sourceUrl, { method: 'HEAD' }).catch(() => null);
+  const headLen = headRes ? parseInt(headRes.headers.get('content-length') || '0', 10) : 0;
+  if (headLen > MAX_BUFFER_BYTES) {
+    throw new Error(
+      `Refusing in-memory buffer for ${headLen} bytes (> ${MAX_BUFFER_BYTES}); ` +
+      `TUS/REST streaming must handle large files. Leaving for retry to avoid OOM crash.`,
+    );
+  }
+
   const videoResponse = await fetch(sourceUrl);
   if (!videoResponse.ok) {
     throw new Error(`Failed to fetch source video: HTTP ${videoResponse.status}`);
