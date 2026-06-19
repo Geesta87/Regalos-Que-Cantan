@@ -1776,6 +1776,8 @@ export default function SuccessPage() {
             <div key={o.order_id} style={{ marginBottom: '28px' }}>
               <AnimadoPhotoUpload
                 recipientName={o.recipient_name || 'tu ser querido'}
+                isFamily={o.is_family !== false}
+                otherPeople={o.other_people || []}
                 askPhone={!o.has_phone}
                 onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
               />

@@ -53,15 +53,24 @@ serve(async (req) => {
         body: JSON.stringify({ song_id: songId, stripe_session_id: session_id }),
       });
       const oj = await resp.json().catch(() => ({}));
-      // attach the recipient name + whether we already have a phone (for the upload screen)
-      const { data: song } = await supabase.from('songs').select('recipient_name, whatsapp_phone, phone_number').eq('id', songId).single();
+      // attach recipient name, phone status, and family info (for the upload screen)
+      const { data: song } = await supabase.from('songs').select('recipient_name, whatsapp_phone, phone_number, storyboard').eq('id', songId).single();
       const hasPhone = !!(song?.whatsapp_phone || song?.phone_number);
+      const sb: any = song?.storyboard || null;
+      // default to showing the (optional) family slot unless the storyboard says single-person.
+      const isFamily = sb ? !!sb.is_family : true;
+      const recip = (song?.recipient_name || '').toLowerCase();
+      const otherPeople = isFamily && Array.isArray(sb?.characters)
+        ? sb.characters.map((c: any) => c?.name).filter((n: string) => n && n.toLowerCase() !== recip)
+        : [];
       orders.push({
         order_id: oj.order_id || null,
         song_id: songId,
         state: oj.state || null,
         recipient_name: song?.recipient_name || null,
         has_phone: hasPhone,
+        is_family: isFamily,
+        other_people: otherPeople,
       });
     }
 

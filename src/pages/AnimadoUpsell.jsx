@@ -452,8 +452,11 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
             👨‍👩‍👧‍👦 Foto familiar <span style={{ color: 'rgba(255,255,255,0.45)' }}>· recomendada</span>
           </p>
           <p style={{ margin: '0 0 8px', fontSize: 12, color: '#fde68a', lineHeight: 1.45 }}>
-            Tu canción también incluye a <strong>{formatNames(otherPeople)}</strong>. Sube <strong>una foto donde
-            salgan todos juntos</strong> para que se parezcan. (Si no, los animamos de forma general.)
+            {otherPeople.length
+              ? <>Tu canción también incluye a <strong>{formatNames(otherPeople)}</strong>. </>
+              : <>¿Tu canción también incluye a tu <strong>familia, pareja o hijos</strong>? </>}
+            Sube <strong>una foto donde salgan todos juntos</strong> para que se parezcan.
+            (Si no, los animamos de forma general.)
           </p>
           <PhotoDrop
             icon="👨‍👩‍👧‍👦"
