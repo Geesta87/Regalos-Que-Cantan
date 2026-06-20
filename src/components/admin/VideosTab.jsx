@@ -15,6 +15,7 @@ export default function VideosTab({ accessToken, showToast }) {
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
+  const [modalUrl, setModalUrl] = useState(null); // video preview modal
 
   const call = useCallback(async (cbody) => {
     const res = await fetch(FN_URL, {
@@ -58,6 +59,13 @@ export default function VideosTab({ accessToken, showToast }) {
     catch { showToast?.('No se pudo copiar', 'error'); }
   };
 
+  const dismiss = async (id) => {
+    setBusy(id);
+    try { await call({ action: 'dismiss', id }); showToast?.('Quitado de problemas', 'success'); await load(); }
+    catch (e) { showToast?.(e.message || 'Error', 'error'); }
+    finally { setBusy(null); }
+  };
+
   const c = data.counts || {};
 
   return (
@@ -93,7 +101,7 @@ export default function VideosTab({ accessToken, showToast }) {
       </div>
       {results !== null && (
         <div className="space-y-2">
-          {results.length === 0 ? <Empty text="Sin resultados." /> : results.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} busy={busy} />)}
+          {results.length === 0 ? <Empty text="Sin resultados." /> : results.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} onView={setModalUrl} busy={busy} />)}
         </div>
       )}
 
@@ -103,7 +111,7 @@ export default function VideosTab({ accessToken, showToast }) {
           <h3 className="text-xs uppercase tracking-wider text-rose-400 font-semibold mb-3">⚠️ Problemas ({(data.problems || []).length})</h3>
           {(data.problems || []).length === 0
             ? <Empty text="Ningún video con problemas. 🎉" />
-            : <div className="space-y-2">{data.problems.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} busy={busy} />)}</div>}
+            : <div className="space-y-2">{data.problems.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} onView={setModalUrl} onDismiss={dismiss} busy={busy} />)}</div>}
         </section>
       )}
 
@@ -113,8 +121,30 @@ export default function VideosTab({ accessToken, showToast }) {
           <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-3">Listos recientes</h3>
           {(data.completed || []).length === 0
             ? <Empty text="Nada todavía." />
-            : <div className="space-y-2">{data.completed.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} busy={busy} />)}</div>}
+            : <div className="space-y-2">{data.completed.map((v) => <Row key={v.id} v={v} onCopy={copy} onRetry={retry} onView={setModalUrl} busy={busy} />)}</div>}
         </section>
+      )}
+
+      {/* Video preview modal — close to dismiss (no separate page) */}
+      {modalUrl && (
+        <div
+          onClick={() => setModalUrl(null)}
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div onClick={(e) => e.stopPropagation()} className="relative">
+            <button
+              onClick={() => setModalUrl(null)}
+              className="absolute -top-3 -right-3 z-10 w-9 h-9 rounded-full bg-white text-black text-lg font-bold flex items-center justify-center shadow-lg hover:bg-gray-200"
+              aria-label="Cerrar"
+            >✕</button>
+            <video
+              src={modalUrl}
+              controls
+              autoPlay
+              className="rounded-xl bg-black max-h-[85vh] max-w-[92vw] w-auto"
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -132,8 +162,7 @@ function StatusPill({ status }) {
   return <span className={`text-[11px] px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>;
 }
 
-function Row({ v, onCopy, onRetry, busy }) {
-  const isProblem = v.status === 'failed' || ((v.status === 'processing' || v.status === 'photos_uploaded'));
+function Row({ v, onCopy, onRetry, onView, onDismiss, busy }) {
   return (
     <div className="rounded-xl border border-gray-800 bg-[#1a1f26] p-3 flex items-center justify-between gap-3">
       <div className="min-w-0">
@@ -147,8 +176,8 @@ function Row({ v, onCopy, onRetry, busy }) {
       <div className="flex items-center gap-2 flex-shrink-0">
         {v.video_url && (
           <>
-            <a href={v.video_url} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold">Ver</a>
+            <button onClick={() => onView?.(v.video_url)}
+              className="px-3 py-1.5 text-xs rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold">Ver</button>
             <button onClick={() => onCopy(v.video_url)}
               className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">Copiar link</button>
           </>
@@ -157,6 +186,12 @@ function Row({ v, onCopy, onRetry, busy }) {
           <button onClick={() => onRetry(v.id)} disabled={busy === v.id}
             className="px-3 py-1.5 text-xs rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold disabled:opacity-50">
             {busy === v.id ? '...' : '↺ Reintentar'}
+          </button>
+        )}
+        {onDismiss && (
+          <button onClick={() => onDismiss(v.id)} disabled={busy === v.id} title="Quitar de problemas"
+            className="px-2.5 py-1.5 text-xs rounded-lg bg-gray-800 hover:bg-rose-600/70 text-gray-400 hover:text-white font-semibold disabled:opacity-50">
+            ✕
           </button>
         )}
       </div>

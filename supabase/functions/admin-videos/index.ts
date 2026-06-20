@@ -68,10 +68,10 @@ serve(async (req) => {
       const stuckCutoff = new Date(Date.now() - STUCK_MIN * 60 * 1000).toISOString();
       const { data: failed } = await admin.from('video_orders')
         .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
-        .eq('paid', true).eq('status', 'failed').order('updated_at', { ascending: false }).limit(50);
+        .eq('paid', true).eq('status', 'failed').eq('admin_dismissed', false).order('updated_at', { ascending: false }).limit(50);
       const { data: stuck } = await admin.from('video_orders')
         .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
-        .eq('paid', true).in('status', ['processing', 'photos_uploaded']).lt('updated_at', stuckCutoff)
+        .eq('paid', true).in('status', ['processing', 'photos_uploaded']).eq('admin_dismissed', false).lt('updated_at', stuckCutoff)
         .order('updated_at', { ascending: false }).limit(50);
       const problems = await withSong([...(failed || []), ...(stuck || [])]);
 
@@ -97,6 +97,13 @@ serve(async (req) => {
         .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
         .eq('paid', true).in('song_id', songIds).order('updated_at', { ascending: false }).limit(40);
       return json({ success: true, results: await withSong(rows || []) });
+    }
+
+    if (action === 'dismiss') {
+      const id = body.id;
+      if (!id) return json({ success: false, error: 'Missing id' }, 400);
+      await admin.from('video_orders').update({ admin_dismissed: true }).eq('id', id);
+      return json({ success: true });
     }
 
     if (action === 'retry') {
