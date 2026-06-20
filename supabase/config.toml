@@ -81,6 +81,12 @@ verify_jwt = false
 # verify_jwt = true (default) — do NOT set false here (unlike the server-to-server fns).
 verify_jwt = true
 
+[functions.admin-videos]
+# Powers the admin "Videos" tab ($9.99 slideshow): list paid videos + links, surface
+# failed/stuck ones, search by customer, retry a problem video. Admin JWT + admin_users
+# check (like admin-story-videos), so verify_jwt = true.
+verify_jwt = true
+
 [functions.deliver-story-video]
 # Pipeline EXIT: emails the customer their finished animated story video via SendGrid +
 # marks delivered. Called by admin-story-videos.approve_final (server-to-server, no

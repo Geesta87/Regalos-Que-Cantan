@@ -5,7 +5,8 @@ import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film } from 'lucide-react';
+import VideosTab from '../components/admin/VideosTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video } from 'lucide-react';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -636,7 +637,7 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'needsapproval'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'needsapproval', 'videos'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -2587,6 +2588,9 @@ export default function AdminDashboard() {
         </button>
         <button onClick={() => setActiveTab('needsapproval')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'needsapproval' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Film size={18} className={`flex-shrink-0 ${activeTab === 'needsapproval' ? 'text-amber-400' : ''}`} /> Videos Animados
+        </button>
+        <button onClick={() => setActiveTab('videos')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'videos' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
         </button>
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
@@ -4946,6 +4950,10 @@ export default function AdminDashboard() {
              options, then approve/reject the final auto-built story video.
              Talks to admin-story-videos edge function. */
           <NeedsApprovalTab accessToken={accessToken} showToast={showToast} />
+        ) : activeTab === 'videos' ? (
+          /* Videos (slideshow $9.99) — list paid videos + links, surface
+             failed/stuck ones with retry, search any customer. admin-videos fn. */
+          <VideosTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 
