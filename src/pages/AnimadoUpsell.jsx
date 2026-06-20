@@ -23,6 +23,26 @@ const GOLD = '#f5b942';
 const PINK = '#f74da6';
 const VIOLET = '#a855f7';
 
+// ── The two character styles the customer chooses between (one or the other). ──
+// Each `img` is a real example produced by our pipeline so they see exactly what
+// they'll get. `key` is what we persist on the order and feed to the likeness step.
+const STYLES = [
+  {
+    key: 'pixar',
+    emoji: '🎬',
+    label: 'Estilo Pixar',
+    sub: 'Personaje 3D animado — expresivo y mágico, como una película de Disney·Pixar.',
+    img: 'https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/story-video-assets/c84ba8ed-cfe1-4e71-a9da-94a2f686e8a9/source-style01.jpg',
+  },
+  {
+    key: 'likeness',
+    emoji: '🪄',
+    label: 'Caricatura fiel',
+    sub: 'Animado, pero idéntico a su rostro real — el máximo parecido posible.',
+    img: 'https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/story-video-assets/c84ba8ed-cfe1-4e71-a9da-94a2f686e8a9/source-faithfullook.png',
+  },
+];
+
 // Shared keyframes (magical morph + scene reel + shimmer)
 const ANIM_CSS = `
   @keyframes aniFade { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
@@ -108,6 +128,64 @@ function VideoHero() {
   );
 }
 
+// ── Style chooser: two example faces, pick one (Pixar or faithful caricature). ──
+function StylePicker({ value, onChange }) {
+  return (
+    <div style={{
+      margin: '16px 0', background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 14,
+    }}>
+      <p style={{ margin: '0 0 3px', fontSize: 14, fontWeight: 800, color: '#fff' }}>
+        🎨 Elige el estilo del personaje
+      </p>
+      <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>
+        Tú decides cómo se ve. Ambos se animan con la misma historia y movimiento.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {STYLES.map((s) => {
+          const on = value === s.key;
+          return (
+            <button key={s.key} onClick={() => onChange(s.key)} style={{
+              position: 'relative', padding: 0, cursor: 'pointer', textAlign: 'left',
+              borderRadius: 14, overflow: 'hidden', background: 'rgba(0,0,0,0.3)',
+              border: on ? `2.5px solid ${GOLD}` : '2.5px solid rgba(255,255,255,0.1)',
+              boxShadow: on ? '0 0 0 1px rgba(245,185,66,0.4), 0 8px 22px rgba(245,185,66,0.22)' : 'none',
+              transition: 'all 0.2s',
+            }}>
+              <div style={{ position: 'relative' }}>
+                <img src={s.img} alt={s.label}
+                  style={{ display: 'block', width: '100%', aspectRatio: '3/4', objectFit: 'cover' }} />
+                {/* selected check */}
+                {on && (
+                  <span style={{
+                    position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: '50%',
+                    background: GOLD, color: '#1a1020', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: 15, fontWeight: 900,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                  }}>✓</span>
+                )}
+                {/* "example" tag */}
+                <span style={{
+                  position: 'absolute', top: 8, left: 8, fontSize: 9.5, fontWeight: 800, color: '#fff',
+                  background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', padding: '3px 7px', borderRadius: 20,
+                }}>Ejemplo</span>
+              </div>
+              <div style={{ padding: '9px 10px 11px' }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: on ? GOLD : '#fff' }}>
+                  {s.emoji} {s.label}
+                </p>
+                <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.35 }}>
+                  {s.sub}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  SCREEN 1 — THE OFFER
 // ═══════════════════════════════════════════════════════════════════════════
@@ -116,6 +194,11 @@ export function AnimadoOffer({
   songs = [{ id: 's1', version: 1 }],
   count = 0,                 // 0 = none, 1 = one video, 2 = both songs
   selectedVideoSongId = null, // which song gets the video when count === 1
+  selectedStyle = 'pixar',   // 'pixar' | 'likeness'
+  onStyleChange = () => {},   // (styleKey) => void
+  enableStylePicker = false,  // only show the style chooser when the caller actually
+                              // wires it (demo). The live funnel leaves it off until
+                              // the style is plumbed into checkout + the backend.
   onChange = () => {},        // (count, selectedVideoSongId) => void
 }) {
   const isTwo = songs.length >= 2;
@@ -123,8 +206,9 @@ export function AnimadoOffer({
   const price = count === 2 ? PRICE_BOTH : count === 1 ? PRICE : 0;
   const verLabel = (s) => `Versión ${s.version || 1}`;
   const chosenSongId = selectedVideoSongId || songs[0]?.id;
+  const styleLabel = (STYLES.find((s) => s.key === selectedStyle) || STYLES[0]).label;
   const features = [
-    { icon: '🎨', label: 'Su rostro convertido en personaje animado', sub: 'Estilo Pixar, fiel a su cara — a partir de una foto suya' },
+    { icon: '🎨', label: 'Su rostro convertido en personaje animado', sub: 'En el estilo que elijas, fiel a su cara — a partir de una foto suya' },
     { icon: '🖼️', label: 'Bellas ilustraciones de su historia', sub: 'Cada escena, ilustrada a mano a partir de SU canción' },
     { icon: '🎬', label: 'Movimiento en las escenas clave', sub: 'Los momentos más especiales cobran vida con movimiento real' },
     { icon: '✨', label: 'Intro mágica: su foto “cobra vida”', sub: 'Su foto real se transforma en el personaje animado' },
@@ -155,8 +239,8 @@ export function AnimadoOffer({
       </h2>
       <p style={{ margin: '0 0 16px', fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
         Ya casi está. <strong style={{ color: 'rgba(255,255,255,0.8)' }}>Suma la versión animada a tu pedido</strong> y
-        convierte a {recipientName} en personaje estilo Pixar — bellas ilustraciones de su historia,
-        con movimiento en las escenas clave, al ritmo de su canción.
+        convierte a {recipientName} en personaje animado — tú eliges el estilo — con bellas ilustraciones
+        de su historia y movimiento en las escenas clave, al ritmo de su canción.
       </p>
 
       {/* Real animated-video preview */}
@@ -167,9 +251,12 @@ export function AnimadoOffer({
         marginTop: 14, fontSize: 12, color: '#fde68a', background: 'rgba(245,185,66,0.08)',
         border: '1px solid rgba(245,185,66,0.25)', borderRadius: 10, padding: '9px 12px', lineHeight: 1.45,
       }}>
-        💡 <strong>No es un video de fotos.</strong> Son ilustraciones animadas estilo Pixar — hechas a mano —
+        💡 <strong>No es un video de fotos.</strong> Son ilustraciones animadas hechas a mano —
         que cobran vida con movimiento en los momentos más especiales.
       </div>
+
+      {/* Style chooser — pick Pixar or faithful caricature (opt-in; off in the funnel) */}
+      {enableStylePicker && <StylePicker value={selectedStyle} onChange={onStyleChange} />}
 
       {/* Features */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '16px 0' }}>
@@ -311,7 +398,7 @@ export function AnimadoOffer({
 
       {/* Likeness expectation */}
       <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.32)', textAlign: 'center', lineHeight: 1.5 }}>
-        Hacemos nuestro mejor esfuerzo para lograr el parecido. Al ser estilo animado (Pixar),
+        Hacemos nuestro mejor esfuerzo para lograr el parecido. Al ser estilo animado,
         es una versión artística inspirada en su foto y puede no ser 100% exacta.
       </p>
     </div>
@@ -556,6 +643,7 @@ export default function AnimadoUpsell() {
   const [orderSongs, setOrderSongs] = useState(1); // 1 or 2 songs in the order (demo)
   const [count, setCount] = useState(0);        // animated videos selected
   const [videoSongId, setVideoSongId] = useState(null);
+  const [style, setStyle] = useState('pixar');  // 'pixar' | 'likeness'
   const [uploadFamily, setUploadFamily] = useState(false); // demo: story has other people?
 
   const songs = orderSongs === 2
@@ -607,6 +695,9 @@ export default function AnimadoUpsell() {
               songs={songs}
               count={count}
               selectedVideoSongId={videoSongId}
+              selectedStyle={style}
+              onStyleChange={setStyle}
+              enableStylePicker
               onChange={(c, id) => { setCount(c); setVideoSongId(id); }}
             />
           : <AnimadoPhotoUpload
