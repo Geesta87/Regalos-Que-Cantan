@@ -2147,13 +2147,13 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
 
 1. CORO = LO MÁS IMPORTANTE. El coro DEBE ser pegajoso, corto (4 líneas), y fácil de cantar. El oyente debe poder cantar el coro después de escucharlo UNA vez. Si el coro no es memorable, la canción falla.
 
-   FÓRMULA OBLIGATORIA DEL CORO — patrón A-A'-B-A (la receta del earworm):
-   - Línea 1 (A): La frase-GANCHO central. Esta es LA línea que la gente recuerda y tararea. Es el corazón de la canción. 4-7 sílabas. Contiene el sentimiento principal.
-   - Línea 2 (A'): Variación de la línea 1. Misma estructura rítmica, cambia 1-2 palabras. Refuerza el gancho sin repetirlo idéntico.
-   - Línea 3 (B): Línea de CONTRASTE. Idea diferente que prepara el regreso al gancho.
-   - Línea 4 (A): REPITE EXACTAMENTE la línea 1. Cierra el coro con el gancho intacto.
+   FÓRMULA DEL CORO — patrón A-B-C-A (gancho memorable, SIN repetir de más):
+   - Línea 1 (A): La frase-GANCHO central. Esta es LA línea que la gente recuerda y tararea. 4-7 sílabas. Contiene el sentimiento principal.
+   - Línea 2 (B): Una línea DISTINTA que hace avanzar la emoción — NO una variación ni una copia del gancho. Misma longitud y ritmo, pero idea o imagen NUEVA.
+   - Línea 3 (C): Otra línea distinta que construye hacia el regreso del gancho. Tampoco repite el gancho.
+   - Línea 4 (A): Repite el gancho de la línea 1 (idéntico o casi idéntico) para cerrar el coro. Este ÚNICO regreso es lo que lo hace memorable.
 
-   Esta repetición intencional (3 veces el gancho, 1 vez variación, 1 vez contraste) es lo que crea earworm — la canción que se queda en la cabeza después de UNA escucha. NO inventes "estilos creativos" de coro: usa esta fórmula sin excepciones.
+   Así el gancho ancla el coro al inicio y al final (2 veces en total), pero las dos líneas del medio aportan contenido NUEVO en lugar de repetir. PROHIBIDO cantar la misma frase 3 o más veces dentro de un mismo coro, o rellenar las líneas 2 y 3 con variaciones del gancho — el coro debe ser pegajoso PERO con variedad. NO inventes estructuras raras de coro: usa esta fórmula.
 
 2. CONTRASTE VERSO vs CORO. Los versos CUENTAN la historia (narrativos, específicos, íntimos). El coro EXPLOTA la emoción (universal, repetible, intenso). Que se sientan como secciones DISTINTAS en energía y tono.
 
