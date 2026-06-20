@@ -101,8 +101,37 @@ serve(async (_req) => {
 
     const triggered = results.filter(r => r.success).length;
 
+    // --- SELF-HEAL stuck 'processing' orders ---
+    // A fire-and-forget generate-video dispatch can fail to reach the renderer,
+    // leaving the order in 'processing' with no video — and the query above won't
+    // catch it (it only looks at 'photos_uploaded'). Reset + re-dispatch any order
+    // stuck in 'processing' > STUCK_MIN with no video_url. Recent only (MAX_AGE_HOURS)
+    // so old/abandoned orders aren't resurrected.
+    const STUCK_MIN = 20;
+    const stuckCutoff = new Date(Date.now() - STUCK_MIN * 60 * 1000).toISOString();
+    const { data: stuck } = await supabase
+      .from('video_orders')
+      .select('id, aspect_ratio, video_filter, message_url')
+      .eq('paid', true).eq('status', 'processing').is('video_url', null)
+      .lte('updated_at', stuckCutoff).gte('updated_at', maxAgeCutoff)
+      .order('updated_at', { ascending: true }).limit(MAX_PER_RUN);
+
+    let recovered = 0;
+    for (const order of stuck || []) {
+      try {
+        await supabase.from('video_orders').update({ status: 'photos_uploaded', shotstack_render_id: null }).eq('id', order.id);
+        const body: Record<string, unknown> = { videoOrderId: order.id, aspectRatio: order.aspect_ratio || '9:16', videoFilter: order.video_filter || 'boost' };
+        if (order.message_url) body.messageUrl = order.message_url;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-video`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify(body),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d?.success) { recovered++; console.log(`Re-dispatched stuck order ${order.id} (${d.renderer || '?'})`); }
+      } catch (e) { console.error('stuck recover failed', order.id, (e as Error).message); }
+    }
+
     return new Response(
-      JSON.stringify({ checked: pending.length, triggered, results }),
+      JSON.stringify({ checked: pending.length, triggered, recovered, results }),
       { headers: { 'Content-Type': 'application/json' }, status: 200 },
     );
   } catch (error) {
