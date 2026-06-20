@@ -33,7 +33,9 @@ serve(async (req) => {
     if (!order) throw new Error('order not found');
 
     if (action === 'sign') {
-      const slot = which === 'family' ? 'family' : 'main';
+      // 'main'/'family' are the customer slots; any other sanitized slot is allowed
+      // for admin tooling (e.g. style-explorer uploads), always scoped to this order's folder.
+      const slot = String(which || 'main').replace(/[^a-z0-9_-]/gi, '').slice(0, 40) || 'main';
       const path = `${story_video_order_id}/source-${slot}.jpg`;
       const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true });
       if (error) throw new Error(`sign: ${error.message}`);

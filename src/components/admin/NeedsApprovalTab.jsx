@@ -89,14 +89,17 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                         : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">sin foto</div>}
                       <div className="py-2 text-center text-xs font-semibold text-sky-300 bg-sky-500/10">📷 Foto original</div>
                     </div>
-                    {/* the 2 cartoon options */}
+                    {/* the cartoon / style options */}
                     {(o.character_options || []).map((opt, i) => (
                       <div key={i} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
-                        <img src={opt.url} alt={`opción ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
+                        {opt.label && (
+                          <div className="py-1.5 text-center text-xs font-bold text-white bg-white/5 truncate px-1">{opt.label}</div>
+                        )}
+                        <img src={opt.url} alt={opt.label || `opción ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
                         <button onClick={() => act(o.id, 'approve_likeness', { index: i })}
                           disabled={busy === `${o.id}:approve_likeness`}
                           className="w-full py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                          {busy === `${o.id}:approve_likeness` ? '...' : `✓ Usar opción ${i + 1}`}
+                          {busy === `${o.id}:approve_likeness` ? '...' : (opt.label ? `✓ Usar ${opt.label}` : `✓ Usar opción ${i + 1}`)}
                         </button>
                       </div>
                     ))}
