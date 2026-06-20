@@ -5719,13 +5719,15 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Songwriter notes — story-mode buyer's requests for the AI composer */}
-              {selectedSong.songwriter_notes && (
-                <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl p-4">
-                  <p className="text-xs text-amber-300/80 mb-2">📝 Notas para el compositor</p>
+              {/* Songwriter notes — always show the slot, even when empty */}
+              <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl p-4">
+                <p className="text-xs text-amber-300/80 mb-2">📝 Notas para el compositor</p>
+                {selectedSong.songwriter_notes ? (
                   <p className="text-sm whitespace-pre-wrap text-amber-50/90">{selectedSong.songwriter_notes}</p>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm italic text-gray-500">— Sin notas —</p>
+                )}
+              </div>
 
               {/* Submitted lyrics — the customer's own verbatim lyrics (own-lyrics mode) */}
               {selectedSong.submitted_lyrics && (
