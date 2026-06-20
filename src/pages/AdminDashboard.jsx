@@ -637,7 +637,7 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'needsapproval', 'videos'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -2586,8 +2586,11 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Mic size={18} className={`flex-shrink-0 ${activeTab === 'clonamivoz' ? 'text-amber-400' : ''}`} /> Clone Mi Voz
         </button>
-        <button onClick={() => setActiveTab('needsapproval')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'needsapproval' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Film size={18} className={`flex-shrink-0 ${activeTab === 'needsapproval' ? 'text-amber-400' : ''}`} /> Videos Animados
+        <button onClick={() => setActiveTab('animadolikeness')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadolikeness' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadolikeness' ? 'text-amber-400' : ''}`} /> Animado: Parecido
+        </button>
+        <button onClick={() => setActiveTab('animadofinal')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadofinal' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadofinal' ? 'text-amber-400' : ''}`} /> Animado: Video Final
         </button>
         <button onClick={() => setActiveTab('videos')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'videos' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
@@ -4945,11 +4948,13 @@ export default function AdminDashboard() {
              and fix one part via fix-song-section (Whisper + Claude + Kie
              replace-section). Self-contained component. */
           <FixSongTab accessToken={accessToken} showToast={showToast} />
-        ) : activeTab === 'needsapproval' ? (
-          /* Videos Animados — Needs Approval. Two gates: pick 1 of 2 likeness
-             options, then approve/reject the final auto-built story video.
-             Talks to admin-story-videos edge function. */
-          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} />
+        ) : activeTab === 'animadolikeness' ? (
+          /* Animado Gate 1 — pick 1 of 2 likeness options (original photo shown
+             for comparison). admin-story-videos edge function. */
+          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} gate="likeness" />
+        ) : activeTab === 'animadofinal' ? (
+          /* Animado Gate 2 — review + approve/reject the final auto-built video. */
+          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} gate="final" />
         ) : activeTab === 'videos' ? (
           /* Videos (slideshow $9.99) — list paid videos + links, surface
              failed/stuck ones with retry, search any customer. admin-videos fn. */

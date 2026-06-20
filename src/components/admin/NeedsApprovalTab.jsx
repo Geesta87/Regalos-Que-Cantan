@@ -6,7 +6,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqc
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const FN_URL = `${SUPABASE_URL}/functions/v1/admin-story-videos`;
 
-export default function NeedsApprovalTab({ accessToken, showToast }) {
+export default function NeedsApprovalTab({ accessToken, showToast, gate = 'likeness' }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(null); // `${id}:${action}`
@@ -45,13 +45,20 @@ export default function NeedsApprovalTab({ accessToken, showToast }) {
 
   const likeness = orders.filter((o) => o.state === 'likeness_review');
   const finals = orders.filter((o) => o.state === 'final_review');
+  const isLikeness = gate === 'likeness';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white">Videos Animados — Aprobaciones</h2>
-          <p className="text-sm text-gray-400">{likeness.length} likeness · {finals.length} videos por revisar</p>
+          <h2 className="text-xl font-bold text-white">
+            {isLikeness ? 'Animado — Elegir parecido' : 'Animado — Aprobar video final'}
+          </h2>
+          <p className="text-sm text-gray-400">
+            {isLikeness
+              ? `${likeness.length} pendiente(s) de parecido`
+              : `${finals.length} video(s) por revisar`}
+          </p>
         </div>
         <button onClick={load} disabled={loading}
           className="px-3 py-1.5 text-sm rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-semibold transition disabled:opacity-50">
@@ -60,61 +67,72 @@ export default function NeedsApprovalTab({ accessToken, showToast }) {
       </div>
       {error && <div className="rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm px-3 py-2">{error}</div>}
 
-      {/* GATE 1 — pick the likeness */}
-      <section>
-        <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-3">① Elegir parecido (likeness)</h3>
-        {likeness.length === 0 ? <Empty text="Nada pendiente de parecido." /> : (
-          <div className="space-y-4">
-            {likeness.map((o) => (
-              <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-white font-semibold">{o.recipient}</div>
-                  <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
-                    className="text-xs text-gray-400 hover:text-rose-400">Rechazar / pedir otra foto</button>
-                </div>
-                <Assumptions items={o.assumptions} />
-                <div className="grid grid-cols-2 gap-4">
-                  {(o.character_options || []).map((opt, i) => (
-                    <div key={i} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
-                      <img src={opt.url} alt={`opción ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
-                      <button onClick={() => act(o.id, 'approve_likeness', { index: i })}
-                        disabled={busy === `${o.id}:approve_likeness`}
-                        className="w-full py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                        {busy === `${o.id}:approve_likeness` ? '...' : `✓ Usar opción ${i + 1}`}
-                      </button>
+      {/* GATE 1 — pick the likeness (compare the 2 options against the original photo) */}
+      {isLikeness && (
+        <section>
+          {likeness.length === 0 ? <Empty text="Nada pendiente de parecido." /> : (
+            <div className="space-y-4">
+              {likeness.map((o) => (
+                <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-white font-semibold">{o.recipient}</div>
+                    <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
+                      className="text-xs text-gray-400 hover:text-rose-400">Rechazar / pedir otra foto</button>
+                  </div>
+                  <Assumptions items={o.assumptions} />
+                  <p className="text-xs text-gray-500 mb-2">Compara con la foto real y elige el parecido más fiel:</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* original photo for comparison — no button */}
+                    <div className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-sky-500/40">
+                      {o.recipient_photo_url
+                        ? <img src={o.recipient_photo_url} alt="foto original" className="w-full aspect-[3/4] object-cover" />
+                        : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">sin foto</div>}
+                      <div className="py-2 text-center text-xs font-semibold text-sky-300 bg-sky-500/10">📷 Foto original</div>
                     </div>
-                  ))}
+                    {/* the 2 cartoon options */}
+                    {(o.character_options || []).map((opt, i) => (
+                      <div key={i} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
+                        <img src={opt.url} alt={`opción ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
+                        <button onClick={() => act(o.id, 'approve_likeness', { index: i })}
+                          disabled={busy === `${o.id}:approve_likeness`}
+                          className="w-full py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
+                          {busy === `${o.id}:approve_likeness` ? '...' : `✓ Usar opción ${i + 1}`}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* GATE 2 — approve the final video */}
-      <section>
-        <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-3">② Aprobar video final</h3>
-        {finals.length === 0 ? <Empty text="Nada pendiente de aprobación final." /> : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {finals.map((o) => (
-              <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
-                <div className="text-white font-semibold mb-3">{o.recipient}</div>
-                {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto" />}
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
-                    className="flex-1 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                    {busy === `${o.id}:approve_final` ? '...' : '✓ Aprobar y enviar'}
-                  </button>
-                  <button onClick={() => act(o.id, 'reject_final')} disabled={busy}
-                    className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50">
-                    ↺ Rehacer
-                  </button>
+      {!isLikeness && (
+        <section>
+          {finals.length === 0 ? <Empty text="Nada pendiente de aprobación final." /> : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {finals.map((o) => (
+                <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
+                  <div className="text-white font-semibold mb-3">{o.recipient}</div>
+                  {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto" />}
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
+                      className="flex-1 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
+                      {busy === `${o.id}:approve_final` ? '...' : '✓ Aprobar y enviar'}
+                    </button>
+                    <button onClick={() => act(o.id, 'reject_final')} disabled={busy}
+                      className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50">
+                      ↺ Rehacer
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
