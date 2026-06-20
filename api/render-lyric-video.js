@@ -431,6 +431,19 @@ export default async function handler(req, res) {
     const videoUrl = `${PUBLIC_BASE_URL}/${cols.filePrefix}-video/${songId}.mp4`;
     await setStatus(songId, cols.status, 'ready', cols.url, videoUrl);
     console.log(`[render-lyric-video] ✅ ${mode} ready: ${videoUrl}`);
+
+    // Tell the customer their karaoke is ready, with ONE link to /success showing
+    // everything they bought. Best-effort + de-duped inside notify-upsell-ready.
+    if (mode === 'karaoke') {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-upsell-ready`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ song_id: songId, kind: 'karaoke' }),
+        });
+      } catch (e) { console.warn('[render-lyric-video] notify-upsell-ready failed (non-fatal):', e?.message || e); }
+    }
+
     return res.status(200).json({ success: true, action: 'rendered', video_url: videoUrl });
   } catch (err) {
     const msg = err?.message || String(err);

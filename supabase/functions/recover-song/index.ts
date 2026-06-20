@@ -279,7 +279,7 @@ serve(async (req) => {
   // Look up every song with a previewable audio_url for this email.
   const { data: songs } = await supabase
     .from('songs')
-    .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, stripe_session_id, has_video_addon')
+    .select('id, recipient_name, paid, paid_at, created_at, audio_url, stripe_payment_id, stripe_session_id, has_video_addon, karaoke_video_status, karaoke_status')
     .ilike('email', email)
     .not('audio_url', 'is', null)
     .order('created_at', { ascending: false })
@@ -314,20 +314,25 @@ serve(async (req) => {
   }
 
   // Each entry represents one card in the email / one row on the page.
-  // Video orders route to /success?song_ids= (full video player + download).
-  // Audio-only orders route to /song/ (SongPage).
+  // Anyone who bought ANY upsell (video, karaoke video, or instrumental) routes to
+  // /success?song_ids= — the only page that surfaces all of it (song + video +
+  // karaoke + instrumental). Plain audio-only orders route to /song/ (SongPage).
+  // (has_video stays the TRUE video flag, separate from the routing decision.)
+  const isUpsell = (s: Record<string, unknown>) =>
+    s.has_video_addon === true || s.karaoke_video_status != null || s.karaoke_status != null;
   type PaidEntry = { ids: string; recipient_names: string; listen_url: string; paid_at: string | null; is_bundle: boolean; has_video: boolean; stripe_payment_id: string | null; group_key: string | null };
   const paidEntries: PaidEntry[] = [];
   for (const [groupKey, grp] of bundleMap) {
     const ids = grp.map((s) => s.id).join(',');
     const names = grp.map((s) => (s.recipient_name || 'tu ser querido').trim()).join(' y ');
     const hasVideo = grp.some((s) => s.has_video_addon === true);
-    const url = hasVideo ? `${SITE_URL}/success?song_ids=${ids}` : `${SITE_URL}/song/${ids}`;
+    const hasUpsell = grp.some(isUpsell);
+    const url = hasUpsell ? `${SITE_URL}/success?song_ids=${ids}` : `${SITE_URL}/song/${ids}`;
     paidEntries.push({ ids, recipient_names: names, listen_url: url, paid_at: grp[0].paid_at || null, is_bundle: grp.length > 1, has_video: hasVideo, stripe_payment_id: grp[0].stripe_payment_id || null, group_key: groupKey });
   }
   for (const s of soloPaidRows) {
     const hasVideo = s.has_video_addon === true;
-    const url = hasVideo ? `${SITE_URL}/success?song_ids=${s.id}` : `${SITE_URL}/song/${s.id}`;
+    const url = isUpsell(s) ? `${SITE_URL}/success?song_ids=${s.id}` : `${SITE_URL}/song/${s.id}`;
     paidEntries.push({ ids: s.id, recipient_names: (s.recipient_name || 'tu ser querido').trim(), listen_url: url, paid_at: s.paid_at || null, is_bundle: false, has_video: hasVideo, stripe_payment_id: s.stripe_payment_id || null, group_key: null });
   }
 

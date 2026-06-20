@@ -68,7 +68,7 @@ serve(async () => {
     // Candidate set is tiny (consented + not-yet-texted); filter paid in code.
     const { data: rows, error } = await admin
       .from('songs')
-      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid, has_video_addon')
+      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid, has_video_addon, karaoke_video_status, karaoke_status')
       .is('song_sms_sent_at', null)
       .not('sms_consent_at', 'is', null)
       .gt('sms_consent_at', thirtyDaysAgo)
@@ -113,24 +113,32 @@ serve(async () => {
       const name = String(primary.sender_name || '').trim();
       const greet = name ? `¡Gracias ${name}!` : '¡Gracias!';
 
-      // Build the link. A 2-pack must get ONE link that opens BOTH songs
-      // (/song/id1,id2 — or /success?song_ids= when a video addon is present),
-      // exactly like the manual WhatsApp/email delivery. A single song keeps the
-      // short branded /s/<code> link.
+      // Build the link. Anyone who bought an upsell (video, karaoke video, or
+      // instrumental) must land on /success — that's the only page that surfaces
+      // ALL of it (song + video + karaoke + instrumental). The plain /song page
+      // and the branded /s/<code> short link don't show karaoke, so upsell buyers
+      // skip them. Audio-only orders keep the nice short link.
+      const isUpsell = (g: Record<string, unknown>) =>
+        g.has_video_addon === true || g.karaoke_video_status != null || g.karaoke_status != null;
       let link: string;
       let songLine: string;
       if (group.length > 1) {
         const allIds = group.map((g) => g.id as string).join(',');
-        const hasVideo = group.some((g) => g.has_video_addon === true);
-        link = hasVideo ? `${SITE}/success?song_ids=${allIds}` : `${SITE}/song/${allIds}`;
+        const hasUpsell = group.some(isUpsell);
+        link = hasUpsell ? `${SITE}/success?song_ids=${allIds}` : `${SITE}/song/${allIds}`;
         const names = group
           .map((g) => String(g.recipient_name || '').trim())
           .filter(Boolean)
           .join(' y ');
         songLine = names ? `Tus canciones para ${names} ya están listas` : 'Tus canciones ya están listas';
+      } else if (isUpsell(primary)) {
+        // Single song WITH an upsell → consolidated /success (shows everything).
+        link = `${SITE}/success?song_ids=${primary.id}`;
+        const recipient = String(primary.recipient_name || '').trim();
+        songLine = recipient ? `Tu canción para ${recipient} ya está lista` : 'Tu canción ya está lista';
       } else {
-        // Generate a short code for the primary song if it has none; fall back
-        // to the full URL on any issue so a customer always gets a link.
+        // Single audio-only song → keep the short branded /s/<code> link.
+        // Generate a short code if it has none; fall back to the full URL on any issue.
         let code = primary.short_code as string | undefined;
         if (!code) {
           code = genShortCode();

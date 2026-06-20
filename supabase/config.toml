@@ -121,6 +121,13 @@ verify_jwt = false
 # by pg_cron / another edge function (no Supabase JWT). Must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.notify-upsell-ready]
+# Async "your extra is ready" notifier. Called server-to-server (no Supabase JWT)
+# from inhouse-video-callback (the $9.99 video finishes) and api/render-lyric-video.js
+# (the karaoke video finishes). Emails + SMSes the customer one /success link with
+# everything they bought, de-duped via an atomic cooldown claim. Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.inhouse-video-callback]
 # Completion hook for the in-house FFmpeg renderer (Cloud Run service
 # rqc-video-renderer), the replacement for Shotstack's video-callback. Called

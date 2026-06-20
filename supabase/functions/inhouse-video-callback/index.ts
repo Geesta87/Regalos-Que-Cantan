@@ -104,6 +104,16 @@ serve(async (req) => {
       has_video: true, video_url: publicUrl,
     }).eq('id', videoOrder.song_id);
 
+    // Tell the customer their video is ready, with ONE link to /success that shows
+    // everything they bought. Best-effort + de-duped inside notify-upsell-ready.
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/notify-upsell-ready`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ song_id: videoOrder.song_id, kind: 'video' }),
+      });
+    } catch (_) { /* notification is best-effort — never block delivery */ }
+
     // Best-effort cleanup of the shadow copy (don't fail the request if it errors).
     try {
       await fetch(`${SUPABASE_URL}/storage/v1/object/${SHADOW_BUCKET}/${src}`, {
