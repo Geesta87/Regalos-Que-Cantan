@@ -1,0 +1,9 @@
+# Only ship the service to Cloud Run — exclude tests, deps, and stray media.
+node_modules
+_smoketest.cjs
+_e2e.cjs
+_t
+_e2e_assets
+*.mp4
+*.log
+.DS_Store

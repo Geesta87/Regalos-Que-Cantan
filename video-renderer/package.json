@@ -1,0 +1,12 @@
+{
+  "name": "rqc-video-renderer",
+  "version": "1.0.0",
+  "description": "In-house FFmpeg video renderer (Shotstack replacement) for Regalos Que Cantan",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
