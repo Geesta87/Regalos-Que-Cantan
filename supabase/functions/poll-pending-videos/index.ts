@@ -101,37 +101,74 @@ serve(async (_req) => {
 
     const triggered = results.filter(r => r.success).length;
 
-    // --- SELF-HEAL stuck 'processing' orders ---
-    // A fire-and-forget generate-video dispatch can fail to reach the renderer,
-    // leaving the order in 'processing' with no video — and the query above won't
-    // catch it (it only looks at 'photos_uploaded'). Reset + re-dispatch any order
-    // stuck in 'processing' > STUCK_MIN with no video_url. Recent only (MAX_AGE_HOURS)
-    // so old/abandoned orders aren't resurrected.
-    const STUCK_MIN = 20;
+    // --- SELF-HEAL stuck 'processing' orders (BOUNDED) ---
+    // A fire-and-forget generate-video dispatch can fail to reach the renderer, OR
+    // the Cloud Run render can die mid-way (OOM / instance kill / timeout) WITHOUT
+    // firing its failure callback — either way the order sits in 'processing' with
+    // no video. The query above won't catch it (it only looks at 'photos_uploaded').
+    //
+    // We re-dispatch up to MAX_ATTEMPTS times (STUCK_MIN apart). If it's STILL stuck
+    // after that, we STOP retrying, mark it 'failed', and push-alert the owner — so a
+    // paid order can never churn silently forever (it used to: Tere Espinoza 2026-06-20).
+    // STUCK_MIN must exceed the ~6-min render time so we never kill a live render.
+    const STUCK_MIN = 12;
+    const MAX_ATTEMPTS = 2;
     const stuckCutoff = new Date(Date.now() - STUCK_MIN * 60 * 1000).toISOString();
     const { data: stuck } = await supabase
       .from('video_orders')
-      .select('id, aspect_ratio, video_filter, message_url')
+      .select('id, song_id, aspect_ratio, video_filter, message_url, render_attempts')
       .eq('paid', true).eq('status', 'processing').is('video_url', null)
       .lte('updated_at', stuckCutoff).gte('updated_at', maxAgeCutoff)
       .order('updated_at', { ascending: true }).limit(MAX_PER_RUN);
 
     let recovered = 0;
+    let failedOut = 0;
     for (const order of stuck || []) {
+      const attempts = order.render_attempts || 0;
       try {
-        await supabase.from('video_orders').update({ status: 'photos_uploaded', shotstack_render_id: null }).eq('id', order.id);
+        if (attempts >= MAX_ATTEMPTS) {
+          // Give up — surface it instead of looping. Mark failed (shows in the admin
+          // Videos "Problemas" tab) + push the owner so it never sits invisibly.
+          await supabase.from('video_orders').update({
+            status: 'failed',
+            error_message: `Render stalled — ${attempts} auto-retries, renderer never called back`,
+            updated_at: new Date().toISOString(),
+          }).eq('id', order.id);
+          failedOut++;
+          try {
+            const { data: s } = await supabase.from('songs').select('recipient_name').eq('id', order.song_id).single();
+            await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: '⚠️ Video atascado',
+                body: `El video de ${s?.recipient_name || 'un cliente'} no se generó tras varios intentos. Ábrelo en Videos para reintentar.`,
+                url: '/admin/dashboard',
+                tag: `video-stuck-${order.id}`,
+                audience: 'all',
+              }),
+            });
+          } catch (_) { /* push is best-effort */ }
+          console.error(`Gave up on stuck order ${order.id} after ${attempts} attempts → failed + alerted`);
+          continue;
+        }
+
+        // Re-dispatch, counting the attempt so we eventually give up.
+        await supabase.from('video_orders').update({
+          status: 'photos_uploaded', shotstack_render_id: null, render_attempts: attempts + 1,
+        }).eq('id', order.id);
         const body: Record<string, unknown> = { videoOrderId: order.id, aspectRatio: order.aspect_ratio || '9:16', videoFilter: order.video_filter || 'boost' };
         if (order.message_url) body.messageUrl = order.message_url;
         const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify(body),
         });
         const d = await res.json().catch(() => ({}));
-        if (res.ok && d?.success) { recovered++; console.log(`Re-dispatched stuck order ${order.id} (${d.renderer || '?'})`); }
+        if (res.ok && d?.success) { recovered++; console.log(`Re-dispatched stuck order ${order.id} (attempt ${attempts + 1}/${MAX_ATTEMPTS}, ${d.renderer || '?'})`); }
       } catch (e) { console.error('stuck recover failed', order.id, (e as Error).message); }
     }
 
     return new Response(
-      JSON.stringify({ checked: pending.length, triggered, recovered, results }),
+      JSON.stringify({ checked: pending.length, triggered, recovered, failedOut, results }),
       { headers: { 'Content-Type': 'application/json' }, status: 200 },
     );
   } catch (error) {

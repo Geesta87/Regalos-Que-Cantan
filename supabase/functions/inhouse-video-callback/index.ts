@@ -97,7 +97,7 @@ serve(async (req) => {
     const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${FINAL_BUCKET}/${destKey}`;
 
     await supabase.from('video_orders').update({
-      status: 'completed', video_url: publicUrl, error_message: null, updated_at: new Date().toISOString(),
+      status: 'completed', video_url: publicUrl, error_message: null, render_attempts: 0, updated_at: new Date().toISOString(),
     }).eq('id', videoOrder.id);
 
     await supabase.from('songs').update({

@@ -16,6 +16,72 @@ const SHOTSTACK_API_URL = Deno.env.get('SHOTSTACK_API_URL') || 'https://api.shot
 
 const MONTSERRAT_FONT_URL = 'https://fonts.gstatic.com/s/montserrat/v25/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Hw5aXo.woff2';
 
+// ── HEIC detection + conversion (shared by both the in-house and Shotstack paths) ──
+// iPhone photos frequently arrive MISLABELED — a .jpeg/.png/.webp extension (and
+// matching content-type) but real HEIC bytes inside. ffmpeg in the in-house renderer
+// can't decode HEIC and the whole render dies silently, so we must detect by the
+// file's actual magic bytes (ISO-BMFF "ftyp" box + a HEIF brand), not the extension,
+// and convert to genuine WebP via Supabase's render endpoint before the renderer sees it.
+const HEIF_BRAND_SET = ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'];
+async function isHeicUrl(u: string): Promise<boolean> {
+  if (/\.(heic|heif)$/i.test(u.split('?')[0])) return true;
+  try {
+    const res = await fetch(u, { headers: { Range: 'bytes=0-23' } });
+    if (!res.ok) return false;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length < 12) return false;
+    if (String.fromCharCode(buf[4], buf[5], buf[6], buf[7]) !== 'ftyp') return false;
+    const brand = String.fromCharCode(buf[8], buf[9], buf[10], buf[11]).toLowerCase();
+    return HEIF_BRAND_SET.includes(brand);
+  } catch { return false; }
+}
+// Normalize photos to a renderer-safe input BEFORE the in-house ffmpeg renderer
+// sees them. The renderer's ffmpeg decodes JPEG/PNG/WebP/BMP/TIFF natively (even
+// mislabeled — it reads by content), but it CANNOT decode HEIC (no HEIF demuxer),
+// its per-photo "-loop 1" command conflicts with the GIF demuxer, and a giant
+// image can spike memory. So for any upload that is HEIC (by magic bytes), an
+// uncommon/exotic format, or oversized, we route it through Supabase's image
+// transform endpoint → a dimension-capped standard WebP, then re-host it. Normal
+// JPEG/PNG/WebP within size pass straight through (fast path, no extra work).
+// Any failure falls back to the original URL — normalization never blocks a render.
+const SAFE_PASSTHROUGH_EXT = new Set(['jpg', 'jpeg', 'png', 'webp']);
+const MAX_PASSTHROUGH_BYTES = 9_000_000; // >~9MB: downscale to keep the renderer well under memory limits
+const NORMALIZE_MAXDIM = 2880;           // renderer renders at 2160px wide → 2880 source = no visible loss
+async function normalizePhotoUrls(supabase: any, supabaseUrl: string, urls: string[]): Promise<string[]> {
+  return await Promise.all(urls.map(async (url, idx) => {
+    try {
+      const ext = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+      let bytes = 0, ctype = '';
+      try {
+        const h = await fetch(url, { method: 'HEAD' });
+        bytes = parseInt(h.headers.get('content-length') || '0', 10);
+        ctype = (h.headers.get('content-type') || '').toLowerCase();
+      } catch { /* HEAD failed — magic-byte check below still guards HEIC */ }
+
+      const heic = await isHeicUrl(url);
+      const exotic = !SAFE_PASSTHROUGH_EXT.has(ext) || (!!ctype && !/(jpeg|jpg|png|webp)/.test(ctype));
+      const huge = bytes > MAX_PASSTHROUGH_BYTES;
+      if (!heic && !exotic && !huge) return url; // fast path — already safe & sane
+
+      const renderUrl = url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')
+        + `?width=${NORMALIZE_MAXDIM}&height=${NORMALIZE_MAXDIM}&resize=contain&format=webp&quality=90`;
+      const res = await fetch(renderUrl);
+      if (!res.ok) throw new Error(`transform ${res.status}`);
+      const buffer = await res.arrayBuffer();
+      const objectPath = new URL(url).pathname.slice('/storage/v1/object/public/video-photos/'.length);
+      const normPath = objectPath.replace(/\.[^./]+$/, '') + '.norm.webp';
+      const { error } = await supabase.storage.from('video-photos').upload(normPath, buffer, { contentType: 'image/webp', upsert: true });
+      if (error) { console.warn('[generate-video] normalize upload failed:', url, error.message); return url; }
+      const out = `${supabaseUrl}/storage/v1/object/public/video-photos/${normPath}`;
+      console.log(`[generate-video] normalized photo ${idx} (${heic ? 'heic ' : ''}${huge ? `huge:${bytes} ` : ''}${exotic ? `exotic:${ext || ctype}` : ''}): ${out}`);
+      return out;
+    } catch (e) {
+      console.warn('[generate-video] normalize failed (using original):', url, (e as Error).message);
+      return url; // never block the render
+    }
+  }));
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -83,10 +149,16 @@ serve(async (req) => {
       const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
       if (!RENDERER_URL) throw new Error('INHOUSE_RENDERER_URL not configured');
 
+      // Normalize any HEIC / exotic-format / oversized photos to a capped WebP
+      // before the renderer sees them (ffmpeg can't decode HEIC, the GIF demuxer
+      // fights the renderer's -loop flag, and giant images spike memory). Normal
+      // JPEG/PNG/WebP pass straight through.
+      const safePhotoUrls = await normalizePhotoUrls(supabase, SUPABASE_URL, photoUrls);
+
       const payload = {
         videoOrderId,
         song_id: videoOrder.song_id,
-        photo_urls: photoUrls,
+        photo_urls: safePhotoUrls,
         audio_url: song.audio_url,
         message_url: personalMessageUrl,
         aspect_ratio: aspectRatio,
