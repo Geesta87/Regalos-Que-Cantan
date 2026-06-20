@@ -54,6 +54,21 @@ serve(async (req) => {
         status: 'failed', error_message: errorMessage, updated_at: new Date().toISOString(),
       }).eq('id', videoOrder.id);
       console.error('In-house render failed:', videoOrderId, errorMessage);
+      // Push the owner so a failed video doesn't sit silently (best-effort).
+      try {
+        const { data: s } = await supabase.from('songs').select('recipient_name').eq('id', videoOrder.song_id).single();
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: '⚠️ Video falló',
+            body: `El video de ${s?.recipient_name || 'un cliente'} no se generó. Ábrelo en Videos para reintentar.`,
+            url: '/admin/dashboard',
+            tag: `video-failed-${videoOrder.id}`,
+            audience: 'all',
+          }),
+        });
+      } catch (_) { /* push is best-effort — never block the callback */ }
       return new Response(JSON.stringify({ received: true, persisted: false }), { status: 200 });
     }
 
