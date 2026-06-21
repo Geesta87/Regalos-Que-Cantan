@@ -49,6 +49,8 @@ serve(async (req) => {
         id: r.id, song_id: r.song_id, status: r.status, video_url: r.video_url,
         photo_count: r.photo_count, error_message: r.error_message,
         created_at: r.created_at, updated_at: r.updated_at,
+        // Which engine produced it: in-house renders never set a Shotstack id.
+        renderer: r.shotstack_render_id ? 'shotstack' : 'inhouse',
         recipient_name: map[r.song_id]?.recipient_name || '—',
         sender_name: map[r.song_id]?.sender_name || '',
         email: map[r.song_id]?.email || '',
@@ -67,17 +69,17 @@ serve(async (req) => {
       // PROBLEMS: failed, or stuck (processing/photos_uploaded) older than STUCK_MIN
       const stuckCutoff = new Date(Date.now() - STUCK_MIN * 60 * 1000).toISOString();
       const { data: failed } = await admin.from('video_orders')
-        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
+        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at, shotstack_render_id')
         .eq('paid', true).eq('status', 'failed').eq('admin_dismissed', false).order('updated_at', { ascending: false }).limit(50);
       const { data: stuck } = await admin.from('video_orders')
-        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
+        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at, shotstack_render_id')
         .eq('paid', true).in('status', ['processing', 'photos_uploaded']).eq('admin_dismissed', false).lt('updated_at', stuckCutoff)
         .order('updated_at', { ascending: false }).limit(50);
       const problems = await withSong([...(failed || []), ...(stuck || [])]);
 
       // recent completed (for quick "give the customer their link")
       const { data: recent } = await admin.from('video_orders')
-        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
+        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at, shotstack_render_id')
         .eq('paid', true).eq('status', 'completed').not('video_url', 'is', null)
         .order('updated_at', { ascending: false }).limit(40);
       const completed = await withSong(recent || []);
@@ -94,7 +96,7 @@ serve(async (req) => {
       const songIds = (songs || []).map((s: any) => s.id);
       if (!songIds.length) return json({ success: true, results: [] });
       const { data: rows } = await admin.from('video_orders')
-        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at')
+        .select('id, song_id, status, video_url, photo_count, error_message, created_at, updated_at, shotstack_render_id')
         .eq('paid', true).in('song_id', songIds).order('updated_at', { ascending: false }).limit(40);
       return json({ success: true, results: await withSong(rows || []) });
     }

@@ -162,6 +162,17 @@ function StatusPill({ status }) {
   return <span className={`text-[11px] px-2 py-0.5 rounded-full border ${cls}`}>{label}</span>;
 }
 
+// Which engine rendered it: in-house (our Cloud Run ffmpeg) vs Shotstack.
+function RendererBadge({ renderer }) {
+  if (renderer === 'inhouse') {
+    return <span className="text-[11px] px-2 py-0.5 rounded-full border bg-sky-500/15 text-sky-300 border-sky-500/30" title="Renderizado por nuestro motor (sin costo Shotstack)">🏠 En casa</span>;
+  }
+  if (renderer === 'shotstack') {
+    return <span className="text-[11px] px-2 py-0.5 rounded-full border bg-gray-600/30 text-gray-300 border-gray-600/40" title="Renderizado por Shotstack">Shotstack</span>;
+  }
+  return null;
+}
+
 function Row({ v, onCopy, onRetry, onView, onDismiss, busy }) {
   return (
     <div className="rounded-xl border border-gray-800 bg-[#1a1f26] p-3 flex items-center justify-between gap-3">
@@ -169,6 +180,7 @@ function Row({ v, onCopy, onRetry, onView, onDismiss, busy }) {
         <div className="flex items-center gap-2">
           <span className="text-white font-semibold truncate">{v.recipient_name}</span>
           <StatusPill status={v.status} />
+          {v.status === 'completed' && <RendererBadge renderer={v.renderer} />}
           {v.photo_count ? <span className="text-[11px] text-gray-500">{v.photo_count} fotos</span> : null}
         </div>
         <div className="text-xs text-gray-500 truncate">{v.email}{v.error_message ? <span className="text-rose-400"> · {v.error_message}</span> : ''}</div>
