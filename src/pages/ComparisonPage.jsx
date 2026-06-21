@@ -133,19 +133,24 @@ export default function ComparisonPage() {
   const [whatsappPhone, setWhatsappPhone] = useState('');
   const whatsappSaveTimer = useRef(null);
 
-  // Auto-save WhatsApp phone to DB when user types a valid number (10+ digits)
+  // Auto-save WhatsApp phone to DB when user types a valid number.
+  // Only persist a sane 10–15 digit number (matches the SMS texter's E.164
+  // parser). This rejects doubled-up / garbage values (e.g. a 16–18 digit blob)
+  // that would be stored but could never be texted.
   useEffect(() => {
     const cleanPhone = whatsappPhone.replace(/\D/g, '');
-    if (cleanPhone.length >= 10 && songs?.length > 0) {
+    if (cleanPhone.length >= 10 && cleanPhone.length <= 15 && songs?.length > 0) {
       // Debounce: wait 1 second after user stops typing
       clearTimeout(whatsappSaveTimer.current);
       whatsappSaveTimer.current = setTimeout(async () => {
         try {
+          // Use the SAME RPC the checkout path uses, so providing the number
+          // here ALSO records SMS consent (stamps sms_consent_at). Under our
+          // consent model the disclosure shown at this field means giving the
+          // number IS consent — so the song-ready SMS can go out without
+          // waiting for the customer to reach checkout with the field filled.
           for (const song of songs) {
-            await supabase
-              .from('songs')
-              .update({ whatsapp_phone: cleanPhone })
-              .eq('id', song.id);
+            await supabase.rpc('save_whatsapp_phone', { song_id: song.id, phone: cleanPhone });
           }
           localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
         } catch (err) {
@@ -735,9 +740,11 @@ export default function ComparisonPage() {
         couponCode: codeToSend
       }));
 
-      // Save WhatsApp phone if provided (uses RPC to bypass RLS)
+      // Save WhatsApp phone if provided (uses RPC to bypass RLS, and stamps
+      // SMS consent). Only persist a sane 10–15 digit number so doubled-up /
+      // garbage values never get stored.
       const cleanPhone = whatsappPhone.replace(/\D/g, '');
-      if (cleanPhone) {
+      if (cleanPhone.length >= 10 && cleanPhone.length <= 15) {
         localStorage.setItem('rqc_whatsapp_phone', cleanPhone);
         try {
           for (const songId of songIdsToCheckout) {
@@ -1848,14 +1855,14 @@ export default function ComparisonPage() {
               value={whatsappPhone}
               onChange={(e) => { setWhatsappPhone(e.target.value.replace(/[^\d\s\-\+\(\)]/g, '')); }}
               placeholder="Tu número de teléfono"
-              maxLength={20}
+              maxLength={17}
               style={{
                 flex: 1, padding: '12px 14px',
-                background: 'rgba(255,255,255,0.08)', border: whatsappPhone.replace(/\D/g, '').length >= 10 ? '1.5px solid #25D366' : '1.5px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.08)', border: (whatsappPhone.replace(/\D/g, '').length >= 10 && whatsappPhone.replace(/\D/g, '').length <= 15) ? '1.5px solid #25D366' : '1.5px solid rgba(255,255,255,0.1)',
                 borderRadius: '10px', color: 'white', fontSize: '15px', outline: 'none', transition: 'border-color 0.3s'
               }}
             />
-            {whatsappPhone.replace(/\D/g, '').length >= 10 && (
+            {(whatsappPhone.replace(/\D/g, '').length >= 10 && whatsappPhone.replace(/\D/g, '').length <= 15) && (
               <div style={{width: '32px', height: '32px', borderRadius: '50%', background: '#25D366',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0}}>
                 <span style={{color: 'white', fontSize: '16px', fontWeight: 'bold'}}>✓</span>
