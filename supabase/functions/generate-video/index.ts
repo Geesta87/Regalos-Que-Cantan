@@ -167,38 +167,49 @@ serve(async (req) => {
         sender_name: song.sender_name,
       };
 
-      // Fire-and-forget. The in-house Cloud Run service holds the connection for
-      // the whole ~6-min render (so Cloud Run scales one render per instance), so
-      // we must NOT await it — the edge function would time out. EdgeRuntime
-      // .waitUntil keeps this worker alive just long enough to send the request;
-      // the render then runs to completion on Cloud Run regardless of our
-      // disconnect, and inhouse-video-callback marks the order completed.
-      const fire = fetch(`${RENDERER_URL}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
-        body: JSON.stringify(payload),
-      })
-        .then((r) => console.log(`[generate-video] in-house render finished: ${r.status}`))
-        .catch((e) => console.error('[generate-video] in-house dispatch/render error:', e.message));
+      // AWAIT the dispatch. The renderer now ACKs with 202 in ~1-3s and renders in
+      // the BACKGROUND, so awaiting can't time out — and awaiting is what GUARANTEES
+      // the request actually reached Cloud Run. The old fire-and-forget
+      // (EdgeRuntime.waitUntil) silently dropped requests: the edge worker was
+      // recycled before the fetch was even sent, so renders never started and orders
+      // sat stuck in 'processing' (root cause of the in-house stalls, 2026-06-21).
+      let dispatched = false;
+      let dispatchErr = '';
       try {
-        // @ts-ignore — EdgeRuntime is provided by the Supabase edge runtime
-        EdgeRuntime.waitUntil(fire);
-      } catch (_) { /* runtime without waitUntil — fetch still dispatched */ }
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 25000);
+        const r = await fetch(`${RENDERER_URL}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+          body: JSON.stringify(payload),
+          signal: ac.signal,
+        });
+        clearTimeout(timer);
+        dispatched = r.ok; // 202 Accepted
+        if (!r.ok) dispatchErr = `renderer ${r.status}: ${(await r.text()).slice(0, 200)}`;
+        console.log(`[generate-video] in-house dispatch ack: ${r.status} (order ${videoOrderId})`);
+      } catch (e) {
+        dispatchErr = (e as Error).message;
+        console.error('[generate-video] in-house dispatch failed:', dispatchErr);
+      }
 
+      // Only move to 'processing' if the renderer accepted it. If the dispatch
+      // failed, leave it 'photos_uploaded' so poll-pending-videos retries instead of
+      // the order silently stalling forever.
       await supabase
         .from('video_orders')
         .update({
-          status: 'processing',
+          status: dispatched ? 'processing' : 'photos_uploaded',
           video_filter: filter,
           aspect_ratio: aspectRatio,
+          ...(dispatched ? {} : { error_message: `dispatch failed: ${dispatchErr}`.slice(0, 300) }),
           updated_at: new Date().toISOString(),
         })
         .eq('id', videoOrderId);
 
-      console.log(`[generate-video] dispatched to in-house renderer: ${videoOrderId}`);
       return new Response(
-        JSON.stringify({ success: true, videoOrderId, status: 'processing', renderer: 'inhouse' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+        JSON.stringify({ success: dispatched, videoOrderId, status: dispatched ? 'processing' : 'photos_uploaded', renderer: 'inhouse', dispatched, ...(dispatched ? {} : { error: dispatchErr }) }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: dispatched ? 200 : 502 },
       );
     }
 

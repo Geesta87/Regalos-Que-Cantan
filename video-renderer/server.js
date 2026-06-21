@@ -68,13 +68,10 @@ async function notifyCallback(payload) {
   }
 }
 
-// Render -> upload -> notify callback. Returns the HTTP result to send back.
-// The handler AWAITS this so the request stays open for the whole render: that
-// makes Cloud Run see the instance as busy (1 active request at concurrency=1)
-// and route the next order to a fresh instance, instead of onto this one whose
-// event loop is blocked by the synchronous ffmpeg. The caller (generate-video)
-// fires-and-forgets, so it isn't held — and the render continues even if the
-// caller disconnects.
+// Render -> upload -> notify callback. Runs in the BACKGROUND (the handler 202s
+// before this starts; see enqueueRender). The completion callback to CALLBACK_URL
+// is what persists the result — never the HTTP response — so the caller can hang up
+// the instant it's dispatched. Returns a {code, body} that's now only used for logs.
 async function runRenderJob(order, id) {
   const started = Date.now();
   const workDir = path.join(os.tmpdir(), `render-${id}-${started}`);
@@ -105,6 +102,22 @@ function readBody(req) {
   });
 }
 
+// Per-instance serial render queue. We ACK each /render with 202 IMMEDIATELY, then
+// render in the background, ONE AT A TIME on this instance. Why: the dispatcher is
+// a Supabase edge function (generate-video) whose worker is recycled in seconds, so
+// it cannot hold a connection open for the ~5-min render — the old "hold the request
+// open" design made dispatches silently vanish (the request often never even reached
+// Cloud Run, leaving orders stuck in 'processing'). A fast 202 makes the dispatch a
+// reliable request→response; serializing renders keeps a burst from spawning parallel
+// ffmpeg jobs that exhaust memory. Cloud Run autoscaling spreads load across instances,
+// and runRenderJob fires the completion callback (success OR failure) when each finishes.
+let renderChain = Promise.resolve();
+function enqueueRender(order, id) {
+  renderChain = renderChain
+    .then(() => runRenderJob(order, id))
+    .catch((e) => console.error(`[${id}] background render crashed:`, e?.message || e));
+}
+
 const server = http.createServer(async (req, res) => {
   const send = (code, obj) => {
     res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -124,10 +137,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   const id = order.videoOrderId || order.orderId || `job-${Date.now()}`;
-  // Hold the request open for the whole render (see runRenderJob). The caller
-  // fires-and-forgets and won't wait; the render + callback complete regardless.
-  const r = await runRenderJob(order, id);
-  send(r.code, r.body);
+  // Ack now, render in the background (see enqueueRender). The completion callback
+  // — not this response — is what persists the video, so the caller never waits.
+  send(202, { accepted: true, videoOrderId: id });
+  enqueueRender(order, id);
 });
 
 server.listen(PORT, () => console.log(`video-renderer listening on ${PORT} (bucket: ${OUTPUT_BUCKET}, callback: ${CALLBACK_URL ? 'on' : 'off'})`));

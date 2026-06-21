@@ -168,7 +168,7 @@ async function renderOrder(order, opts = {}) {
   const openFont = nameLines.length > 3 ? 54 : nameLines.length > 2 ? 66 : 84;
   const openAlpha = `if(lt(t,0.6),t/0.6,if(lt(t,3.2),1,(4-t)/0.8))`;
   fc.push(`[vx]drawtext=fontfile=serif.ttf:textfile=title.txt:fontcolor=white:fontsize=${openFont}:` +
-    `line_spacing=18:text_align=C:box=1:boxcolor=black@0.4:boxborderw=46:x=(w-text_w)/2:y=h*0.10:` +
+    `line_spacing=18:box=1:boxcolor=black@0.4:boxborderw=46:x=(w-text_w)/2:y=h*0.10:` +
     `enable='between(t,0,4)':alpha='${openAlpha}'[vtitle]`);
   // Closing brand card — "Hecho con amor". With a message it belongs at the END
   // of the message (the video should finish ON the brand card, not show it before
