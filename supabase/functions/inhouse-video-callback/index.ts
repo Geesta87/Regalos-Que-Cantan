@@ -75,6 +75,13 @@ serve(async (req) => {
     // Server-side copy videos-shadow/<objectKey> -> videos/<song_id>.mp4.
     const src = objectKey || `${videoOrderId}.mp4`;
     const destKey = `${videoOrder.song_id}.mp4`;
+    // The copy API 409s if the destination already exists, which breaks RE-RENDERS
+    // (a quality re-do of a video that already shipped). Delete the old object
+    // first (best-effort) so a re-render replaces it instead of failing.
+    await fetch(`${SUPABASE_URL}/storage/v1/object/${FINAL_BUCKET}/${destKey}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    }).catch(() => { /* not present yet — fine */ });
     const copyRes = await fetch(`${SUPABASE_URL}/storage/v1/object/copy`, {
       method: 'POST',
       headers: {
