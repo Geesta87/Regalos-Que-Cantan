@@ -88,6 +88,27 @@ export function tzLabel(timeZone) {
   })[timeZone] || 'su hora local';
 }
 
+// Selectable zones for the "recipient's timezone" override dropdown. Pre-filled
+// from the area code; the buyer only changes it if their loved one moved and
+// kept an out-of-area number.
+export const TZ_OPTIONS = [
+  { value: 'America/New_York', label: 'Este — Nueva York, Florida, Georgia' },
+  { value: 'America/Chicago', label: 'Centro — Texas, Illinois, Tennessee' },
+  { value: 'America/Denver', label: 'Montaña — Colorado, Nuevo México' },
+  { value: 'America/Phoenix', label: 'Arizona' },
+  { value: 'America/Los_Angeles', label: 'Pacífico — California, Washington' },
+  { value: 'America/Anchorage', label: 'Alaska' },
+  { value: 'Pacific/Honolulu', label: 'Hawái' },
+  { value: 'America/Puerto_Rico', label: 'Puerto Rico' },
+];
+
+// Returns TZ_OPTIONS guaranteed to include `tz` (prepends it if it's some other
+// IANA zone, e.g. the buyer's own), so a <select> always has a matching option.
+export function tzOptionsWith(tz) {
+  if (!tz || TZ_OPTIONS.some((o) => o.value === tz)) return TZ_OPTIONS;
+  return [{ value: tz, label: tzLabel(tz) }, ...TZ_OPTIONS];
+}
+
 // '17:00' -> '5:00 PM'
 export function format12(timeStr) {
   if (!timeStr) return '';

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { guessTimezoneFromPhone, zonedTimeToUtc, tzLabel, format12 } from '../utils/recipientTimezone';
+import { guessTimezoneFromPhone, zonedTimeToUtc, tzLabel, format12, tzOptionsWith } from '../utils/recipientTimezone';
 
 // GiftTextUpsell — the $5 "send this song as a scheduled surprise text" add-on.
 //
@@ -40,12 +40,14 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   const [message, setMessage] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('09:00');
+  const [tzOverride, setTzOverride] = useState('');
   const [attested, setAttested] = useState(false);
 
   const buyerTimezone = useMemo(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
   }, []);
   const recipientTz = useMemo(() => guessTimezoneFromPhone(recipientPhone), [recipientPhone]);
+  const effectiveTz = tzOverride || recipientTz || buyerTimezone || 'America/New_York';
 
   // ---- Already scheduled (returned from Stripe) → confirmation card ----
   if (justScheduled) {
@@ -66,9 +68,9 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
     if (!buyerName.trim()) return setError('Escribe tu nombre (así sabrán quién lo envía).');
     if (!date || !time) return setError('Elige el día y la hora de envío.');
 
-    // Interpret the picked time as the RECIPIENT's local time (from their area
-    // code); fall back to the buyer's own zone if the area code is unknown.
-    const sendTz = guessTimezoneFromPhone(recipientPhone) || buyerTimezone;
+    // Interpret the picked time as the RECIPIENT's local time — the zone the
+    // buyer sees/can correct in the dropdown (defaulted from the area code).
+    const sendTz = effectiveTz;
     const local = zonedTimeToUtc(date, time, sendTz);
     if (isNaN(local.getTime())) return setError('La fecha y hora no son válidas.');
     if (local.getTime() < Date.now() + 2 * 60 * 1000) return setError('Elige una hora en el futuro.');
@@ -189,10 +191,16 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
               </div>
             </div>
 
-            {recipientTz && time && (
-              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
-                🕒 Le llegará a las {format12(time)} {tzLabel(recipientTz)}{recipientName ? ` — la hora de ${recipientName}` : ' (la hora de quien lo recibe)'}
-              </p>
+            {recipientPhone && time && (
+              <div style={{ margin: '0 0 12px' }}>
+                <label style={labelStyle}>Zona horaria de {recipientName || 'quien lo recibe'}</label>
+                <select value={effectiveTz} onChange={(e) => setTzOverride(e.target.value)} style={{ ...inputStyle, marginBottom: '6px' }}>
+                  {tzOptionsWith(effectiveTz).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <p style={{ margin: 0, fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+                  🕒 Le llegará a las {format12(time)} {tzLabel(effectiveTz)}{recipientName ? ` — la hora de ${recipientName}` : ''}
+                </p>
+              </div>
             )}
 
             {error && (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { guessTimezoneFromPhone, tzLabel, format12 } from '../utils/recipientTimezone';
+import { guessTimezoneFromPhone, tzLabel, format12, tzOptionsWith } from '../utils/recipientTimezone';
 
 // GiftAddonField — controlled "send it as a scheduled surprise text (+$5)" add-on
 // for the comparison page. Unlike GiftTextUpsell (post-purchase, its own
@@ -26,6 +26,8 @@ function todayLocalISODate() {
 export default function GiftAddonField({ value, onChange, recipientDefault = '', senderDefault = '', error }) {
   const v = value;
   const set = (patch) => onChange({ ...v, ...patch });
+  const buyerTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'America/New_York'; } })();
+  const effectiveTz = v.tz || guessTimezoneFromPhone(v.phone) || buyerTz || 'America/New_York';
 
   const toggle = () => {
     if (!v.enabled) {
@@ -93,10 +95,16 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
             </div>
           </div>
 
-          {guessTimezoneFromPhone(v.phone) && v.time && (
-            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
-              🕒 Le llegará a las {format12(v.time)} {tzLabel(guessTimezoneFromPhone(v.phone))}{v.recipientName ? ` — la hora de ${v.recipientName}` : ' (la hora de quien lo recibe)'}
-            </p>
+          {v.phone && v.time && (
+            <div style={{ margin: '4px 0 8px' }}>
+              <label style={labelStyle}>Zona horaria de {v.recipientName || 'quien lo recibe'}</label>
+              <select value={effectiveTz} onChange={(e) => set({ tz: e.target.value })} style={{ ...inputStyle, marginBottom: '6px' }}>
+                {tzOptionsWith(effectiveTz).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <p style={{ margin: 0, fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+                🕒 Le llegará a las {format12(v.time)} {tzLabel(effectiveTz)}{v.recipientName ? ` — la hora de ${v.recipientName}` : ''}
+              </p>
+            </div>
           )}
           {error && <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '8px 0 0' }}>{error}</p>}
           <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#c98fab', lineHeight: 1.5 }}>

@@ -792,7 +792,7 @@ export default function ComparisonPage() {
         try { buyerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
         // Schedule in the RECIPIENT's timezone (from their area code) so the
         // picked time means their local clock; fall back to the buyer's zone.
-        const sendTz = guessTimezoneFromPhone(giftState.phone) || buyerTz || 'America/New_York';
+        const sendTz = giftState.tz || guessTimezoneFromPhone(giftState.phone) || buyerTz || 'America/New_York';
         const localGift = zonedTimeToUtc(giftState.date, giftState.time, sendTz);
         if (isNaN(localGift.getTime()) || localGift.getTime() < Date.now() + 2 * 60 * 1000) { failGift('Elige una hora futura para el envío del regalo.'); return; }
         giftSms = {
