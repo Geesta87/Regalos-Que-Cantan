@@ -6,6 +6,7 @@ import { trackStep } from '../services/tracking';
 import ExitIntentPopup from '../components/ExitIntentPopup';
 import { AnimadoOffer } from './AnimadoUpsell';
 import GiftAddonField from '../components/GiftAddonField';
+import { guessTimezoneFromPhone, zonedTimeToUtc } from '../utils/recipientTimezone';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -787,10 +788,13 @@ export default function ComparisonPage() {
         if (!giftState.phone.trim()) { failGift('Escribe el número de celular del destinatario.'); return; }
         if (!giftState.buyerName.trim()) { failGift('Escribe tu nombre para el regalo.'); return; }
         if (!giftState.date || !giftState.time) { failGift('Elige el día y la hora del envío del regalo.'); return; }
-        const localGift = new Date(`${giftState.date}T${giftState.time}`);
+        let buyerTz = '';
+        try { buyerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
+        // Schedule in the RECIPIENT's timezone (from their area code) so the
+        // picked time means their local clock; fall back to the buyer's zone.
+        const sendTz = guessTimezoneFromPhone(giftState.phone) || buyerTz || 'America/New_York';
+        const localGift = zonedTimeToUtc(giftState.date, giftState.time, sendTz);
         if (isNaN(localGift.getTime()) || localGift.getTime() < Date.now() + 2 * 60 * 1000) { failGift('Elige una hora futura para el envío del regalo.'); return; }
-        let tz = '';
-        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
         giftSms = {
           enabled: true,
           recipient_name: giftState.recipientName.trim() || null,
@@ -798,7 +802,7 @@ export default function ComparisonPage() {
           buyer_name: giftState.buyerName.trim(),
           personal_message: giftState.message.trim(),
           send_at: localGift.toISOString(),
-          buyer_timezone: tz,
+          buyer_timezone: sendTz,
           attestation: true,
         };
       }

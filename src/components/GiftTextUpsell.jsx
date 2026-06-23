@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { guessTimezoneFromPhone, zonedTimeToUtc, tzLabel, format12 } from '../utils/recipientTimezone';
 
 // GiftTextUpsell — the $5 "send this song as a scheduled surprise text" add-on.
 //
@@ -44,6 +45,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   const buyerTimezone = useMemo(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
   }, []);
+  const recipientTz = useMemo(() => guessTimezoneFromPhone(recipientPhone), [recipientPhone]);
 
   // ---- Already scheduled (returned from Stripe) → confirmation card ----
   if (justScheduled) {
@@ -64,7 +66,10 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
     if (!buyerName.trim()) return setError('Escribe tu nombre (así sabrán quién lo envía).');
     if (!date || !time) return setError('Elige el día y la hora de envío.');
 
-    const local = new Date(`${date}T${time}`);
+    // Interpret the picked time as the RECIPIENT's local time (from their area
+    // code); fall back to the buyer's own zone if the area code is unknown.
+    const sendTz = guessTimezoneFromPhone(recipientPhone) || buyerTimezone;
+    const local = zonedTimeToUtc(date, time, sendTz);
     if (isNaN(local.getTime())) return setError('La fecha y hora no son válidas.');
     if (local.getTime() < Date.now() + 2 * 60 * 1000) return setError('Elige una hora en el futuro.');
 
@@ -80,7 +85,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
           buyer_name: buyerName.trim(),
           personal_message: message.trim(),
           send_at: local.toISOString(),
-          buyer_timezone: buyerTimezone,
+          buyer_timezone: sendTz,
           email: song?.email || undefined,
           attestation: true,
         }),
@@ -183,6 +188,12 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
                 <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle} />
               </div>
             </div>
+
+            {recipientTz && time && (
+              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+                🕒 Le llegará a las {format12(time)} {tzLabel(recipientTz)}{recipientName ? ` — la hora de ${recipientName}` : ' (la hora de quien lo recibe)'}
+              </p>
+            )}
 
             {error && (
               <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '0 0 12px', textAlign: 'center' }}>{error}</p>

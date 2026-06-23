@@ -1,4 +1,5 @@
 import React from 'react';
+import { guessTimezoneFromPhone, tzLabel, format12 } from '../utils/recipientTimezone';
 
 // GiftAddonField — controlled "send it as a scheduled surprise text (+$5)" add-on
 // for the comparison page. Unlike GiftTextUpsell (post-purchase, its own
@@ -92,6 +93,11 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
             </div>
           </div>
 
+          {guessTimezoneFromPhone(v.phone) && v.time && (
+            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+              🕒 Le llegará a las {format12(v.time)} {tzLabel(guessTimezoneFromPhone(v.phone))}{v.recipientName ? ` — la hora de ${v.recipientName}` : ' (la hora de quien lo recibe)'}
+            </p>
+          )}
           {error && <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '8px 0 0' }}>{error}</p>}
           <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#c98fab', lineHeight: 1.5 }}>
             🛡️ Al completar tu compra confirmas que es un regalo bienvenido. Revisamos el mensaje antes de enviarlo y el texto dirá quién lo manda, con opción de responder STOP.
