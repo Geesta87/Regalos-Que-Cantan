@@ -168,15 +168,15 @@ const FIX_TOOL = {
       },
       infill_start_s: {
         type: 'number',
-        description: 'Start time, in seconds (up to 2 decimals), of the slice to regenerate. Take it from the word timestamps; start a hair before the first wrong word.',
+        description: 'Start time, in seconds (up to 2 decimals), of the slice to regenerate. Take it from the word timestamps. Start at the BEGINNING of the first full lyric line of the passage you are replacing (just before its first word) — never mid-line.',
       },
       infill_end_s: {
         type: 'number',
-        description: 'End time, in seconds, of the slice to regenerate. End a hair after the last wrong word. The window (end - start) must be between 6 and 60 seconds and no more than half the song duration.',
+        description: 'End time, in seconds, of the slice to regenerate. End at the END of the last full lyric line of the passage (just after its last word) — never mid-line. Choose a whole phrase, not just the wrong word: aim for a 10-15 second window covering the complete line(s) the error sits in. Hard limits: 6-60 seconds and no more than half the song duration.',
       },
       section_text: {
         type: 'string',
-        description: 'ONLY the corrected lyric lines that fall inside this window, in Spanish, exactly as they should now be sung. This becomes the replacement-section prompt.',
+        description: 'ALL the lyric lines that are actually sung within [infill_start_s, infill_end_s] — the COMPLETE contiguous passage, in Spanish, exactly as it should now be sung, with the correction applied and every OTHER word kept identical to the original. This fills the whole window so the model never has to pad or repeat a line to stretch a short fix. NEVER return just the single changed word or line.',
       },
       full_lyrics: {
         type: 'string',
@@ -207,9 +207,12 @@ Te dan tres cosas:
 Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sola sección, sin rehacer toda la canción:
 
 - Usa las marcas de tiempo de la transcripción para encontrar el momento exacto del error y define una ventana contigua [infill_start_s, infill_end_s] que lo cubra.
-- La ventana DEBE durar entre 6 y 60 segundos y NO más de la mitad de la canción. Si el error es una sola palabra muy corta, amplía la ventana a una frase o verso completo para que el empalme suene natural (mínimo 6s).
+- REGLA CLAVE 1 (filtro de copyright): Suno RECHAZA ("contenido con derechos de autor") una ventana corta que contenga una línea muy común, sobre todo el típico arranque de corrido "Yo soy [nombre], nací/nacido un…". Una ventana de VARIAS líneas diluye ese parecido y SÍ pasa el filtro. Pero NO exageres: elige el BLOQUE MÍNIMO SUFICIENTE = las líneas del error MÁS unas pocas líneas siguientes, hasta el PRIMER hueco instrumental natural que venga después (normalmente unas 4 líneas, ~15-25s). Si el error está al inicio de un verso largo, NO re-cantes todo el verso — corta en el primer respiro instrumental. Mientras menos audio re-cantes, más se conserva la grabación original.
+- REGLA CLAVE 2 (empalme): la ventana DEBE terminar en un HUECO INSTRUMENTAL natural entre secciones (el respiro antes de la siguiente línea/sección), no pegada a la siguiente palabra cantada. Ese hueco es donde se empalma de vuelta con el audio original; necesita ~1s o más de instrumental.
+- Corta SIEMPRE en límites de línea naturales (inicio de la primera palabra, final de la última), nunca a media palabra ni a media frase.
+- La ventana DEBE durar entre 6 y 60 segundos y NO más de la mitad de la canción.
+- section_text debe ser TODO lo que se canta dentro de la ventana (la estrofa/líneas completas), ya con la corrección aplicada y dejando idénticas las demás palabras. La última línea de section_text marca dónde se hará el empalme.
 - full_lyrics debe ser la letra COMPLETA ya corregida: aplica SOLO el cambio pedido y deja idéntico todo lo demás. Conserva los marcadores de sección.
-- section_text son únicamente las líneas corregidas que caen dentro de la ventana.
 - Para nombres mal pronunciados: reescribe el nombre con ortografía española fonética para que el modelo lo cante bien (p. ej. "Yareli" → "Yarelí", "Joaquin" → "Joaquín", "Yetzaeli" → "Yetsaelí"), tanto en full_lyrics como en section_text, manteniendo el nombre legible.
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
@@ -461,21 +464,42 @@ function fuzzyEq(a: string, b: string): boolean {
   if (Math.abs(a.length - b.length) > 3) return false;
   return levenshtein(a, b) <= Math.max(1, Math.floor(Math.max(a.length, b.length) * 0.3));
 }
-async function verifyPhrasesInAudio(audioUrl: string, phrases: string[]): Promise<{ checked: boolean; allFound: boolean; missing: string[]; found: string[] }> {
+// Count contiguous, in-order occurrences of a phrase's tokens in the audio
+// token stream (used to catch the line being sung MORE than it should be).
+function countPhraseOccurrences(tokens: string[], phraseTokens: string[]): number {
+  if (!phraseTokens.length || !tokens.length) return 0;
+  let count = 0;
+  for (let i = 0; i + phraseTokens.length <= tokens.length; i++) {
+    let ok = true;
+    for (let j = 0; j < phraseTokens.length; j++) {
+      if (!fuzzyEq(tokens[i + j], phraseTokens[j])) { ok = false; break; }
+    }
+    if (ok) { count++; i += phraseTokens.length - 1; }
+  }
+  return count;
+}
+async function verifyPhrasesInAudio(audioUrl: string, phrases: string[], expectedLyrics?: string): Promise<{ checked: boolean; allFound: boolean; missing: string[]; found: string[]; repeated: string[] }> {
   const clean = (phrases || []).map((p) => String(p || '').trim()).filter(Boolean);
-  if (!clean.length) return { checked: false, allFound: true, missing: [], found: [] };
+  if (!clean.length) return { checked: false, allFound: true, missing: [], found: [], repeated: [] };
   const w = await transcribeAudio(audioUrl);
-  if (!w || !w.words.length) return { checked: false, allFound: true, missing: [], found: [] };
+  if (!w || !w.words.length) return { checked: false, allFound: true, missing: [], found: [], repeated: [] };
   const audioTokens = w.words.map((x) => normalizeForMatch(x.word)).filter(Boolean);
+  // How often each phrase is SUPPOSED to appear, read off the corrected lyrics.
+  const expectedTokens = expectedLyrics ? expectedLyrics.split(/\s+/).map(normalizeForMatch).filter(Boolean) : null;
   const found: string[] = [];
   const missing: string[] = [];
+  const repeated: string[] = [];
   for (const phrase of clean) {
     const tokens = phrase.split(/\s+/).map(normalizeForMatch).filter((t) => t.length > 1);
     if (!tokens.length) continue;
-    const ok = tokens.every((t) => audioTokens.some((a) => fuzzyEq(a, t)));
-    (ok ? found : missing).push(phrase);
+    // Lenient presence check (Whisper mis-segments Spanish, so don't require contiguity here).
+    const present = tokens.every((t) => audioTokens.some((a) => fuzzyEq(a, t)));
+    (present ? found : missing).push(phrase);
+    // Repetition check: contiguous occurrences in the audio vs. in the lyrics.
+    const expected = expectedTokens ? Math.max(1, countPhraseOccurrences(expectedTokens, tokens)) : 1;
+    if (countPhraseOccurrences(audioTokens, tokens) > expected) repeated.push(phrase);
   }
-  return { checked: true, allFound: missing.length === 0, missing, found };
+  return { checked: true, allFound: missing.length === 0, missing, found, repeated };
 }
 
 // Is a thrown error Kie's content/copyright filter?
@@ -507,11 +531,15 @@ async function sanitizeLyricsForFilter(lyrics: string): Promise<string | null> {
 // the one where the correction actually landed (auto-pick), keeping the others
 // as alternates the owner can switch to.
 // ---------------------------------------------------------------------------
-type Take = { audioUrl: string; id: string | null; imageUrl: string | null; verified: boolean | null; missing: string[]; lyrics?: string };
+type Take = { audioUrl: string; id: string | null; imageUrl: string | null; verified: boolean | null; missing: string[]; repeated: string[]; lyrics?: string };
 async function annotateTake(t: KieTrack, phrases: string[], lyrics?: string): Promise<Take | null> {
   if (!t.audioUrl) return null;
-  const v = await verifyPhrasesInAudio(t.audioUrl, phrases);
-  return { audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified: v.checked ? v.allFound : null, missing: v.missing, lyrics };
+  const v = await verifyPhrasesInAudio(t.audioUrl, phrases, lyrics);
+  const repeated = v.repeated || [];
+  // A take that REPEATS the corrected line is a fail (the exact bug we're
+  // killing) — rank it below an unverifiable take so best-of-N retries.
+  const verified = v.checked ? (v.allFound && repeated.length === 0) : null;
+  return { audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified, missing: v.missing, repeated, lyrics };
 }
 // Best first: verified, then unverifiable (null), then failed.
 function orderTakesBest(takes: Take[]): Take[] {
@@ -521,6 +549,7 @@ function orderTakesBest(takes: Take[]): Take[] {
 function takeVerifyNote(t: Take | undefined, sectionMode: boolean): string | null {
   if (!t) return null;
   if (t.verified === true) return '✅ Verificado: la corrección sí se canta.';
+  if (t.repeated && t.repeated.length) return `⚠️ La parte corregida se cantó repetida ("${t.repeated.join('", "')}").${sectionMode ? ' Reintenté con una ventana más larga; si persiste, usa "Rehacer canción completa".' : ' Reintenta o revisa las versiones.'}`;
   if (t.verified === false) return `⚠️ No pude confirmar la corrección${t.missing.length ? `: "${t.missing.join('", "')}"` : ''}.${sectionMode ? ' Para letras exactas, considera "Rehacer canción completa".' : ' Revisa las versiones o reintenta.'}`;
   return null;
 }
@@ -566,6 +595,58 @@ function clampWindow(startIn: number, endIn: number, duration: number): { start:
   if (len > maxLen) end = start + maxLen;
 
   return { start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 };
+}
+
+// Suno re-sings the ENTIRE infill window from the prompt lyrics, so a window
+// that's too short for the line forces it to pad by repeating. Real-data sweet
+// spot (song_fix_attempts): ~12-14s phrase-length windows land clean; ~6s ones
+// repeat. We grow Claude's window to at least this, then snap both edges to the
+// gaps between sung words so the splice falls in a natural breath, not mid-word.
+const TARGET_MIN_WINDOW_S = 11;
+
+// Nearest silence gap (midpoint between two consecutive sung words) to time `t`,
+// searching within `search` seconds. Falls back to `t` if none is close.
+function snapToGap(t: number, words: WhisperWord[], dur: number, search = 1.3): number {
+  if (!words || words.length < 2) return Math.max(0, Math.min(t, dur));
+  let best = t;
+  let bestDist = Infinity;
+  for (let i = 0; i < words.length - 1; i++) {
+    const gapStart = words[i].end;
+    const gapEnd = words[i + 1].start;
+    if (gapEnd <= gapStart) continue; // no silence between these words
+    const mid = (gapStart + gapEnd) / 2;
+    const d = Math.abs(mid - t);
+    if (d < bestDist && d <= search) { bestDist = d; best = mid; }
+  }
+  return Math.max(0, Math.min(best, dur));
+}
+
+// Expand a window to a phrase-length minimum (centered), snap edges to natural
+// breaths, then enforce Kie's 6-60s / <=50% rule via clampWindow.
+function snapWindowToPhrase(startIn: number, endIn: number, words: WhisperWord[], duration: number): { start: number; end: number } {
+  const dur = duration > 0 ? duration : 180;
+  let start = Math.max(0, Math.min(startIn, dur));
+  let end = Math.max(start, Math.min(endIn, dur));
+
+  const target = Math.min(Math.max(TARGET_MIN_WINDOW_S, end - start), Math.min(MAX_WINDOW_S, dur * 0.5));
+  if (end - start < target) {
+    const center = (start + end) / 2;
+    start = center - target / 2;
+    end = center + target / 2;
+    if (start < 0) { end -= start; start = 0; }
+    if (end > dur) { start -= (end - dur); end = dur; }
+    start = Math.max(0, start);
+  }
+
+  // Snap to breaths (only adopt the snap if it doesn't shrink us below target).
+  const snappedStart = snapToGap(start, words, dur);
+  const snappedEnd = snapToGap(end, words, dur);
+  if (snappedEnd - snappedStart >= Math.min(target, MIN_WINDOW_S)) {
+    start = snappedStart;
+    end = snappedEnd;
+  }
+
+  return clampWindow(start, end, dur);
 }
 
 // ---------------------------------------------------------------------------
@@ -676,11 +757,67 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Host a browser-spliced surgical fix (MP3 multipart) and swap it into the song
+// row, snapshotting the previous version for undo. The applied audio is a
+// stitched MP3 (not a Kie track), so we drop the Kie ids — a future fix on this
+// song goes through a fresh re-roll rather than a stale section edit.
+async function applySplicedAudio(req: Request, supabase: any): Promise<Response> {
+  let form: FormData;
+  try { form = await req.formData(); } catch (e) { return json({ ok: false, error: `bad multipart: ${e instanceof Error ? e.message : e}` }); }
+  const file = form.get('audio');
+  const songId = String(form.get('songId') || '');
+  const fullLyrics = form.get('fullLyrics') ? String(form.get('fullLyrics')) : '';
+  if (!file || typeof (file as { arrayBuffer?: unknown }).arrayBuffer !== 'function' || !songId) {
+    return json({ ok: false, error: 'audio file and songId are required' });
+  }
+  const bytes = new Uint8Array(await (file as Blob).arrayBuffer());
+  if (!bytes.length) return json({ ok: false, error: 'empty audio' });
+
+  const objectPath = `songs/fixed-${songId}-${Date.now()}.mp3`;
+  const up = await supabase.storage.from('audio').upload(objectPath, bytes, { contentType: 'audio/mpeg', upsert: true });
+  if (up.error) return json({ ok: false, error: `upload failed: ${up.error.message}` });
+  const publicUrl = supabase.storage.from('audio').getPublicUrl(objectPath).data.publicUrl;
+
+  const { data: prev } = await supabase
+    .from('songs')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps')
+    .eq('id', songId)
+    .single();
+
+  const update: Record<string, unknown> = {
+    audio_url: publicUrl,
+    preview_url: publicUrl,
+    original_audio_url: publicUrl,
+    status: 'completed',
+    needs_reupload: true,
+    error_message: null,
+    lyrics_timestamps: null,
+    kie_task_id: null,
+    task_id: null,
+    kie_payload: null,
+    fix_backup: prev ? { ...prev, backed_up_at: new Date().toISOString() } : null,
+  };
+  if (fullLyrics.trim()) update.lyrics = fullLyrics;
+
+  const { error } = await supabase.from('songs').update(update).eq('id', songId);
+  if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
+  await logAttempt(supabase, { song_id: songId, action: 'apply-spliced', fixed_audio_url: publicUrl, outcome: 'applied' });
+  return json({ ok: true, songId, applied: true, audioUrl: publicUrl, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // The admin dashboard stitches the surgical fix in the browser (Web Audio)
+    // and POSTs the finished MP3 here as multipart/form-data to host + apply it.
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      return await applySplicedAudio(req, supabase);
+    }
+
     const body = await req.json().catch(() => ({}));
     const action: string = body?.action || 'preview';
 
@@ -707,6 +844,47 @@ Deno.serve(async (req) => {
         errorCode: raw?.data?.errorCode,
         errorMessage: raw?.data?.errorMessage,
         tracks: raw?.data?.response?.sunoData?.length ?? 0,
+        // Full track list (audioUrl/id/imageUrl) so a slow replace-section job
+        // whose original request hit the 150s gateway timeout can still be
+        // collected out-of-band by polling this action with the taskId.
+        trackList: (raw?.data?.response?.sunoData ?? []).map((t: any) => ({
+          id: t.id ?? null,
+          audioUrl: t.audioUrl ?? null,
+          imageUrl: t.imageUrl ?? null,
+        })),
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // TRANSCRIBE — Whisper word-timestamps for a song (no Kie cost). Used to
+    // inspect WHERE a lyric line falls in the audio while tuning section fixes.
+    // Returns words + duration; pass verify=[...] to also get occurrence counts.
+    // -----------------------------------------------------------------
+    if (action === 'transcribe') {
+      if (!OPENAI_API_KEY) return json({ ok: false, error: 'OPENAI_API_KEY missing on Supabase' });
+      const songId: string | undefined = body?.songId;
+      const directUrl: string | undefined = body?.audioUrl;
+      let audioUrl: string | undefined = directUrl;
+      let cached: WhisperResult | null = null;
+      if (!audioUrl) {
+        if (!songId) return json({ ok: false, error: 'songId or audioUrl required' });
+        const { data: s } = await supabase.from('songs').select('audio_url, original_audio_url, lyrics_timestamps').eq('id', songId).single();
+        audioUrl = s?.original_audio_url || s?.audio_url;
+        if (s?.lyrics_timestamps && Array.isArray(s.lyrics_timestamps?.words) && s.lyrics_timestamps.words.length) cached = s.lyrics_timestamps as WhisperResult;
+      }
+      if (!audioUrl) return json({ ok: false, error: 'no audio to transcribe' });
+      let w = cached;
+      if (!w) {
+        w = await transcribeAudio(audioUrl);
+        if (w && w.words.length && songId && !directUrl) await supabase.from('songs').update({ lyrics_timestamps: w }).eq('id', songId);
+      }
+      if (!w || !w.words.length) return json({ ok: false, error: 'transcription failed' });
+      return json({
+        ok: true,
+        duration: w.duration,
+        wordCount: w.words.length,
+        // Compact "word[start-end]" view so the time of any line is readable.
+        timed: w.words.map((x) => `${x.word.trim()}[${x.start.toFixed(2)}-${x.end.toFixed(2)}]`).join(' '),
       });
     }
 
@@ -868,7 +1046,7 @@ Deno.serve(async (req) => {
 
     // ---- FULL re-roll path — remake the whole song on Kie from corrected
     // lyrics. Works for any song (incl. Mureka), since it generates fresh. ----
-    const mode = body?.mode === 'full' ? 'full' : 'section';
+    const mode = (body?.mode === 'full' || action === 'full-submit') ? 'full' : 'section';
     if (mode === 'full') {
       if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
       if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
@@ -882,6 +1060,44 @@ Deno.serve(async (req) => {
       }
       const title = `Canción para ${song.recipient_name || 'ti'}`;
       const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
+
+      // ---- ASYNC SUBMIT-ONLY (full re-roll) ----
+      // A full generation runs well past Supabase's 150s request limit, so the
+      // synchronous 'full' preview 504s and loses the audio. action:'full-submit'
+      // submits ONE generation (Kie returns ~2 takes) and returns the taskId
+      // immediately; the caller polls action:'diag' for both takes, then applies
+      // the chosen one. Mirrors 'section-submit'.
+      if (action === 'full-submit') {
+        try {
+          let lyricsUsed = correctedLyrics as string;
+          let taskId: string;
+          try {
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+          } catch (e) {
+            if (!isContentError(e)) throw e;
+            const cleaned = await sanitizeLyricsForFilter(lyricsUsed);
+            if (!cleaned || cleaned === lyricsUsed) throw e;
+            lyricsUsed = cleaned;
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+          }
+          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: (correctedSummary || '').slice(0, 500) });
+          return json({
+            ok: true,
+            submitted: true,
+            mode: 'full',
+            songId,
+            fixTaskId: taskId,
+            changeSummary: correctedSummary,
+            fullLyrics: correctedLyrics, // store the REAL corrected lyrics on apply
+            verifyPhrases,
+            staleWarning: null,
+          });
+        } catch (e: any) {
+          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
+          return json({ ok: false, error: String(e?.message || e) });
+        }
+      }
+
       try {
         // Best-of-N: each round returns ~2 takes; verify each, auto-pick the one
         // that got the correction right. 2nd round only if the 1st didn't verify.
@@ -978,7 +1194,8 @@ Deno.serve(async (req) => {
       return json({ ok: false, eligible: false, canFix: false, reason: fix.reason || 'No se puede arreglar por sección.' });
     }
 
-    const { start, end } = clampWindow(Number(fix.infill_start_s), Number(fix.infill_end_s), duration);
+    // Grow to a phrase-length window + snap to natural breaths (anti-repetition).
+    const { start, end } = snapWindowToPhrase(Number(fix.infill_start_s), Number(fix.infill_end_s), whisper.words, duration);
     const { tags, negativeTags } = buildStyleAndNegatives(song.style_used, song.voice_type);
     const title = `Canción para ${song.recipient_name || 'ti'}`;
     const fullLyrics = englishifyLyricsMarkers(String(approvedLyrics || fix.full_lyrics));
@@ -994,20 +1211,63 @@ Deno.serve(async (req) => {
     const sectionPrompt = sectionText.substring(0, 800);
     const callbackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
 
-    // Pre-emptively paraphrase the CONTEXT lyrics we hand Suno so its copyright
-    // filter is far less likely to false-positive on a 1-line edit. This does
-    // NOT change the customer's song: only the infill window is re-sung (from
-    // sectionPrompt); the rest stays the original audio, and fullLyrics is only
-    // context. We still STORE the real corrected lyrics (fullLyrics), not this.
-    let lyricsForKie = fullLyrics;
-    const preSafe = await sanitizeLyricsForFilter(fullLyrics);
-    if (preSafe && preSafe !== fullLyrics) {
-      lyricsForKie = englishifyLyricsMarkers(preSafe);
-      console.log('[fix] SECTION pre-emptive paraphrase of context lyrics applied');
-    }
+    // Do NOT pre-emptively paraphrase. The song's ORIGINAL lyrics already PASSED
+    // Kie's copyright filter at creation time, so the safest payload for
+    // replace-section is those same lyrics with ONLY the correction applied
+    // (minimal change). Pre-paraphrasing the whole song rewrote approved-safe
+    // lines into novel ones that tripped the filter MORE — observed 2026-06-23
+    // on a corrido whose original generated cleanly but whose paraphrased
+    // replace-section payload hit SENSITIVE_WORD_ERROR twice. Paraphrasing is
+    // now REACTIVE only: it runs in the catch below IF Kie actually rejects.
+    const lyricsForKie = fullLyrics;
 
     console.log(`[fix] replace-section song=${songId} window=${start}-${end}s promptLen=${sectionPrompt.length} fullLyricsLen=${lyricsForKie.length} section="${sectionPrompt.slice(0, 140)}"`);
     const phrasesToVerify = verifyPhrases.length ? verifyPhrases : (Array.isArray(fix.verify_phrases) ? fix.verify_phrases : []);
+
+    // ---- ASYNC SUBMIT-ONLY path ----
+    // Kie's replace-section can take longer than Supabase's hard 150s request
+    // limit, so the synchronous 'preview' (submit + poll in one request) 504s
+    // and the result is lost. action:'section-submit' does everything EXCEPT the
+    // poll: it returns the Kie taskId immediately. The caller then polls
+    // action:'diag' (fast, single record-info fetch) until SUCCESS, reads the
+    // audio from trackList, and finishes with action:'apply'. No request ever
+    // approaches the gateway timeout.
+    if (action === 'section-submit') {
+      try {
+        let promptUsed = sectionPrompt;
+        let lyricsUsed = lyricsForKie;
+        let fixTaskId: string;
+        try {
+          fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+        } catch (e) {
+          if (!isContentError(e)) throw e;
+          const cs = await sanitizeLyricsForFilter(promptUsed);
+          const cf = await sanitizeLyricsForFilter(lyricsUsed);
+          if ((!cs || cs === promptUsed) && (!cf || cf === lyricsUsed)) throw e;
+          promptUsed = (cs || promptUsed).substring(0, 800);
+          lyricsUsed = englishifyLyricsMarkers(cf || lyricsUsed);
+          fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+        }
+        await logAttempt(supabase, { song_id: songId, action: 'section-submit', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, outcome: 'submitted', detail: (fix.change_summary || '').slice(0, 500) });
+        return json({
+          ok: true,
+          submitted: true,
+          songId,
+          fixTaskId,
+          changeSummary: fix.change_summary || '',
+          window: { startS: start, endS: end },
+          sectionText,                 // the corrected block lines (for splice-boundary detection)
+          originalAudioUrl: audioForFix, // pristine original — everything after the block comes from here
+          fullLyrics, // the REAL corrected lyrics to store on apply
+          verifyPhrases: phrasesToVerify,
+          staleWarning,
+        });
+      } catch (e: any) {
+        await logAttempt(supabase, { song_id: songId, action: 'section-submit', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
+        return json({ ok: false, error: String(e?.message || e) });
+      }
+    }
+
     try {
       // One replace-section round (2 takes), with content-filter sanitize+retry.
       const sectionRound = async (): Promise<{ taskId: string; tracks: KieTrack[] }> => {

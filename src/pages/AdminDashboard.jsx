@@ -7,6 +7,7 @@ import SmsInboxTab from '../components/admin/SmsInboxTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import VideosTab from '../components/admin/VideosTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video } from 'lucide-react';
+import { spliceIntoOriginal, parseTimed, findLastLineEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -39,6 +40,8 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [selectedTakeIdx, setSelectedTakeIdx] = useState(0);
   const [canUndo, setCanUndo] = useState(!!song?.fix_backup);
   const [error, setError] = useState('');
+  const [surgicalMsg, setSurgicalMsg] = useState(''); // live progress for the surgical section fix
+  const [sectionParams, setSectionParams] = useState(null); // { approvedLyrics, verifyPhrases } — for "otra versión"
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -143,6 +146,80 @@ function FixSongCard({ song, showToast, onApplied }) {
     }
   }
 
+  // Section fix — the PROVEN surgical recipe, run from the browser:
+  //   re-sing the stanza block (async) → pick the tightest of the takes → splice
+  //   the corrected lines onto the PRISTINE original (Web Audio) → preview here.
+  // Only the corrected lines are AI-re-sung; the rest stays the original.
+  async function runSectionSurgical(approvedLyrics, verifyPhrases) {
+    setError('');
+    setResult(null);
+    setInput('');
+    setPhase('working');
+    setSurgicalMsg('Regenerando la parte corregida…');
+    setSectionParams({ approvedLyrics, verifyPhrases });
+    const post = (body) => fetch(FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+    try {
+      // 1) Re-sing the block (async submit — avoids the 150s gateway limit).
+      const sub = await post({ action: 'section-submit', mode: 'section', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+      if (!sub.ok) { setError(sub.reason || sub.error || 'No se pudo generar el arreglo.'); setPhase('plan'); return; }
+      const { fixTaskId, sectionText, originalAudioUrl, fullLyrics } = sub;
+      const origCut = Number(sub.window?.endS);
+      if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) { setError('Respuesta incompleta del servidor.'); setPhase('plan'); return; }
+
+      // 2) Poll until the re-sing is ready.
+      let takeUrls = [];
+      for (let i = 1; i <= 40; i++) {
+        const d = await post({ action: 'diag', taskId: fixTaskId });
+        setSurgicalMsg(`Generando la voz corregida… (${i})`);
+        if (d.status === 'SUCCESS') { takeUrls = (d.trackList || []).map((t) => t.audioUrl).filter(Boolean); break; }
+        if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
+          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno bloqueó la letra (derechos de autor). Prueba "Rehacer canción completa".' : `Falló la generación (${d.status}).`);
+          setPhase('plan'); return;
+        }
+        await new Promise((r) => setTimeout(r, 9000));
+      }
+      if (!takeUrls.length) { setError('Se agotó el tiempo esperando la regeneración.'); setPhase('plan'); return; }
+
+      // 3) Transcribe each take; pick the LEAST-PADDED (keeps length closest to original).
+      setSurgicalMsg('Eligiendo la mejor versión…');
+      const scored = [];
+      for (const url of takeUrls) {
+        const tr = await post({ action: 'transcribe', audioUrl: url });
+        const end = findLastLineEnd(parseTimed(tr.timed), sectionText);
+        if (end) scored.push({ url, end });
+      }
+      if (!scored.length) { setError('No pude ubicar el empalme automáticamente. Reintenta o usa "Rehacer canción completa".'); setPhase('plan'); return; }
+      scored.sort((a, b) => a.end - b.end);
+      const resungUrl = scored[0].url;
+      const resungCut = +(scored[0].end + 0.3).toFixed(2);
+
+      // 4) Stitch the corrected lines onto the pristine original (in-browser Web Audio).
+      setSurgicalMsg('Uniendo con la grabación original…');
+      const spliced = await spliceIntoOriginal({ resungUrl, resungCutS: resungCut, originalUrl: originalAudioUrl, origCutS: origCut });
+
+      setResult({
+        surgical: true,
+        splicedBlob: spliced.blob,
+        changeSummary: sub.changeSummary || '',
+        originalAudioUrl,
+        fullLyrics,
+        window: sub.window,
+        takes: [{ audioUrl: spliced.url, verified: null, lyrics: fullLyrics }],
+      });
+      setSelectedTakeIdx(0);
+      setSurgicalMsg('');
+      setPhase('preview');
+    } catch (e) {
+      setError('Error: ' + (e?.message || 'desconocido'));
+      setSurgicalMsg('');
+      setPhase('plan');
+    }
+  }
+
   async function undoFix() {
     setError('');
     try {
@@ -165,6 +242,22 @@ function FixSongCard({ song, showToast, onApplied }) {
     if (!result) return;
     setPhase('applying');
     try {
+      // Surgical (spliced-in-browser) result: upload the finished MP3 as
+      // multipart; the edge fn hosts it + swaps it in (with undo snapshot).
+      if (result.surgical) {
+        const fd = new FormData();
+        fd.append('audio', result.splicedBlob, `fixed-${song.id}.mp3`);
+        fd.append('songId', song.id);
+        fd.append('fullLyrics', result.fullLyrics || '');
+        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+        const d = await resp.json();
+        if (!d.ok) { setError(d.error || 'No se pudo aplicar el arreglo.'); setPhase('preview'); return; }
+        showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
+        if (onApplied) onApplied(d.audioUrl, result.fullLyrics);
+        setCanUndo(true);
+        setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+        return;
+      }
       const res = await fetch(FN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON}`, 'apikey': ANON },
@@ -314,7 +407,9 @@ function FixSongCard({ song, showToast, onApplied }) {
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'Se rehará la canción completa. Tarda 1-3 min.' : 'Se regenerará solo la parte afectada. Tarda 1-3 min.'}</p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => runPreview(pendingMode, plan.approvedLyrics, plan.verifyPhrases)}
+                  onClick={() => (pendingMode === 'section'
+                    ? runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)
+                    : runPreview(pendingMode, plan.approvedLyrics, plan.verifyPhrases))}
                   className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                 >
                   ✅ Confirmar y generar
@@ -331,7 +426,7 @@ function FixSongCard({ song, showToast, onApplied }) {
 
           {phase === 'working' && (
             <p className="text-sm text-purple-100 mt-1">
-              {pendingMode === 'full' ? '⏳ Rehaciendo la canción…' : '⏳ Arreglando esa parte…'} (1-3 min, no cierres esta ventana)
+              {surgicalMsg || (pendingMode === 'full' ? '⏳ Rehaciendo la canción…' : '⏳ Arreglando esa parte…')} (1-3 min, no cierres esta ventana)
             </p>
           )}
 
@@ -369,6 +464,9 @@ function FixSongCard({ song, showToast, onApplied }) {
               <p className="text-[11px] text-gray-500 mb-1">Original (antes):</p>
               <audio controls className="w-full mb-2" src={result.originalAudioUrl} />
               <p className="text-[11px] text-gray-300 mb-1">✅ Corregida (escucha antes de aplicar):</p>
+              {result.surgical && (
+                <p className="text-[11px] text-gray-500 mb-1">Solo se recantó la parte corregida; el resto es tu grabación original.</p>
+              )}
               <audio key={selectedTakeIdx} controls className="w-full mb-3" src={take?.audioUrl} />
               <div className="flex gap-2">
                 <button
@@ -378,6 +476,16 @@ function FixSongCard({ song, showToast, onApplied }) {
                 >
                   {phase === 'applying' ? '⏳ Aplicando…' : '✅ Aplicar (reemplaza la del cliente)'}
                 </button>
+                {result.surgical && sectionParams && (
+                  <button
+                    onClick={() => runSectionSurgical(sectionParams.approvedLyrics, sectionParams.verifyPhrases)}
+                    disabled={phase === 'applying'}
+                    className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
+                    title="Genera otra versión (Suno varía cada vez)"
+                  >
+                    🔄 Otra versión
+                  </button>
+                )}
                 <button
                   onClick={() => { setResult(null); setPlan(null); setPhase('idle'); }}
                   disabled={phase === 'applying'}
