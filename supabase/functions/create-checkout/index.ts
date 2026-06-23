@@ -304,6 +304,59 @@ serve(async (req) => {
         });
       }
 
+      // Gift-SMS add-on on a FREE (100% coupon) order. This path skips Stripe +
+      // the webhook (where the PAID path creates the gift), so we validate +
+      // moderate + create the scheduled gift row here. The $5 is comped along
+      // with the free order (amount_cents 0). Wrapped so a gift failure never
+      // blocks the (already-free) order.
+      if (giftRaw && (giftRaw.enabled === true || giftRaw.recipient_phone)) {
+        try {
+          const gPhone = giftToE164(String(giftRaw.recipient_phone || ''));
+          const gBuyer = String(giftRaw.buyer_name || '').trim();
+          const gMsg = String(giftRaw.personal_message || '').trim().slice(0, 300);
+          const gName = String(giftRaw.recipient_name || '').trim();
+          const gSendMs = Date.parse(giftRaw.send_at || '');
+          const timeOk = !Number.isNaN(gSendMs) && gSendMs > Date.now() + 2 * 60 * 1000;
+          if (gPhone && gBuyer && giftRaw.attestation === true && timeOk) {
+            const verdict = await moderateGiftText({ message: gMsg, recipientName: gName, senderName: gBuyer });
+            if (verdict.allowed) {
+              // Dedupe (no Stripe session id here): skip if the same gift exists.
+              const { data: existingGift } = await supabase
+                .from('scheduled_gift_messages')
+                .select('id')
+                .eq('song_id', songIds[0])
+                .eq('recipient_phone', gPhone)
+                .in('status', ['scheduled', 'processing', 'sent'])
+                .maybeSingle();
+              if (!existingGift) {
+                await supabase.from('scheduled_gift_messages').insert({
+                  song_id: songIds[0],
+                  buyer_email: email || null,
+                  buyer_name: gBuyer,
+                  recipient_name: gName || null,
+                  recipient_phone: gPhone,
+                  personal_message: gMsg || null,
+                  send_at: new Date(gSendMs).toISOString(),
+                  buyer_timezone: String(giftRaw.buyer_timezone || '').slice(0, 64) || null,
+                  status: 'scheduled',
+                  moderation_status: 'approved',
+                  amount_cents: 0,
+                  attestation_accepted: true,
+                  marketing_excluded: true,
+                });
+                console.log('✅ [create-checkout free-path] scheduled gift for song', songIds[0]);
+              }
+            } else {
+              console.warn('[create-checkout free-path gift] message rejected by moderation; skipping gift');
+            }
+          } else {
+            console.warn('[create-checkout free-path gift] incomplete gift fields; skipping');
+          }
+        } catch (giftErr) {
+          console.error('[create-checkout free-path gift] failed:', giftErr instanceof Error ? giftErr.message : giftErr);
+        }
+      }
+
       // Return success URL - goes to /success page
       const allSongIds = songIds.join(',');
       return new Response(

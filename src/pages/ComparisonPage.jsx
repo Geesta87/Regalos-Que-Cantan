@@ -785,10 +785,8 @@ export default function ComparisonPage() {
       if (giftState.enabled) {
         const failGift = (msg) => { setGiftError(msg); setIsCheckingOut(false); };
         if (!giftState.phone.trim()) { failGift('Escribe el número de celular del destinatario.'); return; }
-        if (!giftState.phoneConfirmed) { failGift('Confirma que el número del regalo es correcto.'); return; }
         if (!giftState.buyerName.trim()) { failGift('Escribe tu nombre para el regalo.'); return; }
         if (!giftState.date || !giftState.time) { failGift('Elige el día y la hora del envío del regalo.'); return; }
-        if (!giftState.attested) { failGift('Confirma que es un regalo bienvenido.'); return; }
         const localGift = new Date(`${giftState.date}T${giftState.time}`);
         if (isNaN(localGift.getTime()) || localGift.getTime() < Date.now() + 2 * 60 * 1000) { failGift('Elige una hora futura para el envío del regalo.'); return; }
         let tz = '';

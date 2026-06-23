@@ -61,10 +61,8 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   async function handleSubmit() {
     setError(null);
     if (!recipientPhone.trim()) return setError('Escribe el número de celular del destinatario.');
-    if (!phoneConfirmed) return setError('Confirma que el número es correcto.');
     if (!buyerName.trim()) return setError('Escribe tu nombre (así sabrán quién lo envía).');
     if (!date || !time) return setError('Elige el día y la hora de envío.');
-    if (!attested) return setError('Confirma que es un regalo bienvenido.');
 
     const local = new Date(`${date}T${time}`);
     if (isNaN(local.getTime())) return setError('La fecha y hora no son válidas.');
@@ -167,11 +165,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
             <input style={inputStyle} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Ej. Abuela Rosa" />
 
             <label style={labelStyle}>Su número de celular</label>
-            <input style={{ ...inputStyle, marginBottom: '6px' }} value={recipientPhone} onChange={(e) => { setRecipientPhone(e.target.value); setPhoneConfirmed(false); }} placeholder="(305) 555-0148" inputMode="tel" />
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#d8b3c6', marginBottom: '12px', cursor: 'pointer' }}>
-              <input type="checkbox" checked={phoneConfirmed} onChange={(e) => setPhoneConfirmed(e.target.checked)} style={{ marginTop: '2px', accentColor: PINK }} />
-              <span>Confirmo que <strong style={{ color: '#ffd6e8' }}>{recipientPhone || 'este número'}</strong> es correcto.</span>
-            </label>
+            <input style={{ ...inputStyle, marginBottom: '12px' }} value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="(305) 555-0148" inputMode="tel" />
 
             <label style={labelStyle}>Tu nombre <span style={{ color: '#f97bb6' }}>(verá quién se lo manda)</span></label>
             <input style={inputStyle} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Tu nombre" />
@@ -190,11 +184,6 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
               </div>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#d8b3c6', marginBottom: '14px', cursor: 'pointer', background: 'rgba(242,13,128,0.08)', padding: '10px', borderRadius: '10px' }}>
-              <input type="checkbox" checked={attested} onChange={(e) => setAttested(e.target.checked)} style={{ marginTop: '2px', accentColor: PINK }} />
-              <span>Confirmo que es un regalo para alguien a quien le dará gusto recibirlo.</span>
-            </label>
-
             {error && (
               <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '0 0 12px', textAlign: 'center' }}>{error}</p>
             )}
@@ -205,7 +194,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
 
             <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#a98', lineHeight: 1.5, display: 'flex', gap: '6px' }}>
               <span style={{ flexShrink: 0 }}>🛡️</span>
-              <span>Revisamos el mensaje antes de enviarlo. El texto dirá quién lo manda e incluirá la opción de responder STOP.</span>
+              <span>Al programar confirmas que es un regalo bienvenido. Revisamos el mensaje antes de enviarlo y el texto dirá quién lo manda, con opción de responder STOP.</span>
             </p>
           </div>
         </div>

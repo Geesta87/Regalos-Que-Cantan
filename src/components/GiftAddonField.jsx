@@ -73,11 +73,7 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
           <input style={inputStyle} value={v.recipientName} onChange={(e) => set({ recipientName: e.target.value })} placeholder="Ej. Abuela Rosa" />
 
           <label style={labelStyle}>Su número de celular</label>
-          <input style={{ ...inputStyle, marginBottom: '6px' }} value={v.phone} onChange={(e) => set({ phone: e.target.value, phoneConfirmed: false })} placeholder="(305) 555-0148" inputMode="tel" />
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#e7b9cf', marginBottom: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={v.phoneConfirmed} onChange={(e) => set({ phoneConfirmed: e.target.checked })} style={{ marginTop: '2px', accentColor: PINK }} />
-            <span>Confirmo que <strong style={{ color: '#ffd6e8' }}>{v.phone || 'este número'}</strong> es correcto.</span>
-          </label>
+          <input style={{ ...inputStyle, marginBottom: '12px' }} value={v.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="(305) 555-0148" inputMode="tel" />
 
           <label style={labelStyle}>Tu nombre <span style={{ color: '#f97bb6' }}>(verá quién se lo manda)</span></label>
           <input style={inputStyle} value={v.buyerName} onChange={(e) => set({ buyerName: e.target.value })} placeholder="Tu nombre" />
@@ -96,14 +92,9 @@ export default function GiftAddonField({ value, onChange, recipientDefault = '',
             </div>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#e7b9cf', marginBottom: '4px', cursor: 'pointer', background: 'rgba(242,13,128,0.08)', padding: '10px', borderRadius: '10px' }}>
-            <input type="checkbox" checked={v.attested} onChange={(e) => set({ attested: e.target.checked })} style={{ marginTop: '2px', accentColor: PINK }} />
-            <span>Confirmo que es un regalo para alguien a quien le dará gusto recibirlo.</span>
-          </label>
-
           {error && <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '8px 0 0' }}>{error}</p>}
-          <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#c98fab', lineHeight: 1.5 }}>
-            🛡️ Revisamos el mensaje antes de enviarlo. El texto dirá quién lo manda e incluirá la opción de responder STOP.
+          <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#c98fab', lineHeight: 1.5 }}>
+            🛡️ Al completar tu compra confirmas que es un regalo bienvenido. Revisamos el mensaje antes de enviarlo y el texto dirá quién lo manda, con opción de responder STOP.
           </p>
         </div>
       )}
