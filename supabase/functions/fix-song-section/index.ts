@@ -89,7 +89,22 @@ function englishifyLyricsMarkers(lyrics: string): string {
 
 // Gender + Spanish-language locks, same construction regenerate-paid-song-kie
 // uses, so the replaced section keeps the same voice and stays in Spanish.
-function buildStyleAndNegatives(styleUsed: string, voiceType: string): { tags: string; negativeTags: string } {
+// Suno REJECTS tags that name a real artist ("Your tags contain artist name
+// el komander…"). songs.style_used sometimes carries a regional-Mexican artist
+// name (genre DNA leaked in at generation), so strip those before re-singing —
+// otherwise both section-fix and full re-roll fail. Same gotcha as
+// regenerate-paid-song-kie (which resends style_used verbatim).
+const ARTIST_RE = /\b(el komander|komander|los buchones de culiac[aá]n|los buchones|buchones|gerardo ortiz|natanael cano|peso pluma|junior h|fuerza regida|tito double p|luis r\.? conriquez|conriquez|chalino(?: sanchez)?|los tucanes(?: de tijuana)?|los tigres del norte|banda ms|christian nodal|nodal|car[ií]n le[oó]n|eslab[oó]n armado|t3r elemento|ariel camacho|calibre 50|grupo firme|espinoza paz|larry hern[aá]ndez|remmy valenzuela|el fantasma|la adictiva|adriel favela|el makabelico|los dos carnales|la maquinaria norte[ñn]a)\b(?:\s+(?:style|sound|vibe|aesthetic))?/gi;
+function stripArtistNames(style: string): string {
+  if (!style) return style;
+  let out = style.replace(ARTIST_RE, '');
+  // Drop a dangling "al estilo de"/"estilo de"/"como"/"X style" left over.
+  out = out.replace(/\b(al estilo de|estilo de|like|inspired by|in the style of|a lo|como|tipo)\s*(?=,|$)/gi, '');
+  return out.replace(/\s*,\s*(,\s*)+/g, ', ').replace(/\s{2,}/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '');
+}
+
+function buildStyleAndNegatives(styleUsedRaw: string, voiceType: string): { tags: string; negativeTags: string } {
+  const styleUsed = stripArtistNames(styleUsedRaw);
   const vocalGender: 'm' | 'f' = voiceType === 'female' ? 'f' : 'm';
   const genderLabel = vocalGender === 'f'
     ? 'solo female vocalist, female voice'
