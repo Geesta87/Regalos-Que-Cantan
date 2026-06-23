@@ -54,18 +54,22 @@ serve(async (_req) => {
       return new Response(JSON.stringify({ error: queryErr.message }), { status: 500 });
     }
 
-    if (!pending || pending.length === 0) {
-      return new Response(JSON.stringify({ checked: 0, triggered: 0 }), {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200,
-      });
+    // Do NOT early-return when there are no 'photos_uploaded' orders. The
+    // SELF-HEAL block further down (stuck 'processing' recovery) must run on
+    // EVERY invocation. The old early-return here is exactly what let in-house
+    // renders sit dead forever: when nobody was mid-upload (the common case),
+    // the function returned before ever reaching the self-heal, so a stalled
+    // paid render was only retried by luck — when someone else happened to be
+    // uploading in the same 2-min window. (Tere / jcnmtsierra72 2026-06-23:
+    // render_attempts stayed 0 for 2.5h while the order sat in 'processing'.)
+    const pendingOrders = pending || [];
+    if (pendingOrders.length) {
+      console.log(`Found ${pendingOrders.length} pending video order(s) needing render trigger`);
     }
-
-    console.log(`Found ${pending.length} pending video order(s) needing render trigger`);
 
     const results: Array<{ id: string; success: boolean; renderId?: string; error?: string }> = [];
 
-    for (const order of pending) {
+    for (const order of pendingOrders) {
       try {
         const body: Record<string, unknown> = {
           videoOrderId: order.id,
@@ -168,7 +172,7 @@ serve(async (_req) => {
     }
 
     return new Response(
-      JSON.stringify({ checked: pending.length, triggered, recovered, failedOut, results }),
+      JSON.stringify({ checked: pendingOrders.length, triggered, recovered, failedOut, results }),
       { headers: { 'Content-Type': 'application/json' }, status: 200 },
     );
   } catch (error) {
