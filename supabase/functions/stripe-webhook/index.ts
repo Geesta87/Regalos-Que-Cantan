@@ -496,6 +496,86 @@ serve(async (req) => {
     // ========== HANDLE SUCCESSFUL PAYMENT ==========
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
+
+      // ─────────────────────────────────────────────────────────────────────
+      // VIDEO UPSELL ($9.99) — a post-purchase add-on bought from the success
+      // page. create-video-checkout tags it with metadata.type='video_upsell'.
+      // It MUST be handled as a video order (mark the video paid + enable the
+      // photo upload), NOT as a song payment. Without this branch it falls
+      // through to the song path below, which overwrites the song's amount_paid
+      // (e.g. $29.99 → $9.99) and never enables the video. (Don Lucas, 2026-06-21.)
+      // ─────────────────────────────────────────────────────────────────────
+      if (session.metadata?.type === 'video_upsell') {
+        const vSongId = session.metadata?.songId;
+        if (!vSongId) {
+          console.error('[video_upsell] no songId in metadata for session', session.id);
+          return new Response(JSON.stringify({ received: true, status: 'video_upsell_no_song' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+        }
+        try {
+          // Idempotent: only create a paid video order if one doesn't exist yet
+          // (guards against Stripe webhook retries and the success-page auto-create).
+          const { data: existingVo } = await supabase
+            .from('video_orders')
+            .select('id')
+            .eq('song_id', vSongId)
+            .eq('paid', true)
+            .maybeSingle();
+          if (!existingVo) {
+            await supabase.from('video_orders').insert({
+              song_id: vSongId,
+              paid: true,
+              paid_at: new Date().toISOString(),
+              amount_cents: session.amount_total ?? 999,
+              status: 'pending',
+              stripe_session_id: session.id,
+            });
+          }
+          // Flag the song so the upload UI appears — but DO NOT touch the song's
+          // own payment fields (amount_paid / paid / paid_at / stripe_session_id).
+          await supabase.from('songs').update({ has_video_addon: true, video_addon_count: 1 }).eq('id', vSongId);
+          console.log(`✅ [video_upsell] registered paid video order for song ${vSongId} (session ${session.id})`);
+        } catch (e: any) {
+          console.error('[video_upsell] failed to register video order:', e?.message || e);
+        }
+        return new Response(JSON.stringify({ received: true, status: 'video_upsell_processed' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // GIFT SMS ($5) — "send this song as a scheduled surprise text" add-on
+      // bought from the success page. create-gift-checkout tags it with
+      // metadata.type='gift_sms' and a gift_id pointing at the already-created
+      // (moderation-passed) scheduled_gift_messages row. Payment is what flips
+      // that row from 'awaiting_payment' to 'scheduled'; the every-minute
+      // send-scheduled-gift-sms cron does the actual Twilio scheduling/sending.
+      // We deliberately do NOT touch Twilio here — the payment path stays
+      // isolated (mirrors send-song-ready-sms). Like video_upsell, this MUST
+      // return early so it isn't treated as a song payment (which would
+      // overwrite the song's amount_paid).
+      // ─────────────────────────────────────────────────────────────────────
+      if (session.metadata?.type === 'gift_sms') {
+        const giftId = session.metadata?.gift_id;
+        if (giftId) {
+          try {
+            // Idempotent: only promote a still-unpaid draft (guards webhook retries).
+            await supabase
+              .from('scheduled_gift_messages')
+              .update({
+                status: 'scheduled',
+                stripe_session_id: session.id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', giftId)
+              .eq('status', 'awaiting_payment');
+            console.log(`✅ [gift_sms] scheduled gift ${giftId} (session ${session.id})`);
+          } catch (e: any) {
+            console.error('[gift_sms] failed to promote gift to scheduled:', e?.message || e);
+          }
+        } else {
+          console.error('[gift_sms] no gift_id in metadata for session', session.id);
+        }
+        return new Response(JSON.stringify({ received: true, status: 'gift_sms_scheduled' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+      }
+
       const songIdMeta = session.metadata?.songId;
       const email = session.metadata?.email || session.customer_email;
 
@@ -786,6 +866,43 @@ serve(async (req) => {
               }
             }
           }
+        }
+      }
+
+      // Gift-SMS add-on ($5, bundled at checkout): now that the song is paid,
+      // create the scheduled_gift_messages row the every-minute
+      // send-scheduled-gift-sms cron will deliver. Moderation already passed in
+      // create-checkout (pre-charge). Idempotent on stripe_session_id so webhook
+      // retries can't double-insert. Wrapped so a failure never blocks the
+      // payment/email flow (the customer has paid).
+      if (session.metadata?.gift_sms === 'true' && session.metadata?.gift_recipient_phone) {
+        try {
+          const { data: existingGift } = await supabase
+            .from('scheduled_gift_messages')
+            .select('id')
+            .eq('stripe_session_id', session.id)
+            .maybeSingle();
+          if (!existingGift) {
+            await supabase.from('scheduled_gift_messages').insert({
+              song_id: session.metadata?.gift_song_id || songIds[0],
+              buyer_email: email || null,
+              buyer_name: session.metadata?.gift_buyer_name || 'Alguien',
+              recipient_name: session.metadata?.gift_recipient_name || null,
+              recipient_phone: session.metadata.gift_recipient_phone,
+              personal_message: session.metadata?.gift_message || null,
+              send_at: session.metadata?.gift_send_at,
+              buyer_timezone: session.metadata?.gift_tz || null,
+              status: 'scheduled',
+              moderation_status: 'approved',
+              amount_cents: 500,
+              attestation_accepted: true,
+              marketing_excluded: true,
+              stripe_session_id: session.id,
+            });
+            console.log(`✅ [gift_sms bundled] scheduled gift for song ${session.metadata?.gift_song_id || songIds[0]} (session ${session.id})`);
+          }
+        } catch (giftErr: any) {
+          console.error('[gift_sms bundled] failed to create gift row:', giftErr?.message || giftErr);
         }
       }
 

@@ -5,6 +5,7 @@ import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import ExitIntentPopup from '../components/ExitIntentPopup';
 import { AnimadoOffer } from './AnimadoUpsell';
+import GiftAddonField from '../components/GiftAddonField';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -262,6 +263,13 @@ export default function ComparisonPage() {
   const [karaokeVersionIds, setKaraokeVersionIds] = useState([]);
   const karaokeAddonPrice = 7.99;   // one instrumental
   const karaokeBundlePrice = 14.99; // both instrumentals (2-song order)
+
+  // Gift-SMS add-on ($5) — bundled "send it as a scheduled surprise text".
+  // Controlled by GiftAddonField; folded into the single main checkout so the
+  // buyer pays once (no second checkout). The message is moderated server-side
+  // in create-checkout before any charge.
+  const [giftState, setGiftState] = useState({ enabled: false, recipientName: '', phone: '', phoneConfirmed: false, buyerName: '', message: '', date: '', time: '09:00', attested: false });
+  const [giftError, setGiftError] = useState(null);
 
   // Check if something is selected
   const hasSelection = selectedSongId || purchaseBoth;
@@ -771,7 +779,33 @@ export default function ComparisonPage() {
       const checkoutValue = getCurrentPrice();
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds(), animadoCount, resolveAnimadoSongIds());
+      // Build the gift add-on payload (bundled into this one checkout). Validate
+      // client-side first; the server re-validates + moderates the message.
+      let giftSms = null;
+      if (giftState.enabled) {
+        const failGift = (msg) => { setGiftError(msg); setIsCheckingOut(false); };
+        if (!giftState.phone.trim()) { failGift('Escribe el número de celular del destinatario.'); return; }
+        if (!giftState.phoneConfirmed) { failGift('Confirma que el número del regalo es correcto.'); return; }
+        if (!giftState.buyerName.trim()) { failGift('Escribe tu nombre para el regalo.'); return; }
+        if (!giftState.date || !giftState.time) { failGift('Elige el día y la hora del envío del regalo.'); return; }
+        if (!giftState.attested) { failGift('Confirma que es un regalo bienvenido.'); return; }
+        const localGift = new Date(`${giftState.date}T${giftState.time}`);
+        if (isNaN(localGift.getTime()) || localGift.getTime() < Date.now() + 2 * 60 * 1000) { failGift('Elige una hora futura para el envío del regalo.'); return; }
+        let tz = '';
+        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
+        giftSms = {
+          enabled: true,
+          recipient_name: giftState.recipientName.trim() || null,
+          recipient_phone: giftState.phone.trim(),
+          buyer_name: giftState.buyerName.trim(),
+          personal_message: giftState.message.trim(),
+          send_at: localGift.toISOString(),
+          buyer_timezone: tz,
+          attestation: true,
+        };
+      }
+
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds(), animadoCount, resolveAnimadoSongIds(), giftSms);
 
       if (result.url) {
         window.location.href = result.url;
@@ -780,7 +814,13 @@ export default function ComparisonPage() {
       }
     } catch (err) {
       if (import.meta.env.DEV) console.error('Checkout error:', err);
-      alert('Error al procesar el pago. Intenta de nuevo.');
+      // Surface a server-side gift rejection (e.g. moderation) inline on the
+      // gift field instead of the generic alert, so the buyer can fix it.
+      if (giftState.enabled && err?.message && err.message !== 'Failed to create checkout') {
+        setGiftError(err.message);
+      } else {
+        alert('Error al procesar el pago. Intenta de nuevo.');
+      }
     } finally {
       setIsCheckingOut(false);
     }
@@ -884,6 +924,7 @@ export default function ComparisonPage() {
     base += karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty;
     if (animadoCount === 2) base += animadoPriceBoth;
     else if (animadoCount === 1) base += animadoPriceOne;
+    if (giftState.enabled) base += 5;
     return base;
   };
 
@@ -1826,6 +1867,20 @@ export default function ComparisonPage() {
               onChange={(c, id) => { setAnimadoCount(c); setAnimadoVideoSongId(id); }}
             />
           </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            Gift-SMS add-on ($5) — bundled "send it as a scheduled surprise
+            text." Pays once with everything else; message moderated server-side.
+            ══════════════════════════════════════════════════════ */}
+        {hasSelection && (
+          <GiftAddonField
+            value={giftState}
+            onChange={(next) => { setGiftState(next); if (giftError) setGiftError(null); }}
+            recipientDefault={recipientName || ''}
+            senderDefault={songs[0]?.sender_name || ''}
+            error={giftError}
+          />
         )}
 
         {/* ══════════════════════════════════════════════════════

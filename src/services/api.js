@@ -121,7 +121,7 @@ export async function generateSong(formData, overridePin = null) {
  * @param {string} couponCode - Optional coupon code
  * @param {boolean} purchaseBoth - Whether user is buying the bundle
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = []) {
+export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = [], giftSms = null) {
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
@@ -153,6 +153,7 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       karaokeSongIds,
       animadoCount,
       animadoSongIds,
+      giftSms,
       fbc,
       fbp,
       clientUserAgent: navigator.userAgent,
@@ -190,7 +191,11 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
   });
 
   if (!response.ok) {
-    throw new Error('Failed to create checkout');
+    // Surface the server's message when present (e.g. a gift-message moderation
+    // rejection) so the caller can show it; fall back to a generic error.
+    let msg = 'Failed to create checkout';
+    try { const e = await response.json(); if (e?.message) msg = e.message; } catch { /* ignore */ }
+    throw new Error(msg);
   }
 
   return response.json();

@@ -195,6 +195,14 @@ verify_jwt = false
 # Fully isolated from stripe-webhook/checkout; only reads/updates songs + sends.
 verify_jwt = false
 
+[functions.send-scheduled-gift-sms]
+# Runs every minute via pg_cron — delivers the $5 "scheduled surprise gift text"
+# add-on at the buyer-chosen time. Hands in-window gifts to Twilio native
+# scheduled-send (exact second) and sends due/just-past ones immediately.
+# Fully isolated from stripe-webhook/checkout; only reads/writes
+# scheduled_gift_messages (+ songs/sms_conversations). No JWT context.
+verify_jwt = false
+
 [functions.auto-send-paid-email]
 # Runs every minute via pg_cron — automates the dashboard's "Enviar Link"
 # button by asking recover-song to send the paid-song-link email for newly
@@ -303,6 +311,12 @@ verify_jwt = false
 # so the gateway must not require a JWT. Was live with JWT off only because
 # of a legacy --no-verify-jwt deploy; pinned here 2026-06-11.
 verify_jwt = false
+
+[functions.generate-song]
+# Primary song generator. Called by the public order form with the Supabase anon
+# key (a valid JWT), so verify_jwt stays TRUE — this matches production. Pinned
+# here so a redeploy never accidentally flips it (see the 2026-04-17 incident).
+verify_jwt = true
 
 [functions.generate-song-mureka]
 # Called server-to-server from generate-song with service-role context, not
@@ -431,6 +445,16 @@ verify_jwt = true
 # The handler enforces its own per-IP rate limit and returns a same-shape
 # response on every code path so the endpoint can't be used for email
 # enumeration.
+verify_jwt = true
+
+[functions.create-gift-checkout]
+# Creates the $5 Stripe session for the "send this song as a scheduled surprise
+# text" add-on. Called from the SuccessPage gift modal with the Supabase anon
+# JWT (same pattern as recover-song / create-clonamivoz-checkout), so the
+# gateway accepts the anon JWT before the handler runs — verify_jwt = true.
+# The handler runs a Claude moderation pass on the buyer's message BEFORE
+# creating any row or Stripe session, then tags metadata.type='gift_sms' so
+# stripe-webhook routes the payment to the gift row, not the song.
 verify_jwt = true
 
 # ---------------------------------------------------------------------------

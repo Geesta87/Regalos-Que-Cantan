@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { AnimadoPhotoUpload } from './AnimadoUpsell';
+import GiftTextUpsell from '../components/GiftTextUpsell';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -3452,6 +3453,11 @@ export default function SuccessPage() {
           </div>
 
           {/* Share + Template sections removed */}
+
+          {/* ===== GIFT TEXT UPSELL ($5) — scheduled surprise SMS to a loved one ===== */}
+          {currentSong?.id && (currentSong?.paid || currentSong?.payment_status === 'paid') && (
+            <GiftTextUpsell song={currentSong} supabaseUrl={SUPABASE_URL} anonKey={SUPABASE_ANON_KEY} />
+          )}
 
           {/* ===== FOOTER ===== */}
           {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (

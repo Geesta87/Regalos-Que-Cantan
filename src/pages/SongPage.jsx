@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import GiftTextUpsell from '../components/GiftTextUpsell';
 import { Helmet } from 'react-helmet-async';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
@@ -1376,6 +1377,14 @@ export default function SongPage({ songId: propSongId }) {
                 <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32 }}>{dedication}</p>
               </div>
             </div>
+            {/* ===== GIFT TEXT UPSELL ($5) — scheduled surprise SMS to a loved one ===== */}
+            {song?.id && (song?.paid || song?.payment_status === 'paid') && (
+              <div style={{ padding: '8px 24px 0', display: 'flex', justifyContent: 'center' }}>
+                <div style={{ width: '100%', maxWidth: 420 }}>
+                  <GiftTextUpsell song={song} supabaseUrl={import.meta.env.VITE_SUPABASE_URL} anonKey={import.meta.env.VITE_SUPABASE_ANON_KEY} />
+                </div>
+              </div>
+            )}
             {brandFooter('rgba(244,192,37,0.3)', 'rgba(255,255,255,0.15)')}
           </main>
         </div>

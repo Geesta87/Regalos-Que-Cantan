@@ -75,3 +75,49 @@ export async function sendSms(to: string, body: string): Promise<SendSmsResult> 
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// Twilio NATIVE scheduled send — Twilio itself delivers the message at sendAtIso
+// (exact-second), so we don't depend on cron timing for in-window gifts. Twilio
+// only supports scheduling through a Messaging Service (MG...) with
+// ScheduleType=fixed, and SendAt must be ~15 min to ~7 days in the future (Twilio
+// rejects anything outside that window). The caller (send-scheduled-gift-sms)
+// handles the out-of-window cases by sending immediately when the gift comes due.
+//
+// sendAtIso: ISO-8601 UTC instant, e.g. new Date(sendAt).toISOString().
+export async function scheduleSms(to: string, body: string, sendAtIso: string): Promise<SendSmsResult> {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_MESSAGING_SERVICE_SID) {
+    return {
+      ok: false,
+      error: 'Twilio scheduled send requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_MESSAGING_SERVICE_SID (a bare From number cannot schedule)',
+    };
+  }
+  try {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+    const form = new URLSearchParams({
+      MessagingServiceSid: TWILIO_MESSAGING_SERVICE_SID,
+      To: to,
+      Body: body,
+      ScheduleType: 'fixed',
+      SendAt: sendAtIso,
+    });
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data?.message || `Twilio HTTP ${res.status}`, status: data?.status };
+    }
+    // Twilio returns status 'scheduled' for accepted scheduled messages.
+    return { ok: true, sid: data.sid, status: data.status };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}

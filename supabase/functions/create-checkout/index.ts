@@ -4,6 +4,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@13.10.0?target=deno';
+import { moderateGiftText } from '../_shared/moderate.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,19 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const BASE_URL = Deno.env.get('BASE_URL') || 'https://regalosquecantan.com';
 
+// Gift-SMS add-on ($5) — bundled into the main checkout so the buyer pays once.
+const GIFT_PRICE_CENTS = 500;
+function giftToE164(raw: string): string | null {
+  const d = (raw || '').replace(/\D/g, '');
+  if (d.length === 10) return '+1' + d;
+  if (d.length === 11 && d.startsWith('1')) return '+' + d;
+  if (d.length >= 11 && d.length <= 15) return '+' + d;
+  return null;
+}
+function jsonResp(status: number, obj: unknown): Response {
+  return new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -28,6 +42,9 @@ serve(async (req) => {
     const body = await req.json();
     let { email } = body;
     const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    // Gift-SMS add-on payload (optional): { recipient_name, recipient_phone,
+    // buyer_name, personal_message, send_at (ISO UTC), buyer_timezone, attestation }
+    const giftRaw = body.giftSms || null;
     const karaokeAddonBool: boolean = karaokeAddon === true || karaokeAddon === 'true';
     const KARAOKE_PRICE_CENTS = 799;        // $7.99 — one instrumental MP3
     const KARAOKE_BUNDLE_PRICE_CENTS = 1499; // $14.99 — both instrumentals (2-song order)
@@ -422,6 +439,51 @@ serve(async (req) => {
       });
     }
 
+    // ---- Gift-SMS add-on ($5): validate + MODERATE before creating the session ----
+    // The gift rides along with the song payment, so we screen the message here,
+    // pre-charge. A rejection blocks only the gift (the buyer can uncheck it and
+    // still buy the song); it never silently sends an abusive text.
+    let giftMeta: Record<string, string> = { gift_sms: 'false' };
+    if (giftRaw && (giftRaw.enabled === true || giftRaw.recipient_phone)) {
+      const gPhone = giftToE164(String(giftRaw.recipient_phone || ''));
+      const gBuyer = String(giftRaw.buyer_name || '').trim();
+      const gMsg = String(giftRaw.personal_message || '').trim().slice(0, 300);
+      const gName = String(giftRaw.recipient_name || '').trim();
+      const gTz = String(giftRaw.buyer_timezone || '').slice(0, 64);
+      const gSendMs = Date.parse(giftRaw.send_at || '');
+      if (!gPhone) return jsonResp(400, { error: 'gift_invalid_phone', message: 'El número del destinatario no es válido.' });
+      if (!gBuyer) return jsonResp(400, { error: 'gift_missing_buyer', message: 'Falta tu nombre para el regalo.' });
+      if (giftRaw.attestation !== true) return jsonResp(400, { error: 'gift_attestation', message: 'Confirma que es un regalo bienvenido.' });
+      if (Number.isNaN(gSendMs) || gSendMs < Date.now() + 2 * 60 * 1000) return jsonResp(400, { error: 'gift_bad_time', message: 'Elige una hora futura para el envío del regalo.' });
+
+      const verdict = await moderateGiftText({ message: gMsg, recipientName: gName, senderName: gBuyer });
+      if (!verdict.allowed) {
+        return jsonResp(422, { error: 'gift_message_rejected', message: 'Tu mensaje de regalo no pasó la revisión. Por favor reescríbelo en un tono amable.' });
+      }
+
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Envío sorpresa por mensaje',
+            description: 'Programamos el envío de tu canción por mensaje el día y la hora que elegiste.',
+          },
+          unit_amount: GIFT_PRICE_CENTS,
+        },
+        quantity: 1,
+      });
+      giftMeta = {
+        gift_sms: 'true',
+        gift_song_id: songIds[0],
+        gift_recipient_name: gName.slice(0, 100),
+        gift_recipient_phone: gPhone,
+        gift_buyer_name: gBuyer.slice(0, 100),
+        gift_message: gMsg,
+        gift_send_at: new Date(gSendMs).toISOString(),
+        gift_tz: gTz,
+      };
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer_email: email,
       line_items: lineItems,
@@ -469,6 +531,9 @@ serve(async (req) => {
         karaokeSongIds: effectiveKaraokeIds.join(','),
         lyricVideoAddon: lyricVideoBool ? 'true' : 'false',
         karaokeVideoAddon: karaokeVideoBool ? 'true' : 'false',
+        // Gift-SMS add-on — read by stripe-webhook to create the scheduled row
+        // after payment. gift_sms='false' (the default) means no gift on this order.
+        ...giftMeta,
         affiliateCode: resolvedAffiliate || '',
         // Meta Conversions API identifiers — read by stripe-webhook on
         // checkout.session.completed. Stripe metadata cap is 500 chars/value.
