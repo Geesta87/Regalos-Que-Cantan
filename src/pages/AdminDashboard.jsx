@@ -874,6 +874,7 @@ export default function AdminDashboard() {
   // Feature: one-click retry for stuck/failed songs
   const [retryingId, setRetryingId] = useState(null);
   const [retryResult, setRetryResult] = useState(null); // { ok, message }
+  const [markingPaidId, setMarkingPaidId] = useState(null); // song being marked paid (Zelle)
   // Feature: inline audio preview in orders table
   const [previewingId, setPreviewingId] = useState(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
@@ -1236,6 +1237,64 @@ export default function AdminDashboard() {
       setRetryResult({ ok: false, message: e.message });
     } finally {
       setRetryingId(null);
+    }
+  };
+
+  // Manually mark a song paid (e.g. customer paid by Zelle). Admin-only. Writes
+  // the same paid fields as Stripe + a manual marker, so it counts as a regular
+  // paid song everywhere and survives any unpaid-storage cleanup.
+  const markPaid = async (song) => {
+    if (!accessToken || !song || isPaid(song)) return;
+    const raw = window.prompt(`Mark "${song.recipient_name || 'this song'}" as PAID (Zelle).\nAmount received in USD?`, '29.99');
+    if (raw === null) return; // cancelled
+    const amount = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    setMarkingPaidId(song.id);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'mark-paid', songId: song.id, amount: Number.isNaN(amount) ? undefined : amount, source: 'zelle' }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const patch = { paid: true, payment_status: 'paid', paid_at: result.markedPaidAt, marked_paid_at: result.markedPaidAt, marked_paid_source: result.source, ...(result.amountPaid != null ? { amount_paid: result.amountPaid } : {}) };
+        setSongs(prev => prev.map(s => s.id === song.id ? { ...s, ...patch } : s));
+        setSelectedSong(prev => prev?.id === song.id ? { ...prev, ...patch } : prev);
+        showToast('✅ Marked as paid (Zelle).');
+      } else {
+        showToast('❌ ' + (result.error || 'Could not mark as paid.'));
+      }
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    } finally {
+      setMarkingPaidId(null);
+    }
+  };
+
+  // Undo a MANUAL paid mark (Zelle) — server refuses to touch real Stripe payments.
+  const unmarkPaid = async (song) => {
+    if (!accessToken || !song?.marked_paid_at) return;
+    if (!window.confirm('Undo the manual "paid" mark on this song? It will count as unpaid again.')) return;
+    setMarkingPaidId(song.id);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ action: 'unmark-paid', songId: song.id }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const patch = { paid: false, payment_status: null, paid_at: null, amount_paid: null, marked_paid_at: null, marked_paid_source: null };
+        setSongs(prev => prev.map(s => s.id === song.id ? { ...s, ...patch } : s));
+        setSelectedSong(prev => prev?.id === song.id ? { ...prev, ...patch } : prev);
+        showToast('↩️ Manual paid mark removed.');
+      } else {
+        showToast('❌ ' + (result.error || 'Could not undo.'));
+      }
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    } finally {
+      setMarkingPaidId(null);
     }
   };
 
@@ -3575,13 +3634,30 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             {isPaid(song) ? (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                                ✓ Paid
-                              </span>
+                              <div className="inline-flex flex-col items-center gap-0.5">
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                                  ✓ Paid
+                                </span>
+                                {song.marked_paid_at && (
+                                  <span className="text-[9px] text-amber-300/80" title={`Manually marked paid (${song.marked_paid_source || 'manual'})`}>💵 {song.marked_paid_source || 'manual'}</span>
+                                )}
+                              </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                ⏳ Pending
-                              </span>
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                  ⏳ Pending
+                                </span>
+                                {userRole === 'admin' && (
+                                  <button
+                                    onClick={() => markPaid(song)}
+                                    disabled={markingPaidId === song.id}
+                                    className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
+                                    title="Mark this song as paid (e.g. Zelle) so it isn't treated as unpaid"
+                                  >
+                                    {markingPaidId === song.id ? '…' : '💵 Mark paid'}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -5641,15 +5717,37 @@ export default function AdminDashboard() {
               {/* Status & Price */}
               <div className="flex items-center justify-between">
                 {isPaid(selectedSong) ? (
-                  <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
-                    ✓ Paid — {userRole === 'admin'
-                      ? <>{formatCurrency(purchaseOf(selectedSong).total)}{purchaseOf(selectedSong).count > 1 ? ` · bundle of ${purchaseOf(selectedSong).count}` : ''}</>
-                      : <span className="animate-pulse">Calculating...</span>}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                      ✓ Paid — {userRole === 'admin'
+                        ? <>{formatCurrency(purchaseOf(selectedSong).total)}{purchaseOf(selectedSong).count > 1 ? ` · bundle of ${purchaseOf(selectedSong).count}` : ''}</>
+                        : <span className="animate-pulse">Calculating...</span>}
+                    </span>
+                    {selectedSong.marked_paid_at && (
+                      <span className="text-xs text-amber-300 flex items-center gap-1.5">
+                        💵 Marked {selectedSong.marked_paid_source || 'manual'}
+                        {userRole === 'admin' && (
+                          <button onClick={() => unmarkPaid(selectedSong)} disabled={markingPaidId === selectedSong.id} className="underline opacity-70 hover:opacity-100 disabled:opacity-40">undo</button>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 ) : (
-                  <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    ⏳ Pending
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-4 py-2 rounded-full font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      ⏳ Pending
+                    </span>
+                    {userRole === 'admin' && (
+                      <button
+                        onClick={() => markPaid(selectedSong)}
+                        disabled={markingPaidId === selectedSong.id}
+                        className="px-3 py-2 rounded-full font-medium text-sm bg-green-500/15 text-green-300 border border-green-500/30 hover:bg-green-500/25 transition disabled:opacity-50"
+                        title="Mark as paid (e.g. Zelle) so it counts as a regular paid song and survives storage cleanup"
+                      >
+                        {markingPaidId === selectedSong.id ? 'Marking…' : '💵 Mark as Paid (Zelle)'}
+                      </button>
+                    )}
+                  </div>
                 )}
                 <span className="text-sm text-gray-500">{formatDate(selectedSong.created_at)}</span>
               </div>

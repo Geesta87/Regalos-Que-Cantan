@@ -60,6 +60,8 @@ const SONG_LIST_COLUMNS = [
   'version', 'mureka_job_id',
   // Fix footprint — so the list can flag songs that were repaired.
   'fixed_at', 'fix_count',
+  // Manual (Zelle/cash) paid marker — so the list can show it + allow undo.
+  'marked_paid_at', 'marked_paid_source',
   // Small modal-only fields are safe to include in the list (each adds a few
   // bytes per row). `details` and `lyrics` are NOT in the list — the table has
   // 24k+ rows and avg(lyrics)+avg(details) ≈ 1.6 KB/row, so including them
@@ -139,6 +141,8 @@ serve(async (req) => {
       search?: string;
       searchField?: string;
       limit?: number;
+      amount?: number;
+      source?: string;
     } = {};
     if (req.method === 'POST') {
       try {
@@ -148,6 +152,45 @@ serve(async (req) => {
       }
     }
     const action = body.action || 'list';
+
+    // ─── action: mark-paid / unmark-paid ──────────────────────────────────
+    // Manually mark a song paid (e.g. customer paid via Zelle) so it counts as
+    // a regular paid song everywhere and survives any unpaid-storage cleanup.
+    // Admin-only (not assistants). Writes the same fields Stripe does, plus a
+    // marker so it's auditable + reversible.
+    if (action === 'mark-paid' || action === 'unmark-paid') {
+      if (isAssistant) return json({ success: false, error: 'Only admins can change payment status' }, 403);
+      if (!body.songId) return json({ success: false, error: 'songId required' }, 400);
+
+      if (action === 'unmark-paid') {
+        // Only revert songs that were MANUALLY marked — never undo a real Stripe payment.
+        const { data: s } = await admin.from('songs').select('marked_paid_at').eq('id', body.songId).single();
+        if (!s) return json({ success: false, error: 'song not found' }, 404);
+        if (!s.marked_paid_at) return json({ success: false, error: 'This song was not manually marked — only manual (Zelle) marks can be undone.' }, 400);
+        const { error } = await admin.from('songs').update({
+          paid: false, payment_status: null, paid_at: null, amount_paid: null,
+          marked_paid_at: null, marked_paid_source: null, marked_paid_by: null,
+        }).eq('id', body.songId);
+        if (error) return json({ success: false, error: error.message }, 500);
+        return json({ success: true, songId: body.songId, paid: false });
+      }
+
+      const now = new Date().toISOString();
+      const amount = (body.amount != null && !Number.isNaN(Number(body.amount))) ? Number(body.amount) : null;
+      const source = (body.source && String(body.source).trim()) ? String(body.source).trim().slice(0, 40) : 'zelle';
+      const update: Record<string, unknown> = {
+        paid: true,
+        payment_status: 'paid',
+        paid_at: now,
+        marked_paid_at: now,
+        marked_paid_source: source,
+        marked_paid_by: (userData.user.email || userId).slice(0, 120),
+      };
+      if (amount != null) update.amount_paid = amount;
+      const { error } = await admin.from('songs').update(update).eq('id', body.songId);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, songId: body.songId, paid: true, markedPaidAt: now, source, amountPaid: amount });
+    }
 
     // ─── action: detail ──────────────────────────────────────────────────
     if (action === 'detail') {
