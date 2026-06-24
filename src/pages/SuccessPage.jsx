@@ -2811,6 +2811,22 @@ export default function SuccessPage() {
                   ))}
                 </div>
 
+                {/* If they ALSO bought the Animado film, clarify why there are two
+                    separate photo uploads (face for the character vs. memories for
+                    the slideshow) so it doesn't read like a glitch. */}
+                {animadoOrders.some((o) => o.state === 'awaiting_photo') && (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    background: 'rgba(245,185,66,0.1)', border: '1px solid rgba(245,185,66,0.3)',
+                    borderRadius: '12px', padding: '12px 14px', marginBottom: '16px',
+                  }}>
+                    <span style={{ fontSize: '16px', lineHeight: 1 }}>💡</span>
+                    <p style={{ margin: 0, fontSize: '12.5px', color: ts.textSecondary, lineHeight: 1.45 }}>
+                      Para tu <strong style={{ color: ts.textPrimary }}>película animada</strong> ya pediste la foto del rostro más arriba ⬆️. Aquí es distinto: elige <strong style={{ color: ts.textPrimary }}>varias fotos de recuerdos</strong> para tu video con la canción.
+                    </p>
+                  </div>
+                )}
+
                 {/* Header row */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '20px' }}>
                   <div style={{

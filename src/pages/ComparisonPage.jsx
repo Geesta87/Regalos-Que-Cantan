@@ -6,7 +6,7 @@ import { trackStep } from '../services/tracking';
 import ExitIntentPopup from '../components/ExitIntentPopup';
 import { AnimadoOffer } from './AnimadoUpsell';
 import GiftAddonField from '../components/GiftAddonField';
-import { guessTimezoneFromPhone, zonedTimeToUtc } from '../utils/recipientTimezone';
+import { OneTapUpsell } from '../components/OneTapUpsell';
 
 // Preview settings
 const PREVIEW_START = 10;
@@ -182,6 +182,7 @@ export default function ComparisonPage() {
   const audioRefs = useRef({});
   const checkoutCtaRef = useRef(null);
   const videoAddonRef = useRef(null);
+  const bundleRef = useRef(null);
 
   // Hard cap on preview playback. The <audio> src is the full song (preview_url == audio_url
   // server-side), so the 40s limit is entirely client-side. The timeupdate event is unreliable
@@ -248,6 +249,13 @@ export default function ComparisonPage() {
   // Video add-on toggle (0 = none, 1 = one video, 2 = both videos)
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
+
+  // PREVIEW: extras chosen from the new "add to order" upsell grid on this page
+  // (animado / instrumental / lyric_video / gift). Display-only for now — these
+  // are reflected in the order summary + total; real checkout line-item wiring
+  // lands when this is approved for deploy.
+  const [checkoutExtras, setCheckoutExtras] = useState([]);
+  const extrasTotal = checkoutExtras.reduce((s, e) => s + (e.price || 0), 0);
 
   // Animado (animated story-video upsell). Gated by animado-availability (master
   // switch + in-progress cap); only renders when available. 0/1/2 like the video addon.
@@ -777,37 +785,29 @@ export default function ComparisonPage() {
       }
 
       // 🔥 Meta Pixel: InitiateCheckout when user actually clicks buy and checkout is created
-      const checkoutValue = getCurrentPrice();
+      const checkoutValue = getCurrentPrice() + extrasTotal;
       trackStep('checkout_clicked', { value: checkoutValue, num_items: songIdsToCheckout.length, content_ids: songIdsToCheckout });
 
-      // Build the gift add-on payload (bundled into this one checkout). Validate
-      // client-side first; the server re-validates + moderates the message.
-      let giftSms = null;
-      if (giftState.enabled) {
-        const failGift = (msg) => { setGiftError(msg); setIsCheckingOut(false); };
-        if (!giftState.phone.trim()) { failGift('Escribe el número de celular del destinatario.'); return; }
-        if (!giftState.buyerName.trim()) { failGift('Escribe tu nombre para el regalo.'); return; }
-        if (!giftState.date || !giftState.time) { failGift('Elige el día y la hora del envío del regalo.'); return; }
-        let buyerTz = '';
-        try { buyerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
-        // Schedule in the RECIPIENT's timezone (from their area code) so the
-        // picked time means their local clock; fall back to the buyer's zone.
-        const sendTz = giftState.tz || guessTimezoneFromPhone(giftState.phone) || buyerTz || 'America/New_York';
-        const localGift = zonedTimeToUtc(giftState.date, giftState.time, sendTz);
-        if (isNaN(localGift.getTime()) || localGift.getTime() < Date.now() + 2 * 60 * 1000) { failGift('Elige una hora futura para el envío del regalo.'); return; }
-        giftSms = {
-          enabled: true,
-          recipient_name: giftState.recipientName.trim() || null,
-          recipient_phone: giftState.phone.trim(),
-          buyer_name: giftState.buyerName.trim(),
-          personal_message: giftState.message.trim(),
-          send_at: localGift.toISOString(),
-          buyer_timezone: sendTz,
-          attestation: true,
-        };
-      }
+      // Build add-on params from the "add to order" upsell grid (checkoutExtras).
+      // These ride the EXISTING bundled-checkout rails — create-checkout builds
+      // the line items + metadata, the webhook / SuccessPage create the orders.
+      // No edge-function changes; the grid is just the UI that picks them.
+      const gridKeys = new Set(checkoutExtras.map((e) => e.key));
+      const target = selectedSongId || songs[0]?.id || null; // single addon applies here
+      const gVideoCount = gridKeys.has('video') ? 1 : 0;
+      const gAnimadoCount = gridKeys.has('animado') ? 1 : 0;
+      const gAnimadoIds = gAnimadoCount ? [target].filter(Boolean) : [];
+      const gKaraoke = gridKeys.has('instrumental');
+      const gKaraokeIds = gKaraoke ? [target].filter(Boolean) : [];
+      const gLyric = gridKeys.has('lyric_video');
+      // The gift box already collected + validated the form; its payload matches
+      // the giftSms shape the server expects — just flag it enabled.
+      const gGift = checkoutExtras.find((e) => e.key === 'gift');
+      const giftSms = (gGift && gGift.payload && typeof gGift.payload === 'object')
+        ? { enabled: true, ...gGift.payload }
+        : null;
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', videoAddon, videoAddonCount, karaokeAddon, resolveKaraokeSongIds(), animadoCount, resolveAnimadoSongIds(), giftSms);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', gVideoCount > 0, gVideoCount, gKaraoke, gKaraokeIds, gAnimadoCount, gAnimadoIds, giftSms, gLyric);
 
       if (result.url) {
         window.location.href = result.url;
@@ -816,9 +816,10 @@ export default function ComparisonPage() {
       }
     } catch (err) {
       if (import.meta.env.DEV) console.error('Checkout error:', err);
-      // Surface a server-side gift rejection (e.g. moderation) inline on the
-      // gift field instead of the generic alert, so the buyer can fix it.
-      if (giftState.enabled && err?.message && err.message !== 'Failed to create checkout') {
+      // Surface a server-side gift rejection (e.g. moderation) inline so the
+      // buyer can fix it, instead of the generic alert.
+      const hasGift = checkoutExtras.some((e) => e.key === 'gift') || giftState.enabled;
+      if (hasGift && err?.message && err.message !== 'Failed to create checkout') {
         setGiftError(err.message);
       } else {
         alert('Error al procesar el pago. Intenta de nuevo.');
@@ -833,9 +834,10 @@ export default function ComparisonPage() {
     setPurchaseBoth(false);
     // 🔥 Meta Pixel: AddToCart when user selects a song
     trackStep('song_selected', { value: 29.99, content_ids: [songId], num_items: 1 });
-    // Auto-scroll to checkout CTA
+    // Bring the bundle into view (don't skip past it) so they can compare the
+    // 2-version upsell before scrolling on to the add-ons.
     setTimeout(() => {
-      videoAddonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      (bundleRef.current || videoAddonRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 350);
   };
 
@@ -1288,17 +1290,20 @@ export default function ComparisonPage() {
             ══════════════════════════════════════════════════════ */}
         {songs.length >= 2 && (
           <div
+            ref={bundleRef}
             onClick={selectBoth}
             style={{
               background: purchaseBoth
                 ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.08))'
                 : 'linear-gradient(135deg, rgba(34,197,94,0.07), rgba(255,255,255,0.03))',
-              border: purchaseBoth ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.35)',
+              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(34,197,94,0.75)',
               borderRadius: '18px', padding: '22px',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
               transition: 'all 0.3s', opacity: 1,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              boxShadow: purchaseBoth
+                ? '0 4px 18px rgba(0,0,0,0.3), 0 0 44px rgba(34,197,94,0.75)'
+                : '0 4px 16px rgba(0,0,0,0.3), 0 0 36px rgba(34,197,94,0.55)',
             }}
           >
             {/* Glimmer sweep */}
@@ -1397,7 +1402,8 @@ export default function ComparisonPage() {
           <p style={{margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)'}}>Opcional — elige lo que quieras, o solo la canción.</p>
         </div>
         <div ref={videoAddonRef} />
-        {hasSelection && (
+        {/* Old standalone video-with-photos card — folded into the grid below. */}
+        {false && hasSelection && (
           <div
             onClick={() => setVideoAddonCount(c => c > 0 ? 0 : 1)}
             style={{
@@ -1716,6 +1722,25 @@ export default function ComparisonPage() {
           </div>
         )}
 
+        {/* ══════════════════════════════════════════════════════
+            SECTION 4a: "Add to order" upsell grid (animado / instrumental
+            / lyric video / gift). Same product grid as the post-purchase
+            one-tap, but in select mode: tapping adds the extra to THIS
+            order instead of charging a saved card. Sits with the video
+            upsell under the shared "Hazlo aún más especial" header.
+            ══════════════════════════════════════════════════════ */}
+        {hasSelection && (
+          <div style={{ marginBottom: '16px' }}>
+            <OneTapUpsell mode="select" bare onSelectChange={setCheckoutExtras} items={[
+              { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
+              { key: 'animado', price: 49, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
+              { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },
+              { key: 'lyric_video', price: 9.99, label: 'Video con letra', title: 'Que todos se la canten', sub: 'La letra en pantalla, al ritmo', media: { type: 'lyrics' } },
+              { key: 'gift', price: 5, label: 'Envío sorpresa por mensaje', title: 'La sorpresa que no verá venir', sub: 'Se la enviamos el día y la hora que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },
+            ]} />
+          </div>
+        )}
+
 
         {/* ══════════════════════════════════════════════════════
             SECTION 4b: KARAOKE ADDON — compact horizontal card.
@@ -1974,6 +1999,7 @@ export default function ComparisonPage() {
             if (animadoCount === 2) rows.push({ label: 'Película animada · 2', price: animadoPriceBoth });
             else if (animadoCount === 1) rows.push({ label: 'Película animada', price: animadoPriceOne });
             if (giftState.enabled) rows.push({ label: 'Envío sorpresa por mensaje', price: 5 });
+            checkoutExtras.forEach((e) => rows.push({ label: e.label || e.title || e.key, price: e.price }));
             return (
               <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
                 <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Tu pedido</p>
@@ -1985,7 +2011,7 @@ export default function ComparisonPage() {
                 ))}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '11px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                   <span style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Total{hasDiscount ? ` · ${discountPercent}% OFF` : ''}</span>
-                  <span style={{ fontSize: '22px', fontWeight: 800, color: hasDiscount ? '#4ade80' : '#f5b942' }}>{isFree ? '¡GRATIS!' : `$${getCurrentPrice().toFixed(2)}`}</span>
+                  <span style={{ fontSize: '22px', fontWeight: 800, color: hasDiscount ? '#4ade80' : '#f5b942' }}>{isFree && extrasTotal === 0 ? '¡GRATIS!' : `$${(getCurrentPrice() + extrasTotal).toFixed(2)}`}</span>
                 </div>
               </div>
             );
@@ -2111,8 +2137,8 @@ export default function ComparisonPage() {
           >
             {isCheckingOut ? '⏳ Procesando...'
               : !hasSelection ? '👆 Selecciona una opción'
-              : isFree ? '🎉 Descargar Gratis'
-              : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddonCount === 2 ? ' + 2 Videos' : videoAddonCount === 1 ? ' + Video' : ''} — $${getCurrentPrice().toFixed(2)}`
+              : isFree && extrasTotal === 0 ? '🎉 Descargar Gratis'
+              : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddonCount === 2 ? ' + 2 Videos' : videoAddonCount === 1 ? ' + Video' : ''}${checkoutExtras.length ? ` + ${checkoutExtras.length} extra${checkoutExtras.length > 1 ? 's' : ''}` : ''} — $${(getCurrentPrice() + extrasTotal).toFixed(2)}`
             }
           </button>
 

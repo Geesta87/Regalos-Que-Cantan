@@ -14,13 +14,14 @@ const GOLD = '#f5b942';
 const PINK = '#f6589f';
 const GREEN = '#5fcf8a';
 const BLUE = '#3b82f6';
-const MEDIA_H = 132;
+const MEDIA_H = 200;
 
 const CSS = `
 @keyframes otuSpin{to{transform:rotate(360deg)}}
 @keyframes otuIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes otuWave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
 @keyframes otuLyric{0%{opacity:0;transform:translateY(6px)}4%{opacity:1;transform:translateY(0)}21%{opacity:1;transform:translateY(0)}25%{opacity:0;transform:translateY(-6px)}100%{opacity:0;transform:translateY(-6px)}}
+@keyframes otuFade{0%{opacity:0;transform:scale(1.04)}4%{opacity:1}29%{opacity:1;transform:scale(1.13)}34%{opacity:0}100%{opacity:0}}
 `;
 
 function Spinner({ color = GOLD }) {
@@ -28,7 +29,7 @@ function Spinner({ color = GOLD }) {
 }
 
 // ── Video preview (Animado sample, SMS reaction) — fills the box thumbnail. ──
-function VideoMedia({ src, tall }) {
+function VideoMedia({ src, tall, pos }) {
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
   const toggle = (e) => { if (e) e.stopPropagation(); const v = ref.current; if (!v) return; const n = !muted; v.muted = n; setMuted(n); if (!n) v.play().catch(() => {}); };
@@ -55,7 +56,7 @@ function VideoMedia({ src, tall }) {
   }
   return (
     <div style={{ position: 'relative', height: MEDIA_H, background: '#0d0a12' }}>
-      <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
+      <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: pos || 'center', display: 'block', cursor: 'pointer' }} />
       {badge}{sndBtn}
     </div>
   );
@@ -97,11 +98,36 @@ function LyricsMedia() {
   );
 }
 
+// ── Photo-slideshow preview (the $9.99 video-with-photos add-on). Mimics the
+// Ken Burns slideshow on the checkout card: real family photos cross-fade with
+// a "TUS FOTOS AQUÍ" overlay so buyers picture their own photos in it. ──
+function PhotosMedia() {
+  const imgs = [
+    'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=440&h=260&fit=crop',
+    'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=440&h=260&fit=crop',
+    'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=440&h=260&fit=crop',
+  ];
+  return (
+    <div style={{ position: 'relative', height: MEDIA_H, background: '#0a0015', overflow: 'hidden' }}>
+      {imgs.map((s, i) => (
+        <img key={i} src={s} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0, animation: `otuFade 9s ease-in-out ${i * 3}s infinite` }} />
+      ))}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(10,0,21,0.12),rgba(10,0,21,0.72))' }} />
+      <span style={{ position: 'absolute', top: 6, left: 8, fontSize: 9, color: 'rgba(255,255,255,0.65)', fontWeight: 700, letterSpacing: 0.5, zIndex: 2 }}>🎬 VIDEO CON FOTOS</span>
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 2, width: 42, height: 42, borderRadius: '50%', background: 'rgba(124,58,237,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 7px rgba(124,58,237,0.18)' }}>
+        <span style={{ color: '#fff', fontSize: 15, marginLeft: 2 }}>▶</span>
+      </div>
+      <span style={{ position: 'absolute', bottom: 8, left: 0, right: 0, textAlign: 'center', fontSize: 9.5, color: 'rgba(255,255,255,0.72)', fontWeight: 600, letterSpacing: 1.4, zIndex: 2 }}>TUS FOTOS AQUÍ</span>
+    </div>
+  );
+}
+
 function Media({ media, tall }) {
   if (!media) return null;
-  if (media.type === 'video') return <VideoMedia src={media.src} tall={tall} />;
+  if (media.type === 'video') return <VideoMedia src={media.src} tall={tall} pos={media.pos} />;
   if (media.type === 'ab') return <AbMedia />;
   if (media.type === 'lyrics') return <LyricsMedia />;
+  if (media.type === 'photos') return <PhotosMedia />;
   return null;
 }
 
@@ -123,18 +149,21 @@ const addBtn = (processing) => ({
 // charges directly — it flips the box into a CONFIRM state that spells out the
 // charge, so a saved-card purchase is always a deliberate two-tap action.
 const FEATURES = {
+  video: ['Tus fotos favoritas en un video al ritmo de la canción', 'Transiciones cinematográficas estilo película', 'Tú eliges las fotos después del pago', 'Video HD listo para WhatsApp y redes'],
   animado: ['Su rostro convertido en personaje animado', 'Ilustraciones de su historia, escena por escena', 'Movimiento en los momentos clave, al ritmo de la canción', 'Intro mágica: su foto real "cobra vida"', 'Video HD listo para compartir o proyectar'],
   instrumental: ['La misma canción, solo la música — sin la voz', 'Para que la canten ustedes (karaoke)', 'MP3 en calidad estudio'],
   lyric_video: ['Tu canción en video con la letra en pantalla', 'La letra aparece e ilumina al ritmo de la música', 'Vertical HD — listo para WhatsApp y redes'],
   gift: ['Le llega por mensaje el día y la hora que elijas', 'Con tu nombre y tu mensaje personal', 'Incluye el enlace para escuchar su canción'],
 };
 const DELIVERY = {
+  video: 'Subes tus fotos después del pago · listo en minutos',
   animado: 'Hecho a mano y revisado por nuestro equipo · listo en 1–2 días · garantía de calidad',
   instrumental: 'Lista en ~1 minuto · te avisamos por email',
   lyric_video: 'Lista en unos minutos · te avisamos por email',
   gift: 'Se programa al instante para la fecha que elijas',
 };
 const DESC = {
+  video: 'Convertimos tus fotos en un video cinematográfico con la canción de fondo, con transiciones suaves estilo película. Tú eliges las fotos después de pagar y nosotros lo armamos.',
   animado: 'Convertimos su rostro en un personaje animado y damos vida a su historia en un video con movimiento, al ritmo de su canción. El regalo que los hace llorar de emoción.',
   instrumental: 'La misma canción, pero solo con la música — sin la voz. Para que la canten ustedes, la usen de fondo o la disfruten en versión karaoke.',
   lyric_video: 'Tu canción convertida en un video vertical con la letra apareciendo en pantalla al ritmo de la música. Perfecto para compartir por WhatsApp o redes.',
@@ -156,7 +185,7 @@ function FeatureList({ keyName }) {
 // One product box (animado / instrumental / lyric_video). Tapping "Ver más"
 // opens a full-width detail view (what's included) and only the blue
 // "Sí, cobrar" there charges the saved card — info first, deliberate purchase.
-function ProductBox({ item, status, onAdd, last4 }) {
+function ProductBox({ item, status, onAdd, last4, selectMode, wide }) {
   const { key, title, sub, price, media } = item;
   const done = status === 'done';
   const processing = status === 'processing';
@@ -167,15 +196,24 @@ function ProductBox({ item, status, onAdd, last4 }) {
 
   if (!open || done) {
     return (
-      <div style={boxStyle(done)}>
-        {!done && <Media media={media} />}
-        <div style={{ padding: 10, display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ ...boxStyle(done), ...(wide ? { gridColumn: '1 / -1', flexDirection: 'row' } : null) }}>
+        {!done && (wide
+          ? <div style={{ width: '46%', flexShrink: 0, display: 'flex', alignItems: 'stretch' }}><div style={{ width: '100%' }}><Media media={media} /></div></div>
+          : <Media media={media} />)}
+        <div style={{ padding: wide ? '12px 16px' : 10, display: 'flex', flexDirection: 'column', flex: 1, justifyContent: wide ? 'center' : 'flex-start' }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
           {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
-          <div style={{ flex: 1 }} />
+          {!wide && <div style={{ flex: 1 }} />}
           <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
           {done ? (
-            <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado</p>
+            selectMode ? (
+              <>
+                <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado al pedido</p>
+                <button onClick={() => onAdd(key)} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
+              </>
+            ) : (
+              <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado</p>
+            )
           ) : needs ? (
             <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
           ) : (
@@ -200,6 +238,14 @@ function ProductBox({ item, status, onAdd, last4 }) {
         <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
         {processing ? (
           <button disabled style={{ ...addBtn(true), background: BLUE, color: '#fff' }}><Spinner color="#fff" /> Cobrando…</button>
+        ) : selectMode ? (
+          <>
+            <p style={{ margin: '0 0 7px', fontSize: 10.5, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
+              Se suma <strong style={{ color: '#fff' }}>${price}</strong> a tu pedido · un solo pago con tu canción
+            </p>
+            <button onClick={() => { onAdd(key); setOpen(false); }} style={addBtn(false)}>+ Agregar al pedido · ${price}</button>
+            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cerrar</button>
+          </>
         ) : (
           <>
             <p style={{ margin: '0 0 7px', fontSize: 10.5, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
@@ -217,7 +263,7 @@ function ProductBox({ item, status, onAdd, last4 }) {
 
 // Gift box — collapsed it's a normal box; tapping "Agregar" expands it to FULL
 // width (spans both columns) to show the SMS form, then charges the saved card.
-function GiftBox({ item, status, onAdd, recipientName, senderName }) {
+function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, wide }) {
   const { title, sub, price, media } = item;
   const done = status === 'done';
   const processing = status === 'processing';
@@ -251,15 +297,24 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
   if (!open || done) {
     const needs = status === 'needs_action';
     return (
-      <div style={boxStyle(done)}>
-        {!done && <Media media={media} />}
-        <div style={{ padding: 10, display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ ...boxStyle(done), ...(wide ? { gridColumn: '1 / -1', flexDirection: 'row' } : null) }}>
+        {!done && (wide
+          ? <div style={{ width: '46%', flexShrink: 0, display: 'flex', alignItems: 'stretch' }}><div style={{ width: '100%' }}><Media media={media} /></div></div>
+          : <Media media={media} />)}
+        <div style={{ padding: wide ? '12px 16px' : 10, display: 'flex', flexDirection: 'column', flex: 1, justifyContent: wide ? 'center' : 'flex-start' }}>
           <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
           {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
-          <div style={{ flex: 1 }} />
+          {!wide && <div style={{ flex: 1 }} />}
           <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
           {done ? (
-            <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Programado</p>
+            selectMode ? (
+              <>
+                <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado al pedido</p>
+                <button onClick={() => onAdd('gift')} style={{ marginTop: 5, alignSelf: 'flex-start', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 10.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>Quitar</button>
+              </>
+            ) : (
+              <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Programado</p>
+            )
           ) : needs ? (
             <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos.</p>
           ) : (
@@ -295,23 +350,30 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
           Confirmo que es un regalo bienvenido para esta persona.
         </label>
         {(err || error) && <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#f3a0a0' }}>{err || 'No se pudo agregar. Revisa los datos e intenta de nuevo.'}</p>}
-        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0, background: BLUE, color: '#fff' }}>
-          {processing ? <><Spinner color="#fff" /> Programando…</> : <>Programar y cobrar ${price} — un toque</>}
+        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0, background: selectMode ? GOLD : BLUE, color: selectMode ? '#3a2a06' : '#fff' }}>
+          {processing ? <><Spinner color="#fff" /> Programando…</> : selectMode ? <>+ Agregar al pedido · ${price}</> : <>Programar y cobrar ${price} — un toque</>}
         </button>
       </div>
     </div>
   );
 }
 
-export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = '', last4 = '••••', items = null, onCharge = null }) {
+// mode='charge' (default, post-purchase /success): each box charges the saved
+// card on confirm. mode='select' (pre-purchase /comparison checkout): there is
+// no saved card yet, so boxes TOGGLE into the order ("Agregar al pedido") and
+// onSelectChange(selected[]) reports the chosen extras so the page folds them
+// into the single checkout total.
+export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = '', last4 = '••••', items = null, onCharge = null, mode = 'charge', onSelectChange = null, bare = false }) {
   const catalog = items || [
-    { key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } },
+    { key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
     { key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } },
     { key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } },
     { key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },
   ];
 
+  const selectMode = mode === 'select';
   const [statuses, setStatuses] = useState({});
+  const [added, setAdded] = useState({}); // select mode: key -> true | giftPayload
 
   const handleAdd = async (key, payload) => {
     setStatuses((s) => ({ ...s, [key]: 'processing' }));
@@ -325,29 +387,61 @@ export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = ''
     }
   };
 
+  const toggleAdd = (key, payload) => {
+    setAdded((a) => {
+      const next = { ...a };
+      if (next[key]) delete next[key];
+      else next[key] = payload || true;
+      if (onSelectChange) {
+        try { onSelectChange(catalog.filter((i) => next[i.key]).map((i) => ({ key: i.key, price: i.price, title: i.title, label: i.label, payload: next[i.key] }))); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  };
+
+  const statusFor = (key) => (selectMode ? (added[key] ? 'done' : undefined) : statuses[key]);
+  const act = selectMode ? toggleAdd : handleAdd;
+  const extrasTotal = selectMode ? catalog.reduce((s, i) => s + (added[i.key] ? i.price : 0), 0) : 0;
+
   return (
-    <div style={{ maxWidth: 460, margin: '0 auto' }}>
+    <div style={{ maxWidth: bare ? 'none' : 460, margin: '0 auto' }}>
       <style>{CSS}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 8px' }}>
-        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
-        <span style={{ fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>Hazlo aún más especial</span>
-        <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
-      </div>
-      <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: 11.5, color: 'rgba(255,255,255,0.45)' }}>
-        {last4 && last4 !== '••••'
-          ? <>Un toque · se cobra a tu tarjeta ···· {last4}, sin volver a pagar</>
-          : <>Un toque · se cobra a tu tarjeta guardada, sin volver a pagar</>}
-      </p>
+      {!bare && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 8px' }}>
+            <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>Hazlo aún más especial</span>
+            <span style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.1)' }} />
+          </div>
+          <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: 11.5, color: 'rgba(255,255,255,0.45)' }}>
+            {selectMode
+              ? <>Opcional · agrégalos y se pagan una sola vez junto con tu canción</>
+              : last4 && last4 !== '••••'
+                ? <>Un toque · se cobra a tu tarjeta ···· {last4}, sin volver a pagar</>
+                : <>Un toque · se cobra a tu tarjeta guardada, sin volver a pagar</>}
+          </p>
+        </>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
-        {catalog.map((item) => (
-          item.form === 'gift'
-            ? <GiftBox key={item.key} item={item} status={statuses[item.key]} onAdd={handleAdd} recipientName={recipientName} senderName={senderName} />
-            : <ProductBox key={item.key} item={item} status={statuses[item.key]} onAdd={handleAdd} last4={last4} />
-        ))}
+        {catalog.map((item, i) => {
+          // Odd item count → the last box spans both columns so there's no empty
+          // cell. Only in select mode (the checkout grid); /success keeps its 2-up.
+          const wide = selectMode && catalog.length % 2 === 1 && i === catalog.length - 1;
+          return item.form === 'gift'
+            ? <GiftBox key={item.key} item={item} status={statusFor(item.key)} onAdd={act} recipientName={recipientName} senderName={senderName} selectMode={selectMode} wide={wide} />
+            : <ProductBox key={item.key} item={item} status={statusFor(item.key)} onAdd={act} last4={last4} selectMode={selectMode} wide={wide} />;
+        })}
       </div>
-      <p style={{ margin: '14px 0 0', textAlign: 'center', fontSize: 10.5, color: 'rgba(255,255,255,0.32)', lineHeight: 1.5 }}>
-        🔒 Pago seguro · revisado a mano antes de enviártelo · garantía de calidad
-      </p>
+      {selectMode && extrasTotal > 0 && (
+        <p style={{ margin: '14px 0 0', textAlign: 'center', fontSize: 13.5, fontWeight: 800, color: GOLD }}>
+          + ${extrasTotal.toFixed(2)} en extras · se suman a tu pedido
+        </p>
+      )}
+      {!bare && (
+        <p style={{ margin: '14px 0 0', textAlign: 'center', fontSize: 10.5, color: 'rgba(255,255,255,0.32)', lineHeight: 1.5 }}>
+          🔒 Pago seguro · revisado a mano antes de enviártelo · garantía de calidad
+        </p>
+      )}
     </div>
   );
 }
