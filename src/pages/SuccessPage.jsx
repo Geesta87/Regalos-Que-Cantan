@@ -573,11 +573,9 @@ export default function SuccessPage() {
         // Song still not loaded after 4.5s — wait a bit more
         const retryTimer = setTimeout(() => {
           const id = redirectSongIdRef.current;
-          if (id && !hasVideoAddonRef.current) {
-            const url = `${window.location.origin}/song/${id}`;
-            console.log('[Redirect] Song-only buyer → SongPage:', url);
-            window.location.replace(url);
-          } else if (id && hasVideoAddonRef.current) {
+          if (id) {
+            // All buyers stay on /success (the buyer-only page); the one-tap +
+            // download + share live here. /song/:id stays clean for the recipient.
             setRevealed(true);
             setContentVisible(true);
           }
@@ -585,14 +583,11 @@ export default function SuccessPage() {
         return;
       }
 
-      if (!hasVideoAddonRef.current) {
-        const url = `${window.location.origin}/song/${songId}`;
-        console.log('[Redirect] Song-only buyer → SongPage:', url);
-        window.location.replace(url);
-      } else {
-        setRevealed(true);
-        setContentVisible(true);
-      }
+      // All buyers stay on /success (the buyer-only page); the one-tap + download
+      // + share live here. The clean /song/:id link is what they share with the
+      // recipient — no upsells on it.
+      setRevealed(true);
+      setContentVisible(true);
     }, 4500);
 
     hasTriggeredRedirect.current = true;
@@ -1722,14 +1717,15 @@ export default function SuccessPage() {
     if (!oneTapSong) return [];
     const out = [];
     const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
-    const ownsInstrumental = !!oneTapSong.karaoke_status; // pending/ready/done all count as owned
-    if (!ownsAnimado) out.push({ key: 'animado', hero: true, icon: '🎬', price: 49, title: `Película animada de ${oneTapSong.recipient_name || 'tu ser querido'}`, sub: 'Su rostro hecho personaje, al ritmo de su canción' });
-    if (!ownsInstrumental) out.push({ key: 'instrumental', icon: '🎤', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar encima' });
+    if (!ownsAnimado) out.push({ key: 'animado', hero: true, icon: '🎬', price: 49, title: `Película animada de ${oneTapSong.recipient_name || 'tu ser querido'}`, sub: 'Su rostro hecho personaje, al ritmo de su canción', media: { type: 'video', src: '/animado-sample.mp4' } });
+    if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', icon: '🎤', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar encima', media: { type: 'ab' } });
+    if (!oneTapSong.lyric_video_status) out.push({ key: 'lyric_video', icon: '🎬', price: 9.99, title: 'Video con letra', sub: 'Tu canción con la letra en pantalla, lista para compartir', media: { type: 'lyrics' } });
+    out.push({ key: 'gift', icon: '🎁', price: 5, title: 'Enviar de sorpresa por mensaje', sub: 'El día y la hora que elijas, con tu nombre', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' });
     return out;
   })();
-  const handleUpsellCharge = async (item) => {
+  const handleUpsellCharge = async (item, payload) => {
     if (!oneTapSong || !oneTapSessionId) return { status: 'error' };
-    const res = await chargeUpsell({ songId: oneTapSong.id, item, sessionId: oneTapSessionId });
+    const res = await chargeUpsell({ songId: oneTapSong.id, item, sessionId: oneTapSessionId, gift: payload || null });
     if (res?.status === 'paid') {
       if (item === 'animado' && res.order_id) {
         // Surface the EXISTING photo-upload step (AnimadoPhotoUpload) for the new
@@ -1746,8 +1742,8 @@ export default function SuccessPage() {
           has_phone: !!(oneTapSong.whatsapp_phone || oneTapSong.phone_number),
           is_family: isFamily, other_people: otherPeople,
         }]);
-      } else if (item === 'instrumental') {
-        // Reload so the existing "preparing your instrumental" UI + polling kick in.
+      } else if (item === 'instrumental' || item === 'lyric_video') {
+        // Reload so the existing "preparing…" UI + polling pick up the new status.
         loadSongs();
       }
     }
@@ -2406,6 +2402,7 @@ export default function SuccessPage() {
             <div style={{ marginBottom: '28px' }}>
               <OneTapUpsell
                 recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
+                senderName={oneTapSong?.sender_name || ''}
                 last4={oneTapSong?.stripe_card_last4 || ''}
                 items={oneTapItems}
                 onCharge={handleUpsellCharge}

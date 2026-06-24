@@ -1377,14 +1377,9 @@ export default function SongPage({ songId: propSongId }) {
                 <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32 }}>{dedication}</p>
               </div>
             </div>
-            {/* ===== GIFT TEXT UPSELL ($5) — scheduled surprise SMS to a loved one ===== */}
-            {song?.id && (song?.paid || song?.payment_status === 'paid') && (
-              <div style={{ padding: '8px 24px 0', display: 'flex', justifyContent: 'center' }}>
-                <div style={{ width: '100%', maxWidth: 420 }}>
-                  <GiftTextUpsell song={song} supabaseUrl={import.meta.env.VITE_SUPABASE_URL} anonKey={import.meta.env.VITE_SUPABASE_ANON_KEY} />
-                </div>
-              </div>
-            )}
+            {/* No upsells here: /song/:id is the link shared with the recipient,
+                so it stays purely the gift. The buyer's offers (one-tap Animado /
+                instrumental + the $5 gift text) live on the buyer-only /success page. */}
             {brandFooter('rgba(244,192,37,0.3)', 'rgba(255,255,255,0.15)')}
           </main>
         </div>

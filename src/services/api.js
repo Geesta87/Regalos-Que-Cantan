@@ -246,14 +246,14 @@ export async function checkSongStatus(songId) {
  * (from the /success URL) proves ownership server-side.
  * Returns { status: 'paid' | 'needs_action' | 'error', ... }.
  */
-export async function chargeUpsell({ songId, item, sessionId }) {
+export async function chargeUpsell({ songId, item, sessionId, gift = null }) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/charge-upsell`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
     },
-    body: JSON.stringify({ song_id: songId, item, session_id: sessionId })
+    body: JSON.stringify({ song_id: songId, item, session_id: sessionId, gift })
   });
   // The function returns 200 with a { status } field for paid/needs_action/error;
   // a non-2xx is a hard failure — normalize it to the same shape so callers
