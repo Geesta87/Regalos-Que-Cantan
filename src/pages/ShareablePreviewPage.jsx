@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { validateCoupon } from '../services/api';
+import { OneTapUpsell } from '../components/OneTapUpsell';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -163,6 +164,10 @@ export default function ShareablePreviewPage() {
   // Phase 4 upsells: synced lyric video / karaoke video (no voice)
   const [lyricVideoAddon, setLyricVideoAddon] = useState(false);
   const [karaokeVideoAddon, setKaraokeVideoAddon] = useState(false);
+  // Unified "add to order" upsell grid (same as /comparison). Folds into this
+  // page's single checkout. Replaces the old per-product add-on cards below.
+  const [checkoutExtras, setCheckoutExtras] = useState([]);
+  const extrasTotal = checkoutExtras.reduce((s, e) => s + (e.price || 0), 0);
 
   // Social proof
   const [socialProofCount] = useState(Math.floor(Math.random() * 80) + 120);
@@ -326,10 +331,24 @@ export default function ShareablePreviewPage() {
     setCheckoutLoading(true); setCheckoutError(null);
     try {
       const idsArray = Array.from(selectedIds);
+      // Build add-on params from the upsell grid (checkoutExtras) — same rails
+      // as /comparison, folded into this single checkout.
+      const gridKeys = new Set(checkoutExtras.map((e) => e.key));
+      const target = idsArray[0];
+      const gVideoCount = gridKeys.has('video') ? 1 : 0;
+      const gAnimadoCount = gridKeys.has('animado') ? 1 : 0;
+      const gAnimadoIds = gAnimadoCount ? [target].filter(Boolean) : [];
+      const gKaraoke = gridKeys.has('instrumental');
+      const gKaraokeIds = gKaraoke ? [target].filter(Boolean) : [];
+      const gLyric = gridKeys.has('lyric_video');
+      const gGift = checkoutExtras.find((e) => e.key === 'gift');
+      const giftSms = (gGift && gGift.payload && typeof gGift.payload === 'object')
+        ? { enabled: true, ...gGift.payload }
+        : null;
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon, videoAddonCount, lyricVideoAddon, karaokeVideoAddon, couponCode: couponApplied?.code || null })
+        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon: gVideoCount > 0, videoAddonCount: gVideoCount, karaokeAddon: gKaraoke, karaokeSongIds: gKaraokeIds, animadoCount: gAnimadoCount, animadoSongIds: gAnimadoIds, giftSms, lyricVideoAddon: gLyric, couponCode: couponApplied?.code || null })
       });
       const data = await res.json();
       if (!data.success || !data.url) throw new Error(data.error || 'Error al crear checkout.');
@@ -356,7 +375,8 @@ export default function ShareablePreviewPage() {
   const currentPrice = basePrice
     + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0)
     + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0)
-    + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0);
+    + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0)
+    + extrasTotal;
   const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
@@ -982,7 +1002,7 @@ export default function ShareablePreviewPage() {
             <div style={{textAlign: 'right'}}>
               {couponApplied && rawPrice !== discountedPrice && (
                 <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
-                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0) + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0)).toFixed(2)}
+                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0) + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0) + extrasTotal).toFixed(2)}
                 </p>
               )}
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
@@ -1012,8 +1032,29 @@ export default function ShareablePreviewPage() {
           </div>
         )}
 
-        {/* ===== VIDEO ADD-ON CARD ===== */}
+        {/* ===== UNIFIED UPSELL GRID (same as /comparison) ===== */}
         {!allPaid && selectedIds.size > 0 && (
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ textAlign: 'center', margin: '8px 0 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                <span style={{ fontSize: '18px', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>Hazlo aún más especial</span>
+                <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>Opcional — elige lo que quieras, o solo la canción.</p>
+            </div>
+            <OneTapUpsell mode="select" bare recipientName={recipientName || 'tu ser querido'} onSelectChange={setCheckoutExtras} items={[
+              { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
+              { key: 'animado', price: 49, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
+              { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },
+              { key: 'lyric_video', price: 9.99, label: 'Video con letra', title: 'Que todos se la canten', sub: 'La letra en pantalla, al ritmo', media: { type: 'lyrics' } },
+              { key: 'gift', price: 5, label: 'Envío sorpresa por mensaje', title: 'La sorpresa que no verá venir', sub: 'Se la enviamos el día y la hora que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },
+            ]} />
+          </div>
+        )}
+
+        {/* ===== OLD VIDEO ADD-ON CARD (replaced by the grid above) ===== */}
+        {false && !allPaid && selectedIds.size > 0 && (
           <>
             <style>{`
               @keyframes kbSlide1 { 0%{transform:scale(1);opacity:1} 12%{transform:scale(1.1) translate(-1%,1%);opacity:1} 14.28%{opacity:0} 100%{opacity:0} }
@@ -1505,7 +1546,7 @@ export default function ShareablePreviewPage() {
                     !isPickAnyTwoMode
                       ? (isBundleSelected ? 'Ambas' : 'Canción')
                       : (selectedCount === 1 ? 'Canción' : `Bundle de ${selectedCount}`)
-                  }${videoAddon ? ' + Video' : ''}${lyricVideoAddon ? ' + V.Letra' : ''}${karaokeVideoAddon ? ' + Karaoke' : ''} — $${currentPrice.toFixed(2)}`
+                  }${checkoutExtras.length ? ` + ${checkoutExtras.length} extra${checkoutExtras.length > 1 ? 's' : ''}` : ''} — $${currentPrice.toFixed(2)}`
                 )}
               </button>
 

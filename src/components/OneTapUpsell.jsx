@@ -162,6 +162,11 @@ const DELIVERY = {
   lyric_video: 'Lista en unos minutos · te avisamos por email',
   gift: 'Se programa al instante para la fecha que elijas',
 };
+// Per-item fine-print shown in the detail view. Animado sets expectations:
+// it's a hand-made artistic recreation, so the likeness is close but not exact.
+const DISCLAIMER = {
+  animado: 'Es una recreación artística hecha a mano en estilo animado (tipo Pixar). Buscamos el mejor parecido posible, pero al ser una interpretación de su foto puede no ser idéntica al rostro real.',
+};
 const DESC = {
   video: 'Convertimos tus fotos en un video cinematográfico con la canción de fondo, con transiciones suaves estilo película. Tú eliges las fotos después de pagar y nosotros lo armamos.',
   animado: 'Convertimos su rostro en un personaje animado y damos vida a su historia en un video con movimiento, al ritmo de su canción. El regalo que los hace llorar de emoción.',
@@ -236,6 +241,9 @@ function ProductBox({ item, status, onAdd, last4, selectMode, wide }) {
         <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
         <FeatureList keyName={key} />
         <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
+        {DISCLAIMER[key] && (
+          <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.45, fontStyle: 'italic', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '8px 10px' }}>ℹ️ {DISCLAIMER[key]}</p>
+        )}
         {processing ? (
           <button disabled style={{ ...addBtn(true), background: BLUE, color: '#fff' }}><Spinner color="#fff" /> Cobrando…</button>
         ) : selectMode ? (
