@@ -20,7 +20,7 @@ const CSS = `
 @keyframes otuSpin{to{transform:rotate(360deg)}}
 @keyframes otuIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes otuWave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
-@keyframes otuLyric{0%,6%{opacity:0;transform:translateY(7px)}18%,82%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-7px)}}
+@keyframes otuLyric{0%{opacity:0;transform:translateY(6px)}4%{opacity:1;transform:translateY(0)}21%{opacity:1;transform:translateY(0)}25%{opacity:0;transform:translateY(-6px)}100%{opacity:0;transform:translateY(-6px)}}
 `;
 
 function Spinner({ color = GOLD }) {
@@ -63,7 +63,7 @@ function VideoMedia({ src, tall }) {
 
 // ── Instrumental con-voz / sin-voz — tap the thumbnail to drop the voice. ──
 function AbMedia() {
-  const [sin, setSin] = useState(false);
+  const [sin, setSin] = useState(true);
   const bars = [12, 18, 24, 15, 27, 33, 21, 13, 29, 22, 31, 16, 24, 28, 12, 20];
   return (
     <div onClick={(e) => { e.stopPropagation(); setSin((v) => !v); }} style={{ position: 'relative', height: MEDIA_H, background: 'linear-gradient(135deg,#241d2e,#15101c)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', padding: '0 10px' }}>
@@ -134,6 +134,12 @@ const DELIVERY = {
   lyric_video: 'Lista en unos minutos · te avisamos por email',
   gift: 'Se programa al instante para la fecha que elijas',
 };
+const DESC = {
+  animado: 'Convertimos su rostro en un personaje animado y damos vida a su historia en un video con movimiento, al ritmo de su canción. El regalo que los hace llorar de emoción.',
+  instrumental: 'La misma canción, pero solo con la música — sin la voz. Para que la canten ustedes, la usen de fondo o la disfruten en versión karaoke.',
+  lyric_video: 'Tu canción convertida en un video vertical con la letra apareciendo en pantalla al ritmo de la música. Perfecto para compartir por WhatsApp o redes.',
+  gift: 'En vez de mandar tú el enlace, nosotros le enviamos la canción por mensaje el día y la hora que elijas — con tu nombre y tu mensaje. La sorpresa perfecta.',
+};
 
 function FeatureList({ keyName }) {
   return (
@@ -188,7 +194,7 @@ function ProductBox({ item, status, onAdd, last4 }) {
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</p>
           <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
         </div>
-        <p style={{ margin: '0 0 11px', fontSize: 11.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>{sub}</p>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'rgba(255,255,255,0.68)', lineHeight: 1.5 }}>{DESC[key] || sub}</p>
         <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
         <FeatureList keyName={key} />
         <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
@@ -272,6 +278,7 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
           <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</p>
           <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
         </div>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'rgba(255,255,255,0.68)', lineHeight: 1.5 }}>{DESC.gift}</p>
         <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
         <FeatureList keyName="gift" />
         <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>🤚 {DELIVERY.gift}</p>
