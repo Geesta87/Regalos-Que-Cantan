@@ -102,12 +102,16 @@ const addBtn = (processing) => ({
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 });
 
-// One product box (animado / instrumental / lyric_video).
-function ProductBox({ item, status, onAdd }) {
+// One product box (animado / instrumental / lyric_video). "Agregar" never
+// charges directly — it flips the box into a CONFIRM state that spells out the
+// charge, so a saved-card purchase is always a deliberate two-tap action.
+function ProductBox({ item, status, onAdd, last4 }) {
   const { key, title, sub, price, media } = item;
   const done = status === 'done';
   const processing = status === 'processing';
   const needs = status === 'needs_action';
+  const [confirm, setConfirm] = useState(false);
+  const cardTxt = last4 && last4 !== '••••' ? `···· ${last4}` : 'guardada';
   return (
     <div style={boxStyle(done)}>
       {!done && <Media media={media} />}
@@ -120,10 +124,18 @@ function ProductBox({ item, status, onAdd }) {
           <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN, display: 'flex', alignItems: 'center', gap: 5 }}>✓ Agregado</p>
         ) : needs ? (
           <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
+        ) : processing ? (
+          <button disabled style={addBtn(true)}><Spinner color="#3a2a06" /> Cobrando…</button>
+        ) : confirm ? (
+          <div>
+            <p style={{ margin: '8px 0 6px', fontSize: 10, color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 1.4 }}>
+              Se cobra <strong style={{ color: '#fff' }}>${price}</strong> ahora a tu tarjeta {cardTxt}
+            </p>
+            <button onClick={() => onAdd(key)} style={addBtn(false)}>✓ Sí, cobrar ${price}</button>
+            <button onClick={() => setConfirm(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+          </div>
         ) : (
-          <button onClick={() => onAdd(key)} disabled={processing} style={addBtn(processing)}>
-            {processing ? <><Spinner color="#3a2a06" /> Cobrando…</> : <>⚡ Agregar</>}
-          </button>
+          <button onClick={() => setConfirm(true)} style={addBtn(false)}>Agregar · ${price}</button>
         )}
       </div>
     </div>
@@ -178,7 +190,7 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
           ) : needs ? (
             <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos.</p>
           ) : (
-            <button onClick={() => setOpen(true)} style={addBtn(false)}>⚡ Agregar</button>
+            <button onClick={() => setOpen(true)} style={addBtn(false)}>Agregar · ${price}</button>
           )}
         </div>
       </div>
@@ -250,7 +262,7 @@ export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = ''
         {catalog.map((item) => (
           item.form === 'gift'
             ? <GiftBox key={item.key} item={item} status={statuses[item.key]} onAdd={handleAdd} recipientName={recipientName} senderName={senderName} />
-            : <ProductBox key={item.key} item={item} status={statuses[item.key]} onAdd={handleAdd} />
+            : <ProductBox key={item.key} item={item} status={statuses[item.key]} onAdd={handleAdd} last4={last4} />
         ))}
       </div>
       <p style={{ margin: '14px 0 0', textAlign: 'center', fontSize: 10.5, color: 'rgba(255,255,255,0.32)', lineHeight: 1.5 }}>
