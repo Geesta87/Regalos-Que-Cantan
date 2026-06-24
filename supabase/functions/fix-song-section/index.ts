@@ -179,7 +179,7 @@ const FIX_TOOL = {
       },
       reason: {
         type: 'string',
-        description: 'If can_fix is false, one short sentence (Spanish) explaining why a section fix is not possible. If true, one short note on the window you chose.',
+        description: 'If can_fix is false, one short sentence in ENGLISH explaining why a section fix is not possible. If true, one short note (in English) on the window you chose.',
       },
       infill_start_s: {
         type: 'number',
@@ -199,7 +199,7 @@ const FIX_TOOL = {
       },
       change_summary: {
         type: 'string',
-        description: 'One short sentence in Spanish describing exactly what changed, shown to the shop owner (e.g. "Corregí la pronunciación del nombre Yareli en el coro").',
+        description: 'One short sentence in ENGLISH describing exactly what changed, shown to the (English-speaking) shop owner (e.g. "Fixed the birth date in Verse 1 to 28 de octubre de 1987"). Keep any quoted lyric snippet in Spanish, but write the sentence in English.',
       },
       verify_phrases: {
         type: 'array',
@@ -232,27 +232,29 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
+IDIOMA: change_summary y reason van en INGLÉS (el dueño habla inglés). Toda la LETRA (section_text, full_lyrics, verify_phrases) y los nombres/fechas cantados permanecen en ESPAÑOL — nunca traduzcas la letra.
+
 Devuelve SIEMPRE tu respuesta llamando a la herramienta submit_section_fix.`;
 
 // Conversational assistant used BEFORE running the fix — helps the owner nail
 // down exactly what to change (reads a pasted WhatsApp screenshot, asks short
 // clarifying questions). It does NOT edit anything; the actual fix runs when the
 // owner clicks "Generar arreglo".
-const CHAT_SYSTEM_PROMPT = `Eres un asistente que ayuda al dueño de una tienda de canciones personalizadas en español a entender EXACTAMENTE qué arreglar en una canción ya generada, ANTES de regenerar la sección (eso cuesta, así que primero hay que tener claro el cambio).
+const CHAT_SYSTEM_PROMPT = `You are an assistant that helps the owner of a personalized-song shop figure out EXACTLY what to fix in an already-generated Spanish-language song, BEFORE regenerating the section (regenerating costs money, so the change must be clear first).
 
-El dueño puede pegarte una captura de pantalla de WhatsApp del cliente o escribirte directamente. Tienes la letra actual de la canción.
+The owner may paste a WhatsApp screenshot from the customer or type to you directly. You have the song's current lyrics.
 
-Tu trabajo:
-- Lee la captura/mensaje y di con tus palabras qué entiendes que hay que cambiar (qué palabra, nombre o línea está mal y cómo debería decir).
-- Si falta información para hacer el cambio (por ejemplo, el cliente dice "está mal el nombre" pero no cómo se escribe/pronuncia), haz UNA pregunta corta para aclararlo.
-- Cuando ya esté claro, resume en una sola frase qué vas a cambiar y dile: "Cuando quieras, dale a Generar arreglo."
-- NO inventes datos. NO edites la canción tú mismo (eso pasa cuando el dueño presiona el botón).
-- Responde corto, claro y en español.`;
+Your job:
+- Read the screenshot/message and say, in your own words, what you understand needs to change (which word, name, or line is wrong and what it should say).
+- If information is missing (e.g. the customer says "the name is wrong" but not how it's spelled/pronounced), ask ONE short question to clarify.
+- Once it's clear, summarize in a single sentence what you'll change and tell them: "When you're ready, click Confirm and generate."
+- Do NOT invent details. Do NOT edit the song yourself (that happens when the owner clicks the button).
+- Respond in ENGLISH, concise and clear. BUT keep any song lyrics, names, dates, and quoted lyric lines in their original SPANISH — never translate the lyrics themselves.`;
 
 // Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
 // or the owner chooses to remake the whole song. Claude returns the complete
 // corrected lyrics; we then generate a fresh Kie song from them.
-const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
 
 const FULL_FIX_TOOL = {
   name: 'submit_corrected_lyrics',
@@ -261,7 +263,7 @@ const FULL_FIX_TOOL = {
     type: 'object',
     properties: {
       full_lyrics: { type: 'string', description: 'La letra COMPLETA corregida, con marcadores de sección. Aplica SOLO el cambio pedido; deja igual lo demás.' },
-      change_summary: { type: 'string', description: 'Una frase corta en español de lo que cambió.' },
+      change_summary: { type: 'string', description: 'One short sentence in ENGLISH describing what changed (the lyrics themselves stay in Spanish).' },
       changes: {
         type: 'array',
         description: 'Cada cambio puntual con el texto exacto antes y después. Vacío si no hubo cambios.',
@@ -563,9 +565,9 @@ function orderTakesBest(takes: Take[]): Take[] {
 }
 function takeVerifyNote(t: Take | undefined, sectionMode: boolean): string | null {
   if (!t) return null;
-  if (t.verified === true) return '✅ Verificado: la corrección sí se canta.';
-  if (t.repeated && t.repeated.length) return `⚠️ La parte corregida se cantó repetida ("${t.repeated.join('", "')}").${sectionMode ? ' Reintenté con una ventana más larga; si persiste, usa "Rehacer canción completa".' : ' Reintenta o revisa las versiones.'}`;
-  if (t.verified === false) return `⚠️ No pude confirmar la corrección${t.missing.length ? `: "${t.missing.join('", "')}"` : ''}.${sectionMode ? ' Para letras exactas, considera "Rehacer canción completa".' : ' Revisa las versiones o reintenta.'}`;
+  if (t.verified === true) return '✅ Verified: the correction is sung correctly.';
+  if (t.repeated && t.repeated.length) return `⚠️ The corrected part was sung more than once ("${t.repeated.join('", "')}").${sectionMode ? ' Retried with a longer window; if it persists, use "Redo full song".' : ' Try again or check the takes.'}`;
+  if (t.verified === false) return `⚠️ Couldn't confirm the correction${t.missing.length ? `: "${t.missing.join('", "')}"` : ''}.${sectionMode ? ' For exact lyrics, consider "Redo full song".' : ' Check the takes or try again.'}`;
   return null;
 }
 // One full-generation round, with content-filter sanitize+retry baked in.

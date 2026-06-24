@@ -27,7 +27,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
     if (!accessToken) return;
     setLoading(true); setError('');
     try { const d = await call({ action: 'list' }); setOrders(d.orders || []); }
-    catch (e) { setError(e.message || 'No se pudo cargar.'); }
+    catch (e) { setError(e.message || 'Could not load.'); }
     finally { setLoading(false); }
   }, [accessToken, call]);
 
@@ -37,7 +37,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
     setBusy(`${id}:${action}`);
     try {
       await call({ action, id, ...extra });
-      showToast?.(action.includes('approve') ? '✓ Aprobado' : 'Hecho', 'success');
+      showToast?.(action.includes('approve') ? '✓ Approved' : 'Done', 'success');
       await load();
     } catch (e) { showToast?.(e.message || 'Error', 'error'); }
     finally { setBusy(null); }
@@ -52,17 +52,17 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">
-            {isLikeness ? 'Animado — Elegir parecido' : 'Animado — Aprobar video final'}
+            {isLikeness ? 'Animated — Choose likeness' : 'Animated — Approve final video'}
           </h2>
           <p className="text-sm text-gray-400">
             {isLikeness
-              ? `${likeness.length} pendiente(s) de parecido`
-              : `${finals.length} video(s) por revisar`}
+              ? `${likeness.length} likeness(es) pending`
+              : `${finals.length} video(s) to review`}
           </p>
         </div>
         <button onClick={load} disabled={loading}
           className="px-3 py-1.5 text-sm rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-semibold transition disabled:opacity-50">
-          {loading ? '...' : '↻ Refrescar'}
+          {loading ? '...' : '↻ Refresh'}
         </button>
       </div>
       {error && <div className="rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm px-3 py-2">{error}</div>}
@@ -70,24 +70,24 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
       {/* GATE 1 — pick the likeness (compare the 2 options against the original photo) */}
       {isLikeness && (
         <section>
-          {likeness.length === 0 ? <Empty text="Nada pendiente de parecido." /> : (
+          {likeness.length === 0 ? <Empty text="No likenesses pending." /> : (
             <div className="space-y-4">
               {likeness.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-white font-semibold">{o.recipient}</div>
                     <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
-                      className="text-xs text-gray-400 hover:text-rose-400">Rechazar / pedir otra foto</button>
+                      className="text-xs text-gray-400 hover:text-rose-400">Reject / request another photo</button>
                   </div>
                   <Assumptions items={o.assumptions} />
-                  <p className="text-xs text-gray-500 mb-2">Compara con la foto real y elige el parecido más fiel:</p>
+                  <p className="text-xs text-gray-500 mb-2">Compare against the real photo and pick the closest likeness:</p>
                   <div className="grid grid-cols-3 gap-3">
                     {/* original photo for comparison — no button */}
                     <div className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-sky-500/40">
                       {o.recipient_photo_url
-                        ? <img src={o.recipient_photo_url} alt="foto original" className="w-full aspect-[3/4] object-cover" />
-                        : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">sin foto</div>}
-                      <div className="py-2 text-center text-xs font-semibold text-sky-300 bg-sky-500/10">📷 Foto original</div>
+                        ? <img src={o.recipient_photo_url} alt="original photo" className="w-full aspect-[3/4] object-cover" />
+                        : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">no photo</div>}
+                      <div className="py-2 text-center text-xs font-semibold text-sky-300 bg-sky-500/10">📷 Original photo</div>
                     </div>
                     {/* the cartoon / style options */}
                     {(o.character_options || []).map((opt, i) => (
@@ -95,11 +95,11 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                         {opt.label && (
                           <div className="py-1.5 text-center text-xs font-bold text-white bg-white/5 truncate px-1">{opt.label}</div>
                         )}
-                        <img src={opt.url} alt={opt.label || `opción ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
+                        <img src={opt.url} alt={opt.label || `option ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
                         <button onClick={() => act(o.id, 'approve_likeness', { index: i })}
                           disabled={busy === `${o.id}:approve_likeness`}
                           className="w-full py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                          {busy === `${o.id}:approve_likeness` ? '...' : (opt.label ? `✓ Usar ${opt.label}` : `✓ Usar opción ${i + 1}`)}
+                          {busy === `${o.id}:approve_likeness` ? '...' : (opt.label ? `✓ Use ${opt.label}` : `✓ Use option ${i + 1}`)}
                         </button>
                       </div>
                     ))}
@@ -114,7 +114,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
       {/* GATE 2 — approve the final video */}
       {!isLikeness && (
         <section>
-          {finals.length === 0 ? <Empty text="Nada pendiente de aprobación final." /> : (
+          {finals.length === 0 ? <Empty text="No final approvals pending." /> : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {finals.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
@@ -123,11 +123,11 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                   <div className="flex gap-2 mt-3">
                     <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
                       className="flex-1 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                      {busy === `${o.id}:approve_final` ? '...' : '✓ Aprobar y enviar'}
+                      {busy === `${o.id}:approve_final` ? '...' : '✓ Approve and send'}
                     </button>
                     <button onClick={() => act(o.id, 'reject_final')} disabled={busy}
                       className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50">
-                      ↺ Rehacer
+                      ↺ Redo
                     </button>
                   </div>
                 </div>
@@ -146,7 +146,7 @@ function Assumptions({ items }) {
   if (!items || items.length === 0) return null;
   return (
     <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2.5">
-      <p className="text-xs font-bold text-amber-300 mb-1.5">⚠️ La IA asumió cosas no dichas en la historia — revisa antes de aprobar:</p>
+      <p className="text-xs font-bold text-amber-300 mb-1.5">⚠️ The AI assumed things not stated in the story — review before approving:</p>
       <ul className="space-y-1">
         {items.map((a, i) => (
           <li key={i} className="text-xs text-amber-100/90 leading-snug">
@@ -156,7 +156,7 @@ function Assumptions({ items }) {
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-amber-200/60 mt-1.5">Si algo está mal, rechaza y pide una foto o ajusta la historia.</p>
+      <p className="text-[11px] text-amber-200/60 mt-1.5">If something is wrong, reject and request a photo or adjust the story.</p>
     </div>
   );
 }

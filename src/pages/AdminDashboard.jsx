@@ -71,9 +71,9 @@ function FixSongCard({ song, showToast, onApplied }) {
   const imagePayload = () => (image ? { media_type: image.media_type, data: image.base64 } : undefined);
 
   async function sendChat() {
-    if (!input.trim() && !image) { setError('Escribe algo o pega una captura.'); return; }
+    if (!input.trim() && !image) { setError('Type something or paste a screenshot.'); return; }
     setError('');
-    const newMsgs = [...messages, { role: 'user', text: input.trim() || '(captura adjunta)' }];
+    const newMsgs = [...messages, { role: 'user', text: input.trim() || '(screenshot attached)' }];
     setMessages(newMsgs);
     setInput('');
     setChatting(true);
@@ -85,9 +85,9 @@ function FixSongCard({ song, showToast, onApplied }) {
       });
       const data = await res.json();
       if (data.ok) setMessages((m) => [...m, { role: 'assistant', text: data.reply }]);
-      else setError(data.error || 'El asistente no respondió.');
+      else setError(data.error || 'The assistant did not respond.');
     } catch (e) {
-      setError('Error de red: ' + (e?.message || 'desconocido'));
+      setError('Network error: ' + (e?.message || 'unknown'));
     } finally {
       setChatting(false);
     }
@@ -97,7 +97,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   // BEFORE spending any Kie credits / waiting on audio.
   async function runPlan(mode = 'section') {
     const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
-    if (convo.length === 0 && !image) { setError('Escribe qué corregir, chatea con el AI, o pega una captura.'); return; }
+    if (convo.length === 0 && !image) { setError('Type what to fix, chat with the AI, or paste a screenshot.'); return; }
     setError('');
     setResult(null);
     setPlan(null);
@@ -110,11 +110,11 @@ function FixSongCard({ song, showToast, onApplied }) {
         body: JSON.stringify({ action: 'plan', mode, songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
-      if (!data.ok) { setError(data.error || 'No se pudo proponer el cambio.'); setPhase('idle'); return; }
+      if (!data.ok) { setError(data.error || 'Could not propose the change.'); setPhase('idle'); return; }
       setPlan(data);
       setPhase('plan');
     } catch (e) {
-      setError('Error de red: ' + (e?.message || 'desconocido'));
+      setError('Network error: ' + (e?.message || 'unknown'));
       setPhase('idle');
     }
   }
@@ -133,7 +133,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.reason || data.error || 'No se pudo generar el arreglo.');
+        setError(data.reason || data.error || 'Could not generate the fix.');
         setPhase('plan');
         return;
       }
@@ -141,7 +141,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       setSelectedTakeIdx(0);
       setPhase('preview');
     } catch (e) {
-      setError('Error de red: ' + (e?.message || 'desconocido'));
+      setError('Network error: ' + (e?.message || 'unknown'));
       setPhase('plan');
     }
   }
@@ -155,7 +155,7 @@ function FixSongCard({ song, showToast, onApplied }) {
     setResult(null);
     setInput('');
     setPhase('working');
-    setSurgicalMsg('Regenerando la parte corregida…');
+    setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
     const post = (body) => fetch(FN_URL, {
       method: 'POST',
@@ -165,40 +165,40 @@ function FixSongCard({ song, showToast, onApplied }) {
     try {
       // 1) Re-sing the block (async submit — avoids the 150s gateway limit).
       const sub = await post({ action: 'section-submit', mode: 'section', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
-      if (!sub.ok) { setError(sub.reason || sub.error || 'No se pudo generar el arreglo.'); setPhase('plan'); return; }
+      if (!sub.ok) { setError(sub.reason || sub.error || 'Could not generate the fix.'); setPhase('plan'); return; }
       const { fixTaskId, sectionText, originalAudioUrl, fullLyrics } = sub;
       const origCut = Number(sub.window?.endS);
-      if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) { setError('Respuesta incompleta del servidor.'); setPhase('plan'); return; }
+      if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
 
       // 2) Poll until the re-sing is ready.
       let takeUrls = [];
       for (let i = 1; i <= 40; i++) {
         const d = await post({ action: 'diag', taskId: fixTaskId });
-        setSurgicalMsg(`Generando la voz corregida… (${i})`);
+        setSurgicalMsg(`Generating the corrected vocal… (${i})`);
         if (d.status === 'SUCCESS') { takeUrls = (d.trackList || []).map((t) => t.audioUrl).filter(Boolean); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
-          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno bloqueó la letra (derechos de autor). Prueba "Rehacer canción completa".' : `Falló la generación (${d.status}).`);
+          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Try "Redo full song".' : `Generation failed (${d.status}).`);
           setPhase('plan'); return;
         }
         await new Promise((r) => setTimeout(r, 9000));
       }
-      if (!takeUrls.length) { setError('Se agotó el tiempo esperando la regeneración.'); setPhase('plan'); return; }
+      if (!takeUrls.length) { setError('Timed out waiting for the regeneration.'); setPhase('plan'); return; }
 
       // 3) Transcribe each take; pick the LEAST-PADDED (keeps length closest to original).
-      setSurgicalMsg('Eligiendo la mejor versión…');
+      setSurgicalMsg('Choosing the best take…');
       const scored = [];
       for (const url of takeUrls) {
         const tr = await post({ action: 'transcribe', audioUrl: url });
         const end = findLastLineEnd(parseTimed(tr.timed), sectionText);
         if (end) scored.push({ url, end });
       }
-      if (!scored.length) { setError('No pude ubicar el empalme automáticamente. Reintenta o usa "Rehacer canción completa".'); setPhase('plan'); return; }
+      if (!scored.length) { setError('Could not locate the splice point automatically. Retry or use "Redo full song".'); setPhase('plan'); return; }
       scored.sort((a, b) => a.end - b.end);
       const resungUrl = scored[0].url;
       const resungCut = +(scored[0].end + 0.3).toFixed(2);
 
       // 4) Stitch the corrected lines onto the pristine original (in-browser Web Audio).
-      setSurgicalMsg('Uniendo con la grabación original…');
+      setSurgicalMsg('Stitching with the original recording…');
       const spliced = await spliceIntoOriginal({ resungUrl, resungCutS: resungCut, originalUrl: originalAudioUrl, origCutS: origCut });
 
       setResult({
@@ -214,7 +214,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       setSurgicalMsg('');
       setPhase('preview');
     } catch (e) {
-      setError('Error: ' + (e?.message || 'desconocido'));
+      setError('Error: ' + (e?.message || 'unknown'));
       setSurgicalMsg('');
       setPhase('plan');
     }
@@ -229,12 +229,12 @@ function FixSongCard({ song, showToast, onApplied }) {
         body: JSON.stringify({ action: 'undo', songId: song.id }),
       });
       const data = await res.json();
-      if (!data.ok) { setError(data.error || 'No se pudo deshacer.'); return; }
-      showToast('↩️ Arreglo deshecho. La canción volvió a la versión anterior.');
+      if (!data.ok) { setError(data.error || 'Could not undo.'); return; }
+      showToast('↩️ Fix undone. The song was restored to the previous version.');
       setCanUndo(false);
       if (onApplied) onApplied(data.audioUrl, data.lyrics);
     } catch (e) {
-      setError('Error de red al deshacer: ' + (e?.message || 'desconocido'));
+      setError('Network error while undoing: ' + (e?.message || 'unknown'));
     }
   }
 
@@ -251,8 +251,8 @@ function FixSongCard({ song, showToast, onApplied }) {
         fd.append('fullLyrics', result.fullLyrics || '');
         const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
         const d = await resp.json();
-        if (!d.ok) { setError(d.error || 'No se pudo aplicar el arreglo.'); setPhase('preview'); return; }
-        showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
+        if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
+        showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
         if (onApplied) onApplied(d.audioUrl, result.fullLyrics);
         setCanUndo(true);
         setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
@@ -273,11 +273,11 @@ function FixSongCard({ song, showToast, onApplied }) {
       });
       const data = await res.json();
       if (!data.ok) {
-        setError(data.error || 'No se pudo aplicar el arreglo.');
+        setError(data.error || 'Could not apply the fix.');
         setPhase('preview');
         return;
       }
-      showToast('✅ Arreglo aplicado. La canción del cliente ya usa la versión corregida.');
+      showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
       if (onApplied) onApplied(take.audioUrl, take.lyrics || result.fullLyrics);
       setCanUndo(true);
       setPhase('idle');
@@ -287,7 +287,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       setImage(null);
       setInput('');
     } catch (e) {
-      setError('Error de red al aplicar: ' + (e?.message || 'desconocido'));
+      setError('Network error while applying: ' + (e?.message || 'unknown'));
       setPhase('preview');
     }
   }
@@ -299,23 +299,23 @@ function FixSongCard({ song, showToast, onApplied }) {
   const take = takes[selectedTakeIdx] || takes[0] || null;
   const curVerifyNote = take
     ? (take.verified === true
-      ? '✅ Verificado: la corrección sí se canta.'
+      ? '✅ Verified: the correction is sung.'
       : take.verified === false
-        ? '⚠️ No pude confirmar la corrección en esta versión — escucha con atención.'
+        ? '⚠️ Could not confirm the correction in this take — listen carefully.'
         : null)
     : null;
 
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
-      <p className="text-xs text-gray-300 mb-1">🔧 Arreglar o rehacer la canción</p>
+      <p className="text-xs text-gray-300 mb-1">🔧 Fix or redo the song</p>
       <>
           <p className="text-[11px] text-gray-400 mb-2">
-            Pega la captura de WhatsApp del cliente o escribe qué corregir. Puedes <strong>chatear con el AI</strong> para
-            aclarar, y luego <strong>arreglar solo esa parte</strong> o <strong>rehacer la canción completa</strong> con las correcciones.
+            Paste the customer's WhatsApp screenshot or type what to fix. You can <strong>chat with the AI</strong> to
+            clarify, then <strong>fix just that part</strong> or <strong>redo the full song</strong> with the corrections.
           </p>
           {!eligible && (
             <p className="text-[11px] text-amber-300 mb-2">
-              Esta canción se hizo con Mureka, así que no se puede arreglar solo una parte — pero sí puedes <strong>rehacerla completa</strong> en Kie con las correcciones.
+              This song was made with Mureka, so a single part can't be fixed — but you can <strong>redo the full song</strong> in Kie with the corrections.
             </p>
           )}
 
@@ -327,14 +327,14 @@ function FixSongCard({ song, showToast, onApplied }) {
                   <span className="opacity-60 mr-1">{m.role === 'assistant' ? '🤖' : '🧑'}</span>{m.text}
                 </div>
               ))}
-              {chatting && <p className="text-xs text-gray-400">🤖 escribiendo…</p>}
+              {chatting && <p className="text-xs text-gray-400">🤖 typing…</p>}
             </div>
           )}
 
           {/* Pasted/attached screenshot */}
           {image && (
             <div className="relative inline-block mb-2">
-              <img src={image.dataUrl} alt="captura" className="max-h-28 rounded-lg border border-white/20" />
+              <img src={image.dataUrl} alt="screenshot" className="max-h-28 rounded-lg border border-white/20" />
               <button onClick={() => setImage(null)} className="absolute -top-2 -right-2 bg-black/80 text-white rounded-full w-5 h-5 text-xs leading-none">✕</button>
             </div>
           )}
@@ -345,19 +345,19 @@ function FixSongCard({ song, showToast, onApplied }) {
             onPaste={onPaste}
             disabled={busy}
             rows={2}
-            placeholder="Escribe aquí… (o pega una captura con Ctrl/Cmd+V)"
+            placeholder="Type here… (or paste a screenshot with Ctrl/Cmd+V)"
             className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-gray-100 mb-2 disabled:opacity-50"
           />
 
           <div className="flex gap-2 mb-2">
             <label className={`py-2 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition ${busy ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
-              📎 Captura
+              📎 Screenshot
               <input type="file" accept="image/*" className="hidden" disabled={busy}
                 onChange={(e) => { readImageFile(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
             <button onClick={sendChat} disabled={busy}
               className="flex-1 py-2 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition disabled:opacity-50">
-              💬 Preguntar al AI
+              💬 Ask the AI
             </button>
           </div>
 
@@ -371,7 +371,7 @@ function FixSongCard({ song, showToast, onApplied }) {
                   disabled={busy}
                   className="w-full py-2 px-4 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-400 transition disabled:opacity-60"
                 >
-                  {phase === 'planning' && pendingMode === 'section' ? '⏳ Revisando el cambio…' : '✨ Arreglar solo esa parte'}
+                  {phase === 'planning' && pendingMode === 'section' ? '⏳ Reviewing the change…' : '✨ Fix just that part'}
                 </button>
               )}
               <button
@@ -379,7 +379,7 @@ function FixSongCard({ song, showToast, onApplied }) {
                 disabled={busy}
                 className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition disabled:opacity-60 ${eligible ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-purple-500 text-white hover:bg-purple-400'}`}
               >
-                {phase === 'planning' && pendingMode === 'full' ? '⏳ Revisando el cambio…' : '🔄 Rehacer canción completa con las correcciones'}
+                {phase === 'planning' && pendingMode === 'full' ? '⏳ Reviewing the change…' : '🔄 Redo full song with the corrections'}
               </button>
             </div>
           )}
@@ -392,19 +392,19 @@ function FixSongCard({ song, showToast, onApplied }) {
                 <div className="space-y-2 mb-3">
                   {plan.changes.map((c, i) => (
                     <div key={i} className="text-xs">
-                      <p className="text-red-300/90"><span className="opacity-60">Antes:</span> <span className="line-through">{c.before}</span></p>
-                      <p className="text-green-300"><span className="opacity-60">Ahora:</span> {c.after}</p>
+                      <p className="text-red-300/90"><span className="opacity-60">Before:</span> <span className="line-through">{c.before}</span></p>
+                      <p className="text-green-300"><span className="opacity-60">After:</span> {c.after}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] text-gray-400 mb-3">Revisa la letra corregida abajo antes de generar.</p>
+                <p className="text-[11px] text-gray-400 mb-3">Review the corrected lyrics below before generating.</p>
               )}
               <details className="mb-3">
-                <summary className="text-[11px] text-gray-400 cursor-pointer">Ver letra completa corregida</summary>
+                <summary className="text-[11px] text-gray-400 cursor-pointer">View full corrected lyrics</summary>
                 <p className="text-[11px] whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded p-2">{plan.approvedLyrics}</p>
               </details>
-              <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'Se rehará la canción completa. Tarda 1-3 min.' : 'Se regenerará solo la parte afectada. Tarda 1-3 min.'}</p>
+              <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'The full song will be redone. Takes 1-3 min.' : 'Only the affected part will be regenerated. Takes 1-3 min.'}</p>
               <div className="flex gap-2">
                 <button
                   onClick={() => (pendingMode === 'section'
@@ -412,13 +412,13 @@ function FixSongCard({ song, showToast, onApplied }) {
                     : runPreview(pendingMode, plan.approvedLyrics, plan.verifyPhrases))}
                   className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                 >
-                  ✅ Confirmar y generar
+                  ✅ Confirm and generate
                 </button>
                 <button
                   onClick={() => { setPlan(null); setPhase('idle'); }}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                 >
-                  ✏️ Seguir editando
+                  ✏️ Keep editing
                 </button>
               </div>
             </div>
@@ -426,7 +426,7 @@ function FixSongCard({ song, showToast, onApplied }) {
 
           {phase === 'working' && (
             <p className="text-sm text-purple-100 mt-1">
-              {surgicalMsg || (pendingMode === 'full' ? '⏳ Rehaciendo la canción…' : '⏳ Arreglando esa parte…')} (1-3 min, no cierres esta ventana)
+              {surgicalMsg || (pendingMode === 'full' ? '⏳ Redoing the song…' : '⏳ Fixing that part…')} (1-3 min, don't close this window)
             </p>
           )}
 
@@ -436,10 +436,10 @@ function FixSongCard({ song, showToast, onApplied }) {
                 <p className="text-xs text-purple-100 mb-1">📝 {result.changeSummary}</p>
               )}
               {result.mode === 'full' ? (
-                <p className="text-[11px] text-gray-400 mb-2">🔁 Canción completa rehecha con las correcciones</p>
+                <p className="text-[11px] text-gray-400 mb-2">🔁 Full song redone with the corrections</p>
               ) : result.window ? (
                 <p className="text-[11px] text-gray-400 mb-2">
-                  Parte regenerada: {Math.round(result.window.startS)}s – {Math.round(result.window.endS)}s
+                  Regenerated part: {Math.round(result.window.startS)}s – {Math.round(result.window.endS)}s
                 </p>
               ) : null}
               {result.staleWarning && (
@@ -453,7 +453,7 @@ function FixSongCard({ song, showToast, onApplied }) {
                       onClick={() => setSelectedTakeIdx(i)}
                       className={`text-xs px-2.5 py-1 rounded-lg border transition ${i === selectedTakeIdx ? 'bg-purple-500 text-white border-purple-400' : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'}`}
                     >
-                      Versión {i + 1} {t.verified === true ? '✅' : t.verified === false ? '⚠️' : ''}
+                      Take {i + 1} {t.verified === true ? '✅' : t.verified === false ? '⚠️' : ''}
                     </button>
                   ))}
                 </div>
@@ -461,11 +461,11 @@ function FixSongCard({ song, showToast, onApplied }) {
               {curVerifyNote && (
                 <p className={`text-xs mb-2 font-medium ${take?.verified ? 'text-green-300' : 'text-amber-300'}`}>{curVerifyNote}</p>
               )}
-              <p className="text-[11px] text-gray-500 mb-1">Original (antes):</p>
+              <p className="text-[11px] text-gray-500 mb-1">Original (before):</p>
               <audio controls className="w-full mb-2" src={result.originalAudioUrl} />
-              <p className="text-[11px] text-gray-300 mb-1">✅ Corregida (escucha antes de aplicar):</p>
+              <p className="text-[11px] text-gray-300 mb-1">✅ Corrected (listen before applying):</p>
               {result.surgical && (
-                <p className="text-[11px] text-gray-500 mb-1">Solo se recantó la parte corregida; el resto es tu grabación original.</p>
+                <p className="text-[11px] text-gray-500 mb-1">Only the corrected part was re-sung; the rest is your original recording.</p>
               )}
               <audio key={selectedTakeIdx} controls className="w-full mb-3" src={take?.audioUrl} />
               <div className="flex gap-2">
@@ -474,16 +474,16 @@ function FixSongCard({ song, showToast, onApplied }) {
                   disabled={phase === 'applying'}
                   className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
                 >
-                  {phase === 'applying' ? '⏳ Aplicando…' : '✅ Aplicar (reemplaza la del cliente)'}
+                  {phase === 'applying' ? '⏳ Applying…' : '✅ Apply (replaces the customer\'s)'}
                 </button>
                 {result.surgical && sectionParams && (
                   <button
                     onClick={() => runSectionSurgical(sectionParams.approvedLyrics, sectionParams.verifyPhrases)}
                     disabled={phase === 'applying'}
                     className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
-                    title="Genera otra versión (Suno varía cada vez)"
+                    title="Generate another take (Suno varies each time)"
                   >
-                    🔄 Otra versión
+                    🔄 Another take
                   </button>
                 )}
                 <button
@@ -491,7 +491,7 @@ function FixSongCard({ song, showToast, onApplied }) {
                   disabled={phase === 'applying'}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
-                  Descartar
+                  Discard
                 </button>
               </div>
             </div>
@@ -503,7 +503,7 @@ function FixSongCard({ song, showToast, onApplied }) {
               onClick={undoFix}
               className="w-full mt-2 py-2 px-4 bg-white/5 text-gray-300 border border-white/10 rounded-lg text-xs font-medium hover:bg-white/10 transition"
             >
-              ↩️ Deshacer el último arreglo (volver a la versión anterior)
+              ↩️ Undo the last fix (restore the previous version)
             </button>
           )}
         </>
@@ -555,9 +555,9 @@ function FixSongTab({ accessToken, showToast }) {
       });
       const res = await r.json();
       if (res.success && res.song) setSelected(res.song);
-      else showToast('❌ No se pudo cargar la canción.');
+      else showToast('❌ Could not load the song.');
     } catch {
-      showToast('❌ Error cargando la canción.');
+      showToast('❌ Error loading the song.');
     } finally {
       setLoadingDetail(false);
     }
@@ -568,8 +568,8 @@ function FixSongTab({ accessToken, showToast }) {
   return (
     <div className="max-w-3xl">
       <div className="mb-5">
-        <h2 className="text-xl font-bold text-white mb-1">🔧 Arreglar una canción</h2>
-        <p className="text-sm text-gray-400">Busca la canción, escúchala, y deja que la IA corrija una parte (un nombre mal dicho, una línea equivocada) sin rehacerla completa.</p>
+        <h2 className="text-xl font-bold text-white mb-1">🔧 Fix a song</h2>
+        <p className="text-sm text-gray-400">Search for the song, listen to it, and let the AI correct one part (a mispronounced name, a wrong line) without redoing the whole thing.</p>
       </div>
 
       {/* Search */}
@@ -579,7 +579,7 @@ function FixSongTab({ accessToken, showToast }) {
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Busca por nombre, email, teléfono o ID…"
+          placeholder="Search by name, email, phone or ID…"
           className="w-full pl-10 pr-10 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
         />
         {q && (
@@ -589,17 +589,17 @@ function FixSongTab({ accessToken, showToast }) {
 
       {selected ? (
         <div className="bg-[#1a1f26] rounded-2xl p-4 border border-white/10">
-          <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-white mb-3">← Volver a la búsqueda</button>
-          <h3 className="font-bold text-base text-white">🎵 {selected.recipient_name || 'Sin nombre'}{selected.sender_name && <span className="text-gray-500 font-normal text-sm"> ← {selected.sender_name}</span>}</h3>
+          <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-white mb-3">← Back to search</button>
+          <h3 className="font-bold text-base text-white">🎵 {selected.recipient_name || 'No name'}{selected.sender_name && <span className="text-gray-500 font-normal text-sm"> ← {selected.sender_name}</span>}</h3>
           <p className="text-xs text-gray-500 mt-1 mb-3">{(selected.genre_name || selected.genre || '').replace(/_/g, ' ')} • {fmtDate(selected.created_at)} • {selected.email || ''}</p>
 
           {selected.audio_url ? (
             <>
-              <p className="text-[11px] text-gray-400 mb-1">🎵 Canción actual:</p>
+              <p className="text-[11px] text-gray-400 mb-1">🎵 Current song:</p>
               <audio controls className="w-full mb-3" src={selected.audio_url} />
               {selected.lyrics && (
                 <details className="mb-3">
-                  <summary className="text-xs text-gray-400 cursor-pointer">Ver letra</summary>
+                  <summary className="text-xs text-gray-400 cursor-pointer">View lyrics</summary>
                   <p className="text-xs whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded-lg p-3">{selected.lyrics}</p>
                 </details>
               )}
@@ -610,16 +610,16 @@ function FixSongTab({ accessToken, showToast }) {
               />
             </>
           ) : (
-            <p className="text-sm text-gray-400">Esta canción todavía no tiene audio generado, no se puede arreglar.</p>
+            <p className="text-sm text-gray-400">This song has no generated audio yet, so it can't be fixed.</p>
           )}
         </div>
       ) : loadingDetail ? (
-        <p className="text-sm text-gray-500">Cargando canción…</p>
+        <p className="text-sm text-gray-500">Loading song…</p>
       ) : (
         <>
-          {loading && <p className="text-sm text-gray-500">Buscando…</p>}
-          {!loading && dq.trim() && results.length === 0 && <p className="text-sm text-gray-500">Sin resultados para "{dq.trim()}".</p>}
-          {!loading && !dq.trim() && <p className="text-sm text-gray-500">Empieza a escribir para buscar una canción.</p>}
+          {loading && <p className="text-sm text-gray-500">Searching…</p>}
+          {!loading && dq.trim() && results.length === 0 && <p className="text-sm text-gray-500">No results for "{dq.trim()}".</p>}
+          {!loading && !dq.trim() && <p className="text-sm text-gray-500">Start typing to search for a song.</p>}
           <div className="space-y-2">
             {results.map((song) => {
               const paid = isPaid(song);
@@ -631,11 +631,11 @@ function FixSongTab({ accessToken, showToast }) {
                   className="w-full text-left bg-[#1a1f26] rounded-xl p-3 border border-white/5 hover:border-amber-400/40 transition flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm text-white truncate">🎵 {song.recipient_name || 'Sin nombre'}{song.sender_name && <span className="text-gray-500 font-normal"> ← {song.sender_name}</span>}</p>
+                    <p className="font-semibold text-sm text-white truncate">🎵 {song.recipient_name || 'No name'}{song.sender_name && <span className="text-gray-500 font-normal"> ← {song.sender_name}</span>}</p>
                     <p className="text-xs text-gray-500 truncate">{(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {fmtDate(song.created_at)} • {song.email || ''}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${paid ? 'bg-green-500/20 text-green-400' : hasAudio ? 'bg-amber-500/20 text-amber-400' : 'bg-orange-500/20 text-orange-400'}`}>
-                    {paid ? '✓ Pagada' : hasAudio ? '⏳ Sin pagar' : '🔄 Generando'}
+                    {paid ? '✓ Paid' : hasAudio ? '⏳ Unpaid' : '🔄 Generating'}
                   </span>
                 </button>
               );
@@ -1265,7 +1265,7 @@ export default function AdminDashboard() {
   };
 
   const retryVideoRender = async (songId, videoOrderId) => {
-    if (!videoOrderId) { showToast('No se encontró la orden de video.'); return; }
+    if (!videoOrderId) { showToast('Video order not found.'); return; }
     setRetryingVideo(true);
     try {
       // 1. Reset status back to photos_uploaded
@@ -1299,11 +1299,11 @@ export default function AdminDashboard() {
       const genData = await genRes.json();
       if (!genRes.ok || !genData.success) throw new Error(genData.error || `HTTP ${genRes.status}`);
 
-      showToast(`✅ Video re-enviado a Shotstack. Render ID: ${genData.renderId}`);
+      showToast(`✅ Video resubmitted to Shotstack. Render ID: ${genData.renderId}`);
       // 3. Refresh the video order panel
       await fetchVideoOrder(songId);
     } catch (err) {
-      showToast(`Error al reintentar: ${err.message}`);
+      showToast(`Retry error: ${err.message}`);
     } finally {
       setRetryingVideo(false);
     }
@@ -1436,7 +1436,7 @@ export default function AdminDashboard() {
         }
       }
     }
-    setError(lastErr?.message || 'No se pudieron cargar los datos');
+    setError(lastErr?.message || 'Could not load the data');
     setIsLoading(false);
   };
 
@@ -1962,10 +1962,10 @@ export default function AdminDashboard() {
 
   const getEmailTypeLabel = (type) => {
     const labels = {
-      'abandoned_15min': '⚡ 15min Recuperación',
-      'abandoned_1hr': '⏰ 1hr Recordatorio',
-      'abandoned_24hr': '⚠️ 24hr Última oportunidad',
-      'purchase_confirmation': '✅ Confirmación de Compra',
+      'abandoned_15min': '⚡ 15min Recovery',
+      'abandoned_1hr': '⏰ 1hr Reminder',
+      'abandoned_24hr': '⚠️ 24hr Last chance',
+      'purchase_confirmation': '✅ Purchase Confirmation',
       'test': '🧪 Test'
     };
     return labels[type] || type;
@@ -2301,14 +2301,14 @@ export default function AdminDashboard() {
   const formatOccasion = (occasion) => {
     if (!occasion) return '-';
     const map = {
-      'san_valentin': '❤️ San Valentín',
-      'cumpleanos': '🎂 Cumpleaños',
-      'aniversario': '💍 Aniversario',
-      'madre': '👩 Día Madre',
-      'padre': '👨 Día Padre',
-      'boda': '💒 Boda',
-      'graduacion': '🎓 Graduación',
-      'otro': '🎁 Otro'
+      'san_valentin': '❤️ Valentine\'s Day',
+      'cumpleanos': '🎂 Birthday',
+      'aniversario': '💍 Anniversary',
+      'madre': '👩 Mother\'s Day',
+      'padre': '👨 Father\'s Day',
+      'boda': '💒 Wedding',
+      'graduacion': '🎓 Graduation',
+      'otro': '🎁 Other'
     };
     return map[occasion] || occasion.replace(/_/g, ' ');
   };
@@ -2447,7 +2447,7 @@ export default function AdminDashboard() {
     // stripe_payment_id is null for all orders; the real bundle key is stripe_session_id
     const groupKey = song?.stripe_payment_id || song?.stripe_session_id;
     if (!song?.email || !groupKey) {
-      showToast('Falta email o ID de pago — no se puede enviar.');
+      showToast('Missing email or payment ID — can\'t send.');
       return;
     }
     setSendingLinkEmail(song.id);
@@ -2472,9 +2472,9 @@ export default function AdminDashboard() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.emailSent) {
         if (!song.email_sent_at) await toggleEmailSent(song.id, false);
-        showToast('✅ Link enviado por email al cliente');
+        showToast('✅ Link emailed to the customer');
       } else {
-        showToast(`❌ Error al enviar: ${data?.error || 'intenta de nuevo'}`);
+        showToast(`❌ Send error: ${data?.error || 'try again'}`);
       }
     } catch (err) {
       showToast(`❌ Error: ${err.message}`);
@@ -2678,10 +2678,10 @@ export default function AdminDashboard() {
           {hotLeadsCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{hotLeadsCount}</span>}
         </button>
         <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> Mensajes SMS
+          <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> SMS Messages
         </button>
         <button onClick={() => setActiveTab('fixsong')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'fixsong' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Arreglar Canción
+          <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Fix Song
         </button>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Marketing</p>
         <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
@@ -2695,10 +2695,10 @@ export default function AdminDashboard() {
           <Mic size={18} className={`flex-shrink-0 ${activeTab === 'clonamivoz' ? 'text-amber-400' : ''}`} /> Clone Mi Voz
         </button>
         <button onClick={() => setActiveTab('animadolikeness')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadolikeness' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadolikeness' ? 'text-amber-400' : ''}`} /> Animado: Parecido
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadolikeness' ? 'text-amber-400' : ''}`} /> Animated: Likeness
         </button>
         <button onClick={() => setActiveTab('animadofinal')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadofinal' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadofinal' ? 'text-amber-400' : ''}`} /> Animado: Video Final
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadofinal' ? 'text-amber-400' : ''}`} /> Animated: Final Video
         </button>
         <button onClick={() => setActiveTab('videos')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'videos' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
@@ -2789,7 +2789,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'Mensajes SMS', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -3245,7 +3245,7 @@ export default function AdminDashboard() {
                     : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
                 }`}
               >
-                💬 Mensajes SMS
+                💬 SMS Messages
               </button>
               <button
                 onClick={() => setActiveTab('fixsong')}
@@ -3255,7 +3255,7 @@ export default function AdminDashboard() {
                     : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30'
                 }`}
               >
-                🔧 Arreglar Canción
+                🔧 Fix Song
               </button>
             </div>
           </div>
@@ -3413,10 +3413,10 @@ export default function AdminDashboard() {
                                   disabled={sendingLinkEmail === song.id}
                                 >
                                   {sendingLinkEmail === song.id
-                                    ? '⏳ Enviando...'
+                                    ? '⏳ Sending...'
                                     : song.email_sent_at
-                                      ? `✅ Enviado ${timeAgo(song.email_sent_at)}`
-                                      : '📤 Enviar Link'}
+                                      ? `✅ Sent ${timeAgo(song.email_sent_at)}`
+                                      : '📤 Send Link'}
                                 </button>
                               )}
                               {song.whatsapp_phone && (
@@ -3504,11 +3504,11 @@ export default function AdminDashboard() {
                                   <span className="font-semibold text-green-400">
                                     {formatCurrency(purchaseOf(song).total)}
                                     {purchaseOf(song).count > 1 && (
-                                      <span className="block text-[10px] text-gray-400 font-normal">paquete · {purchaseOf(song).count} canciones</span>
+                                      <span className="block text-[10px] text-gray-400 font-normal">bundle · {purchaseOf(song).count} songs</span>
                                     )}
                                   </span>
                                 ) : (
-                                  <span className="text-xs text-gray-500">↳ incluido</span>
+                                  <span className="text-xs text-gray-500">↳ included</span>
                                 )
                               ) : (
                                 <span className="font-semibold text-green-400 animate-pulse">Calculating...</span>
@@ -3710,10 +3710,10 @@ export default function AdminDashboard() {
                               disabled={sendingLinkEmail === song.id}
                             >
                               {sendingLinkEmail === song.id
-                                ? '⏳ Enviando...'
+                                ? '⏳ Sending...'
                                 : song.email_sent_at
-                                  ? `✅ Enviado ${timeAgo(song.email_sent_at)}`
-                                  : '📤 Enviar Link'}
+                                  ? `✅ Sent ${timeAgo(song.email_sent_at)}`
+                                  : '📤 Send Link'}
                             </button>
                           )}
                         </div>
@@ -3744,8 +3744,8 @@ export default function AdminDashboard() {
                         <span>{formatOccasion(song.occasion)}</span>
                         {isPaid(song) && userRole === 'admin' && (
                           purchaseOf(song).isPrimary
-                            ? <span className="text-green-400">{formatCurrency(purchaseOf(song).total)}{purchaseOf(song).count > 1 ? ' · paquete' : ''}</span>
-                            : <span className="text-gray-500">↳ incluido en paquete</span>
+                            ? <span className="text-green-400">{formatCurrency(purchaseOf(song).total)}{purchaseOf(song).count > 1 ? ' · bundle' : ''}</span>
+                            : <span className="text-gray-500">↳ included in bundle</span>
                         )}
                         {song.whatsapp_phone && (
                           <span className="text-green-400">💬 {song.whatsapp_phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span>
@@ -4281,10 +4281,10 @@ export default function AdminDashboard() {
                 <>
                   <p className="text-sm text-gray-500">
                     {lookupServerLoading
-                      ? 'Buscando...'
+                      ? 'Searching...'
                       : debouncedLookupSearch
                         ? lookupServerTotal > lookupFiltered.length
-                          ? `${lookupFiltered.length} de ${lookupServerTotal} resultados para "${debouncedLookupSearch}"`
+                          ? `${lookupFiltered.length} of ${lookupServerTotal} results for "${debouncedLookupSearch}"`
                           : `${lookupFiltered.length} result${lookupFiltered.length !== 1 ? 's' : ''} for "${debouncedLookupSearch}"`
                         : `${lookupFiltered.length} total songs`
                     }
@@ -5568,7 +5568,7 @@ export default function AdminDashboard() {
                     }`}
                     title={`Version ${selectedSong.version} of 2`}
                   >
-                    Version {selectedSong.version} de 2
+                    Version {selectedSong.version} of 2
                   </span>
                 )}
               </h2>
@@ -5587,7 +5587,7 @@ export default function AdminDashboard() {
                 {isPaid(selectedSong) ? (
                   <span className="px-4 py-2 rounded-full font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                     ✓ Paid — {userRole === 'admin'
-                      ? <>{formatCurrency(purchaseOf(selectedSong).total)}{purchaseOf(selectedSong).count > 1 ? ` · paquete de ${purchaseOf(selectedSong).count}` : ''}</>
+                      ? <>{formatCurrency(purchaseOf(selectedSong).total)}{purchaseOf(selectedSong).count > 1 ? ` · bundle of ${purchaseOf(selectedSong).count}` : ''}</>
                       : <span className="animate-pulse">Calculating...</span>}
                   </span>
                 ) : (
@@ -5674,10 +5674,10 @@ export default function AdminDashboard() {
                       className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition text-xs font-semibold disabled:opacity-50"
                     >
                       {sendingLinkEmail === selectedSong.id
-                        ? '⏳ Enviando...'
+                        ? '⏳ Sending...'
                         : selectedSong.email_sent_at
-                          ? `✅ Enviado ${timeAgo(selectedSong.email_sent_at)}`
-                          : '📤 Enviar Link por Email'}
+                          ? `✅ Sent ${timeAgo(selectedSong.email_sent_at)}`
+                          : '📤 Send Link by Email'}
                     </button>
                   )}
                 </div>
@@ -5786,19 +5786,19 @@ export default function AdminDashboard() {
                 const vo = videoOrdersMap[selectedSong.id]; // undefined = loading, null = no order, object = fetched
                 const photoUploadUrl = `${window.location.origin}/success?song_id=${selectedSong.id}`;
                 const statusConfig = {
-                  pending:         { label: 'Pendiente fotos',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-                  photos_uploaded: { label: 'Fotos subidas',    color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
-                  processing:      { label: 'Procesando video', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
-                  completed:       { label: '✅ Completado',    color: 'bg-green-500/20 text-green-300 border-green-500/40' },
-                  failed:          { label: '❌ Falló',         color: 'bg-red-500/20 text-red-300 border-red-500/40' },
+                  pending:         { label: 'Awaiting photos',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+                  photos_uploaded: { label: 'Photos uploaded',  color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+                  processing:      { label: 'Processing video', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+                  completed:       { label: '✅ Completed',     color: 'bg-green-500/20 text-green-300 border-green-500/40' },
+                  failed:          { label: '❌ Failed',        color: 'bg-red-500/20 text-red-300 border-red-500/40' },
                 };
                 const sc = vo ? (statusConfig[vo.status] || { label: vo.status, color: 'bg-gray-500/20 text-gray-300 border-gray-500/40' }) : null;
                 return (
                   <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-violet-400 font-semibold">🎬 Video Addon</p>
-                      {vo === undefined && <span className="text-xs text-gray-500 animate-pulse">Cargando...</span>}
-                      {vo !== undefined && !vo && <span className="text-xs text-amber-400">Sin orden de video</span>}
+                      {vo === undefined && <span className="text-xs text-gray-500 animate-pulse">Loading...</span>}
+                      {vo !== undefined && !vo && <span className="text-xs text-amber-400">No video order</span>}
                       {vo && sc && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.color}`}>{sc.label}</span>}
                       <button onClick={() => fetchVideoOrder(selectedSong.id)} className="text-[11px] text-gray-500 hover:text-gray-300 transition ml-1" title="Refresh">↻</button>
                     </div>
@@ -5808,24 +5808,24 @@ export default function AdminDashboard() {
                         disabled={retryingVideo}
                         className="w-full py-2 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-semibold hover:bg-red-500/30 transition disabled:opacity-50"
                       >
-                        {retryingVideo ? '⏳ Reintentando...' : '🔄 Reintentar render'}
+                        {retryingVideo ? '⏳ Retrying...' : '🔄 Retry render'}
                       </button>
                     )}
                     {vo && vo.photo_urls && vo.photo_urls.length > 0 && (
-                      <p className="text-xs text-gray-400">📸 {vo.photo_urls.length} foto{vo.photo_urls.length !== 1 ? 's' : ''} subida{vo.photo_urls.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-gray-400">📸 {vo.photo_urls.length} photo{vo.photo_urls.length !== 1 ? 's' : ''} uploaded</p>
                     )}
                     {vo?.status === 'completed' && vo?.video_url && (
                       <div className="flex gap-2">
                         <input type="text" readOnly value={vo.video_url} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
-                        <button onClick={() => { navigator.clipboard.writeText(vo.video_url); showToast('Video URL copiada!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition">Copy</button>
+                        <button onClick={() => { navigator.clipboard.writeText(vo.video_url); showToast('Video URL copied!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition">Copy</button>
                         <a href={vo.video_url} target="_blank" rel="noopener noreferrer" className="px-3 py-2 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition">👁️</a>
                       </div>
                     )}
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">📸 Link para subir fotos (enviar al cliente):</p>
+                      <p className="text-xs text-gray-500 mb-1">📸 Photo upload link (send to the customer):</p>
                       <div className="flex gap-2">
                         <input type="text" readOnly value={photoUploadUrl} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300" />
-                        <button onClick={() => { navigator.clipboard.writeText(photoUploadUrl); showToast('Link copiado!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap">📋 Copiar</button>
+                        <button onClick={() => { navigator.clipboard.writeText(photoUploadUrl); showToast('Link copied!'); }} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-medium hover:bg-violet-400 transition whitespace-nowrap">📋 Copy</button>
                       </div>
                     </div>
                   </div>
@@ -5835,25 +5835,25 @@ export default function AdminDashboard() {
               {/* Details */}
               {selectedSong.details && (
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Details (su historia)</p>
+                  <p className="text-xs text-gray-500 mb-2">Details (their story)</p>
                   <p className="text-sm whitespace-pre-wrap">{selectedSong.details}</p>
                 </div>
               )}
 
               {/* Songwriter notes — always show the slot, even when empty */}
               <div className="bg-amber-400/10 border border-amber-400/30 rounded-xl p-4">
-                <p className="text-xs text-amber-300/80 mb-2">📝 Notas para el compositor</p>
+                <p className="text-xs text-amber-300/80 mb-2">📝 Notes for the songwriter</p>
                 {selectedSong.songwriter_notes ? (
                   <p className="text-sm whitespace-pre-wrap text-amber-50/90">{selectedSong.songwriter_notes}</p>
                 ) : (
-                  <p className="text-sm italic text-gray-500">— Sin notas —</p>
+                  <p className="text-sm italic text-gray-500">— No notes —</p>
                 )}
               </div>
 
               {/* Submitted lyrics — the customer's own verbatim lyrics (own-lyrics mode) */}
               {selectedSong.submitted_lyrics && (
                 <div className="bg-white/5 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Letra que el cliente envió (se canta tal cual)</p>
+                  <p className="text-xs text-gray-500 mb-2">Lyrics the customer submitted (sung verbatim)</p>
                   <p className="text-sm whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300">{selectedSong.submitted_lyrics}</p>
                 </div>
               )}
@@ -5908,7 +5908,7 @@ export default function AdminDashboard() {
               {/* Karaoke (instrumental) — only shows if the customer bought the add-on */}
               {(selectedSong.karaoke_status || selectedSong.karaoke_url) && (
                 <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4">
-                  <p className="text-xs text-gray-400 mb-3">🎤 Karaoke (versión sin voz)</p>
+                  <p className="text-xs text-gray-400 mb-3">🎤 Karaoke (instrumental, no vocals)</p>
 
                   {selectedSong.karaoke_status === 'ready' && selectedSong.karaoke_url && (
                     <>
@@ -5940,12 +5940,12 @@ export default function AdminDashboard() {
                   )}
 
                   {selectedSong.karaoke_status === 'pending' && (
-                    <p className="text-xs text-orange-300">⏳ Procesando… (vuelve a abrir este modal en ~1 minuto)</p>
+                    <p className="text-xs text-orange-300">⏳ Processing… (reopen this modal in ~1 minute)</p>
                   )}
 
                   {selectedSong.karaoke_status === 'failed' && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-xs text-red-300">❌ La extracción falló. Toca el botón para reintentar.</p>
+                      <p className="text-xs text-red-300">❌ Extraction failed. Tap the button to retry.</p>
                       <button
                         onClick={async () => {
                           try {
@@ -5956,7 +5956,7 @@ export default function AdminDashboard() {
                             });
                             const data = await res.json();
                             if (data?.vercel_response?.success) {
-                              showToast('✅ Karaoke regenerated! Cierra y reabre este modal para verlo.');
+                              showToast('✅ Karaoke regenerated! Close and reopen this modal to see it.');
                             } else {
                               showToast('❌ Retry failed: ' + (data?.vercel_response?.error || data?.error || 'unknown'));
                             }
@@ -5966,7 +5966,7 @@ export default function AdminDashboard() {
                         }}
                         className="py-2 px-4 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-400 transition"
                       >
-                        🔄 Reintentar
+                        🔄 Retry
                       </button>
                     </div>
                   )}

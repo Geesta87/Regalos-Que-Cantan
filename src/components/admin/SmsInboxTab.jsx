@@ -137,7 +137,7 @@ const DEMO_CONVERSATIONS = [
   },
   {
     id: 'demo-4',
-    customer_name: 'Cliente (dio de baja)',
+    customer_name: 'Customer (opted out)',
     phone: '+17025550188',
     order_id: null,
     unread: 0,
@@ -369,17 +369,17 @@ export default function SmsInboxTab({ accessToken }) {
       {/* Demo / status banner */}
       {isDemo && (
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3 mb-4 text-sm text-blue-200">
-          <strong>Vista previa (demo)</strong> — El backend de SMS aún no está
-          conectado, así que estás viendo conversaciones de ejemplo para revisar
-          la experiencia. Cuando se active Twilio, aquí aparecerán los mensajes
-          reales de los clientes y podrás responder desde esta misma pantalla.
+          <strong>Preview (demo)</strong> — The SMS backend isn't connected yet,
+          so you're seeing sample conversations to review the experience. Once
+          Twilio is live, real customer messages will appear here and you'll be
+          able to reply from this same screen.
         </div>
       )}
 
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            💬 Mensajes SMS
+            💬 SMS Messages
             {totalUnread > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">
                 {totalUnread}
@@ -387,7 +387,7 @@ export default function SmsInboxTab({ accessToken }) {
             )}
           </h2>
           <p className="text-sm text-gray-500 hidden sm:block">
-            Conversaciones de texto con clientes · responde igual que en WhatsApp
+            Text conversations with customers · reply just like in WhatsApp
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -403,17 +403,17 @@ export default function SmsInboxTab({ accessToken }) {
                   : 'bg-amber-400/15 text-amber-300 hover:bg-amber-400/25'
               }`}
             >
-              {notifState === 'on' ? '🔔 Avisos activados'
-                : notifState === 'busy' ? '🔔 Activando…'
-                : notifState === 'denied' ? '🔕 Avisos bloqueados'
-                : '🔔 Activar avisos'}
+              {notifState === 'on' ? '🔔 Alerts on'
+                : notifState === 'busy' ? '🔔 Enabling…'
+                : notifState === 'denied' ? '🔕 Alerts blocked'
+                : '🔔 Enable alerts'}
             </button>
           )}
           <button
             onClick={() => loadConversations()}
             className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition"
           >
-            🔄 <span className="hidden sm:inline">Actualizar</span>
+            🔄 <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
       </div>
@@ -422,18 +422,18 @@ export default function SmsInboxTab({ accessToken }) {
           screen (iOS 16.4+), so walk the user through that first. */}
       {showIosHint && notifState === 'ios-install' && (
         <div className="bg-amber-400/10 border border-amber-400/25 rounded-xl px-4 py-3 mb-4 text-sm text-amber-200">
-          <strong>Para recibir avisos en iPhone:</strong> primero instala la app.
-          Toca el botón <strong>Compartir</strong> (cuadro con flecha ↑) de Safari y
-          elige <strong>"Agregar a pantalla de inicio"</strong>. Luego abre la app
-          <strong> RQC Admin</strong> desde tu pantalla de inicio y vuelve a tocar
-          "Activar avisos".
+          <strong>To get alerts on iPhone:</strong> first install the app.
+          Tap Safari's <strong>Share</strong> button (the box with an ↑ arrow) and
+          choose <strong>"Add to Home Screen"</strong>. Then open the
+          <strong> RQC Admin</strong> app from your home screen and tap
+          "Enable alerts" again.
         </div>
       )}
       {notifState === 'denied' && (
         <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 mb-4 text-xs text-gray-400">
-          Los avisos están bloqueados para este sitio. Para activarlos, permite las
-          notificaciones en la configuración de tu navegador (Ajustes del sitio →
-          Notificaciones → Permitir) y recarga la página.
+          Alerts are blocked for this site. To enable them, allow notifications in
+          your browser settings (Site settings → Notifications → Allow) and reload
+          the page.
         </div>
       )}
 
@@ -449,7 +449,7 @@ export default function SmsInboxTab({ accessToken }) {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
               <input
                 type="text"
-                placeholder="Buscar por nombre o teléfono..."
+                placeholder="Search by name or phone..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-10 pr-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-amber-400/50"
@@ -459,10 +459,10 @@ export default function SmsInboxTab({ accessToken }) {
 
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="p-6 text-center text-gray-500 text-sm">Cargando…</div>
+              <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
             ) : filtered.length === 0 ? (
               <div className="p-6 text-center text-gray-500 text-sm">
-                No hay conversaciones todavía.
+                No conversations yet.
               </div>
             ) : (
               filtered.map((c) => {
@@ -500,7 +500,7 @@ export default function SmsInboxTab({ accessToken }) {
                       </div>
                       {c.opted_out && (
                         <span className="inline-block mt-1 text-[10px] text-red-300 bg-red-500/15 border border-red-500/25 rounded px-1.5 py-0.5">
-                          Dio de baja (STOP)
+                          Opted out (STOP)
                         </span>
                       )}
                     </div>
@@ -516,7 +516,7 @@ export default function SmsInboxTab({ accessToken }) {
           {!selected ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2">
               <div className="text-5xl">💬</div>
-              <p className="text-sm">Selecciona una conversación para verla</p>
+              <p className="text-sm">Select a conversation to view it</p>
             </div>
           ) : (
             <>
@@ -526,7 +526,7 @@ export default function SmsInboxTab({ accessToken }) {
                   <button
                     onClick={() => setSelectedId(null)}
                     className="md:hidden -ml-1 px-2 py-1.5 rounded-lg text-gray-300 hover:bg-white/10 transition flex-shrink-0"
-                    aria-label="Volver a la lista"
+                    aria-label="Back to list"
                   >
                     ←
                   </button>
@@ -535,7 +535,7 @@ export default function SmsInboxTab({ accessToken }) {
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white truncate">
-                      {selected.customer_name || 'Cliente'}
+                      {selected.customer_name || 'Customer'}
                     </div>
                     <div className="text-xs text-gray-500">{formatPhone(selected.phone)}</div>
                   </div>
@@ -565,10 +565,10 @@ export default function SmsInboxTab({ accessToken }) {
                           <span>{formatTime(m.created_at)}</span>
                           {out && (
                             <span>
-                              · {m.status === 'queued' ? 'enviando…'
-                                : m.status === 'failed' ? '⚠ falló'
-                                : m.status === 'sent' ? '✓ enviado'
-                                : '✓✓ entregado'}
+                              · {m.status === 'queued' ? 'sending…'
+                                : m.status === 'failed' ? '⚠ failed'
+                                : m.status === 'sent' ? '✓ sent'
+                                : '✓✓ delivered'}
                             </span>
                           )}
                         </div>
@@ -582,8 +582,8 @@ export default function SmsInboxTab({ accessToken }) {
               {selected.opted_out ? (
                 <div className="px-4 py-4 border-t border-white/5 bg-red-500/5">
                   <p className="text-sm text-red-300 text-center">
-                    🚫 Este cliente envió <strong>STOP</strong> y se dio de baja de los SMS.
-                    Por ley no puedes enviarle más mensajes hasta que vuelva a escribir.
+                    🚫 This customer sent <strong>STOP</strong> and opted out of SMS.
+                    By law you can't message them again until they write back.
                   </p>
                 </div>
               ) : (
@@ -599,7 +599,7 @@ export default function SmsInboxTab({ accessToken }) {
                         }
                       }}
                       rows={1}
-                      placeholder="Escribe un mensaje…  (Enter para enviar)"
+                      placeholder="Type a message…  (Enter to send)"
                       className="flex-1 resize-none px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-amber-400/50 max-h-32"
                     />
                     <button
@@ -607,18 +607,18 @@ export default function SmsInboxTab({ accessToken }) {
                       disabled={sending || !reply.trim()}
                       className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                     >
-                      {sending ? '…' : 'Enviar'}
+                      {sending ? '…' : 'Send'}
                     </button>
                   </div>
                   {/* Cost / encoding hint — reinforces the Spanish-accent cost gotcha */}
                   {reply.trim() && (
                     <div className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-3">
-                      <span>{segInfo.chars} caracteres</span>
+                      <span>{segInfo.chars} characters</span>
                       <span>·</span>
                       <span>
-                        {segInfo.segments} {segInfo.segments === 1 ? 'segmento' : 'segmentos'}
+                        {segInfo.segments} {segInfo.segments === 1 ? 'segment' : 'segments'}
                         {segInfo.encoding === 'UCS-2' && (
-                          <span className="text-amber-400/80"> (acentos/emoji → límite de 70)</span>
+                          <span className="text-amber-400/80"> (accents/emoji → 70 limit)</span>
                         )}
                       </span>
                       <span>·</span>

@@ -26,7 +26,7 @@ export default function AdminLogin() {
       });
 
       if (signInError || !data?.user) {
-        setError('Email o contraseña incorrectos');
+        setError('Incorrect email or password');
         setIsLoading(false);
         return;
       }
@@ -41,14 +41,14 @@ export default function AdminLogin() {
 
       if (roleError || !roleRow) {
         await supabase.auth.signOut();
-        setError('Este usuario no tiene acceso al panel');
+        setError('This user does not have dashboard access');
         setIsLoading(false);
         return;
       }
 
       navigateTo('adminDashboard');
     } catch (err) {
-      setError('No se pudo iniciar sesión. Inténtalo de nuevo.');
+      setError('Could not sign in. Please try again.');
       setIsLoading(false);
     }
   };
@@ -76,7 +76,7 @@ export default function AdminLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-[#171612] dark:text-white focus:ring-2 focus:ring-gold focus:border-transparent"
-              placeholder="tu@email.com"
+              placeholder="you@email.com"
               autoComplete="email"
               required
             />
@@ -84,7 +84,7 @@ export default function AdminLogin() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Contraseña
+              Password
             </label>
             <input
               type="password"
@@ -111,12 +111,12 @@ export default function AdminLogin() {
             {isLoading ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Verificando...
+                Verifying...
               </>
             ) : (
               <>
                 <span className="material-symbols-outlined">login</span>
-                Iniciar Sesión
+                Sign In
               </>
             )}
           </button>
@@ -128,7 +128,7 @@ export default function AdminLogin() {
             href="/"
             className="text-gray-400 hover:text-gold transition-colors text-sm"
           >
-            ← Volver al sitio
+            ← Back to site
           </a>
         </div>
       </div>
