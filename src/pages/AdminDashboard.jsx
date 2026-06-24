@@ -42,6 +42,13 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [error, setError] = useState('');
   const [surgicalMsg, setSurgicalMsg] = useState(''); // live progress for the surgical section fix
   const [sectionParams, setSectionParams] = useState(null); // { approvedLyrics, verifyPhrases } — for "otra versión"
+  // Fix footprint — shows this song has been repaired, when, and the notes.
+  const [fixStamp, setFixStamp] = useState({
+    fixedAt: song?.fixed_at || null,
+    count: Number(song?.fix_count) || 0,
+    history: Array.isArray(song?.fix_history) ? song.fix_history : [],
+  });
+  const [showFixHistory, setShowFixHistory] = useState(false);
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -232,6 +239,11 @@ function FixSongCard({ song, showToast, onApplied }) {
       if (!data.ok) { setError(data.error || 'Could not undo.'); return; }
       showToast('↩️ Fix undone. The song was restored to the previous version.');
       setCanUndo(false);
+      // Roll the footprint back one fix.
+      setFixStamp((s) => {
+        const history = s.history.slice(0, -1);
+        return { count: Math.max(0, s.count - 1), history, fixedAt: history.length ? history[history.length - 1].at : null };
+      });
       if (onApplied) onApplied(data.audioUrl, data.lyrics);
     } catch (e) {
       setError('Network error while undoing: ' + (e?.message || 'unknown'));
@@ -249,12 +261,14 @@ function FixSongCard({ song, showToast, onApplied }) {
         fd.append('audio', result.splicedBlob, `fixed-${song.id}.mp3`);
         fd.append('songId', song.id);
         fd.append('fullLyrics', result.fullLyrics || '');
+        fd.append('summary', result.changeSummary || '');
         const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
         showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
         if (onApplied) onApplied(d.audioUrl, result.fullLyrics);
         setCanUndo(true);
+        stampFix(d.fixedAt, d.fixCount, result.changeSummary, 'section');
         setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
         return;
       }
@@ -269,6 +283,7 @@ function FixSongCard({ song, showToast, onApplied }) {
           fixAudioId: take.id,
           fullLyrics: take.lyrics || result.fullLyrics,
           imageUrl: take.imageUrl,
+          changeSummary: result.changeSummary,
         }),
       });
       const data = await res.json();
@@ -280,6 +295,7 @@ function FixSongCard({ song, showToast, onApplied }) {
       showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
       if (onApplied) onApplied(take.audioUrl, take.lyrics || result.fullLyrics);
       setCanUndo(true);
+      stampFix(data.fixedAt, data.fixCount, result.changeSummary, 'full');
       setPhase('idle');
       setResult(null);
       setPlan(null);
@@ -290,6 +306,17 @@ function FixSongCard({ song, showToast, onApplied }) {
       setError('Network error while applying: ' + (e?.message || 'unknown'));
       setPhase('preview');
     }
+  }
+
+  // Update the local footprint after an applied fix (so the badge shows it
+  // immediately, without waiting for a reload).
+  function stampFix(fixedAt, fixCount, note, mode) {
+    const at = fixedAt || new Date().toISOString();
+    setFixStamp((s) => ({
+      fixedAt: at,
+      count: Number(fixCount) || s.count + 1,
+      history: [...s.history, { at, note: note || (mode === 'full' ? 'Full re-roll' : 'Surgical fix'), mode }],
+    }));
   }
 
   // Takes for the preview (best-of-N). Fall back to a single take for older shapes.
@@ -308,6 +335,28 @@ function FixSongCard({ song, showToast, onApplied }) {
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
       <p className="text-xs text-gray-300 mb-1">🔧 Fix or redo the song</p>
+
+      {/* Footprint — this song has been repaired before */}
+      {fixStamp.fixedAt && (
+        <div className="mb-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+          <button
+            onClick={() => setShowFixHistory((v) => !v)}
+            className="w-full text-left text-[11px] text-amber-200 font-semibold flex items-center justify-between gap-2"
+          >
+            <span>🔧 This song was fixed{fixStamp.count > 1 ? ` ${fixStamp.count}×` : ''} · last on {new Date(fixStamp.fixedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            {fixStamp.history.length > 0 && <span className="opacity-60 flex-shrink-0">{showFixHistory ? '▲' : '▼'}</span>}
+          </button>
+          {showFixHistory && fixStamp.history.length > 0 && (
+            <ul className="mt-1.5 space-y-1">
+              {[...fixStamp.history].reverse().map((h, i) => (
+                <li key={i} className="text-[11px] text-amber-100/80">
+                  <span className="opacity-60">{(() => { try { return new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return ''; } })()} · {h.mode === 'full' ? 'full re-roll' : 'section fix'}:</span> {h.note}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <>
           <p className="text-[11px] text-gray-400 mb-2">
             Paste the customer's WhatsApp screenshot or type what to fix. You can <strong>chat with the AI</strong> to
@@ -634,9 +683,16 @@ function FixSongTab({ accessToken, showToast }) {
                     <p className="font-semibold text-sm text-white truncate">🎵 {song.recipient_name || 'No name'}{song.sender_name && <span className="text-gray-500 font-normal"> ← {song.sender_name}</span>}</p>
                     <p className="text-xs text-gray-500 truncate">{(song.genre_name || song.genre || '').replace(/_/g, ' ')} • {fmtDate(song.created_at)} • {song.email || ''}</p>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${paid ? 'bg-green-500/20 text-green-400' : hasAudio ? 'bg-amber-500/20 text-amber-400' : 'bg-orange-500/20 text-orange-400'}`}>
-                    {paid ? '✓ Paid' : hasAudio ? '⏳ Unpaid' : '🔄 Generating'}
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {song.fixed_at && (
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap bg-amber-400/20 text-amber-300" title={`Fixed${Number(song.fix_count) > 1 ? ` ${song.fix_count} times` : ''}`}>
+                        🔧{Number(song.fix_count) > 1 ? ` ${song.fix_count}` : ''}
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${paid ? 'bg-green-500/20 text-green-400' : hasAudio ? 'bg-amber-500/20 text-amber-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                      {paid ? '✓ Paid' : hasAudio ? '⏳ Unpaid' : '🔄 Generating'}
+                    </span>
+                  </div>
                 </button>
               );
             })}

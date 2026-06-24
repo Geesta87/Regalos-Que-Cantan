@@ -58,6 +58,8 @@ const SONG_LIST_COLUMNS = [
   // each song creation produces 2 rows that share a mureka_job_id, one per
   // generated audio variant (version 1, version 2).
   'version', 'mureka_job_id',
+  // Fix footprint — so the list can flag songs that were repaired.
+  'fixed_at', 'fix_count',
   // Small modal-only fields are safe to include in the list (each adds a few
   // bytes per row). `details` and `lyrics` are NOT in the list — the table has
   // 24k+ rows and avg(lyrics)+avg(details) ≈ 1.6 KB/row, so including them

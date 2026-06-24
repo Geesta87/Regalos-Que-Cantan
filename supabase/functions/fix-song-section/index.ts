@@ -784,6 +784,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
   const file = form.get('audio');
   const songId = String(form.get('songId') || '');
   const fullLyrics = form.get('fullLyrics') ? String(form.get('fullLyrics')) : '';
+  const summary = form.get('summary') ? String(form.get('summary')) : '';
   if (!file || typeof (file as { arrayBuffer?: unknown }).arrayBuffer !== 'function' || !songId) {
     return json({ ok: false, error: 'audio file and songId are required' });
   }
@@ -797,10 +798,12 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 
   const { data: prev } = await supabase
     .from('songs')
-    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
     .eq('id', songId)
     .single();
 
+  const now = new Date().toISOString();
+  const prevHistory = Array.isArray(prev?.fix_history) ? prev!.fix_history : [];
   const update: Record<string, unknown> = {
     audio_url: publicUrl,
     preview_url: publicUrl,
@@ -812,14 +815,19 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     kie_task_id: null,
     task_id: null,
     kie_payload: null,
-    fix_backup: prev ? { ...prev, backed_up_at: new Date().toISOString() } : null,
+    // Footprint — stamp the song as fixed (when + note + count) so staff can see
+    // at a glance which songs were repaired and why.
+    fixed_at: now,
+    fix_count: (Number(prev?.fix_count) || 0) + 1,
+    fix_history: [...prevHistory, { at: now, note: summary || 'Surgical fix (Arreglar Canción)', mode: 'section' }],
+    fix_backup: prev ? { ...prev, backed_up_at: now } : null,
   };
   if (fullLyrics.trim()) update.lyrics = fullLyrics;
 
   const { error } = await supabase.from('songs').update(update).eq('id', songId);
   if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
-  await logAttempt(supabase, { song_id: songId, action: 'apply-spliced', fixed_audio_url: publicUrl, outcome: 'applied' });
-  return json({ ok: true, songId, applied: true, audioUrl: publicUrl, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+  await logAttempt(supabase, { song_id: songId, action: 'apply-spliced', fixed_audio_url: publicUrl, outcome: 'applied', detail: summary.slice(0, 500) });
+  return json({ ok: true, songId, applied: true, audioUrl: publicUrl, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: now, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
 }
 
 Deno.serve(async (req) => {
@@ -915,15 +923,18 @@ Deno.serve(async (req) => {
       const fixAudioId: string | undefined = body?.fixAudioId;
       const fullLyrics: string | undefined = body?.fullLyrics;
       const imageUrl: string | undefined = body?.imageUrl;
+      const changeSummary: string | undefined = body?.changeSummary;
       if (!songId || !fixedAudioUrl) return json({ ok: false, error: 'songId and fixedAudioUrl are required' });
 
-      // Snapshot the current state so the owner can Deshacer (undo) this fix.
+      // Snapshot the current state so the owner can Undo this fix.
       const { data: prev } = await supabase
         .from('songs')
-        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps')
+        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
         .eq('id', songId)
         .single();
 
+      const nowTs = new Date().toISOString();
+      const prevHist = Array.isArray(prev?.fix_history) ? prev!.fix_history : [];
       const update: Record<string, unknown> = {
         audio_url: fixedAudioUrl,
         preview_url: fixedAudioUrl,
@@ -932,7 +943,11 @@ Deno.serve(async (req) => {
         needs_reupload: true,
         provider: 'kie',
         error_message: null,
-        fix_backup: prev ? { ...prev, backed_up_at: new Date().toISOString() } : null,
+        // Footprint — stamp the song as fixed (when + note + count).
+        fixed_at: nowTs,
+        fix_count: (Number(prev?.fix_count) || 0) + 1,
+        fix_history: [...prevHist, { at: nowTs, note: changeSummary || 'Full re-roll (Arreglar Canción)', mode: 'full' }],
+        fix_backup: prev ? { ...prev, backed_up_at: nowTs } : null,
       };
       if (imageUrl) update.image_url = imageUrl;
       if (typeof fullLyrics === 'string' && fullLyrics.trim()) update.lyrics = fullLyrics;
@@ -944,8 +959,8 @@ Deno.serve(async (req) => {
 
       const { error } = await supabase.from('songs').update(update).eq('id', songId);
       if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
-      await logAttempt(supabase, { song_id: songId, action: 'apply', kie_task_id: fixTaskId || null, fixed_audio_url: fixedAudioUrl, outcome: 'applied' });
-      return json({ ok: true, songId, applied: true, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+      await logAttempt(supabase, { song_id: songId, action: 'apply', kie_task_id: fixTaskId || null, fixed_audio_url: fixedAudioUrl, outcome: 'applied', detail: (changeSummary || '').slice(0, 500) });
+      return json({ ok: true, songId, applied: true, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: nowTs, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
     }
 
     // -----------------------------------------------------------------
@@ -956,7 +971,7 @@ Deno.serve(async (req) => {
       if (!songId) return json({ ok: false, error: 'songId is required' });
       const { data: row } = await supabase.from('songs').select('fix_backup').eq('id', songId).single();
       const b: any = row?.fix_backup;
-      if (!b || !b.audio_url) return json({ ok: false, error: 'No hay un arreglo previo que deshacer en esta canción.' });
+      if (!b || !b.audio_url) return json({ ok: false, error: 'No previous fix to undo on this song.' });
       const restore: Record<string, unknown> = {
         audio_url: b.audio_url,
         preview_url: b.preview_url ?? b.audio_url,
@@ -968,6 +983,10 @@ Deno.serve(async (req) => {
         kie_payload: b.kie_payload ?? null,
         provider: b.provider ?? null,
         lyrics_timestamps: b.lyrics_timestamps ?? null,
+        // Restore the footprint to its pre-fix state (snapshot captured them).
+        fixed_at: b.fixed_at ?? null,
+        fix_count: Number(b.fix_count) || 0,
+        fix_history: Array.isArray(b.fix_history) ? b.fix_history : [],
         needs_reupload: true,
         status: 'completed',
         fix_backup: null,
