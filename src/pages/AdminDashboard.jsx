@@ -936,7 +936,9 @@ export default function AdminDashboard() {
   // that any effect referencing them has a value to read when it runs.
   // Moving them lower in the file caused a temporal-dead-zone ReferenceError
   // and a fully-blank dashboard.
-  const playPaymentSound = useCallback(() => {
+  // Synthesized two-tone beep. Kept as a safety net so the alert is never
+  // silent if the recorded chime can't load or autoplay is blocked.
+  const playFallbackBeep = useCallback(() => {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -962,6 +964,22 @@ export default function AdminDashboard() {
       // Audio failed (no permission, no audio device, autoplay blocked).
     }
   }, []);
+
+  // Plays the "Happy bells" purchase chime (public/sounds/happy-bells.mp3).
+  // Falls back to the synthesized beep if the file fails to load or the
+  // browser blocks playback.
+  const playPaymentSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/happy-bells.mp3');
+      audio.volume = 0.6;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => playFallbackBeep());
+      }
+    } catch {
+      playFallbackBeep();
+    }
+  }, [playFallbackBeep]);
 
   const fireDesktopNotification = useCallback((song) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
