@@ -1717,10 +1717,10 @@ export default function SuccessPage() {
     if (!oneTapSong) return [];
     const out = [];
     const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
-    if (!ownsAnimado) out.push({ key: 'animado', hero: true, icon: '🎬', price: 49, title: `Película animada de ${oneTapSong.recipient_name || 'tu ser querido'}`, sub: 'Su rostro hecho personaje, al ritmo de su canción', media: { type: 'video', src: '/animado-sample.mp4' } });
-    if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', icon: '🎤', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar encima', media: { type: 'ab' } });
-    if (!oneTapSong.lyric_video_status) out.push({ key: 'lyric_video', icon: '🎬', price: 9.99, title: 'Video con letra', sub: 'Tu canción con la letra en pantalla, lista para compartir', media: { type: 'lyrics' } });
-    out.push({ key: 'gift', icon: '🎁', price: 5, title: 'Enviar de sorpresa por mensaje', sub: 'El día y la hora que elijas, con tu nombre', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' });
+    if (!ownsAnimado) out.push({ key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
+    if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } });
+    if (!oneTapSong.lyric_video_status) out.push({ key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } });
+    out.push({ key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' });
     return out;
   })();
   const handleUpsellCharge = async (item, payload) => {
