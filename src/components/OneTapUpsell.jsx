@@ -13,6 +13,7 @@ import React, { useState, useRef } from 'react';
 const GOLD = '#f5b942';
 const PINK = '#f6589f';
 const GREEN = '#5fcf8a';
+const BLUE = '#3b82f6';
 const MEDIA_H = 132;
 
 const CSS = `
@@ -27,19 +28,35 @@ function Spinner({ color = GOLD }) {
 }
 
 // ── Video preview (Animado sample, SMS reaction) — fills the box thumbnail. ──
-function VideoMedia({ src }) {
+function VideoMedia({ src, tall }) {
   const ref = useRef(null);
   const [muted, setMuted] = useState(true);
-  const toggle = (e) => { e.stopPropagation(); const v = ref.current; if (!v) return; const n = !muted; v.muted = n; setMuted(n); if (!n) v.play().catch(() => {}); };
+  const toggle = (e) => { if (e) e.stopPropagation(); const v = ref.current; if (!v) return; const n = !muted; v.muted = n; setMuted(n); if (!n) v.play().catch(() => {}); };
+  const badge = (
+    <span style={{ position: 'absolute', top: 6, left: 6, display: 'inline-flex', alignItems: 'center', gap: 3, background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 20, fontSize: 9, color: '#fff', fontWeight: 700 }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: GREEN }} />Muestra real
+    </span>
+  );
+  const sndBtn = (
+    <button onClick={toggle} style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', cursor: 'pointer', background: muted ? 'rgba(247,77,166,0.92)' : 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '5px 9px', borderRadius: 20 }}>
+      {muted ? '🔇 oír' : '🔊'}
+    </button>
+  );
+  // Detail view: show the full vertical video so nothing important is cropped.
+  if (tall) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', background: '#0d0a12', padding: '14px 0' }}>
+        <div style={{ position: 'relative', width: 220, maxWidth: '66%', borderRadius: 13, overflow: 'hidden', border: '2px solid rgba(245,185,66,0.4)' }}>
+          <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', aspectRatio: '9/16', objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
+          {badge}{sndBtn}
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ position: 'relative', height: MEDIA_H, background: '#0d0a12' }}>
-      <video ref={ref} src={src} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-      <span style={{ position: 'absolute', top: 6, left: 6, display: 'inline-flex', alignItems: 'center', gap: 3, background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 20, fontSize: 9, color: '#fff', fontWeight: 700 }}>
-        <span style={{ width: 5, height: 5, borderRadius: '50%', background: GREEN }} />Muestra real
-      </span>
-      <button onClick={toggle} style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', cursor: 'pointer', background: muted ? 'rgba(247,77,166,0.92)' : 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 9.5, fontWeight: 700, padding: '4px 7px', borderRadius: 20 }}>
-        {muted ? '🔇' : '🔊'}
-      </button>
+      <video ref={ref} src={src} muted loop playsInline autoPlay onClick={toggle} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
+      {badge}{sndBtn}
     </div>
   );
 }
@@ -80,9 +97,9 @@ function LyricsMedia() {
   );
 }
 
-function Media({ media }) {
+function Media({ media, tall }) {
   if (!media) return null;
-  if (media.type === 'video') return <VideoMedia src={media.src} />;
+  if (media.type === 'video') return <VideoMedia src={media.src} tall={tall} />;
   if (media.type === 'ab') return <AbMedia />;
   if (media.type === 'lyrics') return <LyricsMedia />;
   return null;
@@ -105,37 +122,87 @@ const addBtn = (processing) => ({
 // One product box (animado / instrumental / lyric_video). "Agregar" never
 // charges directly — it flips the box into a CONFIRM state that spells out the
 // charge, so a saved-card purchase is always a deliberate two-tap action.
+const FEATURES = {
+  animado: ['Su rostro convertido en personaje animado', 'Ilustraciones de su historia, escena por escena', 'Movimiento en los momentos clave, al ritmo de la canción', 'Intro mágica: su foto real "cobra vida"', 'Video HD listo para compartir o proyectar'],
+  instrumental: ['La misma canción, solo la música — sin la voz', 'Para que la canten ustedes (karaoke)', 'MP3 en calidad estudio'],
+  lyric_video: ['Tu canción en video con la letra en pantalla', 'La letra aparece e ilumina al ritmo de la música', 'Vertical HD — listo para WhatsApp y redes'],
+  gift: ['Le llega por mensaje el día y la hora que elijas', 'Con tu nombre y tu mensaje personal', 'Incluye el enlace para escuchar su canción'],
+};
+const DELIVERY = {
+  animado: 'Hecho a mano y revisado por nuestro equipo · listo en 1–2 días · garantía de calidad',
+  instrumental: 'Lista en ~1 minuto · te avisamos por email',
+  lyric_video: 'Lista en unos minutos · te avisamos por email',
+  gift: 'Se programa al instante para la fecha que elijas',
+};
+
+function FeatureList({ keyName }) {
+  return (
+    <ul style={{ margin: '0 0 10px', padding: 0, listStyle: 'none' }}>
+      {(FEATURES[keyName] || []).map((f, i) => (
+        <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'rgba(255,255,255,0.82)', lineHeight: 1.4, marginBottom: 6 }}>
+          <span style={{ color: GREEN, flexShrink: 0, marginTop: 1, fontWeight: 700 }}>✓</span>{f}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// One product box (animado / instrumental / lyric_video). Tapping "Ver más"
+// opens a full-width detail view (what's included) and only the blue
+// "Sí, cobrar" there charges the saved card — info first, deliberate purchase.
 function ProductBox({ item, status, onAdd, last4 }) {
   const { key, title, sub, price, media } = item;
   const done = status === 'done';
   const processing = status === 'processing';
   const needs = status === 'needs_action';
-  const [confirm, setConfirm] = useState(false);
+  const error = status === 'error';
+  const [open, setOpen] = useState(false);
   const cardTxt = last4 && last4 !== '••••' ? `···· ${last4}` : 'guardada';
+
+  if (!open || done) {
+    return (
+      <div style={boxStyle(done)}>
+        {!done && <Media media={media} />}
+        <div style={{ padding: 10, display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
+          {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
+          <div style={{ flex: 1 }} />
+          <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
+          {done ? (
+            <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN }}>✓ Agregado</p>
+          ) : needs ? (
+            <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
+          ) : (
+            <button onClick={() => setOpen(true)} style={addBtn(false)}>Ver más · ${price}</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={boxStyle(done)}>
-      {!done && <Media media={media} />}
-      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>{title}</p>
-        {sub && <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.3 }}>{sub}</p>}
-        <div style={{ flex: 1 }} />
-        <p style={{ margin: '8px 0 0', fontSize: 16, fontWeight: 800, color: GOLD }}>${price}</p>
-        {done ? (
-          <p style={{ margin: '8px 0 0', fontSize: 11.5, fontWeight: 700, color: GREEN, display: 'flex', alignItems: 'center', gap: 5 }}>✓ Agregado</p>
-        ) : needs ? (
-          <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos y lo agregamos.</p>
-        ) : processing ? (
-          <button disabled style={addBtn(true)}><Spinner color="#3a2a06" /> Cobrando…</button>
-        ) : confirm ? (
-          <div>
-            <p style={{ margin: '8px 0 6px', fontSize: 10, color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 1.4 }}>
+    <div style={{ gridColumn: '1 / -1', ...boxStyle(false) }}>
+      <Media media={media} tall />
+      <div style={{ padding: 13 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 3 }}>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</p>
+          <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
+        </div>
+        <p style={{ margin: '0 0 11px', fontSize: 11.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>{sub}</p>
+        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
+        <FeatureList keyName={key} />
+        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.4 }}>🤚 {DELIVERY[key]}</p>
+        {processing ? (
+          <button disabled style={{ ...addBtn(true), background: BLUE, color: '#fff' }}><Spinner color="#fff" /> Cobrando…</button>
+        ) : (
+          <>
+            <p style={{ margin: '0 0 7px', fontSize: 10.5, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
               Se cobra <strong style={{ color: '#fff' }}>${price}</strong> ahora a tu tarjeta {cardTxt}
             </p>
-            <button onClick={() => onAdd(key)} style={addBtn(false)}>✓ Sí, cobrar ${price}</button>
-            <button onClick={() => setConfirm(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
-          </div>
-        ) : (
-          <button onClick={() => setConfirm(true)} style={addBtn(false)}>Agregar · ${price}</button>
+            {error && <p style={{ margin: '0 0 7px', fontSize: 11, color: '#f3a0a0', textAlign: 'center' }}>No se pudo. Intenta de nuevo.</p>}
+            <button onClick={() => onAdd(key)} style={{ ...addBtn(false), background: BLUE, color: '#fff' }}>✓ Sí, cobrar ${price}</button>
+            <button onClick={() => setOpen(false)} style={{ width: '100%', marginTop: 6, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+          </>
         )}
       </div>
     </div>
@@ -190,7 +257,7 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
           ) : needs ? (
             <p style={{ margin: '8px 0 0', fontSize: 10.5, color: '#fcd34d', lineHeight: 1.35 }}>Tu banco pide confirmar. Escríbenos.</p>
           ) : (
-            <button onClick={() => setOpen(true)} style={addBtn(false)}>Agregar · ${price}</button>
+            <button onClick={() => setOpen(true)} style={addBtn(false)}>Ver más · ${price}</button>
           )}
         </div>
       </div>
@@ -201,7 +268,13 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
   return (
     <div style={{ gridColumn: '1 / -1', ...boxStyle(false) }}>
       <div style={{ padding: 13 }}>
-        <p style={{ margin: '0 0 10px', fontSize: 13.5, fontWeight: 700, color: '#fff' }}>{title} · ${price}</p>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>{title}</p>
+          <span style={{ fontSize: 18, fontWeight: 800, color: GOLD }}>${price}</span>
+        </div>
+        <p style={{ margin: '0 0 7px', fontSize: 10.5, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 0.6 }}>QUÉ INCLUYE</p>
+        <FeatureList keyName="gift" />
+        <p style={{ margin: '0 0 13px', fontSize: 10.5, color: 'rgba(255,255,255,0.4)' }}>🤚 {DELIVERY.gift}</p>
         <input style={inp} type="tel" placeholder="Celular del destinatario" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <input style={inp} placeholder="Nombre de quien recibe" value={rname} onChange={(e) => setRname(e.target.value)} />
         <input style={inp} placeholder="Tu nombre" value={buyer} onChange={(e) => setBuyer(e.target.value)} />
@@ -215,8 +288,8 @@ function GiftBox({ item, status, onAdd, recipientName, senderName }) {
           Confirmo que es un regalo bienvenido para esta persona.
         </label>
         {(err || error) && <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#f3a0a0' }}>{err || 'No se pudo agregar. Revisa los datos e intenta de nuevo.'}</p>}
-        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0 }}>
-          {processing ? <><Spinner color="#3a2a06" /> Programando…</> : <>Programar y cobrar ${price} — un toque</>}
+        <button onClick={submit} disabled={processing} style={{ ...addBtn(processing), marginTop: 0, background: BLUE, color: '#fff' }}>
+          {processing ? <><Spinner color="#fff" /> Programando…</> : <>Programar y cobrar ${price} — un toque</>}
         </button>
       </div>
     </div>
