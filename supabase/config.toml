@@ -457,6 +457,18 @@ verify_jwt = true
 # stripe-webhook routes the payment to the gift row, not the song.
 verify_jwt = true
 
+[functions.charge-upsell]
+# Post-purchase ONE-TAP secondary upsell charge (Animado / instrumental). Called
+# from the SuccessPage with the Supabase anon JWT (same pattern as
+# create-gift-checkout / recover-song), so the gateway accepts the anon JWT →
+# verify_jwt = true. The handler authorizes the caller by requiring the original
+# checkout session_id to MATCH the song's stripe_session_id (proof of purchase),
+# then charges the saved card off-session via Stripe PaymentIntents and fulfills
+# by reusing create-story-video-order / the Vercel karaoke worker. It NEVER
+# touches stripe-webhook or the $29.99 funnel — fully isolated, like the
+# clonamivoz functions.
+verify_jwt = true
+
 # ---------------------------------------------------------------------------
 # Clone Mi Voz (regalosquecantan.com/clonamivoz) — voice-cloning tier
 # ---------------------------------------------------------------------------

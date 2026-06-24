@@ -1293,13 +1293,12 @@ export default function ComparisonPage() {
               background: purchaseBoth
                 ? 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.08))'
                 : 'linear-gradient(135deg, rgba(34,197,94,0.07), rgba(255,255,255,0.03))',
-              border: purchaseBoth ? '3px solid #22c55e' : '3px solid rgba(34,197,94,0.6)',
+              border: purchaseBoth ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.35)',
               borderRadius: '18px', padding: '22px',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
               transition: 'all 0.3s', opacity: 1,
-              animation: 'borderGlow 1.6s ease-in-out infinite',
-              boxShadow: '0 0 0 4px rgba(34,197,94,0.2), 0 0 28px rgba(34,197,94,0.3), 0 4px 20px rgba(0,0,0,0.4)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
             {/* Glimmer sweep */}
@@ -1388,6 +1387,15 @@ export default function ComparisonPage() {
         {/* ══════════════════════════════════════════════════════
             SECTION 4: Video Addon — Enhanced toggle
             ══════════════════════════════════════════════════════ */}
+        {/* Enhancement section header — frames the add-ons as optional */}
+        <div style={{textAlign: 'center', margin: '24px 0 14px'}}>
+          <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <span style={{flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)'}} />
+            <span style={{fontSize: '18px', fontWeight: 800, color: 'rgba(255,255,255,0.92)'}}>Hazlo aún más especial</span>
+            <span style={{flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)'}} />
+          </div>
+          <p style={{margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)'}}>Opcional — elige lo que quieras, o solo la canción.</p>
+        </div>
         <div ref={videoAddonRef} />
         {hasSelection && (
           <div
@@ -1396,13 +1404,12 @@ export default function ComparisonPage() {
               background: videoAddon
                 ? 'linear-gradient(135deg, rgba(109,40,217,0.22), rgba(139,92,246,0.1))'
                 : 'linear-gradient(160deg, rgba(109,40,217,0.1) 0%, rgba(15,11,14,0.9) 60%)',
-              border: videoAddon ? '3px solid #a855f7' : '3px solid rgba(139,92,246,0.65)',
+              border: videoAddon ? '2px solid #a855f7' : '2px solid rgba(139,92,246,0.4)',
               borderRadius: '20px', padding: '0',
               cursor: 'pointer', marginBottom: '16px',
               position: 'relative', overflow: 'hidden',
               transition: 'all 0.35s',
-              animation: 'videoBorderGlow 1.6s ease-in-out infinite',
-              boxShadow: '0 0 0 4px rgba(139,92,246,0.2), 0 0 28px rgba(139,92,246,0.3), 0 4px 20px rgba(0,0,0,0.4)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
             {/* Glimmer sweep */}
@@ -1422,7 +1429,7 @@ export default function ComparisonPage() {
               boxShadow: '0 4px 14px rgba(124,58,237,0.45)',
               whiteSpace: 'nowrap', zIndex: 2,
             }}>
-              ✨ 87% DE CLIENTES LO AGREGAN
+              ⭐ Más popular
             </div>
 
             {/* Cinematic video preview — Ken Burns slideshow */}
@@ -1608,8 +1615,8 @@ export default function ComparisonPage() {
                   {/* Price row */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '12px' }}>
                     <span style={{
-                      fontSize: '48px', fontWeight: '900', lineHeight: 1, display: 'inline-block',
-                      animation: 'pricePulse 1.5s ease-in-out infinite',
+                      fontSize: '40px', fontWeight: '900', lineHeight: 1, display: 'inline-block',
+                      color: '#e9d5ff',
                     }}>$9.99</span>
                     <div>
                       <span style={{
@@ -1717,7 +1724,8 @@ export default function ComparisonPage() {
             requires a song to be picked, so an "orphan"
             karaoke-only order is impossible.
             ══════════════════════════════════════════════════════ */}
-        {true && (
+        {/* MOVED to the post-purchase one-tap secondary upsell. Gated off here. */}
+        {false && (
           <div
             onClick={toggleKaraoke}
             style={{
@@ -1859,7 +1867,8 @@ export default function ComparisonPage() {
             Animado upsell — animated story video (soft-launch gated by
             animado-availability; applies to the song(s) being purchased).
             ══════════════════════════════════════════════════════ */}
-        {animadoAvailable && hasSelection && purchasedSongs.length > 0 && (
+        {/* MOVED to the post-purchase one-tap secondary upsell. Gated off here. */}
+        {false && animadoAvailable && hasSelection && purchasedSongs.length > 0 && (
           <div style={{ marginBottom: '16px', animation: 'fadeIn 0.6s ease-out both' }}>
             <AnimadoOffer
               recipientName={recipientName}
@@ -1875,7 +1884,8 @@ export default function ComparisonPage() {
             Gift-SMS add-on ($5) — bundled "send it as a scheduled surprise
             text." Pays once with everything else; message moderated server-side.
             ══════════════════════════════════════════════════════ */}
-        {hasSelection && (
+        {/* MOVED to the post-purchase one-tap secondary upsell. Gated off here. */}
+        {false && hasSelection && (
           <GiftAddonField
             value={giftState}
             onChange={(next) => { setGiftState(next); if (giftError) setGiftError(null); }}
@@ -1953,30 +1963,33 @@ export default function ComparisonPage() {
               </span>
             </div>
           )}
-          {/* Selection summary line */}
-          {hasSelection && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 16px', marginBottom: '12px',
-              background: 'rgba(242,13,128,0.08)', borderRadius: '10px',
-              border: '1px solid rgba(242,13,128,0.15)'
-            }}>
-              <p style={{margin: 0, fontSize: '14px', color: 'rgba(255,255,255,0.8)'}}>
-                {getSelectionLabel()}
-                {hasDiscount && <span style={{color: '#4ade80', fontSize: '12px', marginLeft: '8px'}}>🏷️ {discountPercent}% OFF</span>}
-              </p>
-              <div style={{textAlign: 'right'}}>
-                {hasDiscount && (
-                  <p style={{margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through'}}>
-                    ${(videoAddonCount === 2 ? (purchaseBoth ? baseBundlePrice : baseSinglePrice) + videoDualAddonPrice : videoAddonCount === 1 ? (purchaseBoth ? baseBundlePrice : baseSinglePrice) + videoAddonPrice : (purchaseBoth ? baseBundlePrice : baseSinglePrice)).toFixed(2)}
-                  </p>
-                )}
-                <p style={{margin: 0, fontSize: '20px', fontWeight: '800', color: hasDiscount ? '#4ade80' : '#f74da6'}}>
-                  {isFree ? '¡GRATIS!' : `$${getCurrentPrice().toFixed(2)}`}
-                </p>
+          {/* Itemized order summary — "Tu pedido" (live, always reflects add-ons) */}
+          {hasSelection && (() => {
+            const rows = [];
+            const selectedVersion = songs.find(s => s.id === selectedSongId)?.version || 1;
+            rows.push({ label: purchaseBoth ? 'Ambas versiones (1 + 2)' : `Canción · Versión ${selectedVersion}`, price: purchaseBoth ? bundlePrice : singlePrice });
+            if (videoAddonCount === 2) rows.push({ label: 'Video con fotos · 2', price: videoDualAddonPrice });
+            else if (videoAddonCount === 1) rows.push({ label: 'Video con fotos', price: videoAddonPrice });
+            if (karaokeAddon) rows.push({ label: karaokeQty === 2 ? 'Pista instrumental · 2' : 'Pista instrumental', price: karaokeQty === 2 ? karaokeBundlePrice : karaokeAddonPrice * karaokeQty });
+            if (animadoCount === 2) rows.push({ label: 'Película animada · 2', price: animadoPriceBoth });
+            else if (animadoCount === 1) rows.push({ label: 'Película animada', price: animadoPriceOne });
+            if (giftState.enabled) rows.push({ label: 'Envío sorpresa por mensaje', price: 5 });
+            return (
+              <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
+                <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Tu pedido</p>
+                {rows.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                    <span style={{ fontSize: '13px', color: i === 0 ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.55)' }}>{r.label}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>${r.price.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '11px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Total{hasDiscount ? ` · ${discountPercent}% OFF` : ''}</span>
+                  <span style={{ fontSize: '22px', fontWeight: 800, color: hasDiscount ? '#4ade80' : '#f5b942' }}>{isFree ? '¡GRATIS!' : `$${getCurrentPrice().toFixed(2)}`}</span>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Coupon code input */}
           {!couponApplied ? (

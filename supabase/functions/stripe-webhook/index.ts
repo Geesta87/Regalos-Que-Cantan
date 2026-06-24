@@ -694,6 +694,41 @@ serve(async (req) => {
       if (metaUtmCampaign) baseUpdateData.utm_campaign = metaUtmCampaign;
       if (metaFromEmail) baseUpdateData.from_email_campaign = metaFromEmail;
 
+      // ─── Capture the saved card for one-tap post-purchase upsells ───────────
+      // create-checkout now saves the PaymentMethod off-session. Store the Stripe
+      // customer + payment method on the song so charge-upsell can charge it with
+      // a single tap (no second checkout). Wrapped + best-effort: a failure here
+      // must NEVER block the payment/email flow — the customer has already paid.
+      let savedCustomerId: string | null = typeof session.customer === 'string'
+        ? session.customer
+        : (session.customer as any)?.id || null;
+      let savedPaymentMethodId: string | null = null;
+      let savedCardLast4: string | null = null;
+      try {
+        const piId = typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : (session.payment_intent as any)?.id || null;
+        if (piId) {
+          const pi = await stripe.paymentIntents.retrieve(piId);
+          savedPaymentMethodId = typeof pi.payment_method === 'string'
+            ? pi.payment_method
+            : (pi.payment_method as any)?.id || null;
+          if (!savedCustomerId && pi.customer) {
+            savedCustomerId = typeof pi.customer === 'string' ? pi.customer : (pi.customer as any).id;
+          }
+          // Last 4 powers the one-tap trust line ("se cobra a tu tarjeta ···· 4242").
+          if (savedPaymentMethodId) {
+            const pm = await stripe.paymentMethods.retrieve(savedPaymentMethodId);
+            savedCardLast4 = (pm as any)?.card?.last4 || null;
+          }
+        }
+      } catch (pmErr: any) {
+        console.warn('[upsell] could not capture saved payment method:', pmErr?.message || pmErr);
+      }
+      if (savedCustomerId) baseUpdateData.stripe_customer_id = savedCustomerId;
+      if (savedPaymentMethodId) baseUpdateData.stripe_payment_method_id = savedPaymentMethodId;
+      if (savedCardLast4) baseUpdateData.stripe_card_last4 = savedCardLast4;
+
       // Video addon: flag songs appropriately based on count
       const videoAddonPurchased = session.metadata?.videoAddon === 'true';
       const videoAddonCountMeta = parseInt(session.metadata?.videoAddonCount || '1');

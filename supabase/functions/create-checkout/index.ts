@@ -541,6 +541,12 @@ serve(async (req) => {
       customer_email: email,
       line_items: lineItems,
       mode: 'payment',
+      // Save the card so the post-purchase one-tap upsell (Animado, instrumental,
+      // gift) can charge it off-session without a second checkout. Creates a
+      // Customer and marks the PaymentMethod reusable. Does NOT change this
+      // checkout's price, line items, or customer-facing flow.
+      customer_creation: 'always',
+      payment_intent_data: { setup_future_usage: 'off_session' },
       // 'es-419' = Latin American Spanish. Uses periods for decimals
       // ($29.99 instead of $29,99) which is what the Latino US/Mexico
       // market expects. 'es' defaults to Spain Spanish (comma decimals).

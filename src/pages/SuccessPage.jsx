@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { AnimadoPhotoUpload } from './AnimadoUpsell';
 import GiftTextUpsell from '../components/GiftTextUpsell';
+import { OneTapUpsell } from '../components/OneTapUpsell';
+import { chargeUpsell } from '../services/api';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -1710,6 +1712,48 @@ export default function SuccessPage() {
   const ts = themes[selectedTemplate] || themes.golden_hour;
   const isLight = selectedTemplate === 'lavender_dream';
 
+  // ── One-tap secondary upsell (Animado / instrumental) ──────────────────────
+  // Charges the card saved at purchase — no second checkout. Only shown when we
+  // arrived from checkout (session_id present, which ALSO authorizes the charge
+  // server-side: charge-upsell requires session_id === songs.stripe_session_id).
+  const oneTapSessionId = urlParams.get('session_id');
+  const oneTapSong = currentSong || songs[0] || null;
+  const oneTapItems = (() => {
+    if (!oneTapSong) return [];
+    const out = [];
+    const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
+    const ownsInstrumental = !!oneTapSong.karaoke_status; // pending/ready/done all count as owned
+    if (!ownsAnimado) out.push({ key: 'animado', hero: true, icon: '🎬', price: 49, title: `Película animada de ${oneTapSong.recipient_name || 'tu ser querido'}`, sub: 'Su rostro hecho personaje, al ritmo de su canción' });
+    if (!ownsInstrumental) out.push({ key: 'instrumental', icon: '🎤', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar encima' });
+    return out;
+  })();
+  const handleUpsellCharge = async (item) => {
+    if (!oneTapSong || !oneTapSessionId) return { status: 'error' };
+    const res = await chargeUpsell({ songId: oneTapSong.id, item, sessionId: oneTapSessionId });
+    if (res?.status === 'paid') {
+      if (item === 'animado' && res.order_id) {
+        // Surface the EXISTING photo-upload step (AnimadoPhotoUpload) for the new
+        // order by adding it to animadoOrders — no new upload UI needed.
+        const sb = oneTapSong.storyboard || null;
+        const recip = (oneTapSong.recipient_name || '').toLowerCase();
+        const isFamily = sb ? !!sb.is_family : true;
+        const otherPeople = isFamily && Array.isArray(sb?.characters)
+          ? sb.characters.map((c) => c?.name).filter((n) => n && n.toLowerCase() !== recip)
+          : [];
+        setAnimadoOrders((prev) => prev.some((o) => o.order_id === res.order_id) ? prev : [...prev, {
+          order_id: res.order_id, song_id: oneTapSong.id, state: 'awaiting_photo',
+          recipient_name: oneTapSong.recipient_name || null,
+          has_phone: !!(oneTapSong.whatsapp_phone || oneTapSong.phone_number),
+          is_family: isFamily, other_people: otherPeople,
+        }]);
+      } else if (item === 'instrumental') {
+        // Reload so the existing "preparing your instrumental" UI + polling kick in.
+        loadSongs();
+      }
+    }
+    return res;
+  };
+
   // ==================== MAIN SUCCESS PAGE ====================
   return (
     <div style={{
@@ -2354,6 +2398,20 @@ export default function SuccessPage() {
             </div>
           </div>
           )}{/* end download section conditional */}
+
+          {/* ===== ONE-TAP SECONDARY UPSELL (Animado / instrumental) — saved-card,
+              no second checkout. The song/reveal lands first; this sits below it.
+              Gated on session_id (the post-purchase moment + the charge's auth). ===== */}
+          {oneTapSessionId && oneTapItems.length > 0 && (
+            <div style={{ marginBottom: '28px' }}>
+              <OneTapUpsell
+                recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
+                last4={oneTapSong?.stripe_card_last4 || ''}
+                items={oneTapItems}
+                onCharge={handleUpsellCharge}
+              />
+            </div>
+          )}
 
           {/* Step timeline for video addon flow */}
           {currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (

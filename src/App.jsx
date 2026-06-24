@@ -52,6 +52,7 @@ import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
 import AnimadoUpsell from './pages/AnimadoUpsell';
+import OneTapUpsellDemo from './components/OneTapUpsell';
 import { captureAffiliateRef } from './services/tracking';
 
 // App State Context
@@ -109,7 +110,8 @@ const pathToPage = {
   '/sms-consent-preview': 'smsConsentPreview',
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz',
-  '/animado-demo': 'animadoDemo'
+  '/animado-demo': 'animadoDemo',
+  '/upsell-demo': 'upsellDemo'
 };
 
 // Helper to get initial page from URL - runs BEFORE first render
@@ -434,6 +436,9 @@ export default function App() {
           {/* Local preview of the Animado story-video upsell (offer + photo upload).
               Demo-only route; not linked from the funnel yet. */}
           {currentPage === 'animadoDemo' && <AnimadoUpsell />}
+
+          {/* Local preview of the post-purchase one-tap secondary upsell (/upsell-demo). */}
+          {currentPage === 'upsellDemo' && <OneTapUpsellDemo />}
 
           {/* SEO Hub pages */}
           {currentPage === 'generos' && <GenerosHub />}

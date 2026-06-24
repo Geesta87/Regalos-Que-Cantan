@@ -241,6 +241,32 @@ export async function checkSongStatus(songId) {
 }
 
 /**
+ * One-tap post-purchase upsell charge (Animado / instrumental). Charges the
+ * card saved at the original song purchase — no second checkout. The sessionId
+ * (from the /success URL) proves ownership server-side.
+ * Returns { status: 'paid' | 'needs_action' | 'error', ... }.
+ */
+export async function chargeUpsell({ songId, item, sessionId }) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/charge-upsell`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+    },
+    body: JSON.stringify({ song_id: songId, item, session_id: sessionId })
+  });
+  // The function returns 200 with a { status } field for paid/needs_action/error;
+  // a non-2xx is a hard failure — normalize it to the same shape so callers
+  // never have to special-case it.
+  if (!response.ok) {
+    let err = 'charge_failed';
+    try { const j = await response.json(); err = j?.error || err; } catch { /* ignore */ }
+    return { status: 'error', error: err };
+  }
+  return response.json();
+}
+
+/**
  * Regenerate a song with the same details but new music
  */
 export async function regenerateSong(songId) {
