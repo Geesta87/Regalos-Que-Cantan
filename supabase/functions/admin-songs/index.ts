@@ -168,7 +168,7 @@ serve(async (req) => {
         if (!s) return json({ success: false, error: 'song not found' }, 404);
         if (!s.marked_paid_at) return json({ success: false, error: 'This song was not manually marked — only manual (Zelle) marks can be undone.' }, 400);
         const { error } = await admin.from('songs').update({
-          paid: false, payment_status: null, paid_at: null, amount_paid: null,
+          paid: false, payment_status: null, paid_at: null, amount_paid: null, payment_method: null,
           marked_paid_at: null, marked_paid_source: null, marked_paid_by: null,
         }).eq('id', body.songId);
         if (error) return json({ success: false, error: error.message }, 500);
@@ -182,10 +182,15 @@ serve(async (req) => {
         paid: true,
         payment_status: 'paid',
         paid_at: now,
+        // payment_method is the established Zelle tag (88 songs already use it)
+        // and the storage-cleanup guard protects payment_method<>'zelle'.
+        payment_method: source,
         marked_paid_at: now,
         marked_paid_source: source,
         marked_paid_by: (userData.user.email || userId).slice(0, 120),
       };
+      // amount_paid intentionally left as-is unless explicitly passed — keeps
+      // manual payments from inflating revenue reports (matches prior reconciliation).
       if (amount != null) update.amount_paid = amount;
       const { error } = await admin.from('songs').update(update).eq('id', body.songId);
       if (error) return json({ success: false, error: error.message }, 500);

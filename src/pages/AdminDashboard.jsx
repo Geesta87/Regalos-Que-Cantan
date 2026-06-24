@@ -1245,19 +1245,17 @@ export default function AdminDashboard() {
   // paid song everywhere and survives any unpaid-storage cleanup.
   const markPaid = async (song) => {
     if (!accessToken || !song || isPaid(song)) return;
-    const raw = window.prompt(`Mark "${song.recipient_name || 'this song'}" as PAID (Zelle).\nAmount received in USD?`, '29.99');
-    if (raw === null) return; // cancelled
-    const amount = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    if (!window.confirm(`Mark "${song.recipient_name || 'this song'}" as PAID (Zelle)?\nIt will count as a regular paid song and won't be removed during storage cleanup.`)) return;
     setMarkingPaidId(song.id);
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-songs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
-        body: JSON.stringify({ action: 'mark-paid', songId: song.id, amount: Number.isNaN(amount) ? undefined : amount, source: 'zelle' }),
+        body: JSON.stringify({ action: 'mark-paid', songId: song.id, source: 'zelle' }),
       });
       const result = await res.json();
       if (result.success) {
-        const patch = { paid: true, payment_status: 'paid', paid_at: result.markedPaidAt, marked_paid_at: result.markedPaidAt, marked_paid_source: result.source, ...(result.amountPaid != null ? { amount_paid: result.amountPaid } : {}) };
+        const patch = { paid: true, payment_status: 'paid', paid_at: result.markedPaidAt, payment_method: 'zelle', marked_paid_at: result.markedPaidAt, marked_paid_source: result.source };
         setSongs(prev => prev.map(s => s.id === song.id ? { ...s, ...patch } : s));
         setSelectedSong(prev => prev?.id === song.id ? { ...prev, ...patch } : prev);
         showToast('✅ Marked as paid (Zelle).');
@@ -1284,7 +1282,7 @@ export default function AdminDashboard() {
       });
       const result = await res.json();
       if (result.success) {
-        const patch = { paid: false, payment_status: null, paid_at: null, amount_paid: null, marked_paid_at: null, marked_paid_source: null };
+        const patch = { paid: false, payment_status: null, paid_at: null, amount_paid: null, payment_method: null, marked_paid_at: null, marked_paid_source: null };
         setSongs(prev => prev.map(s => s.id === song.id ? { ...s, ...patch } : s));
         setSelectedSong(prev => prev?.id === song.id ? { ...prev, ...patch } : prev);
         showToast('↩️ Manual paid mark removed.');
