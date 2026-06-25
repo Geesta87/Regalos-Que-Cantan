@@ -40,6 +40,52 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
+
+    // ─── 3-song pack ("Paquete de 3 canciones", $49.99) ──────────────────────
+    // A standalone purchase with NO song yet: the buyer pays once and receives a
+    // personal NOMBRE-### code worth 3 free single-song redemptions, minted +
+    // emailed by stripe-webhook on payment. Returns early — none of the
+    // song-checkout logic below applies (there is no songId).
+    if (body.pack === 'pack3') {
+      const packEmail = String(body.email || '').trim().toLowerCase();
+      const packName = String(body.buyerName || '').trim().slice(0, 40);
+      if (!packEmail || !packEmail.includes('@')) {
+        return jsonResp(400, { error: 'pack_missing_email', message: 'Necesitamos un correo válido para enviarte el código.' });
+      }
+      const PACK3_PRICE_CENTS = 4999; // $49.99 — 3 songs (~$16.66 each)
+      const packSession = await stripe.checkout.sessions.create({
+        customer_email: packEmail,
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Paquete de 3 Canciones - RegalosQueCantan',
+              description: 'Un código personal para crear 3 canciones personalizadas — una para cada persona, cuando tú quieras.',
+              images: ['https://regalosquecantan.com/og-image.jpg'],
+            },
+            unit_amount: PACK3_PRICE_CENTS,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        locale: 'es-419',
+        submit_type: 'pay',
+        custom_text: {
+          submit: {
+            message: '**3 canciones, un solo pago.** Recibes tu código por correo al instante y lo usas cuando quieras — una canción distinta para cada ser querido. Tu código no caduca pronto (12 meses) y cada canción incluye preview antes de quedar lista.',
+          },
+        },
+        success_url: `${BASE_URL}/pack-listo?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${BASE_URL}/tienda`,
+        metadata: {
+          type: 'pack3',
+          email: packEmail,
+          buyer_name: packName,
+        },
+      });
+      return jsonResp(200, { success: true, url: packSession.url });
+    }
+
     let { email } = body;
     const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
     // Gift-SMS add-on payload (optional): { recipient_name, recipient_phone,
@@ -148,6 +194,14 @@ serve(async (req) => {
         const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date();
         // Check usage limit
         const isMaxedOut = coupon.max_uses && coupon.times_used >= coupon.max_uses;
+
+        // Single-song codes (e.g. the 3-pack redemption code) may only be
+        // applied to a 1-song order — otherwise one use of a 100%-off code
+        // would free an entire multi-song cart. Hard-block so it can never
+        // be exploited; the buyer redeems one song at a time.
+        if (coupon.single_song_only && songCount > 1) {
+          return jsonResp(400, { error: 'coupon_single_song', message: 'Este código es para una canción a la vez. Crea cada canción por separado y aplica el código en cada una.' });
+        }
 
         if (!isExpired && !isMaxedOut) {
           appliedCoupon = coupon;

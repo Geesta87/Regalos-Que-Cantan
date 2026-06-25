@@ -178,6 +178,60 @@ async function sendEmail(
   return response;
 }
 
+// ── 3-song pack ("Paquete de 3 canciones") ─────────────────────────────────
+// Mint a memorable, unique code: BUYERFIRSTNAME-### — accent-stripped, A–Z
+// only, with a 3-digit number. Retries on collision against the coupons table.
+async function mintPackCode(supabase: any, rawName: string): Promise<string> {
+  const first = (rawName || '').trim().split(/\s+/)[0] || '';
+  const base = first
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents (José → Jose)
+    .toUpperCase().replace(/[^A-Z]/g, '')             // letters only
+    .slice(0, 12) || 'AMIGO';
+  for (let i = 0; i < 12; i++) {
+    const num = Math.floor(100 + Math.random() * 900); // 100–999
+    const candidate = `${base}-${num}`;
+    const { data: clash } = await supabase.from('coupons').select('code').eq('code', candidate).maybeSingle();
+    if (!clash) return candidate;
+  }
+  // Extremely unlikely fallback — guarantee uniqueness with a time suffix.
+  return `${base}-${Date.now().toString().slice(-6)}`;
+}
+
+function getPack3EmailHtml(code: string, rawName: string): string {
+  const firstName = (rawName || '').trim().split(/\s+/)[0] || 'Amigo';
+  const createUrl = 'https://regalosquecantan.com/create/genre';
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background:#181114; color:#ffffff; border-radius:16px; overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#f20d80,#a5085a); padding:28px 24px; text-align:center;">
+        <h1 style="margin:0; font-size:22px; color:#fff;">¡Gracias por tu compra, ${firstName}! 🎵</h1>
+        <p style="margin:8px 0 0; color:#ffd9ec; font-size:14px;">Tu Paquete de 3 Canciones está listo</p>
+      </div>
+      <div style="padding:28px 24px;">
+        <p style="font-size:15px; color:#e7e2e5; line-height:1.6; margin:0 0 18px;">
+          Este es tu código personal. Sirve para crear <strong>3 canciones personalizadas</strong> —
+          una para cada persona que quieras sorprender, cuando tú quieras.
+        </p>
+        <div style="text-align:center; background:rgba(242,13,128,0.12); border:2px dashed #f20d80; border-radius:14px; padding:20px; margin:0 0 18px;">
+          <p style="margin:0 0 6px; font-size:12px; letter-spacing:1px; color:#f9a8d4; font-weight:bold;">TU CÓDIGO</p>
+          <p style="margin:0; font-size:30px; font-weight:800; color:#fff; letter-spacing:2px;">${code}</p>
+          <p style="margin:10px 0 0; font-size:13px; color:#bdb6ba;">Válido para 3 canciones · 12 meses</p>
+        </div>
+        <p style="font-size:14px; color:#e7e2e5; line-height:1.6; margin:0 0 10px;"><strong>Cómo usarlo:</strong></p>
+        <ol style="font-size:14px; color:#cfc8cc; line-height:1.7; margin:0 0 22px; padding-left:20px;">
+          <li>Crea tu canción en regalosquecantan.com (elige el género, el nombre y la historia).</li>
+          <li>Al momento de pagar, escribe tu código <strong>${code}</strong>.</li>
+          <li>Esa canción te sale gratis. Repite hasta 3 veces — una por persona.</li>
+        </ol>
+        <div style="text-align:center;">
+          <a href="${createUrl}" style="display:inline-block; background:#f20d80; color:#fff; text-decoration:none; font-weight:bold; font-size:16px; padding:14px 30px; border-radius:10px;">Crear mi primera canción 🎵</a>
+        </div>
+        <p style="font-size:12px; color:#8a838a; line-height:1.5; margin:22px 0 0; text-align:center;">
+          Guarda este correo para no perder tu código. ¿Dudas? Escríbenos a hola@regalosquecantan.com
+        </p>
+      </div>
+    </div>`;
+}
+
 // ─── Affiliate attribution helpers ───────────────────────────────────────
 // These run at the moment a song flips to paid. They are intentionally
 // idempotent against webhook retries: Stripe will redeliver checkout.session
@@ -574,6 +628,57 @@ serve(async (req) => {
           console.error('[gift_sms] no gift_id in metadata for session', session.id);
         }
         return new Response(JSON.stringify({ received: true, status: 'gift_sms_scheduled' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // 3-SONG PACK ($49.99) — "Paquete de 3 canciones" bought from the store.
+      // create-checkout tags it metadata.type='pack3' (no songId). On payment
+      // we mint a personal NOMBRE-### coupon worth 3 free single-song
+      // redemptions (12-mo expiry) and email it. Idempotent on session.id so a
+      // retried webhook never mints a second code. MUST return early so it is
+      // not treated as a song payment.
+      // ─────────────────────────────────────────────────────────────────────
+      if (session.metadata?.type === 'pack3') {
+        const packEmail = (session.metadata?.email || session.customer_email || '').trim().toLowerCase();
+        const packName = (session.metadata?.buyer_name || session.customer_details?.name || '').trim();
+        try {
+          // Idempotent: reuse the code if this session already minted one.
+          const { data: existing } = await supabase
+            .from('coupons')
+            .select('code')
+            .eq('stripe_session_id', session.id)
+            .maybeSingle();
+          let code = existing?.code || null;
+          if (!code) {
+            code = await mintPackCode(supabase, packName);
+            const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+            await supabase.from('coupons').insert({
+              code,
+              active: true,
+              type: 'free',
+              discount: 100,
+              max_uses: 3,
+              times_used: 0,
+              expires_at: expiresAt,
+              single_song_only: true,
+              buyer_email: packEmail || null,
+              stripe_session_id: session.id,
+            });
+          }
+          if (packEmail) {
+            await sendEmail(
+              packEmail,
+              'Tu código de 3 canciones — RegalosQueCantan 🎵',
+              getPack3EmailHtml(code, packName),
+              'pack3_purchase',
+              `Tu código ${code} sirve para crear 3 canciones personalizadas.`,
+            );
+          }
+          console.log(`✅ [pack3] minted ${code} for ${packEmail || '(no email)'} (session ${session.id})`);
+        } catch (e: any) {
+          console.error('[pack3] failed to mint/email code:', e?.message || e);
+        }
+        return new Response(JSON.stringify({ received: true, status: 'pack3_processed' }), { headers: { 'Content-Type': 'application/json' }, status: 200 });
       }
 
       const songIdMeta = session.metadata?.songId;
