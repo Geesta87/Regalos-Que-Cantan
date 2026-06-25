@@ -52,6 +52,7 @@ import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
 import StorePage from './pages/StorePage';
+import PackReadyPage from './pages/PackReadyPage';
 import AnimadoUpsell from './pages/AnimadoUpsell';
 import OneTapUpsellDemo from './components/OneTapUpsell';
 import { captureAffiliateRef } from './services/tracking';
@@ -112,6 +113,7 @@ const pathToPage = {
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz',
   '/tienda': 'store',
+  '/pack-listo': 'packReady',
   '/animado-demo': 'animadoDemo',
   '/upsell-demo': 'upsellDemo'
 };
@@ -324,7 +326,8 @@ export default function App() {
       smsConsentPreview: '/sms-consent-preview',
       smsConsentMarketingPreview: '/sms-consent-marketing-preview',
       clonamivoz: '/clonamivoz',
-      store: '/tienda'
+      store: '/tienda',
+      packReady: '/pack-listo'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -438,6 +441,9 @@ export default function App() {
 
           {/* Store — e-commerce catalog of the song + all upsells (/tienda) */}
           {currentPage === 'store' && <StorePage />}
+
+          {/* 3-song pack post-purchase confirmation (/pack-listo) */}
+          {currentPage === 'packReady' && <PackReadyPage />}
 
           {/* Local preview of the Animado story-video upsell (offer + photo upload).
               Demo-only route; not linked from the funnel yet. */}

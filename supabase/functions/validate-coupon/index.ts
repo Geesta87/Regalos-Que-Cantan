@@ -59,14 +59,21 @@ serve(async (req) => {
       );
     }
 
-    // Valid coupon - return details
+    // Valid coupon - return details. For multi-use codes (e.g. the 3-song pack
+    // redemption code) expose the remaining balance + single-song flag so the
+    // funnel can show "te quedan X de N" and block multi-song carts.
+    const remaining = coupon.max_uses ? Math.max(0, coupon.max_uses - (coupon.times_used || 0)) : null;
     return new Response(
       JSON.stringify({
         valid: true,
         code: coupon.code,
         type: coupon.type,
         discount: coupon.discount,
-        free: coupon.type === 'free' || coupon.discount >= 100
+        free: coupon.type === 'free' || coupon.discount >= 100,
+        max_uses: coupon.max_uses ?? null,
+        times_used: coupon.times_used ?? 0,
+        remaining,
+        single_song_only: coupon.single_song_only === true,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );

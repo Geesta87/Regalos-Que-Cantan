@@ -202,6 +202,26 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
   return response.json();
 }
 
+// 3-song pack ("Paquete de 3 canciones", $49.99). A standalone purchase with no
+// song — create-checkout (pack mode) returns a Stripe URL; on payment the
+// webhook mints + emails a personal NOMBRE-### code worth 3 free single songs.
+export async function createPackCheckout(buyerName, email) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ pack: 'pack3', buyerName, email }),
+  });
+  if (!response.ok) {
+    let msg = 'No se pudo iniciar el pago.';
+    try { const e = await response.json(); if (e?.message) msg = e.message; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return response.json();
+}
+
 /**
  * Get song status/details
  */

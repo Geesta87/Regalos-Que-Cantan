@@ -1999,6 +1999,20 @@ export default function ComparisonPage() {
               </span>
             </div>
           )}
+          {/* 3-song pack code: show the remaining balance + the one-at-a-time rule */}
+          {couponApplied?.single_song_only && couponApplied?.remaining != null && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '9px 16px', marginBottom: '12px',
+              background: 'rgba(242,13,128,0.1)', borderRadius: '10px',
+              border: '1px solid rgba(242,13,128,0.3)'
+            }}>
+              <span style={{ fontSize: '15px' }}>🎁</span>
+              <span style={{ color: '#f9a8d4', fontSize: '13px', fontWeight: 700 }}>
+                Código de paquete · te quedan {couponApplied.remaining}{couponApplied.max_uses ? ` de ${couponApplied.max_uses}` : ''} canciones · una a la vez
+              </span>
+            </div>
+          )}
           {/* Itemized order summary — "Tu pedido" (live, always reflects add-ons) */}
           {hasSelection && (() => {
             const rows = [];
