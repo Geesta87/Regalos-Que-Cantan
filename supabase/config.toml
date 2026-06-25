@@ -244,6 +244,13 @@ verify_jwt = false
 # prospect into an affiliate by forwarding the admin session to create-affiliate.
 verify_jwt = true
 
+[functions.ad-templates]
+# Ad Templates — pick a proven style, generate 5 ads in it. Admin JWT →
+# verify_jwt = true; admin-only. Renders with OpenAI gpt-image-1 (synchronous,
+# high quality, text-in-image) into the Ads queue. Reads OPENAI_API_KEY +
+# ANTHROPIC_API_KEY.
+verify_jwt = true
+
 [functions.cos-assistant]
 # Chief of Staff interactive assistant. Admin JWT → verify_jwt = true; admin-only.
 # Powers the personified chat: reads business state, takes actions by forwarding
