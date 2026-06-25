@@ -15,6 +15,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [langFilter, setLangFilter] = useState('all'); // 'all' | 'es' | 'en'
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -59,6 +60,8 @@ export default function CompetitorsSection({ accessToken, showToast }) {
     finally { setBusyId(null); }
   };
 
+  const shown = ads.filter((a) => langFilter === 'all' || a.lang === langFilter);
+
   return (
     <div className="max-w-6xl">
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -71,15 +74,25 @@ export default function CompetitorsSection({ accessToken, showToast }) {
         </button>
       </div>
 
+      {/* Language filter */}
+      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
+        {[['all', 'Todos'], ['es', 'Español'], ['en', 'English']].map(([k, label]) => (
+          <button key={k} onClick={() => setLangFilter(k)}
+            className={`px-3 py-1 text-sm rounded-md transition ${langFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+            {label}{k !== 'all' ? ` (${ads.filter((a) => a.lang === k).length})` : ''}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
-      ) : ads.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
-          No competitor ads yet. Hit "Scan now" to pull the latest — or the weekly scan will fill this in.
+          {ads.length === 0 ? 'No competitor ads yet. Hit "Scan now" to pull the latest — or the weekly scan will fill this in.' : 'No ads in this language yet.'}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {ads.map((a) => (
+          {shown.map((a) => (
             <div key={a.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
               <div className="relative bg-gray-900 aspect-[4/5] flex items-center justify-center">
                 {a.media_type === 'video' && a.video_url ? (
