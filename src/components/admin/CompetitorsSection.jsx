@@ -16,6 +16,8 @@ export default function CompetitorsSection({ accessToken, showToast }) {
   const [scanning, setScanning] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [langFilter, setLangFilter] = useState('all'); // 'all' | 'es' | 'en'
+  const [mediaFilter, setMediaFilter] = useState('all'); // 'all' | 'video' | 'image'
+  const [sortBy, setSortBy] = useState('strongest'); // 'strongest' | 'longest'
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -60,7 +62,13 @@ export default function CompetitorsSection({ accessToken, showToast }) {
     finally { setBusyId(null); }
   };
 
-  const shown = ads.filter((a) => langFilter === 'all' || a.lang === langFilter);
+  const shown = ads
+    .filter((a) => langFilter === 'all' || a.lang === langFilter)
+    .filter((a) => mediaFilter === 'all' || a.media_type === mediaFilter)
+    .slice()
+    .sort((a, b) => sortBy === 'longest'
+      ? (b.active_days ?? -1) - (a.active_days ?? -1)
+      : (b.score ?? -1) - (a.score ?? -1));
 
   return (
     <div className="max-w-6xl">
@@ -74,14 +82,31 @@ export default function CompetitorsSection({ accessToken, showToast }) {
         </button>
       </div>
 
-      {/* Language filter */}
-      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
-        {[['all', 'Todos'], ['es', 'Español'], ['en', 'English']].map(([k, label]) => (
-          <button key={k} onClick={() => setLangFilter(k)}
-            className={`px-3 py-1 text-sm rounded-md transition ${langFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-            {label}{k !== 'all' ? ` (${ads.filter((a) => a.lang === k).length})` : ''}
-          </button>
-        ))}
+      {/* Filters + sort */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {[['all', 'Todos'], ['es', 'Español'], ['en', 'English']].map(([k, label]) => (
+            <button key={k} onClick={() => setLangFilter(k)}
+              className={`px-3 py-1 text-sm rounded-md transition ${langFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}{k !== 'all' ? ` (${ads.filter((a) => a.lang === k).length})` : ''}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {[['all', 'Todo'], ['video', 'Videos'], ['image', 'Imágenes']].map(([k, label]) => (
+            <button key={k} onClick={() => setMediaFilter(k)}
+              className={`px-3 py-1 text-sm rounded-md transition ${mediaFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5 text-sm text-gray-500">
+          <span>Ordenar:</span>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {[['strongest', '💪 Más fuertes'], ['longest', '⏱ Más tiempo activos']].map(([k, label]) => (
+              <button key={k} onClick={() => setSortBy(k)}
+                className={`px-3 py-1 text-sm rounded-md transition ${sortBy === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -110,6 +135,11 @@ export default function CompetitorsSection({ accessToken, showToast }) {
               </div>
 
               <div className="p-3 flex-1 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 text-[11px] font-medium text-gray-700">
+                  <span>💪 Fuerza {a.score ?? '—'}</span>
+                  <span className="text-gray-300">·</span>
+                  <span className="flex items-center gap-1"><Clock size={11} /> {a.active_days ?? '—'} días activo</span>
+                </div>
                 {a.analysis?.hook && <p className="text-xs font-semibold text-gray-900">{a.analysis.hook}</p>}
                 {a.body_text && <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-3">{a.body_text}</p>}
                 {a.analysis?.why_working && <p className="text-[11px] text-gray-400 italic">Why it works: {a.analysis.why_working}</p>}

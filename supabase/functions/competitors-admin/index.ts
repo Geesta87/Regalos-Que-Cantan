@@ -75,7 +75,7 @@ serve(async (req) => {
     if (action === 'list') {
       const { data, error } = await admin.from('competitor_ads')
         .select('id, ad_archive_id, page_name, lang, media_type, image_url, video_url, body_text, cta_text, active_days, score, analysis, status, cloned_creative_id, scanned_at')
-        .neq('status', 'dismissed').order('score', { ascending: false, nullsFirst: false }).order('active_days', { ascending: false, nullsFirst: false }).limit(60);
+        .neq('status', 'dismissed').order('score', { ascending: false, nullsFirst: false }).order('active_days', { ascending: false, nullsFirst: false }).limit(150);
       if (error) return json({ success: false, error: error.message }, 500);
       const { data: lastRun } = await admin.from('agent_runs').select('status, summary, started_at').eq('agent', 'competitor-scan').order('started_at', { ascending: false }).limit(1).maybeSingle();
       return json({ success: true, role: roleRow.role, ads: data || [], last_scan: lastRun || null });
