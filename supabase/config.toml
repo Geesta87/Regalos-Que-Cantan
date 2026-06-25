@@ -239,6 +239,13 @@ verify_jwt = false
 # GHL (respecting social_pipeline_state). Reads/writes creative_queue only.
 verify_jwt = true
 
+[functions.daily-briefing-admin]
+# Daily Briefing dashboard reader. Called from the admin dashboard with a
+# logged-in Supabase Auth user's JWT (same as admin-songs / creative-studio-admin),
+# so verify_jwt = true. Handler requires admin_users.role='admin' (the brief
+# contains spend + revenue). Read-only over media_buyer_reports + agent_runs.
+verify_jwt = true
+
 [functions.media-buyer-daily]
 # AGENT 1 — Media Buyer. Runs once each morning via pg_cron (no JWT context),
 # so verify_jwt = false. RECOMMEND-ONLY: reads Meta Ads insights + cross-checks
