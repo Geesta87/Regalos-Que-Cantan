@@ -1,0 +1,88 @@
+// supabase/functions/affiliate-recruiter-admin/index.ts
+// ===========================================================================
+// AFFILIATE RECRUITER — admin (list / scan / status / convert)
+// ===========================================================================
+// Powers the "Recruit Partners" tab. Lists ranked prospects, triggers a scan,
+// tracks outreach status, and converts a prospect into a real affiliate by
+// forwarding the admin's session to the existing create-affiliate function.
+// Admin-only. verify_jwt = true.
+//
+// Deploy: supabase functions deploy affiliate-recruiter-admin --project-ref yzbvajungshqcpusfiia
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
+function slug(s: string) { return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'partner'; }
+function rand(n: number) { const c = 'abcdefghjkmnpqrstuvwxyz23456789'; let o = ''; for (let i = 0; i < n; i++) o += c[Math.floor(Math.random() * c.length)]; return o; }
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  try {
+    const authHeader = req.headers.get('Authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) return json({ success: false, error: 'Missing Authorization header' }, 401);
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+    const { data: ud, error: ue } = await userClient.auth.getUser();
+    if (ue || !ud?.user) return json({ success: false, error: 'Invalid session' }, 401);
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const { data: roleRow } = await admin.from('admin_users').select('role').eq('user_id', ud.user.id).single();
+    if (!roleRow) return json({ success: false, error: 'No dashboard access' }, 403);
+    if (roleRow.role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
+
+    let body: any = {}; try { body = await req.json(); } catch { body = {} }
+    const action = body.action || 'list';
+
+    if (action === 'list') {
+      const { data, error } = await admin.from('affiliate_prospects')
+        .select('id, platform, handle, display_name, profile_url, followers, videos, likes, verified, niche, fit_score, fit_reason, suggested_commission, outreach_draft, status, affiliate_code, scanned_at')
+        .neq('status', 'dismissed').order('fit_score', { ascending: false, nullsFirst: false }).order('followers', { ascending: false, nullsFirst: false }).limit(80);
+      if (error) return json({ success: false, error: error.message }, 500);
+      const { data: lastRun } = await admin.from('agent_runs').select('status, summary, started_at').eq('agent', 'affiliate-recruiter').order('started_at', { ascending: false }).limit(1).maybeSingle();
+      return json({ success: true, role: roleRow.role, prospects: data || [], last_scan: lastRun || null });
+    }
+
+    if (action === 'scan') {
+      fetch(`${SUPABASE_URL}/functions/v1/affiliate-recruiter`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+      return json({ success: true, started: true });
+    }
+
+    if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
+    const { data: p } = await admin.from('affiliate_prospects').select('*').eq('id', body.id).single();
+    if (!p) return json({ success: false, error: 'Prospect not found' }, 404);
+
+    if (action === 'status') {
+      const next = ['new', 'contacted', 'responded', 'dismissed'].includes(body.status) ? body.status : null;
+      if (!next) return json({ success: false, error: 'Bad status' }, 400);
+      await admin.from('affiliate_prospects').update({ status: next }).eq('id', p.id);
+      return json({ success: true, id: p.id, status: next });
+    }
+
+    if (action === 'convert') {
+      const email = (body.email || '').toString().trim().toLowerCase();
+      if (!email) return json({ success: false, error: 'Email is required to create the affiliate' }, 400);
+      const code = `${slug(p.handle)}${Math.floor(100 + Math.random() * 900)}`;
+      const password = rand(10);
+      const couponCode = code.toUpperCase();
+      // Reuse the existing create-affiliate flow (mints the row + coupon + emails
+      // credentials). Forward the admin's session so its admin gate passes.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-affiliate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+        body: JSON.stringify({ name: p.display_name || p.handle, email, code, couponCode, password }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.success) return json({ success: false, error: out.error || `create-affiliate ${res.status}` }, 502);
+      await admin.from('affiliate_prospects').update({ status: 'converted', affiliate_code: code }).eq('id', p.id);
+      return json({ success: true, id: p.id, status: 'converted', code, coupon: couponCode });
+    }
+
+    return json({ success: false, error: `Unknown action ${action}` }, 400);
+  } catch (err) {
+    console.error('affiliate-recruiter-admin error:', err);
+    return json({ success: false, error: String((err as Error)?.message || err) }, 500);
+  }
+});

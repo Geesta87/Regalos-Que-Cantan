@@ -9,7 +9,8 @@ import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass } from 'lucide-react';
+import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus } from 'lucide-react';
 import { spliceIntoOriginal, parseTimed, findLastLineEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -2821,6 +2822,11 @@ export default function AdminDashboard() {
         <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Users size={18} className={`flex-shrink-0 ${activeTab === 'affiliates' ? 'text-amber-400' : ''}`} /> Affiliates
         </button>
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('recruit')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'recruit' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <UserPlus size={18} className={`flex-shrink-0 ${activeTab === 'recruit' ? 'text-amber-400' : ''}`} /> Recruit Partners
+        </button>
+        )}
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 mt-5 px-2">Insights</p>
         <button onClick={() => setActiveTab('lookup')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'lookup' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Search size={18} className={`flex-shrink-0 ${activeTab === 'lookup' ? 'text-amber-400' : ''}`} /> Lookup
@@ -5241,6 +5247,10 @@ export default function AdminDashboard() {
              hidden from the sidebar AND the route is guarded for assistants like
              Ivan. daily-briefing-admin edge function enforces it server-side too. */
           <DailyBriefingTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'recruit' && userRole === 'admin') ? (
+          /* Recruit Partners — Affiliate Recruiter agent (discover + score +
+             draft outreach + convert). Admin-only. */
+          <AffiliateRecruiterTab accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'creativestudio' ? (
           /* Creative Studio (Agent 2) — review the daily AI batch + approve/reject.
              Approve auto-posts via GHL. creative-studio-admin edge function. */
