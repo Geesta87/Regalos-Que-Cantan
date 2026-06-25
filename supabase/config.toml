@@ -216,6 +216,38 @@ verify_jwt = false
 # never touches stripe-webhook/checkout. No JWT context.
 verify_jwt = false
 
+[functions.creative-studio-daily]
+# AGENT 2 — Creative Studio (daily generator). Runs each morning via pg_cron
+# (no JWT) → verify_jwt = false. Asks Claude for a batch of social/ad creatives
+# + copy, fires Kie createTask jobs, parks rows in creative_queue (status=
+# generating). Does NOT post anything — owner approves first. Reads
+# ANTHROPIC_API_KEY + KIE_API_KEY. Never touches stripe-webhook / the funnel.
+verify_jwt = false
+
+[functions.poll-creative-queue]
+# AGENT 2 — Creative Studio (poller). Runs every ~2 min via pg_cron (no JWT) →
+# verify_jwt = false. Finalizes 'generating' creative_queue rows: polls Kie
+# recordInfo, stores finished media in the creative-studio bucket, flips to
+# 'ready' for owner approval. Mirrors poll-processing-songs.
+verify_jwt = false
+
+[functions.creative-studio-admin]
+# AGENT 2 — Creative Studio approval API. Called from the admin dashboard with a
+# logged-in Supabase Auth user's JWT (same as admin-songs / social-pipeline-config),
+# so verify_jwt = true (default, explicit). Handler requires a row in admin_users;
+# approve/reject require role='admin'. On approve it auto-posts the creative via
+# GHL (respecting social_pipeline_state). Reads/writes creative_queue only.
+verify_jwt = true
+
+[functions.media-buyer-daily]
+# AGENT 1 — Media Buyer. Runs once each morning via pg_cron (no JWT context),
+# so verify_jwt = false. RECOMMEND-ONLY: reads Meta Ads insights + cross-checks
+# real paid orders in songs (deduped per stripe_session_id), asks Claude for a
+# pro-buyer brief, stores it in media_buyer_reports + emails the owner. NEVER
+# writes to the Meta account and NEVER touches stripe-webhook / the payment
+# funnel. Reads META_ACCESS_TOKEN + ANTHROPIC_API_KEY + SENDGRID_API_KEY from env.
+verify_jwt = false
+
 [functions.recover-temp-videos]
 # Cron-driven recovery job.
 verify_jwt = false
