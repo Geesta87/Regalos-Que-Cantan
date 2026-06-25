@@ -1,117 +1,189 @@
 // src/components/admin/ChiefOfStaffTab.jsx
-// Chief of Staff — the morning command center. Reads the latest cross-agent
-// briefing (cos_briefings) via chief-of-staff-admin: today's priorities (each
-// pointing at a tab), a business snapshot, and each agent's health. Admin-only.
-import React, { useState, useEffect, useCallback } from 'react';
-import { Compass, RefreshCw, Loader2, Check, AlertTriangle, ArrowRight } from 'lucide-react';
+// Chief of Staff — a personified, interactive assistant. Has a name + avatar +
+// voice, shows the morning briefing as its first message, and you can chat with
+// it. It reads the whole business and can take actions across your agents. Voice
+// via ElevenLabs (pick + preview in settings). Admin-only. Talks to
+// cos-assistant (+ chief-of-staff-admin for the briefing).
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Compass, Send, Loader2, Settings, Volume2, RefreshCw, Check, Sparkles, X } from 'lucide-react';
 
-const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chief-of-staff-admin`;
-
-function fmtDate(ymd) {
-  if (!ymd) return '';
-  const [y, mo, d] = ymd.split('-').map(Number);
-  return new Date(y, mo - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-}
+const COS = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cos-assistant`;
+const BRIEF = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chief-of-staff-admin`;
 
 export default function ChiefOfStaffTab({ accessToken, showToast }) {
-  const [briefings, setBriefings] = useState([]);
-  const [idx, setIdx] = useState(0);
+  const [persona, setPersona] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [briefing, setBriefing] = useState(null);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [speakingId, setSpeakingId] = useState(null);
+  const [settings, setSettings] = useState(false);
+  const [voices, setVoices] = useState(null);
+  const [avatars, setAvatars] = useState(null);
+  const [genningAvatars, setGenningAvatars] = useState(false);
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('a warm, friendly Latina chief of staff in her 30s, professional, approachable smile');
+  const audioRef = useRef(null);
+  const scrollRef = useRef(null);
 
-  const call = useCallback(async (payload) => {
-    const res = await fetch(FN, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
-      body: JSON.stringify(payload || {}),
-    });
+  const call = useCallback(async (url, payload) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY }, body: JSON.stringify(payload || {}) });
     return { status: res.status, body: await res.json() };
   }, [accessToken]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { status, body } = await call({});
-      if (body.success) { setBriefings(body.briefings || []); setIdx(0); }
+      const [{ status, body }, b2] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {})]);
+      if (body.success) { setPersona(body.persona); setName(body.persona?.name || ''); setMessages(body.messages || []); }
       else if (status === 403) setDenied(true);
-      else showToast?.(`Error: ${body.error || 'could not load'}`);
+      if (b2.body?.success) setBriefing(b2.body.briefings?.[0] || null);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setLoading(false); }
   }, [call, showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, sending]);
 
-  const run = async () => {
-    setRunning(true);
+  const play = (url) => { if (audioRef.current && url) { audioRef.current.src = url; audioRef.current.play().catch(() => {}); } };
+
+  const speak = async (text, messageId) => {
+    setSpeakingId(messageId || 'briefing');
     try {
-      const { body } = await call({ action: 'run' });
-      if (body.success) { showToast?.('Refreshing your briefing… ~30s'); setTimeout(load, 30000); }
-      else showToast?.(`Error: ${body.error}`);
+      const { body } = await call(COS, { action: 'speak', text, message_id: messageId });
+      if (body.success) play(body.audio_url);
+      else showToast?.(body.error?.includes('voice') ? 'Pick a voice first (⚙️ settings)' : `Error: ${body.error}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
-    finally { setRunning(false); }
+    finally { setSpeakingId(null); }
   };
 
-  if (denied) return <div className="text-gray-400 py-16 text-center">The Chief of Staff briefing is available to admins only.</div>;
+  const submit = async (text) => {
+    const msg = (text ?? input).trim();
+    if (!msg || sending) return;
+    setInput(''); setSending(true);
+    setMessages((p) => [...p, { id: `t${Date.now()}`, role: 'user', content: msg }]);
+    try {
+      const { body } = await call(COS, { action: 'chat', message: msg });
+      if (body.success) setMessages((p) => [...p, { id: body.message_id, role: 'assistant', content: body.reply }]);
+      else showToast?.(`Error: ${body.error}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setSending(false); }
+  };
 
-  const b = briefings[idx];
-  const a = b?.analysis || {};
+  const loadVoices = async () => { const { body } = await call(COS, { action: 'list_voices' }); if (body.success) setVoices(body.voices || []); };
+  const previewVoice = async (vid) => { setSpeakingId('preview'); const { body } = await call(COS, { action: 'preview_voice', voice_id: vid }); if (body.success) play(body.audio_url); else showToast?.('Preview failed'); setSpeakingId(null); };
+  const setPersonaField = async (patch) => { const { body } = await call(COS, { action: 'set_persona', ...patch }); if (body.success) { setPersona(body.persona); showToast?.('Guardado'); } };
+  const genAvatars = async () => { setGenningAvatars(true); setAvatars(null); try { const { body } = await call(COS, { action: 'gen_avatars', description: desc }); if (body.success) setAvatars(body.avatars || []); else showToast?.(`Error: ${body.error}`); } finally { setGenningAvatars(false); } };
+
+  if (denied) return <div className="text-gray-400 py-16 text-center">The Chief of Staff is available to admins only.</div>;
+
+  const nm = persona?.name || 'Sofía';
+  const avatar = persona?.avatar_url;
+  const a = briefing?.analysis;
+  const briefingText = a ? `${a.greeting}\n\n${(a.top_actions || []).map((x, i) => `${i + 1}. ${x.action} (${x.where})`).join('\n')}` : '';
 
   return (
     <div className="max-w-3xl">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><Compass size={22} className="text-purple-600" /> Chief of Staff</h2>
-          <p className="text-sm text-gray-500 mt-1">Your whole AI team, folded into one morning command center. Generated daily at 9:45am Pacific.</p>
+      <audio ref={audioRef} hidden />
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          {avatar ? <img src={avatar} alt={nm} className="w-12 h-12 rounded-full object-cover border border-gray-200" />
+            : <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center"><Compass size={22} className="text-purple-600" /></div>}
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{nm}</h2>
+            <p className="text-xs text-gray-500">Your Chief of Staff{persona?.voice_name ? ` · 🔊 ${persona.voice_name}` : ''}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {briefings.length > 1 && (
-            <select value={idx} onChange={(e) => setIdx(Number(e.target.value))} className="text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white text-gray-700">
-              {briefings.map((r, i) => <option key={r.id} value={i}>{r.briefing_for}</option>)}
-            </select>
-          )}
-          <button onClick={run} disabled={running} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-            <RefreshCw size={15} className={running ? 'animate-spin' : ''} /> Refresh
-          </button>
+          <button onClick={load} className="p-2 text-gray-400 hover:text-gray-700" title="Refresh"><RefreshCw size={16} /></button>
+          <button onClick={() => { setSettings(!settings); }} className="p-2 text-gray-400 hover:text-gray-700" title="Personalize"><Settings size={16} /></button>
         </div>
       </div>
 
+      {/* Settings */}
+      {settings && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 space-y-4">
+          <div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-gray-900">Personalize {nm}</h3><button onClick={() => setSettings(false)}><X size={16} className="text-gray-400" /></button></div>
+          <div className="flex items-center gap-2">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <button onClick={() => setPersonaField({ name })} className="px-3 py-2 text-sm rounded-lg border border-gray-200 hover:bg-white">Save name</button>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2"><span className="text-xs font-semibold text-gray-700">Voice (ElevenLabs)</span>{!voices && <button onClick={loadVoices} className="text-xs text-blue-600">Load voices</button>}</div>
+            {voices && (
+              <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                {voices.map((v) => (
+                  <div key={v.voice_id} className={`flex items-center gap-2 p-2 rounded-lg text-sm ${persona?.voice_id === v.voice_id ? 'bg-purple-50 border border-purple-200' : 'bg-white border border-gray-100'}`}>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-900">{v.name}</span>
+                      <span className="text-[11px] text-gray-400 ml-1">{[v.labels?.accent, v.labels?.gender, v.labels?.use_case].filter(Boolean).join(' · ')}</span>
+                    </div>
+                    {v.preview_url && <button onClick={() => play(v.preview_url)} className="text-gray-400 hover:text-gray-700" title="Sample"><Volume2 size={15} /></button>}
+                    <button onClick={() => previewVoice(v.voice_id)} className="text-[11px] text-purple-600 hover:underline" title="Escuchar en español">🇲🇽 es</button>
+                    <button onClick={() => setPersonaField({ voice_id: v.voice_id, voice_name: v.name })} className="text-[11px] px-2 py-1 rounded bg-gray-900 text-white">{persona?.voice_id === v.voice_id ? '✓' : 'Usar'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <span className="text-xs font-semibold text-gray-700">Avatar</span>
+            <div className="flex items-center gap-2 mt-1">
+              <input value={desc} onChange={(e) => setDesc(e.target.value)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs" />
+              <button onClick={genAvatars} disabled={genningAvatars} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-gray-900 text-white disabled:opacity-50">{genningAvatars ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Generate</button>
+            </div>
+            {avatars && (
+              <div className="flex gap-2 mt-2">
+                {avatars.map((u) => <button key={u} onClick={() => setPersonaField({ avatar_url: u })} className={`rounded-lg overflow-hidden border-2 ${persona?.avatar_url === u ? 'border-purple-500' : 'border-transparent'}`}><img src={u} className="w-20 h-20 object-cover" /></button>)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
-      ) : !b ? (
-        <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
-          No briefing yet. Hit "Refresh" to generate one now, or it lands automatically at 9:45am Pacific.
-        </div>
       ) : (
-        <>
-          <div className="text-xs text-gray-400 mb-2">{fmtDate(b.briefing_for)}</div>
-          <div className="text-lg font-medium text-gray-900 border-l-4 border-purple-500 pl-3 mb-3">{a.greeting}</div>
-          <p className="text-sm text-gray-600 leading-relaxed mb-6">{a.snapshot}</p>
-
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Today's priorities</h3>
-          <div className="space-y-2 mb-6">
-            {(a.top_actions || []).map((x, i) => (
-              <div key={i} className="flex gap-3 bg-white border border-gray-200 rounded-lg p-3">
-                <div className="text-purple-300 font-bold text-sm w-4">{x.priority ?? i + 1}</div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-900">{x.action}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{x.why}</div>
-                </div>
-                {x.where && <span className="self-start text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-1 whitespace-nowrap">{x.where} <ArrowRight size={11} /></span>}
+        <div ref={scrollRef} className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4 overflow-y-auto" style={{ height: '62vh' }}>
+          {/* Briefing as the first message */}
+          {a && (
+            <div className="flex gap-2.5">
+              {avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover flex-shrink-0" /> : <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0"><Compass size={16} className="text-purple-600" /></div>}
+              <div className="bg-white border border-purple-100 rounded-2xl px-4 py-3 max-w-[85%]">
+                <div className="flex items-center gap-2 mb-1"><span className="text-xs font-semibold text-purple-700">Briefing de hoy</span><button onClick={() => speak(briefingText)} className="text-purple-400 hover:text-purple-700">{speakingId === 'briefing' ? <Loader2 size={13} className="animate-spin" /> : <Volume2 size={13} />}</button></div>
+                <p className="text-sm font-medium text-gray-900">{a.greeting}</p>
+                <ol className="text-xs text-gray-600 mt-2 space-y-1 list-decimal pl-4">
+                  {(a.top_actions || []).map((x, i) => <li key={i}>{x.action} <span className="text-gray-400">· {x.where}</span></li>)}
+                </ol>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
 
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Agents</h3>
-          <div className="flex flex-wrap gap-2">
-            {(a.agent_health || []).map((h, i) => (
-              <span key={i} className={`text-xs px-2.5 py-1 rounded-full flex items-center gap-1 ${h.status === 'ok' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`} title={h.note}>
-                {h.status === 'ok' ? <Check size={12} /> : <AlertTriangle size={12} />} {h.agent}
-              </span>
-            ))}
-          </div>
-        </>
+          {messages.map((m) => (
+            <div key={m.id} className={`flex gap-2.5 ${m.role === 'user' ? 'justify-end' : ''}`}>
+              {m.role !== 'user' && (avatar ? <img src={avatar} className="w-8 h-8 rounded-full object-cover flex-shrink-0" /> : <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0"><Compass size={16} className="text-purple-600" /></div>)}
+              <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap max-w-[80%] ${m.role === 'user' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-800'}`}>
+                {m.content}
+                {m.role !== 'user' && String(m.id).length > 10 && (
+                  <button onClick={() => speak(m.content, m.id)} className="ml-2 text-gray-400 hover:text-gray-700 align-middle">{speakingId === m.id ? <Loader2 size={13} className="animate-spin inline" /> : <Volume2 size={13} className="inline" />}</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {sending && <div className="flex gap-2.5"><div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0"><Compass size={16} className="text-purple-600" /></div><div className="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> pensando…</div></div>}
+        </div>
       )}
+
+      <div className="flex items-center gap-2 mt-3">
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder={`Pregúntale a ${nm}… (ej: "aprueba el mejor creativo")`} disabled={sending}
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400 disabled:opacity-60" />
+        <button onClick={() => submit()} disabled={sending || !input.trim()} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:opacity-50"><Send size={15} /></button>
+      </div>
     </div>
   );
 }
