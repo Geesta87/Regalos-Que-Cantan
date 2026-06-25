@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 import CreativeChatPanel from './CreativeChatPanel';
+import EmailMarketerSection from './EmailMarketerSection';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-studio-admin`;
 
@@ -30,7 +31,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [role, setRole] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [filter, setFilter] = useState('review');
-  const [view, setView] = useState('queue'); // 'queue' | 'chat'
+  const [view, setView] = useState('ads'); // 'ads' | 'social' | 'emails' | 'chat'
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -82,7 +83,8 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
     }
   };
 
-  const readyCount = creatives.filter((c) => c.status === 'ready').length;
+  const shown = creatives.filter((c) => (view === 'social' ? c.intended_use === 'social' : c.intended_use === 'ad'));
+  const readyCount = shown.filter((c) => c.status === 'ready').length;
 
   return (
     <div className="max-w-6xl">
@@ -104,14 +106,17 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
         </button>
       </div>
 
-      {/* View toggle: review queue vs art-director chat */}
-      <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
-        <button onClick={() => setView('queue')} className={`px-3 py-1.5 text-sm rounded-md transition ${view === 'queue' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Queue</button>
-        <button onClick={() => setView('chat')} className={`px-3 py-1.5 text-sm rounded-md transition ${view === 'chat' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Art director</button>
+      {/* Sections: Ads | Social | Emails | Art director */}
+      <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+        {[['ads', 'Ads'], ['social', 'Social'], ['emails', 'Emails'], ['chat', 'Art director']].map(([k, label]) => (
+          <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 text-sm rounded-md transition ${view === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
+        ))}
       </div>
 
       {view === 'chat' ? (
         <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
+      ) : view === 'emails' ? (
+        <EmailMarketerSection accessToken={accessToken} showToast={showToast} />
       ) : (
       <>
       {/* Filters */}
@@ -128,13 +133,13 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
         <div className="flex items-center gap-2 text-gray-500 py-16 justify-center">
           <Loader2 size={18} className="animate-spin" /> Cargando…
         </div>
-      ) : creatives.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
-          No hay creativos aquí todavía. El agente genera un lote nuevo cada mañana.
+          No {view === 'social' ? 'social posts' : 'ads'} here yet. Generate some in the Art director chat, or the daily agent makes a fresh batch.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {creatives.map((c) => {
+          {shown.map((c) => {
             const sm = STATUS_META[c.status] || { label: c.status, cls: 'bg-gray-100 text-gray-600' };
             return (
               <div key={c.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
