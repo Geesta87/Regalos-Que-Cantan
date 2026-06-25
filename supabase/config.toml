@@ -244,6 +244,13 @@ verify_jwt = false
 # prospect into an affiliate by forwarding the admin session to create-affiliate.
 verify_jwt = true
 
+[functions.cos-assistant]
+# Chief of Staff interactive assistant. Admin JWT → verify_jwt = true; admin-only.
+# Powers the personified chat: reads business state, takes actions by forwarding
+# the admin session to other admin fns, voice (ElevenLabs TTS), avatar gen (Kie),
+# persona config. Reads ELEVENLABS_API_KEY + ANTHROPIC_API_KEY + KIE_API_KEY.
+verify_jwt = true
+
 [functions.chief-of-staff-daily]
 # Chief of Staff — daily command center. pg_cron (after the other agents) →
 # verify_jwt = false. Reads every agent's state + the business, Claude folds it
