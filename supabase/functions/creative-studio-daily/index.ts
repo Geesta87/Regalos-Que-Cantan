@@ -106,15 +106,20 @@ GUARDRAILS:
 - NEVER depict minors. AI image models auto-REJECT any image showing a child or teen. For youth occasions (quinceañera, kids' cumpleaños, graduación), depict the EMOTION through the ADULTS instead — a proud mother's tearful face, parents embracing, hands holding the phone with the song, a celebration table — never the child/teen themselves. This is mandatory in EVERY gen_prompt, photoreal or animated.
 - Score honestly so your strongest ideas sort to the top — be your own toughest critic.`;
 
-async function generateBatch(): Promise<any[]> {
+async function generateBatch(styleNotes: string): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+  // Owner's saved style preferences (set in the Creative Studio chat) override
+  // / extend the base DNA. Always honor them.
+  const system = styleNotes?.trim()
+    ? `${SYSTEM}\n\nOWNER'S SAVED STYLE PREFERENCES (always honor these):\n${styleNotes.trim()}`
+    : SYSTEM;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
       max_tokens: 8000,
-      system: SYSTEM,
+      system,
       tools: [BATCH_TOOL],
       tool_choice: { type: 'tool', name: 'emit_creative_batch' },
       messages: [{
@@ -173,7 +178,8 @@ Deno.serve(async (req: Request) => {
 
   const batchDate = new Date().toISOString().slice(0, 10);
   try {
-    const items = await generateBatch();
+    const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes').eq('id', 1).single();
+    const items = await generateBatch(cfg?.style_notes || '');
     if (!items.length) throw new Error('Model returned an empty batch');
 
     // Insert each row (so copy survives even if generation fails), then fire the
