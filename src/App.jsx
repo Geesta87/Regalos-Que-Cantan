@@ -51,6 +51,7 @@ import SmsConsentMarketingPreview from './pages/SmsConsentMarketingPreview';
 import AffiliateLanding from './pages/AffiliateLanding';
 import AffiliateVSL from './pages/AffiliateVSL';
 import ClonaMiVoz from './pages/ClonaMiVoz';
+import StorePage from './pages/StorePage';
 import AnimadoUpsell from './pages/AnimadoUpsell';
 import OneTapUpsellDemo from './components/OneTapUpsell';
 import { captureAffiliateRef } from './services/tracking';
@@ -110,6 +111,7 @@ const pathToPage = {
   '/sms-consent-preview': 'smsConsentPreview',
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz',
+  '/tienda': 'store',
   '/animado-demo': 'animadoDemo',
   '/upsell-demo': 'upsellDemo'
 };
@@ -321,7 +323,8 @@ export default function App() {
       termsOfService: '/terminos-de-servicio',
       smsConsentPreview: '/sms-consent-preview',
       smsConsentMarketingPreview: '/sms-consent-marketing-preview',
-      clonamivoz: '/clonamivoz'
+      clonamivoz: '/clonamivoz',
+      store: '/tienda'
     };
 
     // Handle dynamic SEO routes (generos/*, ocasiones/*)
@@ -433,6 +436,9 @@ export default function App() {
               cloned-voice-status). Beta — no Stripe wiring yet. */}
           {currentPage === 'clonamivoz' && <ClonaMiVoz />}
 
+          {/* Store — e-commerce catalog of the song + all upsells (/tienda) */}
+          {currentPage === 'store' && <StorePage />}
+
           {/* Local preview of the Animado story-video upsell (offer + photo upload).
               Demo-only route; not linked from the funnel yet. */}
           {currentPage === 'animadoDemo' && <AnimadoUpsell />}
@@ -473,7 +479,7 @@ export default function App() {
           {currentPage === 'notFound' && <NotFoundPage />}
 
           {/* WhatsApp floating button - only on landing, comparison, and success pages */}
-          {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'landing_premium' || currentPage === 'comparison' || currentPage === 'success') && (
+          {(currentPage === 'landing' || currentPage === 'landing_v2' || currentPage === 'landing_premium' || currentPage === 'comparison' || currentPage === 'success' || currentPage === 'store') && (
             <WhatsAppButton />
           )}
         </div>

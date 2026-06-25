@@ -257,6 +257,17 @@ export default function ComparisonPage() {
   const [checkoutExtras, setCheckoutExtras] = useState([]);
   const extrasTotal = checkoutExtras.reduce((s, e) => s + (e.price || 0), 0);
 
+  // Door-1 from the store (/tienda): an extra chosen there is stashed in
+  // sessionStorage and pre-ticked in the grid below so it rides this same
+  // bundled checkout. Read once and clear so it doesn't stick across visits.
+  const [preselectExtras] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('rqc_preselect_extra');
+      if (raw) { sessionStorage.removeItem('rqc_preselect_extra'); return raw.split(',').map((s) => s.trim()).filter(Boolean); }
+    } catch { /* ignore */ }
+    return [];
+  });
+
   // Animado (animated story-video upsell). Gated by animado-availability (master
   // switch + in-progress cap); only renders when available. 0/1/2 like the video addon.
   const [animadoAvailable, setAnimadoAvailable] = useState(false);
@@ -1731,7 +1742,7 @@ export default function ComparisonPage() {
             ══════════════════════════════════════════════════════ */}
         {hasSelection && (
           <div style={{ marginBottom: '16px' }}>
-            <OneTapUpsell mode="select" bare onSelectChange={setCheckoutExtras} items={[
+            <OneTapUpsell mode="select" bare initialSelected={preselectExtras} onSelectChange={setCheckoutExtras} items={[
               { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
               { key: 'animado', price: 49, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
               { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },

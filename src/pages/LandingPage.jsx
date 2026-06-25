@@ -95,8 +95,16 @@ export default function LandingPage() {
             <span>English</span>
           </a>
           <button
-            onClick={() => navigateTo('recoverSong')}
+            onClick={() => navigateTo('store')}
             className="inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
+            title="Ver todos los productos y complementos"
+          >
+            <span aria-hidden="true">🛍️</span>
+            <span>Tienda</span>
+          </button>
+          <button
+            onClick={() => navigateTo('recoverSong')}
+            className="hidden md:inline-flex items-center gap-1.5 bg-white/8 hover:bg-white/15 border border-white/15 hover:border-white/30 text-white text-xs md:text-sm font-semibold px-3 py-2 md:px-4 md:py-2.5 rounded-lg transition-all"
             title="Recupera tu canción si ya compraste"
           >
             <span aria-hidden="true">🎵</span>

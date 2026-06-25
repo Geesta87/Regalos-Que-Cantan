@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OneTapUpsell — post-purchase secondary upsell on the buyer's /success page.
@@ -16,7 +16,7 @@ const GREEN = '#5fcf8a';
 const BLUE = '#3b82f6';
 const MEDIA_H = 200;
 
-const CSS = `
+export const CSS = `
 @keyframes otuSpin{to{transform:rotate(360deg)}}
 @keyframes otuIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes otuWave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
@@ -122,7 +122,7 @@ function PhotosMedia() {
   );
 }
 
-function Media({ media, tall }) {
+export function Media({ media, tall }) {
   if (!media) return null;
   if (media.type === 'video') return <VideoMedia src={media.src} tall={tall} pos={media.pos} />;
   if (media.type === 'ab') return <AbMedia />;
@@ -148,7 +148,7 @@ const addBtn = (processing) => ({
 // One product box (animado / instrumental / lyric_video). "Agregar" never
 // charges directly — it flips the box into a CONFIRM state that spells out the
 // charge, so a saved-card purchase is always a deliberate two-tap action.
-const FEATURES = {
+export const FEATURES = {
   video: ['Tus fotos favoritas en un video al ritmo de la canción', 'Transiciones cinematográficas estilo película', 'Tú eliges las fotos después del pago', 'Video HD listo para WhatsApp y redes'],
   animado: ['Su rostro convertido en personaje animado', 'Ilustraciones de su historia, escena por escena', 'Movimiento en los momentos clave, al ritmo de la canción', 'Intro mágica: su foto real "cobra vida"', 'Video HD listo para compartir o proyectar'],
   instrumental: ['La misma canción, solo la música — sin la voz', 'Para que la canten ustedes (karaoke)', 'MP3 en calidad estudio'],
@@ -167,7 +167,7 @@ const DELIVERY = {
 const DISCLAIMER = {
   animado: 'Es una recreación artística hecha a mano en estilo animado (tipo Pixar). Buscamos el mejor parecido posible, pero al ser una interpretación de su foto puede no ser idéntica al rostro real.',
 };
-const DESC = {
+export const DESC = {
   video: 'Convertimos tus fotos en un video cinematográfico con la canción de fondo, con transiciones suaves estilo película. Tú eliges las fotos después de pagar y nosotros lo armamos.',
   animado: 'Convertimos su rostro en un personaje animado y damos vida a su historia en un video con movimiento, al ritmo de su canción. El regalo que los hace llorar de emoción.',
   instrumental: 'La misma canción, pero solo con la música — sin la voz. Para que la canten ustedes, la usen de fondo o la disfruten en versión karaoke.',
@@ -371,7 +371,7 @@ function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, w
 // no saved card yet, so boxes TOGGLE into the order ("Agregar al pedido") and
 // onSelectChange(selected[]) reports the chosen extras so the page folds them
 // into the single checkout total.
-export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = '', last4 = '••••', items = null, onCharge = null, mode = 'charge', onSelectChange = null, bare = false }) {
+export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = '', last4 = '••••', items = null, onCharge = null, mode = 'charge', onSelectChange = null, bare = false, initialSelected = null }) {
   const catalog = items || [
     { key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
     { key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } },
@@ -381,7 +381,29 @@ export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = ''
 
   const selectMode = mode === 'select';
   const [statuses, setStatuses] = useState({});
-  const [added, setAdded] = useState({}); // select mode: key -> true | giftPayload
+  // select mode: key -> true | giftPayload. Seeded from initialSelected so an
+  // extra chosen on the store (/tienda) lands here already ticked. Gift is
+  // skipped — it needs its form filled, so it can't be pre-added blindly.
+  const [added, setAdded] = useState(() => {
+    if (!selectMode || !Array.isArray(initialSelected)) return {};
+    const init = {};
+    initialSelected.forEach((k) => {
+      const item = catalog.find((i) => i.key === k);
+      if (item && item.form !== 'gift') init[k] = true;
+    });
+    return init;
+  });
+
+  // On mount, if anything was pre-selected, tell the parent so its order
+  // summary + total reflect it immediately (same shape as toggleAdd).
+  useEffect(() => {
+    if (selectMode && onSelectChange && Object.keys(added).length) {
+      try {
+        onSelectChange(catalog.filter((i) => added[i.key]).map((i) => ({ key: i.key, price: i.price, title: i.title, label: i.label, payload: added[i.key] })));
+      } catch { /* ignore */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAdd = async (key, payload) => {
     setStatuses((s) => ({ ...s, [key]: 'processing' }));
