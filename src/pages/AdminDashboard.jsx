@@ -2836,9 +2836,11 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('videos')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'videos' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
         </button>
+        {userRole === 'admin' && (
         <button onClick={() => setActiveTab('dailybriefing')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'dailybriefing' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Newspaper size={18} className={`flex-shrink-0 ${activeTab === 'dailybriefing' ? 'text-amber-400' : ''}`} /> Daily Briefing
         </button>
+        )}
         <button onClick={() => setActiveTab('creativestudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'creativestudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Sparkles size={18} className={`flex-shrink-0 ${activeTab === 'creativestudio' ? 'text-amber-400' : ''}`} /> Creative Studio
         </button>
@@ -5223,9 +5225,11 @@ export default function AdminDashboard() {
           /* Videos (slideshow $9.99) — list paid videos + links, surface
              failed/stuck ones with retry, search any customer. admin-videos fn. */
           <VideosTab accessToken={accessToken} showToast={showToast} />
-        ) : activeTab === 'dailybriefing' ? (
+        ) : (activeTab === 'dailybriefing' && userRole === 'admin') ? (
           /* Daily Briefing — the Media Buyer's stored morning brief (ad perf vs
-             real revenue + recommendations). daily-briefing-admin edge function. */
+             real revenue + recommendations). Admin-only (revenue-sensitive):
+             hidden from the sidebar AND the route is guarded for assistants like
+             Ivan. daily-briefing-admin edge function enforces it server-side too. */
           <DailyBriefingTab accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'creativestudio' ? (
           /* Creative Studio (Agent 2) — review the daily AI batch + approve/reject.
