@@ -231,6 +231,19 @@ verify_jwt = false
 # 'ready' for owner approval. Mirrors poll-processing-songs.
 verify_jwt = false
 
+[functions.affiliate-recruiter]
+# Affiliate Recruiter scan. pg_cron + manual → verify_jwt = false. Discovers
+# creators via ScrapeCreators (TikTok/IG search), Claude scores fit + drafts
+# Spanish outreach, stores affiliate_prospects. NEVER auto-DMs. Reads
+# SCRAPECREATORS_API_KEY + ANTHROPIC_API_KEY.
+verify_jwt = false
+
+[functions.affiliate-recruiter-admin]
+# Recruit Partners tab API. Admin JWT → verify_jwt = true; admin-only. Lists
+# ranked prospects, triggers a scan, tracks outreach status, and converts a
+# prospect into an affiliate by forwarding the admin session to create-affiliate.
+verify_jwt = true
+
 [functions.chief-of-staff-daily]
 # Chief of Staff — daily command center. pg_cron (after the other agents) →
 # verify_jwt = false. Reads every agent's state + the business, Claude folds it
