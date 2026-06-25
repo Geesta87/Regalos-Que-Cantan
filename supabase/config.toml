@@ -231,6 +231,26 @@ verify_jwt = false
 # 'ready' for owner approval. Mirrors poll-processing-songs.
 verify_jwt = false
 
+[functions.email-marketer-weekly]
+# Weekly Email Marketer drafter. pg_cron (Mon morning) → verify_jwt = false.
+# Claude researches the week's holidays/dates/angles and drafts 2-3 promo emails
+# into email_queue (pending_approval). Sends nothing. Reads ANTHROPIC_API_KEY.
+verify_jwt = false
+
+[functions.email-marketer-admin]
+# Email Marketer review/approve API for the dashboard "Emails" section. Logged-in
+# admin JWT → verify_jwt = true; admin-only (approve triggers a real send). Lists
+# drafts, sends a TEST to the owner, and on approve snapshots the audience +
+# flips to 'sending'. Uses _shared/unsubscribe.ts.
+verify_jwt = true
+
+[functions.email-marketer-send]
+# Email Marketer sender. pg_cron (every minute) → verify_jwt = false. Delivers
+# the next batch of pending recipients for any 'sending' email — per-recipient
+# SendGrid with one-click unsubscribe + suppression re-check. Reads
+# SENDGRID_API_KEY + UNSUBSCRIBE_SECRET. Never touches the payment funnel.
+verify_jwt = false
+
 [functions.creative-chat]
 # Creative Studio art-director chat. Called from the admin dashboard with a
 # logged-in Supabase Auth user's JWT; admin-only (it generates → spends Kie

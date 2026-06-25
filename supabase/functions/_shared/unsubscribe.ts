@@ -118,6 +118,18 @@ export async function buildUnsubscribeHeaders(email: string): Promise<Record<str
 }
 
 /**
+ * The visible one-click unsubscribe URL for `email` (same link used inside the
+ * List-Unsubscribe header). Drop into an email body's "unsubscribe" anchor.
+ * Falls back to the mailto: form when the secret/url is unavailable.
+ */
+export async function buildUnsubscribeUrl(email: string): Promise<string> {
+  const canon = canonicalEmail(email);
+  if (!UNSUBSCRIBE_SECRET || !SUPABASE_URL || !canon) return MAILTO_FALLBACK;
+  const token = await signUnsubscribeToken(canon);
+  return `${SUPABASE_URL}/functions/v1/unsubscribe?email=${encodeURIComponent(canon)}&token=${token}`;
+}
+
+/**
  * Returns true if `email` is on the suppression list and should NOT receive
  * marketing/drip emails. Caller passes a service-role Supabase client so
  * this hits the table directly (RLS-protected — anon keys cannot read it).
