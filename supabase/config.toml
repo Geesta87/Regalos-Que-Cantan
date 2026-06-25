@@ -231,6 +231,18 @@ verify_jwt = false
 # 'ready' for owner approval. Mirrors poll-processing-songs.
 verify_jwt = false
 
+[functions.chief-of-staff-daily]
+# Chief of Staff — daily command center. pg_cron (after the other agents) →
+# verify_jwt = false. Reads every agent's state + the business, Claude folds it
+# into one prioritized briefing, stores in cos_briefings + emails the owner.
+# Reads ANTHROPIC_API_KEY + SENDGRID_API_KEY. Never touches the payment funnel.
+verify_jwt = false
+
+[functions.chief-of-staff-admin]
+# Chief of Staff dashboard reader. Admin JWT → verify_jwt = true; admin-only
+# (surfaces revenue). Returns cos_briefings; action:'run' refreshes on demand.
+verify_jwt = true
+
 [functions.competitor-scan]
 # Competitors weekly scan. pg_cron + manual → verify_jwt = false. Pulls
 # competitors' active FB ads via ScrapeCreators (SCRAPECREATORS_API_KEY), Claude

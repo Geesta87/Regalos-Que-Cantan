@@ -8,7 +8,8 @@ import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper } from 'lucide-react';
+import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass } from 'lucide-react';
 import { spliceIntoOriginal, parseTimed, findLastLineEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -2837,6 +2838,11 @@ export default function AdminDashboard() {
           <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
         </button>
         {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('chiefofstaff')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'chiefofstaff' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Compass size={18} className={`flex-shrink-0 ${activeTab === 'chiefofstaff' ? 'text-amber-400' : ''}`} /> Chief of Staff
+        </button>
+        )}
+        {userRole === 'admin' && (
         <button onClick={() => setActiveTab('dailybriefing')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'dailybriefing' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Newspaper size={18} className={`flex-shrink-0 ${activeTab === 'dailybriefing' ? 'text-amber-400' : ''}`} /> Daily Briefing
         </button>
@@ -5225,6 +5231,10 @@ export default function AdminDashboard() {
           /* Videos (slideshow $9.99) — list paid videos + links, surface
              failed/stuck ones with retry, search any customer. admin-videos fn. */
           <VideosTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'chiefofstaff' && userRole === 'admin') ? (
+          /* Chief of Staff — the morning command center folding every agent +
+             the business into one prioritized briefing. Admin-only. */
+          <ChiefOfStaffTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'dailybriefing' && userRole === 'admin') ? (
           /* Daily Briefing — the Media Buyer's stored morning brief (ad perf vs
              real revenue + recommendations). Admin-only (revenue-sensitive):
