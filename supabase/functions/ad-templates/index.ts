@@ -20,6 +20,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const MODEL = Deno.env.get('TEMPLATE_MODEL') || 'claude-sonnet-4-6';
+const IMG_MODEL = Deno.env.get('OPENAI_IMAGE_MODEL') || 'gpt-image-2'; // newest OpenAI model
 const IMG_QUALITY = Deno.env.get('OPENAI_IMAGE_QUALITY') || 'high';
 const IMG_SIZE = Deno.env.get('OPENAI_IMAGE_SIZE') || '1024x1536'; // ~portrait, good for feed ads
 const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
@@ -32,7 +33,7 @@ async function gptImage(admin: any, prompt: string): Promise<string | null> {
   if (!OPENAI_API_KEY) return null;
   const r = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST', headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-image-1', prompt: prompt.slice(0, 3800), n: 1, size: IMG_SIZE, quality: IMG_QUALITY }),
+    body: JSON.stringify({ model: IMG_MODEL, prompt: prompt.slice(0, 3800), n: 1, size: IMG_SIZE, quality: IMG_QUALITY }),
   });
   if (!r.ok) { console.warn('gpt-image-1', r.status, (await r.text()).slice(0, 200)); return null; }
   const j = await r.json().catch(() => ({}));
