@@ -96,8 +96,8 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
             <Sparkles size={22} className="text-amber-500" /> Creative Studio
           </h2>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-            Today's AI-generated batch — 5 videos + 5 visuals with copy. Approve to auto-post to your
-            connected social accounts; reject to discard. Nothing posts until you approve it.
+            Today's AI-generated batch — 5 visuals + 1 video with copy, every morning. Approve to auto-post
+            to your connected social accounts; reject to discard. Nothing posts until you approve it.
             {readyCount > 0 && <span className="ml-1 font-semibold text-amber-600">{readyCount} awaiting review.</span>}
           </p>
         </div>
