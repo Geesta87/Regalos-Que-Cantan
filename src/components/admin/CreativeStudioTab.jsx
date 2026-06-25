@@ -5,6 +5,7 @@
 // talks to the creative-studio-admin edge function with the admin JWT.
 import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import CreativeChatPanel from './CreativeChatPanel';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-studio-admin`;
 
@@ -29,6 +30,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [role, setRole] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [filter, setFilter] = useState('review');
+  const [view, setView] = useState('queue'); // 'queue' | 'chat'
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -102,6 +104,16 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
         </button>
       </div>
 
+      {/* View toggle: review queue vs art-director chat */}
+      <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
+        <button onClick={() => setView('queue')} className={`px-3 py-1.5 text-sm rounded-md transition ${view === 'queue' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Queue</button>
+        <button onClick={() => setView('chat')} className={`px-3 py-1.5 text-sm rounded-md transition ${view === 'chat' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Art director</button>
+      </div>
+
+      {view === 'chat' ? (
+        <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
+      ) : (
+      <>
       {/* Filters */}
       <div className="flex gap-2 mb-5">
         {FILTERS.map((f) => (
@@ -193,6 +205,8 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );

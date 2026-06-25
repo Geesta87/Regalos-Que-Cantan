@@ -231,6 +231,15 @@ verify_jwt = false
 # 'ready' for owner approval. Mirrors poll-processing-songs.
 verify_jwt = false
 
+[functions.creative-chat]
+# Creative Studio art-director chat. Called from the admin dashboard with a
+# logged-in Supabase Auth user's JWT; admin-only (it generates → spends Kie
+# credits), so verify_jwt = true. Runs a Claude tool-use loop (generate/tweak
+# creatives, save style prefs) and finalizes chat-generated media. Reads
+# ANTHROPIC_API_KEY + KIE_API_KEY. Writes creative_queue / creative_chat_messages
+# / creative_studio_config only — never the payment funnel.
+verify_jwt = true
+
 [functions.creative-studio-admin]
 # AGENT 2 — Creative Studio approval API. Called from the admin dashboard with a
 # logged-in Supabase Auth user's JWT (same as admin-songs / social-pipeline-config),
