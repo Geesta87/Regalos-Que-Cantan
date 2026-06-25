@@ -124,23 +124,29 @@ export default function GeneratingPage() {
     return () => clearInterval(factTimer);
   }, []);
 
-  // Progress animation - smoother and more realistic
+  // Progress animation — time-based so the bar ALWAYS keeps creeping forward
+  // instead of freezing at a hard cap (the old "stuck at 85%" feeling). It
+  // eases toward ~97% over the expected generation window and snaps to 100 the
+  // instant the song(s) are ready. Never goes backwards.
   useEffect(() => {
+    const EXPECTED_MS = 210000; // ~3.5 min typical end-to-end (lyrics + compose)
+    const TAU = EXPECTED_MS / 2.8; // shapes the ease-out curve (~75s)
     const progressTimer = setInterval(() => {
-      setProgress(prev => {
-        if (isFastFunnel) {
-          // Fast funnel: 100% when Song 1 done
-          if (song1Status === 'completed') return 100;
-          if (song1Status === 'generating') return Math.min(prev + 0.8, 92);
-        } else {
-          // Control: Track both songs
-          if (song1Status === 'completed' && song2Status === 'completed') return 100;
-          if (song1Status === 'completed') return Math.min(prev + 0.8, 90);
-          if (song1Status === 'generating') return Math.min(prev + 0.6, 85);
-        }
-        if (prev >= 95) return prev;
-        return prev + Math.random() * 2;
-      });
+      const allDone = isFastFunnel
+        ? song1Status === 'completed'
+        : song1Status === 'completed' && song2Status === 'completed';
+
+      if (allDone) {
+        setProgress(100);
+        return;
+      }
+
+      const start = generationStartTime.current || Date.now();
+      const elapsed = Date.now() - start;
+      // Asymptotic ease-out: fast early, slow near the end, but never stalls.
+      const target = 97 * (1 - Math.exp(-elapsed / TAU));
+
+      setProgress(prev => Math.min(Math.max(prev, target), 99));
     }, 500);
     return () => clearInterval(progressTimer);
   }, [song1Status, song2Status, isFastFunnel]);
@@ -438,7 +444,7 @@ export default function GeneratingPage() {
         song2PendingId: song2Id || null, // Pass the ID so ComparisonPage can poll
         sessionId: apiSessionId
       });
-      setTimeout(() => navigateTo('comparison'), 1500);
+      setTimeout(() => navigateTo('comparison'), 400);
     }
     // CONTROL FUNNEL: Wait for both songs
     else if (!isFastFunnel) {
@@ -453,7 +459,7 @@ export default function GeneratingPage() {
           song2: song2Data,
           sessionId: apiSessionId
         });
-        setTimeout(() => navigateTo('comparison'), 1500);
+        setTimeout(() => navigateTo('comparison'), 400);
       }
       // Song 1 completed, Song 2 failed - go with single song
       else if (song1Status === 'completed' && song2Status === 'failed') {
@@ -466,7 +472,7 @@ export default function GeneratingPage() {
           song2: null,
           sessionId: apiSessionId
         });
-        setTimeout(() => navigateTo('comparison'), 1500);
+        setTimeout(() => navigateTo('comparison'), 400);
       }
       // Both failed - show error
       else if (song1Status === 'failed' && song2Status === 'failed') {
