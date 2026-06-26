@@ -12,6 +12,7 @@
 // Deploy: supabase functions deploy poll-creative-queue --project-ref yzbvajungshqcpusfiia
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applyLogo } from '../_shared/brand.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -68,9 +69,10 @@ Deno.serve(async (req: Request) => {
 
           // Persist into our own bucket — Kie temp URLs expire.
           const media = await fetch(url);
-          const bytes = new Uint8Array(await media.arrayBuffer());
+          let bytes = new Uint8Array(await media.arrayBuffer());
           const ext = row.kind === 'video' ? 'mp4' : 'png';
           const contentType = row.kind === 'video' ? 'video/mp4' : 'image/png';
+          if (row.kind !== 'video') bytes = await applyLogo(bytes); // brand the visual
           const path = `${row.id}.${ext}`;
           const up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
           if (up.error) throw new Error(`storage: ${up.error.message}`);
