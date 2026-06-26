@@ -123,6 +123,7 @@ serve(async (req) => {
       const { data: tpl } = await admin.from('ad_templates').select('*').eq('id', body.template_id).single();
       if (!tpl) return json({ success: false, error: 'Template not found' }, 404);
       const count = Math.min(Math.max(Number(body.count) || 5, 1), 6);
+      const intended = body.intended_use === 'social' ? 'social' : 'ad'; // destination chosen by the owner
       const items = await variations(tpl, count);
       if (!items.length) return json({ success: false, error: 'No variations produced' }, 502);
 
@@ -130,7 +131,7 @@ serve(async (req) => {
       const made = await Promise.all(items.map(async (it: any) => {
         const url = await gptImage(admin, it.image_prompt);
         const { data: row } = await admin.from('creative_queue').insert({
-          batch_date: batch, kind: 'image', intended_use: 'ad',
+          batch_date: batch, kind: 'image', intended_use: intended,
           occasion: it.occasion ?? null, concept: `[${tpl.name}] ${it.concept || ''}`.slice(0, 200),
           gen_prompt: it.image_prompt ?? null, headline: it.headline ?? null, primary_text: it.primary_text ?? null,
           caption: it.caption ?? null, hashtags: Array.isArray(it.hashtags) ? it.hashtags : null,

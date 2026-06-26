@@ -155,7 +155,11 @@ serve(async (req) => {
       if (!accounts.length) return json({ success: false, error: 'No connected GHL accounts' }, 502);
 
       const caption = fullCaption(c);
-      const base = Date.now() + FEED_SCHEDULE_DELAY_SECONDS * 1000;
+      // Owner can schedule a specific time (body.schedule_date, ISO); GHL needs a
+      // future time, so we floor at ~2 min out. Default = the 15-min buffer.
+      const reqTs = body.schedule_date ? Date.parse(body.schedule_date) : NaN;
+      const base = (Number.isFinite(reqTs) && reqTs > Date.now() + 120_000)
+        ? reqTs : (Date.now() + FEED_SCHEDULE_DELAY_SECONDS * 1000);
       const results: Record<string, string | null> = {};
       let firstId: string | null = null;
       const errs: string[] = [];

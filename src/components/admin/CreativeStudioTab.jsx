@@ -34,6 +34,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [busyId, setBusyId] = useState(null);
   const [filter, setFilter] = useState('review');
   const [view, setView] = useState('ads'); // 'ads' | 'social' | 'emails' | 'chat'
+  const [scheduleById, setScheduleById] = useState({}); // creative id -> datetime-local string
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -65,14 +66,14 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const act = async (id, action) => {
+  const act = async (id, action, extra = {}) => {
     if (role !== 'admin') { showToast?.('Solo administradores pueden aprobar'); return; }
     setBusyId(id);
     try {
-      const r = await call({ action, id });
+      const r = await call({ action, id, ...extra });
       if (r.success) {
         showToast?.(action === 'approve'
-          ? (r.posted ? '✅ Aprobado y publicándose' : '✅ Aprobado (publicación en pausa)')
+          ? (r.posted ? (extra.schedule_date ? '✅ Aprobado y programado' : '✅ Aprobado y publicándose') : '✅ Aprobado (publicación en pausa)')
           : 'Descartado');
         setCreatives((prev) => prev.map((c) => c.id === id ? { ...c, status: r.status } : c));
       } else {
@@ -194,15 +195,21 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
                 {/* Actions */}
                 <div className="p-3 pt-0">
                   {c.status === 'ready' ? (
-                    <div className="flex gap-2">
-                      <button onClick={() => act(c.id, 'approve')} disabled={busyId === c.id || role !== 'admin'}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-                        {busyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Aprobar
-                      </button>
-                      <button onClick={() => act(c.id, 'reject')} disabled={busyId === c.id || role !== 'admin'}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
-                        <X size={15} />
-                      </button>
+                    <div className="space-y-2">
+                      <input type="datetime-local" value={scheduleById[c.id] || ''}
+                        onChange={(e) => setScheduleById((p) => ({ ...p, [c.id]: e.target.value }))}
+                        className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                        title="Opcional: programa la hora de publicación" />
+                      <div className="flex gap-2">
+                        <button onClick={() => act(c.id, 'approve', scheduleById[c.id] ? { schedule_date: new Date(scheduleById[c.id]).toISOString() } : {})} disabled={busyId === c.id || role !== 'admin'}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                          {busyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {scheduleById[c.id] ? 'Programar' : 'Aprobar'}
+                        </button>
+                        <button onClick={() => act(c.id, 'reject')} disabled={busyId === c.id || role !== 'admin'}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                          <X size={15} />
+                        </button>
+                      </div>
                     </div>
                   ) : c.status === 'posted' ? (
                     <div className="flex items-center gap-1.5 text-xs text-green-700">
