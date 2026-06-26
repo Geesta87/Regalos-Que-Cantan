@@ -26,9 +26,117 @@ const IMAGE_MODEL = Deno.env.get('CREATIVE_IMAGE_MODEL') || 'google/nano-banana'
 const KIE = 'https://api.kie.ai/api/v1/jobs';
 const BUCKET = 'cos-audio';
 const IMG_BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
+// Meta Ads — same account/token the Media Buyer uses, so the assistant can read
+// ad performance for ANY date range live (Meta keeps the history), not just the
+// days the media-buyer agent happened to snapshot.
+const META_ACCESS_TOKEN = Deno.env.get('META_ACCESS_TOKEN');
+const META_AD_ACCOUNT_ID = Deno.env.get('META_AD_ACCOUNT_ID') || 'act_832413711748940';
+const META_API_VERSION = Deno.env.get('META_API_VERSION') || 'v21.0';
+const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+const REVENUE_TZ = Deno.env.get('MEDIA_BUYER_TZ') || 'America/Chicago';
+const RQC_PLATFORM = Deno.env.get('MEDIA_BUYER_PLATFORM') || 'es';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const num = (x: any) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
+
+// ---------------------------------------------------------------------------
+// Meta Ads helpers (mirror media-buyer-daily)
+// ---------------------------------------------------------------------------
+async function metaGet(path: string, params: Record<string, string>): Promise<any> {
+  const qs = new URLSearchParams({ ...params, access_token: META_ACCESS_TOKEN! });
+  const res = await fetch(`${META_BASE}/${path}?${qs.toString()}`);
+  if (!res.ok) throw new Error(`Meta ${path} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+function actionCount(actions: any[] | undefined, type: string): number {
+  if (!Array.isArray(actions)) return 0;
+  const hit = actions.find((a) => a.action_type === type);
+  return hit ? num(hit.value || hit.count) : 0;
+}
+function purchasesOf(row: any): number { return actionCount(row.actions, 'purchase') || actionCount(row.actions, 'omni_purchase'); }
+function tzDay(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: REVENUE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+}
+
+// Build an ad-performance report for a date range. Prefers LIVE Meta (full
+// history) cross-checked against real paid orders in `songs`; falls back to the
+// saved daily media-buyer reports if Meta is unreachable / not configured.
+async function buildAdReport(admin: any, from: string, to: string): Promise<string> {
+  // Real revenue: deduped paid orders (per stripe_session_id) bucketed by owner-TZ day.
+  async function realRevenue() {
+    const lo = new Date(`${from}T00:00:00Z`); lo.setUTCDate(lo.getUTCDate() - 1);
+    const hi = new Date(`${to}T00:00:00Z`); hi.setUTCDate(hi.getUTCDate() + 2);
+    const { data: paid } = await admin.from('songs')
+      .select('stripe_session_id, amount_paid, paid_at')
+      .eq('paid', true).eq('platform', RQC_PLATFORM)
+      .gte('paid_at', lo.toISOString()).lt('paid_at', hi.toISOString())
+      .not('stripe_session_id', 'is', null).limit(20000);
+    const perSession = new Map<string, { day: string; amt: number }>();
+    for (const r of (paid || [])) {
+      const day = tzDay(r.paid_at);
+      if (day < from || day > to) continue; // outside the requested window
+      const amt = num(r.amount_paid), sid = r.stripe_session_id as string;
+      const cur = perSession.get(sid);
+      if (!cur || amt > cur.amt) perSession.set(sid, { day, amt });
+    }
+    const byDay: Record<string, { revenue: number; orders: number }> = {};
+    let total = 0, orders = 0;
+    for (const { day, amt } of perSession.values()) {
+      (byDay[day] ||= { revenue: 0, orders: 0 });
+      byDay[day].revenue += amt; byDay[day].orders += 1; total += amt; orders += 1;
+    }
+    return { byDay, total: Math.round(total * 100) / 100, orders };
+  }
+
+  if (META_ACCESS_TOKEN) {
+    try {
+      const tr = JSON.stringify({ since: from, until: to });
+      const [daily, byCampaign, rev] = await Promise.all([
+        metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'account', time_range: tr, time_increment: '1', fields: 'spend,actions', limit: '500' }),
+        metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'campaign', time_range: tr, fields: 'campaign_name,spend,actions', limit: '200' }),
+        realRevenue(),
+      ]);
+      let totalSpend = 0, totalMetaSales = 0;
+      const days = (daily.data || []).map((r: any) => {
+        const d = r.date_start, s = num(r.spend), meta = purchasesOf(r);
+        totalSpend += s; totalMetaSales += meta;
+        const rd = rev.byDay[d] || { revenue: 0, orders: 0 };
+        return { date: d, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
+      });
+      const top_campaigns = (byCampaign.data || [])
+        .map((c: any) => ({ name: c.campaign_name, spend: Math.round(num(c.spend) * 100) / 100, meta_sales: purchasesOf(c) }))
+        .sort((a: any, b: any) => b.meta_sales - a.meta_sales || b.spend - a.spend).slice(0, 8);
+      const summary = {
+        from, to, source: 'meta_live', days_covered: days.length,
+        total_spend: Math.round(totalSpend * 100) / 100,
+        total_real_orders: rev.orders, total_real_revenue: rev.total,
+        blended_roas: totalSpend > 0 ? Math.round((rev.total / totalSpend) * 100) / 100 : null,
+        meta_reported_sales: totalMetaSales, per_day: days, top_campaigns,
+        note: `spend + meta_sales are LIVE from Meta (ad-account TZ Asia/Manila); real_orders/real_revenue are deduped paid orders from the DB in ${REVENUE_TZ}. Minor per-day TZ drift is expected — trust the real orders.`,
+      };
+      return `AD REPORT ${from} → ${to} (LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
+    } catch (_e) {
+      // fall through to saved reports on any Meta error
+    }
+  }
+
+  // Fallback: saved daily media-buyer reports.
+  const { data: reports } = await admin.from('media_buyer_reports')
+    .select('report_for, metrics, analysis').gte('report_for', from).lte('report_for', to)
+    .order('report_for', { ascending: true });
+  if (!reports || !reports.length) return `No ad data available between ${from} and ${to} (Meta was unreachable and no saved reports exist for that range).`;
+  let spend = 0, revenue = 0, orders = 0, metaSales = 0;
+  const perDay = reports.map((r: any) => {
+    const m = r.metrics || {}, a = r.analysis || {};
+    const s = num(m.account_yesterday?.spend), rc = m.revenue_crosscheck || {};
+    const rev2 = num(rc.real_revenue), ord = num(rc.real_orders);
+    spend += s; revenue += rev2; orders += ord; metaSales += num(rc.meta_reported_purchases);
+    return { date: r.report_for, spend: Math.round(s * 100) / 100, real_orders: ord, real_revenue: Math.round(rev2 * 100) / 100, roas: s > 0 ? Math.round((rev2 / s) * 100) / 100 : null, headline: a.headline };
+  });
+  const summary = { from, to, source: 'saved_reports', days_covered: perDay.length, total_spend: Math.round(spend * 100) / 100, total_real_orders: orders, total_real_revenue: Math.round(revenue * 100) / 100, blended_roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null, meta_reported_sales: metaSales, per_day: perDay };
+  return `AD REPORT ${from} → ${to} (from saved daily reports):\n${JSON.stringify(summary, null, 2)}`;
+}
 
 // ---------------------------------------------------------------------------
 // ElevenLabs
@@ -117,7 +225,7 @@ function tools() {
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
     { name: 'refresh_briefing', description: 'Regenerate the morning Chief-of-Staff briefing.', input_schema: { type: 'object', properties: {} } },
     { name: 'generate_creatives', description: 'Ask the Creative Studio art director to generate creatives from a brief.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What to make, e.g. "5 Mother\'s Day photoreal ads".' } }, required: ['brief'] } },
-    { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE (spend, real paid sales, ROAS, daily breakdown, top moves) from the saved daily media-buyer reports. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", or specific dates. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' }, to: { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' } }, required: ['from'] } },
+    { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. It covers every day Meta has data for, not just recent ones. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' }, to: { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' } }, required: ['from'] } },
   ];
 }
 
@@ -137,21 +245,7 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
     if (name === 'get_ad_report') {
       const to = String(input.to || new Date().toISOString().slice(0, 10)).slice(0, 10);
       const from = String(input.from || to).slice(0, 10);
-      const { data: reports } = await admin.from('media_buyer_reports')
-        .select('report_for, metrics, analysis').gte('report_for', from).lte('report_for', to)
-        .order('report_for', { ascending: true });
-      if (!reports || !reports.length) return `No saved ad reports between ${from} and ${to}. The media buyer writes one report each morning (for the prior day); if it hasn't run for those days, there's nothing stored yet. The most recent stored day is in the snapshot above.`;
-      let spend = 0, revenue = 0, orders = 0, metaSales = 0;
-      const perDay = reports.map((r: any) => {
-        const m = r.metrics || {}, a = r.analysis || {};
-        const s = Number(m.account_yesterday?.spend) || 0;
-        const rc = m.revenue_crosscheck || {};
-        const rev = Number(rc.real_revenue) || 0, ord = Number(rc.real_orders) || 0;
-        spend += s; revenue += rev; orders += ord; metaSales += Number(rc.meta_reported_purchases) || 0;
-        return { date: r.report_for, spend: Math.round(s * 100) / 100, real_orders: ord, real_revenue: Math.round(rev * 100) / 100, roas: s > 0 ? Math.round((rev / s) * 100) / 100 : null, headline: a.headline, health: a.account_health };
-      });
-      const summary = { from, to, days_covered: perDay.length, total_spend: Math.round(spend * 100) / 100, total_real_orders: orders, total_real_revenue: Math.round(revenue * 100) / 100, blended_roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null, meta_reported_sales: metaSales, per_day: perDay };
-      return `AD REPORT ${from} → ${to} (real paid orders vs ad spend):\n${JSON.stringify(summary, null, 2)}`;
+      return await buildAdReport(admin, from, to);
     }
     return `Unknown action ${name}`;
   } catch (e: any) { return `Action failed: ${e?.message || e}`; }
