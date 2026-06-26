@@ -25,6 +25,8 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const [genningAvatars, setGenningAvatars] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('a warm, friendly Latina chief of staff in her 30s, professional, approachable smile');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const audioRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -72,6 +74,23 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
     finally { setSending(false); }
   };
 
+  const pullReport = () => {
+    if (!from) { showToast?.('Pick a start date'); return; }
+    const end = to || new Date().toISOString().slice(0, 10);
+    submit(`Give me the ad report from ${from} to ${end}: spend, sales, ROAS and which ads performed best.`);
+  };
+
+  const quickReport = (kind) => {
+    const now = new Date();
+    const end = now.toISOString().slice(0, 10);
+    const d = new Date(now);
+    if (kind === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // back to Monday
+    else d.setDate(d.getDate() - Number(kind));
+    const start = d.toISOString().slice(0, 10);
+    setFrom(start); setTo(end);
+    submit(`Give me the ad report from ${start} to ${end}: spend, sales, ROAS and which ads performed best.`);
+  };
+
   const loadVoices = async () => { const { body } = await call(COS, { action: 'list_voices' }); if (body.success) setVoices(body.voices || []); };
   const previewVoice = async (vid) => { setSpeakingId('preview'); const { body } = await call(COS, { action: 'preview_voice', voice_id: vid }); if (body.success) play(body.audio_url); else showToast?.('Preview failed'); setSpeakingId(null); };
   const setPersonaField = async (patch) => { const { body } = await call(COS, { action: 'set_persona', ...patch }); if (body.success) { setPersona(body.persona); showToast?.('Guardado'); } };
@@ -101,6 +120,22 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
           <button onClick={load} className="p-2 text-gray-400 hover:text-gray-700" title="Refresh"><RefreshCw size={16} /></button>
           <button onClick={() => { setSettings(!settings); }} className="p-2 text-gray-400 hover:text-gray-700" title="Personalize"><Settings size={16} /></button>
         </div>
+      </div>
+
+      {/* Ad report by date range — the assistant pulls ad spend, sales & ROAS for the window */}
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-xs bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+        <span className="text-gray-600 font-medium">📊 Ad report:</span>
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={sending}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white" />
+        <span className="text-gray-400">→</span>
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} disabled={sending}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white" />
+        <button onClick={pullReport} disabled={sending || !from}
+          className="px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-50">Pull</button>
+        <span className="text-gray-300">|</span>
+        <button onClick={() => quickReport('week')} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">This week</button>
+        <button onClick={() => quickReport(7)} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">Last 7 days</button>
+        <button onClick={() => quickReport(30)} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">30 days</button>
       </div>
 
       {/* Settings */}
@@ -157,8 +192,14 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
               <div className="bg-white border border-purple-100 rounded-2xl px-4 py-3 max-w-[85%]">
                 <div className="flex items-center gap-2 mb-1"><span className="text-xs font-semibold text-purple-700">Briefing de hoy</span><button onClick={() => speak(briefingText)} className="text-purple-400 hover:text-purple-700">{speakingId === 'briefing' ? <Loader2 size={13} className="animate-spin" /> : <Volume2 size={13} />}</button></div>
                 <p className="text-sm font-medium text-gray-900">{a.greeting}</p>
-                <ol className="text-xs text-gray-600 mt-2 space-y-1 list-decimal pl-4">
-                  {(a.top_actions || []).map((x, i) => <li key={i}>{x.action} <span className="text-gray-400">· {x.where}</span></li>)}
+                <ol className="text-xs text-gray-600 mt-2 space-y-1.5 list-decimal pl-4">
+                  {(a.top_actions || []).map((x, i) => (
+                    <li key={i}>
+                      {x.action} <span className="text-gray-400">· {x.where}</span>
+                      <button onClick={() => submit(`Take care of this for me: ${x.action}`)} disabled={sending}
+                        className="ml-2 align-middle text-[11px] font-medium text-purple-600 hover:underline disabled:opacity-50">▶ Do it</button>
+                    </li>
+                  ))}
                 </ol>
               </div>
             </div>

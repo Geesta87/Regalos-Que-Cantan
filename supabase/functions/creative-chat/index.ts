@@ -306,6 +306,21 @@ serve(async (req) => {
 
     if (action === 'sync') return json({ success: true, ...(await loadChat()) });
 
+    // Direct (deterministic) tweak — used by the Creative Studio "Pedir cambios"
+    // button on a card. Reuses the same tweak_creative engine the chat uses, but
+    // without a Claude round-trip: it regenerates the creative with the owner's
+    // change instructions and queues the new version.
+    if (action === 'tweak') {
+      const creativeId = String(body.creative_id || '').trim();
+      const instr = String(body.change_instructions || '').trim();
+      if (!creativeId || !instr) return json({ success: false, error: 'creative_id and change_instructions are required' }, 400);
+      if (!KIE_API_KEY) return json({ success: false, error: 'KIE_API_KEY not set' }, 500);
+      const generated: string[] = [];
+      const note = await runTool(admin, 'tweak_creative', { creative_id: creativeId, change_instructions: instr }, generated);
+      const ok = generated.length > 0;
+      return json({ success: ok, message: note, generated, ...(ok ? {} : { error: note }) });
+    }
+
     if (action === 'send') {
       const userMsg = (body.message || '').toString().slice(0, 4000);
       if (!userMsg.trim()) return json({ success: false, error: 'Empty message' }, 400);

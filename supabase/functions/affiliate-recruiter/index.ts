@@ -112,21 +112,32 @@ Deno.serve(async (req: Request) => {
   const json = (s: number, b: any) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   if (!SC_KEY) return json(200, { success: false, skipped: true, reason: 'SCRAPECREATORS_API_KEY missing' });
 
+  // Optional per-scan overrides from the admin "Filtros" panel (fall back to env
+  // defaults). Lets the owner steer who the recruiter goes after.
+  let reqBody: any = {}; try { reqBody = await req.json(); } catch { reqBody = {}; }
+  const niches = Array.isArray(reqBody.niches) && reqBody.niches.length
+    ? reqBody.niches.map((s: any) => String(s).trim()).filter(Boolean).slice(0, 12) : NICHES;
+  const minFollowers = Number.isFinite(Number(reqBody.min_followers)) && reqBody.min_followers != null && reqBody.min_followers !== ''
+    ? Number(reqBody.min_followers) : MIN_FOLLOWERS;
+  const maxFollowers = Number.isFinite(Number(reqBody.max_followers)) && reqBody.max_followers != null && reqBody.max_followers !== ''
+    ? Number(reqBody.max_followers) : MAX_FOLLOWERS;
+  const onlyPlatform = reqBody.platform === 'tiktok' || reqBody.platform === 'instagram' ? reqBody.platform : null;
+
   try {
     const seen = new Set<string>();
     // Run every niche search in parallel (each call is capped at 15s) so the
     // whole discovery step finishes in ~one call's time, not the sum.
     const tasks: Promise<any[]>[] = [];
-    for (const niche of NICHES) {
-      if (DO_TIKTOK) tasks.push(scGet('/v1/tiktok/search/users', { query: niche, trim: 'true' }).then((j) => (j.users || []).slice(0, PER_SEARCH).map((u: any) => shapeTikTok(u, niche)).filter(Boolean)));
-      if (DO_INSTAGRAM) tasks.push(scGet('/v1/instagram/search/profiles', { query: niche }).then((j) => (j.users || j.data || j.results || []).slice(0, PER_SEARCH).map((u: any) => shapeInstagram(u, niche)).filter(Boolean)));
+    for (const niche of niches) {
+      if (DO_TIKTOK && onlyPlatform !== 'instagram') tasks.push(scGet('/v1/tiktok/search/users', { query: niche, trim: 'true' }).then((j) => (j.users || []).slice(0, PER_SEARCH).map((u: any) => shapeTikTok(u, niche)).filter(Boolean)));
+      if (DO_INSTAGRAM && onlyPlatform !== 'tiktok') tasks.push(scGet('/v1/instagram/search/profiles', { query: niche }).then((j) => (j.users || j.data || j.results || []).slice(0, PER_SEARCH).map((u: any) => shapeInstagram(u, niche)).filter(Boolean)));
     }
     const cands: any[] = (await Promise.all(tasks)).flat();
 
     // Filter (size + public) + de-dup within batch.
     const filtered = cands.filter((c) => {
       if (c.private || !c.handle) return false;
-      if (c.followers != null && (c.followers < MIN_FOLLOWERS || c.followers > MAX_FOLLOWERS)) return false;
+      if (c.followers != null && (c.followers < minFollowers || c.followers > maxFollowers)) return false;
       const key = `${c.platform}:${c.handle.toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
