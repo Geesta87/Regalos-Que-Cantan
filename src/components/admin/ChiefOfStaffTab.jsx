@@ -130,7 +130,10 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const nm = persona?.name || 'Sofía';
   const avatar = persona?.avatar_url;
   const a = briefing?.analysis;
-  const briefingText = a ? `${a.greeting}\n\n${(a.top_actions || []).map((x, i) => `${i + 1}. ${x.action} (${x.where})`).join('\n')}` : '';
+  // Guard: a malformed briefing (e.g. top_actions came back as a string, not an
+  // array) must never crash the tab — coerce to an array before mapping.
+  const topActions = Array.isArray(a?.top_actions) ? a.top_actions : [];
+  const briefingText = a ? `${a.greeting}\n\n${topActions.map((x, i) => `${i + 1}. ${x?.action} (${x?.where})`).join('\n')}` : '';
 
   return (
     <div className="max-w-3xl">
@@ -222,10 +225,10 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
                 <div className="flex items-center gap-2 mb-1"><span className="text-xs font-semibold text-purple-700">Briefing de hoy</span><button onClick={() => speak(briefingText)} className="text-purple-400 hover:text-purple-700">{speakingId === 'briefing' ? <Loader2 size={13} className="animate-spin" /> : <Volume2 size={13} />}</button></div>
                 <p className="text-sm font-medium text-gray-900">{a.greeting}</p>
                 <ol className="text-xs text-gray-600 mt-2 space-y-1.5 list-decimal pl-4">
-                  {(a.top_actions || []).map((x, i) => (
+                  {topActions.map((x, i) => (
                     <li key={i}>
-                      {x.action} <span className="text-gray-400">· {x.where}</span>
-                      <button onClick={() => submit(`Take care of this for me: ${x.action}`)} disabled={sending}
+                      {x?.action} <span className="text-gray-400">· {x?.where}</span>
+                      <button onClick={() => submit(`Take care of this for me: ${x?.action}`)} disabled={sending}
                         className="ml-2 align-middle text-[11px] font-medium text-purple-600 hover:underline disabled:opacity-50">▶ Do it</button>
                     </li>
                   ))}

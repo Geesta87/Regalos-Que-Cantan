@@ -299,13 +299,13 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
                         <div className="space-y-1.5 bg-gray-50 border border-gray-200 rounded-lg p-2">
                           <p className="text-[11px] font-medium text-gray-600">Edit the text before approving:</p>
                           <input value={edits[c.id]?.headline || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], headline: e.target.value } }))}
-                            placeholder="Headline" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5" />
+                            placeholder="Headline" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-900 placeholder-gray-400" />
                           <textarea value={edits[c.id]?.primary_text || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], primary_text: e.target.value } }))}
-                            rows={2} placeholder="Primary text" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 resize-none" />
+                            rows={2} placeholder="Primary text" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-900 placeholder-gray-400 resize-none" />
                           <textarea value={edits[c.id]?.caption || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], caption: e.target.value } }))}
-                            rows={2} placeholder="Caption (what gets posted)" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 resize-none" />
+                            rows={2} placeholder="Caption (what gets posted)" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-900 placeholder-gray-400 resize-none" />
                           <input value={edits[c.id]?.hashtags || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], hashtags: e.target.value } }))}
-                            placeholder="#hashtags" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5" />
+                            placeholder="#hashtags" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-900 placeholder-gray-400" />
                           <div className="flex gap-2">
                             <button onClick={() => saveCopy(c.id)} disabled={busyId === c.id}
                               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-50">
@@ -319,7 +319,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
                           <p className="text-[11px] font-medium text-purple-700">Request a change from the designer (generates a new version):</p>
                           <textarea value={tweakText} onChange={(e) => setTweakText(e.target.value)} rows={3}
                             placeholder={'e.g. "make the background a sunset", "add the grandparents", "brighter and more colorful"'}
-                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 resize-none bg-white" />
+                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 resize-none bg-white text-gray-900 placeholder-gray-400" />
                           <div className="flex gap-2">
                             <button onClick={() => requestChanges(c.id)} disabled={busyId === c.id}
                               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">

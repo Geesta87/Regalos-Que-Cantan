@@ -162,6 +162,15 @@ Deno.serve(async (req: Request) => {
     };
 
     const briefing = await callClaude(gathered);
+    // Defensive: the model occasionally returns top_actions/agent_health as a
+    // STRING instead of an array, which crashed the email render + the dashboard
+    // (.map on a string). Coerce to arrays — salvage a string into one action.
+    briefing.top_actions = Array.isArray(briefing.top_actions)
+      ? briefing.top_actions
+      : (typeof briefing.top_actions === 'string' && briefing.top_actions.trim()
+          ? [{ priority: 1, action: briefing.top_actions.trim(), why: '', where: '' }]
+          : []);
+    if (!Array.isArray(briefing.agent_health)) briefing.agent_health = [];
     const briefingFor = new Date().toISOString().slice(0, 10);
     await supabase.from('cos_briefings').upsert({ briefing_for: briefingFor, gathered, analysis: briefing, email_sent: false }, { onConflict: 'briefing_for' });
 
