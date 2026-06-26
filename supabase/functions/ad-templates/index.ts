@@ -15,6 +15,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
 import { renderAd } from '../_shared/render-ad.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
+import { gptPhotoBytes, b64ToBytes } from '../_shared/openai-image.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -29,24 +30,12 @@ const IMG_SIZE = Deno.env.get('OPENAI_IMAGE_SIZE') || '1024x1536'; // ~portrait,
 const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
-function b64ToBytes(b64: string) { const bin = atob(b64); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
 
-// Two-layer flow: generate a TEXT-FREE photo and return its raw bytes. The
-// design layer (renderAd) lays real typography on top — we no longer ask the
-// model to draw text, which is the #1 "AI slop" tell.
-async function gptPhotoBytes(prompt: string): Promise<Uint8Array | null> {
-  if (!OPENAI_API_KEY) return null;
-  const r = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST', headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: IMG_MODEL, prompt: prompt.slice(0, 3800), n: 1, size: IMG_SIZE, quality: IMG_QUALITY }),
-  });
-  if (!r.ok) { console.warn('gptPhoto', r.status, (await r.text()).slice(0, 200)); return null; }
-  const j = await r.json().catch(() => ({}));
-  const b64 = j?.data?.[0]?.b64_json;
-  return b64 ? b64ToBytes(b64) : null;
-}
+// Text-free photo generation lives in _shared/openai-image.ts (gptPhotoBytes) so
+// the daily batch and chat use the exact same engine. The two-layer design rule
+// stands: the model draws NO text; renderAd typesets the real copy on top.
 
-// gpt-image-1 — synchronous; returns a stored public URL. (Used for template thumbnails.)
+// gpt-image — synchronous; returns a stored public URL. (Used for template thumbnails.)
 async function gptImage(admin: any, prompt: string): Promise<string | null> {
   if (!OPENAI_API_KEY) return null;
   const r = await fetch('https://api.openai.com/v1/images/generations', {

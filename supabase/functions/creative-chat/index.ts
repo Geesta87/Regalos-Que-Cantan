@@ -22,6 +22,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
 import { renderAd } from '../_shared/render-ad.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
+import { gptPhotoBytes } from '../_shared/openai-image.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,8 +34,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 const MODEL = Deno.env.get('CREATIVE_CHAT_MODEL') || 'claude-opus-4-8';
-const IMAGE_MODEL = Deno.env.get('CREATIVE_IMAGE_MODEL') || 'google/nano-banana';
-const IMAGE_EDIT_MODEL = Deno.env.get('CREATIVE_IMAGE_EDIT_MODEL') || 'google/nano-banana-edit';
+// Images use gpt-image-2 (synchronous, _shared/openai-image.ts); Kie is video-only now.
 const VIDEO_MODEL = Deno.env.get('CREATIVE_VIDEO_MODEL') || 'bytedance/seedance-2';
 const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 const KIE = 'https://api.kie.ai/api/v1/jobs';
@@ -57,8 +57,27 @@ async function kieCreate(model: string, input: Record<string, unknown>): Promise
   if (!id) throw new Error(`Kie createTask failed (${r.status}): ${JSON.stringify(j).slice(0, 160)}`);
   return id;
 }
-function imgInput(prompt: string) { return { prompt, aspect_ratio: '4:5', output_format: 'png' }; }
 function vidInput(prompt: string) { return { prompt, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }; }
+
+// Images are generated SYNCHRONOUSLY on gpt-image-2 (the premium engine): make a
+// text-free photo, typeset the design layer, upload, and return the public URL.
+// (Video still goes through Kie async + the poller.) Throws on failure.
+async function genImageNow(admin: any, rowId: string, prompt: string, design: any): Promise<string> {
+  const photo = await gptPhotoBytes(prompt);
+  if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
+  const hasDesign = (Array.isArray(design?.headline_lines) && design.headline_lines.length) || design?.kicker || design?.cta;
+  const out = hasDesign
+    ? (await renderAd({
+        imageBytes: photo,
+        kicker: design.kicker, headlineLines: Array.isArray(design.headline_lines) ? design.headline_lines : [],
+        accent: design.accent, cta: design.cta || 'Créala hoy · regalosquecantan.com',
+      }) || await applyLogo(photo))
+    : await applyLogo(photo);
+  const path = `${rowId}.png`;
+  const up = await admin.storage.from(BUCKET).upload(path, out, { contentType: 'image/png', upsert: true });
+  if (up.error) throw up.error;
+  return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
 
 // Finalize any 'generating' creatives in the given id list by polling Kie.
 async function finalize(admin: any, ids: string[]) {
@@ -159,14 +178,21 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
       status: 'generating',
     }).select('id').single();
     if (error || !row) return `Failed to queue: ${error?.message}`;
+    generated.push(row.id);
     try {
-      const taskId = await kieCreate(kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL, kind === 'video' ? vidInput(input.gen_prompt) : imgInput(input.gen_prompt));
+      if (kind === 'image') {
+        // gpt-image-2 is synchronous — generate, typeset, upload, mark ready now.
+        const design = { kicker: input.kicker, headline_lines: input.headline_lines, accent: input.accent, cta: input.cta };
+        const url = await genImageNow(admin, row.id, input.gen_prompt, design);
+        await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
+        return `Created image "${input.concept}" (id ${row.id}).`;
+      }
+      const taskId = await kieCreate(VIDEO_MODEL, vidInput(input.gen_prompt));
       await admin.from('creative_queue').update({ kie_task_id: taskId }).eq('id', row.id);
-      generated.push(row.id);
-      return `Queued ${kind} "${input.concept}" (id ${row.id}). It will appear shortly.`;
+      return `Queued video "${input.concept}" (id ${row.id}). It will appear shortly.`;
     } catch (e: any) {
       await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id);
-      return `Generation failed to start: ${e?.message || e}`;
+      return `Generation failed: ${e?.message || e}`;
     }
   }
 
@@ -183,16 +209,21 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
       status: 'generating',
     }).select('id').single();
     if (error || !row) return `Failed to queue tweak: ${error?.message}`;
+    generated.push(row.id);
     try {
       // Regenerate the text-free photo with the adjustment (the stored image has
       // typeset text baked in, so we can't image-edit it without corrupting type).
-      const taskId = await kieCreate(kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL, kind === 'video' ? vidInput(editPrompt) : imgInput(editPrompt));
+      if (kind === 'image') {
+        const url = await genImageNow(admin, row.id, editPrompt, orig.design);
+        await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
+        return `Created a tweaked version (id ${row.id}).`;
+      }
+      const taskId = await kieCreate(VIDEO_MODEL, vidInput(editPrompt));
       await admin.from('creative_queue').update({ kie_task_id: taskId }).eq('id', row.id);
-      generated.push(row.id);
-      return `Queued a tweaked version (id ${row.id}). It'll appear shortly.`;
+      return `Queued a tweaked video (id ${row.id}). It'll appear shortly.`;
     } catch (e: any) {
       await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id);
-      return `Tweak failed to start: ${e?.message || e}`;
+      return `Tweak failed: ${e?.message || e}`;
     }
   }
 
