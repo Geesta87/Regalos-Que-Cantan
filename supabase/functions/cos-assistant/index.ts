@@ -228,7 +228,9 @@ async function snapshot(admin: any) {
   ]);
   const { data: topCreative } = await admin.from('creative_queue').select('id, concept, score').eq('status', 'ready').order('score', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   return {
-    yesterday: mb ? { headline: mb.analysis?.headline, health: mb.analysis?.account_health, revenue: mb.metrics?.revenue_crosscheck, top_rec: mb.analysis?.recommendations?.[0] } : null,
+    // Qualitative heads-up ONLY — no figures. Numbers must come from get_ad_report
+    // (correct Pacific timezone + live), never from this stale saved report.
+    latest_saved_report: mb ? { headline: mb.analysis?.headline, account_health: mb.analysis?.account_health, top_recommendation: mb.analysis?.recommendations?.[0], NUMBERS_NOTE: 'NEVER quote spend/sales/revenue/ROAS/CPA from here — call get_ad_report for any figure, even "yesterday".' } : null,
     creatives_ready: creativesReady, top_ready_creative: topCreative || null,
     emails_pending: emailsPending, competitor_opportunities: competitorsNew, partner_prospects: prospectsNew,
   };
@@ -285,7 +287,7 @@ function systemPrompt(persona: any, snap: any) {
   const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
   return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
-You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question about ad results over a period (a week, "Monday to now", "últimos 7 días", specific dates), call get_ad_report with the dates — never answer from the yesterday snapshot. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
