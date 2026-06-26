@@ -13,6 +13,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
+import { renderAd } from '../_shared/render-ad.ts';
+import { brandContext } from '../_shared/brand-brief.ts';
+import { gptPhotoBytes, b64ToBytes } from '../_shared/openai-image.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -27,9 +30,12 @@ const IMG_SIZE = Deno.env.get('OPENAI_IMAGE_SIZE') || '1024x1536'; // ~portrait,
 const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
-function b64ToBytes(b64: string) { const bin = atob(b64); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; }
 
-// gpt-image-1 — synchronous; returns a stored public URL.
+// Text-free photo generation lives in _shared/openai-image.ts (gptPhotoBytes) so
+// the daily batch and chat use the exact same engine. The two-layer design rule
+// stands: the model draws NO text; renderAd typesets the real copy on top.
+
+// gpt-image — synchronous; returns a stored public URL. (Used for template thumbnails.)
 async function gptImage(admin: any, prompt: string): Promise<string | null> {
   if (!OPENAI_API_KEY) return null;
   const r = await fetch('https://api.openai.com/v1/images/generations', {
@@ -49,7 +55,7 @@ async function gptImage(admin: any, prompt: string): Promise<string | null> {
 
 const VARS_TOOL = {
   name: 'emit_template_variations',
-  description: 'Emit on-brand ad variations in the given template style.',
+  description: 'Emit on-brand ad variations: a TEXT-FREE photo prompt plus the typographic copy that our design layer renders on top.',
   input_schema: {
     type: 'object',
     properties: {
@@ -60,11 +66,16 @@ const VARS_TOOL = {
           properties: {
             occasion: { type: 'string' },
             concept: { type: 'string', description: 'One line describing this variation.' },
-            image_prompt: { type: 'string', description: 'The FULL prompt for the image model: the template visual style applied to THIS variation. If the template renders text, include the EXACT Spanish headline to render in the image, in quotes. Wholesome, mature adults, NEVER minors.' },
-            headline: { type: 'string' }, primary_text: { type: 'string' }, caption: { type: 'string' },
+            photo_prompt: { type: 'string', description: 'Prompt for a single PHOTOGRAPH only — cinematic, art-directed (real lens, natural light, candid genuine emotion). ABSOLUTELY NO text, words, letters, captions, or logos in the image. Leave clean, uncluttered negative space in the lower third for typography. Wholesome, mature adults only, NEVER minors (for youth occasions show proud parents/adults).' },
+            kicker: { type: 'string', description: 'Short eyebrow line above the headline, ≤ 32 chars, e.g. "Su nombre · Su historia · Su voz".' },
+            headline_lines: { type: 'array', items: { type: 'string' }, description: '1-3 SHORT lines (each ≤ 16 chars) that stack as the big headline. e.g. ["Una canción hecha","solo para mamá"].' },
+            accent: { type: 'string', description: 'One word taken from headline_lines to highlight in gold italic, e.g. "mamá". Optional.' },
+            cta: { type: 'string', description: 'Call-to-action pill text, ≤ 34 chars, e.g. "Créala hoy · regalosquecantan.com".' },
+            headline: { type: 'string', description: 'Full headline as one string (for records/ad copy).' },
+            primary_text: { type: 'string' }, caption: { type: 'string' },
             hashtags: { type: 'array', items: { type: 'string' } },
           },
-          required: ['occasion', 'concept', 'image_prompt', 'headline', 'primary_text'],
+          required: ['occasion', 'concept', 'photo_prompt', 'headline_lines', 'cta', 'primary_text'],
         },
       },
     },
@@ -72,12 +83,21 @@ const VARS_TOOL = {
   },
 };
 
-async function variations(tpl: any, count: number): Promise<any[]> {
+async function variations(tpl: any, count: number, promoNotes: string): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) return [];
-  const system = `You are the Creative Director for "Regalos Que Cantan" (personalized Spanish songs as gifts, ~$30, US-Hispanic). Produce ${count} DISTINCT ad variations in this fixed template style. Vary the occasion, person, and angle across them. Warm Mexican/US-Hispanic Spanish copy, no recipient names. Wholesome, mature adults, NEVER depict minors (for youth occasions show proud parents/adults). Strong hook + CTA to regalosquecantan.com.
+  const system = `You are the Creative Director for "Regalos Que Cantan" (personalized Spanish songs as gifts, US-Hispanic). Produce ${count} DISTINCT ad variations in this fixed template style. Vary the occasion, person, and angle across them. Warm Mexican/US-Hispanic Spanish copy, no recipient names. Wholesome, mature adults, NEVER depict minors (for youth occasions show proud parents/adults).
+
+${brandContext(promoNotes)}
+Across the ${count} variations, ROTATE which offer each one features (don't put the same price on all of them) and pair each with one proof point.
+
+CRITICAL — TWO-LAYER ADS: The image is a PHOTOGRAPH ONLY. Never put text, words, or logos in photo_prompt — our design layer renders the typography separately. So:
+- photo_prompt = a cinematic, art-directed, text-free photo with clean negative space in the lower third. Apply the template's visual mood to the photography.
+- kicker / headline_lines / accent / cta = the typeset copy laid on top. Keep headline_lines SHORT (≤16 chars/line, 1-3 lines) and punchy so they read big. Pick one emotional accent word.
+- cta should drive to regalosquecantan.com.
+- PLAIN TEXT ONLY in kicker / headline_lines / cta — absolutely NO emoji or pictographs (the brand fonts can't render them).
 
 TEMPLATE: ${tpl.name}
-VISUAL STYLE (bake this into every image_prompt): ${tpl.style_prompt}
+PHOTOGRAPHIC MOOD (apply to photo_prompt): ${tpl.style_prompt}
 COPY GUIDANCE: ${tpl.copy_guidance || ''}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -126,18 +146,34 @@ serve(async (req) => {
       if (!tpl) return json({ success: false, error: 'Template not found' }, 404);
       const count = Math.min(Math.max(Number(body.count) || 5, 1), 6);
       const intended = body.intended_use === 'social' ? 'social' : 'ad'; // destination chosen by the owner
-      const items = await variations(tpl, count);
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const items = await variations(tpl, count, cfg?.promo_notes || '');
       if (!items.length) return json({ success: false, error: 'No variations produced' }, 502);
 
       const batch = new Date().toISOString().slice(0, 10);
       const made = await Promise.all(items.map(async (it: any) => {
-        const url = await gptImage(admin, it.image_prompt);
+        // 1) text-free photo  2) lay the typographic design layer on top
+        const photo = await gptPhotoBytes(it.photo_prompt || it.image_prompt || '');
+        let url: string | null = null;
+        if (photo) {
+          const png = await renderAd({
+            imageBytes: photo,
+            kicker: it.kicker, headlineLines: it.headline_lines || [], accent: it.accent,
+            cta: it.cta || 'Créala hoy · regalosquecantan.com', template: tpl.key,
+          });
+          const outBytes = png || await applyLogo(photo); // fall back to logo-stamped photo
+          const path = `tpl-${crypto.randomUUID()}.png`;
+          const up = await admin.storage.from(BUCKET).upload(path, outBytes, { contentType: 'image/png', upsert: true });
+          if (!up.error) url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        }
         const { data: row } = await admin.from('creative_queue').insert({
           batch_date: batch, kind: 'image', intended_use: intended,
           occasion: it.occasion ?? null, concept: `[${tpl.name}] ${it.concept || ''}`.slice(0, 200),
-          gen_prompt: it.image_prompt ?? null, headline: it.headline ?? null, primary_text: it.primary_text ?? null,
+          gen_prompt: it.photo_prompt ?? null,
+          headline: it.headline ?? (Array.isArray(it.headline_lines) ? it.headline_lines.join(' ') : null),
+          primary_text: it.primary_text ?? null,
           caption: it.caption ?? null, hashtags: Array.isArray(it.hashtags) ? it.hashtags : null,
-          status: url ? 'ready' : 'failed', media_url: url || null, error: url ? null : 'gpt-image-1 failed',
+          status: url ? 'ready' : 'failed', media_url: url || null, error: url ? null : 'generation failed',
         }).select('id').single();
         return { id: row?.id, ok: !!url };
       }));

@@ -16,22 +16,26 @@
 // agent_runs. verify_jwt = false (pg_cron, no JWT) — see config.toml.
 // Deploy: supabase functions deploy creative-studio-daily --project-ref yzbvajungshqcpusfiia
 //
-// Secrets: ANTHROPIC_API_KEY, KIE_API_KEY (both already set).
-// Optional: CREATIVE_IMAGE_MODEL (default google/nano-banana — set to the
-//   "nano banana pro" id if/when desired), CREATIVE_VIDEO_MODEL
+// Secrets: ANTHROPIC_API_KEY, OPENAI_API_KEY (images = gpt-image-2), KIE_API_KEY
+//   (video only). All already set.
+// Optional: OPENAI_IMAGE_MODEL (default gpt-image-2), CREATIVE_VIDEO_MODEL
 //   (default bytedance/seedance-2), CREATIVE_MODEL (Claude, default
 //   claude-opus-4-8), CREATIVE_N_IMAGES (5), CREATIVE_N_VIDEOS (5),
 //   CREATIVE_STUDIO_ENABLED ('false' to pause).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { brandContext } from '../_shared/brand-brief.ts';
+import { gptPhotoBytes } from '../_shared/openai-image.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 
-const IMAGE_MODEL = Deno.env.get('CREATIVE_IMAGE_MODEL') || 'google/nano-banana';
+// Images now use the premium gpt-image-2 engine (synchronous, see _shared/openai-image.ts).
+// Only VIDEO still goes through Kie's async task API + the poller.
 const VIDEO_MODEL = Deno.env.get('CREATIVE_VIDEO_MODEL') || 'bytedance/seedance-2';
+const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 const CLAUDE_MODEL = Deno.env.get('CREATIVE_MODEL') || 'claude-opus-4-8';
 const N_IMAGES = Number(Deno.env.get('CREATIVE_N_IMAGES') || '5');
 const N_VIDEOS = Number(Deno.env.get('CREATIVE_N_VIDEOS') || '5');
@@ -63,7 +67,11 @@ const BATCH_TOOL = {
             occasion: { type: 'string', description: 'e.g. cumpleaños, aniversario, día de las madres, boda, quinceañera, día del padre' },
             persuasion_angle: { type: 'string', description: 'The emotional/persuasive hook driving this creative.' },
             concept: { type: 'string', description: 'One-line description of the visual idea.' },
-            gen_prompt: { type: 'string', description: 'The detailed generation prompt. MUST be in one of the two approved looks and say which: (a) PHOTOREAL warm gift-moment scene, or (b) ANIMATED Disney/Pixar-style 3D characters. For images: a rich visual description. For videos: a 5-second motion description in that look. Wholesome, mature adults only, warm and family-friendly, wide framing — NEVER anything that could read as suggestive (avoids false NSFW flags).' },
+            gen_prompt: { type: 'string', description: 'The detailed generation prompt. MUST be in one of the two approved looks and say which: (a) PHOTOREAL warm gift-moment scene, or (b) ANIMATED Disney/Pixar-style 3D characters. For IMAGES: describe the PICTURE ONLY — NO text, words, captions or logos in it, and leave clean negative space in the lower third for typography. For videos: a 5-second motion description in that look. Wholesome, mature adults only, warm and family-friendly, wide framing — NEVER anything that could read as suggestive (avoids false NSFW flags).' },
+            kicker: { type: 'string', description: 'IMAGES ONLY: short eyebrow line above the headline, ≤32 chars. Plain text, NO emoji.' },
+            headline_lines: { type: 'array', items: { type: 'string' }, description: 'IMAGES ONLY: 1-3 SHORT stacked headline lines (≤16 chars each) for the design layer. Plain text, NO emoji.' },
+            accent: { type: 'string', description: 'IMAGES ONLY: one word from headline_lines to highlight in gold italic.' },
+            cta: { type: 'string', description: 'IMAGES ONLY: CTA pill text ≤34 chars, e.g. "Créala hoy · regalosquecantan.com". Plain text, NO emoji.' },
             headline: { type: 'string', description: 'Short Spanish headline. NO recipient names (evergreen).' },
             primary_text: { type: 'string', description: 'Spanish ad primary text / post body. Emotional, ends with a clear CTA to regalosquecantan.com for ads.' },
             caption: { type: 'string', description: 'Spanish social caption with 3-5 relevant hashtags woven in or at the end.' },
@@ -98,6 +106,8 @@ VISUAL STYLE — use ONLY these two looks, and MIX them across the batch:
 - ANIMATED storybook: charming Disney/Pixar-style 3D-animated characters — big expressive eyes, smooth rounded stylized features, the polished animated-movie look, warm palette. Best for family, kids, and celebration; stands out in feed.
 Do NOT use other styles (no plain text/lyric cards, no dramatic corrido-cinematic) unless explicitly asked. Every gen_prompt must clearly state WHICH of the two looks it is.
 
+TWO-LAYER IMAGES (mandatory for kind=image): The image is a PICTURE ONLY. NEVER write text, words, headlines, captions or logos into gen_prompt, and leave clean negative space in the lower third. Put the on-image words in the SEPARATE fields kicker / headline_lines / accent / cta — our design layer typesets them over the picture with the brand fonts and logo. Keep headline_lines short and punchy (≤16 chars/line) and use PLAIN TEXT with NO emoji. (VIDEO items ignore these fields — gen_prompt stays the motion description.)
+
 TONE: vary per piece to fit the occasion — tear-jerker for the reveal/nostalgia, warm & festive for celebrations, tender for romance.
 
 GUARDRAILS:
@@ -106,13 +116,15 @@ GUARDRAILS:
 - NEVER depict minors. AI image models auto-REJECT any image showing a child or teen. For youth occasions (quinceañera, kids' cumpleaños, graduación), depict the EMOTION through the ADULTS instead — a proud mother's tearful face, parents embracing, hands holding the phone with the song, a celebration table — never the child/teen themselves. This is mandatory in EVERY gen_prompt, photoreal or animated.
 - Score honestly so your strongest ideas sort to the top — be your own toughest critic.`;
 
-async function generateBatch(styleNotes: string): Promise<any[]> {
+async function generateBatch(styleNotes: string, promoNotes: string): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
-  // Owner's saved style preferences (set in the Creative Studio chat) override
-  // / extend the base DNA. Always honor them.
-  const system = styleNotes?.trim()
-    ? `${SYSTEM}\n\nOWNER'S SAVED STYLE PREFERENCES (always honor these):\n${styleNotes.trim()}`
-    : SYSTEM;
+  // Layer the system prompt: base art-direction DNA → the Business Brain (real
+  // offer + selling points + upsell ladder, with the owner's live promo push) →
+  // the owner's saved style preferences. Each overrides/extends the one above.
+  const stylePart = styleNotes?.trim()
+    ? `\n\nOWNER'S SAVED STYLE PREFERENCES (always honor these):\n${styleNotes.trim()}`
+    : '';
+  const system = `${SYSTEM}\n\n${brandContext(promoNotes)}${stylePart}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -138,16 +150,13 @@ async function generateBatch(styleNotes: string): Promise<any[]> {
 // ---------------------------------------------------------------------------
 // Kie — fire a generation task, return taskId. (Poller finalizes the result.)
 // ---------------------------------------------------------------------------
-async function kieCreate(kind: string, prompt: string): Promise<string> {
-  const model = kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL;
-  const input: Record<string, unknown> = kind === 'video'
-    ? { prompt, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }
-    : { prompt, aspect_ratio: '4:5', output_format: 'png' };
-
+// Video only — fires an async Kie task; poll-creative-queue finalizes it.
+async function kieCreateVideo(prompt: string): Promise<string> {
+  const input = { prompt, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false };
   const r = await fetch(`${KIE}/createTask`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, input }),
+    body: JSON.stringify({ model: VIDEO_MODEL, input }),
   });
   const j = await r.json().catch(() => ({}));
   const id = j?.data?.taskId || j?.taskId || j?.data?.task_id;
@@ -178,8 +187,8 @@ Deno.serve(async (req: Request) => {
 
   const batchDate = new Date().toISOString().slice(0, 10);
   try {
-    const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes').eq('id', 1).single();
-    const items = await generateBatch(cfg?.style_notes || '');
+    const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
+    const items = await generateBatch(cfg?.style_notes || '', cfg?.promo_notes || '');
     if (!items.length) throw new Error('Model returned an empty batch');
 
     // Insert each row (so copy survives even if generation fails), then fire the
@@ -199,13 +208,42 @@ Deno.serve(async (req: Request) => {
         primary_text: it.primary_text ?? null,
         caption: it.caption ?? null,
         hashtags: Array.isArray(it.hashtags) ? it.hashtags : null,
+        design: kind === 'image' ? {
+          kicker: it.kicker ?? null,
+          headline_lines: Array.isArray(it.headline_lines) ? it.headline_lines : null,
+          accent: it.accent ?? null,
+          cta: it.cta ?? null,
+        } : null,
         score: Number.isFinite(it.score) ? it.score : null,
         status: 'generating',
       }).select('id').single();
       if (insErr || !row) { failed++; console.error('insert creative_queue:', insErr?.message); return; }
 
+      // IMAGES — generate the text-free photo on gpt-image-2 (cheap) and upload it
+      // RAW. The typography render (resvg, memory-heavy) is deferred to the
+      // rate-capped poller — we can't render a whole batch inline without tripping
+      // WORKER_RESOURCE_LIMIT. Row stays 'generating' with NO kie_task_id, which is
+      // how the poller recognizes an OpenAI image awaiting its design layer.
+      if (kind === 'image') {
+        try {
+          const photo = await gptPhotoBytes(it.gen_prompt || it.concept || '');
+          if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
+          const rawPath = `${row.id}-raw.png`;
+          const up = await supabase.storage.from(BUCKET).upload(rawPath, photo, { contentType: 'image/png', upsert: true });
+          if (up.error) throw up.error;
+          const rawUrl = supabase.storage.from(BUCKET).getPublicUrl(rawPath).data.publicUrl;
+          await supabase.from('creative_queue').update({ media_url: rawUrl, updated_at: new Date().toISOString() }).eq('id', row.id);
+          fired++;
+        } catch (e: any) {
+          await supabase.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 500), updated_at: new Date().toISOString() }).eq('id', row.id);
+          failed++;
+        }
+        return;
+      }
+
+      // VIDEO — async Kie task; poll-creative-queue finalizes it.
       try {
-        const taskId = await kieCreate(kind, it.gen_prompt || it.concept || '');
+        const taskId = await kieCreateVideo(it.gen_prompt || it.concept || '');
         await supabase.from('creative_queue').update({ kie_task_id: taskId, updated_at: new Date().toISOString() }).eq('id', row.id);
         fired++;
       } catch (e: any) {

@@ -122,6 +122,22 @@ serve(async (req) => {
       return json({ success: true, role, creatives: data || [] });
     }
 
+    // ─── Live promo box: read (admin + assistant) ────────────────────────
+    if (action === 'get_config') {
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, style_notes').eq('id', 1).single();
+      return json({ success: true, role, promo_notes: cfg?.promo_notes || '', style_notes: cfg?.style_notes || '' });
+    }
+
+    // ─── Live promo box: save (admin only) ───────────────────────────────
+    if (action === 'save_promo') {
+      if (role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
+      const promo = String(body.promo_notes ?? '').slice(0, 2000);
+      const { error } = await admin.from('creative_studio_config')
+        .update({ promo_notes: promo, updated_at: new Date().toISOString() }).eq('id', 1);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, promo_notes: promo });
+    }
+
     // ─── Mutations (admin only) ──────────────────────────────────────────
     if (role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
     if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
