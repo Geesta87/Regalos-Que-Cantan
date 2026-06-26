@@ -344,7 +344,7 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
     } else if (a.action_type === 'extract_creative') {
       const p = a.params || {};
       const twist = (p.instruction || '').toString().trim();
-      const brief = `📋 WORK ORDER from Sofía (Chief of Staff), on behalf of Gerardo. Generate TWO fresh ad images NOW — actually CALL your generate_creative tool and create them; do NOT just describe them, ask questions, or say you can't fetch the original image (you don't need it). Recreate the look from scratch. Make them in the proven style of our currently-running ad "${p.ad_name}" (its copy was: "${(p.copy || '').slice(0, 200)}").${twist ? ` IMPORTANT — Gerardo wants this angle/twist on the new ones: ${twist}.` : ''} Keep our brand + one clear offer + CTA; make ORIGINALS, don't copy the exact wording. After you generate them, confirm to Gerardo that Sofía's order is done and they're in Creative Studio.`;
+      const brief = `📋 WORK ORDER from Sofía (Chief of Staff), on behalf of Gerardo. Generate TWO fresh ad images NOW — actually CALL your generate_creative tool and create them; do NOT just describe them, ask questions, or say you can't fetch the original image (you don't need it). Recreate the look from scratch. Make them in the proven style of our currently-running ad "${p.ad_name}" (its copy was: "${(p.copy || '').slice(0, 200)}").${twist ? ` IMPORTANT — Gerardo wants this angle/twist on the new ones: ${twist}.` : ''} Keep our brand + one clear offer + CTA; make ORIGINALS, don't copy the exact wording. Create them as ADS — set intended_use to "ad" so they land in the Ads tab. After you generate them, confirm to Gerardo that Sofía's order is done and they're in Creative Studio → Ads.`;
       const send = async (m: string) => (await (await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'send', message: m }) })).json());
       let r = await send(brief);
       if (!r.success) throw new Error(r.error || 'creative-chat failed');
@@ -355,7 +355,7 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
         gen = r.generated || [];
       }
       result = gen.length
-        ? `Sent to the Art Director — ${gen.length} new ad${gen.length > 1 ? 's' : ''} generating in Creative Studio.`
+        ? `Sent to the Art Director — ${gen.length} new ad${gen.length > 1 ? 's' : ''} created. See them in Creative Studio → Ads.`
         : `Order delivered to the Art Director, but it didn't auto-generate this time. Open the Art director tab and say "generate them now".`;
     } else {
       return { ok: false, result: `Unknown action type ${a.action_type}.` };

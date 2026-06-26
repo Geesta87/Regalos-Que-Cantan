@@ -252,19 +252,39 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
       {/* Proposed Meta actions — nothing happens until you Confirm */}
       {pending.length > 0 && (
         <div className="mt-3 space-y-2">
-          {pending.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
-              <span className="flex-1 text-sm text-gray-900">{p.summary || `${p.action_type} ${p.target_name || ''}`}</span>
-              <button onClick={() => confirmAction(p.id)} disabled={actingId === p.id}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-                {actingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Confirm
-              </button>
-              <button onClick={() => cancelAction(p.id)} disabled={actingId === p.id}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50">
-                <X size={14} /> Cancel
-              </button>
-            </div>
-          ))}
+          {pending.map((p) => {
+            const working = actingId === p.id;
+            const workLabel = p.action_type === 'extract_creative'
+              ? 'Art Director is generating your ads… (~30–60s, then check Creative Studio → Ads)'
+              : 'Applying the change in Meta…';
+            return (
+              <div key={p.id} className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+                {working ? (
+                  <div>
+                    <div className="flex items-center gap-2 text-sm text-gray-900 mb-2">
+                      <Loader2 size={14} className="animate-spin text-amber-600" />
+                      <span className="font-medium">{workLabel}</span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-amber-200">
+                      <div className="h-full w-full rounded-full bg-amber-500 animate-pulse" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 text-sm text-gray-900">{p.summary || `${p.action_type} ${p.target_name || ''}`}</span>
+                    <button onClick={() => confirmAction(p.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700">
+                      <Check size={14} /> Confirm
+                    </button>
+                    <button onClick={() => cancelAction(p.id)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-white">
+                      <X size={14} /> Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
