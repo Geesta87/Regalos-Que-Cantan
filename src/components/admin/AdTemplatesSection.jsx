@@ -13,6 +13,7 @@ export default function AdTemplatesSection({ accessToken, showToast }) {
   const [prepping, setPrepping] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [seeded, setSeeded] = useState(false);
+  const [dest, setDest] = useState('ad'); // 'ad' | 'social' — where the 5 land
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY }, body: JSON.stringify(payload) });
@@ -42,8 +43,8 @@ export default function AdTemplatesSection({ accessToken, showToast }) {
   const generate = async (t) => {
     setBusyId(t.id);
     try {
-      const r = await call({ action: 'generate_from_template', template_id: t.id, count: 5 });
-      if (r.success) showToast?.(`🎨 Generando 5 anuncios estilo "${t.name}" → revísalos en Ads`);
+      const r = await call({ action: 'generate_from_template', template_id: t.id, count: 5, intended_use: dest });
+      if (r.success) showToast?.(`🎨 Generando 5 estilo "${t.name}" → revísalos en ${dest === 'social' ? 'Social' : 'Ads'}`);
       else showToast?.(`Error: ${r.error || 'falló'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusyId(null); }
@@ -53,7 +54,15 @@ export default function AdTemplatesSection({ accessToken, showToast }) {
     <div className="max-w-5xl">
       <div className="mb-4">
         <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2"><LayoutTemplate size={18} className="text-gray-700" /> Plantillas de anuncios</h3>
-        <p className="text-sm text-gray-500 mt-1 max-w-2xl">Estilos de anuncio probados. Elige uno y genera 5 variaciones en ese estilo (renderizadas con gpt-image-1, calidad de anuncio). Aparecen listas en la pestaña <b>Ads</b>.{prepping && <span className="ml-1 text-amber-600">Preparando vistas previas…</span>}</p>
+        <p className="text-sm text-gray-500 mt-1 max-w-2xl">Estilos probados. Elige un estilo, decide el destino, y genera 5 variaciones (gpt-image-2, calidad premium).{prepping && <span className="ml-1 text-amber-600">Preparando vistas previas…</span>}</p>
+        <div className="flex items-center gap-2 mt-3">
+          <span className="text-xs text-gray-500">Generar para:</span>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {[['ad', '📣 Ads'], ['social', '📱 Social']].map(([k, label]) => (
+              <button key={k} onClick={() => setDest(k)} className={`px-3 py-1 text-sm rounded-md transition ${dest === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading ? (
