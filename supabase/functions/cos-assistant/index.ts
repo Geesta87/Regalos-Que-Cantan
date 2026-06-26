@@ -279,6 +279,7 @@ function tools() {
     { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. Dates are the owner\'s PACIFIC days labeled by their 9am start (e.g. "2026-06-25" = Jun 25 9am → Jun 26 9am Pacific) — just pass his Pacific dates; the tool converts to the Meta/Manila ad-day internally. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: "Start date YYYY-MM-DD in the owner's Pacific frame (inclusive)." }, to: { type: 'string', description: "End date YYYY-MM-DD Pacific (inclusive). Defaults to today." } }, required: ['from'] } },
     { name: 'propose_ad_change', description: 'PROPOSE pausing, resuming, or changing the daily budget of a Meta campaign or ad set. This does NOT execute — it creates a confirmation card the owner must tap to approve. Use whenever the owner wants to turn off / pause / resume an ad, or raise/lower a budget. Match the campaign/ad-set by the name the owner uses.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['pause', 'resume', 'set_budget'] }, level: { type: 'string', enum: ['campaign', 'adset'], description: 'Whether the name refers to a campaign or an ad set. Default campaign.' }, name: { type: 'string', description: 'The campaign or ad-set name (or part of it).' }, daily_budget_usd: { type: 'number', description: 'For set_budget: the new daily budget in US dollars (e.g. 75).' } }, required: ['action', 'name'] } },
     { name: 'propose_extract_ad', description: 'PROPOSE taking a currently-running ad\'s visual + copy and handing it to the Art Director (Creative Studio) to generate more in that style. Does NOT execute — creates a confirmation card. Use when the owner wants "more like the ad that\'s running". If he wants a different angle/theme for the new ones, capture it in `instruction`.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign or ad name to pull the running creative from. If omitted, uses the top active ad.' }, instruction: { type: 'string', description: 'Any angle/twist the owner wants for the NEW ads, e.g. "Christian / faith angle, not Father\'s Day". Pass his exact extra direction.' } } } },
+    { name: 'check_creatives', description: 'Check how many ad/social creatives were created recently and their status (ready / still generating / failed). Use whenever the owner asks if ads or creatives are done, landed, or how many are waiting — answer from this, never guess.', input_schema: { type: 'object', properties: {} } },
   ];
 }
 
@@ -344,19 +345,13 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
     } else if (a.action_type === 'extract_creative') {
       const p = a.params || {};
       const twist = (p.instruction || '').toString().trim();
-      const brief = `📋 WORK ORDER from Sofía (Chief of Staff), on behalf of Gerardo. Generate TWO fresh ad images NOW — actually CALL your generate_creative tool and create them; do NOT just describe them, ask questions, or say you can't fetch the original image (you don't need it). Recreate the look from scratch. Make them in the proven style of our currently-running ad "${p.ad_name}" (its copy was: "${(p.copy || '').slice(0, 200)}").${twist ? ` IMPORTANT — Gerardo wants this angle/twist on the new ones: ${twist}.` : ''} Keep our brand + one clear offer + CTA; make ORIGINALS, don't copy the exact wording. Create them as ADS — set intended_use to "ad" so they land in the Ads tab. After you generate them, confirm to Gerardo that Sofía's order is done and they're in Creative Studio → Ads.`;
-      const send = async (m: string) => (await (await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'send', message: m }) })).json());
-      let r = await send(brief);
-      if (!r.success) throw new Error(r.error || 'creative-chat failed');
-      let gen = r.generated || [];
-      if (!gen.length) {
-        // It only talked — push it to actually create them.
-        r = await send(`Stop describing and GENERATE now: call generate_creative TWICE to create 2 image ad creatives (intended_use "ad") in our warm photoreal gift-moment style${twist ? `, with this angle: ${twist}` : ''} — one clear offer + CTA each.`);
-        gen = r.generated || [];
-      }
-      result = gen.length
-        ? `Sent to the Art Director — ${gen.length} new ad${gen.length > 1 ? 's' : ''} created. See them in Creative Studio → Ads.`
-        : `Order delivered to the Art Director, but it didn't auto-generate this time. Open the Art director tab and say "generate them now".`;
+      // DETERMINISTIC path: creative-chat's generate_batch FORCES specs + generates
+      // each image itself — no relying on a chat model to choose to call a tool.
+      const brief = `Make ads in the proven style of our running ad "${p.ad_name}" (its copy was: "${(p.copy || '').slice(0, 200)}").${twist ? ` Angle/twist Gerardo wants: ${twist}.` : ''} Warm photoreal gift-moment, one clear offer + CTA, Spanish copy; make ORIGINALS (don't copy verbatim).`;
+      const r = await (await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'generate_batch', brief, count: 2, intended_use: 'ad' }) })).json();
+      const n = (r.generated || []).length;
+      if (!r.success || !n) throw new Error(r.error || 'generation produced nothing');
+      result = `Done — ${n} new ad${n > 1 ? 's' : ''} created and ready in Creative Studio → Ads.`;
     } else {
       return { ok: false, result: `Unknown action type ${a.action_type}.` };
     }
@@ -374,6 +369,15 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
   try {
     if (name === 'propose_ad_change') return await proposeAdChange(admin, input, pending);
     if (name === 'propose_extract_ad') return await proposeExtractAd(admin, input, pending);
+    if (name === 'check_creatives') {
+      const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+      const { data } = await admin.from('creative_queue').select('status, intended_use, concept, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(60);
+      const rows = data || [];
+      const ready = rows.filter((c: any) => c.status === 'ready');
+      const generating = rows.filter((c: any) => c.status === 'generating').length;
+      const failed = rows.filter((c: any) => c.status === 'failed').length;
+      return `Creatives created in the last 6h: ${ready.length} READY, ${generating} still generating, ${failed} failed. ${ready.length ? `Ready concepts: ${ready.slice(0, 6).map((c: any) => c.concept || '(untitled)').join('; ')}. They're in Creative Studio → ${ready[0].intended_use === 'social' ? 'Social' : 'Ads'}.` : 'Nothing ready yet.'}`;
+    }
     if (name === 'approve_creative') {
       const id = input.creative_id || snap?.top_ready_creative?.id;
       if (!id) return 'No creative is waiting for approval.';
@@ -410,7 +414,7 @@ function systemPrompt(persona: any, snap: any) {
 
 You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did.
 
-META ADS CHANGES (approval-gated): to PAUSE / turn off / resume an ad, or change a daily BUDGET, call propose_ad_change. To make more ads like one that's running, call propose_extract_ad — and if he wants a different angle/theme for the new ones (e.g. "faith angle, not Father's Day"), pass it in the instruction field so the Art Director actually gets that direction. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+META ADS CHANGES (approval-gated): to PAUSE / turn off / resume an ad, or change a daily BUDGET, call propose_ad_change. To make more ads like one that's running, call propose_extract_ad — and if he wants a different angle/theme for the new ones (e.g. "faith angle, not Father's Day"), pass it in the instruction field so the Art Director actually gets that direction. When the order is confirmed it RELIABLY generates the ads (deterministic) and the confirmation tells you how many landed. If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 

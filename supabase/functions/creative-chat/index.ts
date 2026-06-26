@@ -321,6 +321,77 @@ serve(async (req) => {
       return json({ success: ok, message: note, generated, ...(ok ? {} : { error: note }) });
     }
 
+    // Deterministic batch generation — used by Sofía's hand-off ("make more like X").
+    // Does NOT depend on the chat model CHOOSING to call a tool (which stalls): it
+    // FORCES Claude to emit N ad specs, then the system generates each image itself.
+    // Guaranteed to create creatives (or report a real error) — no "I'll do it" loops.
+    if (action === 'generate_batch') {
+      if (!ANTHROPIC_API_KEY) return json({ success: false, error: 'ANTHROPIC_API_KEY not set' }, 500);
+      const count = Math.min(Math.max(Number(body.count) || 2, 1), 4);
+      const intended = body.intended_use === 'social' ? 'social' : 'ad';
+      const brief = String(body.brief || '').slice(0, 2000);
+      const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
+      const SPEC_TOOL = {
+        name: 'emit_ads',
+        description: 'Emit the exact ad creatives to generate.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            ads: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  concept: { type: 'string', description: 'One-line idea.' },
+                  occasion: { type: 'string' },
+                  gen_prompt: { type: 'string', description: 'Detailed PHOTOREAL gift-moment OR ANIMATED Pixar prompt. Describe the PICTURE ONLY — NO text/words/logos in it, clean negative space in the lower third. Wholesome, mature adults, NEVER minors.' },
+                  kicker: { type: 'string', description: 'Short eyebrow ≤32 chars, plain text.' },
+                  headline_lines: { type: 'array', items: { type: 'string' }, description: '1-3 SHORT headline lines (≤16 chars each), plain text.' },
+                  accent: { type: 'string', description: 'One word from headline_lines to highlight gold italic.' },
+                  cta: { type: 'string', description: 'CTA pill ≤34 chars.' },
+                  caption: { type: 'string', description: 'Platform caption (Spanish).' },
+                  hashtags: { type: 'array', items: { type: 'string' } },
+                },
+                required: ['concept', 'gen_prompt', 'headline_lines', 'cta'],
+              },
+            },
+          },
+          required: ['ads'],
+        },
+      };
+      const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}\n\nProduce EXACTLY ${count} ${intended} creatives now. ${brief}`;
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: MODEL, max_tokens: 3000, system: sys, tools: [SPEC_TOOL], tool_choice: { type: 'tool', name: 'emit_ads' }, messages: [{ role: 'user', content: `Generate ${count} ads. ${brief}` }] }),
+      });
+      if (!res.ok) return json({ success: false, error: `Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}` }, 502);
+      const data = await res.json();
+      const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
+      const specs = (tu?.input?.ads || []).slice(0, count);
+      if (!specs.length) return json({ success: false, error: 'Model returned no ad specs' }, 502);
+      const generated: string[] = [];
+      for (const s of specs) {
+        const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null };
+        const { data: row } = await admin.from('creative_queue').insert({
+          batch_date: today(), kind: 'image', intended_use: intended,
+          occasion: s.occasion ?? null, concept: s.concept ?? null, gen_prompt: s.gen_prompt ?? null,
+          headline: Array.isArray(s.headline_lines) ? s.headline_lines.join(' ') : null,
+          caption: s.caption ?? null, hashtags: Array.isArray(s.hashtags) ? s.hashtags : null,
+          design, status: 'generating',
+        }).select('id').single();
+        if (!row) continue;
+        try {
+          const url = await genImageNow(admin, row.id, s.gen_prompt, design);
+          await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
+          generated.push(row.id);
+        } catch (e: any) {
+          await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id);
+        }
+      }
+      return json({ success: generated.length > 0, generated, count: generated.length });
+    }
+
     if (action === 'send') {
       const userMsg = (body.message || '').toString().slice(0, 4000);
       if (!userMsg.trim()) return json({ success: false, error: 'Empty message' }, 400);
