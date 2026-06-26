@@ -44,7 +44,13 @@ const META_ACCESS_TOKEN = Deno.env.get('META_ACCESS_TOKEN');
 const META_AD_ACCOUNT_ID = Deno.env.get('META_AD_ACCOUNT_ID') || 'act_832413711748940';
 const META_API_VERSION = Deno.env.get('META_API_VERSION') || 'v21.0';
 const MODEL = Deno.env.get('MEDIA_BUYER_MODEL') || 'claude-opus-4-8';
-const REVENUE_TZ = Deno.env.get('MEDIA_BUYER_TZ') || 'America/Chicago';
+// Revenue is bucketed to the AD-ACCOUNT day so it lines up with Meta's "yesterday"
+// spend (always in the ad-account TZ). This account is permanently on Asia/Manila
+// (set up that way by mistake, but Meta won't let you change a TZ after spend), so
+// aligning the revenue day to Manila makes daily spend-vs-revenue ROAS exact —
+// midnight Manila ≈ 9am US-Pacific (8am in winter). Override via MEDIA_BUYER_TZ /
+// META_AD_TZ only if the ad account's timezone ever changes.
+const REVENUE_TZ = Deno.env.get('MEDIA_BUYER_TZ') || Deno.env.get('META_AD_TZ') || 'Asia/Manila';
 // The RQC Spanish funnel stamps songs.platform = 'es'. (NOT 'regalos_que_cantan'
 // — that value is stale and matches zero rows; verified against live data
 // 2026-06-25. clonamivoz lives in its own table and is excluded automatically.)
@@ -60,10 +66,10 @@ const corsHeaders = {
 };
 
 // ---------------------------------------------------------------------------
-// Time helpers — resolve "yesterday" as a calendar day in the owner's TZ so
-// the revenue cross-check lines up with how a human reads the day. Meta's own
-// "yesterday" preset is relative to the AD ACCOUNT timezone (Asia/Manila),
-// which we surface as a caveat rather than try to reconcile to the second.
+// Time helpers — resolve "yesterday" as a calendar day in REVENUE_TZ, which is
+// set to the AD-ACCOUNT timezone (Asia/Manila) so it matches Meta's "yesterday"
+// preset (Meta always reports in the ad-account TZ). Revenue and spend therefore
+// cover the SAME 24h window — ROAS is exact, no TZ caveat needed.
 // ---------------------------------------------------------------------------
 function tzOffsetMs(date: Date, tz: string): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
@@ -432,7 +438,7 @@ Deno.serve(async (req: Request) => {
       revenue_crosscheck,
       campaigns_yesterday,
       campaigns_last_7d,
-      note_timezone: 'Meta insights use the ad-account TZ (Asia/Manila); revenue uses ' + REVENUE_TZ,
+      note_timezone: `Spend and revenue are both on the ad-account day (${REVENUE_TZ}; midnight Manila ≈ 9am US-Pacific), so this day's spend and revenue cover the same 24h window — ROAS is apples-to-apples.`,
     };
 
     // ---- 3. Claude brief ----
