@@ -34,6 +34,10 @@ const META_AD_ACCOUNT_ID = Deno.env.get('META_AD_ACCOUNT_ID') || 'act_8324137117
 const META_API_VERSION = Deno.env.get('META_API_VERSION') || 'v21.0';
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 const REVENUE_TZ = Deno.env.get('MEDIA_BUYER_TZ') || 'America/Chicago';
+// The Meta ad account bills its "day" in Asia/Manila (midnight Manila = ~9am US
+// Pacific). To make daily spend vs revenue apples-to-apples, the ad report
+// buckets BOTH Meta spend and Stripe/paid-order revenue to this same ad-day.
+const AD_TZ = Deno.env.get('META_AD_TZ') || 'Asia/Manila';
 const RQC_PLATFORM = Deno.env.get('MEDIA_BUYER_PLATFORM') || 'es';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
@@ -55,15 +59,16 @@ function actionCount(actions: any[] | undefined, type: string): number {
   return hit ? num(hit.value || hit.count) : 0;
 }
 function purchasesOf(row: any): number { return actionCount(row.actions, 'purchase') || actionCount(row.actions, 'omni_purchase'); }
-function tzDay(iso: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: REVENUE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+function tzDay(iso: string, tz: string = AD_TZ): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 }
 
 // Build an ad-performance report for a date range. Prefers LIVE Meta (full
 // history) cross-checked against real paid orders in `songs`; falls back to the
 // saved daily media-buyer reports if Meta is unreachable / not configured.
 async function buildAdReport(admin: any, from: string, to: string): Promise<string> {
-  // Real revenue: deduped paid orders (per stripe_session_id) bucketed by owner-TZ day.
+  // Real revenue: deduped paid orders (per stripe_session_id) bucketed by the Meta
+  // ad-day (AD_TZ / Asia/Manila) so each day lines up exactly with that day's spend.
   async function realRevenue() {
     const lo = new Date(`${from}T00:00:00Z`); lo.setUTCDate(lo.getUTCDate() - 1);
     const hi = new Date(`${to}T00:00:00Z`); hi.setUTCDate(hi.getUTCDate() + 2);
@@ -113,7 +118,7 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
         total_real_orders: rev.orders, total_real_revenue: rev.total,
         blended_roas: totalSpend > 0 ? Math.round((rev.total / totalSpend) * 100) / 100 : null,
         meta_reported_sales: totalMetaSales, per_day: days, top_campaigns,
-        note: `spend + meta_sales are LIVE from Meta (ad-account TZ Asia/Manila); real_orders/real_revenue are deduped paid orders from the DB in ${REVENUE_TZ}. Minor per-day TZ drift is expected — trust the real orders.`,
+        note: `Each day is the Meta ad-day in ${AD_TZ} (midnight Manila ≈ 9am US Pacific). Both spend (live from Meta) and real_orders/real_revenue (deduped paid orders) are bucketed to that SAME 24h window, so daily ROAS is apples-to-apples.`,
       };
       return `AD REPORT ${from} → ${to} (LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
     } catch (_e) {

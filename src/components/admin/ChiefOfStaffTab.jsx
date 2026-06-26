@@ -221,8 +221,8 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
       )}
 
       <div className="flex items-center gap-2 mt-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder={`Pregúntale a ${nm}… (ej: "aprueba el mejor creativo")`} disabled={sending}
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400 disabled:opacity-60" />
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder={`Ask ${nm}… (e.g. "approve the best creative")`} disabled={sending}
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || !input.trim()} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:opacity-50"><Send size={15} /></button>
       </div>
     </div>
