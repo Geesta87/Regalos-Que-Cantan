@@ -4,7 +4,7 @@
 // GHL) or Reject each one. Self-contained, mirrors VideosTab/NeedsApprovalTab:
 // talks to the creative-studio-admin edge function with the admin JWT.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle, Megaphone } from 'lucide-react';
+import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle, Megaphone, Pencil, Wand2 } from 'lucide-react';
 import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
 import CompetitorsSection from './CompetitorsSection';
@@ -35,6 +35,11 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [filter, setFilter] = useState('review');
   const [view, setView] = useState('ads'); // 'ads' | 'social' | 'emails' | 'chat'
   const [scheduleById, setScheduleById] = useState({}); // creative id -> datetime-local string
+  // Inline copy editor + "request changes" (redesign) per card
+  const [editId, setEditId] = useState(null);
+  const [edits, setEdits] = useState({}); // id -> { headline, primary_text, caption, hashtags }
+  const [tweakId, setTweakId] = useState(null);
+  const [tweakText, setTweakText] = useState('');
   // Live "promo box" — the seasonal push every generator leads with (creative_studio_config.promo_notes)
   const [promo, setPromo] = useState('');
   const [promoSaved, setPromoSaved] = useState('');
@@ -79,7 +84,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   }, [accessToken, call]);
 
   const savePromo = async () => {
-    if (role !== 'admin') { showToast?.('Solo administradores'); return; }
+    if (role !== 'admin') { showToast?.('Admins only'); return; }
     setSavingPromo(true);
     try {
       const r = await call({ action: 'save_promo', promo_notes: promo });
@@ -110,6 +115,46 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
     } finally {
       setBusyId(null);
     }
+  };
+
+  const startEdit = (c) => {
+    setTweakId(null);
+    setEditId(c.id);
+    setEdits((p) => ({ ...p, [c.id]: {
+      headline: c.headline || '', primary_text: c.primary_text || '', caption: c.caption || '',
+      hashtags: Array.isArray(c.hashtags) ? c.hashtags.map((h) => `#${String(h).replace(/^#/, '')}`).join(' ') : '',
+    } }));
+  };
+
+  const saveCopy = async (id) => {
+    if (role !== 'admin') { showToast?.('Admins only'); return; }
+    const e = edits[id] || {};
+    setBusyId(id);
+    try {
+      const hashtags = (e.hashtags || '').split(/[\s,]+/).map((h) => h.replace(/^#/, '')).filter(Boolean);
+      const r = await call({ action: 'update', id, headline: e.headline, primary_text: e.primary_text, caption: e.caption, hashtags });
+      if (r.success) {
+        setCreatives((prev) => prev.map((c) => c.id === id ? { ...c, headline: e.headline, primary_text: e.primary_text, caption: e.caption, hashtags } : c));
+        setEditId(null);
+        showToast?.('✅ Copy updated');
+      } else showToast?.(`Error: ${r.error || 'no se pudo guardar'}`);
+    } catch (err) { showToast?.(`Error: ${err.message}`); }
+    finally { setBusyId(null); }
+  };
+
+  const requestChanges = async (id) => {
+    if (role !== 'admin') { showToast?.('Admins only'); return; }
+    if (!tweakText.trim()) { showToast?.('Describe what to change'); return; }
+    setBusyId(id);
+    try {
+      const r = await call({ action: 'request_changes', id, change_instructions: tweakText.trim() });
+      if (r.success) {
+        setTweakId(null); setTweakText('');
+        showToast?.('🎨 Sent to the designer — the new version will appear shortly');
+        load();
+      } else showToast?.(`Error: ${r.error || 'falló'}`);
+    } catch (err) { showToast?.(`Error: ${err.message}`); }
+    finally { setBusyId(null); }
   };
 
   const shown = creatives.filter((c) => (view === 'social' ? c.intended_use === 'social' : c.intended_use === 'ad'));
@@ -250,20 +295,67 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
                 <div className="p-3 pt-0">
                   {c.status === 'ready' ? (
                     <div className="space-y-2">
-                      <input type="datetime-local" value={scheduleById[c.id] || ''}
-                        onChange={(e) => setScheduleById((p) => ({ ...p, [c.id]: e.target.value }))}
-                        className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
-                        title="Opcional: programa la hora de publicación" />
-                      <div className="flex gap-2">
-                        <button onClick={() => act(c.id, 'approve', scheduleById[c.id] ? { schedule_date: new Date(scheduleById[c.id]).toISOString() } : {})} disabled={busyId === c.id || role !== 'admin'}
-                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-                          {busyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {scheduleById[c.id] ? 'Programar' : 'Aprobar'}
-                        </button>
-                        <button onClick={() => act(c.id, 'reject')} disabled={busyId === c.id || role !== 'admin'}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
-                          <X size={15} />
-                        </button>
-                      </div>
+                      {editId === c.id ? (
+                        <div className="space-y-1.5 bg-gray-50 border border-gray-200 rounded-lg p-2">
+                          <p className="text-[11px] font-medium text-gray-600">Edit the text before approving:</p>
+                          <input value={edits[c.id]?.headline || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], headline: e.target.value } }))}
+                            placeholder="Headline" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5" />
+                          <textarea value={edits[c.id]?.primary_text || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], primary_text: e.target.value } }))}
+                            rows={2} placeholder="Primary text" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 resize-none" />
+                          <textarea value={edits[c.id]?.caption || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], caption: e.target.value } }))}
+                            rows={2} placeholder="Caption (what gets posted)" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 resize-none" />
+                          <input value={edits[c.id]?.hashtags || ''} onChange={(e) => setEdits((p) => ({ ...p, [c.id]: { ...p[c.id], hashtags: e.target.value } }))}
+                            placeholder="#hashtags" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5" />
+                          <div className="flex gap-2">
+                            <button onClick={() => saveCopy(c.id)} disabled={busyId === c.id}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-50">
+                              {busyId === c.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save copy
+                            </button>
+                            <button onClick={() => setEditId(null)} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-white">Cancel</button>
+                          </div>
+                        </div>
+                      ) : tweakId === c.id ? (
+                        <div className="space-y-1.5 bg-purple-50 border border-purple-200 rounded-lg p-2">
+                          <p className="text-[11px] font-medium text-purple-700">Request a change from the designer (generates a new version):</p>
+                          <textarea value={tweakText} onChange={(e) => setTweakText(e.target.value)} rows={3}
+                            placeholder={'e.g. "make the background a sunset", "add the grandparents", "brighter and more colorful"'}
+                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 resize-none bg-white" />
+                          <div className="flex gap-2">
+                            <button onClick={() => requestChanges(c.id)} disabled={busyId === c.id}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
+                              {busyId === c.id ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Send changes
+                            </button>
+                            <button onClick={() => { setTweakId(null); setTweakText(''); }} className="px-3 py-1.5 text-xs rounded-lg border border-purple-200 text-purple-500 hover:bg-white">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <input type="datetime-local" value={scheduleById[c.id] || ''}
+                            onChange={(e) => setScheduleById((p) => ({ ...p, [c.id]: e.target.value }))}
+                            className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                            title="Opcional: programa la hora de publicación" />
+                          <div className="flex gap-2">
+                            <button onClick={() => act(c.id, 'approve', scheduleById[c.id] ? { schedule_date: new Date(scheduleById[c.id]).toISOString() } : {})} disabled={busyId === c.id || role !== 'admin'}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                              {busyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {scheduleById[c.id] ? 'Programar' : 'Aprobar'}
+                            </button>
+                            <button onClick={() => act(c.id, 'reject')} disabled={busyId === c.id || role !== 'admin'}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                              <X size={15} />
+                            </button>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => startEdit(c)} disabled={role !== 'admin'}
+                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                              <Pencil size={12} /> Edit copy
+                            </button>
+                            <button onClick={() => { setEditId(null); setTweakId(c.id); setTweakText(''); }} disabled={role !== 'admin'}
+                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 disabled:opacity-50">
+                              <Wand2 size={12} /> Request changes
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : c.status === 'posted' ? (
                     <div className="flex items-center gap-1.5 text-xs text-green-700">

@@ -47,7 +47,14 @@ serve(async (req) => {
     }
 
     if (action === 'scan') {
-      fetch(`${SUPABASE_URL}/functions/v1/affiliate-recruiter`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+      // Forward the owner's search criteria (from the "Filtros" panel) to the
+      // recruiter; it falls back to env defaults for anything omitted.
+      const fwd: any = {};
+      if (body.min_followers != null && body.min_followers !== '') fwd.min_followers = body.min_followers;
+      if (body.max_followers != null && body.max_followers !== '') fwd.max_followers = body.max_followers;
+      if (Array.isArray(body.niches) && body.niches.length) fwd.niches = body.niches;
+      if (body.platform === 'tiktok' || body.platform === 'instagram') fwd.platform = body.platform;
+      fetch(`${SUPABASE_URL}/functions/v1/affiliate-recruiter`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fwd) }).catch(() => {});
       return json({ success: true, started: true });
     }
 

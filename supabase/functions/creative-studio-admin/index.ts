@@ -149,6 +149,40 @@ serve(async (req) => {
       return json({ success: true, id: body.id, status: 'rejected' });
     }
 
+    // ─── Edit the copy before approving (admin only) ─────────────────────
+    // Changes the TEXT that gets posted (caption/headline/body/hashtags). Does
+    // NOT re-render the words baked into the image — for that use request_changes.
+    if (action === 'update') {
+      const patch: any = { updated_at: new Date().toISOString() };
+      if (body.headline !== undefined) patch.headline = String(body.headline ?? '').slice(0, 300) || null;
+      if (body.primary_text !== undefined) patch.primary_text = String(body.primary_text ?? '').slice(0, 2000) || null;
+      if (body.caption !== undefined) patch.caption = String(body.caption ?? '').slice(0, 2200) || null;
+      if (body.hashtags !== undefined) patch.hashtags = Array.isArray(body.hashtags)
+        ? body.hashtags.map((h: string) => String(h).replace(/^#/, '').trim()).filter(Boolean).slice(0, 30)
+        : null;
+      const { data, error } = await admin.from('creative_queue')
+        .update(patch).eq('id', body.id)
+        .select('id, headline, primary_text, caption, hashtags').single();
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, id: body.id, creative: data });
+    }
+
+    // ─── Request a design change → redesign (admin only) ─────────────────
+    // Forwards to creative-chat's deterministic tweak engine, which regenerates
+    // the creative with the owner's instructions as a NEW queued version.
+    if (action === 'request_changes') {
+      const instr = String(body.change_instructions || '').trim();
+      if (!instr) return json({ success: false, error: 'Describe what to change' }, 400);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+        body: JSON.stringify({ action: 'tweak', creative_id: body.id, change_instructions: instr }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.success) return json({ success: false, error: out.error || `creative-chat ${res.status}` }, 502);
+      return json({ success: true, id: body.id, note: out.message, generated: out.generated || [] });
+    }
+
     if (action === 'approve') {
       const { data: c, error: cErr } = await admin.from('creative_queue').select('*').eq('id', body.id).single();
       if (cErr || !c) return json({ success: false, error: 'Creative not found' }, 404);

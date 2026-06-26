@@ -4,7 +4,7 @@
 // owner copies + sends the DM, tracks status, and on a reply converts them into
 // a real affiliate (reuses create-affiliate). Admin-only.
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink } from 'lucide-react';
+import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink, SlidersHorizontal } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-recruiter-admin`;
 const STATUS = {
@@ -23,6 +23,11 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const [convertId, setConvertId] = useState(null);
   const [email, setEmail] = useState('');
   const [platform, setPlatform] = useState('all');
+  // Search criteria for the next scan (steer who the recruiter goes after)
+  const [showFilters, setShowFilters] = useState(false);
+  const [minF, setMinF] = useState('');
+  const [maxF, setMaxF] = useState('');
+  const [terms, setTerms] = useState('');
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -48,7 +53,13 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const scan = async () => {
     setScanning(true);
     try {
-      const r = await call({ action: 'scan' });
+      const filters = {};
+      if (minF !== '' && Number.isFinite(Number(minF))) filters.min_followers = Number(minF);
+      if (maxF !== '' && Number.isFinite(Number(maxF))) filters.max_followers = Number(maxF);
+      const t = terms.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+      if (t.length) filters.niches = t;
+      if (platform !== 'all') filters.platform = platform;
+      const r = await call({ action: 'scan', ...filters });
       if (r.success) { showToast?.('Buscando creadores… aparecen en ~1 min'); setTimeout(load, 60000); }
       else showToast?.(`Error: ${r.error}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -89,10 +100,40 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2"><UserPlus size={22} className="text-gray-700" /> Recruit Partners</h2>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">Latino creators who'd make great affiliates, ranked by fit. Each comes with a ready Spanish DM — copy it, send it, and convert them when they reply. (We never auto-DM.)</p>
         </div>
-        <button onClick={scan} disabled={scanning} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50">
-          {scanning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Scan now
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={() => setShowFilters((s) => !s)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${showFilters ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            <SlidersHorizontal size={15} /> Filters
+          </button>
+          <button onClick={scan} disabled={scanning} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50">
+            {scanning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Scan now
+          </button>
+        </div>
       </div>
+
+      {/* Search criteria — steer who the recruiter goes after on the next scan */}
+      {showFilters && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3.5 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Who to look for</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs text-gray-600">Min followers
+              <input type="number" min="0" value={minF} onChange={(e) => setMinF(e.target.value)} placeholder="3,000"
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+            </label>
+            <label className="text-xs text-gray-600">Max followers
+              <input type="number" min="0" value={maxF} onChange={(e) => setMaxF(e.target.value)} placeholder="1,500,000"
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+            </label>
+          </div>
+          <label className="text-xs text-gray-600 block">Search terms / niches <span className="text-gray-400">(comma-separated)</span>
+            <textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={2}
+              placeholder="canción personalizada, regalo personalizado, quinceañera, boda mexicana, música regional mexicana"
+              className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white resize-none" />
+          </label>
+          <p className="text-[11px] text-gray-400">
+            Leave blank to use the defaults (3K–1.5M followers, standard niches). These filters apply when you hit <b>Scan now</b>. Search terms stay in Spanish to match the creators you're targeting.
+          </p>
+        </div>
+      )}
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {[['all', 'Todos'], ['tiktok', 'TikTok'], ['instagram', 'Instagram']].map(([k, label]) => (

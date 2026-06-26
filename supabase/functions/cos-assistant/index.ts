@@ -117,10 +117,11 @@ function tools() {
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
     { name: 'refresh_briefing', description: 'Regenerate the morning Chief-of-Staff briefing.', input_schema: { type: 'object', properties: {} } },
     { name: 'generate_creatives', description: 'Ask the Creative Studio art director to generate creatives from a brief.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What to make, e.g. "5 Mother\'s Day photoreal ads".' } }, required: ['brief'] } },
+    { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE (spend, real paid sales, ROAS, daily breakdown, top moves) from the saved daily media-buyer reports. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", or specific dates. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' }, to: { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' } }, required: ['from'] } },
   ];
 }
 
-async function runTool(authHeader: string, snap: any, name: string, input: any): Promise<string> {
+async function runTool(admin: any, authHeader: string, snap: any, name: string, input: any): Promise<string> {
   const fwd = (fn: string, body: any) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify(body) });
   try {
     if (name === 'approve_creative') {
@@ -133,6 +134,25 @@ async function runTool(authHeader: string, snap: any, name: string, input: any):
     if (name === 'run_affiliate_scan') { await fwd('affiliate-recruiter-admin', { action: 'scan' }); return 'Partner scan started — new prospects in ~1 min.'; }
     if (name === 'refresh_briefing') { fwd('chief-of-staff-daily', {}).catch(() => {}); return 'Refreshing the briefing now.'; }
     if (name === 'generate_creatives') { const r = await (await fwd('creative-chat', { action: 'send', message: input.brief })).json(); return r.success ? `On it — the art director is generating: "${input.brief}". They'll show up in Creative Studio shortly.` : `Could not start: ${r.error}`; }
+    if (name === 'get_ad_report') {
+      const to = String(input.to || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      const from = String(input.from || to).slice(0, 10);
+      const { data: reports } = await admin.from('media_buyer_reports')
+        .select('report_for, metrics, analysis').gte('report_for', from).lte('report_for', to)
+        .order('report_for', { ascending: true });
+      if (!reports || !reports.length) return `No saved ad reports between ${from} and ${to}. The media buyer writes one report each morning (for the prior day); if it hasn't run for those days, there's nothing stored yet. The most recent stored day is in the snapshot above.`;
+      let spend = 0, revenue = 0, orders = 0, metaSales = 0;
+      const perDay = reports.map((r: any) => {
+        const m = r.metrics || {}, a = r.analysis || {};
+        const s = Number(m.account_yesterday?.spend) || 0;
+        const rc = m.revenue_crosscheck || {};
+        const rev = Number(rc.real_revenue) || 0, ord = Number(rc.real_orders) || 0;
+        spend += s; revenue += rev; orders += ord; metaSales += Number(rc.meta_reported_purchases) || 0;
+        return { date: r.report_for, spend: Math.round(s * 100) / 100, real_orders: ord, real_revenue: Math.round(rev * 100) / 100, roas: s > 0 ? Math.round((rev / s) * 100) / 100 : null, headline: a.headline, health: a.account_health };
+      });
+      const summary = { from, to, days_covered: perDay.length, total_spend: Math.round(spend * 100) / 100, total_real_orders: orders, total_real_revenue: Math.round(revenue * 100) / 100, blended_roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null, meta_reported_sales: metaSales, per_day: perDay };
+      return `AD REPORT ${from} → ${to} (real paid orders vs ad spend):\n${JSON.stringify(summary, null, 2)}`;
+    }
     return `Unknown action ${name}`;
   } catch (e: any) { return `Action failed: ${e?.message || e}`; }
 }
@@ -150,7 +170,7 @@ function systemPrompt(persona: any, snap: any) {
   const name = persona?.name || 'Sofía';
   return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
-You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, or have the Creative Studio generate creatives. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question about ad results over a period (a week, "Monday to now", "últimos 7 días", specific dates), call get_ad_report with the dates — never answer from the yesterday snapshot. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 CURRENT STATE (live):
 ${JSON.stringify(snap, null, 2)}`;
@@ -231,7 +251,7 @@ serve(async (req) => {
         if (text) finalText = text;
         if (resp.stop_reason !== 'tool_use' || !toolUses.length) break;
         const results = [];
-        for (const tu of toolUses) results.push({ type: 'tool_result', tool_use_id: tu.id, content: await runTool(authHeader, snap, tu.name, tu.input || {}) });
+        for (const tu of toolUses) results.push({ type: 'tool_result', tool_use_id: tu.id, content: await runTool(admin, authHeader, snap, tu.name, tu.input || {}) });
         messages.push({ role: 'user', content: results });
       }
 
