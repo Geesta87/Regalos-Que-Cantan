@@ -121,18 +121,19 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
         const s = num(r.spend), meta = purchasesOf(r);
         totalSpend += s; totalMetaSales += meta;
         const rd = rev.byDay[label] || { revenue: 0, orders: 0 };
-        return { date: label, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
+        return { date: label, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_cpa: rd.orders > 0 ? Math.round((s / rd.orders) * 100) / 100 : null, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
       }).sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
       const top_campaigns = (byCampaign.data || [])
-        .map((c: any) => ({ name: c.campaign_name, spend: Math.round(num(c.spend) * 100) / 100, meta_sales: purchasesOf(c) }))
+        .map((c: any) => { const sp = Math.round(num(c.spend) * 100) / 100, ms = purchasesOf(c); return { name: c.campaign_name, spend: sp, meta_sales: ms, cpa: ms > 0 ? Math.round((sp / ms) * 100) / 100 : null }; })
         .sort((a: any, b: any) => b.meta_sales - a.meta_sales || b.spend - a.spend).slice(0, 8);
       const summary = {
         from, to, source: 'meta_live', timezone: "Pacific day, 9am→9am, labeled by start date", days_covered: days.length,
         total_spend: Math.round(totalSpend * 100) / 100,
         total_real_orders: rev.orders, total_real_revenue: rev.total,
+        blended_cpa: rev.orders > 0 ? Math.round((totalSpend / rev.orders) * 100) / 100 : null,
         blended_roas: totalSpend > 0 ? Math.round((rev.total / totalSpend) * 100) / 100 : null,
         meta_reported_sales: totalMetaSales, per_day: days, top_campaigns,
-        note: `Dates are the owner's PACIFIC days labeled by their 9am start — e.g. "2026-06-25" = Jun 25 9:00am → Jun 26 9:00am Pacific (one Meta/Manila ad-day relabeled to its Pacific start date). Spend and real_orders/real_revenue both cover that exact window, so the date matches the owner's LA calendar + Stripe and daily ROAS is exact.`,
+        note: `Dates are the owner's PACIFIC days labeled by their 9am start — e.g. "2026-06-25" = Jun 25 9:00am → Jun 26 9:00am Pacific (one Meta/Manila ad-day relabeled to its Pacific start date). Spend and real_orders/real_revenue both cover that exact window, so the date matches the owner's LA calendar + Stripe and daily ROAS is exact. real_cpa & blended_cpa = ad spend ÷ real PAID orders (true cost per sale); top_campaigns.cpa = spend ÷ Meta-reported sales.`,
       };
       return `AD REPORT ${from} → ${to} (Pacific days, 9am→9am, labeled by start date; LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
     } catch (_e) {
@@ -151,9 +152,9 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
     const s = num(m.account_yesterday?.spend), rc = m.revenue_crosscheck || {};
     const rev2 = num(rc.real_revenue), ord = num(rc.real_orders);
     spend += s; revenue += rev2; orders += ord; metaSales += num(rc.meta_reported_purchases);
-    return { date: r.report_for, spend: Math.round(s * 100) / 100, real_orders: ord, real_revenue: Math.round(rev2 * 100) / 100, roas: s > 0 ? Math.round((rev2 / s) * 100) / 100 : null, headline: a.headline };
+    return { date: r.report_for, spend: Math.round(s * 100) / 100, real_orders: ord, real_cpa: ord > 0 ? Math.round((s / ord) * 100) / 100 : null, real_revenue: Math.round(rev2 * 100) / 100, roas: s > 0 ? Math.round((rev2 / s) * 100) / 100 : null, headline: a.headline };
   });
-  const summary = { from, to, source: 'saved_reports', days_covered: perDay.length, total_spend: Math.round(spend * 100) / 100, total_real_orders: orders, total_real_revenue: Math.round(revenue * 100) / 100, blended_roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null, meta_reported_sales: metaSales, per_day: perDay };
+  const summary = { from, to, source: 'saved_reports', days_covered: perDay.length, total_spend: Math.round(spend * 100) / 100, total_real_orders: orders, total_real_revenue: Math.round(revenue * 100) / 100, blended_cpa: orders > 0 ? Math.round((spend / orders) * 100) / 100 : null, blended_roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null, meta_reported_sales: metaSales, per_day: perDay };
   return `AD REPORT ${from} → ${to} (from saved daily reports):\n${JSON.stringify(summary, null, 2)}`;
 }
 
@@ -287,7 +288,7 @@ function systemPrompt(persona: any, snap: any) {
   const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
   return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
-You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
