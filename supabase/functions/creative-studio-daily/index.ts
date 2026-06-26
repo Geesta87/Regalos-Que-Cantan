@@ -16,23 +16,26 @@
 // agent_runs. verify_jwt = false (pg_cron, no JWT) — see config.toml.
 // Deploy: supabase functions deploy creative-studio-daily --project-ref yzbvajungshqcpusfiia
 //
-// Secrets: ANTHROPIC_API_KEY, KIE_API_KEY (both already set).
-// Optional: CREATIVE_IMAGE_MODEL (default google/nano-banana — set to the
-//   "nano banana pro" id if/when desired), CREATIVE_VIDEO_MODEL
+// Secrets: ANTHROPIC_API_KEY, OPENAI_API_KEY (images = gpt-image-2), KIE_API_KEY
+//   (video only). All already set.
+// Optional: OPENAI_IMAGE_MODEL (default gpt-image-2), CREATIVE_VIDEO_MODEL
 //   (default bytedance/seedance-2), CREATIVE_MODEL (Claude, default
 //   claude-opus-4-8), CREATIVE_N_IMAGES (5), CREATIVE_N_VIDEOS (5),
 //   CREATIVE_STUDIO_ENABLED ('false' to pause).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { brandContext } from '../_shared/brand-brief.ts';
+import { gptPhotoBytes } from '../_shared/openai-image.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 
-const IMAGE_MODEL = Deno.env.get('CREATIVE_IMAGE_MODEL') || 'google/nano-banana';
+// Images now use the premium gpt-image-2 engine (synchronous, see _shared/openai-image.ts).
+// Only VIDEO still goes through Kie's async task API + the poller.
 const VIDEO_MODEL = Deno.env.get('CREATIVE_VIDEO_MODEL') || 'bytedance/seedance-2';
+const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 const CLAUDE_MODEL = Deno.env.get('CREATIVE_MODEL') || 'claude-opus-4-8';
 const N_IMAGES = Number(Deno.env.get('CREATIVE_N_IMAGES') || '5');
 const N_VIDEOS = Number(Deno.env.get('CREATIVE_N_VIDEOS') || '5');
@@ -147,16 +150,13 @@ async function generateBatch(styleNotes: string, promoNotes: string): Promise<an
 // ---------------------------------------------------------------------------
 // Kie — fire a generation task, return taskId. (Poller finalizes the result.)
 // ---------------------------------------------------------------------------
-async function kieCreate(kind: string, prompt: string): Promise<string> {
-  const model = kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL;
-  const input: Record<string, unknown> = kind === 'video'
-    ? { prompt, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }
-    : { prompt, aspect_ratio: '4:5', output_format: 'png' };
-
+// Video only — fires an async Kie task; poll-creative-queue finalizes it.
+async function kieCreateVideo(prompt: string): Promise<string> {
+  const input = { prompt, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false };
   const r = await fetch(`${KIE}/createTask`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, input }),
+    body: JSON.stringify({ model: VIDEO_MODEL, input }),
   });
   const j = await r.json().catch(() => ({}));
   const id = j?.data?.taskId || j?.taskId || j?.data?.task_id;
@@ -219,8 +219,31 @@ Deno.serve(async (req: Request) => {
       }).select('id').single();
       if (insErr || !row) { failed++; console.error('insert creative_queue:', insErr?.message); return; }
 
+      // IMAGES — generate the text-free photo on gpt-image-2 (cheap) and upload it
+      // RAW. The typography render (resvg, memory-heavy) is deferred to the
+      // rate-capped poller — we can't render a whole batch inline without tripping
+      // WORKER_RESOURCE_LIMIT. Row stays 'generating' with NO kie_task_id, which is
+      // how the poller recognizes an OpenAI image awaiting its design layer.
+      if (kind === 'image') {
+        try {
+          const photo = await gptPhotoBytes(it.gen_prompt || it.concept || '');
+          if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
+          const rawPath = `${row.id}-raw.png`;
+          const up = await supabase.storage.from(BUCKET).upload(rawPath, photo, { contentType: 'image/png', upsert: true });
+          if (up.error) throw up.error;
+          const rawUrl = supabase.storage.from(BUCKET).getPublicUrl(rawPath).data.publicUrl;
+          await supabase.from('creative_queue').update({ media_url: rawUrl, updated_at: new Date().toISOString() }).eq('id', row.id);
+          fired++;
+        } catch (e: any) {
+          await supabase.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 500), updated_at: new Date().toISOString() }).eq('id', row.id);
+          failed++;
+        }
+        return;
+      }
+
+      // VIDEO — async Kie task; poll-creative-queue finalizes it.
       try {
-        const taskId = await kieCreate(kind, it.gen_prompt || it.concept || '');
+        const taskId = await kieCreateVideo(it.gen_prompt || it.concept || '');
         await supabase.from('creative_queue').update({ kie_task_id: taskId, updated_at: new Date().toISOString() }).eq('id', row.id);
         fired++;
       } catch (e: any) {

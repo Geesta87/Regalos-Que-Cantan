@@ -13,6 +13,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
+import { renderAd } from '../_shared/render-ad.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -46,19 +47,52 @@ Deno.serve(async (req: Request) => {
   if (!KIE_API_KEY) return json(200, { success: false, skipped: true, reason: 'KIE_API_KEY missing' });
 
   try {
+    // Two kinds of 'generating' rows to finalize:
+    //  • VIDEO (and any legacy Kie image): has kie_task_id → poll Kie for the media.
+    //  • OpenAI IMAGE: no kie_task_id, raw photo already uploaded (media_url set) →
+    //    just lay on the typography here (rate-capped).
     const { data: rows, error } = await supabase
       .from('creative_queue')
-      .select('id, kind, kie_task_id, created_at')
+      .select('id, kind, kie_task_id, created_at, design, media_url')
       .eq('status', 'generating')
-      .not('kie_task_id', 'is', null)
+      .or('kie_task_id.not.is.null,media_url.not.is.null')
       .order('created_at', { ascending: true })
       .limit(BATCH);
     if (error) throw new Error(`select: ${error.message}`);
 
-    let ready = 0, failed = 0, pending = 0;
+    let ready = 0, failed = 0, pending = 0, renders = 0;
+    // resvg rendering is memory-heavy; cap heavy renders per invocation so we
+    // never trip WORKER_RESOURCE_LIMIT. The 2-min cron drains the rest.
+    const RENDER_CAP = Number(Deno.env.get('CREATIVE_RENDER_CAP') || '2');
 
     for (const row of (rows || [])) {
       try {
+        // ── OpenAI image: raw photo is already uploaded; lay on the typography
+        // (resvg is memory-heavy, so honor the per-invocation render cap). ──
+        if (!row.kie_task_id) {
+          if (!row.media_url) { pending++; continue; }
+          const d = row.design || {};
+          const needsRender = !!(d.headline_lines?.length || d.kicker || d.cta);
+          if (needsRender && renders >= RENDER_CAP) { pending++; continue; }
+          const media = await fetch(row.media_url);
+          let bytes = new Uint8Array(await media.arrayBuffer());
+          const png = needsRender
+            ? await renderAd({ imageBytes: bytes, kicker: d.kicker, headlineLines: d.headline_lines || [], accent: d.accent, cta: d.cta })
+            : null;
+          if (needsRender) renders++;
+          bytes = png || await applyLogo(bytes);
+          const path = `${row.id}.png`;
+          const up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'image/png', upsert: true });
+          if (up.error) throw new Error(`storage: ${up.error.message}`);
+          const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+          await supabase.from('creative_queue').update({
+            status: 'ready', media_url: pub.publicUrl, updated_at: new Date().toISOString(),
+          }).eq('id', row.id);
+          await supabase.storage.from(BUCKET).remove([`${row.id}-raw.png`]).then(() => {}, () => {});
+          ready++;
+          continue;
+        }
+
         const info = await recordInfo(row.kie_task_id);
         const state = info?.data?.state;
 
@@ -67,12 +101,25 @@ Deno.serve(async (req: Request) => {
           const url = (rj.resultUrls || [])[0];
           if (!url) throw new Error('success but no resultUrls');
 
+          const d = row.design || {};
+          const needsRender = row.kind !== 'video' && !!(d.headline_lines?.length || d.kicker || d.cta);
+          // Defer heavy renders past the cap to the next tick (leave 'generating').
+          if (needsRender && renders >= RENDER_CAP) { pending++; continue; }
+
           // Persist into our own bucket — Kie temp URLs expire.
           const media = await fetch(url);
           let bytes = new Uint8Array(await media.arrayBuffer());
           const ext = row.kind === 'video' ? 'mp4' : 'png';
           const contentType = row.kind === 'video' ? 'video/mp4' : 'image/png';
-          if (row.kind !== 'video') bytes = await applyLogo(bytes); // brand the visual
+          if (row.kind !== 'video') {
+            // Two-layer: lay the typeset design over the text-free photo. Falls
+            // back to a logo stamp if there's no design copy or the render fails.
+            const png = needsRender
+              ? await renderAd({ imageBytes: bytes, kicker: d.kicker, headlineLines: d.headline_lines || [], accent: d.accent, cta: d.cta })
+              : null;
+            if (needsRender) renders++;
+            bytes = png || await applyLogo(bytes);
+          }
           const path = `${row.id}.${ext}`;
           const up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
           if (up.error) throw new Error(`storage: ${up.error.message}`);
