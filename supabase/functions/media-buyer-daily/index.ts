@@ -366,7 +366,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const reportFor = ymd(startOfTzDay(REVENUE_TZ, -1), REVENUE_TZ); // yesterday (owner TZ)
+    // The completed ad-day is "yesterday" in the ad-account TZ (Manila). Label it
+    // by the Pacific date at its START (9am Pacific) so the report reads in the
+    // owner's LA calendar: e.g. the Manila-Jun-26 ad-day is reported as "Jun 25".
+    const reportFor = ymd(startOfTzDay(REVENUE_TZ, -1), 'America/Los_Angeles'); // Pacific start-date label
 
     // ---- 1. Meta: active campaign budgets + insights (yesterday + 7d) ----
     const acctPath = `${META_AD_ACCOUNT_ID}/insights`;
@@ -438,7 +441,7 @@ Deno.serve(async (req: Request) => {
       revenue_crosscheck,
       campaigns_yesterday,
       campaigns_last_7d,
-      note_timezone: `Spend and revenue are both on the ad-account day (${REVENUE_TZ}; midnight Manila ≈ 9am US-Pacific), so this day's spend and revenue cover the same 24h window — ROAS is apples-to-apples.`,
+      note_timezone: `report_for "${reportFor}" is the owner's PACIFIC day labeled by its 9am start: ${reportFor} 9:00am → next-day 9:00am Pacific (one Meta/Manila ad-day). Spend and revenue both cover that exact window — ROAS is apples-to-apples and the date matches the owner's LA calendar + Stripe.`,
     };
 
     // ---- 3. Claude brief ----

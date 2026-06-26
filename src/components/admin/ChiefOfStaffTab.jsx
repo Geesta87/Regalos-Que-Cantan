@@ -74,21 +74,23 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
     finally { setSending(false); }
   };
 
+  // Today's date in the owner's Pacific frame (reports use his LA day).
+  const todayPacific = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+
   const pullReport = () => {
     if (!from) { showToast?.('Pick a start date'); return; }
-    const end = to || new Date().toISOString().slice(0, 10);
-    submit(`Give me the ad report from ${from} to ${end}: spend, sales, ROAS and which ads performed best.`);
+    const end = to || todayPacific();
+    submit(`Give me the ad report from ${from} to ${end} (my Pacific days): spend, sales, ROAS and which ads performed best.`);
   };
 
   const quickReport = (kind) => {
-    const now = new Date();
-    const end = now.toISOString().slice(0, 10);
-    const d = new Date(now);
-    if (kind === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // back to Monday
-    else d.setDate(d.getDate() - Number(kind));
+    const end = todayPacific();
+    const d = new Date(`${end}T00:00:00Z`); // date math in UTC on the Pacific date
+    if (kind === 'week') d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // back to Monday
+    else d.setUTCDate(d.getUTCDate() - Number(kind));
     const start = d.toISOString().slice(0, 10);
     setFrom(start); setTo(end);
-    submit(`Give me the ad report from ${start} to ${end}: spend, sales, ROAS and which ads performed best.`);
+    submit(`Give me the ad report from ${start} to ${end} (my Pacific days): spend, sales, ROAS and which ads performed best.`);
   };
 
   const loadVoices = async () => { const { body } = await call(COS, { action: 'list_voices' }); if (body.success) setVoices(body.voices || []); };

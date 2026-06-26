@@ -62,16 +62,29 @@ function purchasesOf(row: any): number { return actionCount(row.actions, 'purcha
 function tzDay(iso: string, tz: string = AD_TZ): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 }
+// Shift a YYYY-MM-DD date string by whole days (UTC-safe).
+function shiftDate(ymd: string, deltaDays: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
 
 // Build an ad-performance report for a date range. Prefers LIVE Meta (full
 // history) cross-checked against real paid orders in `songs`; falls back to the
 // saved daily media-buyer reports if Meta is unreachable / not configured.
 async function buildAdReport(admin: any, from: string, to: string): Promise<string> {
-  // Real revenue: deduped paid orders (per stripe_session_id) bucketed by the Meta
-  // ad-day (AD_TZ / Asia/Manila) so each day lines up exactly with that day's spend.
+  // A "reporting day" is the owner's PACIFIC day labeled by its 9am START:
+  // label "2026-06-25" = Jun 25 09:00 → Jun 26 09:00 Pacific. That window is
+  // exactly one Meta/Manila ad-day whose Manila date = label + 1 — so spend and
+  // revenue already match; we just relabel the Manila date back to its Pacific start.
+  const metaFrom = shiftDate(from, 1); // Pacific start label -> Manila ad-day date
+  const metaTo = shiftDate(to, 1);
+
+  // Real revenue: deduped paid orders, bucketed by the Manila ad-day they fall in,
+  // relabeled to that ad-day's Pacific START date so it lines up with spend.
   async function realRevenue() {
-    const lo = new Date(`${from}T00:00:00Z`); lo.setUTCDate(lo.getUTCDate() - 1);
-    const hi = new Date(`${to}T00:00:00Z`); hi.setUTCDate(hi.getUTCDate() + 2);
+    const lo = new Date(`${metaFrom}T00:00:00+08:00`); lo.setUTCDate(lo.getUTCDate() - 1);
+    const hi = new Date(`${metaTo}T00:00:00+08:00`); hi.setUTCDate(hi.getUTCDate() + 2);
     const { data: paid } = await admin.from('songs')
       .select('stripe_session_id, amount_paid, paid_at')
       .eq('paid', true).eq('platform', RQC_PLATFORM)
@@ -79,7 +92,7 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
       .not('stripe_session_id', 'is', null).limit(20000);
     const perSession = new Map<string, { day: string; amt: number }>();
     for (const r of (paid || [])) {
-      const day = tzDay(r.paid_at);
+      const day = shiftDate(tzDay(r.paid_at, AD_TZ), -1); // Manila ad-day -> Pacific start label
       if (day < from || day > to) continue; // outside the requested window
       const amt = num(r.amount_paid), sid = r.stripe_session_id as string;
       const cur = perSession.get(sid);
@@ -96,7 +109,7 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
 
   if (META_ACCESS_TOKEN) {
     try {
-      const tr = JSON.stringify({ since: from, until: to });
+      const tr = JSON.stringify({ since: metaFrom, until: metaTo });
       const [daily, byCampaign, rev] = await Promise.all([
         metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'account', time_range: tr, time_increment: '1', fields: 'spend,actions', limit: '500' }),
         metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'campaign', time_range: tr, fields: 'campaign_name,spend,actions', limit: '200' }),
@@ -104,23 +117,24 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
       ]);
       let totalSpend = 0, totalMetaSales = 0;
       const days = (daily.data || []).map((r: any) => {
-        const d = r.date_start, s = num(r.spend), meta = purchasesOf(r);
+        const label = shiftDate(r.date_start, -1); // Manila ad-day date -> Pacific start label
+        const s = num(r.spend), meta = purchasesOf(r);
         totalSpend += s; totalMetaSales += meta;
-        const rd = rev.byDay[d] || { revenue: 0, orders: 0 };
-        return { date: d, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
-      });
+        const rd = rev.byDay[label] || { revenue: 0, orders: 0 };
+        return { date: label, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
+      }).sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
       const top_campaigns = (byCampaign.data || [])
         .map((c: any) => ({ name: c.campaign_name, spend: Math.round(num(c.spend) * 100) / 100, meta_sales: purchasesOf(c) }))
         .sort((a: any, b: any) => b.meta_sales - a.meta_sales || b.spend - a.spend).slice(0, 8);
       const summary = {
-        from, to, source: 'meta_live', days_covered: days.length,
+        from, to, source: 'meta_live', timezone: "Pacific day, 9am→9am, labeled by start date", days_covered: days.length,
         total_spend: Math.round(totalSpend * 100) / 100,
         total_real_orders: rev.orders, total_real_revenue: rev.total,
         blended_roas: totalSpend > 0 ? Math.round((rev.total / totalSpend) * 100) / 100 : null,
         meta_reported_sales: totalMetaSales, per_day: days, top_campaigns,
-        note: `Each day is the Meta ad-day in ${AD_TZ} (midnight Manila ≈ 9am US Pacific). Both spend (live from Meta) and real_orders/real_revenue (deduped paid orders) are bucketed to that SAME 24h window, so daily ROAS is apples-to-apples.`,
+        note: `Dates are the owner's PACIFIC days labeled by their 9am start — e.g. "2026-06-25" = Jun 25 9:00am → Jun 26 9:00am Pacific (one Meta/Manila ad-day relabeled to its Pacific start date). Spend and real_orders/real_revenue both cover that exact window, so the date matches the owner's LA calendar + Stripe and daily ROAS is exact.`,
       };
-      return `AD REPORT ${from} → ${to} (LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
+      return `AD REPORT ${from} → ${to} (Pacific days, 9am→9am, labeled by start date; LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
     } catch (_e) {
       // fall through to saved reports on any Meta error
     }
@@ -230,7 +244,7 @@ function tools() {
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
     { name: 'refresh_briefing', description: 'Regenerate the morning Chief-of-Staff briefing.', input_schema: { type: 'object', properties: {} } },
     { name: 'generate_creatives', description: 'Ask the Creative Studio art director to generate creatives from a brief.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What to make, e.g. "5 Mother\'s Day photoreal ads".' } }, required: ['brief'] } },
-    { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. It covers every day Meta has data for, not just recent ones. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (inclusive).' }, to: { type: 'string', description: 'End date YYYY-MM-DD (inclusive). Defaults to today.' } }, required: ['from'] } },
+    { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. Dates are the owner\'s PACIFIC days labeled by their 9am start (e.g. "2026-06-25" = Jun 25 9am → Jun 26 9am Pacific) — just pass his Pacific dates; the tool converts to the Meta/Manila ad-day internally. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: "Start date YYYY-MM-DD in the owner's Pacific frame (inclusive)." }, to: { type: 'string', description: "End date YYYY-MM-DD Pacific (inclusive). Defaults to today." } }, required: ['from'] } },
   ];
 }
 
@@ -248,7 +262,8 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
     if (name === 'refresh_briefing') { fwd('chief-of-staff-daily', {}).catch(() => {}); return 'Refreshing the briefing now.'; }
     if (name === 'generate_creatives') { const r = await (await fwd('creative-chat', { action: 'send', message: input.brief })).json(); return r.success ? `On it — the art director is generating: "${input.brief}". They'll show up in Creative Studio shortly.` : `Could not start: ${r.error}`; }
     if (name === 'get_ad_report') {
-      const to = String(input.to || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+      const to = String(input.to || todayPT).slice(0, 10);
       const from = String(input.from || to).slice(0, 10);
       return await buildAdReport(admin, from, to);
     }
@@ -267,9 +282,12 @@ async function callClaude(messages: any[], system: string) {
 
 function systemPrompt(persona: any, snap: any) {
   const name = persona?.name || 'Sofía';
+  const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
   return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
-You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question about ad results over a period (a week, "Monday to now", "últimos 7 días", specific dates), call get_ad_report with the dates — never answer from the yesterday snapshot. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question about ad results over a period (a week, "Monday to now", "últimos 7 días", specific dates), call get_ad_report with the dates — never answer from the yesterday snapshot. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+
+TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
 CURRENT STATE (live):
 ${JSON.stringify(snap, null, 2)}`;
