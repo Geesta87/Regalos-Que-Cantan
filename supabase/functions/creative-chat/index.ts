@@ -20,6 +20,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
+import { renderAd } from '../_shared/render-ad.ts';
+import { brandContext } from '../_shared/brand-brief.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,7 +64,7 @@ function vidInput(prompt: string) { return { prompt, resolution: '720p', aspect_
 async function finalize(admin: any, ids: string[]) {
   if (!ids.length) return;
   const { data: rows } = await admin.from('creative_queue')
-    .select('id, kind, kie_task_id, created_at').in('id', ids).eq('status', 'generating').not('kie_task_id', 'is', null);
+    .select('id, kind, kie_task_id, created_at, design').in('id', ids).eq('status', 'generating').not('kie_task_id', 'is', null);
   for (const row of (rows || [])) {
     try {
       const r = await fetch(`${KIE}/recordInfo?taskId=${encodeURIComponent(row.kie_task_id)}`, { headers: { Authorization: `Bearer ${KIE_API_KEY}` } });
@@ -74,7 +76,14 @@ async function finalize(admin: any, ids: string[]) {
         const media = await fetch(url);
         let bytes = new Uint8Array(await media.arrayBuffer());
         const ext = row.kind === 'video' ? 'mp4' : 'png';
-        if (row.kind !== 'video') bytes = await applyLogo(bytes); // brand the visual
+        if (row.kind !== 'video') {
+          // Two-layer: typeset design over the text-free photo; else logo stamp.
+          const d = row.design || {};
+          const png = (d.headline_lines?.length || d.kicker || d.cta)
+            ? await renderAd({ imageBytes: bytes, kicker: d.kicker, headlineLines: d.headline_lines || [], accent: d.accent, cta: d.cta })
+            : null;
+          bytes = png || await applyLogo(bytes);
+        }
         await admin.storage.from(BUCKET).upload(`${row.id}.${ext}`, bytes, { contentType: row.kind === 'video' ? 'video/mp4' : 'image/png', upsert: true });
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(`${row.id}.${ext}`);
         await admin.from('creative_queue').update({ status: 'ready', media_url: pub.publicUrl, updated_at: new Date().toISOString() }).eq('id', row.id);
@@ -103,7 +112,11 @@ const TOOLS = [
         intended_use: { type: 'string', enum: ['social', 'ad'] },
         occasion: { type: 'string' },
         concept: { type: 'string', description: 'One-line description of the idea.' },
-        gen_prompt: { type: 'string', description: 'Detailed prompt. MUST be one of the two looks (PHOTOREAL gift-moment OR ANIMATED Pixar) and say which. Wholesome, mature adults, NEVER minors.' },
+        gen_prompt: { type: 'string', description: 'Detailed prompt. MUST be one of the two looks (PHOTOREAL gift-moment OR ANIMATED Pixar) and say which. For IMAGES: describe the PICTURE ONLY — NO text/words/logos in it, leave clean negative space in the lower third. Wholesome, mature adults, NEVER minors.' },
+        kicker: { type: 'string', description: 'IMAGES: short eyebrow line ≤32 chars. Plain text, no emoji.' },
+        headline_lines: { type: 'array', items: { type: 'string' }, description: 'IMAGES: 1-3 SHORT headline lines (≤16 chars each) the design layer typesets. Plain text, no emoji.' },
+        accent: { type: 'string', description: 'IMAGES: one word from headline_lines to highlight in gold italic.' },
+        cta: { type: 'string', description: 'IMAGES: CTA pill text ≤34 chars, e.g. "Créala hoy · regalosquecantan.com".' },
         headline: { type: 'string' }, primary_text: { type: 'string' }, caption: { type: 'string' },
         hashtags: { type: 'array', items: { type: 'string' } },
       },
@@ -127,6 +140,11 @@ const TOOLS = [
     description: 'Save a DURABLE style preference the owner expressed (e.g. "always warmer light", "lean animated for kids"). The daily generator will follow it going forward.',
     input_schema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
   },
+  {
+    name: 'save_promo_focus',
+    description: 'Set what to PUSH this week/season (an offer, occasion, or promo the owner wants the batch to lead with, e.g. "promote Día del Padre + the $9.99 video add-on"). REPLACES the current push. Pass an empty string to clear it and return to the default offer rotation.',
+    input_schema: { type: 'object', properties: { focus: { type: 'string' } }, required: ['focus'] },
+  },
 ];
 
 async function runTool(admin: any, name: string, input: any, generated: string[]) {
@@ -136,7 +154,9 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
       batch_date: today(), kind, intended_use: input.intended_use === 'ad' ? 'ad' : 'social',
       occasion: input.occasion ?? null, concept: input.concept ?? null, gen_prompt: input.gen_prompt ?? null,
       headline: input.headline ?? null, primary_text: input.primary_text ?? null, caption: input.caption ?? null,
-      hashtags: Array.isArray(input.hashtags) ? input.hashtags : null, status: 'generating',
+      hashtags: Array.isArray(input.hashtags) ? input.hashtags : null,
+      design: kind === 'image' ? { kicker: input.kicker ?? null, headline_lines: Array.isArray(input.headline_lines) ? input.headline_lines : null, accent: input.accent ?? null, cta: input.cta ?? null } : null,
+      status: 'generating',
     }).select('id').single();
     if (error || !row) return `Failed to queue: ${error?.message}`;
     try {
@@ -159,16 +179,14 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
       batch_date: today(), kind, intended_use: orig.intended_use, occasion: orig.occasion,
       concept: `${orig.concept || 'tweak'} — ${input.change_instructions}`.slice(0, 200), gen_prompt: editPrompt,
       headline: orig.headline, primary_text: orig.primary_text, caption: orig.caption, hashtags: orig.hashtags,
+      design: orig.design ?? null, // keep the same typographic layer
       status: 'generating',
     }).select('id').single();
     if (error || !row) return `Failed to queue tweak: ${error?.message}`;
     try {
-      let taskId: string;
-      if (kind === 'image' && orig.media_url) {
-        taskId = await kieCreate(IMAGE_EDIT_MODEL, { prompt: input.change_instructions, image_urls: [orig.media_url], aspect_ratio: '4:5', output_format: 'png' });
-      } else {
-        taskId = await kieCreate(kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL, kind === 'video' ? vidInput(editPrompt) : imgInput(editPrompt));
-      }
+      // Regenerate the text-free photo with the adjustment (the stored image has
+      // typeset text baked in, so we can't image-edit it without corrupting type).
+      const taskId = await kieCreate(kind === 'video' ? VIDEO_MODEL : IMAGE_MODEL, kind === 'video' ? vidInput(editPrompt) : imgInput(editPrompt));
       await admin.from('creative_queue').update({ kie_task_id: taskId }).eq('id', row.id);
       generated.push(row.id);
       return `Queued a tweaked version (id ${row.id}). It'll appear shortly.`;
@@ -184,21 +202,32 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
     await admin.from('creative_studio_config').update({ style_notes: next, updated_at: new Date().toISOString() }).eq('id', 1);
     return `Saved. The daily agent will follow: "${input.note}".`;
   }
+
+  if (name === 'save_promo_focus') {
+    const focus = String(input.focus || '').trim();
+    await admin.from('creative_studio_config').update({ promo_notes: focus, updated_at: new Date().toISOString() }).eq('id', 1);
+    return focus
+      ? `Got it — the batch will now push: "${focus}".`
+      : `Cleared the current push — back to the default offer rotation.`;
+  }
   return `Unknown tool ${name}`;
 }
 
 // ---------------------------------------------------------------------------
-function systemPrompt(styleNotes: string) {
-  return `You are the Creative Director for "Regalos Que Cantan" (regalosquecantan.com), a US-Hispanic brand selling personalized AI Spanish songs as emotional gifts (~$30). You are chatting with the OWNER inside their dashboard. Be warm, concise, and practical — a real creative partner.
+function systemPrompt(styleNotes: string, promoNotes: string) {
+  return `You are the Creative Director for "Regalos Que Cantan" (regalosquecantan.com), a US-Hispanic brand selling personalized AI Spanish songs as emotional gifts. You are chatting with the OWNER inside their dashboard. Be warm, concise, and practical — a real creative partner who knows the business cold.
 
 What you can DO (use tools naturally when the owner wants it, don't ask permission for obvious requests):
 - Brainstorm style, angles, occasions, hooks.
 - generate_creative — when they want to SEE something, generate it. Write a vivid prompt in one of the two approved looks.
 - tweak_creative — adjust an existing creative they reference.
-- save_style_preference — when they state a lasting preference, save it.
+- save_style_preference — when they state a lasting VISUAL/style preference, save it.
+- save_promo_focus — when they tell you what to PUSH this week/season (an offer, occasion, or promo), save it so the daily batch leads with it.
 
-Creative DNA: sell the FEELING not the feature; emotional reveal / nostalgia / romance / family pride; occasions cumpleaños, aniversario, día de las madres/padres, bodas, XV años; genres corrido, banda, bachata, mariachi. Copy in warm Mexican/US-Hispanic Spanish, no recipient names.
+Creative DNA: lead with the FEELING (emotional reveal / nostalgia / romance / family pride) but always land a real selling point and ONE offer from the Business Brain below — that's what closes. Occasions cumpleaños, aniversario, día de las madres/padres, bodas, XV años; genres corrido, banda, bachata, mariachi. Copy in warm Mexican/US-Hispanic Spanish, no recipient names.
 VISUAL LOOKS — only two: PHOTOREAL warm gift-moment, or ANIMATED Disney/Pixar 3D. Wholesome, mature adults, wide framing, NEVER depict minors (AI auto-rejects them — for youth occasions show the proud parents/adults instead).
+
+${brandContext(promoNotes)}
 
 After you generate something, tell the owner what you queued in one short line. Keep replies tight.
 
@@ -255,8 +284,8 @@ serve(async (req) => {
       // history (text only) -> Claude messages
       const { data: hist } = await admin.from('creative_chat_messages')
         .select('role, content').order('created_at', { ascending: true }).limit(40);
-      const { data: cfg } = await admin.from('creative_studio_config').select('style_notes').eq('id', 1).single();
-      const system = systemPrompt(cfg?.style_notes || '');
+      const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
+      const system = systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '');
 
       const messages: any[] = (hist || []).map((m: any) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
       messages.push({ role: 'user', content: userMsg });

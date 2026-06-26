@@ -4,7 +4,7 @@
 // GHL) or Reject each one. Self-contained, mirrors VideosTab/NeedsApprovalTab:
 // talks to the creative-studio-admin edge function with the admin JWT.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle, Megaphone } from 'lucide-react';
 import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
 import CompetitorsSection from './CompetitorsSection';
@@ -35,6 +35,10 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [filter, setFilter] = useState('review');
   const [view, setView] = useState('ads'); // 'ads' | 'social' | 'emails' | 'chat'
   const [scheduleById, setScheduleById] = useState({}); // creative id -> datetime-local string
+  // Live "promo box" — the seasonal push every generator leads with (creative_studio_config.promo_notes)
+  const [promo, setPromo] = useState('');
+  const [promoSaved, setPromoSaved] = useState('');
+  const [savingPromo, setSavingPromo] = useState(false);
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -65,6 +69,28 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   }, [accessToken, filter, call, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load the current promo push once.
+  useEffect(() => {
+    if (!accessToken) return;
+    call({ action: 'get_config' }).then((r) => {
+      if (r?.success) { setPromo(r.promo_notes || ''); setPromoSaved(r.promo_notes || ''); }
+    }).catch(() => {});
+  }, [accessToken, call]);
+
+  const savePromo = async () => {
+    if (role !== 'admin') { showToast?.('Solo administradores'); return; }
+    setSavingPromo(true);
+    try {
+      const r = await call({ action: 'save_promo', promo_notes: promo });
+      if (r.success) { setPromoSaved(r.promo_notes || ''); showToast?.('✅ Enfoque guardado — el próximo lote lo usará'); }
+      else showToast?.(`Error: ${r.error || 'no se pudo guardar'}`);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSavingPromo(false);
+    }
+  };
 
   const act = async (id, action, extra = {}) => {
     if (role !== 'admin') { showToast?.('Solo administradores pueden aprobar'); return; }
@@ -107,6 +133,34 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
           className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
+      </div>
+
+      {/* Live promo box — what every generator (daily batch, chat, templates) leads with */}
+      <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Megaphone size={16} className="text-amber-600" />
+          <h3 className="text-sm font-semibold text-gray-900">This week's push</h3>
+          <span className="text-[11px] text-gray-500">— what every new ad &amp; post should promote</span>
+        </div>
+        <textarea
+          value={promo}
+          onChange={(e) => setPromo(e.target.value)}
+          rows={2}
+          placeholder='e.g. "Promote Día del Padre this week + push the $9.99 video add-on" — leave blank for the normal rotation'
+          className="w-full text-sm border border-amber-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+        />
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-[11px] text-gray-500">
+            The selling points &amp; prices ($29.99 song, $9.99 video, bundles…) are always built in — this just steers the focus.
+          </p>
+          <button
+            onClick={savePromo}
+            disabled={savingPromo || role !== 'admin' || promo === promoSaved}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40">
+            {savingPromo ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {promo === promoSaved && promoSaved ? 'Saved' : 'Save push'}
+          </button>
+        </div>
       </div>
 
       {/* Sections: Ads | Social | Emails | Art director */}
