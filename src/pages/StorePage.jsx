@@ -124,7 +124,7 @@ const PRODUCTS = [
   },
   {
     kind: 'extra', cat: 'video', key: 'animado', title: 'Película animada',
-    sub: 'Su rostro convertido en personaje animado', price: 49,
+    sub: 'Su rostro convertido en personaje animado', price: 29,
     media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' },
   },
   {

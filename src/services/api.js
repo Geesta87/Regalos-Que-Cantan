@@ -33,6 +33,15 @@ export const occasionPrompts = {
   amistad: "una canción celebrando una amistad verdadera",
   motivacion: "una canción motivacional e inspiradora",
   para_mi: "una canción personal para uno mismo, un himno propio de empoderamiento, celebración o reflexión",
+  // Occasions added 2026-06-25 alongside the memorial + custom-style work. Keys
+  // here MUST match the occasion `id` values in OccasionStep.jsx so the backend
+  // resolves a Spanish occasion phrase instead of falling back to the raw slug.
+  bautizo: "una canción tierna para un bautizo, celebrando la bendición de un nuevo miembro de la familia y la fe",
+  jubilacion: "una canción celebrando una jubilación bien merecida, honrando años de esfuerzo y el nuevo capítulo que comienza",
+  negocio: "una canción celebrando un negocio propio, el esfuerzo, los sacrificios y el orgullo de salir adelante",
+  mascota: "una canción tierna y alegre dedicada a una mascota muy querida, un miembro más de la familia",
+  memorial: "una canción en memoria de un ser querido que falleció, un homenaje que celebra su vida y su legado con amor y dignidad",
+  dia_muertos: "una canción para el Día de los Muertos honrando y recordando con cariño a quienes ya partieron",
   otro: "una canción personalizada y emotiva"
 };
 
@@ -57,6 +66,11 @@ export async function generateSong(formData, overridePin = null) {
     genreName: formData.genreName || '',
     subGenre: formData.subGenre || '',
     subGenreName: formData.subGenreName || '',
+    // "Escribe tu propio estilo": optional free-text genre/style the buyer typed.
+    // The backend scrubs artist names + caps length before it reaches Suno/Kie,
+    // then leads the music-style prompt with it. Empty string = use the picked
+    // genre's DNA as before.
+    customStyle: formData.customStyle || '',
     occasion: formData.occasion,
     occasionPrompt: occasionPrompts[formData.occasion],
     customOccasion: formData.customOccasion || '',

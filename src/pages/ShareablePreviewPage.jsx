@@ -1045,7 +1045,7 @@ export default function ShareablePreviewPage() {
             </div>
             <OneTapUpsell mode="select" bare recipientName={recipientName || 'tu ser querido'} onSelectChange={setCheckoutExtras} items={[
               { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
-              { key: 'animado', price: 49, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
+              { key: 'animado', price: 29, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
               { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },
               { key: 'lyric_video', price: 9.99, label: 'Video con letra', title: 'Que todos se la canten', sub: 'La letra en pantalla, al ritmo', media: { type: 'lyrics' } },
               { key: 'gift', price: 5, label: 'Envío sorpresa por mensaje', title: 'La sorpresa que no verá venir', sub: 'Se la enviamos el día y la hora que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },

@@ -15,8 +15,8 @@ import React, { useState, useRef } from 'react';
 // PRICE is a single constant — change it here to retune the offer.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PRICE = 49;          // launch price — 1 animated video
-const PRICE_BOTH = 69.99;  // both songs animated (bundle) — saves vs 2×$49
+const PRICE = 29;          // beta price — 1 animated video
+const PRICE_BOTH = 44.99;  // both songs animated (bundle) — saves vs 2×$29
 const ANCHOR = 99;         // slashed "regular" anchor (per video)
 
 const GOLD = '#f5b942';

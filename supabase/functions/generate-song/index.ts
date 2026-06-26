@@ -1759,64 +1759,88 @@ function spellOutNumbersInLyrics(text: string): string {
 // finds problems we auto-correct once, then re-check. Both calls FAIL OPEN: a
 // checker API hiccup must never deny a paying customer their song.
 // ============================================================================
+// Fast first pass (cheap), then escalate to the stronger model only when the
+// fast pass flags something, is unsure, or couldn't run. Both IDs are current.
+const FACT_CHECK_MODEL_FAST = 'claude-haiku-4-5-20251001';
+const FACT_CHECK_MODEL_STRONG = 'claude-sonnet-4-6';
+
 const FACT_CHECK_TOOL = {
   name: 'report_fact_check',
   description: 'Reporta si la letra es 100% fiel a los hechos que el cliente escribió.',
   input_schema: {
     type: 'object',
     properties: {
-      ok: { type: 'boolean', description: 'true SOLO si la letra no contradice, cambia ni inventa ningún hecho del cliente, y todas las fechas/números están escritos con palabras.' },
-      issues: { type: 'array', items: { type: 'string' }, description: 'Cada problema concreto (hecho cambiado, inventado, fecha mal interpretada, número en cifras). Vacío si ok=true.' },
+      ok: { type: 'boolean', description: 'true SOLO si la letra no contradice, cambia ni inventa ningún hecho del cliente, no invierte quién hizo o sintió algo hacia quién, y todas las fechas/números están escritos con palabras.' },
+      issues: { type: 'array', items: { type: 'string' }, description: 'Cada problema concreto (hecho cambiado, inventado, dirección de la acción invertida, fecha mal interpretada, número en cifras). Vacío si ok=true.' },
+      uncertain: { type: 'boolean', description: 'true si NO estás completamente seguro de un posible problema (ambigüedad, no lo puedes confirmar) y conviene una segunda revisión con un modelo más fuerte. false si estás seguro de tu veredicto.' },
     },
-    required: ['ok', 'issues'],
+    required: ['ok', 'issues', 'uncertain'],
     additionalProperties: false,
   },
 } as const;
 
 async function verifyLyricFacts(opts: {
-  lyrics: string; details: string; dateGuidance: string; apiKey: string;
-}): Promise<{ ok: boolean; issues: string[] }> {
+  lyrics: string; details: string; dateGuidance: string; apiKey: string; model?: string;
+}): Promise<{ ok: boolean; issues: string[]; uncertain: boolean; ran: boolean }> {
   const { lyrics, details, dateGuidance, apiKey } = opts;
+  const model = opts.model || FACT_CHECK_MODEL_FAST;
   const sys = `Eres un verificador de hechos ESTRICTO para letras de canciones personalizadas. Te doy (1) los DATOS que el cliente escribió y (2) la LETRA generada. Tu único trabajo es confirmar que la letra NO contradice, NO cambia y NO inventa ningún dato del cliente.
 
 Marca un problema si la letra:
 - Cambia o contradice una fecha, edad, lugar, nombre, parentesco o evento que el cliente escribió.
+- INVIERTE o cambia QUIÉN hizo o sintió algo HACIA QUIÉN. La dirección y el sujeto de cada acción o relación deben coincidir EXACTAMENTE con los datos. Ejemplos de error: el cliente dice "él se enamoró de ella" pero la letra dice "ella se enamoró de él"; "ella lo conoció" → "él la conoció"; "él le pidió matrimonio" → "ella le pidió matrimonio". Esto aplica también a verbos de sentimiento (enamorarse, extrañar, cuidar, etc.): cambiar el sujeto es un error de HECHO, no es "emoción libre".
 - Cambia el VERBO/relación entre datos (ej. "se conocieron" → "se casaron"; "es de" → "vive en").
 - Inventa un dato concreto (fecha, lugar, número, nombre, evento) que el cliente NO escribió.
 - Escribe una fecha o número en CIFRAS en vez de palabras (ej. "2011" en vez de "dos mil once").
 - Interpreta una fecha distinto a la INTERPRETACIÓN OBLIGATORIA dada.
 
-NO marques nada por emoción, metáforas, atmósfera o imágenes — eso es libre. Solo HECHOS. Si todo es fiel, ok=true con issues vacío. Entrega SIEMPRE llamando a report_fact_check.`;
+La atmósfera, las metáforas y las imágenes poéticas son LIBRES, siempre que NO cambien un hecho ni la dirección/sujeto de una acción o relación. Evalúa solo HECHOS y QUIÉN-hace-QUÉ-a-QUIÉN.
+
+Si todo es fiel, ok=true con issues vacío. Si NO estás completamente seguro de un posible problema, pon uncertain=true para pedir una segunda revisión. Entrega SIEMPRE llamando a report_fact_check.`;
   const userMsg = `DATOS DEL CLIENTE:\n${details}\n${dateGuidance || ''}\n\nLETRA GENERADA:\n${lyrics}`;
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        system: sys,
-        tools: [FACT_CHECK_TOOL],
-        tool_choice: { type: 'tool', name: 'report_fact_check' },
-        messages: [{ role: 'user', content: userMsg }],
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok || !Array.isArray(data.content)) {
-      console.warn('Fact-check call failed, skipping gate:', JSON.stringify(data).slice(0, 300));
-      return { ok: true, issues: [] };
+  // Retry transient failures instead of silently treating them as "passed".
+  // Only after MAX_ATTEMPTS exhaust do we return ran=false so the caller can
+  // escalate / log loudly rather than ship an unverified song as if it were clean.
+  const MAX_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 700,
+          system: sys,
+          tools: [FACT_CHECK_TOOL],
+          tool_choice: { type: 'tool', name: 'report_fact_check' },
+          messages: [{ role: 'user', content: userMsg }],
+        }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data || !Array.isArray(data.content)) {
+        const retryable = resp.status === 429 || resp.status >= 500 || data?.error?.type === 'overloaded_error';
+        if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, attempt * 1500)); continue; }
+        console.warn(`Fact-check call failed (model=${model}, attempt=${attempt}, retryable=${retryable}):`, JSON.stringify(data).slice(0, 200));
+        return { ok: true, issues: [], uncertain: false, ran: false };
+      }
+      const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'report_fact_check');
+      if (!block) {
+        if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, attempt * 1500)); continue; }
+        return { ok: true, issues: [], uncertain: false, ran: false };
+      }
+      const ok = block.input?.ok === true;
+      const issues = Array.isArray(block.input?.issues)
+        ? block.input.issues.filter((s: any) => typeof s === 'string' && s.trim())
+        : [];
+      const uncertain = block.input?.uncertain === true;
+      return { ok, issues, uncertain, ran: true };
+    } catch (e) {
+      if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, attempt * 1500)); continue; }
+      console.warn(`Fact-check threw (model=${model}):`, e);
+      return { ok: true, issues: [], uncertain: false, ran: false };
     }
-    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'report_fact_check');
-    if (!block) return { ok: true, issues: [] };
-    const ok = block.input?.ok === true;
-    const issues = Array.isArray(block.input?.issues)
-      ? block.input.issues.filter((s: any) => typeof s === 'string' && s.trim())
-      : [];
-    return { ok, issues };
-  } catch (e) {
-    console.warn('Fact-check threw, skipping gate:', e);
-    return { ok: true, issues: [] };
   }
+  return { ok: true, issues: [], uncertain: false, ran: false };
 }
 
 async function correctLyricFacts(opts: {
@@ -2227,11 +2251,21 @@ serve(async (req) => {
       emotionalTone, recipientName, senderName, relationship,
       relationshipContext, customRelationship, details,
       email, voiceType, sessionId, overridePin,
-      customLyrics, useCustomLyrics, songwriterNotes,
+      customLyrics, useCustomLyrics, songwriterNotes, customStyle,
     } = body;
     // Optional free-text steering the buyer wrote for the AI composer. Trimmed +
     // capped; subordinate to the composition/fidelity rules (enforced in the prompt).
     const songwriterNotesClean = (typeof songwriterNotes === 'string' ? songwriterNotes : '').trim().slice(0, 500);
+
+    // Free-text style/genre the buyer typed ("escribe tu propio estilo"). This
+    // reaches Suno/Kie almost verbatim, so it MUST go through the artist-name
+    // scrubber — Suno rejects any request naming a real artist (see
+    // sanitizeArtistNames / the 2026-05-01 outage) — plus a hard length cap and
+    // a newline collapse so it can't break the single-line `desc` field. A
+    // Spanish-vocal + studio-quality anchor is appended at STEP 3 below.
+    const customStyleClean = sanitizeArtistNames(
+      (typeof customStyle === 'string' ? customStyle : '').replace(/\s+/g, ' ').trim()
+    ).slice(0, 150);
 
     // "Escribir mi propia letra" path: when the buyer supplies their own lyrics,
     // the song MUST be sung with their exact words — we skip Claude generation
@@ -2479,6 +2513,12 @@ serve(async (req) => {
       amistad: 'ENERGÍA: Alegre y leal. Celebrar la hermandad. Anécdotas específicas, humor compartido, "contigo hasta el fin". Tono de fiesta pero con profundidad emocional.',
       para_mi: 'ENERGÍA: Empoderamiento personal. Himno propio — celebrar logros, resiliencia, identidad. "Este soy yo" sin disculpas. El coro es un mantra de autoafirmación.',
       motivacion: 'ENERGÍA: Inspiradora y poderosa. Superar obstáculos, no rendirse, levantarse después de caer. Reconocer la lucha pero enfocarse en la fuerza. El coro debe ser un grito de guerra — algo que repites cuando necesitas fuerza.',
+      bautizo: 'ENERGÍA: Tierna y luminosa. La bendición de una nueva vida, la fe de la familia, padrinos y promesas de cuidado. Tono dulce, esperanzador y cálido. Si los detalles mencionan la fe, hónrala con respeto.',
+      jubilacion: 'ENERGÍA: Orgullo y celebración. Honrar años de esfuerzo y dedicación, el legado dejado, y el nuevo capítulo de descanso y libertad que comienza. Mezcla de gratitud por el camino y emoción por lo que viene.',
+      negocio: 'ENERGÍA: Orgullo y triunfo. Celebrar el negocio propio: los sacrificios, las madrugadas, empezar de cero y salir adelante. Tono de "lo logramos con esfuerzo". Perfecto para un corrido de superación.',
+      mascota: 'ENERGÍA: Tierna y juguetona. Una mascota querida como un miembro más de la familia — su lealtad, sus travesuras, el amor incondicional. Alegre y cariñosa; puede tener un toque de humor.',
+      memorial: 'ENERGÍA: Homenaje y memoria. La persona homenajeada FALLECIÓ — la canción honra su vida y su legado con AMOR y DIGNIDAD; NO es morbosa ni trágica. Celebra quién FUE: su risa, sus dichos, lo que enseñó. Tono de "celebración de vida", agradecido y esperanzador. Evita detalles de la enfermedad o la muerte.',
+      dia_muertos: 'ENERGÍA: Recuerdo cálido y festivo-melancólico. Día de Muertos — honrar y recordar con cariño a quienes ya partieron, su ofrenda, sus flores, su presencia que sigue viva en la memoria. Más celebración del recuerdo que duelo.',
       otro: 'ENERGÍA: Adaptar el tono a los detalles proporcionados. Leer los detalles personales con atención para captar la emoción correcta — puede ser celebración, gratitud, amor, humor, o nostalgia. Seguir las pistas del usuario.',
     };
     const occasionContext = occasionGuide[occasion] || '';
@@ -2511,6 +2551,21 @@ serve(async (req) => {
 
     const perspectiveInstruction = isForSelf
       ? `Esta canción es PARA UNO MISMO — un himno personal EN PRIMERA PERSONA. El cantante habla de sí mismo, su vida, sus logros, sus sueños.`
+      : '';
+
+    // Memorial / "En Memoria" songs need their own composition rules: the person
+    // being honored has passed away, so the default present-tense, celebratory
+    // assumptions are wrong and (worse) can feel callous. This block enforces a
+    // dignified celebration-of-life tone, past-tense framing, and a hard ban on
+    // morbid/illness/death detail. Only injected when occasion === 'memorial'.
+    const memorialInstruction = occasion === 'memorial'
+      ? `CANCIÓN EN MEMORIA (la persona homenajeada YA FALLECIÓ):
+- Es un HOMENAJE que honra su vida, su memoria y su legado con AMOR, DIGNIDAD y GRATITUD. NO es una canción morbosa, trágica ni desesperada.
+- TONO: "celebración de vida" — agradecer haberla conocido y recordar quién FUE: su risa, sus dichos, sus manos, sus consejos, los momentos compartidos.
+- TIEMPO VERBAL: habla de su vida en pasado ("fuiste", "nos enseñaste", "tu risa llenaba la casa"), pero PUEDES dirigirte a ${recipientName} directamente como si te escuchara desde el cielo ("donde quiera que estés", "sé que me cuidas").
+- PROHIBIDO: describir la enfermedad, la causa de muerte, hospitales, agonía o detalles gráficos. Nada de clichés fríos. Enfócate en el AMOR y los RECUERDOS.
+- Respeta la fe SOLO si los detalles la mencionan; no impongas religión.
+- Aunque el género sea festivo, la LETRA debe sentirse como un tributo sentido, no como una fiesta.`
       : '';
 
     // Pre-compute whether this genre/subGenre combination triggers a spoken-word
@@ -2587,7 +2642,7 @@ REGLA 4 (USO DEL NOMBRE) PARA ESTA CANCIÓN:
 ${nameInstruction}
 
 ${perspectiveInstruction}
-
+${memorialInstruction ? `\n${memorialInstruction}\n` : ''}
 ${(() => {
   // Genre-specific spoken word sections — culturally authentic placements
   const spokenWordConfig: Record<string, { condition: boolean; instruction: string; placement: string; sectionDesc: string }> = {
@@ -2922,31 +2977,67 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     // (verbatim by design) and when no details were given (nothing to verify, and
     // invention is allowed in that case).
     // ==========================================================================
+    // Captured here, persisted (best-effort) onto the song row after STEP 5 so
+    // every song carries a provable record of what the auditor decided.
+    let factCheckVerdict: { ok: boolean; issues: string[]; uncertain: boolean; ran: boolean; escalated: boolean; corrections: number } | null = null;
     if (!wantsCustomLyrics && ((details && details.trim()) || songwriterNotesClean)) {
-      // Treat any fact the customer asked for IN THE NOTES as customer-provided
-      // too, so the checker doesn't flag a requested name/place/phrase as "invented".
-      const factCheckContext = `${details || ''}${songwriterNotesClean ? `\n\nNOTAS DEL CLIENTE: ${songwriterNotesClean}` : ''}`.trim();
-      const verdict = await verifyLyricFacts({ lyrics, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
-      if (!verdict.ok && verdict.issues.length) {
-        console.warn(`Fact-check found ${verdict.issues.length} issue(s): ${verdict.issues.join(' | ')}`);
-        const corrected = await correctLyricFacts({ lyrics, details: factCheckContext, dateGuidance, issues: verdict.issues, apiKey: ANTHROPIC_API_KEY! });
-        if (corrected) {
-          const cleaned = stripSpokenProsodyCue(corrected);
-          const recheck = await verifyLyricFacts({ lyrics: cleaned, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY! });
-          lyrics = cleaned; // corrected version is closer to faithful either way
-          if (recheck.ok) {
-            console.log('✓ Fact-check issues corrected and re-verified clean');
-          } else {
-            // Correction didn't fully satisfy the checker. Ship the corrected
-            // version but log LOUDLY — this is the "no room for error" tripwire
-            // for owner review (grep LYRIC_FACT_CHECK_UNRESOLVED in function logs).
-            console.error(`LYRIC_FACT_CHECK_UNRESOLVED email=${email} recipient=${recipientName} remaining=${recheck.issues.join(' | ')}`);
-          }
-        } else {
-          console.error(`LYRIC_FACT_CHECK_UNCORRECTED email=${email} recipient=${recipientName} issues=${verdict.issues.join(' | ')}`);
+      // Wrapped so NOTHING in the audit can ever block a paying customer's song.
+      try {
+        // Treat any fact the customer asked for IN THE NOTES as customer-provided
+        // too, so the checker doesn't flag a requested name/place/phrase as "invented".
+        const factCheckContext = `${details || ''}${songwriterNotesClean ? `\n\nNOTAS DEL CLIENTE: ${songwriterNotesClean}` : ''}`.trim();
+
+        // Pass 1 — cheap, fast model.
+        let verdict = await verifyLyricFacts({ lyrics, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY!, model: FACT_CHECK_MODEL_FAST });
+
+        // Escalate to the STRONGER model only when the fast pass flagged something,
+        // was unsure, or couldn't run — so clean songs stay cheap (one Haiku call).
+        let escalated = false;
+        if (!verdict.ran || !verdict.ok || verdict.uncertain) {
+          escalated = true;
+          const strong = await verifyLyricFacts({ lyrics, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY!, model: FACT_CHECK_MODEL_STRONG });
+          if (strong.ran) verdict = strong; // trust the stronger model's verdict when it actually ran
         }
-      } else {
-        console.log('✓ Fact-check passed — lyrics faithful to customer details');
+
+        // Correction loop: fix → RE-VERIFY (strong model) → repeat until clean,
+        // BEFORE any audio is generated. Bounded so it can never loop forever.
+        let corrections = 0;
+        const MAX_CORRECTIONS = 3;
+        while (verdict.ran && !verdict.ok && verdict.issues.length && corrections < MAX_CORRECTIONS) {
+          corrections++;
+          console.warn(`Fact-check found ${verdict.issues.length} issue(s) (round ${corrections}): ${verdict.issues.join(' | ')}`);
+          const corrected = await correctLyricFacts({ lyrics, details: factCheckContext, dateGuidance, issues: verdict.issues, apiKey: ANTHROPIC_API_KEY! });
+          if (!corrected) {
+            console.error(`LYRIC_FACT_CHECK_UNCORRECTED email=${email} recipient=${recipientName} issues=${verdict.issues.join(' | ')}`);
+            break;
+          }
+          lyrics = stripSpokenProsodyCue(corrected); // corrected version is closer to faithful either way
+          verdict = await verifyLyricFacts({ lyrics, details: factCheckContext, dateGuidance, apiKey: ANTHROPIC_API_KEY!, model: FACT_CHECK_MODEL_STRONG });
+        }
+
+        if (verdict.ran && verdict.ok) {
+          console.log(`✓ Fact-check passed${escalated ? ' (escalated)' : ''}${corrections ? ` after ${corrections} correction(s)` : ''} — lyrics faithful to customer details`);
+        } else if (verdict.ran && !verdict.ok) {
+          // Still not clean after the correction loop. Ship the best (corrected)
+          // version but log LOUDLY (grep LYRIC_FACT_CHECK_UNRESOLVED).
+          console.error(`LYRIC_FACT_CHECK_UNRESOLVED email=${email} recipient=${recipientName} remaining=${verdict.issues.join(' | ')}`);
+        } else {
+          // Checker never returned a real verdict even after retries + escalation.
+          // Do NOT silently treat as clean — record it loudly (grep LYRIC_FACT_CHECK_NO_VERDICT).
+          console.error(`LYRIC_FACT_CHECK_NO_VERDICT email=${email} recipient=${recipientName} — shipping unverified, flagged in fact_check`);
+        }
+
+        factCheckVerdict = {
+          ok: verdict.ran ? !!verdict.ok : false,
+          issues: Array.isArray(verdict.issues) ? verdict.issues : [],
+          uncertain: !!verdict.uncertain,
+          ran: !!verdict.ran,
+          escalated,
+          corrections,
+        };
+      } catch (e) {
+        // Audit must never deny a paying customer their song.
+        console.error('[generate-song] fact-check orchestration error (continuing):', e);
       }
     }
 
@@ -2991,9 +3082,17 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     // ==========================================================================
     // STEP 3: Combine DNA style + emotional modifiers
     // ==========================================================================
-    let finalStyle = stylePrompt;
+    // Customer-authored free-text style ("escribe tu propio estilo") leads the
+    // music-style prompt so Suno weights the buyer's own words, but we keep a
+    // Spanish-vocal + studio-quality anchor (artist names were already scrubbed
+    // at parse time). The selected genre still drives the LYRIC structure above;
+    // only the sound description sent to the music API is overridden here. Empty
+    // customStyleClean → identical to previous behavior (genre DNA style).
+    let finalStyle = customStyleClean
+      ? `${customStyleClean}, Spanish-language vocals, authentic professional studio production`
+      : stylePrompt;
     if (emotionalModifiers) {
-      finalStyle = `${stylePrompt}, ${emotionalModifiers}`;
+      finalStyle = `${finalStyle}, ${emotionalModifiers}`;
     }
     // Prime Mureka for a spoken-word interlude BEFORE it sees the lyrics. Putting
     // the cue in `desc` (not the lyric body) lets the vocal model expect the
@@ -3086,6 +3185,12 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
     
     const songId = songRecord.id;
     console.log('Song saved:', songId);
+
+    // Persist the fact-check verdict for auditability. Best-effort: a failure
+    // here (e.g. column missing) is swallowed and never affects the order.
+    if (factCheckVerdict) {
+      try { await supabase.from('songs').update({ fact_check: factCheckVerdict }).eq('id', songId); } catch (_) { /* ignore */ }
+    }
 
     // ==========================================================================
     // STEP 6: Call music provider with automatic failover

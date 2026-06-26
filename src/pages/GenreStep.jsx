@@ -215,6 +215,10 @@ export default function GenreStep() {
   const [selectedSubGenre, setSelectedSubGenre] = useState(formData.subGenre || '');
   const [selectedVoice, setSelectedVoice] = useState(formData.voiceType || 'male');
   const [showMoreGenres, setShowMoreGenres] = useState(false);
+  // Optional free-text style/genre the buyer types when our list doesn't have
+  // what they want. Sent to Suno/Kie (after the backend scrubs artist names).
+  const [customStyle, setCustomStyle] = useState(formData.customStyle || '');
+  const [showCustomStyle, setShowCustomStyle] = useState(!!formData.customStyle);
 
   // Auto-scroll refs
   const subGenreSectionRef = useRef(null);
@@ -299,6 +303,9 @@ export default function GenreStep() {
         updateFormData('subGenreName', '');
       }
       
+      // Save optional free-text style/genre (trimmed; backend caps + scrubs it)
+      updateFormData('customStyle', showCustomStyle ? customStyle.trim() : '');
+
       // Save voice type
       updateFormData('voiceType', selectedVoice);
       
@@ -468,6 +475,47 @@ export default function GenreStep() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Custom style / "type your own genre" - Shows after a genre is selected */}
+          {selectedGenre && (
+            <div className="mt-6">
+              {!showCustomStyle ? (
+                <button
+                  onClick={() => setShowCustomStyle(true)}
+                  className="text-gold/80 hover:text-gold text-sm flex items-center gap-2 mx-auto transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">edit</span>
+                  ¿No ves tu estilo? Escríbelo tú mismo
+                </button>
+              ) : (
+                <div className="p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-gold/20">
+                  <h3 className="text-gold text-xs uppercase tracking-[0.2em] font-bold mb-2 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm">edit</span>
+                    Tu propio estilo (opcional)
+                  </h3>
+                  <p className="text-white/50 text-xs mb-4">
+                    Escribe el género o estilo exacto que quieres (ej: "huapango zapateado", "salsa choke", "balada pop años 80"). Se usará tal cual para crear tu música.
+                  </p>
+                  <input
+                    type="text"
+                    value={customStyle}
+                    onChange={(e) => setCustomStyle(e.target.value.slice(0, 120))}
+                    placeholder="Ej: corrido bélico con tuba y trompeta..."
+                    className="w-full bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all text-sm placeholder:text-white/30"
+                  />
+                  <div className="flex justify-between mt-2">
+                    <button
+                      onClick={() => { setShowCustomStyle(false); setCustomStyle(''); }}
+                      className="text-white/40 hover:text-white/70 text-xs transition-colors"
+                    >
+                      Quitar
+                    </button>
+                    <span className="text-xs text-white/40">{customStyle.length} / 120</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

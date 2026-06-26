@@ -43,6 +43,12 @@ verify_jwt = false
 # from its own env. verify_jwt = false so the test calls don't need a token.
 verify_jwt = false
 
+[functions.test-gpt-image]
+# Throwaway TEST harness for GPT Image 2 with REFERENCE images (OpenAI images/edits)
+# to compare the ad's GPT Image 2 + Seedance 2.0 stack against nano-banana for the
+# Animado story-video. Curl'd server-to-server during testing; reads OPENAI_API_KEY.
+verify_jwt = false
+
 [functions.generate-storyboard]
 # Auto-storyboard "brain" for the animated story-video pipeline. Given a songId,
 # reads details+lyrics+lyrics_timestamps and asks Claude (ANTHROPIC_API_KEY) to

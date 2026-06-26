@@ -48,7 +48,7 @@ const cors = {
 // form (recipient / message / schedule) and moderation, so it stays on its own
 // flow until that's wired. Keep prices in sync with create-checkout.
 const ITEMS: Record<string, { cents: number; label: string }> = {
-  animado: { cents: 4900, label: 'Película animada' },
+  animado: { cents: 2900, label: 'Película animada' },
   instrumental: { cents: 799, label: 'Pista instrumental' },
   lyric_video: { cents: 999, label: 'Video con letra' },
   gift: { cents: 500, label: 'Envío sorpresa por mensaje' },

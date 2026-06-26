@@ -1717,7 +1717,7 @@ export default function SuccessPage() {
     if (!oneTapSong) return [];
     const out = [];
     const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
-    if (!ownsAnimado) out.push({ key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
+    if (!ownsAnimado) out.push({ key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
     if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } });
     if (!oneTapSong.lyric_video_status) out.push({ key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } });
     out.push({ key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' });

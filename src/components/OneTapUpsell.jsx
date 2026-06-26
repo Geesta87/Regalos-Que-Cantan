@@ -373,7 +373,7 @@ function GiftBox({ item, status, onAdd, recipientName, senderName, selectMode, w
 // into the single checkout total.
 export function OneTapUpsell({ recipientName = 'tu ser querido', senderName = '', last4 = '••••', items = null, onCharge = null, mode = 'charge', onSelectChange = null, bare = false, initialSelected = null }) {
   const catalog = items || [
-    { key: 'animado', price: 49, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
+    { key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
     { key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } },
     { key: 'lyric_video', price: 9.99, title: 'Video con letra', sub: 'La letra en pantalla', media: { type: 'lyrics' } },
     { key: 'gift', price: 5, title: 'Enviar por mensaje', sub: 'Sorpresa el día que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },

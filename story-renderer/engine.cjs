@@ -2,14 +2,14 @@
 // Given a workdir with: storyboard.json (from generate-storyboard), timing.json
 // (transcribe-song), song.mp3, and config.json {name,title,endcard,
 // approved_character_url, recipient_photo_url}, it:
-//   1. generates every unique scene image via Kie nano-banana-edit (character ref)
+//   1. generates every unique scene image via GPT Image 2 (reference-conditioned)
 //   2. computes lyric-synced windows (token-flatten anchors + dense + split long)
-//   3. (optional) animates the 3 hero scenes via Kie Kling + makes the real->cartoon
-//      morph via Kie Seedance
+//   3. (optional) animates the 3 hero scenes via Kie Seedance 2.0 + makes the
+//      real->cartoon morph via Kie Seedance 2.0
 //   4. FFmpeg-renders the storybook and prepends the morph
-// All Kie calls route through the deployed test-kie-video edge fn (holds KIE_API_KEY),
-// so this runs with only the anon key — exactly what the Cloud Run host will do with
-// its own KIE_API_KEY env. Usage: node scripts/auto-build-story.cjs <workdir> [--motion]
+// Images route through the gpt-image edge fn (holds OPENAI_API_KEY); video/morph
+// route through test-kie-video (holds KIE_API_KEY). Both run with only the anon key —
+// exactly what the Cloud Run host does with its own secrets. Usage: node <engine> <workdir> [--motion]
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -65,31 +65,51 @@ async function kieRun(model, prompt, input, label) {
   throw new Error(`${label} timeout`);
 }
 const dl = (url, file) => execFileSync('curl', ['-s', '-o', path.join(DIR, file), url]);
-const sceneUrls = {}; // image_id -> Kie public URL (used as Kling motion input)
+const sceneUrls = {}; // image_id -> public URL (used as Seedance motion input)
+
+// GPT Image 2 (reference-conditioned, OpenAI images/edits) via the deployed gpt-image
+// edge fn -> uploads the render and returns a hosted public URL. Replaces Kie
+// nano-banana-edit for all image generation: fully-Pixar stylization, faithful
+// likeness, correct text, and no character duplication. Slower than nano (medium
+// quality + retries keep it under the edge fn's wall-clock).
+const GPT_FN = `${BASE}/functions/v1/test-gpt-image`;
+async function gptImage(prompt, refUrls, label) {
+  for (let a = 0; a < 4; a++) {
+    try {
+      const r = await fetch(GPT_FN, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON, 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, image_urls: refUrls, size: '1024x1536', quality: 'medium' }) });
+      const j = await r.json();
+      if (j.url) return j.url;
+      console.log(`  ${label} gpt try${a}: ${JSON.stringify(j).slice(0, 120)}`);
+    } catch (e) { console.log(`  ${label} gpt try${a} ${e.message}`); }
+    await sleep(3000);
+  }
+  throw new Error(`${label} gpt-image failed`);
+}
 
 // one scene image, resilient to content blocks: try as-written, then a strictly
 // child-safe rephrase, then give up (caller substitutes a fallback image).
+const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not photorealistic), faithful to the character in the reference. Depict exactly the people described — do NOT duplicate anyone or add unrelated people.';
 async function genOneImage(id, prompt) {
   try {
-    const url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, id);
+    const url = await gptImage(prompt + PIXAR, [CHAR_REF], id);
     sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok`); return true;
   } catch (e) {
     // most likely a child-content false block — retry once, strictly child-safe
     try {
-      const safe = `Wholesome family scene. Any children appear ONLY from behind or as small distant figures with NO visible child faces; focus on warmth and togetherness. ${prompt}`;
-      const url = await kieRun('google/nano-banana-edit', safe, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(safe)`);
+      const safe = `Wholesome family scene. Any children appear ONLY from behind or as small distant figures with NO visible child faces; focus on warmth and togetherness. ${prompt}${PIXAR}`;
+      const url = await gptImage(safe, [CHAR_REF], `${id}(safe)`);
       sceneUrls[id] = url; dl(url, `${id}.png`); console.log(`  ${id} ok (child-safe retry)`); return true;
     } catch (e2) { console.log(`  ${id} blocked (${e2.message}) -> will reuse a fallback image`); return false; }
   }
 }
 
-// ---- 1. generate every unique scene image (Kie nano-banana-edit, character ref) ----
+// ---- 1. generate every unique scene image (GPT Image 2, character ref) ----
 async function genImages() {
   const firstPromptFor = {};
   for (const s of sb.scenes) if (s.image_id && !firstPromptFor[s.image_id]) firstPromptFor[s.image_id] = s.visual_prompt;
   const ids = Object.keys(firstPromptFor).filter((id) => !fs.existsSync(path.join(DIR, `${id}.png`)));
-  const POOL = 4; // Kie rate-limits high call frequency — throttle
-  console.log(`generating ${ids.length} unique scene images via Kie (pool=${POOL})...`);
+  const POOL = 3; // GPT Image 2 is slower; throttle concurrency
+  console.log(`generating ${ids.length} unique scene images via GPT Image 2 (pool=${POOL})...`);
   const failed = [];
   for (let i = 0; i < ids.length; i += POOL) {
     const results = await Promise.all(ids.slice(i, i + POOL).map((id) => genOneImage(id, firstPromptFor[id]).then((ok) => ({ id, ok }))));
@@ -129,7 +149,7 @@ function windows() {
   return { flat, total: +songDur.toFixed(2) };
 }
 
-// ---- 3. hero motion (Kie Kling) + morph (Kie Seedance) ----
+// ---- 3. hero motion (Kie Seedance 2.0) + morph (Kie Seedance 2.0) ----
 async function genHeroes(flat) {
   const heroIds = [...new Set(sb.scenes.filter((s) => s.hero).map((s) => s.image_id))];
   for (const id of heroIds) {
@@ -144,11 +164,11 @@ async function genHeroes(flat) {
       let url = sceneUrls[id];
       if (!url) {
         const prompt = sb.scenes.find((s) => s.image_id === id).visual_prompt;
-        url = await kieRun('google/nano-banana-edit', prompt, { image_urls: [CHAR_REF], aspect_ratio: '9:16', output_format: 'png' }, `${id}(re)`);
+        url = await gptImage(prompt + PIXAR, [CHAR_REF], `${id}(re)`);
         sceneUrls[id] = url; dl(url, `${id}.png`);
       }
       console.log(`animating hero ${id} (window ${L}s)...`);
-      const motionUrl = await kieRun('kling/v2-1-standard', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, no distortion.', { image_url: url, duration: '5' }, `${id}-motion`);
+      const motionUrl = await kieRun('bytedance/seedance-2', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, keep the character identical, no distortion.', { first_frame_url: url, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }, `${id}-motion`);
       dl(motionUrl, `motion-${id}.mp4`);
       wrapHero(`motion-${id}.mp4`, `${id}_full.mp4`, L);
       console.log(`  hero ${id} done`);
@@ -186,9 +206,9 @@ async function genFaithfulRef() {
   const file = 'morph-target.png';
   if (fs.existsSync(path.join(DIR, file))) { return; }
   try {
-    const url = await kieRun('google/nano-banana-edit',
-      'Turn this exact photo into a warm Pixar-style 3D animated version. Keep the IDENTICAL composition, pose, framing and background, and EVERY person in the same position with their face, hair, age and clothing faithful and recognizable. Do not add, remove, or change anyone. Wholesome, soft cinematic light.',
-      { image_urls: [cfg.recipient_photo_url], aspect_ratio: '3:4', output_format: 'png' }, 'faithful-ref');
+    const url = await gptImage(
+      'Turn this exact photo into a warm, fully-stylized Pixar-style 3D animated version. Keep the IDENTICAL composition, pose, framing and background, and EVERY person in the same position with their face, hair, age and clothing faithful and recognizable. Do not add, remove, or change anyone. Wholesome, soft cinematic light.',
+      [cfg.recipient_photo_url], 'faithful-ref');
     dl(url, file);
     CHAR_REF = url; MORPH_END = url;
     console.log('  faithful family reference ready (drives scenes + morph)');

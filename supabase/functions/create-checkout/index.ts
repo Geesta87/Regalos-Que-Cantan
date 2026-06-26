@@ -110,8 +110,8 @@ serve(async (req) => {
     // story-video pipeline (confirm-animado-order creates the order post-payment).
     const animadoCount: number = typeof body.animadoCount === 'number' ? body.animadoCount
       : typeof body.animadoCount === 'string' ? parseInt(body.animadoCount) || 0 : 0;
-    const ANIMADO_ONE_CENTS = 4900;   // $49.00 — one animated video
-    const ANIMADO_BOTH_CENTS = 6999;  // $69.99 — both songs animated
+    const ANIMADO_ONE_CENTS = 2900;   // $29.00 — one animated video (beta price)
+    const ANIMADO_BOTH_CENTS = 4499;  // $44.99 — both songs animated (bundle)
     // Client IP for Meta Conversions API. Cloudflare/Vercel/Supabase set
     // x-forwarded-for to "<client>, <proxy>, ..." — first hop is the user.
     const xfwd = req.headers.get('x-forwarded-for') || '';
@@ -471,7 +471,7 @@ serve(async (req) => {
       });
     }
 
-    // Animado add-on — $49 one video / $69.99 both songs. The story-video
+    // Animado add-on — $29 one video / $44.99 both songs. The story-video
     // pipeline fulfills it post-payment (confirm-animado-order on the success page).
     if (animadoCount > 0 && animadoCents > 0) {
       lineItems.push({

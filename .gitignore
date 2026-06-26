@@ -9,3 +9,6 @@ node_modules
 
 # Web-push VAPID key pair (private half - never commit; public half is in src/services/push.js)
 .vapid-keys.local.txt
+
+# In-house FFmpeg video-renderer POC: large test renders + downloaded order assets (never commit)
+video-poc/
