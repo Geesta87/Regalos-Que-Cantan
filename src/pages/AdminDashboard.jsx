@@ -46,6 +46,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [error, setError] = useState('');
   const [surgicalMsg, setSurgicalMsg] = useState(''); // live progress for the surgical section fix
   const [sectionParams, setSectionParams] = useState(null); // { approvedLyrics, verifyPhrases } — for "otra versión"
+  const [offerFullReroll, setOfferFullReroll] = useState(false); // section fix can't cover the change → offer a full re-roll
   // Fix footprint — shows this song has been repaired, when, and the notes.
   const [fixStamp, setFixStamp] = useState({
     fixedAt: song?.fixed_at || null,
@@ -112,6 +113,7 @@ function FixSongCard({ song, showToast, onApplied }) {
     setError('');
     setResult(null);
     setPlan(null);
+    setOfferFullReroll(false);
     setPendingMode(mode);
     setPhase('planning');
     try {
@@ -176,7 +178,12 @@ function FixSongCard({ song, showToast, onApplied }) {
     try {
       // 1) Re-sing the block (async submit — avoids the 150s gateway limit).
       const sub = await post({ action: 'section-submit', mode: 'section', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
-      if (!sub.ok) { setError(sub.reason || sub.error || 'Could not generate the fix.'); setPhase('plan'); return; }
+      if (!sub.ok) {
+        // can_fix=false / not eligible = the change can't be done surgically
+        // (spread across sections, Mureka, too old…). Offer the full re-roll.
+        if (sub.canFix === false || sub.eligible === false) setOfferFullReroll(true);
+        setError(sub.reason || sub.error || 'Could not generate the fix.'); setPhase('plan'); return;
+      }
       const { fixTaskId, sectionText, originalAudioUrl, fullLyrics } = sub;
       const origCut = Number(sub.window?.endS);
       if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
@@ -220,6 +227,59 @@ function FixSongCard({ song, showToast, onApplied }) {
         fullLyrics,
         window: sub.window,
         takes: [{ audioUrl: spliced.url, verified: null, lyrics: fullLyrics }],
+      });
+      setSelectedTakeIdx(0);
+      setSurgicalMsg('');
+      setPhase('preview');
+    } catch (e) {
+      setError('Error: ' + (e?.message || 'unknown'));
+      setSurgicalMsg('');
+      setPhase('plan');
+    }
+  }
+
+  // Full re-roll — re-record the WHOLE song with the corrections. Used when the
+  // change is spread across multiple sections (a surgical one-part fix can't
+  // cover it) or when the owner chooses to redo the whole thing. Async (submit →
+  // poll → preview the new takes → legacy apply, no splice) so it can't 504.
+  async function runFullReroll(approvedLyrics, verifyPhrases) {
+    setError('');
+    setResult(null);
+    setOfferFullReroll(false);
+    setInput('');
+    setPhase('working');
+    setSurgicalMsg('Re-recording the full song… (1–3 min)');
+    const post = (body) => fetch(FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+      body: JSON.stringify(body),
+    }).then((r) => r.json());
+    try {
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+      if (!sub.ok) { setError(sub.reason || sub.error || 'Could not start the full re-roll.'); setPhase('plan'); return; }
+      const { fixTaskId, fullLyrics, changeSummary } = sub;
+      if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
+
+      let tracks = [];
+      for (let i = 1; i <= 45; i++) {
+        const d = await post({ action: 'diag', taskId: fixTaskId });
+        setSurgicalMsg(`Re-recording the full song… (${i})`);
+        if (d.status === 'SUCCESS') { tracks = (d.trackList || []).filter((t) => t.audioUrl); break; }
+        if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
+          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Reword and try again.' : `Generation failed (${d.status}).`);
+          setPhase('plan'); return;
+        }
+        await new Promise((r) => setTimeout(r, 9000));
+      }
+      if (!tracks.length) { setError('Timed out waiting for the re-recording.'); setPhase('plan'); return; }
+
+      setResult({
+        mode: 'full',
+        fixTaskId,
+        changeSummary: (typeof plan?.changeSummary === 'string' && plan.changeSummary) || changeSummary || '',
+        originalAudioUrl: song.original_audio_url || song.audio_url,
+        fullLyrics,
+        takes: tracks.map((t) => ({ audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified: null, lyrics: fullLyrics })),
       });
       setSelectedTakeIdx(0);
       setSurgicalMsg('');
@@ -458,17 +518,29 @@ function FixSongCard({ song, showToast, onApplied }) {
                 <p className="text-[11px] whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded p-2">{plan.approvedLyrics}</p>
               </details>
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'The full song will be redone. Takes 1-3 min.' : 'Only the affected part will be regenerated. Takes 1-3 min.'}</p>
+              {offerFullReroll && pendingMode === 'section' && (
+                <p className="text-[11px] text-amber-300 mb-2">⚠️ This change is spread across several parts of the song, so a one-part fix can't cover it. Redo the full song to apply all the corrections at once (same voice & style).</p>
+              )}
               <div className="flex gap-2">
+                {offerFullReroll && pendingMode === 'section' ? (
+                  <button
+                    onClick={() => runFullReroll(plan.approvedLyrics, plan.verifyPhrases)}
+                    className="flex-1 py-2 px-4 bg-amber-500 text-black rounded-lg text-sm font-semibold hover:bg-amber-400 transition"
+                  >
+                    🔄 Redo full song with these changes
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => (pendingMode === 'section'
+                      ? runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)
+                      : runFullReroll(plan.approvedLyrics, plan.verifyPhrases))}
+                    className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
+                  >
+                    ✅ Confirm and generate
+                  </button>
+                )}
                 <button
-                  onClick={() => (pendingMode === 'section'
-                    ? runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)
-                    : runPreview(pendingMode, plan.approvedLyrics, plan.verifyPhrases))}
-                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
-                >
-                  ✅ Confirm and generate
-                </button>
-                <button
-                  onClick={() => { setPlan(null); setPhase('idle'); }}
+                  onClick={() => { setPlan(null); setPhase('idle'); setOfferFullReroll(false); }}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                 >
                   ✏️ Keep editing
