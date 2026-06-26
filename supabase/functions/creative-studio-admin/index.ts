@@ -136,14 +136,18 @@ serve(async (req) => {
     if (action === 'approve') {
       const { data: c, error: cErr } = await admin.from('creative_queue').select('*').eq('id', body.id).single();
       if (cErr || !c) return json({ success: false, error: 'Creative not found' }, 404);
-      if (c.status !== 'ready') return json({ success: false, error: `Not approvable (status=${c.status})` }, 409);
+      // 'ready' = awaiting approval; 'approved' = previously held while posting was
+      // paused — both can be (re-)published now.
+      if (c.status !== 'ready' && c.status !== 'approved') return json({ success: false, error: `Not approvable (status=${c.status})` }, 409);
       if (!c.media_url) return json({ success: false, error: 'No media to post' }, 409);
 
       const approvedAt = new Date().toISOString();
 
-      // Respect the pause switch — record approval but hold posting.
-      const { data: state } = await admin.from('social_pipeline_state').select('enabled').eq('id', 1).single();
-      const posting = Deno.env.get('SOCIAL_CLIPS_ENABLED') !== 'false' && (state ? !!state.enabled : true);
+      // Creative Studio has its OWN posting switch (creative_posting_state),
+      // independent of social_pipeline_state which gates the song social-clip
+      // pipeline. If paused, record approval but hold posting.
+      const { data: state } = await admin.from('creative_posting_state').select('enabled').eq('id', 1).single();
+      const posting = state ? !!state.enabled : true;
       if (!posting) {
         await admin.from('creative_queue').update({ status: 'approved', approved_at: approvedAt, updated_at: approvedAt }).eq('id', c.id);
         return json({ success: true, id: c.id, status: 'approved', posted: false, note: 'Posting is paused — approved but not published.' });
