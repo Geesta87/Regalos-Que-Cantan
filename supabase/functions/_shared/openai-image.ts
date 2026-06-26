@@ -37,4 +37,40 @@ export async function gptPhotoBytes(prompt: string): Promise<Uint8Array | null> 
   return b64 ? b64ToBytes(b64) : null;
 }
 
+// Reference-based generation (image-to-image) via gpt-image-2's /images/edits.
+// Feeds a REAL reference image (e.g. a winning ad) so the output inherits its
+// look/style/composition instead of being invented from a text description. Used
+// for "make more ads like this one". Returns text-free PNG bytes (design layer
+// adds copy on top), null on failure. Phrase prompts as "in the style of the
+// reference" — gpt-image-2 safety rejects "transform this person" phrasing.
+export async function gptEditBytes(prompt: string, refBytes: Uint8Array, mime = 'image/png'): Promise<Uint8Array | null> {
+  if (!OPENAI_API_KEY) return null;
+  const form = new FormData();
+  form.append('model', IMG_MODEL);
+  form.append('prompt', (prompt || '').slice(0, 3800));
+  form.append('size', IMG_SIZE);
+  form.append('quality', IMG_QUALITY);
+  form.append('n', '1');
+  const ext = /jpe?g/.test(mime) ? 'jpg' : mime.includes('webp') ? 'webp' : 'png';
+  form.append('image', new Blob([refBytes], { type: mime }), `reference.${ext}`);
+  const r = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST', headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }, body: form,
+  });
+  if (!r.ok) { console.warn('gptEditBytes', r.status, (await r.text()).slice(0, 300)); return null; }
+  const j = await r.json().catch(() => ({}));
+  const b64 = j?.data?.[0]?.b64_json;
+  return b64 ? b64ToBytes(b64) : null;
+}
+
+// Fetch a remote image (e.g. a Meta ad creative) → bytes + mime for use as a
+// reference in gptEditBytes. Null on failure.
+export async function fetchImageBytes(url: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const mime = r.headers.get('content-type') || 'image/jpeg';
+    return { bytes: new Uint8Array(await r.arrayBuffer()), mime };
+  } catch { return null; }
+}
+
 export const OPENAI_IMAGE_ENABLED = !!OPENAI_API_KEY;

@@ -22,7 +22,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyLogo } from '../_shared/brand.ts';
 import { renderAd } from '../_shared/render-ad.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
-import { gptPhotoBytes } from '../_shared/openai-image.ts';
+import { gptPhotoBytes, gptEditBytes, fetchImageBytes } from '../_shared/openai-image.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,8 +62,10 @@ function vidInput(prompt: string) { return { prompt, resolution: '720p', aspect_
 // Images are generated SYNCHRONOUSLY on gpt-image-2 (the premium engine): make a
 // text-free photo, typeset the design layer, upload, and return the public URL.
 // (Video still goes through Kie async + the poller.) Throws on failure.
-async function genImageNow(admin: any, rowId: string, prompt: string, design: any): Promise<string> {
-  const photo = await gptPhotoBytes(prompt);
+async function genImageNow(admin: any, rowId: string, prompt: string, design: any, ref?: { bytes: Uint8Array; mime: string } | null): Promise<string> {
+  // If a reference image is supplied, generate IMAGE-TO-IMAGE (gpt-image-2 edits)
+  // so the output inherits the reference ad's look; otherwise text-to-image.
+  const photo = ref ? await gptEditBytes(prompt, ref.bytes, ref.mime) : await gptPhotoBytes(prompt);
   if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
   const hasDesign = (Array.isArray(design?.headline_lines) && design.headline_lines.length) || design?.kicker || design?.cta;
   const out = hasDesign
@@ -280,9 +282,12 @@ async function callClaude(messages: any[], system: string) {
 // then generates each image itself. Shared by the generate_batch action, Sofía's
 // hand-off, and the Art Director chat's safety net — so generation NEVER depends on
 // a chat model deciding to call a tool. Returns the created creative ids.
-async function generateBatch(admin: any, brief: string, count: number, intended: 'ad' | 'social'): Promise<{ success: boolean; generated: string[]; error?: string }> {
+async function generateBatch(admin: any, brief: string, count: number, intended: 'ad' | 'social', referenceImageUrl?: string): Promise<{ success: boolean; generated: string[]; error?: string }> {
   if (!ANTHROPIC_API_KEY) return { success: false, generated: [], error: 'ANTHROPIC_API_KEY not set' };
   const n = Math.min(Math.max(Number(count) || 2, 1), 4);
+  // When a reference ad image is given, generate IMAGE-TO-IMAGE so the new ads
+  // inherit its real look (the fix for "make more like our Father's Day ads").
+  const ref = referenceImageUrl ? await fetchImageBytes(referenceImageUrl) : null;
   const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
   const SPEC_TOOL = {
     name: 'emit_ads',
@@ -312,7 +317,10 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
       required: ['ads'],
     },
   };
-  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
+  const refNote = ref
+    ? `\n\nIMPORTANT: each image is generated IMAGE-TO-IMAGE from a REFERENCE AD that already performs. Write each gen_prompt to KEEP the reference ad's exact visual style, framing, lighting, color grade, and emotional reaction — only change the scene/subject to fit the new angle. Still NO text/words/logos in the image; keep clean negative space in the lower third for our typeset layer.`
+    : '';
+  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${refNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -335,7 +343,7 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
     }).select('id').single();
     if (!row) continue;
     try {
-      const url = await genImageNow(admin, row.id, s.gen_prompt, design);
+      const url = await genImageNow(admin, row.id, s.gen_prompt, design, ref);
       await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
       generated.push(row.id);
     } catch (e: any) {
@@ -397,7 +405,7 @@ serve(async (req) => {
     if (action === 'generate_batch') {
       const count = Math.min(Math.max(Number(body.count) || 2, 1), 4);
       const intended = body.intended_use === 'social' ? 'social' : 'ad';
-      const r = await generateBatch(admin, String(body.brief || '').slice(0, 2000), count, intended);
+      const r = await generateBatch(admin, String(body.brief || '').slice(0, 2000), count, intended, body.reference_image_url ? String(body.reference_image_url) : undefined);
       return json({ ...r, count: r.generated.length }, r.success ? 200 : 502);
     }
 
