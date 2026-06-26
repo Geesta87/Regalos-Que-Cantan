@@ -27,6 +27,8 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const [desc, setDesc] = useState('a warm, friendly Latina chief of staff in her 30s, professional, approachable smile');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [pending, setPending] = useState([]); // proposed Meta actions awaiting Confirm
+  const [actingId, setActingId] = useState(null);
   const audioRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -39,7 +41,7 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
     setLoading(true);
     try {
       const [{ status, body }, b2] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {})]);
-      if (body.success) { setPersona(body.persona); setName(body.persona?.name || ''); setMessages(body.messages || []); }
+      if (body.success) { setPersona(body.persona); setName(body.persona?.name || ''); setMessages(body.messages || []); setPending(body.pending_actions || []); }
       else if (status === 403) setDenied(true);
       if (b2.body?.success) setBriefing(b2.body.briefings?.[0] || null);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -68,10 +70,35 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
     setMessages((p) => [...p, { id: `t${Date.now()}`, role: 'user', content: msg }]);
     try {
       const { body } = await call(COS, { action: 'chat', message: msg });
-      if (body.success) setMessages((p) => [...p, { id: body.message_id, role: 'assistant', content: body.reply }]);
+      if (body.success) {
+        setMessages((p) => [...p, { id: body.message_id, role: 'assistant', content: body.reply }]);
+        if (body.pending_actions?.length) setPending((p) => [...body.pending_actions, ...p]);
+      }
       else showToast?.(`Error: ${body.error}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setSending(false); }
+  };
+
+  // Proposed Meta actions — execute only on the owner's explicit Confirm.
+  const confirmAction = async (id) => {
+    setActingId(id);
+    try {
+      const { body } = await call(COS, { action: 'confirm_action', id });
+      if (body.success) {
+        showToast?.(`✅ ${body.result || 'Done'}`);
+        setMessages((p) => [...p, { id: `r${Date.now()}`, role: 'assistant', content: `✅ ${body.result}` }]);
+      } else {
+        showToast?.(`Error: ${body.result || body.error || 'failed'}`);
+        setMessages((p) => [...p, { id: `r${Date.now()}`, role: 'assistant', content: `⚠️ ${body.result || body.error}` }]);
+      }
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setActingId(null); setPending((p) => p.filter((x) => x.id !== id)); }
+  };
+  const cancelAction = async (id) => {
+    setActingId(id);
+    try { await call(COS, { action: 'cancel_action', id }); }
+    catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setActingId(null); setPending((p) => p.filter((x) => x.id !== id)); }
   };
 
   // Today's date in the owner's Pacific frame (reports use his LA day).
@@ -222,8 +249,27 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
         </div>
       )}
 
+      {/* Proposed Meta actions — nothing happens until you Confirm */}
+      {pending.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {pending.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+              <span className="flex-1 text-sm text-gray-900">{p.summary || `${p.action_type} ${p.target_name || ''}`}</span>
+              <button onClick={() => confirmAction(p.id)} disabled={actingId === p.id}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                {actingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Confirm
+              </button>
+              <button onClick={() => cancelAction(p.id)} disabled={actingId === p.id}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-50">
+                <X size={14} /> Cancel
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mt-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder={`Ask ${nm}… (e.g. "approve the best creative")`} disabled={sending}
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder={`Ask ${nm}… (e.g. "pause the Corrido campaign")`} disabled={sending}
           className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || !input.trim()} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:opacity-50"><Send size={15} /></button>
       </div>

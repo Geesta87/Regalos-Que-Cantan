@@ -69,6 +69,35 @@ function shiftDate(ymd: string, deltaDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// --- Meta WRITE helpers (need an ads_management token; reads work on ads_read) ---
+async function metaPost(path: string, params: Record<string, string>): Promise<any> {
+  const body = new URLSearchParams({ ...params, access_token: META_ACCESS_TOKEN! });
+  const res = await fetch(`${META_BASE}/${path}`, { method: 'POST', body });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = j?.error?.message || JSON.stringify(j).slice(0, 200);
+    if (j?.error?.code === 200 || /permission|ads_management/i.test(msg)) {
+      throw new Error(`Meta needs the ads_management permission to make this change. Current token is read-only. (${msg})`);
+    }
+    throw new Error(`Meta ${path} ${res.status}: ${msg}`);
+  }
+  return j;
+}
+const moneyFmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+async function listAdObjects(kind: 'campaigns' | 'adsets'): Promise<any[]> {
+  const fields = kind === 'campaigns' ? 'id,name,effective_status,daily_budget' : 'id,name,effective_status,daily_budget,campaign_id';
+  const j = await metaGet(`${META_AD_ACCOUNT_ID}/${kind}`, { fields, limit: '300' });
+  return j.data || [];
+}
+// Fuzzy-match an ad object by name (exact, then contains, case-insensitive).
+function matchByName(rows: any[], name: string): any | null {
+  const n = (name || '').trim().toLowerCase();
+  if (!n) return null;
+  return rows.find((r) => (r.name || '').toLowerCase() === n)
+    || rows.find((r) => (r.name || '').toLowerCase().includes(n))
+    || null;
+}
+
 // Build an ad-performance report for a date range. Prefers LIVE Meta (full
 // history) cross-checked against real paid orders in `songs`; falls back to the
 // saved daily media-buyer reports if Meta is unreachable / not configured.
@@ -248,12 +277,92 @@ function tools() {
     { name: 'refresh_briefing', description: 'Regenerate the morning Chief-of-Staff briefing.', input_schema: { type: 'object', properties: {} } },
     { name: 'generate_creatives', description: 'Ask the Creative Studio art director to generate creatives from a brief.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What to make, e.g. "5 Mother\'s Day photoreal ads".' } }, required: ['brief'] } },
     { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. Dates are the owner\'s PACIFIC days labeled by their 9am start (e.g. "2026-06-25" = Jun 25 9am → Jun 26 9am Pacific) — just pass his Pacific dates; the tool converts to the Meta/Manila ad-day internally. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: "Start date YYYY-MM-DD in the owner's Pacific frame (inclusive)." }, to: { type: 'string', description: "End date YYYY-MM-DD Pacific (inclusive). Defaults to today." } }, required: ['from'] } },
+    { name: 'propose_ad_change', description: 'PROPOSE pausing, resuming, or changing the daily budget of a Meta campaign or ad set. This does NOT execute — it creates a confirmation card the owner must tap to approve. Use whenever the owner wants to turn off / pause / resume an ad, or raise/lower a budget. Match the campaign/ad-set by the name the owner uses.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['pause', 'resume', 'set_budget'] }, level: { type: 'string', enum: ['campaign', 'adset'], description: 'Whether the name refers to a campaign or an ad set. Default campaign.' }, name: { type: 'string', description: 'The campaign or ad-set name (or part of it).' }, daily_budget_usd: { type: 'number', description: 'For set_budget: the new daily budget in US dollars (e.g. 75).' } }, required: ['action', 'name'] } },
+    { name: 'propose_extract_ad', description: 'PROPOSE taking a currently-running ad\'s visual + copy and handing it to the Art Director (Creative Studio) to generate more in that style. Does NOT execute — creates a confirmation card. Use when the owner wants "more like the ad that\'s running".', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign or ad name to pull the running creative from. If omitted, uses the top active ad.' } } } },
   ];
 }
 
-async function runTool(admin: any, authHeader: string, snap: any, name: string, input: any): Promise<string> {
+// Resolve + stage a proposed ad change as a pending_action row (no execution).
+async function proposeAdChange(admin: any, input: any, pending: any[]): Promise<string> {
+  if (!META_ACCESS_TOKEN) return 'Meta is not connected (META_ACCESS_TOKEN missing).';
+  const level = input.level === 'adset' ? 'adset' : 'campaign';
+  const rows = await listAdObjects(level === 'adset' ? 'adsets' : 'campaigns');
+  const t = matchByName(rows, input.name);
+  if (!t) return `Couldn't find a ${level} matching "${input.name}". Active ${level}s: ${rows.slice(0, 8).map((r) => r.name).join(', ') || '(none)'}.`;
+  const curBudget = t.daily_budget ? `, currently ${moneyFmt(Number(t.daily_budget))}/day` : '';
+  let summary = '', params: any = {};
+  if (input.action === 'pause') summary = `⏸ Pause ${level} "${t.name}"${curBudget}`;
+  else if (input.action === 'resume') summary = `▶️ Resume ${level} "${t.name}"${curBudget}`;
+  else {
+    const usd = Number(input.daily_budget_usd);
+    if (!Number.isFinite(usd) || usd <= 0) return 'Tell me the new daily budget in dollars (e.g. $75).';
+    params = { daily_budget_usd: Math.round(usd * 100) / 100 };
+    summary = `💰 Set ${level} "${t.name}" budget to $${usd.toFixed(2)}/day${t.daily_budget ? ` (from ${moneyFmt(Number(t.daily_budget))})` : ''}`;
+  }
+  const { data: row } = await admin.from('cos_pending_actions').insert({
+    action_type: input.action, target_type: level, target_id: t.id, target_name: t.name, params, summary, status: 'pending',
+  }).select('id, summary, action_type, target_name, status').single();
+  if (row) pending.push(row);
+  return `Proposed: ${summary}. It's waiting for your tap on the Confirm card — nothing changed yet.`;
+}
+
+// Stage an "extract running ad → make more" proposal (no execution).
+async function proposeExtractAd(admin: any, input: any, pending: any[]): Promise<string> {
+  if (!META_ACCESS_TOKEN) return 'Meta is not connected (META_ACCESS_TOKEN missing).';
+  const j = await metaGet(`${META_AD_ACCOUNT_ID}/ads`, { fields: 'id,name,effective_status,creative{id,title,body,image_url,thumbnail_url,object_story_spec}', limit: '100' });
+  let ads = (j.data || []).filter((a: any) => a.effective_status === 'ACTIVE');
+  if (input.name) { const m = matchByName(ads.length ? ads : (j.data || []), input.name); ads = m ? [m] : ads; }
+  const ad = ads[0] || (j.data || [])[0];
+  if (!ad) return 'No ads found in the account to copy from.';
+  const cr = ad.creative || {};
+  const copy = cr.title || cr.body || ad.name || '';
+  const image = cr.image_url || cr.thumbnail_url || '';
+  const params = { ad_id: ad.id, ad_name: ad.name, copy, image_url: image };
+  const summary = `🎨 Make more ads like "${ad.name}" → send to Art Director`;
+  const { data: row } = await admin.from('cos_pending_actions').insert({
+    action_type: 'extract_creative', target_type: 'ad', target_id: ad.id, target_name: ad.name, params, summary, status: 'pending',
+  }).select('id, summary, action_type, target_name, status').single();
+  if (row) pending.push(row);
+  return `Proposed: ${summary}. Tap Confirm and I'll hand it to the Art Director — nothing generated yet.`;
+}
+
+// Execute a confirmed pending action (called only on the owner's Confirm tap).
+async function executePendingAction(admin: any, authHeader: string, id: string): Promise<{ ok: boolean; result: string }> {
+  const { data: a } = await admin.from('cos_pending_actions').select('*').eq('id', id).single();
+  if (!a) return { ok: false, result: 'Action not found.' };
+  if (a.status !== 'pending') return { ok: false, result: `Already ${a.status}.` };
+  try {
+    let result = '';
+    if (a.action_type === 'pause' || a.action_type === 'resume') {
+      await metaPost(`${a.target_id}`, { status: a.action_type === 'pause' ? 'PAUSED' : 'ACTIVE' });
+      result = `${a.action_type === 'pause' ? 'Paused' : 'Resumed'} ${a.target_type} "${a.target_name}".`;
+    } else if (a.action_type === 'set_budget') {
+      const cents = Math.round(Number(a.params?.daily_budget_usd || 0) * 100);
+      await metaPost(`${a.target_id}`, { daily_budget: String(cents) });
+      result = `Set ${a.target_type} "${a.target_name}" budget to $${(cents / 100).toFixed(2)}/day.`;
+    } else if (a.action_type === 'extract_creative') {
+      const p = a.params || {};
+      const brief = `Make 2 fresh ad visuals in the style of our running ad "${p.ad_name}". Its copy: "${(p.copy || '').slice(0, 300)}". ${p.image_url ? `Reference look: ${p.image_url}.` : ''} Keep our brand + one offer; do not copy it verbatim — make originals.`;
+      const r = await (await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'send', message: brief }) })).json();
+      if (!r.success) throw new Error(r.error || 'creative-chat failed');
+      result = `Sent to the Art Director — new ads like "${p.ad_name}" are generating in Creative Studio.`;
+    } else {
+      return { ok: false, result: `Unknown action type ${a.action_type}.` };
+    }
+    await admin.from('cos_pending_actions').update({ status: 'done', result, confirmed_at: new Date().toISOString() }).eq('id', id);
+    return { ok: true, result };
+  } catch (e: any) {
+    const msg = String(e?.message || e).slice(0, 400);
+    await admin.from('cos_pending_actions').update({ status: 'failed', result: msg, confirmed_at: new Date().toISOString() }).eq('id', id);
+    return { ok: false, result: msg };
+  }
+}
+
+async function runTool(admin: any, authHeader: string, snap: any, name: string, input: any, pending: any[]): Promise<string> {
   const fwd = (fn: string, body: any) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify(body) });
   try {
+    if (name === 'propose_ad_change') return await proposeAdChange(admin, input, pending);
+    if (name === 'propose_extract_ad') return await proposeExtractAd(admin, input, pending);
     if (name === 'approve_creative') {
       const id = input.creative_id || snap?.top_ready_creative?.id;
       if (!id) return 'No creative is waiting for approval.';
@@ -288,7 +397,9 @@ function systemPrompt(persona: any, snap: any) {
   const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
   return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
-You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did.
+
+META ADS CHANGES (approval-gated): to PAUSE / turn off / resume an ad, or change a daily BUDGET, call propose_ad_change. To make more ads like one that's running, call propose_extract_ad. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
@@ -316,7 +427,21 @@ serve(async (req) => {
     if (action === 'get') {
       const persona = await getPersona();
       const { data: msgs } = await admin.from('cos_chat_messages').select('id, role, content, audio_url, created_at').order('created_at', { ascending: true }).limit(100);
-      return json({ success: true, persona, messages: msgs || [] });
+      const { data: pend } = await admin.from('cos_pending_actions').select('id, summary, action_type, target_name, status').eq('status', 'pending').order('created_at', { ascending: false }).limit(20);
+      return json({ success: true, persona, messages: msgs || [], pending_actions: pend || [] });
+    }
+
+    // Owner taps Confirm on a proposed Meta action → execute it now.
+    if (action === 'confirm_action') {
+      if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
+      const { ok, result } = await executePendingAction(admin, authHeader, String(body.id));
+      return json({ success: ok, id: body.id, result, status: ok ? 'done' : 'failed' });
+    }
+    // Owner taps Cancel → discard the proposal without executing.
+    if (action === 'cancel_action') {
+      if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
+      await admin.from('cos_pending_actions').update({ status: 'cancelled' }).eq('id', body.id).eq('status', 'pending');
+      return json({ success: true, id: body.id, status: 'cancelled' });
     }
 
     if (action === 'list_voices') return json({ success: true, voices: await listVoices() });
@@ -362,6 +487,7 @@ serve(async (req) => {
       const system = systemPrompt(persona, snap);
 
       let finalText = '';
+      const pending: any[] = []; // proposed Meta actions awaiting the owner's Confirm tap
       for (let i = 0; i < 3; i++) {
         const resp = await callClaude(messages, system);
         const content = resp.content || [];
@@ -371,13 +497,13 @@ serve(async (req) => {
         if (text) finalText = text;
         if (resp.stop_reason !== 'tool_use' || !toolUses.length) break;
         const results = [];
-        for (const tu of toolUses) results.push({ type: 'tool_result', tool_use_id: tu.id, content: await runTool(admin, authHeader, snap, tu.name, tu.input || {}) });
+        for (const tu of toolUses) results.push({ type: 'tool_result', tool_use_id: tu.id, content: await runTool(admin, authHeader, snap, tu.name, tu.input || {}, pending) });
         messages.push({ role: 'user', content: results });
       }
 
       await admin.from('cos_chat_messages').insert({ role: 'user', content: userMsg });
       const { data: saved } = await admin.from('cos_chat_messages').insert({ role: 'assistant', content: finalText || '(listo)' }).select('id').single();
-      return json({ success: true, reply: finalText, message_id: saved?.id || null });
+      return json({ success: true, reply: finalText, message_id: saved?.id || null, pending_actions: pending });
     }
 
     return json({ success: false, error: `Unknown action ${action}` }, 400);
