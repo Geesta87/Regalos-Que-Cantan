@@ -19,6 +19,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applyLogo } from '../_shared/brand.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,8 +72,9 @@ async function finalize(admin: any, ids: string[]) {
         const url = (JSON.parse(info.data.resultJson || '{}').resultUrls || [])[0];
         if (!url) throw new Error('no resultUrls');
         const media = await fetch(url);
-        const bytes = new Uint8Array(await media.arrayBuffer());
+        let bytes = new Uint8Array(await media.arrayBuffer());
         const ext = row.kind === 'video' ? 'mp4' : 'png';
+        if (row.kind !== 'video') bytes = await applyLogo(bytes); // brand the visual
         await admin.storage.from(BUCKET).upload(`${row.id}.${ext}`, bytes, { contentType: row.kind === 'video' ? 'video/mp4' : 'image/png', upsert: true });
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(`${row.id}.${ext}`);
         await admin.from('creative_queue').update({ status: 'ready', media_url: pub.publicUrl, updated_at: new Date().toISOString() }).eq('id', row.id);

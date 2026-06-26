@@ -12,6 +12,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applyLogo } from '../_shared/brand.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -39,8 +40,9 @@ async function gptImage(admin: any, prompt: string): Promise<string | null> {
   const j = await r.json().catch(() => ({}));
   const b64 = j?.data?.[0]?.b64_json;
   if (!b64) return null;
+  const bytes = await applyLogo(b64ToBytes(b64));
   const path = `tpl-${crypto.randomUUID()}.png`;
-  const up = await admin.storage.from(BUCKET).upload(path, b64ToBytes(b64), { contentType: 'image/png', upsert: true });
+  const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: 'image/png', upsert: true });
   if (up.error) { console.warn('upload', up.error.message); return null; }
   return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
