@@ -34,24 +34,31 @@ export default function FreeformLabSection({ accessToken, showToast }) {
     return res.json();
   }, [accessToken]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!accessToken) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const r = await call({ action: 'raw_list' });
       if (r.success) setImages(r.creatives || []);
-    } catch (e) { showToast?.(`Error: ${e.message}`); }
-    finally { setLoading(false); }
+    } catch (e) { if (!silent) showToast?.(`Error: ${e.message}`); }
+    finally { if (!silent) setLoading(false); }
   }, [accessToken, call, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // While anything is still rendering, quietly poll so tiles fill in on their own.
+  useEffect(() => {
+    if (!images.some((i) => i.status === 'generating')) return;
+    const t = setTimeout(() => load(true), 7000);
+    return () => clearTimeout(t);
+  }, [images, load]);
 
   const generate = async () => {
     if (!prompt.trim()) { showToast?.('Write a prompt first'); return; }
     setBusy(true);
     try {
       const r = await call({ action: 'raw_generate', prompt: prompt.trim(), count });
-      if (r.success) { showToast?.(`✨ Generated ${r.count} image${r.count > 1 ? 's' : ''}`); load(); }
+      if (r.success) { showToast?.(`🎨 Generating ${r.count} — they'll appear below in a moment`); load(); }
       else showToast?.(`Error: ${r.error || 'generation failed'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }
@@ -61,7 +68,7 @@ export default function FreeformLabSection({ accessToken, showToast }) {
     setBusy(true);
     try {
       const r = await call({ action: 'raw_more', creative_id: id, context: moreTweak.trim() || undefined, count: moreCount });
-      if (r.success) { showToast?.(`✨ Made ${r.count} in this style`); setMoreId(null); setMoreTweak(''); load(); }
+      if (r.success) { showToast?.(`🎨 Generating ${r.count} in this style — they'll appear below`); setMoreId(null); setMoreTweak(''); load(); }
       else showToast?.(`Error: ${r.error || 'failed'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }

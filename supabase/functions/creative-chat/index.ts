@@ -113,6 +113,21 @@ async function rawImageNow(admin: any, rowId: string, prompt: string, ref?: { by
   return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+// Run raw image jobs in the BACKGROUND, in parallel, so the request returns
+// instantly (rows already exist as 'generating' → the gallery shows tiles that
+// fill in). Avoids the multi-minute blocking spinner + edge-fn timeout.
+function runRawJobs(admin: any, jobs: { id: string; prompt: string; ref?: { bytes: Uint8Array; mime: string } | null }[]) {
+  const work = Promise.allSettled(jobs.map(async (j) => {
+    try {
+      const url = await rawImageNow(admin, j.id, j.prompt, j.ref);
+      await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', j.id);
+    } catch (e: any) {
+      await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', j.id);
+    }
+  }));
+  try { (globalThis as any).EdgeRuntime?.waitUntil?.(work); } catch (_) { /* not on edge runtime */ }
+}
+
 // Finalize any 'generating' creatives in the given id list by polling Kie.
 async function finalize(admin: any, ids: string[]) {
   if (!ids.length) return;
@@ -492,14 +507,14 @@ serve(async (req) => {
       const prompt = String(body.prompt || '').trim().slice(0, 2000);
       const count = Math.min(Math.max(Number(body.count) || 1, 1), 3);
       if (!prompt) return json({ success: false, error: 'Enter a prompt' }, 400);
-      const generated: string[] = [];
+      const jobs: { id: string; prompt: string }[] = [];
       for (let i = 0; i < count; i++) {
         const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: prompt.slice(0, 120), gen_prompt: prompt, status: 'generating' }).select('id').single();
-        if (!row) continue;
-        try { const url = await rawImageNow(admin, row.id, prompt); await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id); generated.push(row.id); }
-        catch (e: any) { await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id); }
+        if (row) jobs.push({ id: row.id, prompt });
       }
-      return json({ success: generated.length > 0, generated, count: generated.length, ...(generated.length ? {} : { error: 'Generation failed — check OPENAI_API_KEY / KIE_API_KEY' }) }, generated.length ? 200 : 502);
+      if (!jobs.length) return json({ success: false, error: 'Could not queue the generation' }, 500);
+      runRawJobs(admin, jobs);
+      return json({ success: true, queued: true, generated: jobs.map((j) => j.id), count: jobs.length });
     }
 
     // raw_more: "create more like this" — image-to-image off a saved raw image.
@@ -516,14 +531,14 @@ serve(async (req) => {
         ? `, but about this: ${context}`
         : (src.gen_prompt && !/^(Reference template|Uploaded)/i.test(src.gen_prompt) ? `. Subject: ${src.gen_prompt}` : ' for Regalos Que Cantan personalized songs');
       const genPrompt = `Use the reference image ONLY as the DESIGN TEMPLATE — copy its visual style, layout, color scheme, typography, composition and overall look as closely as possible. Create a NEW advertising poster in that same template${subject}. All text in Spanish, clean, correctly spelled and legible; keep it polished and professional.`.trim();
-      const generated: string[] = [];
+      const jobs: { id: string; prompt: string; ref: { bytes: Uint8Array; mime: string } }[] = [];
       for (let i = 0; i < count; i++) {
         const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: (src.gen_prompt || 'variation').slice(0, 120), gen_prompt: genPrompt, status: 'generating' }).select('id').single();
-        if (!row) continue;
-        try { const url = await rawImageNow(admin, row.id, genPrompt, ref); await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id); generated.push(row.id); }
-        catch (e: any) { await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id); }
+        if (row) jobs.push({ id: row.id, prompt: genPrompt, ref });
       }
-      return json({ success: generated.length > 0, generated, count: generated.length, ...(generated.length ? {} : { error: 'Generation failed' }) }, generated.length ? 200 : 502);
+      if (!jobs.length) return json({ success: false, error: 'Could not queue the generation' }, 500);
+      runRawJobs(admin, jobs);
+      return json({ success: true, queued: true, generated: jobs.map((j) => j.id), count: jobs.length });
     }
 
     // raw_upload: bring an EXISTING image (a reference ad the owner already has)
