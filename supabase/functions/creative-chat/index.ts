@@ -512,7 +512,7 @@ serve(async (req) => {
       if (!src?.media_url) return json({ success: false, error: 'source image not found' }, 404);
       const ref = await fetchImageBytes(src.media_url);
       if (!ref) return json({ success: false, error: 'could not load the source image' }, 502);
-      const genPrompt = `Create a NEW image in the same visual style, subject, lighting and mood as the reference image. ${src.gen_prompt || ''}${tweak ? ` Change: ${tweak}.` : ''}`.trim();
+      const genPrompt = `Create a NEW advertising image in the SAME visual style, layout, color scheme, typography and composition as the reference image — like a fresh ad from the same template. ${tweak ? `Apply this change: ${tweak}.` : 'Keep the same theme and offer.'} Spanish text, clean and legible, polished and professional.${src.gen_prompt && !/^(Reference template|Uploaded)/i.test(src.gen_prompt) ? ` ${src.gen_prompt}` : ''}`.trim();
       const generated: string[] = [];
       for (let i = 0; i < count; i++) {
         const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: (src.gen_prompt || 'variation').slice(0, 120), gen_prompt: genPrompt, status: 'generating' }).select('id').single();
@@ -521,6 +521,28 @@ serve(async (req) => {
         catch (e: any) { await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id); }
       }
       return json({ success: generated.length > 0, generated, count: generated.length, ...(generated.length ? {} : { error: 'Generation failed' }) }, generated.length ? 200 : 502);
+    }
+
+    // raw_upload: bring an EXISTING image (a reference ad the owner already has)
+    // into the Lab gallery so "create more like this" can reproduce its style.
+    if (action === 'raw_upload') {
+      const dataUrl = String(body.image || '');
+      const label = String(body.label || 'Reference template').slice(0, 120);
+      const m = dataUrl.match(/^data:(image\/[\w+.-]+);base64,(.+)$/s);
+      const b64 = m ? m[2] : dataUrl;
+      if (!b64) return json({ success: false, error: 'No image data' }, 400);
+      let bytes: Uint8Array;
+      try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); }
+      catch { return json({ success: false, error: 'Could not read the image' }, 400); }
+      if (bytes.length > 10 * 1024 * 1024) return json({ success: false, error: 'Image too large (max 10MB)' }, 400);
+      const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: label, gen_prompt: label, status: 'generating' }).select('id').single();
+      if (!row) return json({ success: false, error: 'insert failed' }, 500);
+      const path = `raw/${row.id}.png`;
+      const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: m?.[1] || 'image/png', upsert: true });
+      if (up.error) { await admin.from('creative_queue').update({ status: 'failed', error: up.error.message }).eq('id', row.id); return json({ success: false, error: up.error.message }, 500); }
+      const url = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
+      return json({ success: true, id: row.id, media_url: url });
     }
 
     // raw_list: fetch the Freeform Lab gallery (newest first).

@@ -4,8 +4,8 @@
 // Saves every image; "Create more like this" generates similar ones off it
 // (image-to-image), so the owner can show the Art Director / Sofía the exact
 // look they want. Talks straight to the creative-chat edge function.
-import React, { useState, useEffect, useCallback } from 'react';
-import { Beaker, Loader2, Sparkles, Copy, AlertTriangle, RefreshCw, Wand2, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Beaker, Loader2, Sparkles, Copy, AlertTriangle, RefreshCw, Wand2, X, Upload } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-chat`;
 
@@ -17,6 +17,8 @@ export default function FreeformLabSection({ accessToken, showToast }) {
   const [loading, setLoading] = useState(true);
   const [moreId, setMoreId] = useState(null);   // image being "create more like this"-ed
   const [moreTweak, setMoreTweak] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -68,6 +70,34 @@ export default function FreeformLabSection({ accessToken, showToast }) {
     navigator.clipboard?.writeText(p || '').then(() => showToast?.('Prompt copied')).catch(() => {});
   };
 
+  const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+
+  const handleUpload = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    setUploading(true);
+    let ok = 0;
+    try {
+      for (const f of files) {
+        try {
+          const dataUrl = await readAsDataUrl(f);
+          const r = await call({ action: 'raw_upload', image: dataUrl, label: f.name.replace(/\.[^.]+$/, '').slice(0, 80) });
+          if (r.success) ok++;
+        } catch { /* skip one bad file */ }
+      }
+      showToast?.(ok ? `📥 Uploaded ${ok} reference${ok > 1 ? 's' : ''}` : 'Upload failed');
+      if (ok) load();
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   const hasGenerating = images.some((i) => i.status === 'generating');
 
   return (
@@ -101,14 +131,22 @@ export default function FreeformLabSection({ accessToken, showToast }) {
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Generate
           </button>
         </div>
-        <p className="text-[11px] text-gray-500 mt-2">
-          These are raw images — no logo, no headline, no template. Use “Create more like this” on any one to build a set, then tell the Art Director “make ads from my Lab images”.
-        </p>
+        <div className="flex items-center justify-between mt-2 gap-3">
+          <p className="text-[11px] text-gray-500">
+            Raw images — no logo, headline, or template. Or <b>upload your reference ads</b> and hit “Create more like this” to make new ones in that exact style.
+          </p>
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-50 disabled:opacity-40 whitespace-nowrap">
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Upload references
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => handleUpload(e.target.files)} />
+        </div>
       </div>
 
       {/* Gallery */}
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-medium text-gray-700">Your Lab images</h4>
+        <h4 className="text-sm font-medium text-gray-700">Your Lab images &amp; references</h4>
         <button onClick={load} disabled={loading}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh{hasGenerating ? ' (generating…)' : ''}
@@ -121,7 +159,7 @@ export default function FreeformLabSection({ accessToken, showToast }) {
         </div>
       ) : images.length === 0 ? (
         <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
-          No Lab images yet. Write a prompt above and hit Generate.
+          No Lab images yet. Write a prompt and Generate, or Upload your reference ads above.
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
