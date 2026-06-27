@@ -271,6 +271,13 @@ verify_jwt = true
 # Reads ANTHROPIC_API_KEY + SENDGRID_API_KEY. Never touches the payment funnel.
 verify_jwt = false
 
+[functions.cos-weekly-memo]
+# Sofía's weekly CEO memo. pg_cron (Mon morning, after the daily jobs) →
+# verify_jwt = false. Joins Meta spend to real Stripe orders by campaign, writes a
+# CEO memo (summary + 3 moves + a risk) into cos_memos. Returns status only; the
+# admin reads the body through cos-assistant. Reads ANTHROPIC_API_KEY + META_ACCESS_TOKEN.
+verify_jwt = false
+
 [functions.chief-of-staff-admin]
 # Chief of Staff dashboard reader. Admin JWT → verify_jwt = true; admin-only
 # (surfaces revenue). Returns cos_briefings; action:'run' refreshes on demand.

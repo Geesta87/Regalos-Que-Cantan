@@ -690,6 +690,24 @@ serve(async (req) => {
       return json({ success: true, id: body.id, status: 'cancelled' });
     }
 
+    // Weekly CEO memo: read the latest (admin-gated here; the generator returns
+    // only status), and mark it read. make_memo triggers a fresh one on demand.
+    if (action === 'get_weekly_memo') {
+      const { data: memo } = await admin.from('cos_memos').select('id, week_of, headline, summary, body, status, created_at').order('created_at', { ascending: false }).limit(1).maybeSingle();
+      return json({ success: true, memo: memo || null });
+    }
+    if (action === 'mark_memo_read') {
+      if (body.id) await admin.from('cos_memos').update({ status: 'read' }).eq('id', body.id);
+      return json({ success: true });
+    }
+    if (action === 'make_weekly_memo') {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/cos-weekly-memo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const out = await r.json().catch(() => ({}));
+      if (!out?.success) return json({ success: false, error: out?.error || 'memo generation failed' }, 502);
+      const { data: memo } = await admin.from('cos_memos').select('id, week_of, headline, summary, body, status, created_at').order('created_at', { ascending: false }).limit(1).maybeSingle();
+      return json({ success: true, memo: memo || null });
+    }
+
     if (action === 'list_voices') return json({ success: true, voices: await listVoices() });
 
     if (action === 'preview_voice') {

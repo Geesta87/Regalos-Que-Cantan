@@ -5,7 +5,7 @@
 // via ElevenLabs (pick + preview in settings). Admin-only. Talks to
 // cos-assistant (+ chief-of-staff-admin for the briefing).
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Compass, Send, Loader2, Settings, Volume2, RefreshCw, Check, Sparkles, X } from 'lucide-react';
+import { Compass, Send, Loader2, Settings, Volume2, RefreshCw, Check, Sparkles, X, FileText, ChevronDown, AlertTriangle } from 'lucide-react';
 
 const COS = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cos-assistant`;
 const BRIEF = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chief-of-staff-admin`;
@@ -29,6 +29,9 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const [to, setTo] = useState('');
   const [pending, setPending] = useState([]); // proposed Meta actions awaiting Confirm
   const [actingId, setActingId] = useState(null);
+  const [memo, setMemo] = useState(null); // Sofía's weekly CEO memo
+  const [memoBusy, setMemoBusy] = useState(false);
+  const [memoOpen, setMemoOpen] = useState(true);
   const audioRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -40,13 +43,24 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ status, body }, b2] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {})]);
+      const [{ status, body }, b2, m] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {}), call(COS, { action: 'get_weekly_memo' })]);
       if (body.success) { setPersona(body.persona); setName(body.persona?.name || ''); setMessages(body.messages || []); setPending(body.pending_actions || []); }
       else if (status === 403) setDenied(true);
       if (b2.body?.success) setBriefing(b2.body.briefings?.[0] || null);
+      if (m.body?.success) setMemo(m.body.memo || null);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setLoading(false); }
   }, [call, showToast]);
+
+  const makeMemo = async () => {
+    setMemoBusy(true);
+    try {
+      const { body } = await call(COS, { action: 'make_weekly_memo' });
+      if (body?.success) { setMemo(body.memo || null); setMemoOpen(true); showToast?.('📋 Sofía wrote a fresh CEO memo'); }
+      else showToast?.(`Error: ${body?.error || 'could not generate'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setMemoBusy(false); }
+  };
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, sending]);
@@ -168,6 +182,71 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
         <button onClick={() => quickReport('week')} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">This week</button>
         <button onClick={() => quickReport(7)} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">Last 7 days</button>
         <button onClick={() => quickReport(30)} disabled={sending} className="px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50">30 days</button>
+      </div>
+
+      {/* Weekly CEO memo — Sofía's unprompted Monday analysis + 3 moves */}
+      <div className="mb-4 rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-4 py-3">
+          <button onClick={() => setMemoOpen((o) => !o)} className="flex items-center gap-2 text-left flex-1 min-w-0">
+            <FileText size={16} className="text-purple-600 flex-shrink-0" />
+            <span className="text-sm font-semibold text-gray-900 truncate">
+              {memo ? (memo.headline || 'Weekly CEO memo') : 'Weekly CEO memo'}
+              {memo?.week_of && <span className="ml-2 text-[11px] font-normal text-gray-400">week of {memo.week_of}</span>}
+            </span>
+            {memo && <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition ${memoOpen ? 'rotate-180' : ''}`} />}
+          </button>
+          <button onClick={makeMemo} disabled={memoBusy}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 flex-shrink-0">
+            {memoBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {memo ? 'Refresh' : 'Write memo'}
+          </button>
+        </div>
+
+        {memo && memoOpen && (
+          <div className="px-4 pb-4 space-y-3">
+            {memo.summary && <p className="text-sm text-gray-700 leading-relaxed">{memo.summary}</p>}
+
+            {Array.isArray(memo.body?.metrics) === false && memo.body?.metrics && (
+              <div className="flex flex-wrap gap-3 text-[11px] text-gray-600 bg-white border border-gray-100 rounded-lg px-3 py-2">
+                <span>Spend <b className="text-gray-900">${memo.body.metrics.spend}</b></span>
+                <span>Revenue <b className="text-gray-900">${memo.body.metrics.revenue}</b></span>
+                <span>Orders <b className="text-gray-900">{memo.body.metrics.orders}</b></span>
+                {memo.body.metrics.blended_roas != null && <span>Blended ROAS <b className="text-gray-900">{memo.body.metrics.blended_roas}x</b></span>}
+                {memo.body.metrics.aov != null && <span>AOV <b className="text-gray-900">${memo.body.metrics.aov}</b></span>}
+              </div>
+            )}
+
+            {Array.isArray(memo.body?.moves) && memo.body.moves.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-purple-700">This week's moves</p>
+                {memo.body.moves.map((mv, i) => (
+                  <div key={i} className="bg-white border border-gray-200 rounded-lg p-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[11px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{mv.title}</p>
+                        {mv.why && <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{mv.why}</p>}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                          {mv.number && <span className="text-[11px] font-medium text-purple-700">📈 {mv.number}</span>}
+                          {mv.tab && <span className="text-[11px] text-gray-400">→ {mv.tab}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {memo.body?.watch && (
+              <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                <span><b>Watch:</b> {memo.body.watch}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {!memo && memoOpen && (
+          <div className="px-4 pb-4 text-xs text-gray-500">No memo yet — Sofía writes one every Monday. Tap “Write memo” to have her analyze this week now.</div>
+        )}
       </div>
 
       {/* Settings */}
