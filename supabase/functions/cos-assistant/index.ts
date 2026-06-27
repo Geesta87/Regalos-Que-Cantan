@@ -250,20 +250,33 @@ async function genAvatar(admin: any, prompt: string): Promise<string | null> {
 // ---------------------------------------------------------------------------
 async function snapshot(admin: any) {
   const count = async (t: string, b: (q: any) => any) => { const { count } = await b(admin.from(t).select('id', { count: 'exact', head: true })); return count || 0; };
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data: mb } = await admin.from('media_buyer_reports').select('report_for, metrics, analysis').order('report_for', { ascending: false }).limit(1).maybeSingle();
-  const [creativesReady, emailsPending, competitorsNew, prospectsNew] = await Promise.all([
+  const [creativesReady, emailsPending, competitorsNew, prospectsNew, staleCreatives, pendingActions] = await Promise.all([
     count('creative_queue', (q) => q.eq('status', 'ready')),
     count('email_queue', (q) => q.eq('status', 'pending_approval')),
     count('competitor_ads', (q) => q.eq('status', 'new')),
     count('affiliate_prospects', (q) => q.eq('status', 'new')),
+    count('creative_queue', (q) => q.eq('status', 'ready').lt('created_at', dayAgo)),
+    count('cos_pending_actions', (q) => q.eq('status', 'pending')),
   ]);
   const { data: topCreative } = await admin.from('creative_queue').select('id, concept, score').eq('status', 'ready').order('score', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  // Long-term memory — what Gerardo has told her to remember (applied every turn).
+  const { data: mem } = await admin.from('cos_memory').select('kind, content').order('created_at', { ascending: false }).limit(60);
+  // PROACTIVE: things she should raise on her own, without being asked.
+  const proactive: string[] = [];
+  if (pendingActions > 0) proactive.push(`${pendingActions} action(s) are staged and awaiting your Confirm.`);
+  if (staleCreatives > 0) proactive.push(`${staleCreatives} creative(s) have been waiting over 24h for approval in Creative Studio.`);
+  if (mb?.analysis?.account_health === 'at_risk') proactive.push(`Ads flagged AT-RISK in the last report: ${mb.analysis?.headline || ''}`);
+  else if (mb?.analysis?.account_health === 'watch') proactive.push(`Ads on WATCH in the last report: ${mb.analysis?.headline || ''}`);
+  if (competitorsNew > 0) proactive.push(`${competitorsNew} new competitor angle(s) to review.`);
+  if (prospectsNew > 0) proactive.push(`${prospectsNew} new affiliate prospect(s) to review.`);
   return {
-    // Qualitative heads-up ONLY — no figures. Numbers must come from get_ad_report
-    // (correct Pacific timezone + live), never from this stale saved report.
     latest_saved_report: mb ? { headline: mb.analysis?.headline, account_health: mb.analysis?.account_health, top_recommendation: mb.analysis?.recommendations?.[0], NUMBERS_NOTE: 'NEVER quote spend/sales/revenue/ROAS/CPA from here — call get_ad_report for any figure, even "yesterday".' } : null,
     creatives_ready: creativesReady, top_ready_creative: topCreative || null,
     emails_pending: emailsPending, competitor_opportunities: competitorsNew, partner_prospects: prospectsNew,
+    memory: (mem || []).map((m: any) => `[${m.kind}] ${m.content}`),
+    proactive,
   };
 }
 
@@ -272,6 +285,9 @@ async function snapshot(admin: any) {
 // ---------------------------------------------------------------------------
 function tools() {
   return [
+    { name: 'remember', description: 'Save a durable fact to long-term memory so you apply it in EVERY future chat — the owner\'s preferences, standing rules, or decisions (e.g. "always faith/Spanish angle for that line", "never raise a budget over 2x without flagging me", "Corrido is the winner"). Use whenever he states a lasting preference/rule/decision, or says "remember…".', input_schema: { type: 'object', properties: { content: { type: 'string', description: 'The fact to remember, in one clear sentence.' }, kind: { type: 'string', enum: ['preference', 'rule', 'decision', 'fact'] } }, required: ['content'] } },
+    { name: 'get_sales', description: 'Pull REAL business/sales data from the orders database (deduped paid orders): total orders, revenue, AOV, and breakdown by genre or occasion. Use for ANY question about SALES / revenue / the business (not ad spend) — "how are sales today", "best-selling genre this week", "how many orders this month". Dates are the owner\'s Pacific days. Always answer sales questions from this, never guess.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (Pacific). Defaults to today.' }, to: { type: 'string', description: 'End date YYYY-MM-DD (Pacific). Defaults to today.' }, group_by: { type: 'string', enum: ['genre', 'occasion'], description: 'Optional breakdown.' } } } },
+    { name: 'propose_duplicate_scale', description: 'PROPOSE duplicating a winning Meta campaign into a new copy at a chosen daily budget (to scale a winner). Does NOT execute — creates a confirmation card. On confirm it creates the copy PAUSED at that budget for the owner to review + activate in Meta. Use when the owner wants to "duplicate / clone / scale" a winning campaign.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign name to duplicate.' }, daily_budget_usd: { type: 'number', description: 'Daily budget for the new copy, in US dollars.' } }, required: ['name'] } },
     { name: 'approve_creative', description: 'Approve a creative so it auto-posts. Omit id to approve the top-scored one waiting.', input_schema: { type: 'object', properties: { creative_id: { type: 'string' } } } },
     { name: 'run_competitor_scan', description: 'Trigger a fresh scan of competitor ads.', input_schema: { type: 'object', properties: {} } },
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
@@ -396,6 +412,14 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
       const n = (r.generated || []).length;
       if (!r.success || !n) throw new Error(r.error || 'generation produced nothing');
       result = `Done — ${n} new ad${n > 1 ? 's' : ''} created${p.image_url ? ' from your real ad as the visual reference' : ''} and ready in Creative Studio → Ads.`;
+    } else if (a.action_type === 'duplicate_scale') {
+      // Copy the campaign (+ its ad sets/ads), set the new budget, leave PAUSED.
+      const copy = await metaPost(`${a.target_id}/copies`, { deep_copy: 'true', status_option: 'PAUSED' });
+      const newId = copy?.copied_campaign_id || copy?.id;
+      if (!newId) throw new Error('Meta did not return a copied campaign id.');
+      const cents = Math.round(Number(a.params?.daily_budget_usd || 0) * 100);
+      if (cents > 0) { try { await metaPost(`${newId}`, { daily_budget: String(cents) }); } catch (_) { /* budget may be at ad-set level */ } }
+      result = `Duplicated "${a.target_name}" → new campaign ${newId}${cents > 0 ? ` at $${(cents / 100).toFixed(2)}/day` : ''}, left PAUSED. Review + turn it on in Meta Ads when ready.`;
     } else {
       return { ok: false, result: `Unknown action type ${a.action_type}.` };
     }
@@ -408,11 +432,60 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
   }
 }
 
+// Real sales/business data from the orders (songs) table — deduped per
+// stripe_session_id (2-pack safe), in the owner's Pacific day window.
+async function getSales(admin: any, from: string, to: string, groupBy?: string): Promise<string> {
+  const d = new Date(`${to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1);
+  const lo = `${from}T07:00:00Z`, hi = `${d.toISOString().slice(0, 10)}T07:00:00Z`; // Pacific midnight = 07:00 UTC (PDT)
+  const { data: rows } = await admin.from('songs')
+    .select('stripe_session_id, amount_paid, genre, occasion')
+    .eq('paid', true).eq('platform', RQC_PLATFORM)
+    .gte('paid_at', lo).lt('paid_at', hi)
+    .not('stripe_session_id', 'is', null).limit(20000);
+  const perSession = new Map<string, number>();
+  for (const r of (rows || [])) { const sid = r.stripe_session_id as string; const amt = num(r.amount_paid); if (!perSession.has(sid) || amt > (perSession.get(sid) as number)) perSession.set(sid, amt); }
+  const orders = perSession.size;
+  const revenue = Math.round([...perSession.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+  const summary: any = { from, to, total_orders: orders, total_revenue: revenue, aov: orders > 0 ? Math.round((revenue / orders) * 100) / 100 : null };
+  if (groupBy === 'genre' || groupBy === 'occasion') {
+    const counts: Record<string, number> = {};
+    for (const r of (rows || [])) { const k = ((r as any)[groupBy] || '(none)') as string; counts[k] = (counts[k] || 0) + 1; }
+    summary.by = groupBy;
+    summary.breakdown = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => ({ [groupBy]: k, paid_songs: v }));
+  }
+  return `SALES ${from} → ${to} (real deduped paid orders, Pacific days):\n${JSON.stringify(summary, null, 2)}`;
+}
+
 async function runTool(admin: any, authHeader: string, snap: any, name: string, input: any, pending: any[]): Promise<string> {
   const fwd = (fn: string, body: any) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify(body) });
   try {
     if (name === 'propose_ad_change') return await proposeAdChange(admin, input, pending);
     if (name === 'propose_extract_ad') return await proposeExtractAd(admin, input, pending);
+    if (name === 'remember') {
+      const content = String(input.content || '').trim().slice(0, 500);
+      if (!content) return 'Nothing to remember.';
+      const kind = ['preference', 'rule', 'decision', 'fact'].includes(input.kind) ? input.kind : 'fact';
+      await admin.from('cos_memory').insert({ content, kind });
+      return `Got it — I'll remember that (${kind}): "${content}". I'll apply it going forward.`;
+    }
+    if (name === 'get_sales') {
+      const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+      const to = String(input.to || todayPT).slice(0, 10);
+      const from = String(input.from || to).slice(0, 10);
+      return await getSales(admin, from, to, input.group_by);
+    }
+    if (name === 'propose_duplicate_scale') {
+      if (!META_ACCESS_TOKEN) return 'Meta is not connected (META_ACCESS_TOKEN missing).';
+      const rows = await listAdObjects('campaigns');
+      const t = matchByName(rows, input.name);
+      if (!t) return `Couldn't find a campaign matching "${input.name}". Campaigns: ${rows.slice(0, 8).map((r: any) => r.name).join(', ') || '(none)'}.`;
+      const usd = Number(input.daily_budget_usd);
+      const params: any = Number.isFinite(usd) && usd > 0 ? { daily_budget_usd: Math.round(usd * 100) / 100 } : {};
+      const summary = `📋 Duplicate campaign "${t.name}"${params.daily_budget_usd ? ` at $${usd.toFixed(2)}/day` : ''} (new copy, PAUSED for your review)`;
+      const { data: row } = await admin.from('cos_pending_actions').insert({ action_type: 'duplicate_scale', target_type: 'campaign', target_id: t.id, target_name: t.name, params, summary, status: 'pending' }).select('id, summary, action_type, target_name, status').single();
+      if (row) pending.push(row);
+      return `Proposed: ${summary}. Tap Confirm and I'll create the copy — nothing happens until you do.`;
+    }
     if (name === 'check_creatives') {
       const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
       const { data } = await admin.from('creative_queue').select('status, intended_use, concept, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(60);
@@ -464,7 +537,17 @@ META ADS CHANGES (approval-gated): to PAUSE / turn off / resume an ad, or change
 
 CRITICAL — affirmations: when you have just proposed an action and he replies "yes" / "do it" / "go ahead" / "sure" / "yep", that ALWAYS means EXECUTE YOUR LAST PROPOSAL. Re-issue that exact tool call (e.g. propose_extract_ad with the same args). NEVER respond to an affirmation by switching tasks or pulling an ad report — that is the #1 mistake to avoid.
 
-If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. BUT — only when he's actually asking for PERFORMANCE NUMBERS. If the topic is ad CREATIVE / visuals / designs / "make more ads" / "which ad to copy" / "where did you pull that from" (meaning which creative), DO NOT call get_ad_report and do NOT recite spend/ROAS — stay on the creative track (propose_extract_ad / check_creatives). Answering a creative request with a numbers report is a major error. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. BUT — only when he's actually asking for PERFORMANCE NUMBERS. If the topic is ad CREATIVE / visuals / designs / "make more ads" / "which ad to copy" / "where did you pull that from" (meaning which creative), DO NOT call get_ad_report and do NOT recite spend/ROAS — stay on the creative track (propose_extract_ad / check_creatives). Answering a creative request with a numbers report is a major error. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date.
+
+SALES / BUSINESS DATA: for ANY question about sales, revenue, orders, AOV, or best-selling genre/occasion (NOT ad spend), call get_sales and answer from it — never guess. (get_ad_report = ad SPEND from Meta; get_sales = your real paid ORDERS from the database.)
+
+SCALE A WINNER: to duplicate / clone / scale a winning campaign, call propose_duplicate_scale (approval-gated — the copy lands PAUSED for his review).
+
+MEMORY: the CURRENT STATE below has a "memory" list — durable preferences/rules/decisions Gerardo told you. ALWAYS honor them automatically. When he states a lasting preference, rule, or decision (or says "remember…"), call remember to save it.
+
+PROACTIVE: the CURRENT STATE has a "proactive" list — things worth raising on your own. At the start of a conversation, or when relevant, surface the most important one or two briefly (don't dump the whole list).
+
+GUARDRAILS: NEVER fabricate numbers, names, or facts — always get them from a tool (get_ad_report, get_sales, check_creatives) or say "let me check" and actually check; if you truly don't know, say so. Anything that spends money or goes external (budgets, pausing, duplicating, generating, posting) MUST go through a Confirm card — never claim it's done before he confirms. You CANNOT issue refunds or send payouts/money — for those, tell Gerardo to do it himself.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
