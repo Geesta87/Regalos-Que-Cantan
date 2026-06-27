@@ -156,15 +156,15 @@ function buildPosterSvg(photoUri: string, logoUri: string | null, spec: AdSpec, 
   const price = (spec.price || '$29').replace(/\.?00$/, '').replace(/\.99$/, '');
   const cta = (spec.cta || '').toUpperCase();
   const accent = (spec.accent || '').toUpperCase();
-  const topY = Math.round(H * 0.12), step = 88;
+  const topY = Math.round(H * 0.115), step = 104;
   const headSvg = lines.map((l, i) =>
-    `<text x="60" y="${topY + i * step}" font-family="Montserrat" font-weight="800" font-size="80" letter-spacing="-1.5" fill="${WHITE}">${esc(l.toUpperCase())}</text>`
+    `<text x="60" y="${topY + i * step}" font-family="Anton" font-size="100" letter-spacing="1" fill="${WHITE}">${esc(l.toUpperCase())}</text>`
   ).join('\n');
-  const barY = topY + lines.length * step + 22;
-  const barW = Math.min(860, accent.length * 27 + 44);
-  const badgeCx = 170, badgeCy = Math.round(H * 0.80), badgeR = 104;
-  const ctaH = 76, ctaY = H - Math.round(H * 0.055) - ctaH;
-  const ctaW = Math.min(640, cta.length * 22 + 70);
+  const barY = topY + lines.length * step + 28;
+  const barW = Math.min(880, accent.length * 30 + 50);
+  const badgeCx = 180, badgeCy = Math.round(H * 0.79), badgeR = 120;
+  const ctaH = 86, ctaY = H - Math.round(H * 0.05) - ctaH;
+  const ctaW = Math.min(700, cta.length * 26 + 70);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 <defs>
 <filter id="bw"><feColorMatrix type="saturate" values="0"/></filter>
@@ -177,12 +177,12 @@ function buildPosterSvg(photoUri: string, logoUri: string | null, spec: AdSpec, 
 <image x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" href="${photoUri}" filter="url(#bw)"/>
 <rect width="${W}" height="${H}" fill="url(#pg)"/>
 ${headSvg}
-${accent ? `<rect x="56" y="${barY - 46}" width="${barW}" height="60" fill="${RED}"/><text x="76" y="${barY}" font-family="Montserrat" font-weight="800" font-size="40" fill="${WHITE}">${esc(accent)}</text>` : ''}
+${accent ? `<rect x="56" y="${barY - 50}" width="${barW}" height="66" fill="${RED}"/><text x="78" y="${barY}" font-family="Anton" font-size="46" fill="${WHITE}">${esc(accent)}</text>` : ''}
 <circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}" fill="${RED}"/>
-<text x="${badgeCx}" y="${badgeCy - 24}" text-anchor="middle" font-family="Montserrat" font-weight="700" font-size="30" fill="${WHITE}">SOLO</text>
-<text x="${badgeCx}" y="${badgeCy + 46}" text-anchor="middle" font-family="Montserrat" font-weight="800" font-size="82" fill="${WHITE}">${esc(price)}</text>
-${heart(W - 96, 132, 6)}${heart(W - 142, 214, 4)}${heart(322, badgeCy - 96, 5)}
-${cta ? `<rect x="300" y="${ctaY}" width="${ctaW}" height="${ctaH}" fill="${RED}"/><text x="${330}" y="${ctaY + 50}" font-family="Montserrat" font-weight="800" font-size="30" fill="${WHITE}">${esc(cta)}</text>` : ''}
+<text x="${badgeCx}" y="${badgeCy - 46}" text-anchor="middle" font-family="Anton" font-size="34" fill="${WHITE}">SOLO</text>
+<text x="${badgeCx}" y="${badgeCy + 50}" text-anchor="middle" font-family="Anton" font-size="104" fill="${WHITE}">${esc(price)}</text>
+${heart(W - 100, 140, 7)}${heart(W - 150, 235, 5)}${heart(345, badgeCy - 110, 6)}
+${cta ? `<rect x="300" y="${ctaY}" width="${ctaW}" height="${ctaH}" fill="${RED}"/><text x="${330}" y="${ctaY + 58}" font-family="Anton" font-size="38" fill="${WHITE}">${esc(cta)}</text>` : ''}
 ${logoUri ? `<circle cx="${W - 92}" cy="${H - 86}" r="50" fill="${WHITE}"/><image x="${W - 124}" y="${H - 118}" width="64" height="64" preserveAspectRatio="xMidYMid meet" href="${logoUri}"/>` : ''}
 </svg>`;
 }
@@ -191,12 +191,13 @@ ${logoUri ? `<circle cx="${W - 92}" cy="${H - 86}" r="50" fill="${WHITE}"/><imag
 export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
   try {
     await ensureWasm();
-    const [photoFetched, logo, mont, pf, pfi] = await Promise.all([
+    const [photoFetched, logo, mont, pf, pfi, anton] = await Promise.all([
       spec.imageBytes ? Promise.resolve(spec.imageBytes) : getBytes(`photo:${spec.imageUrl}`, spec.imageUrl || ''),
       getBytes('logo', LOGO_URL),
       getBytes('f:mont', `${FONT_BASE}/Montserrat.ttf`),
       getBytes('f:pf', `${FONT_BASE}/PlayfairDisplay.ttf`),
       getBytes('f:pfi', `${FONT_BASE}/PlayfairDisplay-Italic.ttf`),
+      getBytes('f:anton', `${FONT_BASE}/Anton.ttf`),  // heavy display font for the poster template
     ]);
     const photo = photoFetched;
     if (!photo) return null;
@@ -215,7 +216,7 @@ export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
       ? buildPosterSvg(photoUri, logoUri, spec, H)
       : buildSvg(photoUri, logoUri, spec, H);
 
-    const fontBuffers = [mont, pf, pfi].filter(Boolean) as Uint8Array[];
+    const fontBuffers = [mont, pf, pfi, anton].filter(Boolean) as Uint8Array[];
     const resvg = new Resvg(svg, {
       font: { fontBuffers, loadSystemFonts: false, defaultFontFamily: 'Montserrat' },
       fitTo: { mode: 'width', value: W },
