@@ -116,25 +116,29 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
     const lo = new Date(`${metaFrom}T00:00:00+08:00`); lo.setUTCDate(lo.getUTCDate() - 1);
     const hi = new Date(`${metaTo}T00:00:00+08:00`); hi.setUTCDate(hi.getUTCDate() + 2);
     const { data: paid } = await admin.from('songs')
-      .select('stripe_session_id, amount_paid, paid_at')
+      .select('stripe_session_id, amount_paid, paid_at, utm_campaign')
       .eq('paid', true).eq('platform', RQC_PLATFORM)
       .gte('paid_at', lo.toISOString()).lt('paid_at', hi.toISOString())
       .not('stripe_session_id', 'is', null).limit(20000);
-    const perSession = new Map<string, { day: string; amt: number }>();
+    const perSession = new Map<string, { day: string; amt: number; camp: string | null }>();
     for (const r of (paid || [])) {
       const day = shiftDate(tzDay(r.paid_at, AD_TZ), -1); // Manila ad-day -> Pacific start label
       if (day < from || day > to) continue; // outside the requested window
       const amt = num(r.amount_paid), sid = r.stripe_session_id as string;
       const cur = perSession.get(sid);
-      if (!cur || amt > cur.amt) perSession.set(sid, { day, amt });
+      if (!cur || amt > cur.amt) perSession.set(sid, { day, amt, camp: (r.utm_campaign || null) as string | null });
     }
     const byDay: Record<string, { revenue: number; orders: number }> = {};
+    // byCamp: real paid orders keyed by utm_campaign (= the Meta campaign ID our ad
+    // URLs carry) → lets us compute TRUE per-campaign ROAS from real Stripe money.
+    const byCamp: Record<string, { revenue: number; orders: number }> = {};
     let total = 0, orders = 0;
-    for (const { day, amt } of perSession.values()) {
+    for (const { day, amt, camp } of perSession.values()) {
       (byDay[day] ||= { revenue: 0, orders: 0 });
       byDay[day].revenue += amt; byDay[day].orders += 1; total += amt; orders += 1;
+      if (camp) { (byCamp[camp] ||= { revenue: 0, orders: 0 }); byCamp[camp].revenue += amt; byCamp[camp].orders += 1; }
     }
-    return { byDay, total: Math.round(total * 100) / 100, orders };
+    return { byDay, byCamp, total: Math.round(total * 100) / 100, orders };
   }
 
   if (META_ACCESS_TOKEN) {
@@ -142,7 +146,7 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
       const tr = JSON.stringify({ since: metaFrom, until: metaTo });
       const [daily, byCampaign, rev] = await Promise.all([
         metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'account', time_range: tr, time_increment: '1', fields: 'spend,actions', limit: '500' }),
-        metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'campaign', time_range: tr, fields: 'campaign_name,spend,actions', limit: '200' }),
+        metaGet(`${META_AD_ACCOUNT_ID}/insights`, { level: 'campaign', time_range: tr, fields: 'campaign_id,campaign_name,spend,actions', limit: '200' }),
         realRevenue(),
       ]);
       let totalSpend = 0, totalMetaSales = 0;
@@ -153,9 +157,21 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
         const rd = rev.byDay[label] || { revenue: 0, orders: 0 };
         return { date: label, spend: Math.round(s * 100) / 100, real_orders: rd.orders, real_cpa: rd.orders > 0 ? Math.round((s / rd.orders) * 100) / 100 : null, real_revenue: Math.round(rd.revenue * 100) / 100, roas: s > 0 ? Math.round((rd.revenue / s) * 100) / 100 : null, meta_sales: meta };
       }).sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
+      // Per-campaign performance from REAL Stripe orders (matched on
+      // utm_campaign = Meta campaign ID), not Meta's inflated pixel count.
       const top_campaigns = (byCampaign.data || [])
-        .map((c: any) => { const sp = Math.round(num(c.spend) * 100) / 100, ms = purchasesOf(c); return { name: c.campaign_name, spend: sp, meta_sales: ms, cpa: ms > 0 ? Math.round((sp / ms) * 100) / 100 : null }; })
-        .sort((a: any, b: any) => b.meta_sales - a.meta_sales || b.spend - a.spend).slice(0, 8);
+        .map((c: any) => {
+          const sp = Math.round(num(c.spend) * 100) / 100, ms = purchasesOf(c);
+          const real = rev.byCamp[String(c.campaign_id)] || { orders: 0, revenue: 0 };
+          return {
+            name: c.campaign_name, spend: sp,
+            real_orders: real.orders, real_revenue: Math.round(real.revenue * 100) / 100,
+            real_cpa: real.orders > 0 ? Math.round((sp / real.orders) * 100) / 100 : null,
+            real_roas: sp > 0 ? Math.round((real.revenue / sp) * 100) / 100 : null,
+            meta_sales: ms,
+          };
+        })
+        .sort((a: any, b: any) => b.real_revenue - a.real_revenue || b.spend - a.spend).slice(0, 10);
       const summary = {
         from, to, source: 'meta_live', timezone: "Pacific day, 9am→9am, labeled by start date", days_covered: days.length,
         total_spend: Math.round(totalSpend * 100) / 100,
@@ -163,7 +179,7 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
         blended_cpa: rev.orders > 0 ? Math.round((totalSpend / rev.orders) * 100) / 100 : null,
         blended_roas: totalSpend > 0 ? Math.round((rev.total / totalSpend) * 100) / 100 : null,
         meta_reported_sales: totalMetaSales, per_day: days, top_campaigns,
-        note: `Dates are the owner's PACIFIC days labeled by their 9am start — e.g. "2026-06-25" = Jun 25 9:00am → Jun 26 9:00am Pacific (one Meta/Manila ad-day relabeled to its Pacific start date). Spend and real_orders/real_revenue both cover that exact window, so the date matches the owner's LA calendar + Stripe and daily ROAS is exact. real_cpa & blended_cpa = ad spend ÷ real PAID orders (true cost per sale); top_campaigns.cpa = spend ÷ Meta-reported sales.`,
+        note: `Dates are the owner's PACIFIC days labeled by their 9am start — e.g. "2026-06-25" = Jun 25 9:00am → Jun 26 9:00am Pacific (one Meta/Manila ad-day relabeled to its Pacific start date). Spend and real_orders/real_revenue both cover that exact window, so the date matches the owner's LA calendar + Stripe and daily ROAS is exact. real_cpa & blended_cpa = ad spend ÷ real PAID orders (true cost per sale). top_campaigns now uses REAL Stripe orders matched on utm_campaign = the Meta campaign ID our ad links carry (real_orders/real_revenue/real_cpa/real_roas) — this is the TRUE per-campaign return, ranked by real revenue. meta_sales is Meta's own pixel count (usually inflated) kept only for comparison. A campaign showing real_orders:0 with spend means either no sales OR its ad links aren't carrying the utm_campaign tag (~65% of orders site-wide have no UTM, so treat a single campaign's 0 cautiously and confirm its link tagging).`,
       };
       return `AD REPORT ${from} → ${to} (Pacific days, 9am→9am, labeled by start date; LIVE from Meta + real paid orders):\n${JSON.stringify(summary, null, 2)}`;
     } catch (_e) {
@@ -613,6 +629,8 @@ CRITICAL — affirmations: when you have just proposed an action and he replies 
 If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. BUT — only when he's actually asking for PERFORMANCE NUMBERS. If the topic is ad CREATIVE / visuals / designs / "make more ads" / "which ad to copy" / "where did you pull that from" (meaning which creative), DO NOT call get_ad_report and do NOT recite spend/ROAS — stay on the creative track (propose_extract_ad / check_creatives). Answering a creative request with a numbers report is a major error. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date.
 
 SALES / BUSINESS DATA: for ANY question about sales, revenue, orders, AOV, or best-selling genre/occasion (NOT ad spend), call get_sales and answer from it — never guess. (get_ad_report = ad SPEND from Meta; get_sales = your real paid ORDERS from the database.)
+
+THINK LIKE A CEO ON ADS: get_ad_report's top_campaigns now carries REAL per-campaign return — real_orders, real_revenue, real_cpa, real_roas — from actual Stripe sales matched to each Meta campaign (NOT Meta's inflated pixel count). When you report ads, don't just list numbers: name the WINNERS (high real_roas) and the LOSERS (real spend with real_roas under ~1.5x = burning money) and recommend the move — scale the winner (propose_duplicate_scale), pause/cut the loser (propose_ad_change). Lead with the decision, then the numbers behind it. (Caveat: a campaign with real_orders:0 may just be missing its utm tag, not truly dead — flag it as "verify tagging" rather than declaring it dead.)
 
 SCALE A WINNER: to duplicate / clone / scale a winning campaign, call propose_duplicate_scale (approval-gated — the copy lands PAUSED for his review).
 
