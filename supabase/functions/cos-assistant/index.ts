@@ -288,6 +288,8 @@ function tools() {
     { name: 'remember', description: 'Save a durable fact to long-term memory so you apply it in EVERY future chat — the owner\'s preferences, standing rules, or decisions (e.g. "always faith/Spanish angle for that line", "never raise a budget over 2x without flagging me", "Corrido is the winner"). Use whenever he states a lasting preference/rule/decision, or says "remember…".', input_schema: { type: 'object', properties: { content: { type: 'string', description: 'The fact to remember, in one clear sentence.' }, kind: { type: 'string', enum: ['preference', 'rule', 'decision', 'fact'] } }, required: ['content'] } },
     { name: 'get_sales', description: 'Pull REAL business/sales data from the orders database (deduped paid orders): total orders, revenue, AOV, and breakdown by genre or occasion. Use for ANY question about SALES / revenue / the business (not ad spend) — "how are sales today", "best-selling genre this week", "how many orders this month". Dates are the owner\'s Pacific days. Always answer sales questions from this, never guess.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (Pacific). Defaults to today.' }, to: { type: 'string', description: 'End date YYYY-MM-DD (Pacific). Defaults to today.' }, group_by: { type: 'string', enum: ['genre', 'occasion'], description: 'Optional breakdown.' } } } },
     { name: 'propose_duplicate_scale', description: 'PROPOSE duplicating a winning Meta campaign into a new copy at a chosen daily budget (to scale a winner). Does NOT execute — creates a confirmation card. On confirm it creates the copy PAUSED at that budget for the owner to review + activate in Meta. Use when the owner wants to "duplicate / clone / scale" a winning campaign.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign name to duplicate.' }, daily_budget_usd: { type: 'number', description: 'Daily budget for the new copy, in US dollars.' } }, required: ['name'] } },
+    { name: 'draft_email', description: 'Write a marketing email and drop it into the Emails approval queue for the owner to review + send (he approves/sends in the Emails tab — that IS the approval gate). Use when he wants to "draft / write / send an email" or a promo. Spanish, warm, on-brand; one clear offer + CTA. Tell him it\'s drafted and waiting in the Emails tab.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What the email is about — occasion, offer to push, angle (e.g. "Día del Padre last-chance, push the $9.99 video add-on").' } }, required: ['brief'] } },
+    { name: 'propose_lookalike', description: 'PROPOSE building a Meta Lookalike Audience from recent buyers (so ads target people similar to your actual customers). Does NOT execute — creates a confirmation card. On confirm it uploads recent buyers (emails, hashed) as a Custom Audience and creates a 1% US Lookalike from it. Use when the owner wants a "lookalike" or to "target people like my buyers".', input_schema: { type: 'object', properties: { days: { type: 'number', description: 'How many days of recent buyers to seed from (default 60).' } } } },
     { name: 'approve_creative', description: 'Approve a creative so it auto-posts. Omit id to approve the top-scored one waiting.', input_schema: { type: 'object', properties: { creative_id: { type: 'string' } } } },
     { name: 'run_competitor_scan', description: 'Trigger a fresh scan of competitor ads.', input_schema: { type: 'object', properties: {} } },
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
@@ -420,6 +422,20 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
       const cents = Math.round(Number(a.params?.daily_budget_usd || 0) * 100);
       if (cents > 0) { try { await metaPost(`${newId}`, { daily_budget: String(cents) }); } catch (_) { /* budget may be at ad-set level */ } }
       result = `Duplicated "${a.target_name}" → new campaign ${newId}${cents > 0 ? ` at $${(cents / 100).toFixed(2)}/day` : ''}, left PAUSED. Review + turn it on in Meta Ads when ready.`;
+    } else if (a.action_type === 'create_lookalike') {
+      const days = Math.min(Math.max(Number(a.params?.days) || 60, 7), 365);
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const { data: buyers } = await admin.from('songs').select('email').eq('paid', true).eq('platform', RQC_PLATFORM).gte('paid_at', since).not('email', 'is', null).limit(50000);
+      const emails = [...new Set((buyers || []).map((b: any) => String(b.email || '').trim().toLowerCase()).filter((e: string) => e.includes('@')))];
+      if (emails.length < 100) throw new Error(`Only ${emails.length} buyer emails in the last ${days} days — Meta needs at least 100 to seed a Custom Audience. Try a wider range.`);
+      const hashed = await Promise.all(emails.map(sha256));
+      const ts = new Date().toISOString().slice(0, 10);
+      const ca = await metaPost(`${META_AD_ACCOUNT_ID}/customaudiences`, { name: `RQC Buyers ${ts} (${days}d)`, subtype: 'CUSTOM', customer_file_source: 'USER_PROVIDED_ONLY', description: `Lookalike seed — built by Sofía ${ts}` });
+      const caId = ca?.id; if (!caId) throw new Error('Could not create the Custom Audience.');
+      let added = 0;
+      for (let i = 0; i < hashed.length; i += 5000) { const chunk = hashed.slice(i, i + 5000); try { await metaPost(`${caId}/users`, { payload: JSON.stringify({ schema: ['EMAIL'], data: chunk.map((h: string) => [h]) }) }); added += chunk.length; } catch (_) { /* skip a bad chunk */ } }
+      const la = await metaPost(`${META_AD_ACCOUNT_ID}/customaudiences`, { name: `RQC Lookalike 1% US ${ts}`, subtype: 'LOOKALIKE', origin_audience_id: String(caId), lookalike_spec: JSON.stringify({ type: 'similarity', country: 'US', ratio: 0.01 }) });
+      result = `Uploaded ${added} buyers → Custom Audience ${caId}, created Lookalike ${la?.id || '(building)'} (1% US). Meta takes a few hours to populate it — then target it in a new ad set.`;
     } else {
       return { ok: false, result: `Unknown action type ${a.action_type}.` };
     }
@@ -456,6 +472,30 @@ async function getSales(admin: any, from: string, to: string, groupBy?: string):
   return `SALES ${from} → ${to} (real deduped paid orders, Pacific days):\n${JSON.stringify(summary, null, 2)}`;
 }
 
+function escapeHtml(s: string): string { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+async function sha256(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Draft a marketing email from a brief and drop it in the Emails approval queue
+// (the Emails tab is the owner's review+send gate — same as the weekly drafter).
+async function draftEmail(admin: any, brief: string): Promise<string> {
+  if (!ANTHROPIC_API_KEY) return 'Email AI not configured.';
+  const TOOL = { name: 'email', description: 'Emit a marketing email.', input_schema: { type: 'object', properties: { subject: { type: 'string', description: 'Spanish subject ≤55 chars, high open-rate.' }, preview_text: { type: 'string', description: 'Spanish preheader ≤100 chars.' }, headline: { type: 'string', description: 'Big Spanish headline.' }, body_paragraphs: { type: 'array', items: { type: 'string' }, description: '2-4 warm Spanish paragraphs; lead with emotion; ONE clear offer; no recipient names.' }, cta_text: { type: 'string', description: 'Short Spanish CTA button text.' } }, required: ['subject', 'headline', 'body_paragraphs', 'cta_text'] } };
+  const sys = `${agentBrief('Email copywriter for Regalos Que Cantan')}\n\nWrite ONE on-brand marketing email in warm US-Hispanic Spanish from the brief. Lead with emotion, make the case a personalized song is the best gift, land ONE clear offer + CTA. No recipient names.`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: MODEL, max_tokens: 1500, system: sys, tools: [TOOL], tool_choice: { type: 'tool', name: 'email' }, messages: [{ role: 'user', content: `Write the email. Brief: ${brief}` }] }) });
+  if (!res.ok) return `Couldn't draft the email (${res.status}).`;
+  const e = ((await res.json()).content || []).find((c: any) => c.type === 'tool_use')?.input;
+  if (!e) return 'The email draft came back empty.';
+  const SITE = 'https://regalosquecantan.com';
+  const paras = (Array.isArray(e.body_paragraphs) ? e.body_paragraphs : []).map((p: string) => `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#333;">${escapeHtml(p)}</p>`).join('');
+  const body_html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;"><h1 style="font-size:24px;color:#111;margin:0 0 16px;">${escapeHtml(e.headline || '')}</h1>${paras}<a href="${SITE}" style="display:inline-block;background:#E11D2A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:bold;font-size:16px;margin-top:8px;">${escapeHtml(e.cta_text || 'Créala hoy')}</a></div>`;
+  const { error } = await admin.from('email_queue').insert({ week_of: new Date().toISOString().slice(0, 10), reason: brief.slice(0, 200), subject: e.subject || '(no subject)', preview_text: e.preview_text ?? null, body_html, cta_text: e.cta_text ?? null, cta_url: SITE, status: 'pending_approval' });
+  if (error) return `Drafted it, but couldn't queue it: ${error.message}`;
+  return `Drafted an email: "${e.subject}". It's waiting in Creative Studio → Emails for your review + send.`;
+}
+
 async function runTool(admin: any, authHeader: string, snap: any, name: string, input: any, pending: any[]): Promise<string> {
   const fwd = (fn: string, body: any) => fetch(`${SUPABASE_URL}/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify(body) });
   try {
@@ -485,6 +525,17 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
       const { data: row } = await admin.from('cos_pending_actions').insert({ action_type: 'duplicate_scale', target_type: 'campaign', target_id: t.id, target_name: t.name, params, summary, status: 'pending' }).select('id, summary, action_type, target_name, status').single();
       if (row) pending.push(row);
       return `Proposed: ${summary}. Tap Confirm and I'll create the copy — nothing happens until you do.`;
+    }
+    if (name === 'draft_email') {
+      const out = await draftEmail(admin, String(input.brief || '').slice(0, 800));
+      return out;
+    }
+    if (name === 'propose_lookalike') {
+      const days = Math.min(Math.max(Number(input.days) || 60, 7), 365);
+      const summary = `📋 Build a 1% US Lookalike from your last ${days} days of buyers (uploads hashed buyer emails as a Custom Audience first)`;
+      const { data: row } = await admin.from('cos_pending_actions').insert({ action_type: 'create_lookalike', target_type: 'campaign', target_id: 'lookalike', target_name: `last ${days}d buyers`, params: { days }, summary, status: 'pending' }).select('id, summary, action_type, target_name, status').single();
+      if (row) pending.push(row);
+      return `Proposed: ${summary}. Tap Confirm and I'll build it in Meta — nothing happens until you do.`;
     }
     if (name === 'check_creatives') {
       const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
@@ -542,6 +593,10 @@ If he asks whether ads/creatives are done, landed, or how many are waiting, call
 SALES / BUSINESS DATA: for ANY question about sales, revenue, orders, AOV, or best-selling genre/occasion (NOT ad spend), call get_sales and answer from it — never guess. (get_ad_report = ad SPEND from Meta; get_sales = your real paid ORDERS from the database.)
 
 SCALE A WINNER: to duplicate / clone / scale a winning campaign, call propose_duplicate_scale (approval-gated — the copy lands PAUSED for his review).
+
+EMAILS: to draft / write / send a marketing email or promo, call draft_email with a brief — it lands in Creative Studio → Emails for his review + send (that IS the approval gate; you don't send it yourself).
+
+LOOKALIKE AUDIENCE: to build a lookalike / "target people like my buyers", call propose_lookalike (approval-gated; on Confirm it uploads recent buyers hashed + builds a 1% US lookalike in Meta).
 
 MEMORY: the CURRENT STATE below has a "memory" list — durable preferences/rules/decisions Gerardo told you. ALWAYS honor them automatically. When he states a lasting preference, rule, or decision (or says "remember…"), call remember to save it.
 
