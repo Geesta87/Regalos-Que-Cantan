@@ -34,18 +34,37 @@ const getDeviceType = () => {
   return 'desktop';
 };
 
-// Store UTM params on first visit
+// Persist UTM params across the WHOLE funnel. Stored in localStorage with a
+// 30-day TTL (not sessionStorage) so attribution survives tab closes, new tabs,
+// payment completing later, and email-link round trips — the exact fix the
+// affiliate ?ref= code already got. Without this, ~65% of paid orders saved with
+// NO campaign tag because sessionStorage was empty by the time the order was made.
+const UTM_TTL_DAYS = 30;
+const UTM_KEY = 'rqc_utm';
+
+const setStoredUtm = (utm) => {
+  try {
+    localStorage.setItem(UTM_KEY, JSON.stringify({
+      utm_source: utm.utm_source || null,
+      utm_medium: utm.utm_medium || null,
+      utm_campaign: utm.utm_campaign || null,
+      from_email: (utm.utm_source === 'email' && utm.utm_campaign) ? utm.utm_campaign : null,
+      expiresAt: Date.now() + UTM_TTL_DAYS * 24 * 60 * 60 * 1000,
+    }));
+  } catch { /* storage full / disabled — fall back to sessionStorage below */ }
+};
+
+// Store UTM params. Last-touch: a fresh UTM on the URL refreshes the stored value
+// + the 30-day window (consistent with how the affiliate ?ref= is handled).
 const storeUtmParams = () => {
-  const stored = sessionStorage.getItem('rqc_utm_params');
-  if (!stored) {
-    const utm = getUtmParams();
-    if (utm.utm_source || utm.utm_medium || utm.utm_campaign) {
+  const utm = getUtmParams();
+  if (utm.utm_source || utm.utm_medium || utm.utm_campaign) {
+    setStoredUtm(utm);
+    // Keep the legacy sessionStorage keys in sync for any older reader.
+    try {
       sessionStorage.setItem('rqc_utm_params', JSON.stringify(utm));
-    }
-    // Store email campaign attribution
-    if (utm.utm_source === 'email' && utm.utm_campaign) {
-      sessionStorage.setItem('rqc_from_email', utm.utm_campaign);
-    }
+      if (utm.utm_source === 'email' && utm.utm_campaign) sessionStorage.setItem('rqc_from_email', utm.utm_campaign);
+    } catch { /* ignore */ }
   }
 };
 
@@ -180,14 +199,25 @@ export const captureAffiliateRef = async () => {
   }
 };
 
-// Get stored UTM params
-const getStoredUtmParams = () => {
+// Read persisted UTM params: localStorage (30-day TTL) → legacy sessionStorage →
+// current URL. Exported so the order/checkout call attaches the same value.
+export const getStoredUtmParams = () => {
   try {
-    const stored = sessionStorage.getItem('rqc_utm_params');
-    return stored ? JSON.parse(stored) : getUtmParams();
-  } catch {
-    return getUtmParams();
-  }
+    const raw = localStorage.getItem(UTM_KEY);
+    if (raw) {
+      const o = JSON.parse(raw);
+      if (o && typeof o.expiresAt === 'number') {
+        if (Date.now() < o.expiresAt) return { utm_source: o.utm_source || null, utm_medium: o.utm_medium || null, utm_campaign: o.utm_campaign || null, from_email: o.from_email || null };
+        localStorage.removeItem(UTM_KEY); // expired
+      }
+    }
+  } catch { /* ignore */ }
+  try {
+    const s = sessionStorage.getItem('rqc_utm_params');
+    if (s) { const o = JSON.parse(s); return { utm_source: o.utm_source || null, utm_medium: o.utm_medium || null, utm_campaign: o.utm_campaign || null, from_email: sessionStorage.getItem('rqc_from_email') || null }; }
+  } catch { /* ignore */ }
+  const u = getUtmParams();
+  return { utm_source: u.utm_source, utm_medium: u.utm_medium, utm_campaign: u.utm_campaign, from_email: (u.utm_source === 'email' && u.utm_campaign) ? u.utm_campaign : null };
 };
 
 /**

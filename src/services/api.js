@@ -189,19 +189,27 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
         } catch { /* ignore */ }
         return sessionStorage.getItem('rqc_affiliate') || null;
       })(),
-      // UTM attribution passthrough
+      // UTM attribution passthrough — read the persisted value (localStorage,
+      // 30-day TTL) so it survives tab closes / new tabs / email-link returns;
+      // fall back to legacy sessionStorage, then the current URL. This is what
+      // makes the campaign tag actually land on the order (was sessionStorage-only).
       ...(() => {
-        try {
-          const stored = JSON.parse(sessionStorage.getItem('rqc_utm_params') || '{}');
-          return {
-            utm_source: stored.utm_source || null,
-            utm_medium: stored.utm_medium || null,
-            utm_campaign: stored.utm_campaign || null
-          };
-        } catch { return {}; }
+        const readUtm = () => {
+          try {
+            const raw = localStorage.getItem('rqc_utm');
+            if (raw) { const o = JSON.parse(raw); if (o && typeof o.expiresAt === 'number' && Date.now() < o.expiresAt) return o; }
+          } catch { /* ignore */ }
+          try { const s = sessionStorage.getItem('rqc_utm_params'); if (s) { const o = JSON.parse(s); o.from_email = sessionStorage.getItem('rqc_from_email') || null; return o; } } catch { /* ignore */ }
+          try { const p = new URLSearchParams(window.location.search); const src = p.get('utm_source'); return { utm_source: src, utm_medium: p.get('utm_medium'), utm_campaign: p.get('utm_campaign'), from_email: src === 'email' ? p.get('utm_campaign') : null }; } catch { return {}; }
+        };
+        const u = readUtm() || {};
+        return { utm_source: u.utm_source || null, utm_medium: u.utm_medium || null, utm_campaign: u.utm_campaign || null };
       })(),
       session_id: sessionStorage.getItem('rqc_session_id') || null,
-      from_email_campaign: sessionStorage.getItem('rqc_from_email') || null
+      from_email_campaign: (() => {
+        try { const raw = localStorage.getItem('rqc_utm'); if (raw) { const o = JSON.parse(raw); if (o && typeof o.expiresAt === 'number' && Date.now() < o.expiresAt && o.from_email) return o.from_email; } } catch { /* ignore */ }
+        return sessionStorage.getItem('rqc_from_email') || null;
+      })()
     })
   });
 
