@@ -19,6 +19,15 @@ const LOGO_URL = Deno.env.get('BRAND_LOGO_URL') || 'https://regalosquecantan.com
 
 const W = 1024;
 const GOLD = '#E9B872', WHITE = '#ffffff', INK = '#2A1A08';
+// Accent palettes for the elegant template, so a batch of ads doesn't come out as
+// five identical gold-serif cards. Each = { accent word/kicker/CTA color, ink on pill }.
+const PALETTES: Record<string, { accent: string; ink: string }> = {
+  gold: { accent: '#E9B872', ink: '#2A1A08' },
+  rose: { accent: '#E8A6AE', ink: '#3A1018' },
+  cream: { accent: '#F2E4C9', ink: '#2A2118' },
+  coral: { accent: '#F2A07B', ink: '#3A1808' },
+  sky: { accent: '#A8CBE6', ink: '#10212E' },
+};
 
 // Read intrinsic pixel size from a PNG (IHDR) or JPEG (SOF) header so the design
 // layer adapts to whatever aspect the image model produced (2:3, 4:5, 9:16…).
@@ -85,9 +94,10 @@ export interface AdSpec {
   cta?: string;              // gold pill text (elegant) / red CTA bar (poster)
   template?: string;         // 'poster' = bold red/white/black promo; else elegant
   price?: string;            // poster price badge, e.g. "$29"
+  palette?: string;          // elegant accent palette key (gold|rose|cream|coral|sky)
 }
 
-function headlineLine(line: string, baseline: number, accent?: string): string {
+function headlineLine(line: string, baseline: number, accent: string | undefined, accentColor: string): string {
   const x = 78, size = 104, fam = `font-family="Playfair Display" font-weight="500" font-size="${size}"`;
   if (accent) {
     const idx = line.toLowerCase().indexOf(accent.toLowerCase());
@@ -95,7 +105,7 @@ function headlineLine(line: string, baseline: number, accent?: string): string {
       const before = line.slice(0, idx), word = line.slice(idx, idx + accent.length), after = line.slice(idx + accent.length);
       return `<text x="${x}" y="${baseline}" ${fam} fill="${WHITE}">`
         + (before ? `<tspan>${esc(before)}</tspan>` : '')
-        + `<tspan font-style="italic" font-weight="600" fill="${GOLD}">${esc(word)}</tspan>`
+        + `<tspan font-style="italic" font-weight="600" fill="${accentColor}">${esc(word)}</tspan>`
         + (after ? `<tspan>${esc(after)}</tspan>` : '')
         + `</text>`;
     }
@@ -104,6 +114,7 @@ function headlineLine(line: string, baseline: number, accent?: string): string {
 }
 
 function buildSvg(photoDataUri: string, logoDataUri: string | null, spec: AdSpec, H: number): string {
+  const pal = PALETTES[spec.palette || 'gold'] || PALETTES.gold;
   const lines = (spec.headlineLines || []).slice(0, 3);
   const N = Math.max(lines.length, 1);
   const step = 110, ctaH = 86, ctaText = spec.cta || '';
@@ -136,9 +147,9 @@ function buildSvg(photoDataUri: string, logoDataUri: string | null, spec: AdSpec
 <rect width="${W}" height="${H}" fill="url(#sb)"/>
 <rect width="${W}" height="${Math.round(H * 0.23)}" fill="url(#st)"/>
 ${logoSvg}
-${spec.kicker ? `<text x="78" y="${kickerBaseline}" font-family="Montserrat" font-weight="700" font-size="28" letter-spacing="6" fill="${GOLD}">${esc(spec.kicker.toUpperCase())}</text>` : ''}
-${lines.map((l, i) => headlineLine(l, baselines[i], spec.accent)).join('\n')}
-${ctaText ? `<rect x="78" y="${ctaTop}" rx="43" ry="43" width="${ctaW}" height="${ctaH}" fill="${GOLD}"/><text x="${78 + 36}" y="${ctaTop + 56}" font-family="Montserrat" font-weight="700" font-size="31" fill="${INK}">${esc(ctaText)}</text>` : ''}
+${spec.kicker ? `<text x="78" y="${kickerBaseline}" font-family="Montserrat" font-weight="700" font-size="28" letter-spacing="6" fill="${pal.accent}">${esc(spec.kicker.toUpperCase())}</text>` : ''}
+${lines.map((l, i) => headlineLine(l, baselines[i], spec.accent, pal.accent)).join('\n')}
+${ctaText ? `<rect x="78" y="${ctaTop}" rx="43" ry="43" width="${ctaW}" height="${ctaH}" fill="${pal.accent}"/><text x="${78 + 36}" y="${ctaTop + 56}" font-family="Montserrat" font-weight="700" font-size="31" fill="${pal.ink}">${esc(ctaText)}</text>` : ''}
 </svg>`;
 }
 

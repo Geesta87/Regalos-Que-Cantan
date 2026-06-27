@@ -88,7 +88,7 @@ async function genImageNow(admin: any, rowId: string, prompt: string, design: an
         imageBytes: photo,
         kicker: design.kicker, headlineLines: Array.isArray(design.headline_lines) ? design.headline_lines : [],
         accent: design.accent, cta: design.cta || (isPoster ? 'Escúchala gratis' : 'Créala hoy · regalosquecantan.com'),
-        template: isPoster ? 'poster' : undefined, price: design.price,
+        template: isPoster ? 'poster' : undefined, price: design.price, palette: design.palette,
       }) || await applyLogo(photo))
     : await applyLogo(photo);
   const path = `${rowId}.png`;
@@ -364,7 +364,21 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   const styleNote = style === 'poster'
     ? `\n\nSTYLE = BOLD POSTER (match the owner's proven promo ad). For each ad: gen_prompt = ONE emotional, high-contrast PHOTO that reads great in BLACK & WHITE (a moving family / gift reaction, dramatic light), NO text in the image. headline_lines = 2-3 SHORT punchy lines (rendered big, uppercase, white). accent = ONE short phrase for a RED highlight bar (e.g. the occasion). cta = a short call to action. The system lays the bold red/white/black poster design (price badge + hearts + CTA bar) on top — you only supply the photo + words.`
     : '';
-  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
+  // VARIETY: when there's no reference to match, rotate each ad through a different
+  // look (template + accent palette) so a batch isn't five identical cards. With a
+  // reference we stay consistent with the detected style. A random offset makes the
+  // separate background batches diverge from each other too.
+  const TREATMENTS = refData
+    ? [{ template: style === 'poster' ? 'poster' : undefined as string | undefined, palette: undefined as string | undefined }]
+    : [
+        { template: undefined, palette: 'gold' }, { template: 'poster', palette: undefined },
+        { template: undefined, palette: 'rose' }, { template: undefined, palette: 'cream' },
+        { template: 'poster', palette: undefined }, { template: undefined, palette: 'coral' },
+        { template: undefined, palette: 'sky' },
+      ];
+  const offset = Math.floor(Math.random() * TREATMENTS.length);
+  const diversityNote = `\n\nDIVERSITY — the ${n} ads MUST be genuinely different from each other, NOT variations of one idea. Across the set vary ALL of: (1) recipient/relationship — rotate among mamá, papá, abuela, abuelo, esposa, esposo, novia/novio, mejor amiga, hijo/hija, quinceañera, aniversario, cumpleaños; (2) composition — extreme close-up of a teary smile / wide family scene / hands holding a phone that's playing the song / two people embracing / a candid open-mouth laugh / one person alone listening with eyes closed; (3) light & palette — warm golden hour / bright airy daytime / moody cinematic night with string lights / soft window light. NO two ads may share the same recipient + composition. Each gen_prompt must describe a clearly DIFFERENT scene.`;
+  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}${diversityNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -376,8 +390,10 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   const specs = (tu?.input?.ads || []).slice(0, n);
   if (!specs.length) return { success: false, generated: [], error: 'Model returned no ad specs' };
   const generated: string[] = [];
-  for (const s of specs) {
-    const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null, template: style === 'poster' ? 'poster' : undefined, price: detectedPrice || '$29' };
+  for (let idx = 0; idx < specs.length; idx++) {
+    const s = specs[idx];
+    const t = TREATMENTS[(offset + idx) % TREATMENTS.length];
+    const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null, template: t.template, palette: t.palette, price: detectedPrice || '$29' };
     const { data: row } = await admin.from('creative_queue').insert({
       batch_date: today(), kind: 'image', intended_use: intended,
       occasion: s.occasion ?? null, concept: s.concept ?? null, gen_prompt: s.gen_prompt ?? null,
