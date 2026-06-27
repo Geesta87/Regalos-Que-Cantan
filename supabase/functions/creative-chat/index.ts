@@ -23,7 +23,12 @@ import { applyLogo } from '../_shared/brand.ts';
 import { renderAd } from '../_shared/render-ad.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
 import { gptPhotoBytes, gptEditBytes, fetchImageBytes } from '../_shared/openai-image.ts';
+import { kiePhotoBytes } from '../_shared/kie-image.ts';
 import { agentBrief } from '../_shared/company-brief.ts';
+
+// Image engine: 'kie' = GPT Image 2 via Kie (~75% cheaper) with OpenAI fallback;
+// anything else = OpenAI direct. Flip with the IMAGE_ENGINE secret (reversible).
+const IMAGE_ENGINE = Deno.env.get('IMAGE_ENGINE') || 'openai';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,10 +69,18 @@ function vidInput(prompt: string) { return { prompt, resolution: '720p', aspect_
 // text-free photo, typeset the design layer, upload, and return the public URL.
 // (Video still goes through Kie async + the poller.) Throws on failure.
 async function genImageNow(admin: any, rowId: string, prompt: string, design: any, ref?: { bytes: Uint8Array; mime: string } | null): Promise<string> {
-  // If a reference image is supplied, generate IMAGE-TO-IMAGE (gpt-image-2 edits)
-  // so the output inherits the reference ad's look; otherwise text-to-image.
-  const photo = ref ? await gptEditBytes(prompt, ref.bytes, ref.mime) : await gptPhotoBytes(prompt);
-  if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
+  // Reference image → image-to-image (OpenAI edits). Otherwise text-to-image:
+  // Kie's GPT Image 2 when enabled (~75% cheaper), falling back to OpenAI on any
+  // miss so generation never fails just because Kie hiccuped.
+  let photo: Uint8Array | null;
+  if (ref) {
+    photo = await gptEditBytes(prompt, ref.bytes, ref.mime);
+  } else if (IMAGE_ENGINE === 'kie') {
+    photo = (await kiePhotoBytes(prompt)) || (await gptPhotoBytes(prompt));
+  } else {
+    photo = await gptPhotoBytes(prompt);
+  }
+  if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY / KIE_API_KEY)');
   const isPoster = design?.template === 'poster';
   const hasDesign = isPoster || (Array.isArray(design?.headline_lines) && design.headline_lines.length) || design?.kicker || design?.cta;
   const out = hasDesign
