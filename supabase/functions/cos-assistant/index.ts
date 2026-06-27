@@ -13,6 +13,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { agentBrief } from '../_shared/company-brief.ts';
+import { MEDIA_BUYER_DOCTRINE } from '../_shared/operator-doctrine.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -301,7 +302,7 @@ async function snapshot(admin: any) {
 // ---------------------------------------------------------------------------
 function tools() {
   return [
-    { name: 'remember', description: 'Save a durable fact to long-term memory so you apply it in EVERY future chat — the owner\'s preferences, standing rules, or decisions (e.g. "always faith/Spanish angle for that line", "never raise a budget over 2x without flagging me", "Corrido is the winner"). Use whenever he states a lasting preference/rule/decision, or says "remember…".', input_schema: { type: 'object', properties: { content: { type: 'string', description: 'The fact to remember, in one clear sentence.' }, kind: { type: 'string', enum: ['preference', 'rule', 'decision', 'fact'] } }, required: ['content'] } },
+    { name: 'remember', description: 'Save a durable fact to long-term memory so you apply it in EVERY future chat. Use for the owner\'s preferences/rules/decisions (e.g. "always faith/Spanish angle for that line", "never raise a budget over 2x without flagging me") AND for your own compounding LEARNINGS — use kind:"learning" when a test/experiment resolves (an ad angle won or lost, an audience converted, a price moved, a campaign proved out) so your playbook grows and you never re-learn it. Use whenever he states something lasting, says "remember…", or a result teaches you something worth keeping.', input_schema: { type: 'object', properties: { content: { type: 'string', description: 'The fact or learning, in one clear sentence (for a learning, include the result, e.g. "Humor/compadre angle beat emotional on cold audiences in June — ~2x CTR").' }, kind: { type: 'string', enum: ['preference', 'rule', 'decision', 'fact', 'learning'] } }, required: ['content'] } },
     { name: 'get_sales', description: 'Pull REAL business/sales data from the orders database (deduped paid orders): total orders, revenue, AOV, and breakdown by genre or occasion. Use for ANY question about SALES / revenue / the business (not ad spend) — "how are sales today", "best-selling genre this week", "how many orders this month". Dates are the owner\'s Pacific days. Always answer sales questions from this, never guess.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (Pacific). Defaults to today.' }, to: { type: 'string', description: 'End date YYYY-MM-DD (Pacific). Defaults to today.' }, group_by: { type: 'string', enum: ['genre', 'occasion'], description: 'Optional breakdown.' } } } },
     { name: 'propose_duplicate_scale', description: 'PROPOSE duplicating a winning Meta campaign into a new copy at a chosen daily budget (to scale a winner). Does NOT execute — creates a confirmation card. On confirm it creates the copy PAUSED at that budget for the owner to review + activate in Meta. Use when the owner wants to "duplicate / clone / scale" a winning campaign.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign name to duplicate.' }, daily_budget_usd: { type: 'number', description: 'Daily budget for the new copy, in US dollars.' } }, required: ['name'] } },
     { name: 'draft_email', description: 'Write a marketing email and drop it into the Emails approval queue for the owner to review + send (he approves/sends in the Emails tab — that IS the approval gate). Use when he wants to "draft / write / send an email" or a promo. Spanish, warm, on-brand; one clear offer + CTA. Tell him it\'s drafted and waiting in the Emails tab.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What the email is about — occasion, offer to push, angle (e.g. "Día del Padre last-chance, push the $9.99 video add-on").' } }, required: ['brief'] } },
@@ -538,7 +539,7 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
     if (name === 'remember') {
       const content = String(input.content || '').trim().slice(0, 500);
       if (!content) return 'Nothing to remember.';
-      const kind = ['preference', 'rule', 'decision', 'fact'].includes(input.kind) ? input.kind : 'fact';
+      const kind = ['preference', 'rule', 'decision', 'fact', 'learning'].includes(input.kind) ? input.kind : 'fact';
       await admin.from('cos_memory').insert({ content, kind });
       return `Got it — I'll remember that (${kind}): "${content}". I'll apply it going forward.`;
     }
@@ -619,6 +620,8 @@ function systemPrompt(persona: any, snap: any) {
   return `You are ${name}, the Chief of Staff for the owner (Gerardo). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
 
 ${agentBrief('Chief of Staff — the owner\'s manager and command center. You know the whole business (above). You delegate creative work to the Art Director, pull live ad reports, approve creatives, and take ad actions ONLY with the owner\'s confirmation. Know your own tools and the rest of the team; never claim you can\'t see or do something that the handbook says is your job.')}
+
+${MEDIA_BUYER_DOCTRINE}
 
 You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did.
 

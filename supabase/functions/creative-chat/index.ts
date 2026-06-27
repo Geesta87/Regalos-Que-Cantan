@@ -25,6 +25,7 @@ import { brandContext } from '../_shared/brand-brief.ts';
 import { gptPhotoBytes, gptEditBytes, fetchImageBytes } from '../_shared/openai-image.ts';
 import { kiePhotoBytes } from '../_shared/kie-image.ts';
 import { agentBrief } from '../_shared/company-brief.ts';
+import { CREATIVE_DOCTRINE, CREATIVE_CRITIC_RUBRIC } from '../_shared/operator-doctrine.ts';
 
 // Image engine: 'kie' = GPT Image 2 via Kie (~75% cheaper) with OpenAI fallback;
 // anything else = OpenAI direct. Flip with the IMAGE_ENGINE secret (reversible).
@@ -299,6 +300,8 @@ function systemPrompt(styleNotes: string, promoNotes: string) {
 
 ${agentBrief('Art Director — you GENERATE the actual ad/social visuals (gpt-image-2). When the Chief of Staff sends you a WORK ORDER, fulfil it by generating, not just talking. You own the look. You know the whole business + the rest of the team from the handbook above.')}
 
+${CREATIVE_DOCTRINE}
+
 What you can DO (use tools naturally when the owner wants it, don't ask permission for obvious requests):
 - Brainstorm style, angles, occasions, hooks.
 - generate_creative — when they want to SEE something, generate it. Write a vivid prompt in one of the two approved looks.
@@ -421,9 +424,28 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
   const specs = (tu?.input?.ads || []).slice(0, n);
   if (!specs.length) return { success: false, generated: [], error: 'Model returned no ad specs' };
+
+  // SELF-CRITIQUE GATE — a senior art director never ships a rough draft. One
+  // refine pass grades each spec against the rubric and returns improved copy.
+  // Fails open: any error and we ship the originals.
+  let finalSpecs = specs;
+  try {
+    const critSys = `${CREATIVE_DOCTRINE}\n\nYou are the senior art director reviewing ${specs.length} DRAFT ad spec(s) before they ship. ${CREATIVE_CRITIC_RUBRIC}\n\nReturn EXACTLY ${specs.length} ad(s) via emit_ads — keep what's already strong, rewrite any weak hook or incoherent copy, make each a single truthful thought and clearly distinct from the others. Keep each gen_prompt's scene unless it doesn't fit the copy.`;
+    const cr = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 3000, system: critSys, tools: [SPEC_TOOL], tool_choice: { type: 'tool', name: 'emit_ads' }, messages: [{ role: 'user', content: `Original brief: ${brief}\n\nDraft ads to critique and improve:\n${JSON.stringify(specs)}` }] }),
+    });
+    if (cr.ok) {
+      const ctu = ((await cr.json()).content || []).find((c: any) => c.type === 'tool_use');
+      const improved = (ctu?.input?.ads || []).slice(0, specs.length);
+      if (improved.length === specs.length) finalSpecs = improved;
+    }
+  } catch (_) { /* fail open — ship the originals */ }
+
   const generated: string[] = [];
-  for (let idx = 0; idx < specs.length; idx++) {
-    const s = specs[idx];
+  for (let idx = 0; idx < finalSpecs.length; idx++) {
+    const s = finalSpecs[idx];
     const t = TREATMENTS[(offset + idx) % TREATMENTS.length];
     const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null, template: t.template, palette: t.palette, price: detectedPrice || '$29' };
     const { data: row } = await admin.from('creative_queue').insert({
