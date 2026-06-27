@@ -97,6 +97,22 @@ async function genImageNow(admin: any, rowId: string, prompt: string, design: an
   return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+// RAW generation for the Freeform Lab — the owner's prompt goes STRAIGHT to
+// gpt-image-2 with NO brand brief, NO design overlay, NO logo. Exactly what you'd
+// get prompting the model directly. A reference (for "create more like this") goes
+// through image-to-image to keep the same look. Throws on failure.
+async function rawImageNow(admin: any, rowId: string, prompt: string, ref?: { bytes: Uint8Array; mime: string } | null): Promise<string> {
+  let photo: Uint8Array | null;
+  if (ref) photo = await gptEditBytes(prompt, ref.bytes, ref.mime);
+  else if (IMAGE_ENGINE === 'kie') photo = (await kiePhotoBytes(prompt)) || (await gptPhotoBytes(prompt));
+  else photo = await gptPhotoBytes(prompt);
+  if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY / KIE_API_KEY)');
+  const path = `raw/${rowId}.png`;
+  const up = await admin.storage.from(BUCKET).upload(path, photo, { contentType: 'image/png', upsert: true });
+  if (up.error) throw up.error;
+  return admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
 // Finalize any 'generating' creatives in the given id list by polling Kie.
 async function finalize(admin: any, ids: string[]) {
   if (!ids.length) return;
@@ -378,7 +394,8 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
       ];
   const offset = Math.floor(Math.random() * TREATMENTS.length);
   const diversityNote = `\n\nDIVERSITY — the ${n} ads MUST be genuinely different from each other, NOT variations of one idea. Across the set vary ALL of: (1) recipient/relationship — rotate among mamá, papá, abuela, abuelo, esposa, esposo, novia/novio, mejor amiga, hijo/hija, quinceañera, aniversario, cumpleaños; (2) composition — extreme close-up of a teary smile / wide family scene / hands holding a phone that's playing the song / two people embracing / a candid open-mouth laugh / one person alone listening with eyes closed; (3) light & palette — warm golden hour / bright airy daytime / moody cinematic night with string lights / soft window light. NO two ads may share the same recipient + composition. Each gen_prompt must describe a clearly DIFFERENT scene.`;
-  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}${diversityNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
+  const copyNote = `\n\nCOPY MUST MAKE SENSE — the words on each ad must form ONE clear, truthful thought about THIS exact product: a custom-made personalized SONG written about the recipient's real story, that you can LISTEN TO before you pay, ready in minutes, from $29. kicker → headline → CTA should read as a single coherent message a real buyer instantly understands — NOT three disconnected pretty phrases, NOT vague poetry. The headline must match the photo's recipient & occasion (a papá photo → a dad message). If the brief names specific points to push (price, "ready in 3 minutes", "listen before you pay"), those must appear and be literally correct. When unsure, simpler and clearer beats clever.`;
+  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}${diversityNote}${copyNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -467,6 +484,51 @@ serve(async (req) => {
       const intended = body.intended_use === 'social' ? 'social' : 'ad';
       const r = await generateBatch(admin, String(body.brief || '').slice(0, 2000), count, intended, body.reference_image_url ? String(body.reference_image_url) : undefined);
       return json({ ...r, count: r.generated.length }, r.success ? 200 : 502);
+    }
+
+    // ---- Freeform Lab: raw gpt-image-2, no brand/style guardrails ----------
+    // raw_generate: the owner's prompt goes straight to the model and saves.
+    if (action === 'raw_generate') {
+      const prompt = String(body.prompt || '').trim().slice(0, 2000);
+      const count = Math.min(Math.max(Number(body.count) || 1, 1), 3);
+      if (!prompt) return json({ success: false, error: 'Enter a prompt' }, 400);
+      const generated: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: prompt.slice(0, 120), gen_prompt: prompt, status: 'generating' }).select('id').single();
+        if (!row) continue;
+        try { const url = await rawImageNow(admin, row.id, prompt); await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id); generated.push(row.id); }
+        catch (e: any) { await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id); }
+      }
+      return json({ success: generated.length > 0, generated, count: generated.length, ...(generated.length ? {} : { error: 'Generation failed — check OPENAI_API_KEY / KIE_API_KEY' }) }, generated.length ? 200 : 502);
+    }
+
+    // raw_more: "create more like this" — image-to-image off a saved raw image.
+    if (action === 'raw_more') {
+      const srcId = String(body.creative_id || '').trim();
+      const tweak = String(body.tweak || '').trim().slice(0, 500);
+      const count = Math.min(Math.max(Number(body.count) || 3, 1), 3);
+      if (!srcId) return json({ success: false, error: 'creative_id is required' }, 400);
+      const { data: src } = await admin.from('creative_queue').select('media_url, gen_prompt').eq('id', srcId).single();
+      if (!src?.media_url) return json({ success: false, error: 'source image not found' }, 404);
+      const ref = await fetchImageBytes(src.media_url);
+      if (!ref) return json({ success: false, error: 'could not load the source image' }, 502);
+      const genPrompt = `Create a NEW image in the same visual style, subject, lighting and mood as the reference image. ${src.gen_prompt || ''}${tweak ? ` Change: ${tweak}.` : ''}`.trim();
+      const generated: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: (src.gen_prompt || 'variation').slice(0, 120), gen_prompt: genPrompt, status: 'generating' }).select('id').single();
+        if (!row) continue;
+        try { const url = await rawImageNow(admin, row.id, genPrompt, ref); await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id); generated.push(row.id); }
+        catch (e: any) { await admin.from('creative_queue').update({ status: 'failed', error: String(e?.message || e).slice(0, 300) }).eq('id', row.id); }
+      }
+      return json({ success: generated.length > 0, generated, count: generated.length, ...(generated.length ? {} : { error: 'Generation failed' }) }, generated.length ? 200 : 502);
+    }
+
+    // raw_list: fetch the Freeform Lab gallery (newest first).
+    if (action === 'raw_list') {
+      const { data: rows } = await admin.from('creative_queue')
+        .select('id, status, media_url, gen_prompt, concept, error, created_at')
+        .eq('intended_use', 'raw').order('created_at', { ascending: false }).limit(60);
+      return json({ success: true, creatives: rows || [] });
     }
 
     if (action === 'send') {
