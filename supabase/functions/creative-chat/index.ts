@@ -505,14 +505,17 @@ serve(async (req) => {
     // raw_more: "create more like this" — image-to-image off a saved raw image.
     if (action === 'raw_more') {
       const srcId = String(body.creative_id || '').trim();
-      const tweak = String(body.tweak || '').trim().slice(0, 500);
+      const context = String(body.context || body.tweak || '').trim().slice(0, 800);
       const count = Math.min(Math.max(Number(body.count) || 3, 1), 3);
       if (!srcId) return json({ success: false, error: 'creative_id is required' }, 400);
       const { data: src } = await admin.from('creative_queue').select('media_url, gen_prompt').eq('id', srcId).single();
       if (!src?.media_url) return json({ success: false, error: 'source image not found' }, 404);
       const ref = await fetchImageBytes(src.media_url);
       if (!ref) return json({ success: false, error: 'could not load the source image' }, 502);
-      const genPrompt = `Create a NEW advertising image in the SAME visual style, layout, color scheme, typography and composition as the reference image — like a fresh ad from the same template. ${tweak ? `Apply this change: ${tweak}.` : 'Keep the same theme and offer.'} Spanish text, clean and legible, polished and professional.${src.gen_prompt && !/^(Reference template|Uploaded)/i.test(src.gen_prompt) ? ` ${src.gen_prompt}` : ''}`.trim();
+      const subject = context
+        ? `, but about this: ${context}`
+        : (src.gen_prompt && !/^(Reference template|Uploaded)/i.test(src.gen_prompt) ? `. Subject: ${src.gen_prompt}` : ' for Regalos Que Cantan personalized songs');
+      const genPrompt = `Use the reference image ONLY as the DESIGN TEMPLATE — copy its visual style, layout, color scheme, typography, composition and overall look as closely as possible. Create a NEW advertising poster in that same template${subject}. All text in Spanish, clean, correctly spelled and legible; keep it polished and professional.`.trim();
       const generated: string[] = [];
       for (let i = 0; i < count; i++) {
         const { data: row } = await admin.from('creative_queue').insert({ batch_date: today(), kind: 'image', intended_use: 'raw', concept: (src.gen_prompt || 'variation').slice(0, 120), gen_prompt: genPrompt, status: 'generating' }).select('id').single();

@@ -17,6 +17,7 @@ export default function FreeformLabSection({ accessToken, showToast }) {
   const [loading, setLoading] = useState(true);
   const [moreId, setMoreId] = useState(null);   // image being "create more like this"-ed
   const [moreTweak, setMoreTweak] = useState('');
+  const [moreCount, setMoreCount] = useState(3);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
 
@@ -59,8 +60,8 @@ export default function FreeformLabSection({ accessToken, showToast }) {
   const createMore = async (id) => {
     setBusy(true);
     try {
-      const r = await call({ action: 'raw_more', creative_id: id, tweak: moreTweak.trim() || undefined, count: 3 });
-      if (r.success) { showToast?.(`✨ Made ${r.count} more like this`); setMoreId(null); setMoreTweak(''); load(); }
+      const r = await call({ action: 'raw_more', creative_id: id, context: moreTweak.trim() || undefined, count: moreCount });
+      if (r.success) { showToast?.(`✨ Made ${r.count} in this style`); setMoreId(null); setMoreTweak(''); load(); }
       else showToast?.(`Error: ${r.error || 'failed'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }
@@ -176,24 +177,11 @@ export default function FreeformLabSection({ accessToken, showToast }) {
               </div>
               <div className="p-2.5 flex-1 flex flex-col gap-1.5">
                 <p className="text-[11px] text-gray-500 line-clamp-2" title={c.gen_prompt || ''}>{c.gen_prompt || '—'}</p>
-                {moreId === c.id ? (
-                  <div className="space-y-1.5 bg-indigo-50 border border-indigo-200 rounded-lg p-2 mt-auto">
-                    <textarea value={moreTweak} onChange={(e) => setMoreTweak(e.target.value)} rows={2}
-                      placeholder="Optional: what to change (e.g. 'a mother instead', 'sunset light')"
-                      className="w-full text-[11px] border border-indigo-200 rounded px-2 py-1 bg-white text-gray-900 placeholder-gray-400 resize-none" />
-                    <div className="flex gap-1.5">
-                      <button onClick={() => createMore(c.id)} disabled={busy}
-                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                        {busy ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Make 3
-                      </button>
-                      <button onClick={() => { setMoreId(null); setMoreTweak(''); }} className="px-2 py-1.5 text-[11px] rounded-lg border border-indigo-200 text-indigo-500 hover:bg-white"><X size={12} /></button>
-                    </div>
-                  </div>
-                ) : c.status === 'ready' ? (
+                {c.status === 'ready' ? (
                   <div className="flex gap-1.5 mt-auto">
-                    <button onClick={() => { setMoreId(c.id); setMoreTweak(''); }} disabled={busy}
+                    <button onClick={() => { setMoreTweak(''); setMoreCount(3); setMoreId(c.id); }} disabled={busy}
                       className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50">
-                      <Wand2 size={12} /> Create more like this
+                      <Wand2 size={12} /> Use as template
                     </button>
                     <button onClick={() => copyPrompt(c.gen_prompt)} title="Copy prompt"
                       className="px-2 py-1.5 text-[11px] rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"><Copy size={12} /></button>
@@ -204,6 +192,45 @@ export default function FreeformLabSection({ accessToken, showToast }) {
           ))}
         </div>
       )}
+
+      {/* "Use as template + your context" modal */}
+      {moreId && (() => {
+        const tpl = images.find((i) => i.id === moreId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => { if (!busy) { setMoreId(null); setMoreTweak(''); } }}>
+            <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start gap-3 mb-3">
+                {tpl?.media_url && <img src={tpl.media_url} alt="template" className="w-20 h-24 object-cover rounded-lg border border-gray-200 flex-shrink-0" />}
+                <div>
+                  <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5"><Wand2 size={15} className="text-indigo-600" /> New ads in this style</h3>
+                  <p className="text-xs text-gray-500 mt-1">Keeps this design's look, layout &amp; colors — your context below sets what the new ones are about (occasion, who it's for, the message).</p>
+                </div>
+              </div>
+              <textarea value={moreTweak} onChange={(e) => setMoreTweak(e.target.value)} rows={4} autoFocus
+                placeholder={"Your context — e.g. \"Para el Día de las Madres, mensaje emocional para mamá con su nombre\" · \"Corrido para un cumpleaños de 30, ambiente de fiesta\" · \"Para esposos, aniversario, romántico\""}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>How many:</span>
+                  {[1, 2, 3].map((n) => (
+                    <button key={n} onClick={() => setMoreCount(n)}
+                      className={`w-7 h-7 rounded-md text-xs font-medium ${moreCount === n ? 'bg-indigo-600 text-white' : 'bg-white border border-indigo-200 text-gray-600 hover:bg-indigo-50'}`}>{n}</button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setMoreId(null); setMoreTweak(''); }} disabled={busy}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                  <button onClick={() => createMore(moreId)} disabled={busy}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Generate
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
