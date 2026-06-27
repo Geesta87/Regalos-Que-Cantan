@@ -8,7 +8,6 @@ import { Sparkles, RefreshCw, Check, X, Loader2, ExternalLink, AlertTriangle, Me
 import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
 import CompetitorsSection from './CompetitorsSection';
-import AdTemplatesSection from './AdTemplatesSection';
 import FreeformLabSection from './FreeformLabSection';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-studio-admin`;
@@ -211,7 +210,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
 
       {/* Sections: Ads | Social | Emails | Art director */}
       <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
-        {[['ads', 'Ads'], ['lab', 'Lab'], ['templates', 'Plantillas'], ['social', 'Social'], ['competitors', 'Competitors'], ['emails', 'Emails'], ['chat', 'Art director']].map(([k, label]) => (
+        {[['ads', 'Ads'], ['lab', 'Lab / Plantillas'], ['social', 'Social'], ['competitors', 'Competitors'], ['emails', 'Emails'], ['chat', 'Art director']].map(([k, label]) => (
           <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 text-sm rounded-md transition ${view === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
         ))}
       </div>
@@ -220,8 +219,6 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
         <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
       ) : view === 'lab' ? (
         <FreeformLabSection accessToken={accessToken} showToast={showToast} />
-      ) : view === 'templates' ? (
-        <AdTemplatesSection accessToken={accessToken} showToast={showToast} />
       ) : view === 'competitors' ? (
         <CompetitorsSection accessToken={accessToken} showToast={showToast} />
       ) : view === 'emails' ? (
