@@ -4,16 +4,17 @@
 // it sends to your customer list (suppression + unsubscribe handled server-side).
 import React, { useState, useEffect, useCallback } from 'react';
 import { Mail, RefreshCw, Loader2, ArrowLeft, Check, X, Send, Users } from 'lucide-react';
+import { Badge, btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-marketer-admin`;
 
 const STATUS = {
-  pending_approval: { label: 'Para revisar', cls: 'bg-amber-100 text-amber-800' },
-  approved:         { label: 'Aprobado',     cls: 'bg-green-50 text-green-700' },
-  sending:          { label: 'Enviando…',    cls: 'bg-blue-100 text-blue-800' },
-  sent:             { label: 'Enviado',       cls: 'bg-green-100 text-green-800' },
-  rejected:         { label: 'Descartado',    cls: 'bg-gray-100 text-gray-500' },
-  failed:           { label: 'Falló',         cls: 'bg-red-100 text-red-700' },
+  pending_approval: { label: 'To review', tone: 'amber' },
+  approved:         { label: 'Approved',  tone: 'green' },
+  sending:          { label: 'Sending…',  tone: 'accent' },
+  sent:             { label: 'Sent',      tone: 'green' },
+  rejected:         { label: 'Discarded', tone: 'gray' },
+  failed:           { label: 'Failed',    tone: 'red' },
 };
 
 export default function EmailMarketerSection({ accessToken, showToast }) {
@@ -57,7 +58,7 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
     try {
       const r = await call({ action, id });
       if (r.success) {
-        showToast?.(action === 'test' ? `Test sent to ${r.sent_to}` : action === 'approve' ? `Sending to ${r.recipients_total?.toLocaleString()} 🚀` : 'Descartado');
+        showToast?.(action === 'test' ? `Test sent to ${r.sent_to}` : action === 'approve' ? `Sending to ${r.recipients_total?.toLocaleString()}` : 'Discarded');
         if (action !== 'test') { await load(); if (action !== 'approve') setSelectedId(null); }
       } else showToast?.(`Error: ${r.error || 'failed'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -66,12 +67,12 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
 
   // ---- DETAIL ----
   if (sel) {
-    const sm = STATUS[sel.status] || { label: sel.status, cls: 'bg-gray-100 text-gray-600' };
+    const sm = STATUS[sel.status] || { label: sel.status, tone: 'gray' };
     return (
       <div className="max-w-3xl">
         <button onClick={() => setSelectedId(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4"><ArrowLeft size={16} /> All emails</button>
         <div className="flex items-center gap-2 mb-1">
-          <span className={`text-xs px-2 py-1 rounded-full ${sm.cls}`}>{sm.label}</span>
+          <Badge tone={sm.tone}>{sm.label}</Badge>
           {sel.reason && <span className="text-xs text-gray-400">{sel.reason}</span>}
         </div>
         <h2 className="text-lg font-semibold text-gray-900 mb-1">{sel.subject}</h2>
@@ -89,16 +90,13 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
           </div>
         ) : sel.status === 'pending_approval' ? (
           <div className="flex flex-wrap items-center gap-2 mt-4">
-            <button onClick={() => act(sel.id, 'test')} disabled={busy}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <button onClick={() => act(sel.id, 'test')} disabled={busy} className={btn.ghost}>
               {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send test to me
             </button>
-            <button onClick={() => act(sel.id, 'approve')} disabled={busy}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
-              <Check size={15} /> Approve & send to {audience.toLocaleString()}
+            <button onClick={() => act(sel.id, 'approve')} disabled={busy} className={btn.success}>
+              <Check size={15} /> Approve &amp; send to {audience.toLocaleString()}
             </button>
-            <button onClick={() => act(sel.id, 'reject')} disabled={busy}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+            <button onClick={() => act(sel.id, 'reject')} disabled={busy} className={btn.ghost}>
               <X size={15} /> Reject
             </button>
           </div>
@@ -117,7 +115,7 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
             <Users size={14} /> Your list: {audience.toLocaleString()} customers · the agent drafts 2-3 each week for your approval.
           </p>
         </div>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+        <button onClick={load} disabled={loading} className={btn.ghost}>
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
@@ -131,7 +129,7 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
       ) : (
         <div className="space-y-2">
           {emails.map((e) => {
-            const sm = STATUS[e.status] || { label: e.status, cls: 'bg-gray-100 text-gray-600' };
+            const sm = STATUS[e.status] || { label: e.status, tone: 'gray' };
             return (
               <button key={e.id} onClick={() => setSelectedId(e.id)}
                 className="w-full text-left flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-gray-300 transition">
@@ -143,7 +141,7 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
                 {(e.status === 'sending' || e.status === 'sent') && (
                   <span className="text-[11px] text-gray-400">{e.recipients_sent?.toLocaleString()}/{e.recipients_total?.toLocaleString()}</span>
                 )}
-                <span className={`text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 ${sm.cls}`}>{sm.label}</span>
+                <Badge tone={sm.tone} className="flex-shrink-0">{sm.label}</Badge>
               </button>
             );
           })}

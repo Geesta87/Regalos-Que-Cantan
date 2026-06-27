@@ -4,6 +4,7 @@
 // style preferences. Talks to the creative-chat edge function.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-chat`;
 
@@ -98,7 +99,7 @@ export default function CreativeChatPanel({ accessToken, showToast }) {
   return (
     <div className="flex flex-col" style={{ height: '70vh', maxWidth: 760 }}>
       <div className="flex items-center gap-2 mb-3">
-        <Sparkles size={18} className="text-amber-500" />
+        <Sparkles size={18} className="text-indigo-600" />
         <span className="font-semibold text-gray-900">Art director</span>
         <span className="text-xs text-gray-400">— brainstorm, generate, tweak, set your style</span>
       </div>
@@ -128,7 +129,7 @@ export default function CreativeChatPanel({ accessToken, showToast }) {
         {sending && (
           <div className="flex justify-start">
             <div className="rounded-2xl px-3.5 py-2 text-sm bg-white border border-gray-200 text-gray-400 flex items-center gap-2">
-              <Loader2 size={14} className="animate-spin" /> thinking…
+              <Loader2 size={14} className="animate-spin" /> Thinking…
             </div>
           </div>
         )}
@@ -141,10 +142,9 @@ export default function CreativeChatPanel({ accessToken, showToast }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           placeholder="Message your art director…"
           disabled={sending}
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400 disabled:opacity-60"
+          className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-400 disabled:opacity-60"
         />
-        <button onClick={() => submit()} disabled={sending || !input.trim()}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800 disabled:opacity-50">
+        <button onClick={() => submit()} disabled={sending || !input.trim()} className={btn.accent}>
           <Send size={15} /> Send
         </button>
       </div>

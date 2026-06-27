@@ -4,10 +4,11 @@
 // run), rated by the agent, with a "Make our version" button that generates an
 // ORIGINAL Regalos ad from the winning concept into the Ads queue.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Swords, RefreshCw, Loader2, Wand2, X, Clock, Check } from 'lucide-react';
+import { Swords, RefreshCw, Loader2, Wand2, X, Clock, Check, Lightbulb } from 'lucide-react';
+import { Card, Badge, btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/competitors-admin`;
-const FIT = { high: 'bg-green-100 text-green-800', medium: 'bg-amber-100 text-amber-800', low: 'bg-gray-100 text-gray-500' };
+const FIT_TONE = { high: 'green', medium: 'amber', low: 'gray' };
 
 export default function CompetitorsSection({ accessToken, showToast }) {
   const [ads, setAds] = useState([]);
@@ -55,7 +56,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
     try {
       const r = await call({ action, id });
       if (r.success) {
-        if (action === 'make_version') { showToast?.('🎨 Generating your version in Ads'); setAds((p) => p.map((a) => a.id === id ? { ...a, status: 'cloned' } : a)); }
+        if (action === 'make_version') { showToast?.('Generating your version in Ads'); setAds((p) => p.map((a) => a.id === id ? { ...a, status: 'cloned' } : a)); }
         else { showToast?.('Dismissed'); setAds((p) => p.filter((a) => a.id !== id)); }
       } else showToast?.(`Error: ${r.error || 'failed'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -77,7 +78,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
           <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2"><Swords size={18} className="text-gray-700" /> Competitor ads</h3>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">Rival personalized-song ads from the Facebook Ad Library, ranked by strength + how long they've been running (longer = proven winner). Hit "Make our version" to spin up an original Regalos ad from the concept.</p>
         </div>
-        <button onClick={scan} disabled={scanning} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50">
+        <button onClick={scan} disabled={scanning} className={btn.primary}>
           {scanning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Scan now
         </button>
       </div>
@@ -85,7 +86,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
       {/* Filters + sort */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {[['all', 'Todos'], ['es', 'Español'], ['en', 'English']].map(([k, label]) => (
+          {[['all', 'All'], ['es', 'Spanish'], ['en', 'English']].map(([k, label]) => (
             <button key={k} onClick={() => setLangFilter(k)}
               className={`px-3 py-1 text-sm rounded-md transition ${langFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
               {label}{k !== 'all' ? ` (${ads.filter((a) => a.lang === k).length})` : ''}
@@ -93,15 +94,15 @@ export default function CompetitorsSection({ accessToken, showToast }) {
           ))}
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {[['all', 'Todo'], ['video', 'Videos'], ['image', 'Imágenes']].map(([k, label]) => (
+          {[['all', 'All'], ['video', 'Videos'], ['image', 'Images']].map(([k, label]) => (
             <button key={k} onClick={() => setMediaFilter(k)}
               className={`px-3 py-1 text-sm rounded-md transition ${mediaFilter === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
           ))}
         </div>
         <div className="flex items-center gap-1.5 text-sm text-gray-500">
-          <span>Ordenar:</span>
+          <span>Sort:</span>
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {[['strongest', '💪 Más fuertes'], ['longest', '⏱ Más tiempo activos']].map(([k, label]) => (
+            {[['strongest', 'Strongest'], ['longest', 'Longest running']].map(([k, label]) => (
               <button key={k} onClick={() => setSortBy(k)}
                 className={`px-3 py-1 text-sm rounded-md transition ${sortBy === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
             ))}
@@ -118,7 +119,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {shown.map((a) => (
-            <div key={a.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
+            <Card key={a.id} className="overflow-hidden flex flex-col">
               <div className="relative bg-gray-900 aspect-[4/5] flex items-center justify-center">
                 {a.media_type === 'video' && a.video_url ? (
                   <video src={a.video_url} controls playsInline className="w-full h-full object-cover" />
@@ -136,15 +137,15 @@ export default function CompetitorsSection({ accessToken, showToast }) {
 
               <div className="p-3 flex-1 flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 text-[11px] font-medium text-gray-700">
-                  <span>💪 Fuerza {a.score ?? '—'}</span>
+                  <span>Strength {a.score ?? '—'}</span>
                   <span className="text-gray-300">·</span>
-                  <span className="flex items-center gap-1"><Clock size={11} /> {a.active_days ?? '—'} días activo</span>
+                  <span className="flex items-center gap-1"><Clock size={11} /> {a.active_days ?? '—'} days active</span>
                 </div>
-                {a.analysis?.hook && <p className="text-xs font-semibold text-gray-900">{a.analysis.hook}</p>}
+                {a.analysis?.hook && <p className="text-xs font-medium text-gray-900">{a.analysis.hook}</p>}
                 {a.body_text && <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-3">{a.body_text}</p>}
                 {a.analysis?.why_working && <p className="text-[11px] text-gray-400 italic">Why it works: {a.analysis.why_working}</p>}
-                {a.analysis?.rqc_fit && <span className={`self-start text-[10px] px-2 py-0.5 rounded-full ${FIT[a.analysis.rqc_fit] || FIT.low}`}>RQC fit: {a.analysis.rqc_fit}</span>}
-                {a.analysis?.suggested_rqc_angle && <p className="text-[11px] text-purple-600 leading-snug mt-0.5">💡 {a.analysis.suggested_rqc_angle}</p>}
+                {a.analysis?.rqc_fit && <Badge tone={FIT_TONE[a.analysis.rqc_fit] || 'gray'} className="self-start">RQC fit: {a.analysis.rqc_fit}</Badge>}
+                {a.analysis?.suggested_rqc_angle && <p className="text-[11px] text-indigo-600 leading-snug mt-0.5 flex items-start gap-1"><Lightbulb size={12} className="flex-shrink-0 mt-0.5" /> {a.analysis.suggested_rqc_angle}</p>}
               </div>
 
               <div className="p-3 pt-0">
@@ -152,18 +153,16 @@ export default function CompetitorsSection({ accessToken, showToast }) {
                   <div className="flex items-center gap-1.5 text-xs text-green-700"><Check size={14} /> Your version is in Ads</div>
                 ) : (
                   <div className="flex gap-2">
-                    <button onClick={() => act(a.id, 'make_version')} disabled={busyId === a.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
+                    <button onClick={() => act(a.id, 'make_version')} disabled={busyId === a.id} className={btn.accent + ' flex-1'}>
                       {busyId === a.id ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} Make our version
                     </button>
-                    <button onClick={() => act(a.id, 'dismiss')} disabled={busyId === a.id}
-                      className="flex items-center justify-center px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                    <button onClick={() => act(a.id, 'dismiss')} disabled={busyId === a.id} className={btn.ghost + ' !px-3'}>
                       <X size={15} />
                     </button>
                   </div>
                 )}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
