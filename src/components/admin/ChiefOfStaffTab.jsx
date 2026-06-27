@@ -32,6 +32,8 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const [memo, setMemo] = useState(null); // Sofía's weekly CEO memo
   const [memoBusy, setMemoBusy] = useState(false);
   const [memoOpen, setMemoOpen] = useState(true);
+  const [score, setScore] = useState(null); // her track-record scoreboard
+  const [scoreOpen, setScoreOpen] = useState(false);
   const audioRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -43,14 +45,22 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ status, body }, b2, m] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {}), call(COS, { action: 'get_weekly_memo' })]);
+      const [{ status, body }, b2, m, sc] = await Promise.all([call(COS, { action: 'get' }), call(BRIEF, {}), call(COS, { action: 'get_weekly_memo' }), call(COS, { action: 'get_scorecard' })]);
       if (body.success) { setPersona(body.persona); setName(body.persona?.name || ''); setMessages(body.messages || []); setPending(body.pending_actions || []); }
       else if (status === 403) setDenied(true);
       if (b2.body?.success) setBriefing(b2.body.briefings?.[0] || null);
       if (m.body?.success) setMemo(m.body.memo || null);
+      if (sc.body?.success) setScore(sc.body.scorecard || null);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setLoading(false); }
   }, [call, showToast]);
+
+  const resolveCall = async (id, verdict) => {
+    try {
+      const { body } = await call(COS, { action: 'resolve_call', id, verdict });
+      if (body?.success) setScore(body.scorecard || null);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
 
   const makeMemo = async () => {
     setMemoBusy(true);
@@ -248,6 +258,59 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
           <div className="px-4 pb-4 text-xs text-gray-500">No memo yet — Sofía writes one every Monday. Tap “Write memo” to have her analyze this week now.</div>
         )}
       </div>
+
+      {/* Track record — her accuracy + the autonomy tier it earns */}
+      {score && (() => {
+        const tierMeta = {
+          trusted: { label: 'Trusted', cls: 'bg-green-100 text-green-700' },
+          proven: { label: 'Proven', cls: 'bg-blue-100 text-blue-700' },
+          probation: { label: 'Probation', cls: 'bg-amber-100 text-amber-700' },
+          building: { label: 'Building', cls: 'bg-gray-100 text-gray-600' },
+        }[score.tier] || { label: score.tier, cls: 'bg-gray-100 text-gray-600' };
+        return (
+          <div className="mb-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <button onClick={() => setScoreOpen((o) => !o)} className="w-full flex items-center justify-between gap-2 px-4 py-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Check size={16} className="text-gray-500 flex-shrink-0" />
+                <span className="text-sm font-semibold text-gray-900">Sofía's track record</span>
+                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${tierMeta.cls}`}>{tierMeta.label}</span>
+                <span className="text-xs text-gray-500 truncate">
+                  {score.accuracy == null ? 'no calls resolved yet' : `${score.accuracy}% (${score.correct}/${score.resolved})`}
+                  {score.open > 0 && <span className="text-amber-600"> · {score.open} to judge</span>}
+                </span>
+              </div>
+              <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition ${scoreOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {scoreOpen && (
+              <div className="px-4 pb-4 space-y-2">
+                <p className="text-[11px] text-gray-500">Mark each call right or wrong once it's played out — that's how she earns more autonomy. Money moves always stay Confirm-gated.</p>
+                {(score.recent || []).length === 0 && <p className="text-xs text-gray-400">No calls logged yet — they appear here as she makes recommendations and takes ad actions.</p>}
+                {(score.recent || []).map((c) => (
+                  <div key={c.id} className="bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{c.call}</p>
+                        {c.subject && <p className="text-[11px] text-gray-400 mt-0.5">{c.subject} · {c.kind}</p>}
+                      </div>
+                      {c.status === 'open' ? (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button onClick={() => resolveCall(c.id, 'correct')} title="Right call" className="p-1.5 rounded-lg border border-green-200 text-green-600 hover:bg-green-50"><Check size={13} /></button>
+                          <button onClick={() => resolveCall(c.id, 'wrong')} title="Wrong call" className="p-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50"><X size={13} /></button>
+                          <button onClick={() => resolveCall(c.id, 'dismissed')} title="Not measurable / skip" className="px-2 py-1 text-[11px] rounded-lg border border-gray-200 text-gray-400 hover:bg-white">skip</button>
+                        </div>
+                      ) : (
+                        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${c.status === 'correct' ? 'bg-green-100 text-green-700' : c.status === 'wrong' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}`}>
+                          {c.status === 'correct' ? '✓ right' : c.status === 'wrong' ? '✗ wrong' : 'skipped'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Settings */}
       {settings && (

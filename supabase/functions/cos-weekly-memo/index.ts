@@ -137,7 +137,19 @@ serve(async (req) => {
     const memo = await writeMemo(data);
     const body = { ...memo, metrics: { spend: data.spend, revenue: data.revenue, orders: data.orders, blended_roas: data.blended_roas, aov: data.aov }, top_campaigns: data.top_campaigns?.slice(0, 5), pipeline: data.pipeline, window: { from: data.from, to: data.to } };
     const { data: row } = await admin.from('cos_memos').insert({ week_of: data.from, headline: memo.headline || null, summary: memo.summary || null, body, status: 'new' }).select('id, week_of').single();
-    return json({ success: true, id: row?.id, week_of: row?.week_of });
+
+    // Log each move as a tracked CALL for her scoreboard — the owner marks each
+    // right/wrong later, building the accuracy that earns her more autonomy.
+    const moves = Array.isArray(memo.moves) ? memo.moves : [];
+    if (moves.length) {
+      const kindOf = (t: string) => /scale|duplicate|raise|increase|aument|escala/i.test(t) ? 'scale' : /cut|pause|kill|stop|pausa|corta|reduce/i.test(t) ? 'cut' : /budget|presupuesto/i.test(t) ? 'budget' : /creative|ad|anuncio|push|lanza/i.test(t) ? 'creative' : 'recommendation';
+      await admin.from('cos_calls').insert(moves.slice(0, 3).map((mv: any) => ({
+        source: 'weekly_memo', kind: kindOf(String(mv.title || '')),
+        call: String(mv.title || '').slice(0, 300), rationale: String(mv.why || '').slice(0, 500),
+        metric_at_call: { number: mv.number || null, week_of: data.from }, horizon_days: 7, status: 'open',
+      })));
+    }
+    return json({ success: true, id: row?.id, week_of: row?.week_of, calls_logged: moves.length });
   } catch (e: any) {
     return json({ success: false, error: String(e?.message || e) }, 500);
   }

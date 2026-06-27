@@ -280,6 +280,7 @@ async function snapshot(admin: any) {
   const { data: topCreative } = await admin.from('creative_queue').select('id, concept, score').eq('status', 'ready').order('score', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
   // Long-term memory — what Gerardo has told her to remember (applied every turn).
   const { data: mem } = await admin.from('cos_memory').select('kind, content').order('created_at', { ascending: false }).limit(60);
+  const scorecard = await getScorecard(admin);
   // PROACTIVE: things she should raise on her own, without being asked.
   const proactive: string[] = [];
   if (pendingActions > 0) proactive.push(`${pendingActions} action(s) are staged and awaiting your Confirm.`);
@@ -288,7 +289,9 @@ async function snapshot(admin: any) {
   else if (mb?.analysis?.account_health === 'watch') proactive.push(`Ads on WATCH in the last report: ${mb.analysis?.headline || ''}`);
   if (competitorsNew > 0) proactive.push(`${competitorsNew} new competitor angle(s) to review.`);
   if (prospectsNew > 0) proactive.push(`${prospectsNew} new affiliate prospect(s) to review.`);
+  if (scorecard.open >= 4) proactive.push(`${scorecard.open} of your past calls are still unresolved — ask Gerardo to mark the ones that have played out so your track record stays honest.`);
   return {
+    scorecard: { accuracy: scorecard.accuracy, tier: scorecard.tier, resolved: scorecard.resolved, correct: scorecard.correct, open: scorecard.open },
     latest_saved_report: mb ? { headline: mb.analysis?.headline, account_health: mb.analysis?.account_health, top_recommendation: mb.analysis?.recommendations?.[0], NUMBERS_NOTE: 'NEVER quote spend/sales/revenue/ROAS/CPA from here — call get_ad_report for any figure, even "yesterday".' } : null,
     creatives_ready: creativesReady, top_ready_creative: topCreative || null,
     emails_pending: emailsPending, competitor_opportunities: competitorsNew, partner_prospects: prospectsNew,
@@ -455,12 +458,33 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
       return { ok: false, result: `Unknown action type ${a.action_type}.` };
     }
     await admin.from('cos_pending_actions').update({ status: 'done', result, confirmed_at: new Date().toISOString() }).eq('id', id);
+    // Log measurable ad actions as tracked CALLS for her scoreboard.
+    const callKind: Record<string, string> = { pause: 'cut', set_budget: 'budget', duplicate_scale: 'scale' };
+    if (callKind[a.action_type]) {
+      try {
+        await admin.from('cos_calls').insert({ source: 'chat_action', kind: callKind[a.action_type], subject: a.target_name || a.target_type, subject_ref: a.target_id || null, call: result.slice(0, 300), rationale: a.summary || null, metric_at_call: a.params || {}, horizon_days: 7, status: 'open' });
+      } catch (_) { /* never block the action on logging */ }
+    }
     return { ok: true, result };
   } catch (e: any) {
     const msg = String(e?.message || e).slice(0, 400);
     await admin.from('cos_pending_actions').update({ status: 'failed', result: msg, confirmed_at: new Date().toISOString() }).eq('id', id);
     return { ok: false, result: msg };
   }
+}
+
+// Sofía's track record — accuracy of her resolved calls + the autonomy tier it
+// earns. building (no resolved calls) → probation (<70%) → proven (70-85%) → trusted (85%+).
+async function getScorecard(admin: any) {
+  const { data: calls } = await admin.from('cos_calls')
+    .select('id, created_at, source, kind, subject, call, rationale, metric_at_call, horizon_days, status, resolved_at, outcome')
+    .order('created_at', { ascending: false }).limit(60);
+  const all = calls || [];
+  const resolved = all.filter((c: any) => c.status === 'correct' || c.status === 'wrong');
+  const correct = resolved.filter((c: any) => c.status === 'correct').length;
+  const accuracy = resolved.length ? Math.round((correct / resolved.length) * 100) : null;
+  const tier = accuracy == null ? 'building' : accuracy >= 85 ? 'trusted' : accuracy >= 70 ? 'proven' : 'probation';
+  return { total: all.length, open: all.filter((c: any) => c.status === 'open').length, resolved: resolved.length, correct, wrong: resolved.length - correct, accuracy, tier, recent: all.slice(0, 12) };
 }
 
 // Real sales/business data from the orders (songs) table — deduped per
@@ -645,6 +669,8 @@ MEMORY: the CURRENT STATE below has a "memory" list — durable preferences/rule
 
 PROACTIVE: the CURRENT STATE has a "proactive" list — things worth raising on your own. At the start of a conversation, or when relevant, surface the most important one or two briefly (don't dump the whole list).
 
+YOUR TRACK RECORD & AUTONOMY: the CURRENT STATE has a "scorecard" — your accuracy on resolved calls and the autonomy TIER it earns. Every recommendation/move you make is logged and Gerardo marks it right or wrong; that's how you earn trust. Behave to your tier: BUILDING (no resolved calls yet) — be useful but humble, show your reasoning, invite him to judge the outcome. PROBATION (<70%) — recommend more cautiously, hedge, ask before anything bold. PROVEN (70-85%) — be assertive and decisive in recommendations; he trusts your read. TRUSTED (85%+) — lead hard, prioritize ruthlessly, and tee up the highest-leverage moves with conviction. REGARDLESS OF TIER, anything that spends money or goes external still goes through a Confirm card — autonomy here means how assertively you advise and prioritize, not skipping approval. When a past call clearly played out, mention it ("that UGC cut I flagged is now confirmed losing — good call to pause") so the record stays honest.
+
 GUARDRAILS: NEVER fabricate numbers, names, or facts — always get them from a tool (get_ad_report, get_sales, check_creatives) or say "let me check" and actually check; if you truly don't know, say so. Anything that spends money or goes external (budgets, pausing, duplicating, generating, posting) MUST go through a Confirm card — never claim it's done before he confirms. You CANNOT issue refunds or send payouts/money — for those, tell Gerardo to do it himself.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
@@ -706,6 +732,16 @@ serve(async (req) => {
       if (!out?.success) return json({ success: false, error: out?.error || 'memo generation failed' }, 502);
       const { data: memo } = await admin.from('cos_memos').select('id, week_of, headline, summary, body, status, created_at').order('created_at', { ascending: false }).limit(1).maybeSingle();
       return json({ success: true, memo: memo || null });
+    }
+
+    // Track record (scoreboard): read it, and let the owner mark a call's outcome.
+    if (action === 'get_scorecard') return json({ success: true, scorecard: await getScorecard(admin) });
+    if (action === 'resolve_call') {
+      const cid = String(body.id || '');
+      const verdict = ['correct', 'wrong', 'dismissed', 'open'].includes(body.verdict) ? body.verdict : null;
+      if (!cid || !verdict) return json({ success: false, error: 'id and verdict are required' }, 400);
+      await admin.from('cos_calls').update({ status: verdict, resolved_at: verdict === 'open' ? null : new Date().toISOString(), outcome: body.outcome ? String(body.outcome).slice(0, 300) : null }).eq('id', cid);
+      return json({ success: true, scorecard: await getScorecard(admin) });
     }
 
     if (action === 'list_voices') return json({ success: true, voices: await listVoices() });
