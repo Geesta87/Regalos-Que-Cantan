@@ -23,6 +23,7 @@ import { applyLogo } from '../_shared/brand.ts';
 import { renderAd } from '../_shared/render-ad.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
 import { gptPhotoBytes, gptEditBytes, fetchImageBytes } from '../_shared/openai-image.ts';
+import { agentBrief } from '../_shared/company-brief.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,12 +68,14 @@ async function genImageNow(admin: any, rowId: string, prompt: string, design: an
   // so the output inherits the reference ad's look; otherwise text-to-image.
   const photo = ref ? await gptEditBytes(prompt, ref.bytes, ref.mime) : await gptPhotoBytes(prompt);
   if (!photo) throw new Error('image generation returned empty (check OPENAI_API_KEY)');
-  const hasDesign = (Array.isArray(design?.headline_lines) && design.headline_lines.length) || design?.kicker || design?.cta;
+  const isPoster = design?.template === 'poster';
+  const hasDesign = isPoster || (Array.isArray(design?.headline_lines) && design.headline_lines.length) || design?.kicker || design?.cta;
   const out = hasDesign
     ? (await renderAd({
         imageBytes: photo,
         kicker: design.kicker, headlineLines: Array.isArray(design.headline_lines) ? design.headline_lines : [],
-        accent: design.accent, cta: design.cta || 'Créala hoy · regalosquecantan.com',
+        accent: design.accent, cta: design.cta || (isPoster ? 'Escúchala gratis' : 'Créala hoy · regalosquecantan.com'),
+        template: isPoster ? 'poster' : undefined, price: design.price,
       }) || await applyLogo(photo))
     : await applyLogo(photo);
   const path = `${rowId}.png`;
@@ -248,7 +251,9 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
 
 // ---------------------------------------------------------------------------
 function systemPrompt(styleNotes: string, promoNotes: string) {
-  return `You are the Creative Director for "Regalos Que Cantan" (regalosquecantan.com), a US-Hispanic brand selling personalized AI Spanish songs as emotional gifts. You are chatting with the OWNER inside their dashboard. Be warm, concise, and practical — a real creative partner who knows the business cold.
+  return `You are the Art Director / Creative Director for "Regalos Que Cantan". You are chatting with the OWNER inside their dashboard. Be warm, concise, and practical — a real creative partner who knows the business cold.
+
+${agentBrief('Art Director — you GENERATE the actual ad/social visuals (gpt-image-2). When the Chief of Staff sends you a WORK ORDER, fulfil it by generating, not just talking. You own the look. You know the whole business + the rest of the team from the handbook above.')}
 
 What you can DO (use tools naturally when the owner wants it, don't ask permission for obvious requests):
 - Brainstorm style, angles, occasions, hooks.
@@ -278,6 +283,30 @@ async function callClaude(messages: any[], system: string) {
   return res.json();
 }
 
+function bytesToB64(bytes: Uint8Array): string {
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode(...bytes.subarray(i, i + CH));
+  return btoa(s);
+}
+
+// VISION: actually LOOK at a reference ad and classify its design style so we can
+// reproduce it with the matching template. "poster" = bold/graphic/high-contrast
+// promo (big text, badges, red/black); "elegant" = soft photoreal + refined type.
+async function classifyAdStyle(ref: { bytes: Uint8Array; mime: string }): Promise<{ style: 'poster' | 'elegant'; price: string }> {
+  try {
+    const media = /png/.test(ref.mime) ? 'image/png' : /webp/.test(ref.mime) ? 'image/webp' : 'image/jpeg';
+    const TOOL = { name: 'classify', description: 'Classify the ad design.', input_schema: { type: 'object', properties: { style: { type: 'string', enum: ['poster', 'elegant'] }, price: { type: 'string', description: 'Any price shown e.g. "$29", else ""' } }, required: ['style'] } };
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, max_tokens: 200, tools: [TOOL], tool_choice: { type: 'tool', name: 'classify' }, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: media, data: bytesToB64(ref.bytes) } }, { type: 'text', text: 'Classify this ad. "poster" = bold/graphic/high-contrast promo: large heavy text, hearts/badges, price callout, red+black palette, often a B&W photo. "elegant" = soft photoreal photo with minimal refined typography. Also read any price shown.' }] }] }),
+    });
+    if (!r.ok) return { style: 'elegant', price: '' };
+    const j = await r.json();
+    const tu = (j.content || []).find((c: any) => c.type === 'tool_use');
+    return { style: tu?.input?.style === 'poster' ? 'poster' : 'elegant', price: tu?.input?.price || '' };
+  } catch { return { style: 'elegant', price: '' }; }
+}
+
 // Deterministic generation engine: FORCES Claude to emit N ad specs (tool_choice),
 // then generates each image itself. Shared by the generate_batch action, Sofía's
 // hand-off, and the Art Director chat's safety net — so generation NEVER depends on
@@ -285,9 +314,11 @@ async function callClaude(messages: any[], system: string) {
 async function generateBatch(admin: any, brief: string, count: number, intended: 'ad' | 'social', referenceImageUrl?: string): Promise<{ success: boolean; generated: string[]; error?: string }> {
   if (!ANTHROPIC_API_KEY) return { success: false, generated: [], error: 'ANTHROPIC_API_KEY not set' };
   const n = Math.min(Math.max(Number(count) || 2, 1), 4);
-  // When a reference ad image is given, generate IMAGE-TO-IMAGE so the new ads
-  // inherit its real look (the fix for "make more like our Father's Day ads").
-  const ref = referenceImageUrl ? await fetchImageBytes(referenceImageUrl) : null;
+  // When a reference ad is given, LOOK at it (vision) to detect which design style
+  // to reproduce — bold POSTER vs elegant — and match it with the right template.
+  const refData = referenceImageUrl ? await fetchImageBytes(referenceImageUrl) : null;
+  let style: 'poster' | 'elegant' = 'elegant'; let detectedPrice = '';
+  if (refData) { const c = await classifyAdStyle(refData); style = c.style; detectedPrice = c.price; }
   const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
   const SPEC_TOOL = {
     name: 'emit_ads',
@@ -317,10 +348,10 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
       required: ['ads'],
     },
   };
-  const refNote = ref
-    ? `\n\nIMPORTANT: each image is generated IMAGE-TO-IMAGE from a REFERENCE AD that already performs. Write each gen_prompt to KEEP the reference ad's exact visual style, framing, lighting, color grade, and emotional reaction — only change the scene/subject to fit the new angle. Still NO text/words/logos in the image; keep clean negative space in the lower third for our typeset layer.`
+  const styleNote = style === 'poster'
+    ? `\n\nSTYLE = BOLD POSTER (match the owner's proven promo ad). For each ad: gen_prompt = ONE emotional, high-contrast PHOTO that reads great in BLACK & WHITE (a moving family / gift reaction, dramatic light), NO text in the image. headline_lines = 2-3 SHORT punchy lines (rendered big, uppercase, white). accent = ONE short phrase for a RED highlight bar (e.g. the occasion). cta = a short call to action. The system lays the bold red/white/black poster design (price badge + hearts + CTA bar) on top — you only supply the photo + words.`
     : '';
-  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${refNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
+  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -333,7 +364,7 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   if (!specs.length) return { success: false, generated: [], error: 'Model returned no ad specs' };
   const generated: string[] = [];
   for (const s of specs) {
-    const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null };
+    const design = { kicker: s.kicker ?? null, headline_lines: Array.isArray(s.headline_lines) ? s.headline_lines : null, accent: s.accent ?? null, cta: s.cta ?? null, template: style === 'poster' ? 'poster' : undefined, price: detectedPrice || '$29' };
     const { data: row } = await admin.from('creative_queue').insert({
       batch_date: today(), kind: 'image', intended_use: intended,
       occasion: s.occasion ?? null, concept: s.concept ?? null, gen_prompt: s.gen_prompt ?? null,
@@ -343,7 +374,7 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
     }).select('id').single();
     if (!row) continue;
     try {
-      const url = await genImageNow(admin, row.id, s.gen_prompt, design, ref);
+      const url = await genImageNow(admin, row.id, s.gen_prompt, design);
       await admin.from('creative_queue').update({ status: 'ready', media_url: url }).eq('id', row.id);
       generated.push(row.id);
     } catch (e: any) {

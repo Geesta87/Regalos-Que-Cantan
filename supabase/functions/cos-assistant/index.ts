@@ -12,6 +12,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { agentBrief } from '../_shared/company-brief.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -307,25 +308,68 @@ async function proposeAdChange(admin: any, input: any, pending: any[]): Promise<
   return `Proposed: ${summary}. It's waiting for your tap on the Confirm card — nothing changed yet.`;
 }
 
+// Resolve a creative's FULL-resolution image URL (not Meta's 64x64 thumbnail).
+// Prefers link_data.picture, then resolves image_hash via /adimages, then falls
+// back to image_url. Returns null if no usable image (so we can be honest).
+async function fullAdImage(creative: any): Promise<string | null> {
+  const oss = creative?.object_story_spec || {};
+  const ld = oss.link_data || oss.video_data || {};
+  if (ld.picture && /^https?:/.test(ld.picture)) return ld.picture;
+  const hash = ld.image_hash;
+  if (hash) {
+    try {
+      const j = await metaGet(`${META_AD_ACCOUNT_ID}/adimages`, { hashes: JSON.stringify([hash]), fields: 'url,permalink_url' });
+      const img = (j?.data && j.data[0]) || (j?.images && Object.values(j.images)[0]);
+      // Prefer the direct fbcdn `url` (downloadable); permalink_url is a viewer
+      // page that returns 0 bytes when fetched server-side.
+      const url = (img as any)?.url || (img as any)?.permalink_url;
+      if (url) return url;
+    } catch (_) { /* fall through */ }
+  }
+  // Last resort: image_url — but skip it if it's clearly a tiny thumbnail.
+  const iu = creative?.image_url || '';
+  if (iu && !/p64x64|p32x32|s64x64/.test(iu)) return iu;
+  return null;
+}
+
 // Stage an "extract running ad → make more" proposal (no execution).
 async function proposeExtractAd(admin: any, input: any, pending: any[]): Promise<string> {
   if (!META_ACCESS_TOKEN) return 'Meta is not connected (META_ACCESS_TOKEN missing).';
-  const j = await metaGet(`${META_AD_ACCOUNT_ID}/ads`, { fields: 'id,name,effective_status,creative{id,title,body,image_url,thumbnail_url,object_story_spec}', limit: '100' });
-  let ads = (j.data || []).filter((a: any) => a.effective_status === 'ACTIVE');
-  if (input.name) { const m = matchByName(ads.length ? ads : (j.data || []), input.name); ads = m ? [m] : ads; }
-  const ad = ads[0] || (j.data || [])[0];
-  if (!ad) return 'No ads found in the account to copy from.';
+  // Pull ALL ads (incl. paused) WITH their campaign name + creative.
+  const j = await metaGet(`${META_AD_ACCOUNT_ID}/ads`, { fields: 'id,name,effective_status,campaign{name},creative{id,title,body,image_url,thumbnail_url,object_story_spec}', limit: '300' });
+  const all = (j.data || []);
+  if (!all.length) return 'No ads found in the account to copy from.';
+  let ad: any = null;
+  const want = (input.name || '').trim().toLowerCase();
+  if (want) {
+    // Match the owner's term against the AD name OR its CAMPAIGN name (his
+    // Father's Day creatives are named at the campaign level + are paused).
+    const toks = want.split(/\s+/).filter((t: string) => t.length > 2);
+    ad = all.find((a: any) => { const hay = `${a.name || ''} ${a.campaign?.name || ''}`.toLowerCase(); return hay.includes(want); })
+      || all.find((a: any) => { const hay = `${a.name || ''} ${a.campaign?.name || ''}`.toLowerCase(); return toks.every((t: string) => hay.includes(t)); })
+      || all.find((a: any) => { const hay = `${a.name || ''} ${a.campaign?.name || ''}`.toLowerCase(); return toks.some((t: string) => hay.includes(t)); });
+    if (!ad) {
+      // Do NOT silently grab a random active ad — tell him what exists.
+      const names = [...new Set(all.map((a: any) => a.campaign?.name || a.name).filter(Boolean))].slice(0, 14);
+      return `I couldn't find an ad or campaign matching "${input.name}". Here's what's in the account — tell me which one to copy: ${names.join(' · ')}.`;
+    }
+  } else {
+    ad = all.find((a: any) => a.effective_status === 'ACTIVE') || all[0];
+  }
   const cr = ad.creative || {};
+  const image = await fullAdImage(cr);
   const copy = cr.title || cr.body || ad.name || '';
-  const image = cr.image_url || cr.thumbnail_url || '';
   const instruction = (input.instruction || '').toString().trim();
-  const params = { ad_id: ad.id, ad_name: ad.name, copy, image_url: image, instruction };
-  const summary = `🎨 Make more ads like "${ad.name}"${instruction ? ` — ${instruction}` : ''} → Art Director`;
+  const label = ad.campaign?.name || ad.name;
+  const params = { ad_id: ad.id, ad_name: ad.name, campaign_name: ad.campaign?.name || null, copy, image_url: image || '', instruction };
+  const summary = `🎨 Make more ads like "${label}"${instruction ? ` — ${instruction}` : ''} → Art Director`;
   const { data: row } = await admin.from('cos_pending_actions').insert({
-    action_type: 'extract_creative', target_type: 'ad', target_id: ad.id, target_name: ad.name, params, summary, status: 'pending',
+    action_type: 'extract_creative', target_type: 'ad', target_id: ad.id, target_name: label, params, summary, status: 'pending',
   }).select('id, summary, action_type, target_name, status').single();
   if (row) pending.push(row);
-  return `Proposed: ${summary}. Tap Confirm and I'll hand it to the Art Director — nothing generated yet.`;
+  return image
+    ? `Proposed: ${summary}. I've got that ad's real image — the new ones generate image-to-image from it. Tap Confirm.`
+    : `Proposed: ${summary}. ⚠️ Heads up: I could not get that specific ad's full image from Meta, so these would be STYLE-based (a close match, not an exact copy). Tap Confirm to proceed, or tell me a different ad to pull from.`;
 }
 
 // Execute a confirmed pending action (called only on the owner's Confirm tap).
@@ -410,7 +454,9 @@ async function callClaude(messages: any[], system: string) {
 function systemPrompt(persona: any, snap: any) {
   const name = persona?.name || 'Sofía';
   const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
-  return `You are ${name}, the Chief of Staff for the owner (Gerardo) of "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
+  return `You are ${name}, the Chief of Staff for the owner (Gerardo). You are his trusted right hand — ${persona?.vibe === 'witty' ? 'cool, clever, a little witty' : persona?.vibe === 'premium' ? 'elegant, calm, precise' : 'warm, sharp, encouraging'}. You speak naturally, bilingual (Spanish/English, matching how he writes), concise and decisive — never a wall of text.
+
+${agentBrief('Chief of Staff — the owner\'s manager and command center. You know the whole business (above). You delegate creative work to the Art Director, pull live ad reports, approve creatives, and take ad actions ONLY with the owner\'s confirmation. Know your own tools and the rest of the team; never claim you can\'t see or do something that the handbook says is your job.')}
 
 You can SEE the whole business and you can ACT: approve a creative, trigger a competitor or partner scan, refresh the briefing, have the Creative Studio generate creatives, or pull the ad report for any date range. When the owner asks you to do one of these, use the tool — don't just talk about it. Confirm crisply what you did.
 
@@ -418,7 +464,7 @@ META ADS CHANGES (approval-gated): to PAUSE / turn off / resume an ad, or change
 
 CRITICAL — affirmations: when you have just proposed an action and he replies "yes" / "do it" / "go ahead" / "sure" / "yep", that ALWAYS means EXECUTE YOUR LAST PROPOSAL. Re-issue that exact tool call (e.g. propose_extract_ad with the same args). NEVER respond to an affirmation by switching tasks or pulling an ad report — that is the #1 mistake to avoid.
 
-If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
+If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. BUT — only when he's actually asking for PERFORMANCE NUMBERS. If the topic is ad CREATIVE / visuals / designs / "make more ads" / "which ad to copy" / "where did you pull that from" (meaning which creative), DO NOT call get_ad_report and do NOT recite spend/ROAS — stay on the creative track (propose_extract_ad / check_creatives). Answering a creative request with a numbers report is a major error. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date. For things you can't do directly (changing ad budgets, sending money, emailing customers), give a clear recommendation and tell him which tab to do it in.
 
 TODAY is ${todayPT} (the owner's Pacific date). Resolve "today" / "yesterday" / "this week" against this.
 
