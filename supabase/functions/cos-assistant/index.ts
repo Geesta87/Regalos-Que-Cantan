@@ -410,10 +410,8 @@ async function executePendingAction(admin: any, authHeader: string, id: string):
       // DETERMINISTIC path: creative-chat's generate_batch FORCES specs + generates
       // each image itself — no relying on a chat model to choose to call a tool.
       const brief = `Make ads that match the look of our running ad "${p.ad_name}" (its copy was: "${(p.copy || '').slice(0, 200)}").${twist ? ` Angle/twist Gerardo wants: ${twist}.` : ''} Keep the same emotional photoreal style; one clear offer + CTA; Spanish copy; make ORIGINALS (don't copy the exact wording).`;
-      const r = await (await fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'generate_batch', brief, count: 2, intended_use: 'ad', reference_image_url: p.image_url || undefined }) })).json();
-      const n = (r.generated || []).length;
-      if (!r.success || !n) throw new Error(r.error || 'generation produced nothing');
-      result = `Done — ${n} new ad${n > 1 ? 's' : ''} created${p.image_url ? ' from your real ad as the visual reference' : ''} and ready in Creative Studio → Ads.`;
+      const n = dispatchGeneration(authHeader, brief, 2, p.image_url || undefined);
+      result = `Kicked off ${n} new ad${n > 1 ? 's' : ''} in the background${p.image_url ? ' from your real ad as the visual reference' : ''} — they'll land in Creative Studio → Ads in about 2–3 minutes (refresh that tab).`;
     } else if (a.action_type === 'duplicate_scale') {
       // Copy the campaign (+ its ad sets/ads), set the new budget, leave PAUSED.
       const copy = await metaPost(`${a.target_id}/copies`, { deep_copy: 'true', status_option: 'PAUSED' });
@@ -472,6 +470,26 @@ async function getSales(admin: any, from: string, to: string, groupBy?: string):
   return `SALES ${from} → ${to} (real deduped paid orders, Pacific days):\n${JSON.stringify(summary, null, 2)}`;
 }
 
+// Fire image generation in the BACKGROUND so the chat replies instantly.
+// Generating inline blocks the request past the edge-function time limit, so the
+// chat hangs on "pensando…" forever even though the images actually land. We split
+// into batches of 2 (each a separate creative-chat invocation that finishes fast)
+// and keep them alive past our response with EdgeRuntime.waitUntil.
+function dispatchGeneration(authHeader: string, brief: string, count: number, refUrl?: string): number {
+  const total = Math.min(Math.max(count, 1), 8);
+  const jobs: Promise<any>[] = [];
+  for (let i = 0; i < total; i += 2) {
+    const batch = Math.min(2, total - i);
+    jobs.push(fetch(`${SUPABASE_URL}/functions/v1/creative-chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: authHeader }, body: JSON.stringify({ action: 'generate_batch', brief, count: batch, intended_use: 'ad', reference_image_url: refUrl || undefined }) }).catch(() => {}));
+  }
+  try { (globalThis as any).EdgeRuntime?.waitUntil?.(Promise.allSettled(jobs)); } catch (_) { /* not on edge runtime */ }
+  return total;
+}
+function parseAdCount(brief: string, fallback = 3): number {
+  const m = String(brief).match(/(\d{1,2})\s*(?:ads?|creatives?|anuncios?|imag)/i);
+  const n = m ? parseInt(m[1], 10) : fallback;
+  return Math.min(Math.max(n || fallback, 1), 8);
+}
 function escapeHtml(s: string): string { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 async function sha256(s: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -555,7 +573,11 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
     if (name === 'run_competitor_scan') { await fwd('competitors-admin', { action: 'scan' }); return 'Competitor scan started — fresh ads in ~1 min.'; }
     if (name === 'run_affiliate_scan') { await fwd('affiliate-recruiter-admin', { action: 'scan' }); return 'Partner scan started — new prospects in ~1 min.'; }
     if (name === 'refresh_briefing') { fwd('chief-of-staff-daily', {}).catch(() => {}); return 'Refreshing the briefing now.'; }
-    if (name === 'generate_creatives') { const r = await (await fwd('creative-chat', { action: 'send', message: input.brief })).json(); return r.success ? `On it — the art director is generating: "${input.brief}". They'll show up in Creative Studio shortly.` : `Could not start: ${r.error}`; }
+    if (name === 'generate_creatives') {
+      const brief = String(input.brief || '').slice(0, 600);
+      const n = dispatchGeneration(authHeader, brief, parseAdCount(brief), undefined);
+      return `On it — I kicked off ${n} ad${n > 1 ? 's' : ''} in the background: "${brief}". They'll appear in Creative Studio → Ads in about 2–3 minutes (refresh that tab). You don't need to wait here — ask me anything else in the meantime.`;
+    }
     if (name === 'get_ad_report') {
       const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
       const to = String(input.to || todayPT).slice(0, 10);
