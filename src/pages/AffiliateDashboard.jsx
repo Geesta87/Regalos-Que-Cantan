@@ -998,7 +998,9 @@ export default function AffiliateDashboard() {
                     label: 'Ventas', value: stats.totalPurchases,
                     Icon: Icon.Check,
                     sub: 'Completadas', delay: '0.08s', cls: '',
-                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#c9184a'
+                    series: buildSparklineSeries(dailyStats, 'purchases'), sparkColor: '#059669',
+                    valueColor: '#059669',
+                    emphasis: true, badge: 'Determina tu pago'
                   },
                   {
                     label: 'Conversión', value: `${stats.conversionRate}%`,
@@ -1018,14 +1020,34 @@ export default function AffiliateDashboard() {
                   <div
                     key={i}
                     className={`aff-stat-card ${s.cls}`}
-                    style={{ animationDelay: s.delay }}
+                    style={{
+                      animationDelay: s.delay,
+                      ...(s.emphasis ? {
+                        position: 'relative',
+                        border: '2px solid #059669',
+                        boxShadow: '0 0 0 4px rgba(5,150,105,0.10), 0 8px 24px -8px rgba(5,150,105,0.25)',
+                        background: '#f6fdfa',
+                      } : {}),
+                    }}
                   >
-                    <div className="aff-stat-icon">
+                    {s.badge && (
+                      <span style={{
+                        position: 'absolute', top: 12, right: 12,
+                        fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4,
+                        textTransform: 'uppercase',
+                        color: '#047857', background: '#ecfdf5',
+                        border: '1px solid #a7f3d0', borderRadius: 6,
+                        padding: '3px 7px',
+                      }}>
+                        {s.badge}
+                      </span>
+                    )}
+                    <div className="aff-stat-icon" style={s.emphasis ? { background: '#ecfdf5', color: '#059669' } : undefined}>
                       <StatIcon size={16} />
                     </div>
                     <span style={{
-                      fontSize: 11, fontWeight: 500,
-                      color: '#737373',
+                      fontSize: 11, fontWeight: s.emphasis ? 700 : 500,
+                      color: s.emphasis ? '#047857' : '#737373',
                       textTransform: 'uppercase', letterSpacing: 0.5,
                       display: 'block', marginBottom: 8
                     }}>
