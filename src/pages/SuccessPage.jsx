@@ -378,13 +378,16 @@ export default function SuccessPage() {
       s?.karaoke_video_status === 'pending'
     );
     if (!anyPending) return;
-    const id = setInterval(() => { loadSongs(); }, 5000);
+    const id = setInterval(() => { loadSongs({ background: true }); }, 5000);
     return () => clearInterval(id);
   }, [songs]);
 
-  const loadSongs = async () => {
+  const loadSongs = async ({ background = false } = {}) => {
     try {
-      setLoading(true);
+      // Background re-fetches (the 5s status poll) must NOT flip the full-screen
+      // loading state — doing so flashed the loader and re-rendered the page,
+      // which is half of why the player kept jumping back to song 1.
+      if (!background) setLoading(true);
       const songIds = songIdsParam.split(',').filter(id => id.trim());
 
       const { data, error: fetchError } = await supabase
@@ -395,14 +398,24 @@ export default function SuccessPage() {
       if (fetchError) throw new Error('Error al cargar la canción');
       if (!data || data.length === 0) throw new Error('No se encontró la canción');
 
-      setSongs(data);
-      setCurrentSong(data[0]);
-      hasVideoAddonRef.current = data[0]?.has_video_addon || false;
-      setSelectedTemplate(data[0]?.template || 'golden_hour');
+      // Keep tab order stable (match the URL) so a re-fetch can't reorder songs.
+      const ordered = songIds.map((id) => data.find((s) => s.id === id)).filter(Boolean);
+      const list = ordered.length === data.length ? ordered : data;
+      setSongs(list);
+      // Preserve the customer's currently-selected song across background
+      // re-fetches. The status poll re-runs loadSongs() every 5s; unconditionally
+      // resetting currentSong to the first song was snapping the player back to
+      // song 1 and discarding their choice of song 2 (4:24 jumping back to 4:19).
+      setCurrentSong((prev) => {
+        const keep = prev?.id ? list.find((s) => s.id === prev.id) : null;
+        return keep || list[0];
+      });
+      hasVideoAddonRef.current = list[0]?.has_video_addon || false;
+      setSelectedTemplate((prev) => prev || list[0]?.template || 'golden_hour');
     } catch (err) {
-      setError(err.message);
+      if (!background) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 
