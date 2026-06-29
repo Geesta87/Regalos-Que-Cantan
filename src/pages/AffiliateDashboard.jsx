@@ -983,6 +983,12 @@ export default function AffiliateDashboard() {
                     series: buildSparklineSeries(dailyStats, 'visits'), sparkColor: '#c9184a'
                   },
                   {
+                    label: 'Canciones', value: stats.songsCreated ?? 0,
+                    Icon: Icon.Music,
+                    sub: 'Crearon su canción', delay: '0.02s', cls: '',
+                    series: buildSparklineSeries(dailyStats, 'songsCreated'), sparkColor: '#c9184a'
+                  },
+                  {
                     label: 'Checkouts', value: stats.checkouts,
                     Icon: Icon.Cart,
                     sub: 'Iniciaron compra', delay: '0.04s', cls: '',

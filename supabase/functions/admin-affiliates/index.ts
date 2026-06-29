@@ -77,6 +77,7 @@ serve(async (req) => {
     // Build per-affiliate stats — same shape the dashboard already renders.
     const statsMap: Record<string, {
       visits: number;
+      songsCreated: number;
       checkouts: number;
       sales: number;
       revenue: number;
@@ -87,7 +88,7 @@ serve(async (req) => {
 
     for (const a of affiliates) {
       statsMap[a.code] = {
-        visits: 0, checkouts: 0, sales: 0, revenue: 0,
+        visits: 0, songsCreated: 0, checkouts: 0, sales: 0, revenue: 0,
         commission: 0, paidOut: 0, lastSale: null,
       };
     }
@@ -96,6 +97,7 @@ serve(async (req) => {
       const s = statsMap[e.affiliate_code as string];
       if (!s) continue;
       if (e.event_type === 'visit') s.visits++;
+      else if (e.event_type === 'song_created') s.songsCreated++;
       else if (e.event_type === 'checkout') s.checkouts++;
       else if (e.event_type === 'purchase') {
         s.sales++;

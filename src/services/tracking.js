@@ -199,6 +199,31 @@ export const captureAffiliateRef = async () => {
   }
 };
 
+/**
+ * Log that a song was successfully created under the stored affiliate code.
+ * Fire-and-forget: never blocks or throws into the generation flow. The server
+ * dedupes per (affiliate_code, song_id), so calling this once per created song
+ * is safe even if the page re-renders. No-op when there's no affiliate stored
+ * (the vast majority of organic creators).
+ */
+export const logAffiliateSongCreated = async (songId) => {
+  try {
+    const affiliateCode = getStoredAffiliateCode();
+    if (!affiliateCode || !songId) return;
+    await fetch(`${SUPABASE_URL}/functions/v1/log-affiliate-visit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({ affiliateCode, eventType: 'song_created', songId })
+    });
+  } catch (err) {
+    // Tracking must never break song generation.
+    if (import.meta.env.DEV) console.warn('Affiliate song_created tracking failed:', err);
+  }
+};
+
 // Read persisted UTM params: localStorage (30-day TTL) → legacy sessionStorage →
 // current URL. Exported so the order/checkout call attaches the same value.
 export const getStoredUtmParams = () => {

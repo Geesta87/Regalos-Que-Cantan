@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
 import { generateSong, checkSongStatus } from '../services/api';
 import genres from '../config/genres';
-import { trackStep } from '../services/tracking';
+import { trackStep, logAffiliateSongCreated } from '../services/tracking';
 
 // ✅ FIX: Added timeout constant (10 minutes)
 const GENERATION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -225,6 +225,11 @@ export default function GeneratingPage() {
           console.log('✅ Song 1 started:', result1.song.id);
         }
         setSong1Id(result1.song.id);
+
+        // Affiliate funnel: count one "song created" for the referring partner
+        // (no-op if there's no stored affiliate code). Keyed on Song 1 only so a
+        // single order counts once, not once per A/B take. Fire-and-forget.
+        logAffiliateSongCreated(result1.song.id);
 
         // If Kie.ai is down, song was queued for retry — show friendly message
         if (result1.queued) {

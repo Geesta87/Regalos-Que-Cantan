@@ -95,6 +95,7 @@ serve(async (req) => {
     if (eventsError) throw eventsError;
 
     const visits = events?.filter(e => e.event_type === 'visit').length || 0;
+    const songsCreated = events?.filter(e => e.event_type === 'song_created').length || 0;
     const checkouts = events?.filter(e => e.event_type === 'checkout').length || 0;
     const purchases = events?.filter(e => e.event_type === 'purchase') || [];
     const refunds = events?.filter(e => e.event_type === 'refund') || [];
@@ -146,8 +147,9 @@ serve(async (req) => {
     const dailyStats: Record<string, { visits: number; checkouts: number; purchases: number; revenue: number; commission: number }> = {};
     for (const event of (events || [])) {
       const day = event.created_at.split('T')[0];
-      if (!dailyStats[day]) dailyStats[day] = { visits: 0, checkouts: 0, purchases: 0, revenue: 0, commission: 0 };
+      if (!dailyStats[day]) dailyStats[day] = { visits: 0, songsCreated: 0, checkouts: 0, purchases: 0, revenue: 0, commission: 0 };
       if (event.event_type === 'visit') dailyStats[day].visits++;
+      if (event.event_type === 'song_created') dailyStats[day].songsCreated++;
       if (event.event_type === 'checkout') dailyStats[day].checkouts++;
       if (event.event_type === 'purchase') {
         dailyStats[day].purchases++;
@@ -242,6 +244,7 @@ serve(async (req) => {
         success: true,
         stats: {
           visits,
+          songsCreated,
           checkouts,
           totalPurchases,
           totalRefunds,
