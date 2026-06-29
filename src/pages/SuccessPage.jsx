@@ -1773,8 +1773,14 @@ export default function SuccessPage() {
       {/* --- CONFETTI --- */}
       {showConfetti && <Confetti intensity={250} />}
 
-      {/* --- HIDDEN AUDIO --- */}
+      {/* --- HIDDEN AUDIO ---
+          key={currentSong.id} forces React to remount this element when the
+          selected song changes. Without it, switching songs only swaps the
+          `src` attribute on the same DOM node, which browsers do NOT reliably
+          reload — so the player kept replaying the first song's buffered audio
+          for every tab, making a 2-song bundle sound like the same song twice. */}
       <audio
+        key={currentSong.id}
         ref={audioRef}
         src={currentSong.audio_url}
         preload="auto"
