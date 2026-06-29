@@ -1809,6 +1809,52 @@ export default function AdminDashboard() {
     }
   };
 
+  // Remove an affiliate. Defaults to a HARD delete (used to clear out test
+  // accounts). The backend refuses with requiresForce when the partner has
+  // recorded payouts; we then re-confirm and retry with force so a real
+  // partner's payment history isn't erased without a second look.
+  const deleteAffiliate = async (affiliate) => {
+    const s = affiliate._stats || {};
+    const firstWarning =
+      `Delete affiliate "${affiliate.name}" (${affiliate.code})?\n\n` +
+      `This permanently removes their account, ${s.visits || 0} click(s)/${s.sales || 0} sale(s) of history` +
+      `${affiliate.coupon_code ? `, and the coupon ${affiliate.coupon_code}` : ''}.\n\n` +
+      `This cannot be undone.`;
+    if (!window.confirm(firstWarning)) return;
+
+    const doDelete = async (force) => {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-affiliate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ affiliateCode: affiliate.code, mode: 'delete', force }),
+      });
+      return { res, data: await res.json() };
+    };
+
+    try {
+      let { res, data } = await doDelete(false);
+      // Money-history guard tripped — get an explicit second confirmation.
+      if (res.status === 409 && data.requiresForce) {
+        const forceWarning =
+          `"${affiliate.name}" has ${data.payoutCount} recorded payout(s).\n\n` +
+          `Deleting will erase that payment history too. Are you absolutely sure?`;
+        if (!window.confirm(forceWarning)) return;
+        ({ res, data } = await doDelete(true));
+      }
+      if (data.success) {
+        setAffiliateMsg({ type: 'success', text: `Affiliate ${affiliate.name} deleted.` });
+        fetchAffiliates();
+      } else {
+        setAffiliateMsg({ type: 'error', text: data.error || 'Failed to delete affiliate' });
+      }
+    } catch (err) {
+      setAffiliateMsg({ type: 'error', text: err.message || 'Network error' });
+    }
+  };
+
   const fetchEmailLogs = async () => {
     try {
       const { data, error } = await supabase
@@ -5265,13 +5311,22 @@ export default function AdminDashboard() {
                             </td>
                             {userRole === 'admin' && (
                               <td className="px-4 py-3 text-right">
-                                <button
-                                  onClick={() => openPayoutModal(a)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${owed > 0 ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
-                                  title={owed > 0 ? `Record payout (owed: $${owed.toFixed(2)})` : 'Record payout'}
-                                >
-                                  💸 Record
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => openPayoutModal(a)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${owed > 0 ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                                    title={owed > 0 ? `Record payout (owed: $${owed.toFixed(2)})` : 'Record payout'}
+                                  >
+                                    💸 Record
+                                  </button>
+                                  <button
+                                    onClick={() => deleteAffiliate(a)}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition bg-white/5 text-gray-500 hover:bg-red-500/20 hover:text-red-300"
+                                    title="Delete affiliate"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
                               </td>
                             )}
                           </tr>

@@ -558,6 +558,13 @@ verify_jwt = true
 # verifies the role.
 verify_jwt = true
 
+[functions.delete-affiliate]
+# Admin-only writer that deactivates or hard-deletes an affiliate (plus their
+# events, payouts, and coupon). Handler requires admin_users.role = 'admin'.
+# Same pattern as admin-record-payout — gateway verifies the user JWT, handler
+# verifies the role. Hard delete refuses when payouts exist unless force:true.
+verify_jwt = true
+
 [functions.mureka-credits]
 # Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
 # Reads + updates the manual Mureka credit anchor and computes the estimated
