@@ -268,6 +268,12 @@ export default function ComparisonPage() {
     return [];
   });
 
+  // A 'video' extra preselected from the store (/tienda) now maps to the
+  // standalone hero card (videoAddonCount) instead of a grid tile.
+  useEffect(() => {
+    if (preselectExtras.includes('video')) setVideoAddonCount(1);
+  }, [preselectExtras]);
+
   // Animado (animated story-video upsell). Gated by animado-availability (master
   // switch + in-progress cap); only renders when available. 0/1/2 like the video addon.
   const [animadoAvailable, setAnimadoAvailable] = useState(false);
@@ -805,7 +811,9 @@ export default function ComparisonPage() {
       // No edge-function changes; the grid is just the UI that picks them.
       const gridKeys = new Set(checkoutExtras.map((e) => e.key));
       const target = selectedSongId || songs[0]?.id || null; // single addon applies here
-      const gVideoCount = gridKeys.has('video') ? 1 : 0;
+      // Video now comes from the standalone hero card (videoAddonCount), not the
+      // grid. Keep the grid fallback harmless in case 'video' is ever re-added.
+      const gVideoCount = videoAddonCount > 0 ? videoAddonCount : (gridKeys.has('video') ? 1 : 0);
       const gAnimadoCount = gridKeys.has('animado') ? 1 : 0;
       const gAnimadoIds = gAnimadoCount ? [target].filter(Boolean) : [];
       const gKaraoke = gridKeys.has('instrumental');
@@ -1413,8 +1421,10 @@ export default function ComparisonPage() {
           <p style={{margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)'}}>Opcional — elige lo que quieras, o solo la canción.</p>
         </div>
         <div ref={videoAddonRef} />
-        {/* Old standalone video-with-photos card — folded into the grid below. */}
-        {false && hasSelection && (
+        {/* Standalone hero video-with-photos card ($9.99) — shown ABOVE the
+            add-on grid. Drives its own videoAddonCount state, which feeds the
+            price, order summary, button label, and the createCheckout call. */}
+        {hasSelection && (
           <div
             onClick={() => setVideoAddonCount(c => c > 0 ? 0 : 1)}
             style={{
@@ -1743,7 +1753,6 @@ export default function ComparisonPage() {
         {hasSelection && (
           <div style={{ marginBottom: '16px' }}>
             <OneTapUpsell mode="select" bare initialSelected={preselectExtras} onSelectChange={setCheckoutExtras} items={[
-              { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
               { key: 'animado', price: 29, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
               { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },
               { key: 'lyric_video', price: 9.99, label: 'Video con letra', title: 'Que todos se la canten', sub: 'La letra en pantalla, al ritmo', media: { type: 'lyrics' } },
