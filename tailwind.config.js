@@ -4,6 +4,10 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // The affiliate summary cards build color classes dynamically (bg-${color}-500/10
+  // etc.), so any color not present as a literal elsewhere gets purged. 'sky' (used
+  // by the "Total songs" / Songs column) needs these pinned.
+  safelist: ["bg-sky-500/10", "border-sky-500/20", "text-sky-400"],
   darkMode: "class",
   theme: {
     extend: {

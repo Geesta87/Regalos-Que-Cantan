@@ -5182,23 +5182,25 @@ export default function AdminDashboard() {
               const totals = affiliates.reduce((acc, a) => {
                 const s = a._stats || {};
                 acc.visits += s.visits || 0;
+                acc.songsCreated += s.songsCreated || 0;
                 acc.sales += s.sales || 0;
                 acc.commission += s.commission || 0;
                 acc.paidOut += s.paidOut || 0;
                 return acc;
-              }, { visits: 0, sales: 0, commission: 0, paidOut: 0 });
+              }, { visits: 0, songsCreated: 0, sales: 0, commission: 0, paidOut: 0 });
               const owed = Math.max(0, totals.commission - totals.paidOut);
               const isAdmin = userRole === 'admin';
               const calculating = <span className="text-green-400 animate-pulse">Calculating...</span>;
               const summaryCards = [
                 { label: 'Affiliates', value: affiliates.length, color: 'blue' },
                 { label: 'Total clicks', value: totals.visits.toLocaleString(), color: 'gray' },
+                { label: 'Total songs', value: totals.songsCreated.toLocaleString(), color: 'sky' },
                 { label: 'Total sales', value: totals.sales, color: 'green' },
                 { label: 'Total commission', value: isAdmin ? `$${totals.commission.toFixed(2)}` : calculating, color: 'emerald' },
                 { label: 'Owed', value: isAdmin ? `$${owed.toFixed(2)}` : calculating, color: isAdmin && owed > 0 ? 'amber' : 'gray' },
               ];
               return (
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                   {summaryCards.map((s, i) => (
                     <div key={i} className={`bg-${s.color}-500/10 rounded-xl p-4 border border-${s.color}-500/20 text-center`}>
                       <p className={`text-2xl font-bold text-${s.color}-400`}>{s.value}</p>
@@ -5227,6 +5229,7 @@ export default function AdminDashboard() {
                         <th className="text-left px-4 py-3">Affiliate</th>
                         <th className="text-left px-4 py-3">Code / Coupon</th>
                         <th className="text-right px-4 py-3">Clicks</th>
+                        <th className="text-right px-4 py-3">Songs</th>
                         <th className="text-right px-4 py-3">Sales</th>
                         <th className="text-right px-4 py-3">Conv.</th>
                         <th className="text-right px-4 py-3">Commission</th>
@@ -5257,6 +5260,9 @@ export default function AdminDashboard() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-right text-gray-300 font-mono">{(s.visits || 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-mono" title="Songs created from this affiliate's link/code">
+                              <span className={s.songsCreated > 0 ? 'text-sky-400 font-semibold' : 'text-gray-600'}>{(s.songsCreated || 0).toLocaleString()}</span>
+                            </td>
                             <td className="px-4 py-3 text-right font-mono">
                               <span className={s.sales > 0 ? 'text-green-400 font-semibold' : 'text-gray-600'}>{s.sales || 0}</span>
                             </td>
