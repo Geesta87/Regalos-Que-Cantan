@@ -36,6 +36,7 @@ export interface SendResult {
   sid?: string;
   status?: string;
   error?: string;
+  code?: number; // Twilio error code, when present
 }
 
 export function isWhatsAppConfigured(): boolean {
@@ -84,6 +85,53 @@ export async function sendWhatsApp(to: string, body: string): Promise<SendResult
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return { ok: false, error: data?.message || `Twilio HTTP ${res.status}`, status: data?.status };
+    }
+    return { ok: true, sid: data.sid, status: data.status };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Send an APPROVED WhatsApp template (required for business-initiated messages —
+// i.e. anything the customer didn't just message us about). `variables` maps the
+// template's {{1}}, {{2}}… to values, e.g. { "1": "María", "2": "corrido" }.
+// Returns Twilio's error `code` on failure so callers can distinguish a
+// not-a-WhatsApp-user rejection from a transient rate-limit.
+export async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string>,
+): Promise<SendResult> {
+  if (!isWhatsAppConfigured()) {
+    return { ok: false, error: 'Twilio WhatsApp not configured (need TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, CS_WHATSAPP_FROM/TWILIO_WHATSAPP_FROM)' };
+  }
+  try {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+    const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+    const from = TWILIO_WHATSAPP_FROM!.startsWith('whatsapp:')
+      ? TWILIO_WHATSAPP_FROM!
+      : `whatsapp:${TWILIO_WHATSAPP_FROM!}`;
+    const form = new URLSearchParams({
+      From: from,
+      To: toWhatsAppAddress(to),
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(variables),
+    });
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data?.message || `Twilio HTTP ${res.status}`,
+        status: data?.status,
+        code: typeof data?.code === 'number' ? data.code : undefined,
+      };
     }
     return { ok: true, sid: data.sid, status: data.status };
   } catch (e) {

@@ -217,6 +217,16 @@ verify_jwt = false
 # Fully isolated from stripe-webhook/checkout; only reads/updates songs + sends.
 verify_jwt = false
 
+[functions.send-hotlead-whatsapp]
+# Runs hourly via pg_cron — automated hot-lead WhatsApp outreach. Sends the
+# approved `hot_lead_es` template (HOTLEAD_TEMPLATE_SID) from CS_WHATSAPP_FROM to
+# leads who made a song but didn't pay, then marks them contacted. Excludes
+# anyone who has since paid (by email/phone), opted out, or already contacted;
+# one attempt per lead (no reattempts). Master switch: cs_agent_settings
+# .hotlead_autosend (defaults OFF). No JWT context. Never touches the payment
+# funnel. Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.send-scheduled-gift-sms]
 # Runs every minute via pg_cron — delivers the $5 "scheduled surprise gift text"
 # add-on at the buyer-chosen time. Hands in-window gifts to Twilio native
