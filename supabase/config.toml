@@ -170,6 +170,13 @@ verify_jwt = false
 # TWILIO_VALIDATE_SIGNATURE — same pattern as twilio-sms-webhook.
 verify_jwt = false
 
+[functions.cs-copilot]
+# Admin-only "Ask AI" copilot inside a conversation. Called from the dashboard
+# with a logged-in Supabase Auth user's JWT → verify_jwt = true; handler
+# requires a row in admin_users. Full read access to the order (payment, links,
+# details, lyrics) because only the owner sees it. Reads ANTHROPIC_API_KEY.
+verify_jwt = true
+
 [functions.cs-training-admin]
 # Backs the admin "Bot Training" panel. Called from the dashboard with a
 # logged-in Supabase Auth user's JWT → verify_jwt = true; handler requires a row
