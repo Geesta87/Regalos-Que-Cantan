@@ -82,15 +82,18 @@ function formatPhone(p) {
 }
 
 // ── DEMO data — only used until the sms-admin edge function exists ──────────
+// Includes AI drafts (status:'draft') and a WhatsApp thread so the full
+// draft-and-approve + channel-sub-tab experience is clickable locally.
 const DEMO_CONVERSATIONS = [
   {
     id: 'demo-1',
+    channel: 'sms',
     customer_name: 'María González',
     phone: '+12135550142',
     order_id: 'ord_demo_8821',
     unread: 2,
     opted_out: false,
-    last_message_at: '2026-06-09T17:42:00Z',
+    last_message_at: '2026-06-09T17:43:00Z',
     messages: [
       { id: 'm1', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T16:10:00Z',
         body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821' },
@@ -98,6 +101,10 @@ const DEMO_CONVERSATIONS = [
         body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?' },
       { id: 'm3', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:42:00Z',
         body: 'Es para nuestro aniversario el sábado 🙏' },
+      // AI draft that escalates (a change to a finished song → needs a human).
+      { id: 'm4', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: true,
+        created_at: '2026-06-09T17:43:00Z',
+        body: '¡Gracias María! ❤️ Con mucho gusto revisamos cómo hacerla más romántica para su aniversario. Un compañero del equipo te ayudará con el ajuste enseguida. 🙏' },
     ],
   },
   {
@@ -105,21 +112,27 @@ const DEMO_CONVERSATIONS = [
     // within the approved transactional campaign (order confirmation, delivery
     // status, customer care). NO promotional / unpaid-lead messaging.
     id: 'demo-2',
+    channel: 'sms',
     customer_name: 'Ana Martínez',
     phone: '+13235550199',
     order_id: 'ord_demo_8830',
     unread: 1,
     opted_out: false,
-    last_message_at: '2026-06-09T15:05:00Z',
+    last_message_at: '2026-06-09T15:06:00Z',
     messages: [
       { id: 'm1', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T14:50:00Z',
         body: 'Confirmamos tu pedido en Regalos Que Cantan ✅ Tu canción se está creando y te enviaremos el enlace por aquí en unos minutos.' },
       { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T15:05:00Z',
         body: '¿Cuánto tiempo tarda en estar lista?' },
+      // Straightforward AI draft (FAQ) — ready to approve as-is.
+      { id: 'm3', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
+        created_at: '2026-06-09T15:06:00Z',
+        body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊' },
     ],
   },
   {
     id: 'demo-3',
+    channel: 'sms',
     customer_name: 'Jorge Ramírez',
     phone: '+19155550173',
     order_id: 'ord_demo_8807',
@@ -136,7 +149,26 @@ const DEMO_CONVERSATIONS = [
     ],
   },
   {
+    id: 'demo-5',
+    channel: 'whatsapp',
+    customer_name: 'Luis Herrera',
+    phone: '+15125550164',
+    order_id: 'ord_demo_8845',
+    unread: 1,
+    opted_out: false,
+    last_message_at: '2026-06-09T18:12:00Z',
+    messages: [
+      { id: 'm1', direction: 'inbound', status: 'received', created_at: '2026-06-09T18:10:00Z',
+        body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕' },
+      // AI draft — would look up the order by this number and share the link.
+      { id: 'm2', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
+        created_at: '2026-06-09T18:12:00Z',
+        body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️' },
+    ],
+  },
+  {
     id: 'demo-4',
+    channel: 'sms',
     customer_name: 'Customer (opted out)',
     phone: '+17025550188',
     order_id: null,
@@ -160,6 +192,12 @@ export default function SmsInboxTab({ accessToken }) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
+  // Channel sub-tab: 'sms' | 'whatsapp'. Conversations with no channel are SMS.
+  const [channelTab, setChannelTab] = useState('sms');
+  // AI-draft approval state.
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [draftEdit, setDraftEdit] = useState('');
+  const [draftBusy, setDraftBusy] = useState(false);
   // Push-notification button state:
   // 'hidden' (unsupported desktop browser), 'ios-install' (iPhone Safari tab —
   // must add to home screen first), 'off', 'busy', 'on', 'denied'.
@@ -242,9 +280,13 @@ export default function SmsInboxTab({ accessToken }) {
     };
   }, [loadConversations]);
 
+  const convChannel = (c) => c.channel || 'sms';
+  const hasPendingDraft = (c) => (c.messages || []).some((m) => m.status === 'draft');
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const sorted = [...conversations].sort(
+    const inChannel = conversations.filter((c) => convChannel(c) === channelTab);
+    const sorted = [...inChannel].sort(
       (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
     );
     if (!q) return sorted;
@@ -252,7 +294,19 @@ export default function SmsInboxTab({ accessToken }) {
       (c.customer_name || '').toLowerCase().includes(q) ||
       (c.phone || '').includes(q)
     );
-  }, [conversations, search]);
+  }, [conversations, search, channelTab]);
+
+  // Per-channel badges: unread inbound + AI drafts waiting for approval.
+  const channelStats = useMemo(() => {
+    const base = { sms: { unread: 0, drafts: 0 }, whatsapp: { unread: 0, drafts: 0 } };
+    for (const c of conversations) {
+      const ch = convChannel(c);
+      if (!base[ch]) continue;
+      base[ch].unread += c.unread || 0;
+      if (hasPendingDraft(c)) base[ch].drafts += 1;
+    }
+    return base;
+  }, [conversations]);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) || null,
@@ -364,6 +418,94 @@ export default function SmsInboxTab({ accessToken }) {
     }
   };
 
+  const postToSmsAdmin = async (payload) => {
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!res.ok) throw new Error(`sms-admin ${res.status}`);
+    return res.json();
+  };
+
+  // Approve an AI draft (optionally edited) → it gets sent to the customer.
+  const handleApproveDraft = async (msg) => {
+    if (!selected || draftBusy) return;
+    const edited = editingDraftId === msg.id ? draftEdit.trim() : '';
+    setDraftBusy(true);
+    try {
+      if (isDemo) {
+        await new Promise((r) => setTimeout(r, 350));
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selected.id
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === msg.id
+                      ? { ...m, status: 'sent', needs_human: false, body: edited || m.body }
+                      : m
+                  ),
+                }
+              : c
+          )
+        );
+      } else {
+        await postToSmsAdmin({
+          action: 'approve-draft',
+          conversation_id: selected.id,
+          message_id: msg.id,
+          body: edited,
+        });
+        await loadConversations();
+      }
+    } catch (_e) {
+      // Surface a soft failure without clobbering the thread.
+    } finally {
+      setDraftBusy(false);
+      setEditingDraftId(null);
+      setDraftEdit('');
+    }
+  };
+
+  const handleDiscardDraft = async (msg) => {
+    if (!selected || draftBusy) return;
+    setDraftBusy(true);
+    try {
+      if (isDemo) {
+        await new Promise((r) => setTimeout(r, 200));
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selected.id
+              ? { ...c, messages: c.messages.map((m) => (m.id === msg.id ? { ...m, status: 'discarded' } : m)) }
+              : c
+          )
+        );
+      } else {
+        await postToSmsAdmin({ action: 'discard-draft', message_id: msg.id });
+        await loadConversations();
+      }
+    } catch (_e) {
+      // ignore
+    } finally {
+      setDraftBusy(false);
+      if (editingDraftId === msg.id) { setEditingDraftId(null); setDraftEdit(''); }
+    }
+  };
+
+  const switchChannel = (ch) => {
+    setChannelTab(ch);
+    setSelectedId(null);
+    setEditingDraftId(null);
+  };
+
   return (
     <div>
       {/* Demo / status banner */}
@@ -379,7 +521,7 @@ export default function SmsInboxTab({ accessToken }) {
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            💬 SMS Messages
+            💬 Messages
             {totalUnread > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center">
                 {totalUnread}
@@ -387,7 +529,7 @@ export default function SmsInboxTab({ accessToken }) {
             )}
           </h2>
           <p className="text-sm text-gray-500 hidden sm:block">
-            Text conversations with customers · reply just like in WhatsApp
+            Customer conversations over SMS &amp; WhatsApp · reply or approve AI drafts
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -416,6 +558,45 @@ export default function SmsInboxTab({ accessToken }) {
             🔄 <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
+      </div>
+
+      {/* Channel sub-tabs — one inbox, SMS and WhatsApp side by side. Each shows
+          its own unread count + how many AI drafts are waiting for approval. */}
+      <div className="flex items-center gap-2 mb-4">
+        {[
+          { key: 'sms', label: '💬 SMS' },
+          { key: 'whatsapp', label: '🟢 WhatsApp' },
+        ].map((t) => {
+          const stats = channelStats[t.key] || { unread: 0, drafts: 0 };
+          const activeTab = channelTab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => switchChannel(t.key)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                activeTab
+                  ? 'bg-amber-400 text-black'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              {t.label}
+              {stats.drafts > 0 && (
+                <span className={`text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center ${
+                  activeTab ? 'bg-black/20 text-black' : 'bg-purple-500/30 text-purple-200'
+                }`}>
+                  ✍️ {stats.drafts}
+                </span>
+              )}
+              {stats.unread > 0 && (
+                <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
+                  activeTab ? 'bg-black/20 text-black' : 'bg-green-500 text-white'
+                }`}>
+                  {stats.unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* iPhone: web push only works once the site is installed on the home
@@ -492,11 +673,18 @@ export default function SmsInboxTab({ accessToken }) {
                         <span className={`text-xs truncate ${c.unread > 0 ? 'text-gray-200 font-medium' : 'text-gray-500'}`}>
                           {last?.direction === 'outbound' ? '↩ ' : ''}{last?.body}
                         </span>
-                        {c.unread > 0 && (
-                          <span className="bg-green-500 text-white text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center flex-shrink-0">
-                            {c.unread}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {hasPendingDraft(c) && (
+                            <span className="bg-purple-500/30 text-purple-200 text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center" title="AI draft waiting for approval">
+                              ✍️
+                            </span>
+                          )}
+                          {c.unread > 0 && (
+                            <span className="bg-green-500 text-white text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center">
+                              {c.unread}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {c.opted_out && (
                         <span className="inline-block mt-1 text-[10px] text-red-300 bg-red-500/15 border border-red-500/25 rounded px-1.5 py-0.5">
@@ -550,6 +738,81 @@ export default function SmsInboxTab({ accessToken }) {
               {/* Messages */}
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
                 {selected.messages.map((m) => {
+                  // Discarded drafts are hidden from the thread.
+                  if (m.status === 'discarded') return null;
+
+                  // AI draft awaiting the owner's approval — full-width card with
+                  // Approve · Edit · Discard. Nothing here has been sent yet.
+                  if (m.status === 'draft') {
+                    const editing = editingDraftId === m.id;
+                    return (
+                      <div key={m.id} className="flex justify-end">
+                        <div className="w-full max-w-[92%] rounded-2xl border border-purple-400/40 bg-purple-500/10 px-3.5 py-3">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-[11px] font-semibold text-purple-200 flex items-center gap-1">
+                              ✍️ AI draft — review before sending
+                            </span>
+                            {m.needs_human && (
+                              <span className="text-[10px] font-bold text-amber-200 bg-amber-400/15 border border-amber-400/30 rounded px-1.5 py-0.5">
+                                ⚠ needs a human
+                              </span>
+                            )}
+                          </div>
+
+                          {editing ? (
+                            <textarea
+                              value={draftEdit}
+                              onChange={(e) => setDraftEdit(e.target.value)}
+                              rows={3}
+                              className="w-full resize-none px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white text-sm focus:outline-none focus:border-amber-400/50"
+                            />
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap break-words text-white">{m.body}</p>
+                          )}
+
+                          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                            <button
+                              onClick={() => handleApproveDraft(m)}
+                              disabled={draftBusy || selected.opted_out}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {draftBusy ? '…' : editing ? '✓ Send edited' : '✓ Approve & send'}
+                            </button>
+                            {editing ? (
+                              <button
+                                onClick={() => { setEditingDraftId(null); setDraftEdit(''); }}
+                                disabled={draftBusy}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                              >
+                                Cancel edit
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); }}
+                                disabled={draftBusy}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDiscardDraft(m)}
+                              disabled={draftBusy}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/15 text-red-300 hover:bg-red-500/25 transition"
+                            >
+                              Discard
+                            </button>
+                          </div>
+                          {selected.opted_out && (
+                            <p className="text-[10px] text-red-300 mt-1.5">
+                              Customer opted out — this draft can't be sent.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const out = m.direction === 'outbound';
                   return (
                     <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
@@ -562,6 +825,7 @@ export default function SmsInboxTab({ accessToken }) {
                       >
                         <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                         <div className={`text-[10px] mt-1 flex items-center gap-1 ${out ? 'text-black/50 justify-end' : 'text-gray-400'}`}>
+                          {m.ai_generated && out && <span title="Sent from an approved AI draft">🤖</span>}
                           <span>{formatTime(m.created_at)}</span>
                           {out && (
                             <span>

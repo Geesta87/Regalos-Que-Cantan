@@ -163,6 +163,22 @@ verify_jwt = false
 # keyed by TWILIO_AUTH_TOKEN) — gated by TWILIO_VALIDATE_SIGNATURE.
 verify_jwt = false
 
+[functions.whatsapp-webhook]
+# Inbound WhatsApp receiver (Twilio). Twilio POSTs here when a customer messages
+# our WhatsApp Business number; it cannot attach a Supabase JWT, so verification
+# must be OFF. Authenticated via Twilio's X-Twilio-Signature, gated by
+# TWILIO_VALIDATE_SIGNATURE — same pattern as twilio-sms-webhook.
+verify_jwt = false
+
+[functions.cs-agent]
+# Customer-service AI brain. Called server-to-server by the inbound webhooks
+# (twilio-sms-webhook / whatsapp-webhook) with the SERVICE-ROLE key as Bearer —
+# no user JWT — so verify_jwt = false. The handler itself rejects any caller
+# whose Bearer is not the service-role key. It DRAFTS replies only (never sends);
+# its only DB access is SELECT on the read-only cs_customer_lookup view + insert
+# of one draft into sms_messages. Reads ANTHROPIC_API_KEY.
+verify_jwt = false
+
 [functions.unsubscribe]
 # Email unsubscribe handler. Hit by (a) Gmail/Yahoo/Apple one-click POST
 # (RFC 8058), (b) the user clicking the List-Unsubscribe link (GET), and

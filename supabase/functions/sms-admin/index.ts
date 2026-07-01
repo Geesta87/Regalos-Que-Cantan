@@ -28,7 +28,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendSms } from '../_shared/send-sms.ts';
+import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { sendPush } from '../_shared/web-push.ts';
+
+// Deliver an outbound message on the conversation's channel.
+async function deliver(channel: string, to: string, body: string) {
+  return channel === 'whatsapp' ? await sendWhatsApp(to, body) : await sendSms(to, body);
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -88,6 +94,7 @@ serve(async (req) => {
     let body: {
       action?: string;
       conversation_id?: string;
+      message_id?: string;
       body?: string;
       subscription?: { endpoint?: string };
       endpoint?: string;
@@ -101,7 +108,7 @@ serve(async (req) => {
     if (action === 'list') {
       const { data: convos, error: cErr } = await admin
         .from('sms_conversations')
-        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at')
+        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at, channel')
         .order('last_message_at', { ascending: false })
         .limit(CONVERSATION_LIMIT);
       if (cErr) return json({ success: false, error: cErr.message }, 500);
@@ -111,7 +118,7 @@ serve(async (req) => {
       if (ids.length > 0) {
         const { data: msgs, error: mErr } = await admin
           .from('sms_messages')
-          .select('id, conversation_id, direction, body, status, created_at')
+          .select('id, conversation_id, direction, body, status, created_at, channel, ai_generated, needs_human')
           .in('conversation_id', ids)
           .order('created_at', { ascending: true });
         if (mErr) return json({ success: false, error: mErr.message }, 500);
@@ -138,7 +145,7 @@ serve(async (req) => {
 
       const { data: convo, error: convoErr } = await admin
         .from('sms_conversations')
-        .select('id, phone, opted_out')
+        .select('id, phone, opted_out, channel')
         .eq('id', convoId)
         .single();
       if (convoErr || !convo) {
@@ -149,7 +156,7 @@ serve(async (req) => {
         return json({ success: false, error: 'Customer has opted out (STOP) — cannot send' }, 409);
       }
 
-      const result = await sendSms(convo.phone, text);
+      const result = await deliver(convo.channel || 'sms', convo.phone, text);
 
       // Record the outbound message regardless of send outcome, so the thread
       // reflects what was attempted. status mirrors the Twilio result.
@@ -162,8 +169,9 @@ serve(async (req) => {
           body: text,
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
+          channel: convo.channel || 'sms',
         })
-        .select('id, direction, body, status, created_at')
+        .select('id, direction, body, status, created_at, channel, ai_generated, needs_human')
         .single();
       if (insErr) return json({ success: false, error: insErr.message }, 500);
 
@@ -176,6 +184,76 @@ serve(async (req) => {
         return json({ success: false, error: result.error || 'Send failed', message: inserted }, 502);
       }
       return json({ success: true, message: inserted });
+    }
+
+    // ─── action: approve-draft ───────────────────────────────────────────
+    // The owner approves an AI-drafted reply (optionally after editing it). We
+    // send it on the conversation's channel and flip THAT draft row to a normal
+    // outbound status — we do not insert a second row.
+    if (action === 'approve-draft') {
+      const convoId = body.conversation_id;
+      const messageId = body.message_id;
+      const editedText = (body.body || '').trim(); // optional edit; '' = keep draft text
+      if (!convoId || !messageId) {
+        return json({ success: false, error: 'conversation_id and message_id required' }, 400);
+      }
+
+      const { data: draft, error: dErr } = await admin
+        .from('sms_messages')
+        .select('id, conversation_id, body, status, direction')
+        .eq('id', messageId)
+        .single();
+      if (dErr || !draft) return json({ success: false, error: 'Draft not found' }, 404);
+      if (draft.conversation_id !== convoId || draft.status !== 'draft' || draft.direction !== 'outbound') {
+        return json({ success: false, error: 'Not an approvable draft' }, 409);
+      }
+
+      const { data: convo, error: cErr } = await admin
+        .from('sms_conversations')
+        .select('id, phone, opted_out, channel')
+        .eq('id', convoId)
+        .single();
+      if (cErr || !convo) return json({ success: false, error: 'Conversation not found' }, 404);
+      if (convo.opted_out) {
+        return json({ success: false, error: 'Customer has opted out (STOP) — cannot send' }, 409);
+      }
+
+      const text = editedText || draft.body;
+      const result = await deliver(convo.channel || 'sms', convo.phone, text);
+      const nowIso = new Date().toISOString();
+
+      const { data: updated, error: uErr } = await admin
+        .from('sms_messages')
+        .update({
+          body: text,
+          status: result.ok ? (result.status || 'sent') : 'failed',
+          twilio_sid: result.sid || null,
+          needs_human: false,
+        })
+        .eq('id', messageId)
+        .select('id, direction, body, status, created_at, channel, ai_generated, needs_human')
+        .single();
+      if (uErr) return json({ success: false, error: uErr.message }, 500);
+
+      await admin.from('sms_conversations').update({ last_message_at: nowIso }).eq('id', convoId);
+
+      if (!result.ok) {
+        return json({ success: false, error: result.error || 'Send failed', message: updated }, 502);
+      }
+      return json({ success: true, message: updated });
+    }
+
+    // ─── action: discard-draft ───────────────────────────────────────────
+    if (action === 'discard-draft') {
+      const messageId = body.message_id;
+      if (!messageId) return json({ success: false, error: 'message_id required' }, 400);
+      const { error: updErr } = await admin
+        .from('sms_messages')
+        .update({ status: 'discarded', needs_human: false })
+        .eq('id', messageId)
+        .eq('status', 'draft');
+      if (updErr) return json({ success: false, error: updErr.message }, 500);
+      return json({ success: true });
     }
 
     // ─── action: mark-read ───────────────────────────────────────────────
