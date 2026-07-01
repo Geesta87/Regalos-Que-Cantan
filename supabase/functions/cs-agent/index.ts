@@ -41,6 +41,8 @@ const SITE = 'https://regalosquecantan.com';
 
 // How many recent messages of context to feed the model.
 const HISTORY_LIMIT = 12;
+// How many recent owner-approved replies to feed the model as voice examples.
+const EXAMPLE_LIMIT = parseInt(Deno.env.get('CS_EXAMPLE_LIMIT') || '20', 10);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -186,6 +188,31 @@ serve(async (req) => {
     while (messages.length && messages[0].role !== 'user') messages.shift();
     if (!messages.length) return json({ ok: true, skipped: 'no user message' });
 
+    // LEARNING: the most recent owner-approved / owner-sent replies teach the
+    // bot the house voice. Edited approvals are flagged as corrections. These
+    // are for TONE/STYLE only — real data comes from the tool, never here.
+    let examplesBlock = '';
+    try {
+      const { data: examples } = await admin
+        .from('cs_examples')
+        .select('customer_msg, reply, was_edited')
+        .order('created_at', { ascending: false })
+        .limit(EXAMPLE_LIMIT);
+      if (examples && examples.length) {
+        const lines = examples
+          .map((e) => {
+            const q = (e.customer_msg || '').trim();
+            const tag = e.was_edited ? ' (corregido por el equipo)' : '';
+            return `${q ? `Cliente: ${q}\n` : ''}Equipo${tag}: ${e.reply}`;
+          })
+          .join('\n---\n');
+        examplesBlock =
+          `\n\nAPRENDE DE ESTAS RESPUESTAS REALES del equipo (de mensajes anteriores). Imita el TONO, la calidez, la longitud y el estilo con que responde el equipo. Las marcadas "(corregido por el equipo)" son correcciones importantes: síguelas. NO copies nombres, enlaces ni datos específicos de estos ejemplos — esos SIEMPRE vienen de la herramienta look_up_my_order:\n${lines}`;
+      }
+    } catch (exErr) {
+      console.warn('cs-agent: examples fetch failed', exErr);
+    }
+
     let needsHuman = false;
     let escalateReason = '';
 
@@ -202,7 +229,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 700,
-          system: systemPrompt(convo.customer_name, convo.channel || 'sms'),
+          system: systemPrompt(convo.customer_name, convo.channel || 'sms') + examplesBlock,
           tools: TOOLS,
           messages,
         }),

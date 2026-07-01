@@ -30,10 +30,40 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendSms } from '../_shared/send-sms.ts';
 import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { sendPush } from '../_shared/web-push.ts';
+import { redactPII } from '../_shared/cs-redact.ts';
 
 // Deliver an outbound message on the conversation's channel.
 async function deliver(channel: string, to: string, body: string) {
   return channel === 'whatsapp' ? await sendWhatsApp(to, body) : await sendSms(to, body);
+}
+
+// Save an owner-approved / owner-sent reply as a learning example for cs-agent.
+// Pairs it with the customer's most recent inbound message. Best-effort: never
+// let a capture failure break the reply. Links/emails/phones are redacted.
+async function captureExample(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  opts: { conversationId: string; channel: string; reply: string; wasEdited: boolean; source: string },
+) {
+  try {
+    const { data: lastIn } = await admin
+      .from('sms_messages')
+      .select('body')
+      .eq('conversation_id', opts.conversationId)
+      .eq('direction', 'inbound')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    await admin.from('cs_examples').insert({
+      channel: opts.channel || 'sms',
+      customer_msg: redactPII(lastIn?.body || ''),
+      reply: redactPII(opts.reply),
+      was_edited: opts.wasEdited,
+      source: opts.source,
+    });
+  } catch (e) {
+    console.warn('captureExample failed', e);
+  }
 }
 
 const corsHeaders = {
@@ -187,6 +217,8 @@ serve(async (req) => {
       if (!result.ok) {
         return json({ success: false, error: result.error || 'Send failed', message: inserted }, 502);
       }
+      // Learn from this manual reply (owner's own voice).
+      await captureExample(admin, { conversationId: convoId, channel: sendCh, reply: text, wasEdited: false, source: 'manual' });
       return json({ success: true, message: inserted });
     }
 
@@ -246,6 +278,14 @@ serve(async (req) => {
       if (!result.ok) {
         return json({ success: false, error: result.error || 'Send failed', message: updated }, 502);
       }
+      // Learn from this approved reply — edits count as corrections.
+      await captureExample(admin, {
+        conversationId: convoId,
+        channel: draftCh,
+        reply: text,
+        wasEdited: !!(editedText && editedText !== draft.body),
+        source: 'approve',
+      });
       return json({ success: true, message: updated });
     }
 
