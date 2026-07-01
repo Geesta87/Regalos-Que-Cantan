@@ -25,7 +25,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const SENDER = 'hola@regalosquecantan.com';
 const SITE = 'https://regalosquecantan.com';
-const WA_SUPPORT = 'https://wa.me/12136666619';
+const WA_SUPPORT = 'https://wa.me/18183065193';
 const COOLDOWN_HOURS = 3; // collapse a near-simultaneous video+karaoke into one message
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 

@@ -1550,7 +1550,7 @@ export default function AffiliateDashboard() {
 
           {/* -------- FLOATING SUPPORT BUTTON -------- */}
           <a
-            href="https://wa.me/12136666619?text=Hola%2C%20soy%20afiliado%20de%20RegalosQueCantan%20y%20tengo%20una%20pregunta"
+            href="https://wa.me/18183065193?text=Hola%2C%20soy%20afiliado%20de%20RegalosQueCantan%20y%20tengo%20una%20pregunta"
             target="_blank"
             rel="noopener noreferrer"
             className="aff-support-btn"

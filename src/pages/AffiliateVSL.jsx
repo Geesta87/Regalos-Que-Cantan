@@ -4,7 +4,7 @@ import { AppContext } from '../App';
 export default function AffiliateVSL() {
   const { navigateTo } = useContext(AppContext);
   const font = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  const phoneNumber = '2136666619';
+  const phoneNumber = '8183065193';
   const whatsappLink = `https://wa.me/1${phoneNumber}?text=Hola%20Gerardo%2C%20vi%20tu%20video%20y%20quiero%20saber%20mas%20sobre%20el%20programa%20de%20partners`;
 
   return (

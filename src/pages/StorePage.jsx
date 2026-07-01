@@ -15,7 +15,7 @@ import { Media, CSS, FEATURES } from '../components/OneTapUpsell';
 
 const GOLD = '#f20d80';
 // "Próximamente" products capture interest via WhatsApp until fulfillment ships.
-const waLink = (title) => `https://wa.me/12136666619?text=${encodeURIComponent(`¡Hola! Me interesa "${title}" de la tienda 🎵 ¿me avisan cuando esté disponible?`)}`;
+const waLink = (title) => `https://wa.me/18183065193?text=${encodeURIComponent(`¡Hola! Me interesa "${title}" de la tienda 🎵 ¿me avisan cuando esté disponible?`)}`;
 
 // ── Custom previews for the song-variant + karaoke upsells (no checkout
 // component exists for these yet, so the store renders its own brand-matched

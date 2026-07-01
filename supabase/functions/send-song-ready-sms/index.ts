@@ -30,7 +30,7 @@ import { sendSms } from '../_shared/send-sms.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SITE = 'https://regalosquecantan.com';
-const WA_SUPPORT = 'https://wa.me/12136666619';
+const WA_SUPPORT = 'https://wa.me/18183065193';
 
 // Only orders GENUINELY confirmed paid via Stripe. The stripe-webhook sets
 // paid=true + payment_status='paid' + paid_at on confirmation; verify-payment
