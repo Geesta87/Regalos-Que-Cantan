@@ -785,6 +785,10 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
   const songId = String(form.get('songId') || '');
   const fullLyrics = form.get('fullLyrics') ? String(form.get('fullLyrics')) : '';
   const summary = form.get('summary') ? String(form.get('summary')) : '';
+  // Multi-part fixes send the full list of corrections applied so far, so future
+  // fixes can re-derive from the pristine original without dropping an earlier one.
+  let corrections: unknown = null;
+  if (form.get('corrections')) { try { corrections = JSON.parse(String(form.get('corrections'))); } catch { corrections = null; } }
   if (!file || typeof (file as { arrayBuffer?: unknown }).arrayBuffer !== 'function' || !songId) {
     return json({ ok: false, error: 'audio file and songId are required' });
   }
@@ -798,7 +802,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 
   const { data: prev } = await supabase
     .from('songs')
-    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
     .eq('id', songId)
     .single();
 
@@ -822,12 +826,63 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     fix_history: [...prevHistory, { at: now, note: summary || 'Surgical fix (Arreglar Canción)', mode: 'section' }],
     fix_backup: prev ? { ...prev, backed_up_at: now } : null,
   };
+  // kie_source is intentionally NOT in `update` — it must survive the apply so a
+  // future surgical fix can still re-sing from the original voice-track.
+  if (Array.isArray(corrections)) update.fix_corrections = corrections;
   if (fullLyrics.trim()) update.lyrics = fullLyrics;
 
   const { error } = await supabase.from('songs').update(update).eq('id', songId);
   if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
   await logAttempt(supabase, { song_id: songId, action: 'apply-spliced', fixed_audio_url: publicUrl, outcome: 'applied', detail: summary.slice(0, 500) });
   return json({ ok: true, songId, applied: true, audioUrl: publicUrl, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: now, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+}
+
+// Fetch a specific Kie track's CURRENT audioUrl via record-info. Kie's temp
+// audio URLs can rotate, so we always re-fetch rather than trust a stored URL.
+async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string } | null> {
+  if (!KIE_API_KEY || !taskId) return null;
+  try {
+    const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { 'Authorization': `Bearer ${KIE_API_KEY}` },
+    });
+    const raw = await resp.json().catch(() => null);
+    const tracks: any[] = raw?.data?.response?.sunoData ?? [];
+    if (!tracks.length) return null;
+    const t = (audioId && tracks.find((x: any) => x.id === audioId)) || tracks[0];
+    if (!t?.audioUrl) return null;
+    return { audioUrl: t.audioUrl, id: t.id };
+  } catch { return null; }
+}
+
+function parseJsonMaybe(p: any): any {
+  if (p && typeof p === 'string') { try { return JSON.parse(p); } catch { return null; } }
+  return p;
+}
+
+// Resolve the ORIGINAL Kie voice-track for a song so surgical fixes keep working
+// even after the song has already been fixed once (an apply nulls kie_task_id).
+// Tries, in order: the live row ids -> the permanent kie_source column -> the
+// fix_backup snapshot. Backfills kie_source when found (first-time recovery) so
+// it survives all future fixes. Returns the parent taskId, the per-track audioId,
+// and the CURRENT pristine audioUrl. null = no recoverable Kie source (Mureka, or
+// Kie purged the audio after ~14 days) → caller should offer a full re-roll.
+async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string } | null> {
+  const candidates: Array<{ taskId?: string; audioId?: string }> = [];
+  if (song?.kie_task_id) { const kp = parseJsonMaybe(song.kie_payload); candidates.push({ taskId: song.kie_task_id, audioId: kp?.id }); }
+  const ks = parseJsonMaybe(song?.kie_source); if (ks?.taskId) candidates.push({ taskId: ks.taskId, audioId: ks.audioId });
+  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id }); }
+  for (const c of candidates) {
+    if (!c.taskId) continue;
+    const track = await fetchKieTrack(c.taskId, c.audioId);
+    if (track?.audioUrl) {
+      const existing = parseJsonMaybe(song?.kie_source);
+      if (!existing || existing.taskId !== c.taskId) {
+        try { await supabase.from('songs').update({ kie_source: { taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ }
+      }
+      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl };
+    }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -1072,7 +1127,7 @@ Deno.serve(async (req) => {
 
     const { data: song, error: songErr } = await supabase
       .from('songs')
-      .select('id, recipient_name, voice_type, style_used, genre, lyrics, audio_url, original_audio_url, kie_task_id, kie_payload, lyrics_timestamps, provider, created_at')
+      .select('id, recipient_name, voice_type, style_used, genre, lyrics, audio_url, original_audio_url, kie_task_id, kie_payload, kie_source, fix_backup, lyrics_timestamps, provider, created_at')
       .eq('id', songId)
       .single();
     if (songErr || !song) return json({ ok: false, error: `song lookup failed: ${songErr?.message || 'not found'}` });
@@ -1175,16 +1230,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ---- SECTION path — eligibility: must be a Kie song still on Kie's servers ----
-    if (!song.kie_task_id) {
-      return json({ ok: false, eligible: false, error: 'No tiene kie_task_id (probablemente se hizo con Mureka). Usa "regenerar canción completa" en su lugar.' });
+    // ---- SECTION path — resolve the ORIGINAL Kie voice-track. resolveKieSource
+    // recovers it from kie_source / fix_backup even if this song was already
+    // fixed once (an apply nulls kie_task_id), so repeat & multi-part surgical
+    // fixes keep re-singing from the same original voice. ----
+    const kieSrc = await resolveKieSource(song, supabase);
+    if (!kieSrc) {
+      return json({ ok: false, eligible: false, error: 'No hay una pista original de Kie disponible (hecha con Mureka, o Kie ya borró el audio tras ~14 días). Usa "regenerar canción completa".' });
     }
-    let kiePayload: any = song.kie_payload;
-    if (typeof kiePayload === 'string') { try { kiePayload = JSON.parse(kiePayload); } catch { kiePayload = null; } }
-    const audioId: string | undefined = kiePayload?.id;
-    if (!audioId) {
-      return json({ ok: false, eligible: false, error: 'No se encontró el audioId de Kie en kie_payload. No se puede arreglar por sección; usa regeneración completa.' });
-    }
+    const audioId: string = kieSrc.audioId;
+    const kieTaskId: string = kieSrc.taskId;
+    const pristineUrl: string = kieSrc.pristineUrl;
     if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
     if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
 
@@ -1193,17 +1249,10 @@ Deno.serve(async (req) => {
       ? `La canción tiene ~${Math.round(ageDays)} días; Kie borra el audio después de ~14 días, así que el arreglo por sección podría fallar. Si falla, usa regeneración completa.`
       : null;
 
-    // ---- Word-level timestamps (reuse cache or compute + cache) ----
-    let whisper: WhisperResult | null = null;
-    const cached = song.lyrics_timestamps as WhisperResult | null;
-    if (cached && Array.isArray(cached.words) && cached.words.length > 0) {
-      whisper = cached;
-    } else {
-      whisper = await transcribeAudio(audioForFix);
-      if (whisper && whisper.words.length > 0) {
-        await supabase.from('songs').update({ lyrics_timestamps: whisper }).eq('id', song.id);
-      }
-    }
+    // ---- Word-level timestamps of the PRISTINE original (fresh Whisper — the
+    // cached lyrics_timestamps may be a previously-fixed version, and the splice
+    // must line up with the pristine timeline). ----
+    const whisper: WhisperResult | null = await transcribeAudio(pristineUrl);
     if (!whisper || whisper.words.length === 0) {
       return json({ ok: false, error: 'No se pudo transcribir el audio (Whisper). Revisa OPENAI_API_KEY o intenta de nuevo.' });
     }
@@ -1274,7 +1323,7 @@ Deno.serve(async (req) => {
         let lyricsUsed = lyricsForKie;
         let fixTaskId: string;
         try {
-          fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          fixTaskId = await submitReplaceSection({ taskId: kieTaskId, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
         } catch (e) {
           if (!isContentError(e)) throw e;
           const cs = await sanitizeLyricsForFilter(promptUsed);
@@ -1282,7 +1331,7 @@ Deno.serve(async (req) => {
           if ((!cs || cs === promptUsed) && (!cf || cf === lyricsUsed)) throw e;
           promptUsed = (cs || promptUsed).substring(0, 800);
           lyricsUsed = englishifyLyricsMarkers(cf || lyricsUsed);
-          fixTaskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          fixTaskId = await submitReplaceSection({ taskId: kieTaskId, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
         }
         await logAttempt(supabase, { song_id: songId, action: 'section-submit', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_task_id: fixTaskId, outcome: 'submitted', detail: (fix.change_summary || '').slice(0, 500) });
         return json({
@@ -1293,7 +1342,7 @@ Deno.serve(async (req) => {
           changeSummary: fix.change_summary || '',
           window: { startS: start, endS: end },
           sectionText,                 // the corrected block lines (for splice-boundary detection)
-          originalAudioUrl: audioForFix, // pristine original — everything after the block comes from here
+          originalAudioUrl: pristineUrl, // pristine original — everything after the block comes from here
           fullLyrics, // the REAL corrected lyrics to store on apply
           verifyPhrases: phrasesToVerify,
           staleWarning,
@@ -1310,7 +1359,7 @@ Deno.serve(async (req) => {
         let promptUsed = sectionPrompt;
         let lyricsUsed = lyricsForKie;
         try {
-          const taskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          const taskId = await submitReplaceSection({ taskId: kieTaskId, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
           return { taskId, tracks: await pollKieUntilDone(taskId) };
         } catch (e) {
           if (!isContentError(e)) throw e;
@@ -1320,7 +1369,7 @@ Deno.serve(async (req) => {
           console.log('[fix] SECTION content-filter retry with sanitized lyrics');
           promptUsed = (cs || promptUsed).substring(0, 800);
           lyricsUsed = englishifyLyricsMarkers(cf || lyricsUsed);
-          const taskId = await submitReplaceSection({ taskId: song.kie_task_id, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
+          const taskId = await submitReplaceSection({ taskId: kieTaskId, audioId, prompt: promptUsed, tags, title, infillStartS: start, infillEndS: end, fullLyrics: lyricsUsed, negativeTags, callbackUrl });
           return { taskId, tracks: await pollKieUntilDone(taskId) };
         }
       };
@@ -1349,7 +1398,7 @@ Deno.serve(async (req) => {
         songId,
         changeSummary: fix.change_summary || '',
         window: { startS: start, endS: end },
-        originalAudioUrl: audioForFix,
+        originalAudioUrl: pristineUrl,
         fixedAudioUrl: best.audioUrl,
         fixTaskId: lastTaskId,
         fixAudioId: best.id,

@@ -11,7 +11,7 @@ import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus } from 'lucide-react';
-import { spliceIntoOriginal, parseTimed, findLastLineEnd } from '../utils/audioSplice';
+import { spliceIntoOriginal, parseTimed, findLastLineEnd, validateTake, buildTokenGroups } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -57,10 +57,20 @@ function FixSongCard({ song, showToast, onApplied }) {
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const postFn = (body) => fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+    body: JSON.stringify(body),
+  }).then((r) => r.json());
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const busy = chatting || phase === 'planning' || phase === 'working' || phase === 'applying';
 
-  // Only Kie/Suno songs that still carry their Kie ids can be section-fixed.
-  const eligible = !!song?.kie_task_id;
+  // Section-fixable if the song still has (or can recover) its original Kie
+  // voice-track: live kie ids, the permanent kie_source, a fix_backup with kie
+  // ids, or simply a Kie-made song. The backend confirms recoverability and, if
+  // it can't, returns eligible:false and we fall back to a full re-roll.
+  const eligible = !!(song?.kie_task_id || song?.kie_source || song?.fix_backup?.kie_task_id
+    || (typeof song?.provider === 'string' && song.provider.toLowerCase().includes('kie')));
 
   function readImageFile(file) {
     if (!file || !file.type?.startsWith('image/')) return;
@@ -159,82 +169,127 @@ function FixSongCard({ song, showToast, onApplied }) {
     }
   }
 
-  // Section fix — the PROVEN surgical recipe, run from the browser:
-  //   re-sing the stanza block (async) → pick the tightest of the takes → splice
-  //   the corrected lines onto the PRISTINE original (Web Audio) → preview here.
-  // Only the corrected lines are AI-re-sung; the rest stays the original.
-  async function runSectionSurgical(approvedLyrics, verifyPhrases) {
-    setError('');
-    setResult(null);
-    setInput('');
-    setPhase('working');
-    setSurgicalMsg('Regenerating the corrected part…');
-    setSectionParams({ approvedLyrics, verifyPhrases });
-    const post = (body) => fetch(FN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-      body: JSON.stringify(body),
-    }).then((r) => r.json());
-    try {
-      // 1) Re-sing the block (async submit — avoids the 150s gateway limit).
-      const sub = await post({ action: 'section-submit', mode: 'section', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+  // Re-sing ONE correction against the pristine original, with take validation +
+  // auto-retry. Kie (especially on corridos) often skips the corrected line,
+  // sings gibberish, or mangles names — so we transcribe every take and REJECT
+  // the bad ones (validateTake), retrying a few rounds until one lands clean.
+  // Returns the chosen take + splice points, or throws (err.offerFull = fall back
+  // to a full re-roll). This is the piece the old "pick the tightest take" logic
+  // was missing (it silently accepted takes that skipped the corrected line).
+  async function resingOne({ note, approvedLyrics, verifyPhrases }, onMsg) {
+    const ROUNDS = 4;
+    let lastReason = '';
+    for (let round = 1; round <= ROUNDS; round++) {
+      onMsg?.(`Regenerating the part… (attempt ${round})`);
+      const sub = await postFn({ action: 'section-submit', mode: 'section', songId: song.id, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
       if (!sub.ok) {
-        // can_fix=false / not eligible = the change can't be done surgically
-        // (spread across sections, Mureka, too old…). Offer the full re-roll.
-        if (sub.canFix === false || sub.eligible === false) setOfferFullReroll(true);
-        setError(sub.reason || sub.error || 'Could not generate the fix.'); setPhase('plan'); return;
+        const e = new Error(sub.reason || sub.error || 'Could not generate the fix.');
+        if (sub.canFix === false || sub.eligible === false) e.offerFull = true;
+        throw e;
       }
-      const { fixTaskId, sectionText, originalAudioUrl, fullLyrics } = sub;
+      const { fixTaskId, sectionText, originalAudioUrl, fullLyrics, changeSummary } = sub;
+      const startS = Number(sub.window?.startS);
       const origCut = Number(sub.window?.endS);
-      if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
+      if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) throw new Error('Incomplete response from the server.');
 
-      // 2) Poll until the re-sing is ready.
+      // Poll until the re-sing is ready.
       let takeUrls = [];
       for (let i = 1; i <= 40; i++) {
-        const d = await post({ action: 'diag', taskId: fixTaskId });
-        setSurgicalMsg(`Generating the corrected vocal… (${i})`);
+        const d = await postFn({ action: 'diag', taskId: fixTaskId });
+        onMsg?.(`Generating the corrected vocal… (${round}.${i})`);
         if (d.status === 'SUCCESS') { takeUrls = (d.trackList || []).map((t) => t.audioUrl).filter(Boolean); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
-          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Try "Redo full song".' : `Generation failed (${d.status}).`);
-          setPhase('plan'); return;
+          lastReason = d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright)' : `generation failed (${d.status})`;
+          break;
         }
-        await new Promise((r) => setTimeout(r, 9000));
+        await sleep(9000);
       }
-      if (!takeUrls.length) { setError('Timed out waiting for the regeneration.'); setPhase('plan'); return; }
+      if (!takeUrls.length) { lastReason = lastReason || 'timed out'; continue; }
 
-      // 3) Transcribe each take; pick the LEAST-PADDED (keeps length closest to original).
-      setSurgicalMsg('Choosing the best take…');
-      const scored = [];
+      // Validate each take actually sang the correction; keep only clean ones.
+      onMsg?.('Checking the take sang it right…');
+      const groups = buildTokenGroups(sectionText);
+      const maxSpanS = (origCut > startS ? origCut - startS : 20) + 12;
+      const cands = [];
       for (const url of takeUrls) {
-        const tr = await post({ action: 'transcribe', audioUrl: url });
-        const end = findLastLineEnd(parseTimed(tr.timed), sectionText);
-        if (end) scored.push({ url, end });
+        const tr = await postFn({ action: 'transcribe', audioUrl: url });
+        const words = parseTimed(tr.timed);
+        const v = validateTake(words, groups, { maxGapS: 5, maxSpanS });
+        const end = findLastLineEnd(words, sectionText);
+        if (v.ok && end) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
+        else lastReason = v.reason || 'splice point not found';
       }
-      if (!scored.length) { setError('Could not locate the splice point automatically. Retry or use "Redo full song".'); setPhase('plan'); return; }
-      scored.sort((a, b) => a.end - b.end);
-      const resungUrl = scored[0].url;
-      const resungCut = +(scored[0].end + 0.3).toFixed(2);
+      if (cands.length) {
+        cands.sort((a, b) => a.cut - b.cut); // tightest (least padded) clean take
+        return { resungUrl: cands[0].url, resungCut: cands[0].cut, origCut, startS, originalAudioUrl, fullLyrics, changeSummary, sectionText };
+      }
+      // none clean → next round (fresh takes)
+    }
+    throw new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
+  }
 
-      // 4) Stitch the corrected lines onto the pristine original (in-browser Web Audio).
+  // Single-part surgical fix ("Fix just that part").
+  async function runSectionSurgical(approvedLyrics, verifyPhrases) {
+    setError(''); setResult(null); setInput('');
+    setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
+    setSectionParams({ approvedLyrics, verifyPhrases });
+    try {
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases }, setSurgicalMsg);
       setSurgicalMsg('Stitching with the original recording…');
-      const spliced = await spliceIntoOriginal({ resungUrl, resungCutS: resungCut, originalUrl: originalAudioUrl, origCutS: origCut });
-
+      const spliced = await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
       setResult({
         surgical: true,
         splicedBlob: spliced.blob,
-        changeSummary: sub.changeSummary || '',
-        originalAudioUrl,
-        fullLyrics,
-        window: sub.window,
-        takes: [{ audioUrl: spliced.url, verified: null, lyrics: fullLyrics }],
+        changeSummary: r.changeSummary || '',
+        fullLyrics: r.fullLyrics,
+        corrections: null,
+        originalAudioUrl: song.original_audio_url || song.audio_url,
+        takes: [{ audioUrl: spliced.url, verified: true, lyrics: r.fullLyrics }],
       });
-      setSelectedTakeIdx(0);
-      setSurgicalMsg('');
-      setPhase('preview');
+      setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
-      setError('Error: ' + (e?.message || 'unknown'));
-      setSurgicalMsg('');
-      setPhase('plan');
+      if (e?.offerFull) setOfferFullReroll(true);
+      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+    }
+  }
+
+  // Multi-part surgical fix — re-sing EACH corrected spot from the pristine
+  // original and chain the splices (latest spot first, so earlier fixes aren't
+  // clobbered) into one file with the SAME voice. `changes` come from the plan
+  // step; combinedLyrics already has every correction applied.
+  async function runMultiFix(combinedLyrics, changes) {
+    setError(''); setResult(null); setInput('');
+    setPhase('working');
+    try {
+      const done = [];
+      for (let i = 0; i < changes.length; i++) {
+        const c = changes[i];
+        const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
+        setSurgicalMsg(`Fixing part ${i + 1} of ${changes.length}…`);
+        const r = await resingOne({ note, approvedLyrics: combinedLyrics, verifyPhrases: [] }, (m) => setSurgicalMsg(`(${i + 1}/${changes.length}) ${m}`));
+        done.push(r);
+      }
+      done.sort((a, b) => b.startS - a.startS); // latest-first
+      let baseUrl = done[0].originalAudioUrl; // pristine original
+      let lastBlob = null;
+      for (const c of done) {
+        setSurgicalMsg('Stitching the corrections into the original…');
+        const sp = await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
+        baseUrl = sp.url; lastBlob = sp.blob;
+      }
+      setResult({
+        surgical: true,
+        splicedBlob: lastBlob,
+        changeSummary: (plan?.changeSummary) || `${changes.length} correcciones`,
+        fullLyrics: combinedLyrics,
+        corrections: changes.map((c) => ({ before: c.before, after: c.after })),
+        originalAudioUrl: song.original_audio_url || song.audio_url,
+        takes: [{ audioUrl: baseUrl, verified: true, lyrics: combinedLyrics }],
+      });
+      setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+    } catch (e) {
+      if (e?.offerFull) setOfferFullReroll(true);
+      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
 
@@ -326,6 +381,7 @@ function FixSongCard({ song, showToast, onApplied }) {
         fd.append('songId', song.id);
         fd.append('fullLyrics', result.fullLyrics || '');
         fd.append('summary', result.changeSummary || '');
+        if (result.corrections) fd.append('corrections', JSON.stringify(result.corrections));
         const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
@@ -423,8 +479,9 @@ function FixSongCard({ song, showToast, onApplied }) {
       )}
       <>
           <p className="text-[11px] text-gray-400 mb-2">
-            Paste the customer's WhatsApp screenshot or type what to fix. You can <strong>chat with the AI</strong> to
-            clarify, then <strong>fix just that part</strong> or <strong>redo the full song</strong> with the corrections.
+            Paste the customer's WhatsApp screenshot or type what to fix — you can list <strong>several corrections at once</strong>
+            (e.g. the date <em>and</em> a wrong name). Each spot is re-sung separately and stitched into one file with the
+            <strong> same voice</strong>. Or <strong>redo the full song</strong> with the corrections.
           </p>
           {!eligible && (
             <p className="text-[11px] text-amber-300 mb-2">
@@ -517,7 +574,11 @@ function FixSongCard({ song, showToast, onApplied }) {
                 <summary className="text-[11px] text-gray-400 cursor-pointer">View full corrected lyrics</summary>
                 <p className="text-[11px] whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded p-2">{plan.approvedLyrics}</p>
               </details>
-              <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full' ? 'The full song will be redone. Takes 1-3 min.' : 'Only the affected part will be regenerated. Takes 1-3 min.'}</p>
+              <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full'
+                ? 'The full song will be redone. Takes 1-3 min.'
+                : (Array.isArray(plan.changes) && plan.changes.length > 1
+                  ? `${plan.changes.length} parts will be re-sung separately and stitched into one file — same voice. Takes ~${plan.changes.length * 2}-${plan.changes.length * 3} min.`
+                  : 'Only the affected part will be regenerated. Takes 1-3 min.')}</p>
               {offerFullReroll && pendingMode === 'section' && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ This change is spread across several parts of the song, so a one-part fix can't cover it. Redo the full song to apply all the corrections at once (same voice & style).</p>
               )}
@@ -532,11 +593,15 @@ function FixSongCard({ song, showToast, onApplied }) {
                 ) : (
                   <button
                     onClick={() => (pendingMode === 'section'
-                      ? runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)
+                      ? (Array.isArray(plan.changes) && plan.changes.length > 1
+                        ? runMultiFix(plan.approvedLyrics, plan.changes)
+                        : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases))
                       : runFullReroll(plan.approvedLyrics, plan.verifyPhrases))}
                     className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                   >
-                    ✅ Confirm and generate
+                    {pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
+                      ? `✅ Fix all ${plan.changes.length} parts (same voice)`
+                      : '✅ Confirm and generate'}
                   </button>
                 )}
                 <button

@@ -132,6 +132,57 @@ function norm(w) {
   return String(w || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 }
 
+// Validate that a re-sung take ACTUALLY sang the correction — in order,
+// contiguously, with the real words. Kie replace-section (especially on
+// corridos) frequently SKIPS the corrected line, inserts hallucinated gibberish,
+// or mangles a name ("Adrián" for "Arianna"). "Pick the tightest take" silently
+// accepts those. `tokenGroups` is an ordered list of expected words; each group
+// is an array of acceptable normalized alternatives (e.g. ['2019','diecinueve']).
+// Returns { ok, reason, endS, maxGap, span }. A clean take matches every group in
+// order with no large gap between consecutive hits.
+export function validateTake(words, tokenGroups, { maxGapS = 5, maxSpanS = 30 } = {}) {
+  if (!words?.length) return { ok: false, reason: 'no transcription' };
+  if (!tokenGroups?.length) return { ok: true, reason: 'no check' };
+  const atoms = words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }));
+  const grpEq = (n, group) => group.some((g) => n === g || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n))));
+  let best = null;
+  for (let start = 0; start < atoms.length; start++) {
+    if (!grpEq(atoms[start].n, tokenGroups[0])) continue;
+    let gi = 0, ai = start, maxGap = 0, prevE = atoms[start].s;
+    const hit = [];
+    while (gi < tokenGroups.length && ai < atoms.length) {
+      if (grpEq(atoms[ai].n, tokenGroups[gi])) { const gap = atoms[ai].s - prevE; if (gap > maxGap) maxGap = gap; prevE = atoms[ai].e; hit.push(atoms[ai]); gi++; }
+      ai++;
+    }
+    if (gi === tokenGroups.length) {
+      const span = hit[hit.length - 1].e - hit[0].s;
+      if (!best || maxGap < best.maxGap) best = { maxGap, span, endS: hit[hit.length - 1].e };
+    }
+  }
+  if (!best) return { ok: false, reason: 'las palabras corregidas no se cantaron (¿saltó la línea?)' };
+  if (best.maxGap > maxGapS) return { ok: false, reason: `hueco de ${best.maxGap.toFixed(1)}s (¿balbuceo/repetición?)`, ...best };
+  if (best.span > maxSpanS) return { ok: false, reason: `tramo de ${best.span.toFixed(1)}s demasiado largo`, ...best };
+  return { ok: true, endS: best.endS, maxGap: best.maxGap, span: best.span };
+}
+
+// Build ordered token-groups for validateTake from a corrected line of lyrics.
+// Content words become one-word groups; spelled Spanish years ("dos mil
+// diecinueve") also accept the digit form ("2019"), because Whisper transcribes
+// numbers as digits. Drops filler words so Whisper noise doesn't fail a good take.
+const _NUM19 = { dieciseis: 2016, diecisiete: 2017, dieciocho: 2018, diecinueve: 2019, veinte: 2020, veintiuno: 2021, veintidos: 2022, veintitres: 2023, veinticuatro: 2024, veinticinco: 2025 };
+const _FILLER = new Set(['de', 'del', 'la', 'el', 'y', 'a', 'en', 'que', 'lo', 'los', 'las', 'un', 'una', 'mi', 'me', 'te', 'su', 'con', 'por', 'dos', 'mil', 'has']);
+export function buildTokenGroups(correctedLine) {
+  const raw = String(correctedLine || '').split(/\s+/).map(norm).filter(Boolean);
+  const groups = [];
+  for (const w of raw) {
+    if (w.length < 2) continue;
+    if (_NUM19[w]) { groups.push([w, String(_NUM19[w])]); continue; } // year word + digit form
+    if (_FILLER.has(w)) continue;
+    groups.push([w]);
+  }
+  return groups;
+}
+
 export function findLastLineEnd(words, sectionText) {
   const lines = String(sectionText || '').split('\n').map((s) => s.trim()).filter(Boolean);
   if (!lines.length || !words.length) return null;
