@@ -170,6 +170,13 @@ verify_jwt = false
 # TWILIO_VALIDATE_SIGNATURE — same pattern as twilio-sms-webhook.
 verify_jwt = false
 
+[functions.cs-training-admin]
+# Backs the admin "Bot Training" panel. Called from the dashboard with a
+# logged-in Supabase Auth user's JWT → verify_jwt = true; handler requires a row
+# in admin_users (role='admin' to save). Reads/writes cs_agent_settings
+# .knowledge_doc + manages cs_examples. Never touches the payment funnel.
+verify_jwt = true
+
 [functions.cs-agent]
 # Customer-service AI brain. Called server-to-server by the inbound webhooks
 # (twilio-sms-webhook / whatsapp-webhook) with the SERVICE-ROLE key as Bearer —

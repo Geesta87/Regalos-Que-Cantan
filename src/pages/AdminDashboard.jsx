@@ -4,6 +4,7 @@ import { supabase } from '../services/api';
 import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
+import BotTrainingTab from '../components/admin/BotTrainingTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
@@ -942,7 +943,7 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -3000,6 +3001,9 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> SMS Messages
         </button>
+        <button onClick={() => setActiveTab('training')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'training' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'training' ? '' : 'grayscale'}`}>🎓</span> Bot Training
+        </button>
         <button onClick={() => setActiveTab('fixsong')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'fixsong' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Fix Song
         </button>
@@ -3127,7 +3131,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -5429,6 +5433,10 @@ export default function AdminDashboard() {
              Talks to a future `sms-admin` edge function; until that ships it
              renders clearly-labeled demo threads so the UX is reviewable. */
           <SmsInboxTab accessToken={accessToken} />
+        ) : activeTab === 'training' ? (
+          /* Bot Training — self-serve knowledge editor + learned-example manager
+             for the customer-service AI rep (cs-training-admin edge function). */
+          <BotTrainingTab accessToken={accessToken} />
         ) : activeTab === 'fixsong' ? (
           /* Arreglar Canción — dedicated workspace. Search any song, hear it,
              and fix one part via fix-song-section (Whisper + Claude + Kie

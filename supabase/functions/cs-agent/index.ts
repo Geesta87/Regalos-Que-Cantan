@@ -86,11 +86,11 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(customerName: string | null, channel: string): string {
+function systemPrompt(customerName: string | null, channel: string, knowledge: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
 
-${CS_KNOWLEDGE}
+${knowledge}
 
 REGLAS ESTRICTAS:
 - Responde solo en español, en 1-3 frases cuando sea posible.
@@ -138,12 +138,15 @@ serve(async (req) => {
     // Master switch — do nothing unless the owner has turned the bot on.
     const { data: settings } = await admin
       .from('cs_agent_settings')
-      .select('enabled')
+      .select('enabled, knowledge_doc')
       .eq('id', 1)
       .maybeSingle();
     if (!settings?.enabled) {
       return json({ ok: true, skipped: 'cs agent disabled' });
     }
+    // Owner-editable knowledge (Bot Training panel). Falls back to the file
+    // default when the owner hasn't customized it yet.
+    const knowledge = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
 
     // Load the conversation.
     const { data: convo } = await admin
@@ -229,7 +232,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 700,
-          system: systemPrompt(convo.customer_name, convo.channel || 'sms') + examplesBlock,
+          system: systemPrompt(convo.customer_name, convo.channel || 'sms', knowledge) + examplesBlock,
           tools: TOOLS,
           messages,
         }),
