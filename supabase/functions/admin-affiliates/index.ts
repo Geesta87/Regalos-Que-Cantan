@@ -31,6 +31,30 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Page through every affiliate_events row (Supabase caps a single select at
+// 1000). Without this, high-volume partners silently truncate and every
+// affiliate's stats — including commission — undercount once the table grows.
+async function fetchAllEvents(admin: any): Promise<any[]> {
+  const PAGE = 1000;
+  const MAX_PAGES = 200; // backstop: up to 200k events across all partners
+  const all: any[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await admin
+      .from('affiliate_events')
+      .select('affiliate_code, event_type, amount, created_at')
+      .order('created_at', { ascending: false })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    if (page === MAX_PAGES - 1) {
+      console.warn(`[admin-affiliates] hit MAX_PAGES; stats capped at ${MAX_PAGES * PAGE} events`);
+    }
+  }
+  return all;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -61,10 +85,12 @@ serve(async (req) => {
     }
     const role = roleRow.role as 'admin' | 'assistant';
 
-    // Pull the three datasets in parallel
-    const [{ data: affData, error: affError }, { data: events }, { data: payouts }] = await Promise.all([
+    // Pull the three datasets in parallel. Events are paged (Supabase caps a
+    // single select at 1000 rows; total affiliate_events already exceeds that,
+    // which would silently truncate and undercount every partner's stats).
+    const [{ data: affData, error: affError }, events, { data: payouts }] = await Promise.all([
       admin.from('affiliates').select('*').order('created_at', { ascending: false }),
-      admin.from('affiliate_events').select('affiliate_code, event_type, amount, created_at'),
+      fetchAllEvents(admin),
       admin.from('affiliate_payouts')
         .select('id, affiliate_code, amount, method, note, paid_at, recorded_by')
         .order('paid_at', { ascending: false }),

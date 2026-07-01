@@ -44,6 +44,34 @@ async function verifyToken(token: string): Promise<Record<string, unknown> | nul
   }
 }
 
+// Page through every affiliate_events row for one code (Supabase caps a single
+// select at 1000). Ordered newest-first; returns the full list so no event —
+// especially no purchase — is ever dropped from the commission math.
+async function fetchAllEvents(
+  supabase: any,
+  affiliateCode: string,
+  dateFilter: string | null
+): Promise<any[]> {
+  const PAGE = 1000;
+  const MAX_PAGES = 100; // backstop: up to 100k events
+  const all: any[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let q = supabase.from('affiliate_events').select('*').eq('affiliate_code', affiliateCode);
+    if (dateFilter) q = q.gte('created_at', dateFilter);
+    const { data, error } = await q
+      .order('created_at', { ascending: false })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    if (page === MAX_PAGES - 1) {
+      console.warn(`[affiliate-data] hit MAX_PAGES for ${affiliateCode}; totals capped at ${MAX_PAGES * PAGE}`);
+    }
+  }
+  return all;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -80,19 +108,11 @@ serve(async (req) => {
       : null;
 
     // ===== Affiliate events (visits, checkouts, purchases, refunds) =====
-    let eventsQuery = supabase
-      .from('affiliate_events')
-      .select('*')
-      .eq('affiliate_code', affiliateCode);
-
-    if (dateFilter) {
-      eventsQuery = eventsQuery.gte('created_at', dateFilter);
-    }
-
-    const { data: events, error: eventsError } = await eventsQuery
-      .order('created_at', { ascending: false });
-
-    if (eventsError) throw eventsError;
+    // Supabase caps a single select at 1000 rows. A high-volume partner (hundreds
+    // of visits/day) blows past that, which would silently drop the OLDEST events
+    // beyond 1000 — undercounting visits/songs and eventually purchases, i.e.
+    // commission. Page through every matching row so totals are always exact.
+    const events = await fetchAllEvents(supabase, affiliateCode, dateFilter);
 
     const visits = events?.filter(e => e.event_type === 'visit').length || 0;
     const songsCreated = events?.filter(e => e.event_type === 'song_created').length || 0;
