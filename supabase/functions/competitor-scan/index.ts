@@ -110,6 +110,24 @@ async function rate(ads: any[]): Promise<Record<number, any>> {
   return out;
 }
 
+// Meta Ad Library media URLs EXPIRE (hours–days), which is why previews go blank.
+// Download the display thumbnail once and mirror it to our own public bucket so
+// it stays valid. Returns the durable URL, or null (caller keeps the original).
+async function cacheThumb(supabase: any, url: string | null, key: string): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (bytes.byteLength < 500) return null; // guard against 1px / error placeholders
+    const path = `competitor/${key}.jpg`;
+    const { error } = await supabase.storage.from('creative-studio').upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
+    if (error) return null;
+    const { data } = supabase.storage.from('creative-studio').getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch { return null; }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   const start = Date.now();
@@ -118,15 +136,20 @@ Deno.serve(async (req: Request) => {
   if (!SC_KEY) return json(200, { success: false, skipped: true, reason: 'SCRAPECREATORS_API_KEY missing' });
 
   try {
-    // Pull + flatten + shape.
+    // Pull + flatten + shape. De-dupe by ad id AND by creative (same video/image
+    // run under different ad ids / languages should only appear once).
     const seen = new Set<string>();
+    const seenMedia = new Set<string>();
     const collected: any[] = [];
     for (const k of KEYWORDS) {
       const results = await scSearch(k.q);
       for (const r of results.slice(0, PER_KEYWORD)) {
         const ad = shapeAd(r, k.lang);
         if (!ad.ad_archive_id || seen.has(ad.ad_archive_id)) continue;
+        const mkey = (ad.video_url || ad.image_url || '').split('?')[0];
+        if (mkey && seenMedia.has(mkey)) continue; // same creative already collected
         seen.add(ad.ad_archive_id);
+        if (mkey) seenMedia.add(mkey);
         collected.push(ad);
       }
     }
@@ -136,6 +159,13 @@ Deno.serve(async (req: Request) => {
     const { data: existing } = await supabase.from('competitor_ads').select('ad_archive_id').in('ad_archive_id', ids);
     const have = new Set((existing || []).map((e: any) => e.ad_archive_id));
     const fresh = collected.filter((a) => !have.has(a.ad_archive_id)).slice(0, MAX_NEW);
+
+    // Mirror each ad's display thumbnail to our bucket so it never expires. Videos
+    // keep their (expiring) video_url for playback but gain a durable poster here.
+    await Promise.all(fresh.map(async (a) => {
+      const durable = await cacheThumb(supabase, a.image_url, a.ad_archive_id);
+      if (durable) a.image_url = durable;
+    }));
 
     if (fresh.length === 0) {
       await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: 'No new competitor ads', finished_at: new Date().toISOString(), execution_ms: Date.now() - start });

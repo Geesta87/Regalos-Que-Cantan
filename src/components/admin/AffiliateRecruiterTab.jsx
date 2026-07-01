@@ -4,8 +4,10 @@
 // owner copies + sends the DM, tracks status, and on a reply converts them into
 // a real affiliate (reuses create-affiliate). Admin-only.
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink, SlidersHorizontal, Users, Heart, Film } from 'lucide-react';
+import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink, SlidersHorizontal, Users, Heart, Film, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, Badge, btn } from './ui';
+
+const PAGE_SIZE = 15;
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/affiliate-recruiter-admin`;
 const STATUS = {
@@ -29,6 +31,8 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const [minF, setMinF] = useState('');
   const [maxF, setMaxF] = useState('');
   const [terms, setTerms] = useState('');
+  const [page, setPage] = useState(1);
+  const [scanActive, setScanActive] = useState(false); // polling while a scan is landing
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -40,16 +44,29 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   }, [accessToken]);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const r = await call({ action: 'list' });
-      if (r.success) setProspects(r.prospects || []);
-      else showToast?.(`Error: ${r.error || 'could not load'}`);
+      if (r.success) {
+        setProspects(r.prospects || []);
+        // If a scan was kicked off recently (even from a prior visit to this page),
+        // keep polling so its results appear here without a manual refresh.
+        const startedAt = r.last_scan?.started_at ? new Date(r.last_scan.started_at).getTime() : 0;
+        if (startedAt && Date.now() - startedAt < 150000) setScanActive(true);
+      } else showToast?.(`Error: ${r.error || 'could not load'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setLoading(false); }
   }, [call, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  // While a scan is landing, poll every 8s (max ~2.5 min) so results surface even
+  // if the owner navigated away and came back. Results themselves persist in the DB.
+  useEffect(() => {
+    if (!scanActive) return;
+    const iv = setInterval(load, 8000);
+    const stop = setTimeout(() => setScanActive(false), 150000);
+    return () => { clearInterval(iv); clearTimeout(stop); };
+  }, [scanActive, load]);
 
   const scan = async () => {
     setScanning(true);
@@ -61,7 +78,7 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
       if (t.length) filters.niches = t;
       if (platform !== 'all') filters.platform = platform;
       const r = await call({ action: 'scan', ...filters });
-      if (r.success) { showToast?.('Scanning for creators… they appear in ~1 min'); setTimeout(load, 60000); }
+      if (r.success) { showToast?.('Scanning for creators… results appear here in ~1 min (you can leave this page).'); setScanActive(true); }
       else showToast?.(`Error: ${r.error}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setScanning(false); }
@@ -92,7 +109,13 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
 
   const copy = (text) => { navigator.clipboard?.writeText(text); showToast?.('Message copied'); };
 
+  // Reset to page 1 whenever the platform filter changes.
+  useEffect(() => { setPage(1); }, [platform]);
+
   const shown = prospects.filter((p) => platform === 'all' || p.platform === platform);
+  const totalPages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = shown.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="max-w-5xl">
@@ -142,13 +165,23 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
         ))}
       </div>
 
+      {scanActive && (
+        <div className="mb-3 flex items-center gap-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+          <Loader2 size={15} className="animate-spin" /> Scanning for creators… results will appear here automatically.
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
       ) : shown.length === 0 ? (
         <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">No prospects yet. Hit "Scan now" — or the weekly scan will fill this in.</div>
       ) : (
+        <>
+        <div className="flex items-center justify-between mb-3 text-xs text-gray-500">
+          <span>Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, shown.length)} of {shown.length}</span>
+        </div>
         <div className="space-y-3">
-          {shown.map((p) => {
+          {pageItems.map((p) => {
             const sm = STATUS[p.status] || { label: p.status, tone: 'gray' };
             return (
               <Card key={p.id} className="p-4">
@@ -206,6 +239,20 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
             );
           })}
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-5">
+            <button onClick={() => setPage((n) => Math.max(1, n - 1))} disabled={safePage <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-700 disabled:opacity-40 hover:bg-gray-50">
+              <ChevronLeft size={15} /> Prev
+            </button>
+            <span className="text-sm text-gray-500">Page {safePage} of {totalPages}</span>
+            <button onClick={() => setPage((n) => Math.min(totalPages, n + 1))} disabled={safePage >= totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-700 disabled:opacity-40 hover:bg-gray-50">
+              Next <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

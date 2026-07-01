@@ -19,6 +19,7 @@ export default function CompetitorsSection({ accessToken, showToast }) {
   const [langFilter, setLangFilter] = useState('all'); // 'all' | 'es' | 'en'
   const [mediaFilter, setMediaFilter] = useState('all'); // 'all' | 'video' | 'image'
   const [sortBy, setSortBy] = useState('strongest'); // 'strongest' | 'longest'
+  const [mediaFallback, setMediaFallback] = useState({}); // adId -> 'img' | 'dead' (broken-media escalation)
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -63,13 +64,19 @@ export default function CompetitorsSection({ accessToken, showToast }) {
     finally { setBusyId(null); }
   };
 
+  // Identify an ad by its actual creative (strip the signed query string so the
+  // same video/image counts once), so the same creative run under different ad
+  // IDs / languages doesn't show as a duplicate card.
+  const mediaKey = (a) => ((a.video_url || a.image_url || a.ad_archive_id || a.id || '').split('?')[0]);
+  const seenKeys = new Set();
   const shown = ads
     .filter((a) => langFilter === 'all' || a.lang === langFilter)
     .filter((a) => mediaFilter === 'all' || a.media_type === mediaFilter)
     .slice()
     .sort((a, b) => sortBy === 'longest'
       ? (b.active_days ?? -1) - (a.active_days ?? -1)
-      : (b.score ?? -1) - (a.score ?? -1));
+      : (b.score ?? -1) - (a.score ?? -1))
+    .filter((a) => { const k = mediaKey(a); if (seenKeys.has(k)) return false; seenKeys.add(k); return true; }); // de-dupe by creative (keeps the best-scored)
 
   return (
     <div className="max-w-6xl">
@@ -121,13 +128,22 @@ export default function CompetitorsSection({ accessToken, showToast }) {
           {shown.map((a) => (
             <Card key={a.id} className="overflow-hidden flex flex-col">
               <div className="relative bg-gray-900 aspect-[4/5] flex items-center justify-center">
-                {a.media_type === 'video' && a.video_url ? (
-                  <video src={a.video_url} controls playsInline className="w-full h-full object-cover" />
-                ) : a.image_url ? (
-                  <img src={a.image_url} alt={a.page_name || 'ad'} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <span className="text-gray-500 text-xs">no preview</span>
-                )}
+                {(() => {
+                  // Meta Ad Library media URLs expire. Escalate video → image → clean
+                  // placeholder on load error, so a dead URL never shows a broken tile.
+                  const stage = mediaFallback[a.id];
+                  const showVideo = a.media_type === 'video' && a.video_url && stage !== 'img' && stage !== 'dead';
+                  const showImage = !showVideo && a.image_url && stage !== 'dead';
+                  if (showVideo) return (
+                    <video src={a.video_url} controls playsInline className="w-full h-full object-cover"
+                      onError={() => setMediaFallback((m) => ({ ...m, [a.id]: a.image_url ? 'img' : 'dead' }))} />
+                  );
+                  if (showImage) return (
+                    <img src={a.image_url} alt={a.page_name || 'ad'} className="w-full h-full object-cover" referrerPolicy="no-referrer"
+                      onError={() => setMediaFallback((m) => ({ ...m, [a.id]: 'dead' }))} />
+                  );
+                  return <span className="text-gray-500 text-[11px] px-3 text-center">Vista previa no disponible</span>;
+                })()}
                 <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white">{a.page_name} · {a.lang?.toUpperCase()}</span>
                 {typeof a.score === 'number' && <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-gray-800">{a.score}</span>}
                 {a.active_days != null && (
