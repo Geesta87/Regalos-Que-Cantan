@@ -25,8 +25,8 @@ const DO_TIKTOK = Deno.env.get('RECRUITER_TIKTOK') !== 'false';
 const DO_INSTAGRAM = Deno.env.get('RECRUITER_INSTAGRAM') !== 'false';
 const MIN_FOLLOWERS = Number(Deno.env.get('RECRUITER_MIN_FOLLOWERS') || '3000');
 const MAX_FOLLOWERS = Number(Deno.env.get('RECRUITER_MAX_FOLLOWERS') || '1500000');
-const PER_SEARCH = Number(Deno.env.get('RECRUITER_PER_SEARCH') || '8');
-const MAX_NEW = Number(Deno.env.get('RECRUITER_MAX_NEW') || '18');
+const PER_SEARCH = Number(Deno.env.get('RECRUITER_PER_SEARCH') || '25'); // pull deeper so repeat scans surface NEW creators, not the same top few
+const MAX_NEW = Number(Deno.env.get('RECRUITER_MAX_NEW') || '25');
 
 async function scGet(path: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params);
@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
     const fresh = filtered.filter((c) => !have.has(`${c.platform}:${c.handle.toLowerCase()}`) && !affHandles.has(c.handle.toLowerCase())).slice(0, MAX_NEW);
 
     if (fresh.length === 0) {
-      await supabase.from('agent_runs').insert({ agent: 'affiliate-recruiter', status: 'ok', ok: true, summary: 'No new prospects', finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
+      await supabase.from('agent_runs').insert({ agent: 'affiliate-recruiter', status: 'ok', ok: true, summary: `No new prospects — ${filtered.length} matched but were already in your list. Try different terms or a wider follower range.`, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
       return json(200, { success: true, found: filtered.length, new: 0 });
     }
 

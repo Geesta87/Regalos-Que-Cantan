@@ -154,13 +154,26 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Skip ones we already have.
+    // Split into brand-new vs already-stored.
     const ids = collected.map((a) => a.ad_archive_id);
     const { data: existing } = await supabase.from('competitor_ads').select('ad_archive_id').in('ad_archive_id', ids);
     const have = new Set((existing || []).map((e: any) => e.ad_archive_id));
     const fresh = collected.filter((a) => !have.has(a.ad_archive_id)).slice(0, MAX_NEW);
 
-    // Mirror each ad's display thumbnail to our bucket so it never expires. Videos
+    // REFRESH: ads we already have that showed up again in this scan (still active)
+    // get fresh media + a re-cached durable thumbnail — this repairs the blank
+    // "Vista previa no disponible" tiles whose old Meta URLs had expired.
+    const reSeen = collected.filter((a) => have.has(a.ad_archive_id));
+    let refreshed = 0;
+    await Promise.all(reSeen.map(async (a) => {
+      const durable = await cacheThumb(supabase, a.image_url, a.ad_archive_id);
+      const { error } = await supabase.from('competitor_ads').update({
+        image_url: durable || a.image_url, video_url: a.video_url, media_type: a.media_type, active_days: a.active_days,
+      }).eq('ad_archive_id', a.ad_archive_id);
+      if (!error) refreshed++;
+    }));
+
+    // Mirror each NEW ad's display thumbnail to our bucket so it never expires. Videos
     // keep their (expiring) video_url for playback but gain a durable poster here.
     await Promise.all(fresh.map(async (a) => {
       const durable = await cacheThumb(supabase, a.image_url, a.ad_archive_id);
@@ -168,7 +181,7 @@ Deno.serve(async (req: Request) => {
     }));
 
     if (fresh.length === 0) {
-      await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: 'No new competitor ads', finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
+      await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `No new competitor ads (refreshed ${refreshed} existing)`, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
       return json(200, { success: true, scanned: collected.length, new: 0 });
     }
 
