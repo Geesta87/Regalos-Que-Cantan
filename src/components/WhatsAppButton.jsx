@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 
-const WHATSAPP_NUMBER = '12136666619';
+// Customer-service line wired to the AI rep (whatsapp-webhook → cs-agent).
+// Messages here get an AI draft the owner approves in the admin Messages tab.
+const WHATSAPP_NUMBER = '18183065193';
 const DEFAULT_MESSAGE = '¡Hola! Tengo una pregunta sobre RegalosQueCantan 🎵';
 
 export default function WhatsAppButton() {

@@ -16,7 +16,7 @@
 // ===========================================================================
 
 export const CS_KNOWLEDGE = `NEGOCIO — Regalos Que Cantan (regalosquecantan.com)
-Vendemos CANCIONES PERSONALIZADAS hechas con IA como regalos emocionales para la comunidad latina/hispana en EE.UU. El cliente elige un género + una ocasión + los datos de la persona; creamos una canción única (letra + voz) en unos minutos; la ESCUCHA GRATIS antes de pagar; y al pagar la desbloquea para siempre. Marca cálida, familiar y emotiva: "un regalo que se escucha, se siente y se recuerda."
+Vendemos CANCIONES PERSONALIZADAS como regalos emocionales para la comunidad latina/hispana en EE.UU. El cliente elige un género + una ocasión + los datos de la persona; creamos una canción única (letra + voz) en unos minutos; la ESCUCHA GRATIS antes de pagar; y al pagar la desbloquea para siempre. Marca cálida, familiar y emotiva: "un regalo que se escucha, se siente y se recuerda."
 
 CÓMO FUNCIONA EL PEDIDO (importante):
 - La canción se GENERA ANTES de pagar. El cliente la escucha gratis y paga para desbloquear el acceso/descarga. (Nunca digas que "se está creando después de pagar".)
