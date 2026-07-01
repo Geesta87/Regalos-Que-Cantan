@@ -41,7 +41,7 @@ async function fetchAllEvents(admin: any): Promise<any[]> {
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error } = await admin
       .from('affiliate_events')
-      .select('affiliate_code, event_type, amount, created_at')
+      .select('affiliate_code, event_type, amount, created_at, song_id')
       .order('created_at', { ascending: false })
       .range(page * PAGE, page * PAGE + PAGE - 1);
     if (error) throw error;
@@ -112,6 +112,12 @@ serve(async (req) => {
       lastSale: string | null;
     }> = {};
 
+    // Commission rate per code, looked up once (avoids re-scanning affiliates).
+    const pctByCode: Record<string, number> = {};
+    for (const a of affiliates) {
+      pctByCode[a.code] = parseFloat(String(a.commission_pct ?? 20)) || 20;
+    }
+
     for (const a of affiliates) {
       statsMap[a.code] = {
         visits: 0, songsCreated: 0, checkouts: 0, sales: 0, revenue: 0,
@@ -119,9 +125,17 @@ serve(async (req) => {
       };
     }
 
+    // Per-affiliate transaction ledger (sales + refunds only) for the drill-down
+    // modal: what the customer paid + the commission it earned.
+    const txByCode: Record<string, Array<{
+      date: string; type: 'sale' | 'refund'; amount: number; commission: number; song_id: string | null;
+    }>> = {};
+
     for (const e of (events || [])) {
-      const s = statsMap[e.affiliate_code as string];
+      const code = e.affiliate_code as string;
+      const s = statsMap[code];
       if (!s) continue;
+      const pct = pctByCode[code] ?? 20;
       if (e.event_type === 'visit') s.visits++;
       else if (e.event_type === 'song_created') s.songsCreated++;
       else if (e.event_type === 'checkout') s.checkouts++;
@@ -129,17 +143,50 @@ serve(async (req) => {
         s.sales++;
         const amt = parseFloat(String(e.amount)) || 0;
         s.revenue += amt;
-        const pct = parseFloat(String(affiliates.find(a => a.code === e.affiliate_code)?.commission_pct ?? 20)) || 20;
         s.commission += amt * (pct / 100);
         const dStr = e.created_at as string;
         if (!s.lastSale || dStr > s.lastSale) s.lastSale = dStr;
+        (txByCode[code] ||= []).push({
+          date: dStr, type: 'sale', amount: amt, commission: amt * (pct / 100), song_id: (e.song_id as string) || null,
+        });
       } else if (e.event_type === 'refund') {
         // Refunds reverse commission. amount is negative by convention.
         const amt = parseFloat(String(e.amount)) || 0;
         s.revenue += amt;
-        const pct = parseFloat(String(affiliates.find(a => a.code === e.affiliate_code)?.commission_pct ?? 20)) || 20;
         s.commission += amt * (pct / 100);
+        (txByCode[code] ||= []).push({
+          date: e.created_at as string, type: 'refund', amount: amt, commission: amt * (pct / 100), song_id: (e.song_id as string) || null,
+        });
       }
+    }
+
+    // Enrich transactions with customer identity (email + recipient) from the
+    // songs table. Sales/refunds are few, so one .in() lookup is cheap.
+    const txSongIds = [...new Set(
+      Object.values(txByCode).flat().map(t => t.song_id).filter(Boolean) as string[]
+    )];
+    const songInfo: Record<string, { email: string | null; recipient: string | null }> = {};
+    if (txSongIds.length > 0) {
+      const { data: txSongs } = await admin
+        .from('songs')
+        .select('id, email, recipient_name')
+        .in('id', txSongIds);
+      for (const sg of (txSongs || [])) {
+        songInfo[sg.id as string] = {
+          email: (sg.email as string) || null,
+          recipient: (sg.recipient_name as string) || null,
+        };
+      }
+    }
+    const txByCodeEnriched: Record<string, any[]> = {};
+    for (const [code, list] of Object.entries(txByCode)) {
+      txByCodeEnriched[code] = list
+        .map(t => ({
+          ...t,
+          customerEmail: t.song_id ? (songInfo[t.song_id]?.email || null) : null,
+          recipient: t.song_id ? (songInfo[t.song_id]?.recipient || null) : null,
+        }))
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
     }
 
     // Group payouts by affiliate code so the dashboard can render a per-row
@@ -175,6 +222,7 @@ serve(async (req) => {
         ...a,
         _stats: statsMap[a.code],
         _payouts: payoutsByCode[a.code] || [],
+        _transactions: txByCodeEnriched[a.code] || [],
       })),
     });
   } catch (err) {

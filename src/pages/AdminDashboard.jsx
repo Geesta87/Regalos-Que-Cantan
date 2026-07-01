@@ -929,6 +929,8 @@ export default function AdminDashboard() {
   const [newAffiliate, setNewAffiliate] = useState({ name: '', email: '', code: '', couponCode: '', password: '' });
   const [creatingAffiliate, setCreatingAffiliate] = useState(false);
   const [affiliateMsg, setAffiliateMsg] = useState(null);
+  // Transactions drill-down modal — the affiliate whose transactions to show, or null
+  const [txModal, setTxModal] = useState(null);
   // Record-payout modal state
   const [payoutModal, setPayoutModal] = useState(null); // { affiliate, suggestedAmount } | null
   const [payoutForm, setPayoutForm] = useState({ amount: '', method: '', note: '' });
@@ -5248,9 +5250,17 @@ export default function AdminDashboard() {
                         const owed = Math.max(0, (s.commission || 0) - (s.paidOut || 0));
                         const daysSinceLastSale = s.lastSale ? Math.floor((Date.now() - s.lastSale.getTime()) / (1000 * 60 * 60 * 24)) : null;
                         return (
-                          <tr key={a.id} className="border-b border-white/5 hover:bg-white/3">
+                          <tr
+                            key={a.id}
+                            onClick={() => setTxModal(a)}
+                            className="border-b border-white/5 hover:bg-white/5 cursor-pointer"
+                            title="Click to see all transactions"
+                          >
                             <td className="px-4 py-3">
-                              <div className="text-white font-medium">{a.name}</div>
+                              <div className="text-white font-medium flex items-center gap-1.5">
+                                {a.name}
+                                <span className="text-gray-600 text-xs">↗</span>
+                              </div>
                               <div className="text-gray-500 text-xs">{a.email}</div>
                             </td>
                             <td className="px-4 py-3">
@@ -5316,7 +5326,7 @@ export default function AdminDashboard() {
                               </span>
                             </td>
                             {userRole === 'admin' && (
-                              <td className="px-4 py-3 text-right">
+                              <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     onClick={() => openPayoutModal(a)}
@@ -5390,6 +5400,103 @@ export default function AdminDashboard() {
           <CreativeStudioTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
+
+      {/* Transactions drill-down modal — opens when an affiliate row is clicked.
+          Shows every sale/refund for that partner: what the customer paid and
+          the commission it earned. Money detail is admin-only. */}
+      {txModal && (() => {
+        const a = txModal;
+        const stats = a._stats || {};
+        const txs = a._transactions || [];
+        const isAdmin = userRole === 'admin';
+        const owed = Math.max(0, (stats.commission || 0) - (stats.paidOut || 0));
+        const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setTxModal(null)}
+          >
+            <div
+              className="bg-[#1a1f26] rounded-2xl border border-white/10 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-white/10 flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white font-semibold text-lg">{a.name}</h3>
+                    <span className="font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded text-xs">{a.code}</span>
+                    {a.coupon_code && <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded text-xs">{a.coupon_code}</span>}
+                  </div>
+                  <div className="text-gray-500 text-xs mt-1">{a.email}</div>
+                </div>
+                <button onClick={() => setTxModal(null)} className="text-gray-400 hover:text-white text-xl leading-none px-2">×</button>
+              </div>
+
+              {/* Summary strip */}
+              <div className="px-5 py-4 border-b border-white/10 grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  { label: 'Clicks', value: (stats.visits || 0).toLocaleString() },
+                  { label: 'Songs', value: (stats.songsCreated || 0).toLocaleString() },
+                  { label: 'Sales', value: stats.sales || 0 },
+                  { label: 'Commission', value: isAdmin ? money(stats.commission) : '—' },
+                  { label: 'Owed', value: isAdmin ? money(owed) : '—' },
+                ].map((c, i) => (
+                  <div key={i} className="bg-white/5 rounded-lg p-3 text-center">
+                    <p className="text-lg font-bold text-white">{c.value}</p>
+                    <p className="text-gray-400 text-xs mt-0.5">{c.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Transactions table */}
+              <div className="overflow-y-auto">
+                {!isAdmin ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">Transaction and revenue detail is admin-only.</div>
+                ) : txs.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">No sales yet for this partner.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-[#1a1f26]">
+                      <tr className="text-gray-400 text-xs uppercase border-b border-white/10">
+                        <th className="text-left px-5 py-3">Date</th>
+                        <th className="text-left px-5 py-3">Customer</th>
+                        <th className="text-right px-5 py-3">Paid</th>
+                        <th className="text-right px-5 py-3">Commission</th>
+                        <th className="text-right px-5 py-3">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txs.map((t, i) => (
+                        <tr key={i} className="border-b border-white/5">
+                          <td className="px-5 py-3 text-gray-300 whitespace-nowrap">
+                            {new Date(t.date).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="text-gray-200">{t.customerEmail || <span className="text-gray-600">—</span>}</div>
+                            {t.recipient && <div className="text-gray-500 text-xs">for {t.recipient}</div>}
+                          </td>
+                          <td className={`px-5 py-3 text-right font-mono ${t.type === 'refund' ? 'text-red-400' : 'text-gray-200'}`}>
+                            {money(t.amount)}
+                          </td>
+                          <td className={`px-5 py-3 text-right font-mono ${t.type === 'refund' ? 'text-red-400' : 'text-green-400'}`}>
+                            {money(t.commission)}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${t.type === 'refund' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                              {t.type === 'refund' ? 'Refund' : 'Sale'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Record-payout modal — admin only. Inserts a row into
           affiliate_payouts so the partner's dashboard reflects "Pagado"
