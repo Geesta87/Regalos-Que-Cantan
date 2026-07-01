@@ -66,12 +66,15 @@ function FixSongCard({ song, showToast, onApplied }) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const busy = chatting || phase === 'planning' || phase === 'working' || phase === 'applying';
 
-  // Section-fixable if the song still has (or can recover) its original Kie
-  // voice-track: live kie ids, the permanent kie_source, a fix_backup with kie
-  // ids, or simply a Kie-made song. The backend confirms recoverability and, if
-  // it can't, returns eligible:false and we fall back to a full re-roll.
-  const eligible = !!(song?.kie_task_id || song?.kie_source || song?.fix_backup?.kie_task_id
-    || (typeof song?.provider === 'string' && song.provider.toLowerCase().includes('kie')));
+  // A song is section-fixable unless it was made with Mureka (which has no Kie
+  // voice-track to re-sing from). Everything else is Kie — and the backend
+  // recovers the original voice-track (kie_source / fix_backup) even when
+  // kie_task_id was cleared by a prior fix, then falls back to a full re-roll if
+  // it truly can't. Do NOT gate on kie_task_id alone: an already-fixed Kie song
+  // has it cleared yet is still surgically fixable (this caused the false
+  // "made with Mureka" message on version rows before detail loaded).
+  const isMureka = typeof song?.provider === 'string' && song.provider.toLowerCase().includes('mureka');
+  const eligible = !isMureka;
 
   function readImageFile(file) {
     if (!file || !file.type?.startsWith('image/')) return;

@@ -58,6 +58,10 @@ const SONG_LIST_COLUMNS = [
   // each song creation produces 2 rows that share a mureka_job_id, one per
   // generated audio variant (version 1, version 2).
   'version', 'mureka_job_id',
+  // provider decides whether the "Fix a Song" card offers a surgical section fix
+  // (Kie) or only a full re-roll (Mureka) — needed on list/version rows before
+  // the lazy `detail` load, else already-fixed Kie songs falsely read as Mureka.
+  'provider',
   // Fix footprint — so the list can flag songs that were repaired.
   'fixed_at', 'fix_count',
   // Manual (Zelle/cash) paid marker — so the list can show it + allow undo.
