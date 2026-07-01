@@ -119,13 +119,15 @@ const DEMO_CONVERSATIONS = [
     unread: 1,
     opted_out: false,
     last_message_at: '2026-06-09T15:06:00Z',
+    // MIXED thread (like Francisco): SMS confirmation, then the customer replies
+    // on WhatsApp. Shows in BOTH tabs; each shows the other channel as context.
     messages: [
-      { id: 'm1', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T14:50:00Z',
+      { id: 'm1', channel: 'sms', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T14:50:00Z',
         body: 'Confirmamos tu pedido en Regalos Que Cantan ✅ Tu canción se está creando y te enviaremos el enlace por aquí en unos minutos.' },
-      { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T15:05:00Z',
+      { id: 'm2', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T15:05:00Z',
         body: '¿Cuánto tiempo tarda en estar lista?' },
-      // Straightforward AI draft (FAQ) — ready to approve as-is.
-      { id: 'm3', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
+      // AI draft on WhatsApp (the channel she just used) — ready to approve.
+      { id: 'm3', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T15:06:00Z',
         body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊' },
     ],
@@ -158,10 +160,10 @@ const DEMO_CONVERSATIONS = [
     opted_out: false,
     last_message_at: '2026-06-09T18:12:00Z',
     messages: [
-      { id: 'm1', direction: 'inbound', status: 'received', created_at: '2026-06-09T18:10:00Z',
+      { id: 'm1', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T18:10:00Z',
         body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕' },
       // AI draft — would look up the order by this number and share the link.
-      { id: 'm2', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
+      { id: 'm2', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T18:12:00Z',
         body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️' },
     ],
@@ -280,12 +282,21 @@ export default function SmsInboxTab({ accessToken }) {
     };
   }, [loadConversations]);
 
-  const convChannel = (c) => c.channel || 'sms';
-  const hasPendingDraft = (c) => (c.messages || []).some((m) => m.status === 'draft');
+  const msgChannel = (m) => m.channel || 'sms';
+  // Which channels a conversation has ANY message on. A phone that used both
+  // SMS and WhatsApp shows up in BOTH tabs (so you can always find a customer
+  // under SMS to confirm their text went out, and under WhatsApp to chat).
+  const convChannels = (c) => {
+    const s = new Set((c.messages || []).map(msgChannel));
+    if (s.size === 0) s.add('sms');
+    return s;
+  };
+  const hasPendingDraftInChannel = (c, ch) =>
+    (c.messages || []).some((m) => m.status === 'draft' && msgChannel(m) === ch);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const inChannel = conversations.filter((c) => convChannel(c) === channelTab);
+    const inChannel = conversations.filter((c) => convChannels(c).has(channelTab));
     const sorted = [...inChannel].sort(
       (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
     );
@@ -296,14 +307,17 @@ export default function SmsInboxTab({ accessToken }) {
     );
   }, [conversations, search, channelTab]);
 
-  // Per-channel badges: unread inbound + AI drafts waiting for approval.
+  // Per-channel badges: unread + AI drafts waiting, counted by each message's
+  // actual channel.
   const channelStats = useMemo(() => {
     const base = { sms: { unread: 0, drafts: 0 }, whatsapp: { unread: 0, drafts: 0 } };
     for (const c of conversations) {
-      const ch = convChannel(c);
-      if (!base[ch]) continue;
-      base[ch].unread += c.unread || 0;
-      if (hasPendingDraft(c)) base[ch].drafts += 1;
+      const chans = convChannels(c);
+      for (const ch of ['sms', 'whatsapp']) {
+        if (!chans.has(ch)) continue;
+        base[ch].unread += c.unread || 0;
+        if (hasPendingDraftInChannel(c, ch)) base[ch].drafts += 1;
+      }
     }
     return base;
   }, [conversations]);
@@ -394,7 +408,7 @@ export default function SmsInboxTab({ accessToken }) {
               'Authorization': `Bearer ${accessToken}`,
               'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             },
-            body: JSON.stringify({ action: 'send', conversation_id: selected.id, body }),
+            body: JSON.stringify({ action: 'send', conversation_id: selected.id, body, channel: channelTab }),
           }
         );
         if (!res.ok) throw new Error(`send ${res.status}`);
@@ -647,7 +661,10 @@ export default function SmsInboxTab({ accessToken }) {
               </div>
             ) : (
               filtered.map((c) => {
-                const last = c.messages[c.messages.length - 1];
+                const msgs = c.messages || [];
+                // Preview the last message ON THIS TAB's channel.
+                const last = [...msgs].reverse().find((m) => msgChannel(m) === channelTab)
+                  || msgs[msgs.length - 1];
                 const active = c.id === selectedId;
                 return (
                   <button
@@ -674,7 +691,7 @@ export default function SmsInboxTab({ accessToken }) {
                           {last?.direction === 'outbound' ? '↩ ' : ''}{last?.body}
                         </span>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {hasPendingDraft(c) && (
+                          {hasPendingDraftInChannel(c, channelTab) && (
                             <span className="bg-purple-500/30 text-purple-200 text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center" title="AI draft waiting for approval">
                               ✍️
                             </span>
@@ -740,6 +757,26 @@ export default function SmsInboxTab({ accessToken }) {
                 {selected.messages.map((m) => {
                   // Discarded drafts are hidden from the thread.
                   if (m.status === 'discarded') return null;
+
+                  const mCh = msgChannel(m);
+                  // Messages from the OTHER channel: an unsent draft belongs to
+                  // its own tab (approve it there), so hide it here; a real
+                  // message shows as a muted "— sent via SMS/WhatsApp · time"
+                  // context line so you keep the full history without confusion.
+                  if (mCh !== channelTab) {
+                    if (m.status === 'draft') return null;
+                    const outX = m.direction === 'outbound';
+                    return (
+                      <div key={m.id} className={`flex ${outX ? 'justify-end' : 'justify-start'} opacity-60`}>
+                        <div className="max-w-[80%] rounded-2xl px-3.5 py-2 bg-white/5 border border-dashed border-white/15">
+                          <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-0.5">
+                            {mCh === 'whatsapp' ? '🟢 vía WhatsApp' : '💬 vía SMS'} · {outX ? 'enviado' : 'recibido'} {formatTime(m.created_at)}
+                          </div>
+                          <p className="text-xs whitespace-pre-wrap break-words text-gray-300">{m.body}</p>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   // AI draft awaiting the owner's approval — full-width card with
                   // Approve · Edit · Discard. Nothing here has been sent yet.

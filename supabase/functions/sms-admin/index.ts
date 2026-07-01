@@ -96,6 +96,7 @@ serve(async (req) => {
       conversation_id?: string;
       message_id?: string;
       body?: string;
+      channel?: string; // 'sms' | 'whatsapp' — which channel to reply on
       subscription?: { endpoint?: string };
       endpoint?: string;
     } = {};
@@ -156,7 +157,10 @@ serve(async (req) => {
         return json({ success: false, error: 'Customer has opted out (STOP) — cannot send' }, 409);
       }
 
-      const result = await deliver(convo.channel || 'sms', convo.phone, text);
+      // Reply on the channel the dashboard is viewing (SMS tab → sms,
+      // WhatsApp tab → whatsapp). Falls back to the conversation's channel.
+      const sendCh = body.channel || convo.channel || 'sms';
+      const result = await deliver(sendCh, convo.phone, text);
 
       // Record the outbound message regardless of send outcome, so the thread
       // reflects what was attempted. status mirrors the Twilio result.
@@ -169,7 +173,7 @@ serve(async (req) => {
           body: text,
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
-          channel: convo.channel || 'sms',
+          channel: sendCh,
         })
         .select('id, direction, body, status, created_at, channel, ai_generated, needs_human')
         .single();
@@ -200,7 +204,7 @@ serve(async (req) => {
 
       const { data: draft, error: dErr } = await admin
         .from('sms_messages')
-        .select('id, conversation_id, body, status, direction')
+        .select('id, conversation_id, body, status, direction, channel')
         .eq('id', messageId)
         .single();
       if (dErr || !draft) return json({ success: false, error: 'Draft not found' }, 404);
@@ -219,7 +223,9 @@ serve(async (req) => {
       }
 
       const text = editedText || draft.body;
-      const result = await deliver(convo.channel || 'sms', convo.phone, text);
+      // Send the draft on its OWN channel (the channel of the message it replies to).
+      const draftCh = draft.channel || convo.channel || 'sms';
+      const result = await deliver(draftCh, convo.phone, text);
       const nowIso = new Date().toISOString();
 
       const { data: updated, error: uErr } = await admin
