@@ -67,7 +67,7 @@ const TOOLS = [
   {
     name: 'look_up_my_order',
     description:
-      "Busca el pedido del cliente que está escribiendo en esta conversación. NO recibe parámetros: siempre usa el número de teléfono de esta conversación (el cliente solo puede ver SU propio pedido). Úsala cuando el cliente pregunte por su canción, su enlace, si ya está lista o si ya pagó. Devuelve los pedidos de ese número con: nombre del destinatario, ocasión, si está pagado (is_paid), si la canción está lista (song_ready), y el enlace para escuchar/descargar.",
+      "Busca el pedido del cliente que está escribiendo en esta conversación. NO recibe parámetros: siempre usa el número de teléfono de esta conversación (el cliente solo puede ver SU propio pedido). Úsala cuando el cliente pregunte por su canción, su enlace, si ya está lista o si ya pagó. Devuelve los pedidos de ese número con: nombre del destinatario, ocasión, si está pagado (is_paid), si la canción está lista (song_ready), el download_link (SOLO si está pagado) y preview_link_for_unpaid (enlace para ESCUCHAR sin descargar, para pedidos no pagados).",
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -94,8 +94,8 @@ REGLAS ESTRICTAS:
 - Responde solo en español, en 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
-- Comparte un enlace de la canción SOLO cuando el pedido esté PAGADO (is_paid = true). La herramienta solo devuelve el enlace en pedidos pagados; si no hay enlace, es porque NO está pagado — no lo inventes ni lo deduzcas.
-- Si el pedido NO está pagado (is_paid = false): NUNCA compartas un enlace ni digas que la canción "ya está lista para descargar". Dile con calidez que su canción ya fue creada y está guardada, pero que necesita completar el pago para desbloquearla y descargarla; ofrece que un compañero del equipo le ayude a finalizar la compra y usa flag_for_human.
+- Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
+- Si el pedido NO está pagado (is_paid = false): comparte el preview_link_for_unpaid para que ESCUCHE sus versiones, y explícale con calidez que ahí puede escucharlas y que al COMPLETAR SU COMPRA se desbloquea la descarga para guardarla y compartirla. NUNCA compartas un download_link ni digas que la canción "ya está lista para descargar" en un pedido no pagado. El enlace de preview solo deja escuchar; la descarga sigue bloqueada hasta que pague.
 - Si no aparece ningún pedido para este número, no inventes: pide amablemente que escriba desde el número con el que hizo la compra, o que comparta su correo para que una persona lo verifique.
 - Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia, un cambio de letra en una canción ya hecha, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
 - No prometas reembolsos, cambios ni plazos exactos.
@@ -237,22 +237,30 @@ serve(async (req) => {
               .eq('phone_last10', phoneLast10)
               .order('created_at', { ascending: false })
               .limit(5);
+            const orderList = (orders || []).map((o) => ({
+              recipient_name: o.recipient_name,
+              occasion: o.occasion,
+              genre: o.genre,
+              is_paid: o.is_paid,
+              song_ready: o.song_ready,
+              created_at: o.created_at,
+              // HARD GATE: the DOWNLOAD link is only ever built for PAID orders.
+              // Impossible for the model to hand out a download before payment.
+              download_link: o.is_paid ? buildOrderLink(o) : null,
+            }));
+            // One PREVIEW ("listen before you pay") link covering all UNPAID
+            // songs for this phone. Safe to share: the /listen page lets the
+            // customer HEAR their versions, but the download stays locked until
+            // they complete the purchase.
+            const unpaidIds = (orders || []).filter((o) => !o.is_paid).map((o) => o.id);
+            const previewLink = unpaidIds.length
+              ? `${SITE}/listen?song_ids=${unpaidIds.join(',')}`
+              : null;
             result = {
-              orders: (orders || []).map((o) => ({
-                recipient_name: o.recipient_name,
-                occasion: o.occasion,
-                genre: o.genre,
-                is_paid: o.is_paid,
-                song_ready: o.song_ready,
-                created_at: o.created_at,
-                // HARD GATE: only expose the song/access link for PAID orders.
-                // For unpaid orders we return NO link at all — impossible for the
-                // model to hand out a link before payment, whatever it "wants".
-                link: o.is_paid ? buildOrderLink(o) : null,
-                note: o.is_paid
-                  ? undefined
-                  : 'NO PAGADO: no compartas ningún enlace de la canción ni digas que está lista para descargar. El cliente debe completar el pago para desbloquearla.',
-              })),
+              orders: orderList,
+              preview_link_for_unpaid: previewLink,
+              guidance:
+                'Pedidos PAGADOS: comparte su download_link. Pedidos NO pagados: comparte preview_link_for_unpaid para que escuche, y explica que al completar la compra se desbloquea la descarga. NUNCA compartas un download_link de un pedido no pagado.',
             };
           }
         } else if (tu.name === 'flag_for_human') {
