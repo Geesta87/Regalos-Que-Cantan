@@ -357,6 +357,15 @@ verify_jwt = false
 # flips to 'sending'. Uses _shared/unsubscribe.ts.
 verify_jwt = true
 
+[functions.email-studio]
+# Email Studio — on-demand AI email designer (EmailForge port) in the Creative
+# Studio "Email Studio" section. Called from the admin dashboard with a logged-in
+# Supabase Auth user's JWT → verify_jwt = true; admin-only (spends Anthropic/Kie
+# credits, can send tests and queue list sends). Generates/refines email HTML,
+# sends [PRUEBA] tests to the logged-in admin, and queues finished emails into
+# email_queue (pending_approval) for the existing approve→send pipeline.
+verify_jwt = true
+
 [functions.email-marketer-send]
 # Email Marketer sender. pg_cron (every minute) → verify_jwt = false. Delivers
 # the next batch of pending recipients for any 'sending' email — per-recipient

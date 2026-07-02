@@ -3,7 +3,7 @@
 // promotional emails. Preview each, send a test to yourself, then Approve →
 // it sends to your customer list (suppression + unsubscribe handled server-side).
 import React, { useState, useEffect, useCallback } from 'react';
-import { Mail, RefreshCw, Loader2, ArrowLeft, Check, X, Send, Users } from 'lucide-react';
+import { Mail, RefreshCw, Loader2, ArrowLeft, Check, X, Send, Users, Palette } from 'lucide-react';
 import { Badge, btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-marketer-admin`;
@@ -17,7 +17,7 @@ const STATUS = {
   failed:           { label: 'Failed',    tone: 'red' },
 };
 
-export default function EmailMarketerSection({ accessToken, showToast }) {
+export default function EmailMarketerSection({ accessToken, showToast, onEditInStudio }) {
   const [emails, setEmails] = useState([]);
   const [audience, setAudience] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
@@ -99,6 +99,12 @@ export default function EmailMarketerSection({ accessToken, showToast }) {
             <button onClick={() => act(sel.id, 'reject')} disabled={busy} className={btn.ghost}>
               <X size={15} /> Reject
             </button>
+            {onEditInStudio && (
+              <button onClick={() => onEditInStudio({ id: sel.id, subject: sel.subject, preview_text: sel.preview_text, html: sel.body_html })}
+                disabled={busy} className={btn.ghost}>
+                <Palette size={15} /> Edit in Studio
+              </button>
+            )}
           </div>
         ) : null}
       </div>

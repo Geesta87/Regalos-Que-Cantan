@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, RefreshCw, Check, X, Loader2, AlertTriangle, Megaphone, Pencil, Wand2, MoreHorizontal, Calendar, Image as ImageIcon, Film } from 'lucide-react';
 import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
+import EmailStudioSection from './EmailStudioSection';
 import CompetitorsSection from './CompetitorsSection';
 import FreeformLabSection from './FreeformLabSection';
 import { Card, Badge, btn } from './ui';
@@ -31,7 +32,7 @@ const FILTERS = [
 const GROUPS = [
   { key: 'review',    label: 'Review',    views: [['ads', 'Ads'], ['social', 'Social']] },
   { key: 'create',    label: 'Create',    views: [['lab', 'Lab'], ['chat', 'Art director']] },
-  { key: 'marketing', label: 'Marketing', views: [['emails', 'Emails'], ['competitors', 'Competitors']] },
+  { key: 'marketing', label: 'Marketing', views: [['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['competitors', 'Competitors']] },
 ];
 
 export default function CreativeStudioTab({ accessToken, showToast }) {
@@ -51,6 +52,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [promo, setPromo] = useState('');
   const [promoSaved, setPromoSaved] = useState('');
   const [savingPromo, setSavingPromo] = useState(false);
+  const [studioDraft, setStudioDraft] = useState(null); // email_queue draft handed to Email Studio for editing
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -211,7 +213,11 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
       {currentGroup.key === 'create' ? (
         view === 'lab' ? <FreeformLabSection accessToken={accessToken} showToast={showToast} /> : <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
       ) : currentGroup.key === 'marketing' ? (
-        view === 'emails' ? <EmailMarketerSection accessToken={accessToken} showToast={showToast} /> : <CompetitorsSection accessToken={accessToken} showToast={showToast} />
+        view === 'emails' ? <EmailMarketerSection accessToken={accessToken} showToast={showToast}
+            onEditInStudio={(draft) => { setStudioDraft(draft); setView('emailstudio'); }} />
+        : view === 'emailstudio' ? <EmailStudioSection accessToken={accessToken} showToast={showToast}
+            initialDraft={studioDraft} onDraftConsumed={() => setStudioDraft(null)} />
+        : <CompetitorsSection accessToken={accessToken} showToast={showToast} />
       ) : (
       <>
         {/* Status filter */}
