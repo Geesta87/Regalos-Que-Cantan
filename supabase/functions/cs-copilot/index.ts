@@ -78,6 +78,8 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: roleRow } = await admin.from('admin_users').select('role').eq('user_id', userData.user.id).single();
     if (!roleRow) return json({ success: false, error: 'No admin access' }, 403);
+    const role = (roleRow.role as 'admin' | 'assistant') || 'assistant';
+    const isAdmin = role === 'admin';
 
     const { conversation_id, messages } = await req.json();
     if (!conversation_id || !Array.isArray(messages) || !messages.length) {
@@ -113,7 +115,8 @@ serve(async (req) => {
             genre: s.genre_name || s.genre,
             is_paid: paid,
             paid_at: s.paid_at,
-            amount_paid: s.amount_paid,
+            // Revenue is hidden from assistants (same as the orders list).
+            amount_paid: isAdmin ? s.amount_paid : undefined,
             created_at: s.created_at,
             song_ready: !!(s.audio_url && String(s.audio_url) !== ''),
             preview_link: `${SITE}/listen?song_id=${s.id}`,
@@ -134,7 +137,7 @@ REGLAS:
 - Tienes acceso completo al pedido: estado de pago, enlace de preview (/listen), enlace de descarga (solo si está pagado), detalles/contexto del cliente y la LETRA de la canción.
 - Cuando el agente te pida "algo para mandarle al cliente", dáselo en ESPAÑOL, listo para copiar y pegar.
 - El download_link solo existe si el pedido está pagado. Si no está pagado y piden el link de descarga, avisa que aún no ha pagado y ofrece el enlace de preview.
-- Nunca inventes datos; si get_order no devuelve algo, dilo.`;
+- Nunca inventes datos; si get_order no devuelve algo, dilo.${isAdmin ? '' : '\n- NUNCA menciones montos, cantidades ni cifras de dinero (por ejemplo $39.99). Solo puedes decir si el pedido está pagado o no, nunca cuánto.'}`;
 
     const convo2: { role: 'user' | 'assistant'; content: unknown }[] = messages
       .filter((m: { role?: string; content?: string }) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
