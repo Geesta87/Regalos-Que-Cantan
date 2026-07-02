@@ -206,6 +206,13 @@ export default function SmsInboxTab({ accessToken }) {
   const [copilotInput, setCopilotInput] = useState('');
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const replyRef = useRef(null);
+  // Auto-grow the reply box so long messages (e.g. a quick reply) are fully
+  // visible instead of hidden in a one-line box.
+  useEffect(() => {
+    const el = replyRef.current;
+    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; }
+  }, [reply]);
   // Push-notification button state:
   // 'hidden' (unsupported desktop browser), 'ios-install' (iPhone Safari tab —
   // must add to home screen first), 'off', 'busy', 'on', 'denied'.
@@ -966,6 +973,7 @@ export default function SmsInboxTab({ accessToken }) {
                   </div>
                   <div className="flex items-end gap-2">
                     <textarea
+                      ref={replyRef}
                       value={reply}
                       onChange={(e) => setReply(e.target.value)}
                       onKeyDown={(e) => {
@@ -976,7 +984,7 @@ export default function SmsInboxTab({ accessToken }) {
                       }}
                       rows={1}
                       placeholder="Type a message…  (Enter to send)"
-                      className="flex-1 resize-none px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-amber-400/50 max-h-32"
+                      className="flex-1 resize-none overflow-y-auto px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm leading-relaxed focus:outline-none focus:border-amber-400/50"
                     />
                     <button
                       onClick={handleSend}
