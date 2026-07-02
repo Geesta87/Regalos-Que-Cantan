@@ -540,6 +540,27 @@ export default function GeneratingPage() {
     );
   }
 
+  // Country gate (e.g. Cuba): a warm apology, not an error — these visitors
+  // did nothing wrong, we just can't take their payment. No retry button:
+  // retrying will always hit the same gate.
+  if (error && errorCode === 'COUNTRY_BLOCKED') {
+    return (
+      <div className="bg-forest min-h-screen flex items-center justify-center p-6">
+        <div className="bg-white/10 border border-gold/30 rounded-2xl p-8 max-w-md text-center">
+          <span className="material-symbols-outlined text-gold text-5xl mb-4">favorite</span>
+          <h2 className="text-white text-2xl font-bold mb-4">Lo sentimos de corazón</h2>
+          <p className="text-white/70 mb-6">{error}</p>
+          <a
+            href="/"
+            className="inline-block px-8 py-3 bg-gold text-white font-bold rounded-full hover:bg-gold/90 transition"
+          >
+            Volver al inicio
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   // Error state
   if (error) {
     const isRateLimit = errorCode === 'RATE_LIMIT_UNPAID' || errorCode === 'IP_BLOCKED';

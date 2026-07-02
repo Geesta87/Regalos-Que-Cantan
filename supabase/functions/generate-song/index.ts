@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isCubaIp } from '../_shared/cuba-ip-block.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2367,6 +2368,26 @@ serve(async (req) => {
       console.log(`[ADMIN_OVERRIDE] anti-abuse bypassed ip=${clientIp} email=${email} sender=${senderName} recipient=${recipientName}`);
     }
 
+    // Country gate: Cuba. Stripe cannot process Cuban cards (US embargo /
+    // OFAC), so a Cuban visitor can never complete a purchase — every
+    // generation from Cuba is a guaranteed music-credit loss (confirmed by
+    // the July 2026 Roly-affiliate audit: 32 Cuban creators, 47 generations,
+    // 0 purchases). Declined up front with a FRIENDLY message and its own
+    // code so the frontend renders it as an apology, not an error. Checked
+    // before any song row is created or credits are spent. The owner
+    // override PIN bypasses it for testing.
+    if (clientIp && !overrideActive && isCubaIp(clientIp)) {
+      console.log(`COUNTRY_BLOCKED: ${clientIp} (Cuba) email=${email || 'n/a'}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'COUNTRY_BLOCKED',
+          error: 'Lo sentimos de corazón 💛 Por regulaciones de pagos internacionales, por ahora no podemos generar canciones en tu país. Si tienes un ser querido en el extranjero, ¡él o ella sí puede crear y regalarte una canción desde allá!',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
+
     // Hard IP blocklist — checked BEFORE any rate-limit math. Used for
     // abusers who've demonstrated intent to evade the soft caps (e.g. by
     // typo'ing the recipient name to bypass the per-pair cap). Once an IP
@@ -2389,6 +2410,33 @@ serve(async (req) => {
             // Same generic Spanish message as the rate-limit response so
             // the abuser can't tell whether they hit the soft cap or a
             // hard block — and can't infer a workaround from the error.
+            error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+        );
+      }
+    }
+
+    // Hard email blocklist — same idea as blocked_ips but keyed on the
+    // buyer email (lowercased), so a blocked abuser stays blocked even if
+    // their IP changes. Used for confirmed fraud (e.g. chargeback on a
+    // delivered order). Rejected with the same generic 403 as the IP block.
+    if (email && !overrideActive) {
+      const { data: blockedEmailRow, error: blockedEmailErr } = await supabase
+        .from('blocked_emails')
+        .select('email, reason')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
+      if (blockedEmailErr) {
+        console.warn(`blocked_emails lookup failed for ${email}: ${blockedEmailErr.message} — allowing through`);
+      } else if (blockedEmailRow) {
+        console.log(`EMAIL_BLOCKED: ${email} reason=${blockedEmailRow.reason}`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: 'EMAIL_BLOCKED',
+            // Same generic Spanish message as the IP/rate-limit responses so
+            // the abuser can't tell whether they hit a soft cap or a hard block.
             error: 'Has generado demasiadas canciones sin completar una compra. Por favor elige una de tus canciones y completa el pago para generar más, o vuelve a intentarlo en 24 horas.',
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
