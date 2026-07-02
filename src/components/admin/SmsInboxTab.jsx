@@ -944,6 +944,26 @@ export default function SmsInboxTab({ accessToken }) {
                 </div>
               ) : (
                 <div className="px-4 py-3 border-t border-white/5">
+                  {/* One-tap quick replies — fill the box, then edit/Send. The
+                      first one asks for the email so you can look them up when
+                      the copilot can't find them by phone. */}
+                  <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    {[
+                      { label: '📧 Pedir correo', text: '¡Con gusto te ayudo a localizar tu canción! 🎵 ¿Me compartes el correo con el que hiciste tu pedido, por favor?' },
+                      { label: '⏳ Un momento', text: '¡Claro! Dame un momentito por favor mientras lo reviso 🙏' },
+                      { label: '🎵 Nombre', text: '¿Me confirmas el nombre de la persona a quien va dedicada la canción? Así la ubico más rápido 😊' },
+                      { label: '❤️ ¿Algo más?', text: '¡Con mucho gusto! ¿Hay algo más en lo que te pueda ayudar? ❤️' },
+                    ].map((q) => (
+                      <button
+                        key={q.label}
+                        onClick={() => setReply(q.text)}
+                        className="flex-shrink-0 text-xs bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-full px-3 py-1.5 transition whitespace-nowrap"
+                        title={q.text}
+                      >
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex items-end gap-2">
                     <textarea
                       value={reply}
