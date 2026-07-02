@@ -4,6 +4,7 @@ import { AnimadoPhotoUpload } from './AnimadoUpsell';
 import GiftTextUpsell from '../components/GiftTextUpsell';
 import { OneTapUpsell } from '../components/OneTapUpsell';
 import { chargeUpsell } from '../services/api';
+import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -691,21 +692,16 @@ export default function SuccessPage() {
   };
 
   // ------ Download ------
+  // forceDownload handles every browser: Supabase-hosted files get a
+  // ?download= attachment URL (works even in the Facebook/Instagram in-app
+  // browsers, where blob: URLs render as a broken black page), and only
+  // non-Supabase URLs in real browsers fall back to the blob technique.
   const handleDownload = async (song) => {
     const target = song || currentSong;
     if (!target?.audio_url) return;
     setDownloading(true);
     try {
-      const response = await fetch(target.audio_url);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `cancion-para-${target.recipient_name || 'ti'}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      await forceDownload(target.audio_url, `cancion-para-${target.recipient_name || 'ti'}.mp3`);
       setDownloadComplete(prev => ({ ...prev, [target.id]: true }));
     } catch (err) {
       window.open(target.audio_url, '_blank');
@@ -715,23 +711,10 @@ export default function SuccessPage() {
     }
   };
 
-  // Force a real download for any file URL (e.g. the instrumental track).
-  // A plain <a download> is ignored by browsers for cross-origin URLs (our
-  // files live on the Supabase domain), so it just opens/plays the file. We
-  // fetch the bytes and download via a same-origin blob URL, which downloads.
   const handleDownloadFile = async (fileUrl, filename) => {
     if (!fileUrl) return;
     try {
-      const response = await fetch(fileUrl);
-      const blob = await response.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objUrl);
+      await forceDownload(fileUrl, filename);
     } catch (err) {
       window.open(fileUrl, '_blank'); // fallback if the fetch is blocked
     }
@@ -2141,6 +2124,14 @@ export default function SuccessPage() {
               }}>
               {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de Nuevo' : '⬇️ Descargar MP3'}
             </button>
+
+            {/* Facebook/Instagram in-app browsers block many downloads — tell
+                those users how to escape to a real browser if the tap fails. */}
+            {isInAppBrowser() && (
+              <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 10px 0', textAlign: 'center' }}>
+                💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong> (Chrome o Safari)
+              </p>
+            )}
 
             {/* Download All button for multiple songs */}
             {songs.length > 1 && (

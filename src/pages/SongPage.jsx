@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import GiftTextUpsell from '../components/GiftTextUpsell';
 import { Helmet } from 'react-helmet-async';
+import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -414,23 +415,9 @@ export default function SongPage({ songId: propSongId }) {
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
     setDlState('downloading');
     try {
-      const res = await fetch(song.audio_url);
-      const blob = await res.blob();
-
-      // Create blob URL (same-origin) — download attribute works reliably
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-
-      // Cleanup
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-      }, 5000);
+      // forceDownload works in every browser, including the Facebook and
+      // Instagram in-app webviews where blob: downloads render a black page.
+      await forceDownload(song.audio_url, filename);
 
       setDlState('done');
       setTimeout(() => setDlState(null), 4000);
@@ -1297,6 +1284,22 @@ export default function SongPage({ songId: propSongId }) {
                     const progressText = btn.querySelector('.dl-text');
                     if (progressBar) progressBar.style.width = '0%';
                     if (progressText) progressText.textContent = '⏳ Preparando...';
+                    // In-app browsers (Facebook/Instagram) render blob: URLs as a
+                    // black page — use the download-video proxy, which serves the
+                    // file with Content-Disposition: attachment instead.
+                    if (isInAppBrowser()) {
+                      const fileName = `video-para-${(recipient || 'ti').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '')}.mp4`;
+                      const base = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
+                      const a = document.createElement('a');
+                      a.href = `${base}/functions/v1/download-video?url=${encodeURIComponent(videoData.video_url)}&filename=${encodeURIComponent(fileName)}`;
+                      a.style.display = 'none';
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => document.body.removeChild(a), 1000);
+                      if (progressText) progressText.textContent = '🎬 Descargar Video';
+                      btn.style.pointerEvents = 'auto';
+                      return;
+                    }
                     try {
                       const res = await fetch(videoData.video_url, { mode: 'cors' });
                       if (!res.ok) throw new Error('fetch failed');
