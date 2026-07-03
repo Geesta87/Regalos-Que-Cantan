@@ -32,6 +32,9 @@ const KEYWORDS: { q: string; lang: string }[] = [
 ];
 const PER_KEYWORD = Number(Deno.env.get('COMPETITOR_PER_KEYWORD') || '8');
 const MAX_NEW = Number(Deno.env.get('COMPETITOR_MAX_NEW') || '30');
+// Our own pages — never list ourselves as a "competitor".
+const OWN_BRANDS = ['regalos que cantan', 'giftmosongmo', 'gift mo song mo'];
+const isOwnBrand = (name: string | null) => !!name && OWN_BRANDS.includes(name.trim().toLowerCase());
 
 function shapeAd(r: any, lang: string) {
   const s = r.snapshot || {};
@@ -113,26 +116,58 @@ async function rate(ads: any[]): Promise<Record<number, any>> {
 // Meta Ad Library media URLs EXPIRE (hours–days), which is why previews go blank.
 // Download the display thumbnail once and mirror it to our own public bucket so
 // it stays valid. Returns the durable URL, or null (caller keeps the original).
+//
+// fbcdn rejects header-less serverless fetches, so send a browser User-Agent and
+// retry once. Every failure is LOGGED (previously silent) so we can see which ads
+// fail to cache and why.
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 async function cacheThumb(supabase: any, url: string | null, key: string): Promise<string | null> {
   if (!url) return null;
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const bytes = new Uint8Array(await r.arrayBuffer());
-    if (bytes.byteLength < 500) return null; // guard against 1px / error placeholders
-    const path = `competitor/${key}.jpg`;
-    const { error } = await supabase.storage.from('creative-studio').upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
-    if (error) return null;
-    const { data } = supabase.storage.from('creative-studio').getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch { return null; }
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'image/avif,image/webp,image/png,image/*,*/*;q=0.8' } });
+      if (!r.ok) { console.warn(`cacheThumb ${key} attempt ${attempt}: HTTP ${r.status}`); continue; }
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.byteLength < 500) { console.warn(`cacheThumb ${key}: tiny body ${bytes.byteLength}b (placeholder?)`); return null; }
+      const path = `competitor/${key}.jpg`;
+      const { error } = await supabase.storage.from('creative-studio').upload(path, bytes, { contentType: 'image/jpeg', upsert: true });
+      if (error) { console.warn(`cacheThumb ${key}: upload failed ${error.message}`); return null; }
+      const { data } = supabase.storage.from('creative-studio').getPublicUrl(path);
+      return data?.publicUrl || null;
+    } catch (e) { console.warn(`cacheThumb ${key} attempt ${attempt}: ${e}`); }
+  }
+  return null;
 }
+
+// True once a URL is our own durable copy (Supabase storage), false for an
+// expiring fbcdn/Meta URL or null. Used to avoid overwriting good cache.
+const isDurable = (u: string | null | undefined) => !!u && u.includes('/storage/v1/object/');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   const start = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
   const json = (s: number, b: any) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+  // REPAIR mode: re-cache every ad whose poster isn't durable yet, straight from
+  // its stored URL — no Ad Library search, so it costs no ScrapeCreators credits.
+  // Fixes tiles whose fbcdn URL is still alive (e.g. refreshed in a recent scan)
+  // but never got mirrored to our bucket. Truly-dead URLs fail gracefully.
+  let reqBody: any = {}; try { reqBody = await req.json(); } catch { reqBody = {}; }
+  if (reqBody?.mode === 'repair') {
+    const { data: rows } = await supabase.from('competitor_ads')
+      .select('ad_archive_id, image_url').neq('status', 'dismissed');
+    const targets = (rows || []).filter((r: any) => r.image_url && !isDurable(r.image_url));
+    let fixed = 0, failed = 0;
+    await Promise.all(targets.map(async (r: any) => {
+      const durable = await cacheThumb(supabase, r.image_url, r.ad_archive_id);
+      if (durable) { await supabase.from('competitor_ads').update({ image_url: durable }).eq('ad_archive_id', r.ad_archive_id); fixed++; }
+      else { failed++; }
+    }));
+    await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `Repair: fixed ${fixed}/${targets.length} blank posters (${failed} still unreachable)`, finished_at: new Date().toISOString(), execution_ms: Date.now() - start }).then(() => {}, () => {});
+    return json(200, { success: true, mode: 'repair', targets: targets.length, fixed, failed });
+  }
+
   if (!SC_KEY) return json(200, { success: false, skipped: true, reason: 'SCRAPECREATORS_API_KEY missing' });
 
   try {
@@ -146,6 +181,7 @@ Deno.serve(async (req: Request) => {
       for (const r of results.slice(0, PER_KEYWORD)) {
         const ad = shapeAd(r, k.lang);
         if (!ad.ad_archive_id || seen.has(ad.ad_archive_id)) continue;
+        if (isOwnBrand(ad.page_name)) continue; // never surface our own ads
         const mkey = (ad.video_url || ad.image_url || '').split('?')[0];
         if (mkey && seenMedia.has(mkey)) continue; // same creative already collected
         seen.add(ad.ad_archive_id);
@@ -160,29 +196,43 @@ Deno.serve(async (req: Request) => {
     const have = new Set((existing || []).map((e: any) => e.ad_archive_id));
     const fresh = collected.filter((a) => !have.has(a.ad_archive_id)).slice(0, MAX_NEW);
 
-    // REFRESH: ads we already have that showed up again in this scan (still active)
-    // get fresh media + a re-cached durable thumbnail — this repairs the blank
-    // "Vista previa no disponible" tiles whose old Meta URLs had expired.
+    // REFRESH + SELF-HEAL: ads we already have that showed up again in this scan
+    // (still active) get fresh media + a re-cached durable thumbnail — this repairs
+    // the blank "Vista previa no disponible" tiles whose old Meta URLs had expired.
+    //
+    // Fetch which stored rows already have a durable (cached) poster, so we NEVER
+    // overwrite a working cached URL with a fresh-but-expiring fbcdn one (that was
+    // the bug that let good tiles regress back to blank).
     const reSeen = collected.filter((a) => have.has(a.ad_archive_id));
-    let refreshed = 0;
+    const { data: reRows } = await supabase.from('competitor_ads')
+      .select('ad_archive_id, image_url').in('ad_archive_id', reSeen.map((a) => a.ad_archive_id));
+    const storedImg = new Map((reRows || []).map((r: any) => [r.ad_archive_id, r.image_url as string | null]));
+    let refreshed = 0, repaired = 0;
     await Promise.all(reSeen.map(async (a) => {
+      const storedUrl = storedImg.get(a.ad_archive_id);
+      const wasBlank = !isDurable(storedUrl);
       const durable = await cacheThumb(supabase, a.image_url, a.ad_archive_id);
-      const { error } = await supabase.from('competitor_ads').update({
-        image_url: durable || a.image_url, video_url: a.video_url, media_type: a.media_type, active_days: a.active_days,
-      }).eq('ad_archive_id', a.ad_archive_id);
-      if (!error) refreshed++;
+      const update: Record<string, unknown> = { video_url: a.video_url, media_type: a.media_type, active_days: a.active_days };
+      // Only touch image_url when we have a durable copy. If caching failed but the
+      // stored one is still expiring, we at least fall back to the fresh fbcdn URL.
+      if (durable) update.image_url = durable;
+      else if (!isDurable(storedUrl)) update.image_url = a.image_url;
+      const { error } = await supabase.from('competitor_ads').update(update).eq('ad_archive_id', a.ad_archive_id);
+      if (!error) { refreshed++; if (wasBlank && durable) repaired++; }
     }));
 
     // Mirror each NEW ad's display thumbnail to our bucket so it never expires. Videos
     // keep their (expiring) video_url for playback but gain a durable poster here.
+    let cachedFresh = 0;
     await Promise.all(fresh.map(async (a) => {
       const durable = await cacheThumb(supabase, a.image_url, a.ad_archive_id);
-      if (durable) a.image_url = durable;
+      if (durable) { a.image_url = durable; cachedFresh++; }
+      else console.warn(`fresh ad ${a.ad_archive_id} (${a.page_name}): no durable poster, keeping ${a.image_url ? 'fbcdn' : 'null'}`);
     }));
 
     if (fresh.length === 0) {
-      await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `No new competitor ads (refreshed ${refreshed} existing)`, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
-      return json(200, { success: true, scanned: collected.length, new: 0 });
+      await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `No new competitor ads (refreshed ${refreshed}, repaired ${repaired} blank)`, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
+      return json(200, { success: true, scanned: collected.length, new: 0, refreshed, repaired });
     }
 
     // Rate in small chunks so the tool output never truncates, then store.
@@ -204,8 +254,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `Stored ${stored} new competitor ads`, payload: { scanned: collected.length, stored }, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
-    return json(200, { success: true, scanned: collected.length, new: stored });
+    await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `Stored ${stored} new competitor ads (${cachedFresh}/${fresh.length} cached, repaired ${repaired} blank)`, payload: { scanned: collected.length, stored, cachedFresh, refreshed, repaired }, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
+    return json(200, { success: true, scanned: collected.length, new: stored, cachedFresh, refreshed, repaired });
   } catch (e: any) {
     await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'error', ok: false, error: String(e?.message || e).slice(0, 600), finished_at: new Date().toISOString() }).then(() => {}, () => {});
     return json(500, { success: false, error: String(e?.message || e) });

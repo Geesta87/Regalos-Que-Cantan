@@ -4,11 +4,14 @@
 // run), rated by the agent, with a "Make our version" button that generates an
 // ORIGINAL Regalos ad from the winning concept into the Ads queue.
 import React, { useState, useEffect, useCallback } from 'react';
-import { Swords, RefreshCw, Loader2, Wand2, X, Clock, Check, Lightbulb } from 'lucide-react';
+import { Swords, RefreshCw, Loader2, Wand2, X, Clock, Check, Lightbulb, Play, ExternalLink } from 'lucide-react';
 import { Card, Badge, btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/competitors-admin`;
 const FIT_TONE = { high: 'green', medium: 'amber', low: 'gray' };
+// Permanent link to the real ad in Meta's Ad Library (never expires), unlike the
+// media URLs. Lets us always offer a working way to see the ad.
+const adLibUrl = (a) => a.ad_archive_id ? `https://www.facebook.com/ads/library/?id=${a.ad_archive_id}` : 'https://www.facebook.com/ads/library/';
 
 export default function CompetitorsSection({ accessToken, showToast }) {
   const [ads, setAds] = useState([]);
@@ -19,7 +22,8 @@ export default function CompetitorsSection({ accessToken, showToast }) {
   const [langFilter, setLangFilter] = useState('all'); // 'all' | 'es' | 'en'
   const [mediaFilter, setMediaFilter] = useState('all'); // 'all' | 'video' | 'image'
   const [sortBy, setSortBy] = useState('strongest'); // 'strongest' | 'longest'
-  const [mediaFallback, setMediaFallback] = useState({}); // adId -> 'img' | 'dead' (broken-media escalation)
+  const [mediaFallback, setMediaFallback] = useState({}); // adId -> 'dead' | 'novideo' (broken-media escalation)
+  const [playingId, setPlayingId] = useState(null); // adId whose inline video is playing
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -129,26 +133,44 @@ export default function CompetitorsSection({ accessToken, showToast }) {
             <Card key={a.id} className="overflow-hidden flex flex-col">
               <div className="relative bg-gray-900 aspect-[4/5] flex items-center justify-center">
                 {(() => {
-                  // Meta Ad Library media URLs expire. Escalate video → image → clean
-                  // placeholder on load error, so a dead URL never shows a broken tile.
+                  // The durable (cached) poster is ALWAYS the base layer, so a tile is
+                  // never blank while any poster exists. Video plays on demand; if its
+                  // (expiring) URL is dead we fall back to poster + Ad Library link.
                   const stage = mediaFallback[a.id];
-                  const showVideo = a.media_type === 'video' && a.video_url && stage !== 'img' && stage !== 'dead';
-                  const showImage = !showVideo && a.image_url && stage !== 'dead';
-                  if (showVideo) return (
-                    <video src={a.video_url} controls playsInline className="w-full h-full object-cover"
-                      onError={() => setMediaFallback((m) => ({ ...m, [a.id]: a.image_url ? 'img' : 'dead' }))} />
+                  const posterOk = a.image_url && stage !== 'dead';
+                  if (playingId === a.id && a.video_url) return (
+                    <video src={a.video_url} controls autoPlay playsInline className="w-full h-full object-cover"
+                      onError={() => { setPlayingId(null); setMediaFallback((m) => ({ ...m, [a.id]: 'novideo' })); }} />
                   );
-                  if (showImage) return (
+                  if (posterOk) return (
                     <img src={a.image_url} alt={a.page_name || 'ad'} className="w-full h-full object-cover" referrerPolicy="no-referrer"
                       onError={() => setMediaFallback((m) => ({ ...m, [a.id]: 'dead' }))} />
                   );
-                  return <span className="text-gray-500 text-[11px] px-3 text-center">Vista previa no disponible</span>;
+                  // No durable poster — still let the owner open the real ad.
+                  return (
+                    <a href={adLibUrl(a)} target="_blank" rel="noreferrer"
+                      className="flex flex-col items-center gap-1.5 text-gray-400 hover:text-gray-200 text-[11px] px-3 text-center">
+                      <ExternalLink size={18} /> Ver anuncio en Ad Library
+                    </a>
+                  );
                 })()}
+                {/* Play affordance for videos when the poster (not the video) is showing */}
+                {a.media_type === 'video' && playingId !== a.id && a.image_url && mediaFallback[a.id] !== 'dead' && mediaFallback[a.id] !== 'novideo' && (
+                  <button
+                    onClick={() => (a.video_url ? setPlayingId(a.id) : window.open(adLibUrl(a), '_blank'))}
+                    className="absolute inset-0 flex items-center justify-center bg-black/10 hover:bg-black/25 transition"
+                    aria-label="Play video">
+                    <span className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow"><Play size={22} className="text-gray-900 ml-0.5" /></span>
+                  </button>
+                )}
                 <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white">{a.page_name} · {a.lang?.toUpperCase()}</span>
                 {typeof a.score === 'number' && <span className="absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/90 text-gray-800">{a.score}</span>}
                 {a.active_days != null && (
                   <span className="absolute bottom-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white flex items-center gap-1"><Clock size={10} /> {a.active_days}d running</span>
                 )}
+                <a href={adLibUrl(a)} target="_blank" rel="noreferrer"
+                  className="absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-white flex items-center gap-1 hover:bg-black/80 z-10"
+                  title="Open the original ad in Meta's Ad Library"><ExternalLink size={10} /> Ad Library</a>
               </div>
 
               <div className="p-3 flex-1 flex flex-col gap-1.5">
