@@ -180,7 +180,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   // Returns the chosen take + splice points, or throws (err.offerFull = fall back
   // to a full re-roll). This is the piece the old "pick the tightest take" logic
   // was missing (it silently accepted takes that skipped the corrected line).
-  async function resingOne({ note, approvedLyrics, verifyPhrases }, onMsg) {
+  async function resingOne({ note, approvedLyrics, verifyPhrases, correctedText }, onMsg) {
     const ROUNDS = 4;
     let lastReason = '';
     for (let round = 1; round <= ROUNDS; round++) {
@@ -212,7 +212,10 @@ function FixSongCard({ song, showToast, onApplied }) {
 
       // Validate each take actually sang the correction; keep only clean ones.
       onMsg?.('Checking the take sang it right…');
-      const groups = buildTokenGroups(sectionText);
+      // Validate the CORRECTED line specifically (not the whole re-sung block) —
+      // otherwise an unusual proper noun elsewhere in the block (e.g. "Josemir"
+      // heard as "José Emil") or natural multi-line gaps false-reject a good take.
+      const groups = buildTokenGroups(correctedText || sectionText);
       const maxSpanS = (origCut > startS ? origCut - startS : 20) + 12;
       const cands = [];
       for (const url of takeUrls) {
@@ -238,7 +241,8 @@ function FixSongCard({ song, showToast, onApplied }) {
     setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
     try {
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases }, setSurgicalMsg);
+      const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText }, setSurgicalMsg);
       setSurgicalMsg('Stitching with the original recording…');
       const spliced = await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
       setResult({
@@ -270,7 +274,7 @@ function FixSongCard({ song, showToast, onApplied }) {
         const c = changes[i];
         const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
         setSurgicalMsg(`Fixing part ${i + 1} of ${changes.length}…`);
-        const r = await resingOne({ note, approvedLyrics: combinedLyrics, verifyPhrases: [] }, (m) => setSurgicalMsg(`(${i + 1}/${changes.length}) ${m}`));
+        const r = await resingOne({ note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after }, (m) => setSurgicalMsg(`(${i + 1}/${changes.length}) ${m}`));
         done.push(r);
       }
       done.sort((a, b) => b.startS - a.startS); // latest-first

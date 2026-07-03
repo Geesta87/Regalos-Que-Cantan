@@ -140,11 +140,22 @@ function norm(w) {
 // is an array of acceptable normalized alternatives (e.g. ['2019','diecinueve']).
 // Returns { ok, reason, endS, maxGap, span }. A clean take matches every group in
 // order with no large gap between consecutive hits.
-export function validateTake(words, tokenGroups, { maxGapS = 5, maxSpanS = 30 } = {}) {
+function _lev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } = {}) {
   if (!words?.length) return { ok: false, reason: 'no transcription' };
   if (!tokenGroups?.length) return { ok: true, reason: 'no check' };
   const atoms = words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }));
-  const grpEq = (n, group) => group.some((g) => n === g || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n))));
+  // Fuzzy word equality — tolerant of Whisper spelling noise (mezquite≈mesquite),
+  // prefixes, and single-character edits on longer words.
+  const grpEq = (n, group) => group.some((g) => n === g
+    || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n)))
+    || (Math.max(n.length, g.length) >= 5 && Math.abs(n.length - g.length) <= 1 && _lev(n, g) <= 1));
   let best = null;
   for (let start = 0; start < atoms.length; start++) {
     if (!grpEq(atoms[start].n, tokenGroups[0])) continue;
