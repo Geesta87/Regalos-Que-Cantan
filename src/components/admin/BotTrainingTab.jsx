@@ -23,6 +23,7 @@ export default function BotTrainingTab({ accessToken }) {
   const [savedKnowledge, setSavedKnowledge] = useState('');
   const [isCustom, setIsCustom] = useState(false);
   const [examples, setExamples] = useState([]);
+  const [proposals, setProposals] = useState([]);
 
   const dirty = knowledge !== savedKnowledge;
 
@@ -54,6 +55,7 @@ export default function BotTrainingTab({ accessToken }) {
       setSavedKnowledge(data.knowledge || '');
       setIsCustom(!!data.is_custom);
       setExamples(Array.isArray(data.examples) ? data.examples : []);
+      setProposals(Array.isArray(data.proposals) ? data.proposals : []);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -118,6 +120,21 @@ export default function BotTrainingTab({ accessToken }) {
     }
   };
 
+  const handleApproveProposal = async (id) => {
+    setProposals((p) => p.filter((x) => x.id !== id));
+    try {
+      const data = await call({ action: 'approve-proposal', proposal_id: id });
+      if (data.knowledge) { setKnowledge(data.knowledge); setSavedKnowledge(data.knowledge); setIsCustom(true); }
+      flash('✅ Added to the bot’s knowledge');
+    } catch (e) { flash(`⚠ ${e.message}`); load(); }
+  };
+
+  const handleRejectProposal = async (id) => {
+    setProposals((p) => p.filter((x) => x.id !== id));
+    try { await call({ action: 'reject-proposal', proposal_id: id }); }
+    catch (e) { flash(`⚠ ${e.message}`); load(); }
+  };
+
   return (
     <div className="max-w-4xl">
       {/* Header + master switch */}
@@ -147,6 +164,29 @@ export default function BotTrainingTab({ accessToken }) {
         <div className="p-10 text-center text-gray-500">Loading…</div>
       ) : (
         <>
+          {/* Step 4: knowledge updates the bot proposed from your corrections */}
+          {proposals.length > 0 && (
+            <div className="bg-amber-400/5 rounded-2xl border border-amber-400/20 p-4 mb-6">
+              <h3 className="text-sm font-semibold text-amber-200 mb-1">💡 Suggested knowledge updates ({proposals.length})</h3>
+              <p className="text-xs text-gray-400 mb-3">
+                The bot noticed these gaps from replies you corrected. Approve to add to what it knows, or dismiss.
+              </p>
+              <div className="space-y-2">
+                {proposals.map((p) => (
+                  <div key={p.id} className="bg-black/20 border border-white/10 rounded-xl p-3">
+                    <div className="text-sm font-semibold text-white">{p.title}</div>
+                    <div className="text-[13px] text-gray-200 whitespace-pre-wrap mt-1">{p.proposal}</div>
+                    {p.rationale && <div className="text-[11px] text-gray-500 mt-1.5">Why: {p.rationale}</div>}
+                    <div className="flex items-center gap-2 mt-2.5">
+                      <button onClick={() => handleApproveProposal(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition">✓ Add to knowledge</button>
+                      <button onClick={() => handleRejectProposal(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition">Dismiss</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Knowledge editor */}
           <div className="bg-[#1a1f26] rounded-2xl border border-white/5 p-4 mb-6">
             <div className="flex items-center justify-between mb-2">

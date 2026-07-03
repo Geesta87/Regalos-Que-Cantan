@@ -818,3 +818,9 @@ verify_jwt = true
 # the owner's Supabase JWT, so keep JWT verification ON (admin_users gate inside).
 [functions.cs-metrics]
 verify_jwt = true
+
+# cs-distill-knowledge — weekly pg_cron job that proposes knowledge updates from
+# recent corrections. Called by pg_cron with no JWT; only writes PENDING
+# proposals (owner approves in Bot Training), so an unauthenticated call is safe.
+[functions.cs-distill-knowledge]
+verify_jwt = false

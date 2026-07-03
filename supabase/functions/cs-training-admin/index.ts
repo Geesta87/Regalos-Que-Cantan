@@ -60,7 +60,7 @@ serve(async (req) => {
     if (!roleRow) return json({ success: false, error: 'No admin access' }, 403);
     const role = roleRow.role as 'admin' | 'assistant';
 
-    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean } = {};
+    let body: { action?: string; knowledge?: string; id?: string; enabled?: boolean; proposal_id?: string } = {};
     if (req.method === 'POST') { try { body = await req.json(); } catch { body = {}; } }
     const action = body.action || 'get';
 
@@ -74,6 +74,14 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(50);
       const custom = (settings?.knowledge_doc || '').trim();
+      // Step 4: pending knowledge proposals from cs-distill-knowledge awaiting
+      // the owner's approval.
+      const { data: proposals } = await admin
+        .from('cs_knowledge_proposals')
+        .select('id, kind, title, proposal, rationale, created_at')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(20);
       return json({
         success: true,
         role,
@@ -81,6 +89,7 @@ serve(async (req) => {
         knowledge: custom || CS_KNOWLEDGE,
         is_custom: !!custom,
         examples: examples || [],
+        proposals: proposals || [],
       });
     }
 
@@ -119,6 +128,38 @@ serve(async (req) => {
         .from('cs_agent_settings').update({ enabled: !!body.enabled, updated_at: new Date().toISOString() }).eq('id', 1);
       if (error) return json({ success: false, error: error.message }, 500);
       return json({ success: true, enabled: !!body.enabled });
+    }
+
+    // ── approve a distilled knowledge proposal (append it to the doc) ─────
+    if (action === 'approve-proposal') {
+      if (!body.proposal_id) return json({ success: false, error: 'proposal_id required' }, 400);
+      const { data: prop } = await admin
+        .from('cs_knowledge_proposals')
+        .select('id, title, proposal, status').eq('id', body.proposal_id).maybeSingle();
+      if (!prop || prop.status !== 'pending') {
+        return json({ success: false, error: 'proposal not found or already reviewed' }, 409);
+      }
+      const { data: settings } = await admin
+        .from('cs_agent_settings').select('knowledge_doc').eq('id', 1).maybeSingle();
+      const base = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
+      const appended = `${base}\n\n# ${prop.title}\n${prop.proposal}`;
+      const { error: upErr } = await admin
+        .from('cs_agent_settings').update({ knowledge_doc: appended, updated_at: new Date().toISOString() }).eq('id', 1);
+      if (upErr) return json({ success: false, error: upErr.message }, 500);
+      await admin.from('cs_knowledge_proposals')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', prop.id);
+      return json({ success: true, knowledge: appended });
+    }
+
+    // ── reject a proposal ────────────────────────────────────────────────
+    if (action === 'reject-proposal') {
+      if (!body.proposal_id) return json({ success: false, error: 'proposal_id required' }, 400);
+      const { error } = await admin
+        .from('cs_knowledge_proposals')
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+        .eq('id', body.proposal_id).eq('status', 'pending');
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true });
     }
 
     return json({ success: false, error: `Unknown action: ${action}` }, 400);
