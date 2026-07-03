@@ -36,6 +36,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { CS_KNOWLEDGE, CS_GOLDEN_ANSWERS } from '../_shared/cs-knowledge.ts';
 import { OFFERS } from '../_shared/brand-brief.ts';
+import { embedText, embedTexts } from '../_shared/embed.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -358,16 +359,52 @@ serve(async (req) => {
       console.warn('cs-agent: snapshot build failed', snapErr);
     }
 
-    // LEARNING: the most recent owner-approved / owner-sent replies teach the
-    // bot the house voice. Edited approvals are flagged as corrections. These
-    // are for TONE/STYLE only — real data comes from the tool, never here.
+    // LEARNING: retrieve the team's most RELEVANT past replies (semantic match on
+    // the incoming message), not just the newest — so the bot learns from
+    // precedent that actually fits this question. Falls back to recency when
+    // embeddings aren't available (incl. cold-start before anything is embedded).
     let examplesBlock = '';
     try {
-      const { data: examples } = await admin
+      // (a) Lazy backfill: embed a small batch of not-yet-embedded examples each
+      // run, so the corpus fills in on its own without a separate job.
+      const { data: unembedded } = await admin
         .from('cs_examples')
-        .select('customer_msg, reply, was_edited')
-        .order('created_at', { ascending: false })
-        .limit(EXAMPLE_LIMIT);
+        .select('id, customer_msg, reply')
+        .is('embedding', null)
+        .limit(16);
+      if (unembedded && unembedded.length) {
+        const vecs = await embedTexts(
+          unembedded.map((e) => (e.customer_msg || e.reply || '').trim()),
+        );
+        if (vecs) {
+          await Promise.all(unembedded.map((e, i) =>
+            vecs[i]
+              ? admin.from('cs_examples').update({ embedding: vecs[i] }).eq('id', e.id)
+              : Promise.resolve(),
+          ));
+        }
+      }
+
+      // (b) Retrieve the approved replies most SIMILAR to this incoming message.
+      let examples: { customer_msg: string; reply: string; was_edited: boolean }[] | null = null;
+      const queryVec = await embedText(String(last.body || ''));
+      if (queryVec) {
+        const { data: matched } = await admin.rpc('match_cs_examples', {
+          query_embedding: queryVec,
+          match_count: EXAMPLE_LIMIT,
+        });
+        if (matched && matched.length) examples = matched;
+      }
+      // Fallback: recency.
+      if (!examples) {
+        const { data: recent } = await admin
+          .from('cs_examples')
+          .select('customer_msg, reply, was_edited')
+          .order('created_at', { ascending: false })
+          .limit(EXAMPLE_LIMIT);
+        examples = recent || null;
+      }
+
       if (examples && examples.length) {
         const lines = examples
           .map((e) => {
@@ -377,10 +414,10 @@ serve(async (req) => {
           })
           .join('\n---\n');
         examplesBlock =
-          `\n\nAPRENDE DE ESTAS RESPUESTAS REALES del equipo (de mensajes anteriores). Imita el TONO, la calidez, la longitud y el estilo con que responde el equipo. Las marcadas "(corregido por el equipo)" son correcciones importantes: síguelas. NO copies nombres, enlaces ni datos específicos de estos ejemplos — esos SIEMPRE vienen de la herramienta look_up_my_order:\n${lines}`;
+          `\n\nAPRENDE DE ESTAS RESPUESTAS REALES del equipo (las más PARECIDAS a este mensaje). Imita el TONO, la calidez, la longitud y el estilo con que responde el equipo. Las marcadas "(corregido por el equipo)" son correcciones importantes: síguelas. NO copies nombres, enlaces ni datos específicos de estos ejemplos — esos SIEMPRE vienen de la herramienta look_up_my_order o de la SITUACIÓN DEL CLIENTE:\n${lines}`;
       }
     } catch (exErr) {
-      console.warn('cs-agent: examples fetch failed', exErr);
+      console.warn('cs-agent: retrieval failed', exErr);
     }
 
     let needsHuman = false;
