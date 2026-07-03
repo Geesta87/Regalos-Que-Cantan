@@ -77,11 +77,11 @@ serve(async (req) => {
 
 REGLAS:
 - Propón SOLO cosas que NO estén ya cubiertas en el conocimiento actual ni en las respuestas aprobadas (abajo).
-- Cada propuesta debe ser corta, accionable y en el tono cálido del equipo (español para el cliente).
+- IDIOMA (IMPORTANTE): "title" y "rationale" van en INGLÉS — son para el DUEÑO/admin que revisa. "proposal" va en ESPAÑOL — es el texto que el bot le dirá al CLIENTE, en el tono cálido del equipo.
 - Enfócate en HECHOS/POLÍTICAS o respuestas canónicas que falten, no en estilo.
 - Máximo 5 propuestas. Si no hay nada claramente nuevo y útil, devuelve un arreglo vacío.
 - Responde SOLO con un arreglo JSON válido, sin texto adicional. Formato:
-[{"kind":"faq|fact|rule","title":"etiqueta corta","proposal":"el texto exacto a añadir al conocimiento","rationale":"por qué (qué corrección lo motivó)"}]
+[{"kind":"faq|fact|rule","title":"short English label for the owner","proposal":"el texto exacto EN ESPAÑOL a añadir al conocimiento","rationale":"why this helps, in English — which correction motivated it"}]
 
 CONOCIMIENTO ACTUAL:
 ${knowledge.slice(0, 6000)}
