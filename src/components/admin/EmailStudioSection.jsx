@@ -47,7 +47,7 @@ const PRESETS = [
     brief: `Promo email for the 3-Pack family bundle ($49.99): three personalized songs for the whole family. Angle: one gift that covers mamá, papá y los abuelos — the best value in the store. Listen free before paying, each song made for one specific person.`,
   },
   {
-    id: 'video_addon', label: 'Video con foto', desc: '$9.99 — top add-on', styleId: 'romantico_calido', ctaUrl: SITE,
+    id: 'video_addon', label: 'Video con foto', desc: '$9.99 — top add-on', styleId: 'romantico_calido', ctaUrl: SITE, segment: 'no_video',
     brief: `Promo email for the photo-video add-on ($9.99), our best-selling upgrade: it turns the song into an animated video with THEIR photos and a personal recorded message. Angle: "no solo le mandes una canción — mándale un recuerdo que va a guardar para siempre". Target: past customers who already know the songs.`,
   },
   {
@@ -67,12 +67,22 @@ const PRESETS = [
     brief: `Seasonal promo email. OCCASION: [write the occasion here — e.g. "Día de las Madres in 12 days"]. Use the occasion's color story tastefully (never clip-art). Big emotional hook tied to the date, urgency line with the days left, core song $29.99, listen free before paying.`,
   },
   {
-    id: 'winback', label: 'Win-back', desc: 'Re-engage past buyers', styleId: 'earthy_organic', ctaUrl: SITE,
+    id: 'winback', label: 'Win-back', desc: 'Re-engage past buyers', styleId: 'earthy_organic', ctaUrl: SITE, segment: 'winback',
     brief: `Warm win-back email for customers who bought a song a while ago. Angle: "la última canción hizo llorar a alguien — ¿quién sigue?". Remind them how easy it was (3 minutes, listen free before paying) and suggest the next person to surprise (mamá, su pareja, el compadre). No discounts — pure warmth and a nudge.`,
   },
 ];
 
 const DEVICE_WIDTHS = { desktop: '100%', mobile: 390 };
+
+// Audience segments — must match the enum in email-studio + the SQL filters in
+// enqueue_marketing_recipients. "Everyone" is the default.
+const SEGMENTS = [
+  { id: 'all',          label: 'Everyone' },
+  { id: 'recent',       label: 'Recent buyers (≤90 days)' },
+  { id: 'winback',      label: 'Win-back (>90 days)' },
+  { id: 'video_buyers', label: 'Video-addon buyers' },
+  { id: 'no_video',     label: 'Bought song, never video' },
+];
 
 export default function EmailStudioSection({ accessToken, showToast, initialDraft, onDraftConsumed }) {
   const [styleId, setStyleId] = useState(STYLES[0].id);
@@ -80,6 +90,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [presetId, setPresetId] = useState(null);
   const [ctaUrl, setCtaUrl] = useState(SITE);
   const [polish, setPolish] = useState(true);
+  const [segment, setSegment] = useState('all');
+  const [abTest, setAbTest] = useState(false);
+  const [subjectB, setSubjectB] = useState('');
 
   const [imageUrl, setImageUrl] = useState('');
   const [imagePrompt, setImagePrompt] = useState('');
@@ -105,6 +118,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setHtml(initialDraft.html || '');
     setSubject(initialDraft.subject || '');
     setPreviewText(initialDraft.preview_text || '');
+    setSegment(initialDraft.segment || 'all');
+    setSubjectB(initialDraft.subject_b || '');
+    setAbTest(!!initialDraft.subject_b);
     setEditingId(initialDraft.id || null);
     setTab('preview');
     onDraftConsumed?.();
@@ -124,6 +140,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setBrief(p.brief);
     setStyleId(p.styleId);
     setCtaUrl(p.ctaUrl);
+    setSegment(p.segment || 'all');
   };
 
   const pushHistory = (h, subj) => {
@@ -163,7 +180,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const sendTestToMe = async () => {
     setBusy(true);
     try {
-      const r = await call({ action: 'send_test', html, subject, style_id: styleId });
+      const r = await call({ action: 'send_test', html, subject, preview_text: previewText, style_id: styleId });
       if (!r.success) throw new Error(r.error || 'Test failed');
       showToast?.(`Test sent to ${r.sent_to}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -172,13 +189,14 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
 
   const queueEmail = async () => {
     if (!subject.trim()) { showToast?.('Give the email a subject first'); return; }
+    if (abTest && !subjectB.trim()) { showToast?.('Add a second subject (B) or turn off the A/B test'); return; }
     const msg = editingId
       ? `Save your changes to "${subject}"? It stays in the Emails queue awaiting your approval.`
       : `Add "${subject}" to the Emails queue? It will wait there for your approval before anything is sent.`;
     if (!window.confirm(msg)) return;
     setBusy(true);
     try {
-      const r = await call({ action: 'queue', id: editingId || undefined, html, subject, preview_text: previewText, cta_url: ctaUrl, style_id: styleId });
+      const r = await call({ action: 'queue', id: editingId || undefined, html, subject, subject_b: abTest ? subjectB : '', segment, preview_text: previewText, cta_url: ctaUrl, style_id: styleId });
       if (!r.success) throw new Error(r.error || 'Queue failed');
       showToast?.(r.updated ? 'Draft updated — review it in the Emails section.' : 'Added to the Emails queue — open the Emails section to test & approve the send.');
     } catch (e) { showToast?.(`Error: ${e.message}`); }
@@ -353,6 +371,17 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                   <input value={previewText} onChange={(e) => setPreviewText(e.target.value)} placeholder="Inbox preview text"
                     className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:border-indigo-400" />
                 </div>
+                <label className="flex items-center gap-2 mt-2 text-xs text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={abTest} onChange={(e) => setAbTest(e.target.checked)} className="accent-indigo-600" />
+                  A/B test the subject — half your list gets B; the Results tab shows the winner
+                </label>
+                {abTest && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <SectionLabel className="w-14 flex-shrink-0">Subject B</SectionLabel>
+                    <input value={subjectB} onChange={(e) => setSubjectB(e.target.value)} placeholder="Second subject line to test"
+                      className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-800 bg-white focus:outline-none focus:border-indigo-400" />
+                  </div>
+                )}
               </Card>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -409,6 +438,13 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
+                <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="whitespace-nowrap">Send to</span>
+                  <select value={segment} onChange={(e) => setSegment(e.target.value)}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
+                    {SEGMENTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </label>
                 <button onClick={sendTestToMe} disabled={busy || !!stage} className={btn.ghost}>
                   {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send test to me
                 </button>

@@ -30,6 +30,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { brandContext, OFFERS } from '../_shared/brand-brief.ts';
 import { kiePhotoBytes, KIE_IMAGE_ENABLED } from '../_shared/kie-image.ts';
 import { buildUnsubscribeHeaders, buildUnsubscribeUrl } from '../_shared/unsubscribe.ts';
+import { buildEmailParts } from '../_shared/email.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -368,9 +369,10 @@ function finalizeHtml(rawHtml: string, style: Style): string {
 // SENDGRID — test sends only. Real list sends go through email_queue + the
 // email-marketer-send cron (throttled, suppression-checked).
 // ===========================================================================
-async function sendTest(to: string, subject: string, html: string) {
+async function sendTest(to: string, subject: string, html: string, preheader = '') {
   if (!SENDGRID_API_KEY) throw new Error('SENDGRID_API_KEY not set');
-  const body = html.replace(/\{\{UNSUB_URL\}\}/g, await buildUnsubscribeUrl(to));
+  const resolved = html.replace(/\{\{UNSUB_URL\}\}/g, await buildUnsubscribeUrl(to));
+  const parts = buildEmailParts(resolved, preheader); // multipart text+html, preheader, CAN-SPAM address
   const headers = await buildUnsubscribeHeaders(to);
   const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -379,7 +381,9 @@ async function sendTest(to: string, subject: string, html: string) {
       personalizations: [{ to: [{ email: to }] }],
       from: { email: SENDER_EMAIL, name: SENDER_NAME },
       reply_to: { email: SENDER_EMAIL, name: SENDER_NAME },
-      subject, content: [{ type: 'text/html', value: body }],
+      subject,
+      // RFC 2046: text/plain MUST come before text/html.
+      content: [{ type: 'text/plain', value: parts.text }, { type: 'text/html', value: parts.html }],
       categories: ['email_studio_test'], headers,
       tracking_settings: { click_tracking: { enable: false }, open_tracking: { enable: false }, subscription_tracking: { enable: false } },
     }),
@@ -470,7 +474,7 @@ Deno.serve(async (req: Request) => {
       if (!html) return json({ success: false, error: 'html is required' }, 400);
       const to = (ud.user.email || '').toString();
       if (!to) return json({ success: false, error: 'Your account has no email address' }, 400);
-      await sendTest(to, `[PRUEBA] ${subject}`, finalizeHtml(html, style));
+      await sendTest(to, `[PRUEBA] ${subject}`, finalizeHtml(html, style), (body.preview_text || '').toString());
       return json({ success: true, sent_to: to });
     }
 
@@ -480,12 +484,18 @@ Deno.serve(async (req: Request) => {
       if (!html || !subject) return json({ success: false, error: 'html and subject are required' }, 400);
       // "Edit in Studio" save path: update an existing pending draft in place
       // (never a sent/sending email) instead of inserting a duplicate.
+      // Optional A/B second subject + audience segment (validated).
+      const SEGMENTS = ['all', 'recent', 'winback', 'video_buyers', 'no_video'];
+      const segment = SEGMENTS.includes((body.segment || '').toString()) ? body.segment.toString() : 'all';
+      const subjectB = (body.subject_b || '').toString().trim() || null;
       if (body.id) {
         const { data: existing } = await admin.from('email_queue').select('id, status').eq('id', body.id).single();
         if (!existing) return json({ success: false, error: 'Draft not found' }, 404);
         if (existing.status !== 'pending_approval') return json({ success: false, error: `Not editable (status=${existing.status})` }, 409);
         const { error } = await admin.from('email_queue').update({
           subject,
+          subject_b: subjectB,
+          segment,
           preview_text: (body.preview_text || '').toString() || null,
           body_html: finalizeHtml(html, style),
           cta_text: (body.cta_text || '').toString() || null,
@@ -499,6 +509,8 @@ Deno.serve(async (req: Request) => {
         week_of: new Date().toISOString().slice(0, 10),
         reason: `Email Studio · ${style.name}`,
         subject,
+        subject_b: subjectB,
+        segment,
         preview_text: (body.preview_text || '').toString() || null,
         body_html: finalizeHtml(html, style),
         cta_text: (body.cta_text || '').toString() || null,

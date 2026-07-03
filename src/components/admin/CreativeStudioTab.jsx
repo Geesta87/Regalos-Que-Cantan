@@ -8,6 +8,7 @@ import { Sparkles, RefreshCw, Check, X, Loader2, AlertTriangle, Megaphone, Penci
 import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
 import EmailStudioSection from './EmailStudioSection';
+import EmailResultsSection from './EmailResultsSection';
 import CompetitorsSection from './CompetitorsSection';
 import FreeformLabSection from './FreeformLabSection';
 import { Card, Badge, btn } from './ui';
@@ -32,7 +33,7 @@ const FILTERS = [
 const GROUPS = [
   { key: 'review',    label: 'Review',    views: [['ads', 'Ads'], ['social', 'Social']] },
   { key: 'create',    label: 'Create',    views: [['lab', 'Lab'], ['chat', 'Art director']] },
-  { key: 'marketing', label: 'Marketing', views: [['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['competitors', 'Competitors']] },
+  { key: 'marketing', label: 'Marketing', views: [['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['emailresults', 'Results'], ['competitors', 'Competitors']] },
 ];
 
 export default function CreativeStudioTab({ accessToken, showToast }) {
@@ -217,6 +218,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
             onEditInStudio={(draft) => { setStudioDraft(draft); setView('emailstudio'); }} />
         : view === 'emailstudio' ? <EmailStudioSection accessToken={accessToken} showToast={showToast}
             initialDraft={studioDraft} onDraftConsumed={() => setStudioDraft(null)} />
+        : view === 'emailresults' ? <EmailResultsSection accessToken={accessToken} showToast={showToast} />
         : <CompetitorsSection accessToken={accessToken} showToast={showToast} />
       ) : (
       <>
