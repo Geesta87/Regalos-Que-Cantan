@@ -6,11 +6,15 @@
 // admin inbox before it goes out (Phase 1 = draft-and-approve).
 //
 // SAFETY MODEL (why this can't delete/change/leak things):
-//   • The model is given exactly TWO tools, both read-only:
+//   • The model is given exactly THREE tools, all INERT at draft time:
 //       - look_up_my_order : SELECT on the cs_customer_lookup VIEW, filtered to
 //                            the phone of THIS conversation (pinned in code —
 //                            the AI cannot pass a different phone). So a customer
 //                            can only ever see their OWN order, safe fields only.
+//       - send_link_by_email: records a PROPOSED action on the draft (resend the
+//                            paid-song link via recover-song). Nothing is sent at
+//                            draft time — sms-admin executes it only when the
+//                            owner APPROVES the draft.
 //       - flag_for_human   : marks the draft as needing a person (money, refund,
 //                            complaint, or "not sure"). Writes nothing to songs.
 //     There is NO update/delete/insert tool. It is structurally impossible for
@@ -31,6 +35,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { CS_KNOWLEDGE } from '../_shared/cs-knowledge.ts';
+import { OFFERS } from '../_shared/brand-brief.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -64,13 +69,37 @@ function buildOrderLink(o: Record<string, unknown>): string {
   return `${SITE}/success?song_id=${o.id}`;
 }
 
-// ── Tools the model may call (both READ-ONLY) ──────────────────────────────
+// LIVE PRICES — built from the same code-owned catalog the website and every
+// generator use (_shared/brand-brief.ts OFFERS). Appended AFTER the knowledge
+// doc so the bot never quotes a stale price even if the owner's custom
+// knowledge text falls behind. Update OFFERS once → the bot updates too.
+const LIVE_PRICES = `
+
+PRECIOS VIGENTES (fuente oficial — si algún otro texto de este documento dice un precio distinto, ESTOS son los correctos):
+- Canción personalizada — ${OFFERS.single}
+- Paquete de 2 canciones — ${OFFERS.twoPack}
+- Paquete de 3 canciones — ${OFFERS.threePack}
+- Video con fotos — ${OFFERS.videoAddon} · Video con letra (lyric video) — ${OFFERS.lyricVideo}`;
+
+// ── Tools the model may call (all inert at draft time) ─────────────────────
 const TOOLS = [
   {
     name: 'look_up_my_order',
     description:
       "Busca el pedido del cliente que está escribiendo en esta conversación. NO recibe parámetros: siempre usa el número de teléfono de esta conversación (el cliente solo puede ver SU propio pedido). Úsala cuando el cliente pregunte por su canción, su enlace, si ya está lista o si ya pagó. Devuelve los pedidos de ese número con: nombre del destinatario, ocasión, si está pagado (is_paid), si la canción está lista (song_ready), el download_link (SOLO si está pagado) y preview_link_for_unpaid (enlace para ESCUCHAR sin descargar, para pedidos no pagados).",
     input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'send_link_by_email',
+    description:
+      'Propone RE-ENVIAR por CORREO el enlace de las canciones PAGADAS del cliente. Úsala solo cuando el cliente diga que perdió el correo con su enlace o pida recibirlo por email, Y te haya dado (o confirme en la conversación) su dirección de correo. NO envía nada ahora mismo: el correo se envía automáticamente cuando el equipo apruebe tu respuesta. En tu respuesta dile al cliente que le reenviaremos el enlace a ese correo (menciona el correo para confirmar que es el correcto). Solo funciona para pedidos pagados.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', description: 'El correo del cliente, exactamente como él lo escribió en la conversación.' },
+      },
+      required: ['email'],
+    },
   },
   {
     name: 'flag_for_human',
@@ -90,7 +119,7 @@ function systemPrompt(customerName: string | null, channel: string, knowledge: s
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
 
-${knowledge}
+${knowledge}${LIVE_PRICES}
 
 REGLAS ESTRICTAS:
 - Responde solo en español, en 1-3 frases cuando sea posible.
@@ -218,6 +247,9 @@ serve(async (req) => {
 
     let needsHuman = false;
     let escalateReason = '';
+    // Approval-gated side action (v1: resend paid link by email). Recorded on
+    // the draft; sms-admin executes it ONLY when the owner approves the draft.
+    let proposedAction: { type: string; email: string } | null = null;
 
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
@@ -293,6 +325,19 @@ serve(async (req) => {
                 'Pedidos PAGADOS: comparte su download_link. Pedidos NO pagados: comparte preview_link_for_unpaid para que escuche, y explica que al completar la compra se desbloquea la descarga. NUNCA compartas un download_link de un pedido no pagado.',
             };
           }
+        } else if (tu.name === 'send_link_by_email') {
+          // INERT at draft time: we only RECORD the proposal. sms-admin calls
+          // recover-song (paid songs only, to this email) on owner approval.
+          const email = String(tu.input?.email || '').trim().toLowerCase();
+          if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            proposedAction = { type: 'resend_email', email };
+            result = {
+              ok: true,
+              note: `Anotado. Cuando el equipo apruebe tu respuesta, se reenviará por correo a ${email} el enlace de sus canciones PAGADAS (si ese correo no tiene canciones pagadas, no se enviará nada). En tu respuesta confirma al cliente el correo al que se lo reenviaremos.`,
+            };
+          } else {
+            result = { ok: false, error: 'correo inválido — pide al cliente que escriba su correo de nuevo' };
+          }
         } else if (tu.name === 'flag_for_human') {
           needsHuman = true;
           escalateReason = String(tu.input?.reason || 'flagged');
@@ -324,6 +369,7 @@ serve(async (req) => {
         channel: convo.channel || 'sms',
         ai_generated: true,
         needs_human: needsHuman,
+        proposed_action: proposedAction,
       })
       .select('id, body, status, needs_human, created_at')
       .single();

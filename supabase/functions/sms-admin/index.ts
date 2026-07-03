@@ -371,7 +371,7 @@ serve(async (req) => {
 
       const { data: draft, error: dErr } = await admin
         .from('sms_messages')
-        .select('id, conversation_id, body, status, direction, channel')
+        .select('id, conversation_id, body, status, direction, channel, proposed_action')
         .eq('id', messageId)
         .single();
       if (dErr || !draft) return json({ success: false, error: 'Draft not found' }, 404);
@@ -426,7 +426,37 @@ serve(async (req) => {
         wasEdited: !!(editedText && editedText !== draft.body),
         source: 'approve',
       });
-      return json({ success: true, message: updated });
+
+      // Execute the draft's PROPOSED side action — the owner's approval of the
+      // draft is the authorization. v1: resend the customer's PAID song link by
+      // email via recover-song (sends only that email's own paid songs to that
+      // same email, so nothing can leak to a third party).
+      let sideAction: string | undefined;
+      const pa = (draft as Record<string, any>).proposed_action;
+      if (pa?.type === 'resend_email') {
+        const paEmail = String(pa.email || '').trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(paEmail)) {
+          try {
+            const r = await fetch(`${SUPABASE_URL}/functions/v1/recover-song`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              },
+              body: JSON.stringify({ email: paEmail, action: 'send', which: 'paid' }),
+            });
+            const rj = await r.json().catch(() => ({}));
+            sideAction = rj?.emailSent
+              ? `Enlace reenviado por correo a ${paEmail}`
+              : `Sin canciones pagadas para ${paEmail} — no se envió correo`;
+          } catch (e) {
+            sideAction = `Reenvío por correo falló: ${String(e).slice(0, 80)}`;
+            console.error('approve-draft resend_email failed', e);
+          }
+        }
+      }
+
+      return json({ success: true, message: updated, side_action: sideAction });
     }
 
     // ─── action: discard-draft ───────────────────────────────────────────

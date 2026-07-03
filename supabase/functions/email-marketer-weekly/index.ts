@@ -312,11 +312,84 @@ async function callAnthropic(payload: Record<string, unknown>): Promise<any> {
   return res.json();
 }
 
-async function pass1Copy(weekOf: string): Promise<any[]> {
+// FEEDBACK LOOP — real results of recent campaigns, injected into Pass 1 so
+// each Monday's strategist learns from what actually opened, clicked and SOLD
+// instead of drafting blind. Opens/clicks from SendGrid category stats (per
+// campaign_key), attributed revenue from the email_campaign_revenue RPC (UTM
+// join to Stripe orders). Fails soft: any error returns '' and the batch
+// drafts exactly as before.
+async function pastPerformanceBlock(supabase: any): Promise<string> {
+  try {
+    const { data: rows } = await supabase.from('email_queue')
+      .select('subject, reason, segment, campaign_key, recipients_sent, sent_at')
+      .in('status', ['sent', 'sending']).not('campaign_key', 'is', null)
+      .order('created_at', { ascending: false }).limit(8);
+    const campaigns = rows || [];
+    if (!campaigns.length) return '';
+
+    const revByKey: Record<string, { orders: number; revenue: number }> = {};
+    try {
+      const { data: revRows } = await supabase.rpc('email_campaign_revenue');
+      for (const r of revRows || []) revByKey[r.campaign_key] = { orders: Number(r.orders), revenue: Number(r.revenue) };
+    } catch (e) { console.warn('email_campaign_revenue failed', e); }
+
+    // SendGrid category stats, summed over each campaign's lifetime.
+    const metrics: Record<string, { delivered: number; opens: number; clicks: number }> = {};
+    if (SENDGRID_API_KEY) {
+      const keys = campaigns.map((c: any) => c.campaign_key).filter(Boolean);
+      const earliest = campaigns.reduce((min: string, c: any) => {
+        const d = (c.sent_at || '').slice(0, 10);
+        return d && (!min || d < min) ? d : min;
+      }, '') || new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
+      const end = new Date().toISOString().slice(0, 10);
+      for (let i = 0; i < keys.length; i += 10) {
+        const qs = new URLSearchParams({ start_date: earliest, end_date: end, aggregated_by: 'day' });
+        for (const k of keys.slice(i, i + 10)) qs.append('categories', k);
+        try {
+          const res = await fetch(`https://api.sendgrid.com/v3/categories/stats?${qs}`, {
+            headers: { 'Authorization': `Bearer ${SENDGRID_API_KEY}` },
+          });
+          if (!res.ok) continue;
+          for (const day of (await res.json()) || []) {
+            for (const s of day.stats || []) {
+              const m = (metrics[s.name] ||= { delivered: 0, opens: 0, clicks: 0 });
+              m.delivered += Number(s.metrics?.delivered || 0);
+              m.opens += Number(s.metrics?.unique_opens || 0);
+              m.clicks += Number(s.metrics?.unique_clicks || 0);
+            }
+          }
+        } catch (e) { console.warn('sg stats chunk failed', e); }
+      }
+    }
+
+    const lines = campaigns.map((c: any) => {
+      const m = metrics[c.campaign_key];
+      const openPct = m?.delivered ? `${Math.round((m.opens / m.delivered) * 100)}% open` : null;
+      const clickPct = m?.delivered ? `${((m.clicks / m.delivered) * 100).toFixed(1)}% click` : null;
+      const rev = revByKey[c.campaign_key];
+      const parts = [
+        `"${c.subject}"`,
+        c.sent_at ? `sent ${String(c.sent_at).slice(0, 10)}` : 'sending',
+        c.recipients_sent ? `${c.recipients_sent} delivered` : null,
+        openPct, clickPct,
+        rev && rev.orders ? `→ ${rev.orders} order(s), $${Math.round(rev.revenue)} attributed` : '→ $0 attributed',
+      ].filter(Boolean);
+      return `- ${parts.join(' · ')}${c.reason ? `  [angle: ${c.reason}]` : ''}`;
+    });
+    return `\n\nREAL RESULTS OF YOUR RECENT CAMPAIGNS (your own track record — read it before drafting):
+${lines.join('\n')}
+LEARN FROM IT: lean toward the subject styles, angles, occasions and featured products that opened, clicked and SOLD; avoid repeating what flopped; NEVER reuse a recent subject line. If everything shows $0 attributed, treat open/click as the signal.`;
+  } catch (e) {
+    console.warn('pastPerformanceBlock failed', e);
+    return '';
+  }
+}
+
+async function pass1Copy(weekOf: string, perfBlock = ''): Promise<any[]> {
   const data = await callAnthropic({
     model: MODEL, max_tokens: 12000, system: PASS1_SYSTEM, tools: [PASS1_TOOL],
     tool_choice: { type: 'tool', name: 'emit_email_batch' },
-    messages: [{ role: 'user', content: `Today is ${weekOf}. Draft 3-4 promotional emails. Find the best reasons to send (upcoming holidays/dates in the next few weeks, plus a creative "just because"/evergreen angle), rotate the featured product (vary across song, video_addon, lyric_video, karaoke, a bundle, or english_platform), mark at least one with use_image=true (with an image_prompt), write genuinely enticing sales copy, and assign each a fitting, distinct visual style.` }],
+    messages: [{ role: 'user', content: `Today is ${weekOf}. Draft 3-4 promotional emails. Find the best reasons to send (upcoming holidays/dates in the next few weeks, plus a creative "just because"/evergreen angle), rotate the featured product (vary across song, video_addon, lyric_video, karaoke, a bundle, or english_platform), mark at least one with use_image=true (with an image_prompt), write genuinely enticing sales copy, and assign each a fitting, distinct visual style.${perfBlock}` }],
   });
   if (data.stop_reason === 'max_tokens') throw new Error('Pass 1 truncated (max_tokens) — raise max_tokens');
   const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
@@ -604,6 +677,17 @@ Deno.serve(async (req: Request) => {
     return json(200, { success: true, sent, to, total: (rows || []).length, errors });
   }
 
+  // Utility: return the past-performance block (the feedback data Pass 1 will
+  // read) WITHOUT generating a batch. Service-role only — campaign stats are
+  // not public.
+  if (reqBody.action === 'preview_performance') {
+    if ((req.headers.get('Authorization') || '') !== `Bearer ${SERVICE_ROLE}`) {
+      return json(403, { success: false, error: 'forbidden' });
+    }
+    const block = await pastPerformanceBlock(supabase);
+    return json(200, { success: true, performance_block: block || '(no sent campaigns yet)' });
+  }
+
   if (Deno.env.get('EMAIL_MARKETER_ENABLED') === 'false') return json(200, { success: true, skipped: true });
 
   const weekOf = new Date().toISOString().slice(0, 10);
@@ -614,7 +698,8 @@ Deno.serve(async (req: Request) => {
   // designed in parallel; design and refine are sequential within an email.
   const run = async () => {
     try {
-      const emails = await pass1Copy(weekOf); // PASS 1 — copy + style selection
+      const perfBlock = await pastPerformanceBlock(supabase); // feedback loop (fail-soft)
+      const emails = await pass1Copy(weekOf, perfBlock); // PASS 1 — copy + style selection
       if (!emails.length) throw new Error('empty batch');
 
       // Demo override: force specific layouts (one per email, in order) so we can
