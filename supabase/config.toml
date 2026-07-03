@@ -813,3 +813,8 @@ verify_jwt = false
 # Remove this function (and this block, and the Supabase secret) once
 # voice-cloning quality is validated and the paid tier launches.
 verify_jwt = true
+
+# cs-metrics — read-only CS quality dashboard. Called by the admin frontend with
+# the owner's Supabase JWT, so keep JWT verification ON (admin_users gate inside).
+[functions.cs-metrics]
+verify_jwt = true

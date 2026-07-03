@@ -5,6 +5,7 @@ import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
 import BotTrainingTab from '../components/admin/BotTrainingTab';
+import CsInsightsTab from '../components/admin/CsInsightsTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
@@ -3155,6 +3156,9 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('training')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'training' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'training' ? '' : 'grayscale'}`}>🎓</span> Bot Training
         </button>
+        <button onClick={() => setActiveTab('csinsights')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'csinsights' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'csinsights' ? '' : 'grayscale'}`}>📊</span> CS Insights
+        </button>
         <button onClick={() => setActiveTab('fixsong')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'fixsong' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Fix Song
         </button>
@@ -5588,6 +5592,10 @@ export default function AdminDashboard() {
           /* Bot Training — self-serve knowledge editor + learned-example manager
              for the customer-service AI rep (cs-training-admin edge function). */
           <BotTrainingTab accessToken={accessToken} />
+        ) : activeTab === 'csinsights' ? (
+          /* CS Insights — quality dashboard for the customer-service AI
+             (cs-metrics edge function). */
+          <CsInsightsTab accessToken={accessToken} />
         ) : activeTab === 'fixsong' ? (
           /* Arreglar Canción — dedicated workspace. Search any song, hear it,
              and fix one part via fix-song-section (Whisper + Claude + Kie

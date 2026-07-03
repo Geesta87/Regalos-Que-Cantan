@@ -233,6 +233,53 @@ const TOOLS = [
   },
 ];
 
+// Finite set of question categories (the "states" a message can be about) — used
+// to measure quality BY topic in the dashboard and, later, to gate auto-send.
+const CS_CATEGORIES = [
+  'price', 'how_it_works', 'locate_song', 'download_help', 'song_status',
+  'change_request', 'billing_money', 'complaint', 'voice_options', 'upsell',
+  'greeting', 'thanks_closing', 'other',
+] as const;
+const CLASSIFY_MODEL = Deno.env.get('CS_CLASSIFY_MODEL') || 'claude-haiku-4-5-20251001';
+
+// Tag the incoming customer message with ONE category (cheap Haiku call).
+// Best-effort: returns 'other' on anything unexpected so it never blocks a draft.
+async function classifyCategory(text: string): Promise<string> {
+  const t = (text || '').trim();
+  if (!t || !ANTHROPIC_API_KEY) return 'other';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: CLASSIFY_MODEL,
+        max_tokens: 12,
+        system: `Clasifica el mensaje de un cliente de una tienda de canciones personalizadas en UNA sola categoría. Responde SOLO con el id exacto, sin nada más.
+- price: pregunta por precio/costo
+- how_it_works: cómo funciona, si es membresía
+- locate_song: no encuentra su canción / ya pagó / no le llegó / dónde está
+- download_help: cómo o no puede descargar
+- song_status: si ya está lista / estado del pedido
+- change_request: cambiar o corregir una canción YA hecha
+- billing_money: reembolso, cargo, cobro doble, disputa
+- complaint: queja, molestia, no le gustó
+- voice_options: voz femenina/masculina u opciones de la canción
+- upsell: video, karaoke, clona mi voz, extras
+- greeting: saludo sin pregunta clara
+- thanks_closing: agradecimiento o despedida
+- other: cualquier otra cosa`,
+        messages: [{ role: 'user', content: t.slice(0, 500) }],
+      }),
+    });
+    if (!res.ok) return 'other';
+    const data = await res.json();
+    const raw = (data.content?.[0]?.text || '').trim().toLowerCase().replace(/[^a-z_]/g, '');
+    return (CS_CATEGORIES as readonly string[]).includes(raw) ? raw : 'other';
+  } catch {
+    return 'other';
+  }
+}
+
 function systemPrompt(customerName: string | null, channel: string, knowledge: string, snapshot: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
@@ -358,6 +405,9 @@ serve(async (req) => {
     } catch (snapErr) {
       console.warn('cs-agent: snapshot build failed', snapErr);
     }
+
+    // Tag this message's topic for the quality dashboard (best-effort).
+    const category = await classifyCategory(String(last.body || ''));
 
     // LEARNING: retrieve the team's most RELEVANT past replies (semantic match on
     // the incoming message), not just the newest — so the bot learns from
@@ -545,6 +595,7 @@ serve(async (req) => {
         ai_generated: true,
         needs_human: needsHuman,
         proposed_action: proposedAction,
+        category,
       })
       .select('id, body, status, needs_human, created_at')
       .single();

@@ -402,6 +402,9 @@ serve(async (req) => {
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
           needs_human: false,
+          // Quality signal for the dashboard: did the owner change the draft
+          // before approving it?
+          was_edited: !!(editedText && editedText !== draft.body),
           // Re-stamp to the SEND time. The draft was created when the AI wrote
           // it, but the customer may have sent more messages before the owner
           // approved — without this the approved reply appears mid-thread
