@@ -273,6 +273,35 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // TEAM FEED: hand the strongest high-fit finds straight to the Art Director
+    // as inspiration (insights — he works them into his next batch; the owner
+    // still approves every creative). Top 3 per scan, score ≥ 75 + high fit,
+    // deduped against anything already posted in the last 30 days.
+    try {
+      const { data: topAds } = await supabase.from('competitor_ads')
+        .select('ad_archive_id, page_name, analysis, score')
+        .eq('status', 'new').gte('score', 75)
+        .order('score', { ascending: false }).limit(6);
+      const picks = (topAds || [])
+        .filter((a: any) => a.analysis?.rqc_fit === 'high' && a.analysis?.suggested_rqc_angle)
+        .slice(0, 3);
+      if (picks.length) {
+        const { data: existing } = await supabase.from('team_feed')
+          .select('ref').eq('author', 'competitor-scan')
+          .gte('created_at', new Date(Date.now() - 30 * 864e5).toISOString());
+        const seen = new Set((existing || []).map((e: any) => e.ref?.ad_archive_id).filter(Boolean));
+        const freshPicks = picks.filter((a: any) => !seen.has(a.ad_archive_id));
+        if (freshPicks.length) {
+          await supabase.from('team_feed').insert(freshPicks.map((a: any) => ({
+            author: 'competitor-scan', kind: 'insight', audience: ['creative-studio'],
+            title: `Working for "${a.page_name}" (score ${a.score}): ${String(a.analysis.hook || a.analysis.angle || '').slice(0, 140)}`,
+            body: `Why it works: ${a.analysis.why_working || '—'} · Our original take: ${a.analysis.suggested_rqc_angle}`,
+            ref: { ad_archive_id: a.ad_archive_id }, status: 'done', resolved_at: new Date().toISOString(),
+          })));
+        }
+      }
+    } catch (e) { console.warn('team_feed insight post failed', e); }
+
     await supabase.from('agent_runs').insert({ agent: 'competitor-scan', status: 'ok', ok: true, summary: `Stored ${stored} new competitor ads (${cachedFresh}/${fresh.length} cached, repaired ${repaired} blank)`, payload: { scanned: collected.length, stored, cachedFresh, refreshed, repaired }, finished_at: new Date().toISOString(), execution_ms: Date.now() - start });
     return json(200, { success: true, scanned: collected.length, new: stored, cachedFresh, refreshed, repaired });
   } catch (e: any) {

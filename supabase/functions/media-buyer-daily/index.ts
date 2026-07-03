@@ -603,6 +603,27 @@ Deno.serve(async (req: Request) => {
         .eq('report_for', reportFor).eq('account_id', META_AD_ACCOUNT_ID);
     }
 
+    // ---- 4b. TEAM FEED: creative-type recommendations become requests to the
+    // Art Director (creative-studio picks them up on its next run). Deduped
+    // against still-open requests so a repeated recommendation doesn't stack.
+    try {
+      const creativeRecs = (brief.recommendations || []).filter((r: any) => r.type === 'creative').slice(0, 3);
+      if (creativeRecs.length) {
+        const { data: openReqs } = await supabase.from('team_feed')
+          .select('title').eq('author', 'media-buyer').eq('kind', 'request').eq('status', 'open');
+        const openTitles = new Set((openReqs || []).map((r: any) => r.title));
+        const fresh = creativeRecs.filter((r: any) => !openTitles.has(String(r.action || '').slice(0, 200)));
+        if (fresh.length) {
+          await supabase.from('team_feed').insert(fresh.map((r: any) => ({
+            author: 'media-buyer', kind: 'request', audience: ['creative-studio'],
+            title: String(r.action || 'New creative needed').slice(0, 200),
+            body: [r.rationale, r.target_campaign ? `Campaign: ${r.target_campaign}` : null].filter(Boolean).join(' · '),
+            ref: { report_for: reportFor, target_campaign: r.target_campaign ?? null },
+          })));
+        }
+      }
+    } catch (e) { console.warn('team_feed post failed', e); }
+
     // ---- 5. Auto-grade Sofía's due open calls (fail-soft, never blocks the brief) ----
     let callsGraded = 0;
     try { callsGraded = await gradeOpenCalls(supabase); } catch (e) { console.warn('gradeOpenCalls failed', e); }

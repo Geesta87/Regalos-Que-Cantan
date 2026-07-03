@@ -39,6 +39,11 @@ const BUCKET = Deno.env.get('CREATIVE_BUCKET') || 'creative-studio';
 const CLAUDE_MODEL = Deno.env.get('CREATIVE_MODEL') || 'claude-opus-4-8';
 const N_IMAGES = Number(Deno.env.get('CREATIVE_N_IMAGES') || '5');
 const N_VIDEOS = Number(Deno.env.get('CREATIVE_N_VIDEOS') || '5');
+// BACKLOG-AWARE: the Art Director keeps a review shelf of ~this many 'ready'
+// creatives. When the shelf is full and no teammate filed a request, he skips
+// the day entirely — no credits burned adding to a pile the owner hasn't
+// reviewed. As the owner approves/rejects, the shelf drains and he refills it.
+const SHELF_TARGET = Number(Deno.env.get('CREATIVE_SHELF_TARGET') || '12');
 
 const KIE = 'https://api.kie.ai/api/v1/jobs';
 const corsHeaders = {
@@ -50,7 +55,7 @@ const corsHeaders = {
 // Claude — Creative Director. Emits the full batch (concepts + copy + self-score)
 // in one forced tool call. Media isn't generated here — only the plan + copy.
 // ---------------------------------------------------------------------------
-const BATCH_TOOL = {
+const batchTool = (nImages: number, nVideos: number) => ({
   name: 'emit_creative_batch',
   description: 'Emit the daily batch of social + ad creative concepts with copy.',
   input_schema: {
@@ -58,7 +63,7 @@ const BATCH_TOOL = {
     properties: {
       items: {
         type: 'array',
-        description: `Exactly ${N_IMAGES} image items + ${N_VIDEOS} video items.`,
+        description: `Exactly ${nImages} image items + ${nVideos} video items.`,
         items: {
           type: 'object',
           properties: {
@@ -84,7 +89,7 @@ const BATCH_TOOL = {
     },
     required: ['items'],
   },
-};
+});
 
 const SYSTEM = `You are the Creative Director for "Regalos Que Cantan" (regalosquecantan.com), a US-Hispanic brand selling personalized AI-generated Spanish songs as deeply emotional gifts (~$30). You produce a daily batch of direct-response creatives for Meta + social. The non-technical owner reviews and approves each one.
 
@@ -116,15 +121,20 @@ GUARDRAILS:
 - NEVER depict minors. AI image models auto-REJECT any image showing a child or teen. For youth occasions (quinceañera, kids' cumpleaños, graduación), depict the EMOTION through the ADULTS instead — a proud mother's tearful face, parents embracing, hands holding the phone with the song, a celebration table — never the child/teen themselves. This is mandatory in EVERY gen_prompt, photoreal or animated.
 - Score honestly so your strongest ideas sort to the top — be your own toughest critic.`;
 
-async function generateBatch(styleNotes: string, promoNotes: string): Promise<any[]> {
+async function generateBatch(
+  styleNotes: string, promoNotes: string,
+  nImages: number, nVideos: number,
+  teamBlock: string, feedbackBlock: string,
+): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
   // Layer the system prompt: base art-direction DNA → the Business Brain (real
   // offer + selling points + upsell ladder, with the owner's live promo push) →
-  // the owner's saved style preferences. Each overrides/extends the one above.
+  // the owner's saved style preferences → performance feedback. Each
+  // overrides/extends the one above.
   const stylePart = styleNotes?.trim()
     ? `\n\nOWNER'S SAVED STYLE PREFERENCES (always honor these):\n${styleNotes.trim()}`
     : '';
-  const system = `${SYSTEM}\n\n${brandContext(promoNotes)}${stylePart}`;
+  const system = `${SYSTEM}\n\n${brandContext(promoNotes)}${stylePart}${feedbackBlock}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -132,11 +142,11 @@ async function generateBatch(styleNotes: string, promoNotes: string): Promise<an
       model: CLAUDE_MODEL,
       max_tokens: 8000,
       system,
-      tools: [BATCH_TOOL],
+      tools: [batchTool(nImages, nVideos)],
       tool_choice: { type: 'tool', name: 'emit_creative_batch' },
       messages: [{
         role: 'user',
-        content: `Create today's batch: exactly ${N_IMAGES} image creatives and ${N_VIDEOS} video creatives. Diverse occasions and angles. Make them genuinely good.`,
+        content: `Create today's batch: exactly ${nImages} image creatives and ${nVideos} video creatives. Diverse occasions and angles. Make them genuinely good.${teamBlock}`,
       }],
     }),
   });
@@ -144,7 +154,46 @@ async function generateBatch(styleNotes: string, promoNotes: string): Promise<an
   const data = await res.json();
   const toolUse = (data.content || []).find((c: any) => c.type === 'tool_use');
   if (!toolUse) throw new Error('No batch returned by model');
-  return toolUse.input.items || [];
+  const items = toolUse.input.items;
+  if (typeof items === 'string') { try { const p = JSON.parse(items); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return Array.isArray(items) ? items : [];
+}
+
+// ---------------------------------------------------------------------------
+// FEEDBACK — what the owner approved/rejected + which campaigns actually sell.
+// The Art Director learns direction from his own review history instead of
+// generating blind every day. Fail-soft: returns '' on any error.
+// ---------------------------------------------------------------------------
+async function feedbackBlock(supabase: any): Promise<string> {
+  try {
+    const [rejected, posted, mbReport] = await Promise.all([
+      supabase.from('creative_queue').select('concept, occasion, persuasion_angle')
+        .eq('status', 'rejected').order('updated_at', { ascending: false }).limit(12),
+      supabase.from('creative_queue').select('concept, occasion, persuasion_angle')
+        .eq('status', 'posted').order('updated_at', { ascending: false }).limit(8),
+      supabase.from('media_buyer_reports').select('metrics')
+        .order('report_for', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const line = (c: any) => `- ${c.concept || '?'} (${c.occasion || '?'} · ${c.persuasion_angle || '?'})`;
+    const parts: string[] = [];
+    if (rejected.data?.length) {
+      parts.push(`THE OWNER REJECTED THESE RECENT CREATIVES — read the pattern and steer away from these directions:\n${rejected.data.map(line).join('\n')}`);
+    }
+    if (posted.data?.length) {
+      parts.push(`THE OWNER APPROVED & POSTED THESE — this is his taste; lean toward these directions (without repeating them literally):\n${posted.data.map(line).join('\n')}`);
+    }
+    const camps = (mbReport.data?.metrics?.campaigns_last_7d || [])
+      .filter((c: any) => c.purchases > 0)
+      .sort((a: any, b: any) => b.purchases - a.purchases)
+      .slice(0, 3);
+    if (camps.length) {
+      parts.push(`CAMPAIGNS THAT ACTUALLY SELL RIGHT NOW (from the Media Buyer's live data) — their themes/genres/occasions are proven demand:\n${camps.map((c: any) => `- "${c.name}": ${c.purchases} sales on $${c.spend} (7d)`).join('\n')}`);
+    }
+    return parts.length ? `\n\nPERFORMANCE FEEDBACK:\n${parts.join('\n\n')}` : '';
+  } catch (e) {
+    console.warn('feedbackBlock failed', e);
+    return '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -187,8 +236,53 @@ Deno.serve(async (req: Request) => {
 
   const batchDate = new Date().toISOString().slice(0, 10);
   try {
+    // ---- BACKLOG CHECK: how full is the owner's review shelf? ----
+    const { count: readyCount } = await supabase
+      .from('creative_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'ready');
+    const ready = readyCount || 0;
+    const deficit = Math.max(0, SHELF_TARGET - ready);
+
+    // ---- TEAM FEED: open requests for me + recent teammate intel ----
+    const [reqRes, intelRes] = await Promise.all([
+      supabase.from('team_feed').select('id, author, title, body, ref')
+        .eq('kind', 'request').eq('status', 'open').contains('audience', ['creative-studio'])
+        .order('created_at', { ascending: true }).limit(6),
+      supabase.from('team_feed').select('author, title, body')
+        .eq('kind', 'insight').contains('audience', ['creative-studio'])
+        .gte('created_at', new Date(Date.now() - 14 * 864e5).toISOString())
+        .order('created_at', { ascending: false }).limit(5),
+    ]);
+    const requests = reqRes.data || [];
+    const intel = intelRes.data || [];
+
+    // Shelf full + nobody asked for anything → skip the day, burn nothing.
+    if (deficit === 0 && requests.length === 0) {
+      await supabase.from('agent_runs').insert({
+        agent: 'creative-studio', status: 'ok', ok: true,
+        summary: `Shelf full (${ready} ready ≥ target ${SHELF_TARGET}), no team requests — skipped generation`,
+        payload: { batch_date: batchDate, ready, shelf_target: SHELF_TARGET, skipped: true },
+        finished_at: new Date().toISOString(), execution_ms: Date.now() - startTime,
+      });
+      return json(200, { success: true, skipped: true, reason: 'shelf_full', ready });
+    }
+
+    // Size the batch to the shelf gap (requests guarantee a minimum batch).
+    const nImages = Math.min(N_IMAGES, Math.max(deficit, requests.length ? 3 : 1));
+    const nVideos = deficit >= Math.ceil(SHELF_TARGET / 2) ? N_VIDEOS : Math.min(2, deficit);
+
+    const teamBlock =
+      (requests.length
+        ? `\n\nTEAMMATE REQUESTS (address EACH with at least one creative in this batch):\n${requests.map((r: any) => `- [from ${r.author}] ${r.title}${r.body ? ` — ${r.body}` : ''}`).join('\n')}`
+        : '') +
+      (intel.length
+        ? `\n\nTEAM INTEL (angles teammates flagged as working — use as inspiration for ORIGINAL creatives, never copy):\n${intel.map((i: any) => `- [${i.author}] ${i.title}${i.body ? ` — ${i.body}` : ''}`).join('\n')}`
+        : '');
+
     const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
-    const items = await generateBatch(cfg?.style_notes || '', cfg?.promo_notes || '');
+    const fb = await feedbackBlock(supabase);
+    const items = await generateBatch(cfg?.style_notes || '', cfg?.promo_notes || '', nImages, nVideos, teamBlock, fb);
     if (!items.length) throw new Error('Model returned an empty batch');
 
     // Insert each row (so copy survives even if generation fails), then fire the
@@ -252,14 +346,30 @@ Deno.serve(async (req: Request) => {
       }
     }));
 
+    // Close the loop on the team feed: requests I just addressed → done, and
+    // post a 'result' so teammates (and Sofía) can see what I produced.
+    try {
+      if (requests.length) {
+        await supabase.from('team_feed')
+          .update({ status: 'done', resolved_at: new Date().toISOString() })
+          .in('id', requests.map((r: any) => r.id));
+      }
+      await supabase.from('team_feed').insert({
+        author: 'creative-studio', kind: 'result', audience: null,
+        title: `Batch ${batchDate}: ${fired} creatives generating (${nImages} img / ${nVideos} vid planned)`,
+        body: requests.length ? `Addressed ${requests.length} teammate request(s).` : null,
+        ref: { batch_date: batchDate }, status: 'done', resolved_at: new Date().toISOString(),
+      });
+    } catch (e) { console.warn('team_feed close failed', e); }
+
     await supabase.from('agent_runs').insert({
       agent: 'creative-studio', status: 'ok', ok: true,
-      summary: `Batch ${batchDate}: ${fired} generating, ${failed} failed`,
-      payload: { batch_date: batchDate, requested: items.length, fired, failed },
+      summary: `Batch ${batchDate}: ${fired} generating, ${failed} failed (shelf ${ready}/${SHELF_TARGET}, ${requests.length} team request(s))`,
+      payload: { batch_date: batchDate, requested: items.length, fired, failed, ready_before: ready, team_requests: requests.length },
       finished_at: new Date().toISOString(), execution_ms: Date.now() - startTime,
     });
 
-    return json(200, { success: true, batch_date: batchDate, fired, failed });
+    return json(200, { success: true, batch_date: batchDate, fired, failed, ready_before: ready });
   } catch (e: any) {
     console.error('[creative-studio-daily] error:', e?.message || e);
     await supabase.from('agent_runs').insert({
