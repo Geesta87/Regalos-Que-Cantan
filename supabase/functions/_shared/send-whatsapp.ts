@@ -55,7 +55,10 @@ function toWhatsAppAddress(raw: string): string {
   return `whatsapp:${v}`;
 }
 
-export async function sendWhatsApp(to: string, body: string): Promise<SendResult> {
+// `mediaUrl` (optional): a publicly-fetchable image URL. When set, the WhatsApp
+// message carries the image (works freely inside the 24h customer-care window,
+// which is exactly when we reply from the inbox).
+export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<SendResult> {
   if (!isWhatsAppConfigured()) {
     return {
       ok: false,
@@ -72,6 +75,7 @@ export async function sendWhatsApp(to: string, body: string): Promise<SendResult
       To: toWhatsAppAddress(to),
       Body: body,
     });
+    if (mediaUrl) form.append('MediaUrl', mediaUrl);
 
     const res = await fetch(url, {
       method: 'POST',

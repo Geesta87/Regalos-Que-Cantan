@@ -39,7 +39,10 @@ export function isSmsConfigured(): boolean {
     (TWILIO_MESSAGING_SERVICE_SID || TWILIO_SMS_FROM));
 }
 
-export async function sendSms(to: string, body: string): Promise<SendSmsResult> {
+// `mediaUrl` (optional): a publicly-fetchable image URL. When set, Twilio sends
+// an MMS. NOTE: US A2P 10DLC does not always support MMS — if the campaign/number
+// can't do it, Twilio returns an error and the caller records a failed message.
+export async function sendSms(to: string, body: string, mediaUrl?: string): Promise<SendSmsResult> {
   if (!isSmsConfigured()) {
     return {
       ok: false,
@@ -55,6 +58,7 @@ export async function sendSms(to: string, body: string): Promise<SendSmsResult> 
       ? { MessagingServiceSid: TWILIO_MESSAGING_SERVICE_SID }
       : { From: TWILIO_SMS_FROM! };
     const form = new URLSearchParams({ ...sender, To: to, Body: body });
+    if (mediaUrl) form.append('MediaUrl', mediaUrl);
 
     const res = await fetch(url, {
       method: 'POST',

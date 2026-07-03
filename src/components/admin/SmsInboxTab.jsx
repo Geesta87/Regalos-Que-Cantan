@@ -206,7 +206,12 @@ export default function SmsInboxTab({ accessToken }) {
   const [copilotInput, setCopilotInput] = useState('');
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  // Image attachment for the composer: paste/drag/📎 all set this. Held as a
+  // File plus an object-URL for instant preview. Sent as base64 on Send.
+  const [attachment, setAttachment] = useState(null); // { file, url, name }
+  const [attachError, setAttachError] = useState('');
   const replyRef = useRef(null);
+  const fileInputRef = useRef(null);
   const copilotInputRef = useRef(null);
   // Auto-grow the reply box so long messages (e.g. a quick reply) are fully
   // visible instead of hidden in a one-line box.
@@ -442,15 +447,68 @@ export default function SmsInboxTab({ accessToken }) {
   const segInfo = estimateSegments(reply);
   const replyCost = (segInfo.segments * COST_PER_SEGMENT_USD).toFixed(3);
 
+  const MAX_ATTACH_BYTES = 5 * 1024 * 1024; // 5MB — Twilio media ceiling
+
+  // Validate + stage an image for sending. Shared by paste, drag-drop, and 📎.
+  const attachImageFile = (file) => {
+    setAttachError('');
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setAttachError('Only image files can be attached.');
+      return;
+    }
+    if (file.size > MAX_ATTACH_BYTES) {
+      setAttachError('Image is too large (max 5MB).');
+      return;
+    }
+    // Revoke any previous preview URL to avoid leaks.
+    if (attachment?.url) URL.revokeObjectURL(attachment.url);
+    setAttachment({ file, url: URL.createObjectURL(file), name: file.name || 'screenshot.png' });
+  };
+
+  const clearAttachment = () => {
+    if (attachment?.url) URL.revokeObjectURL(attachment.url);
+    setAttachment(null);
+    setAttachError('');
+  };
+
+  // Paste a screenshot straight into the message box (Ctrl+V).
+  const handleComposerPaste = (e) => {
+    const items = e.clipboardData?.items || [];
+    for (const it of items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const file = it.getAsFile();
+        if (file) { e.preventDefault(); attachImageFile(file); return; }
+      }
+    }
+  };
+
+  // Drag a screenshot onto the composer.
+  const handleComposerDrop = (e) => {
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith('image/')) { e.preventDefault(); attachImageFile(file); }
+  };
+
+  // Read a File as a base64 data URL for the JSON payload.
+  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+
   const handleSend = async () => {
-    if (!selected || !reply.trim() || selected.opted_out) return;
+    if (!selected || selected.opted_out) return;
     const body = reply.trim();
+    const hasAttachment = !!attachment?.file;
+    if (!body && !hasAttachment) return; // nothing to send
     const optimistic = {
       id: `local-${Date.now()}`,
       direction: 'outbound',
       status: 'queued',
       created_at: new Date().toISOString(),
       body,
+      media_url: attachment?.url || null,
     };
     // Optimistic append.
     setConversations((prev) =>
@@ -461,6 +519,13 @@ export default function SmsInboxTab({ accessToken }) {
       )
     );
     setReply('');
+    // Detach from state now, but keep the File + preview URL locally so the
+    // optimistic bubble keeps showing until the server reply (with a real signed
+    // URL) replaces it. We revoke the preview URL in finally.
+    const fileToSend = attachment?.file || null;
+    const previewUrl = attachment?.url || null;
+    setAttachment(null);
+    setAttachError('');
     setSending(true);
     try {
       if (isDemo) {
@@ -479,6 +544,8 @@ export default function SmsInboxTab({ accessToken }) {
           )
         );
       } else {
+        const payload = { action: 'send', conversation_id: selected.id, body, channel: channelTab };
+        if (fileToSend) payload.media_data_url = await fileToDataUrl(fileToSend);
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
           {
@@ -488,7 +555,7 @@ export default function SmsInboxTab({ accessToken }) {
               'Authorization': `Bearer ${accessToken}`,
               'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             },
-            body: JSON.stringify({ action: 'send', conversation_id: selected.id, body, channel: channelTab }),
+            body: JSON.stringify(payload),
           }
         );
         if (!res.ok) throw new Error(`send ${res.status}`);
@@ -509,6 +576,7 @@ export default function SmsInboxTab({ accessToken }) {
       );
     } finally {
       setSending(false);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     }
   };
 
@@ -1052,7 +1120,16 @@ export default function SmsInboxTab({ accessToken }) {
                             : 'bg-white/8 text-white rounded-bl-sm'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
+                        {m.media_url && (
+                          <a href={m.media_url} target="_blank" rel="noreferrer" className="block mb-1">
+                            <img
+                              src={m.media_url}
+                              alt="attachment"
+                              className="max-w-full max-h-64 rounded-lg border border-black/10"
+                            />
+                          </a>
+                        )}
+                        {m.body && <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>}
                         <div className={`text-[10px] mt-1 flex items-center gap-1 ${out ? 'text-black/50 justify-end' : 'text-gray-400'}`}>
                           {m.ai_generated && out && <span title="Sent from an approved AI draft">🤖</span>}
                           <span>{formatTime(m.created_at)}</span>
@@ -1080,7 +1157,11 @@ export default function SmsInboxTab({ accessToken }) {
                   </p>
                 </div>
               ) : (
-                <div className="px-4 py-3 border-t border-white/5">
+                <div
+                  className="px-4 py-3 border-t border-white/5"
+                  onDrop={handleComposerDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                >
                   {/* One-tap quick replies — fill the box, then edit/Send. The
                       first one asks for the email so you can look them up when
                       the copilot can't find them by phone. */}
@@ -1101,11 +1182,44 @@ export default function SmsInboxTab({ accessToken }) {
                       </button>
                     ))}
                   </div>
+                  {/* Staged image preview — paste (Ctrl+V), drag-drop, or 📎. */}
+                  {attachment && (
+                    <div className="mb-2 flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-2 w-max max-w-full">
+                      <img src={attachment.url} alt="preview" className="h-14 w-14 object-cover rounded-lg" />
+                      <span className="text-xs text-gray-300 truncate max-w-[160px]">{attachment.name}</span>
+                      <button
+                        onClick={clearAttachment}
+                        className="text-gray-400 hover:text-white text-sm px-1.5"
+                        aria-label="Remove attachment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  {attachError && (
+                    <div className="mb-2 text-[11px] text-red-300">{attachError}</div>
+                  )}
                   <div className="flex items-end gap-2">
+                    {/* 📎 attach button + hidden file input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => { attachImageFile(e.target.files?.[0]); e.target.value = ''; }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Attach an image (or paste/drag one in)"
+                      className="px-3 py-2.5 rounded-xl text-lg bg-white/5 text-gray-300 hover:bg-white/10 transition flex-shrink-0"
+                    >
+                      📎
+                    </button>
                     <textarea
                       ref={replyRef}
                       value={reply}
                       onChange={(e) => setReply(e.target.value)}
+                      onPaste={handleComposerPaste}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -1113,17 +1227,24 @@ export default function SmsInboxTab({ accessToken }) {
                         }
                       }}
                       rows={1}
-                      placeholder="Type a message…  (Enter to send)"
+                      placeholder="Type a message…  (Enter to send · paste or drag an image)"
                       className="flex-1 resize-none overflow-y-auto px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm leading-relaxed focus:outline-none focus:border-amber-400/50"
                     />
                     <button
                       onClick={handleSend}
-                      disabled={sending || !reply.trim()}
+                      disabled={sending || (!reply.trim() && !attachment)}
                       className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                     >
                       {sending ? '…' : 'Send'}
                     </button>
                   </div>
+                  {/* WhatsApp works cleanly for images; SMS becomes MMS and may be
+                      rejected by the A2P carrier. Warn on the SMS tab. */}
+                  {attachment && channelTab === 'sms' && (
+                    <div className="mt-1.5 text-[11px] text-amber-400/80">
+                      Images send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
+                    </div>
+                  )}
                   {/* Cost / encoding hint — reinforces the Spanish-accent cost gotcha */}
                   {reply.trim() && (
                     <div className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-3">

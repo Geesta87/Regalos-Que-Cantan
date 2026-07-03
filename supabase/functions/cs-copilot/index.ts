@@ -54,11 +54,11 @@ function downloadLink(s: Record<string, unknown>): string {
 const TOOL = {
   name: 'get_order',
   description:
-    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` (an email or phone) to look up a different order. Returns FULL details for each song: its `id`, recipient, sender, occasion, genre, payment status, amount paid, individual preview link, download link, the customer's context/details they typed, and the song lyrics. It ALSO returns `combined_preview_link` — ONE link that opens ALL of the returned songs together on the comparison page.",
+    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` — an EMAIL, a PHONE number, or a NAME (sender or recipient) — to look up a different order. Email search tolerates domain typos (e.g. glail.com instead of gmail.com) by falling back to the part before the @. Returns FULL details for each song: its `id`, recipient, sender, occasion, genre, payment status, amount paid, individual preview link, download link, the customer's context/details they typed, and the song lyrics. It ALSO returns `combined_preview_link` (ONE link that opens ALL returned songs on the comparison page) and, when a fuzzy/typo/name fallback was used, a `match_note` you should heed.",
   input_schema: {
     type: 'object',
     properties: {
-      search: { type: 'string', description: 'Optional email or phone to look up instead of this conversation.' },
+      search: { type: 'string', description: 'Optional email, phone, or customer name (sender/recipient) to look up instead of this conversation.' },
     },
   },
 };
@@ -91,19 +91,57 @@ serve(async (req) => {
     const convoPhone = String(convo?.phone || '');
     const convoLast10 = convoPhone.replace(/\D/g, '').slice(-10);
 
+    const ORDER_SELECT =
+      'id, recipient_name, sender_name, email, whatsapp_phone, occasion, genre, genre_name, short_code, audio_url, paid, payment_status, paid_at, amount_paid, stripe_payment_id, has_video_addon, karaoke_status, karaoke_video_status, details, lyrics, created_at';
+
+    // Run one lookup variant. Returns [] on no match so the caller can fall back.
+    // deno-lint-ignore no-explicit-any
+    async function fetchOrders(apply: (q: any) => any): Promise<Record<string, unknown>[]> {
+      const q = apply(
+        admin.from('songs').select(ORDER_SELECT).order('created_at', { ascending: false }).limit(6),
+      );
+      const { data } = await q;
+      return data || [];
+    }
+
     async function runGetOrder(searchArg?: string): Promise<unknown> {
-      let query = admin.from('songs')
-        .select('id, recipient_name, sender_name, email, whatsapp_phone, occasion, genre, genre_name, short_code, audio_url, paid, payment_status, paid_at, amount_paid, stripe_payment_id, has_video_addon, karaoke_status, karaoke_video_status, details, lyrics, created_at')
-        .order('created_at', { ascending: false }).limit(6);
       const search = (searchArg || '').trim();
+      const digits = search.replace(/\D/g, '');
+      let rows: Record<string, unknown>[] = [];
+      let match_note: string | undefined;
+
       if (search.includes('@')) {
-        query = query.ilike('email', search);
+        // 1) Exact email (case-insensitive).
+        rows = await fetchOrders((q) => q.ilike('email', search));
+        // 2) Fallback for DOMAIN TYPOS (e.g. glail.com vs gmail.com, hotmial,
+        //    yahho): match the local-part before the @, which the customer
+        //    almost always types correctly. Guard on length so short/common
+        //    handles don't sweep in unrelated people.
+        if (!rows.length) {
+          const local = search.split('@')[0].replace(/[%,()*]/g, '');
+          if (local.length >= 4) {
+            rows = await fetchOrders((q) => q.ilike('email', `${local}@%`));
+            if (rows.length) match_note = `no exact match for ${search}; matched by email name "${local}@" (likely a domain typo in the order — verify before sharing).`;
+          }
+        }
+      } else if (digits.length >= 7) {
+        // Looks like a phone number.
+        const last10 = digits.slice(-10);
+        rows = await fetchOrders((q) => q.ilike('whatsapp_phone', `%${last10}`));
+      } else if (search) {
+        // Otherwise treat it as a NAME — search sender and recipient. Strip
+        // PostgREST-special chars so the or() filter can't be broken.
+        const name = search.replace(/[%,()*]/g, ' ').trim();
+        if (name.length >= 2) {
+          rows = await fetchOrders((q) =>
+            q.or(`sender_name.ilike.%${name}%,recipient_name.ilike.%${name}%`));
+          if (rows.length) match_note = `matched by name "${name}" — there may be several people with this name, verify the right order before sharing.`;
+        }
       } else {
-        const last10 = (search || convoLast10).replace(/\D/g, '').slice(-10);
-        if (last10.length < 10) return { orders: [], note: 'no valid phone/email to search' };
-        query = query.ilike('whatsapp_phone', `%${last10}`);
+        // No search term → default to THIS conversation's phone number.
+        if (convoLast10.length < 10) return { orders: [], note: 'no valid phone/email to search' };
+        rows = await fetchOrders((q) => q.ilike('whatsapp_phone', `%${convoLast10}`));
       }
-      const { data: rows } = await query;
       const orders = (rows || []).map((s) => {
         const paid = isPaid(s);
         return {
@@ -132,7 +170,7 @@ serve(async (req) => {
       const combined_preview_link = orders.length
         ? `${SITE}/listen?song_ids=${orders.map((o) => o.id).join(',')}`
         : null;
-      return { orders, combined_preview_link };
+      return { orders, combined_preview_link, match_note };
     }
 
     const system = `Eres el copiloto interno del equipo de soporte de Regalos Que Cantan. Estás ayudando a un AGENTE HUMANO (el dueño) que en este momento chatea con un cliente (teléfono ${convoPhone || 'desconocido'}${convo?.customer_name ? `, ${convo.customer_name}` : ''}).
@@ -145,6 +183,12 @@ REGLAS:
 - Cuando el agente te pida "algo para mandarle al cliente", dáselo en ESPAÑOL, listo para copiar y pegar.
 - El download_link solo existe si el pedido está pagado. Si no está pagado y piden el link de descarga, avisa que aún no ha pagado y ofrece el enlace de preview.
 - Nunca inventes datos; si get_order no devuelve algo, dilo.
+
+BUSCAR EL PEDIDO (IMPORTANTE — no te rindas rápido):
+- Antes de decir "no encontré el pedido", INTENTA VARIAS FORMAS con get_order: por correo, por teléfono, y por NOMBRE (del que regala o de quien recibe). El campo search acepta las tres cosas.
+- Muchos clientes escriben mal el DOMINIO del correo al pagar (glail.com en vez de gmail.com, hotmial, yahho, etc.). get_order ya reintenta usando la parte antes del @, pero si aun así no aparece, prueba buscando por el NOMBRE del cliente.
+- Si el pedido en el sistema tiene un correo distinto (por un error de tipeo) al que el cliente te da en el chat, es MUY probable que SÍ sea su pedido. get_order te avisa con match_note; menciónalo al dueño ("aparece con el correo X, parece un error de dedo") y deja que confirme.
+- Cuando get_order devuelva match_note, tómalo en cuenta y adviértele al dueño que verifique que es el cliente correcto antes de mandar enlaces.
 
 ENLACES DE PREVIEW (IMPORTANTE):
 - VARIAS canciones se pueden juntar en UN SOLO enlace usando \`combined_preview_link\` (formato /listen?song_ids=ID1,ID2,...). Ese enlace abre la página de comparación donde el cliente escucha TODAS las canciones y escoge la que quiere. Es EXACTAMENTE como se las presentamos al cliente.

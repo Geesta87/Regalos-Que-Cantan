@@ -33,9 +33,55 @@ import { sendPush } from '../_shared/web-push.ts';
 import { redactPII } from '../_shared/cs-redact.ts';
 import { DEFAULT_OO_MESSAGE } from '../_shared/out-of-office.ts';
 
-// Deliver an outbound message on the conversation's channel.
-async function deliver(channel: string, to: string, body: string) {
-  return channel === 'whatsapp' ? await sendWhatsApp(to, body) : await sendSms(to, body);
+// Deliver an outbound message on the conversation's channel, optionally with an
+// image (mediaUrl must be a publicly-fetchable URL — we pass a short-lived
+// signed Storage URL).
+async function deliver(channel: string, to: string, body: string, mediaUrl?: string) {
+  return channel === 'whatsapp'
+    ? await sendWhatsApp(to, body, mediaUrl)
+    : await sendSms(to, body, mediaUrl);
+}
+
+// Private bucket for customer-service image attachments. We only ever expose
+// short-lived signed URLs (to Twilio at send time, and to the admin thread on
+// each load) — the objects are never public.
+const MEDIA_BUCKET = 'cs-media';
+const MEDIA_SIGN_TTL = 3600; // seconds
+
+// Decode a base64 data URL ("data:image/png;base64,AAAA…") to bytes + mime.
+function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; contentType: string } | null {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || '');
+  if (!m) return null;
+  const contentType = m[1];
+  if (!contentType.startsWith('image/')) return null;
+  try {
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { bytes, contentType };
+  } catch {
+    return null;
+  }
+}
+
+// Attach freshly-signed media_url to any messages that carry a media_path, so
+// the thread can render the image. Best-effort — a signing failure just omits
+// the URL rather than breaking the inbox.
+// deno-lint-ignore no-explicit-any
+async function attachMediaUrls(admin: any, messages: any[]): Promise<void> {
+  const withMedia = messages.filter((m) => m && m.media_path);
+  if (!withMedia.length) return;
+  const paths = withMedia.map((m) => m.media_path as string);
+  try {
+    const { data } = await admin.storage.from(MEDIA_BUCKET).createSignedUrls(paths, MEDIA_SIGN_TTL);
+    const byPath: Record<string, string> = {};
+    for (const row of data || []) {
+      if (row?.path && row?.signedUrl) byPath[row.path] = row.signedUrl;
+    }
+    for (const m of withMedia) m.media_url = byPath[m.media_path] || null;
+  } catch (e) {
+    console.warn('attachMediaUrls failed', e);
+  }
 }
 
 // Save an owner-approved / owner-sent reply as a learning example for cs-agent.
@@ -132,6 +178,7 @@ serve(async (req) => {
       endpoint?: string;
       out_of_office?: boolean;
       out_of_office_message?: string;
+      media_data_url?: string; // "data:image/png;base64,…" for an image attachment
     } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
@@ -152,10 +199,12 @@ serve(async (req) => {
       if (ids.length > 0) {
         const { data: msgs, error: mErr } = await admin
           .from('sms_messages')
-          .select('id, conversation_id, direction, body, status, created_at, channel, ai_generated, needs_human')
+          .select('id, conversation_id, direction, body, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
           .in('conversation_id', ids)
           .order('created_at', { ascending: true });
         if (mErr) return json({ success: false, error: mErr.message }, 500);
+        // Sign media URLs for any image attachments so the thread can show them.
+        await attachMediaUrls(admin, msgs || []);
         messagesByConvo = (msgs || []).reduce((acc: Record<string, unknown[]>, m) => {
           (acc[m.conversation_id] ||= []).push(m);
           return acc;
@@ -216,8 +265,10 @@ serve(async (req) => {
     if (action === 'send') {
       const convoId = body.conversation_id;
       const text = (body.body || '').trim();
-      if (!convoId || !text) {
-        return json({ success: false, error: 'conversation_id and body required' }, 400);
+      const hasMedia = typeof body.media_data_url === 'string' && body.media_data_url.length > 0;
+      // A message needs SOMETHING to send — text or an image.
+      if (!convoId || (!text && !hasMedia)) {
+        return json({ success: false, error: 'conversation_id and body or media required' }, 400);
       }
 
       const { data: convo, error: convoErr } = await admin
@@ -233,10 +284,41 @@ serve(async (req) => {
         return json({ success: false, error: 'Customer has opted out (STOP) — cannot send' }, 409);
       }
 
+      const sendCh = body.channel || convo.channel || 'sms';
+
+      // Upload the image (if any) to the private bucket and sign a short-lived
+      // URL for Twilio to fetch. Done BEFORE sending so a bad upload never sends
+      // a broken link.
+      let mediaPath: string | null = null;
+      let mediaType: string | null = null;
+      let mediaSignedUrl: string | undefined;
+      if (hasMedia) {
+        const decoded = decodeDataUrl(body.media_data_url!);
+        if (!decoded) {
+          return json({ success: false, error: 'Attachment must be a base64 image data URL' }, 400);
+        }
+        if (decoded.bytes.length > 5_242_880) {
+          return json({ success: false, error: 'Attachment too large (max 5MB)' }, 413);
+        }
+        const ext = (decoded.contentType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        mediaPath = `${convoId}/${crypto.randomUUID()}.${ext}`;
+        mediaType = decoded.contentType;
+        const { error: upErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .upload(mediaPath, decoded.bytes, { contentType: decoded.contentType, upsert: false });
+        if (upErr) return json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
+        const { data: signed, error: signErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .createSignedUrl(mediaPath, MEDIA_SIGN_TTL);
+        if (signErr || !signed?.signedUrl) {
+          return json({ success: false, error: 'Could not sign media URL' }, 500);
+        }
+        mediaSignedUrl = signed.signedUrl;
+      }
+
       // Reply on the channel the dashboard is viewing (SMS tab → sms,
       // WhatsApp tab → whatsapp). Falls back to the conversation's channel.
-      const sendCh = body.channel || convo.channel || 'sms';
-      const result = await deliver(sendCh, convo.phone, text);
+      const result = await deliver(sendCh, convo.phone, text, mediaSignedUrl);
 
       // Record the outbound message regardless of send outcome, so the thread
       // reflects what was attempted. status mirrors the Twilio result.
@@ -250,10 +332,14 @@ serve(async (req) => {
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
           channel: sendCh,
+          media_path: mediaPath,
+          media_type: mediaType,
         })
-        .select('id, direction, body, status, created_at, channel, ai_generated, needs_human')
+        .select('id, direction, body, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
         .single();
       if (insErr) return json({ success: false, error: insErr.message }, 500);
+      // Give the client a signed URL so it can show the image right away.
+      if (inserted && mediaSignedUrl) (inserted as Record<string, unknown>).media_url = mediaSignedUrl;
 
       await admin
         .from('sms_conversations')
@@ -263,8 +349,11 @@ serve(async (req) => {
       if (!result.ok) {
         return json({ success: false, error: result.error || 'Send failed', message: inserted }, 502);
       }
-      // Learn from this manual reply (owner's own voice).
-      await captureExample(admin, { conversationId: convoId, channel: sendCh, reply: text, wasEdited: false, source: 'manual' });
+      // Learn from this manual reply (owner's own voice). Text only — skip
+      // image-only messages (nothing to learn for the bot's writing style).
+      if (text) {
+        await captureExample(admin, { conversationId: convoId, channel: sendCh, reply: text, wasEdited: false, source: 'manual' });
+      }
       return json({ success: true, message: inserted });
     }
 
