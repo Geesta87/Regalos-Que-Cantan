@@ -226,6 +226,8 @@ Think like a real buyer, not a dashboard:
 - Judge campaigns on COST PER REAL SALE and trend, not vanity metrics. One bad day is noise; a 7-day pattern is signal.
 - The owner's TRUE revenue comes from the songs table (deduped paid orders), not Meta's pixel count. When they disagree, trust the real orders and say so.
 - Spot the real levers: a winner that's budget-throttled (scale it), a whale that's the worst cost-per-sale (trim it), a proven creative that got turned off (relaunch it), an audience fatiguing (rising frequency + CPM → widen it).
+- PROFIT beats ROAS: metrics.cost_model carries the owner's estimated per-order costs and monthly overhead. Judge the account and each move on ESTIMATED PROFIT (revenue − ad spend − costs), and say the profit number out loud in the headline or summary. A "nice ROAS" that loses money after costs is a trim/fix — say so plainly. If cost_model is missing, fall back to ROAS and note it.
+- MEMORY — FOLLOW UP, don't goldfish: metrics.recent_briefs holds your own last briefs (recommendations + the campaign numbers at the time). For EVERY prior recommendation: if the numbers show it was applied (budget/spend changed), report what happened since; if it was ignored and the data still supports it, repeat it prefixed "(repeat)" with the days outstanding; if today's data contradicts it, own the miss and close it. Never present a repeated recommendation as if it were new.
 - You are in RECOMMEND-ONLY mode. Never imply a change was made. Every recommendation is staged for the owner to apply by hand. Be specific and ranked.
 - Plain language. No jargon dumps. The owner should know exactly what to do and why.`;
 
@@ -311,6 +313,7 @@ function renderEmail(brief: any, metrics: any, reportFor: string): string {
         (${money(rev?.real_revenue ?? 0)} revenue) ·
         real cost/sale ${money(rev?.real_cpa ?? null)} ·
         ROAS ≈ ${rev?.real_roas != null ? rev.real_roas.toFixed(2) + 'x' : '—'}
+        ${metrics.cost_model ? `<br><b>Est. profit: ${money(metrics.cost_model.est_profit_yesterday)}</b> <span style="color:#9ca3af;">(revenue − ads − ~${money(metrics.cost_model.est_costs_yesterday)} est. costs — edit in operating_costs)</span>` : ''}
       </div>
 
       <h3 style="margin:20px 0 8px;font-size:15px;color:#111;">Last 7 days by campaign</h3>
@@ -336,6 +339,87 @@ function renderEmail(brief: any, metrics: any, reportFor: string): string {
     </div>
   </div>
 </body></html>`;
+}
+
+// ---------------------------------------------------------------------------
+// AUTO-GRADER — resolves Sofía's open cos_calls once their horizon passes, by
+// comparing the target campaign's Meta numbers before vs after the call.
+// Conservative on purpose: only clear cases become correct/wrong (they feed the
+// trust-tier accuracy); everything ambiguous is closed as 'dismissed' with a
+// note, so the scorecard stops piling up "open" forever but is never polluted
+// with guessed grades.
+// ---------------------------------------------------------------------------
+async function gradeOpenCalls(supabase: any): Promise<number> {
+  const { data: calls } = await supabase
+    .from('cos_calls')
+    .select('id, created_at, kind, subject, subject_ref, metric_at_call, horizon_days, status')
+    .eq('status', 'open')
+    .order('created_at', { ascending: true })
+    .limit(10); // bound Meta API calls per run
+  let graded = 0;
+  const resolve = async (id: string, status: string, outcome: string) => {
+    await supabase.from('cos_calls')
+      .update({ status, resolved_at: new Date().toISOString(), outcome: outcome.slice(0, 300) })
+      .eq('id', id);
+    graded++;
+  };
+
+  for (const c of calls || []) {
+    const callTime = new Date(c.created_at).getTime();
+    const horizonMs = Math.max(1, c.horizon_days || 7) * 864e5;
+    if (Date.now() - callTime < horizonMs) continue; // not due yet
+
+    if (!c.subject_ref) {
+      await resolve(c.id, 'dismissed', 'auto: no measurable target (subject_ref) — cannot grade');
+      continue;
+    }
+    try {
+      const fmt = (t: number) => new Date(t).toISOString().slice(0, 10);
+      const [beforeRes, afterRes] = await Promise.all([
+        metaGet(`${c.subject_ref}/insights`, {
+          time_range: JSON.stringify({ since: fmt(callTime - 7 * 864e5), until: fmt(callTime) }),
+          fields: 'spend,actions',
+        }),
+        metaGet(`${c.subject_ref}/insights`, {
+          time_range: JSON.stringify({ since: fmt(callTime), until: fmt(Math.min(callTime + horizonMs, Date.now())) }),
+          fields: 'spend,actions',
+        }),
+      ]);
+      const b = (beforeRes.data || [])[0] || {};
+      const a = (afterRes.data || [])[0] || {};
+      const postDays = Math.max(1, Math.round(Math.min(horizonMs, Date.now() - callTime) / 864e5));
+      const bSpendDay = num(b.spend) / 7;
+      const aSpendDay = num(a.spend) / postDays;
+      const bCpa = purchasesOf(b) > 0 ? num(b.spend) / purchasesOf(b) : null;
+      const aCpa = purchasesOf(a) > 0 ? num(a.spend) / purchasesOf(a) : null;
+
+      if (c.kind === 'cut') {
+        if (aSpendDay < Math.max(1, bSpendDay * 0.15)) {
+          await resolve(c.id, 'correct', `auto: cut applied — spend $${bSpendDay.toFixed(0)}/d → $${aSpendDay.toFixed(0)}/d, ~$${(bSpendDay - aSpendDay).toFixed(0)}/d freed`);
+        } else if (bCpa != null && aCpa != null && aCpa < bCpa * 0.7) {
+          await resolve(c.id, 'wrong', `auto: not cut and CPA improved $${bCpa.toFixed(0)} → $${aCpa.toFixed(0)} — the call was premature`);
+        } else {
+          await resolve(c.id, 'dismissed', 'auto: cut not applied within horizon — no grade');
+        }
+      } else if (c.kind === 'budget' || c.kind === 'scale') {
+        if (bCpa == null || aCpa == null) {
+          await resolve(c.id, 'dismissed', 'auto: too few purchases before/after to judge — no grade');
+        } else if (aCpa <= bCpa * 1.15) {
+          await resolve(c.id, 'correct', `auto: after the ${c.kind}, cost-per-sale held/improved ($${bCpa.toFixed(0)} → $${aCpa.toFixed(0)})`);
+        } else if (aCpa > bCpa * 1.4) {
+          await resolve(c.id, 'wrong', `auto: after the ${c.kind}, cost-per-sale worsened ($${bCpa.toFixed(0)} → $${aCpa.toFixed(0)})`);
+        } else {
+          await resolve(c.id, 'dismissed', `auto: cost-per-sale moved within noise ($${bCpa.toFixed(0)} → $${aCpa.toFixed(0)}) — no grade`);
+        }
+      } else {
+        await resolve(c.id, 'dismissed', `auto: kind "${c.kind}" has no grading rule — no grade`);
+      }
+    } catch (e) {
+      // Meta hiccup on one call must never block the rest (or the brief).
+      console.warn(`gradeOpenCalls: ${c.id} failed`, e);
+    }
+  }
+  return graded;
 }
 
 // ---------------------------------------------------------------------------
@@ -434,18 +518,73 @@ Deno.serve(async (req: Request) => {
       revenue_window: `${dayStart} → ${dayEnd} (${REVENUE_TZ})`,
     };
 
+    // ---- 2b. Cost model → estimated PROFIT (owner-editable operating_costs) ----
+    let cost_model: any = null;
+    try {
+      const { data: costs } = await supabase
+        .from('operating_costs')
+        .select('kind, amount')
+        .eq('active', true);
+      if (costs && costs.length) {
+        const perOrder = costs.filter((c: any) => c.kind === 'per_order').reduce((a: number, c: any) => a + num(c.amount), 0);
+        const monthly = costs.filter((c: any) => c.kind === 'monthly').reduce((a: number, c: any) => a + num(c.amount), 0);
+        const estCosts = Math.round((perOrder * real_orders + monthly / 30) * 100) / 100;
+        cost_model = {
+          per_order_cost: Math.round(perOrder * 100) / 100,
+          monthly_overhead: monthly,
+          est_costs_yesterday: estCosts,
+          est_profit_yesterday: Math.round((real_revenue - spend - estCosts) * 100) / 100,
+          note: 'Owner-editable ESTIMATES from the operating_costs table. profit = real_revenue − ad spend − these costs.',
+        };
+      }
+    } catch (e) { console.warn('cost model load failed', e); }
+
+    // ---- 2c. MEMORY: the agent's own last briefs, so it follows up instead of
+    // re-discovering the account from scratch every morning ----
+    let recent_briefs: any[] = [];
+    try {
+      const { data: prior } = await supabase
+        .from('media_buyer_reports')
+        .select('report_for, analysis, metrics')
+        .neq('report_for', reportFor)
+        .order('report_for', { ascending: false })
+        .limit(3);
+      recent_briefs = (prior || []).map((p: any) => ({
+        report_for: p.report_for,
+        headline: p.analysis?.headline,
+        recommendations: (p.analysis?.recommendations || []).map((r: any) => ({
+          type: r.type, action: r.action, target_campaign: r.target_campaign ?? null,
+        })),
+        campaign_state_then: (p.metrics?.campaigns_yesterday || []).map((c: any) => ({
+          name: c.name, spend: c.spend, purchases: c.purchases, daily_budget: c.daily_budget,
+        })),
+        real_profit_then: p.metrics?.cost_model?.est_profit_yesterday ?? null,
+      }));
+    } catch (e) { console.warn('recent briefs load failed', e); }
+
     const metrics = {
       report_for: reportFor,
       account_id: META_AD_ACCOUNT_ID,
       account_yesterday,
       revenue_crosscheck,
+      cost_model,
       campaigns_yesterday,
       campaigns_last_7d,
+      recent_briefs,
       note_timezone: `report_for "${reportFor}" is the owner's PACIFIC day labeled by its 9am start: ${reportFor} 9:00am → next-day 9:00am Pacific (one Meta/Manila ad-day). Spend and revenue both cover that exact window — ROAS is apples-to-apples and the date matches the owner's LA calendar + Stripe.`,
     };
 
     // ---- 3. Claude brief ----
     const brief = await runBrief(metrics);
+    // Defensive: forced tool-use occasionally returns arrays as JSON STRINGS
+    // (same drift that crashed chief-of-staff-daily 2026-06-26). Coerce so the
+    // renderer and report never die on it.
+    const coerceArr = (x: any) => {
+      if (typeof x === 'string') { try { const p = JSON.parse(x); return Array.isArray(p) ? p : []; } catch { return []; } }
+      return Array.isArray(x) ? x : [];
+    };
+    brief.campaigns = coerceArr(brief.campaigns);
+    brief.recommendations = coerceArr(brief.recommendations);
 
     // ---- 4. Store + email ----
     await supabase.from('media_buyer_reports').upsert({
@@ -464,10 +603,14 @@ Deno.serve(async (req: Request) => {
         .eq('report_for', reportFor).eq('account_id', META_AD_ACCOUNT_ID);
     }
 
+    // ---- 5. Auto-grade Sofía's due open calls (fail-soft, never blocks the brief) ----
+    let callsGraded = 0;
+    try { callsGraded = await gradeOpenCalls(supabase); } catch (e) { console.warn('gradeOpenCalls failed', e); }
+
     await supabase.from('agent_runs').insert({
       agent: 'media-buyer', status: 'ok', ok: true,
       summary: `${brief.headline} (${real_orders} real orders, ${money(spend)} spend)`,
-      payload: { report_for: reportFor, account_health: brief.account_health, recommendations: brief.recommendations?.length || 0, emailed },
+      payload: { report_for: reportFor, account_health: brief.account_health, recommendations: brief.recommendations?.length || 0, emailed, calls_graded: callsGraded, est_profit: cost_model?.est_profit_yesterday ?? null },
       finished_at: new Date().toISOString(), execution_ms: Date.now() - startTime,
     });
 

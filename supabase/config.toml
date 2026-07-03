@@ -320,6 +320,13 @@ verify_jwt = true
 # Reads ANTHROPIC_API_KEY + SENDGRID_API_KEY. Never touches the payment funnel.
 verify_jwt = false
 
+[functions.media-buyer-intraday]
+# Media Buyer's reactive half. pg_cron (every ~3h) → verify_jwt = false.
+# Deterministic (no LLM): today's Meta spend vs today's REAL paid orders; SMS
+# alert on spend-with-no-sales, a campaign burning with 0 purchases, ROAS
+# collapse, or a dead Meta token. Read-only; throttled via ops_alert_state.
+verify_jwt = false
+
 [functions.cos-morning-digest]
 # Sofía's morning digest. pg_cron (daily, morning US Pacific) → verify_jwt = false.
 # Deterministic (no LLM): yesterday's revenue/orders/demos, every approval queue

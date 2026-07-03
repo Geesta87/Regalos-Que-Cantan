@@ -128,6 +128,30 @@ Deno.serve(async (_req: Request) => {
 
   const convPct = demos ? ((orders / demos) * 100).toFixed(1) : '0.0';
 
+  // --- Estimated P&L: yesterday's Meta ad spend (Manila ad-day ≈ the same
+  // business day) + owner-editable operating_costs. Fail-soft: no token or no
+  // cost rows → the digest simply omits the profit line. ---
+  let plLine: string | null = null;
+  try {
+    const token = Deno.env.get('META_ACCESS_TOKEN');
+    let adSpend: number | null = null;
+    if (token) {
+      const v = Deno.env.get('META_API_VERSION') || 'v21.0';
+      const acctId = Deno.env.get('META_AD_ACCOUNT_ID') || 'act_832413711748940';
+      const qs = new URLSearchParams({ level: 'account', date_preset: 'yesterday', fields: 'spend', limit: '1', access_token: token });
+      const res = await fetch(`https://graph.facebook.com/${v}/${acctId}/insights?${qs.toString()}`);
+      if (res.ok) adSpend = Number(((((await res.json()).data || [])[0]) || {}).spend) || 0;
+    }
+    const { data: costs } = await supabase.from('operating_costs').select('kind, amount').eq('active', true);
+    if (adSpend != null && costs && costs.length) {
+      const perOrder = costs.filter((c: any) => c.kind === 'per_order').reduce((a: number, c: any) => a + (Number(c.amount) || 0), 0);
+      const monthly = costs.filter((c: any) => c.kind === 'monthly').reduce((a: number, c: any) => a + (Number(c.amount) || 0), 0);
+      const estCosts = perOrder * orders + monthly / 30;
+      const profit = revenue - adSpend - estCosts;
+      plLine = `📈 Est. profit: $${Math.round(profit).toLocaleString('en-US')} (rev $${Math.round(revenue).toLocaleString('en-US')} − ads $${Math.round(adSpend).toLocaleString('en-US')} − costs ~$${Math.round(estCosts)})`;
+    }
+  } catch (e) { console.warn('P&L line failed', e); }
+
   // --- Everything waiting on the owner ---
   const dayAgoISO = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const [emailsPending, smsDrafts, smsDraftsOld, cosActions, creativesReady] = await Promise.all([
@@ -181,6 +205,7 @@ Deno.serve(async (_req: Request) => {
     `☀️ RQC Morning Digest — ${day.label}`,
     ``,
     `💰 Yesterday: $${revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })} · ${orders} orders · ${demos || 0} demos (${convPct}% buy)`,
+    ...(plLine ? [plLine] : []),
     ``,
     waiting.length ? `📋 Waiting on you:` : `📋 Nothing waiting on you — all queues clear.`,
     ...waiting,
