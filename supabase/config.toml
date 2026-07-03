@@ -320,6 +320,13 @@ verify_jwt = true
 # Reads ANTHROPIC_API_KEY + SENDGRID_API_KEY. Never touches the payment funnel.
 verify_jwt = false
 
+[functions.cos-morning-digest]
+# Sofía's morning digest. pg_cron (daily, morning US Pacific) → verify_jwt = false.
+# Deterministic (no LLM): yesterday's revenue/orders/demos, every approval queue
+# waiting on the owner, and a per-agent health line. Sends ONE WhatsApp (Twilio)
+# + an email copy (SendGrid) to ALERT_WHATSAPP_TO / ALERT_EMAIL.
+verify_jwt = false
+
 [functions.cos-weekly-memo]
 # Sofía's weekly CEO memo. pg_cron (Mon morning, after the daily jobs) →
 # verify_jwt = false. Joins Meta spend to real Stripe orders by campaign, writes a

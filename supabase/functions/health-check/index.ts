@@ -29,6 +29,13 @@ const FAILED_SPIKE_THRESHOLD = 5;      // 5+ failures in last hour = alert
 const WHATSAPP_CAPTURE_MIN_PCT = 50;   // Alert if < 50% of last 24h songs have phone
 const PAYMENT_SYNC_LOOKBACK_HOURS = 6; // Check last 6 hours for payment mismatches
 
+// Supervisor alarm — AI staff monitoring
+const DAILY_AGENT_MAX_AGE_HOURS = 26;   // Daily agents must have an ok run within 26h
+const WEEKLY_AGENT_MAX_AGE_DAYS = 8;    // Weekly agents within 8 days
+const SMS_DRAFT_MAX_AGE_HOURS = 24;     // CS drafts older than this need attention
+const EMAIL_APPROVAL_MAX_AGE_HOURS = 72;  // Marketing emails waiting longer than this
+const CREATIVE_GENERATING_MAX_MINUTES = 60; // creative_queue rows stuck in 'generating'
+
 // ============================================================================
 // NOTIFICATION HELPERS
 // ============================================================================
@@ -404,6 +411,201 @@ async function checkWhatsAppCaptureRate(supabase: any): Promise<CheckResult> {
 }
 
 // ============================================================================
+// SUPERVISOR ALARM — AI staff monitoring
+// ============================================================================
+
+/**
+ * Throttle helper: returns true (and stamps the state row) only if we have NOT
+ * alerted on this key within the last `hours`. Prevents a persistent condition
+ * from re-alerting on every 10-minute run.
+ */
+async function shouldAlert(supabase: any, key: string, hours: number): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('ops_alert_state')
+      .select('last_alerted_at')
+      .eq('key', key)
+      .maybeSingle();
+    if (data && Date.now() - new Date(data.last_alerted_at).getTime() < hours * 3600 * 1000) {
+      return false;
+    }
+    await supabase.from('ops_alert_state').upsert({ key, last_alerted_at: new Date().toISOString() });
+    return true;
+  } catch (e) {
+    console.warn('ops_alert_state check failed, alerting anyway:', e.message);
+    return true;
+  }
+}
+
+// agent_runs.agent value → the pg_cron job that should be running it
+const DAILY_AGENTS = [
+  { agent: 'media-buyer', job: 'media-buyer-daily' },
+  { agent: 'chief-of-staff', job: 'chief-of-staff-daily' },
+  { agent: 'creative-studio', job: 'creative-studio-daily' },
+];
+const WEEKLY_AGENTS = [
+  { agent: 'email-marketer', job: 'email-marketer-weekly' },
+  { agent: 'competitor-scan', job: 'competitor-scan' },
+  { agent: 'affiliate-recruiter', job: 'affiliate-recruiter' },
+];
+
+/**
+ * CHECK 5: AI agent health — did each agent run on schedule, did its last run
+ * error, and is its cron job still enabled? (This is the check that would have
+ * caught creative-studio-daily being silently disabled for 4 days.)
+ */
+async function checkAgentHealth(supabase: any): Promise<CheckResult> {
+  try {
+    const issues: string[] = [];
+
+    // Cron job status via SECURITY DEFINER function (cron schema isn't
+    // reachable through PostgREST directly).
+    const cronByName: Record<string, any> = {};
+    const { data: cronJobs, error: cronErr } = await supabase.rpc('get_agent_cron_status');
+    if (cronErr) {
+      console.warn('get_agent_cron_status failed:', cronErr.message);
+    } else {
+      for (const j of cronJobs || []) cronByName[j.jobname] = j;
+    }
+
+    // Recent agent runs (9 days covers the weekly agents' window).
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString();
+    const { data: runs, error: runsErr } = await supabase
+      .from('agent_runs')
+      .select('agent, status, ok, error, started_at')
+      .gte('started_at', nineDaysAgo)
+      .order('started_at', { ascending: false })
+      .limit(300);
+    if (runsErr) throw runsErr;
+
+    const latestRun: Record<string, any> = {};
+    const latestOkRun: Record<string, any> = {};
+    for (const r of runs || []) {
+      if (!latestRun[r.agent]) latestRun[r.agent] = r;
+      if (!latestOkRun[r.agent] && r.status === 'ok') latestOkRun[r.agent] = r;
+    }
+
+    const checkAgent = (agent: string, job: string, maxAgeMs: number, label: string) => {
+      const cron = cronByName[job];
+      if (cron && cron.active === false) {
+        issues.push(`⏸️ ${job} cron is DISABLED — ${agent} is not running at all`);
+        return; // can't be stale if it's switched off; the line above says it all
+      }
+      if (cron && cron.last_status === 'failed') {
+        issues.push(`❌ ${job} cron's last trigger FAILED at the scheduler level`);
+      }
+      const last = latestRun[agent];
+      if (last && last.status !== 'ok') {
+        const err = (last.error || '').substring(0, 120);
+        issues.push(`❌ ${agent}: last run ERRORED (${new Date(last.started_at).toISOString().slice(0, 16)}Z)${err ? ` — ${err}` : ''}`);
+      }
+      const lastOk = latestOkRun[agent];
+      if (!lastOk) {
+        issues.push(`🕳️ ${agent}: no successful run in the last 9 days (expected ${label})`);
+      } else if (Date.now() - new Date(lastOk.started_at).getTime() > maxAgeMs) {
+        const hrs = Math.round((Date.now() - new Date(lastOk.started_at).getTime()) / 3600000);
+        issues.push(`⌛ ${agent}: last successful run was ${hrs}h ago (expected ${label})`);
+      }
+    };
+
+    for (const a of DAILY_AGENTS) checkAgent(a.agent, a.job, DAILY_AGENT_MAX_AGE_HOURS * 3600 * 1000, 'daily');
+    for (const a of WEEKLY_AGENTS) checkAgent(a.agent, a.job, WEEKLY_AGENT_MAX_AGE_DAYS * 24 * 3600 * 1000, 'weekly');
+
+    if (issues.length > 0) {
+      const fire = await shouldAlert(supabase, 'agent-health', 20);
+      return {
+        name: 'AI Agent Health',
+        status: fire ? 'alert' : 'ok',
+        severity: 'warning',
+        message: `${issues.length} agent issue(s)${fire ? '' : ' (already alerted, suppressed)'}`,
+        details: `AI staff supervisor found:\n\n${issues.join('\n')}`
+      };
+    }
+
+    return { name: 'AI Agent Health', status: 'ok', severity: 'info', message: 'All agents ran on schedule' };
+  } catch (e) {
+    return { name: 'AI Agent Health', status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
+/**
+ * CHECK 6: Stale approvals — AI work sitting in a queue waiting for the owner.
+ * (SMS drafts to customers, marketing emails pending approval.)
+ */
+async function checkStaleApprovals(supabase: any): Promise<CheckResult> {
+  try {
+    const issues: string[] = [];
+
+    const draftCutoff = new Date(Date.now() - SMS_DRAFT_MAX_AGE_HOURS * 3600 * 1000).toISOString();
+    const { count: staleDrafts } = await supabase
+      .from('sms_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('direction', 'outbound')
+      .eq('status', 'draft')
+      .lt('created_at', draftCutoff);
+    if ((staleDrafts || 0) > 0) {
+      issues.push(`💬 ${staleDrafts} customer repl${staleDrafts === 1 ? 'y' : 'ies'} drafted >24h ago still waiting in the SMS inbox — customers are getting no answer`);
+    }
+
+    const emailCutoff = new Date(Date.now() - EMAIL_APPROVAL_MAX_AGE_HOURS * 3600 * 1000).toISOString();
+    const { count: staleEmails } = await supabase
+      .from('email_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending_approval')
+      .lt('created_at', emailCutoff);
+    if ((staleEmails || 0) > 0) {
+      issues.push(`📧 ${staleEmails} marketing email(s) waiting for approval for 3+ days — this week's campaigns are not going out`);
+    }
+
+    if (issues.length > 0) {
+      const fire = await shouldAlert(supabase, 'stale-approvals', 12);
+      return {
+        name: 'Stale Approvals',
+        status: fire ? 'alert' : 'ok',
+        severity: 'warning',
+        message: `${issues.length} approval queue(s) going stale${fire ? '' : ' (already alerted, suppressed)'}`,
+        details: issues.join('\n')
+      };
+    }
+
+    return { name: 'Stale Approvals', status: 'ok', severity: 'info', message: 'No stale approval queues' };
+  } catch (e) {
+    return { name: 'Stale Approvals', status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
+/**
+ * CHECK 7: Creative pipeline stuck — poll-creative-queue normally fails a job
+ * after 20 min, so anything still 'generating' after an hour means the poller
+ * itself is broken.
+ */
+async function checkCreativePipeline(supabase: any): Promise<CheckResult> {
+  try {
+    const cutoff = new Date(Date.now() - CREATIVE_GENERATING_MAX_MINUTES * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from('creative_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'generating')
+      .lt('created_at', cutoff);
+
+    if ((count || 0) > 0) {
+      const fire = await shouldAlert(supabase, 'creative-pipeline', 6);
+      return {
+        name: 'Creative Pipeline',
+        status: fire ? 'alert' : 'ok',
+        severity: 'warning',
+        message: `${count} creative(s) stuck in 'generating' >${CREATIVE_GENERATING_MAX_MINUTES} min${fire ? '' : ' (already alerted, suppressed)'}`,
+        details: `${count} creative_queue row(s) have been 'generating' for over ${CREATIVE_GENERATING_MAX_MINUTES} minutes.\n\npoll-creative-queue should have finished or failed them at 20 min — the poller may be broken or its cron disabled.`
+      };
+    }
+
+    return { name: 'Creative Pipeline', status: 'ok', severity: 'info', message: 'No stuck creative jobs' };
+  } catch (e) {
+    return { name: 'Creative Pipeline', status: 'error', severity: 'warning', message: `Check failed: ${e.message}` };
+  }
+}
+
+// ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
@@ -429,6 +631,9 @@ Deno.serve(async (req: Request) => {
     checkPaymentSync(supabase),
     checkFailedSongsSpike(supabase),
     checkWhatsAppCaptureRate(supabase),
+    checkAgentHealth(supabase),
+    checkStaleApprovals(supabase),
+    checkCreativePipeline(supabase),
   ]);
 
   // Filter for alerts
