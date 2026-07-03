@@ -23,6 +23,9 @@ insert into public.operating_costs (key, label, kind, amount, notes) values
   ('song_generation', 'Song generation APIs (Kie/Mureka, ~2 takes/order)', 'per_order', 0.60, 'ESTIMATE — correct me'),
   ('stripe_fees',     'Stripe processing (~2.9% + $0.30 on ~$33 AOV)',     'per_order', 1.25, 'ESTIMATE — correct me'),
   ('messaging',       'SMS/WhatsApp/email delivery per order',             'per_order', 0.10, 'ESTIMATE — correct me'),
-  ('infra',           'Supabase + Vercel + misc SaaS',                     'monthly', 150, 'ESTIMATE — correct me'),
-  ('video_rendering', 'Shotstack video rendering',                         'monthly', 110, 'From plan pricing — verify')
+  ('infra',           'Supabase + Vercel + misc SaaS (incl. in-house video renderer hosting)', 'monthly', 150, 'ESTIMATE — correct me')
 on conflict (key) do nothing;
+
+-- Shotstack was cancelled (replaced by the in-house FFmpeg renderer) — the row
+-- was seeded on 2026-07-03 and deactivated the same day when the owner
+-- confirmed. Kept here as history; do not re-seed it.
