@@ -34,7 +34,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { CS_KNOWLEDGE } from '../_shared/cs-knowledge.ts';
+import { CS_KNOWLEDGE, CS_GOLDEN_ANSWERS } from '../_shared/cs-knowledge.ts';
 import { OFFERS } from '../_shared/brand-brief.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -237,6 +237,8 @@ function systemPrompt(customerName: string | null, channel: string, knowledge: s
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
 
 ${snapshot ? snapshot + '\n\n' : ''}${knowledge}${LIVE_PRICES}
+
+${CS_GOLDEN_ANSWERS}
 
 REGLAS ESTRICTAS:
 - ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.

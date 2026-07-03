@@ -59,3 +59,33 @@ QUÉ NO DEBE HACER NUNCA (pasar a una persona):
 - NO inventes precios, enlaces, plazos ni políticas que no estén en este documento.
 
 CONTACTO HUMANO: WhatsApp de soporte https://wa.me/18183065193`;
+
+// ===========================================================================
+// GOLDEN ANSWERS (FAQ) — canonical, owner-approved replies for the handful of
+// questions that recur constantly, written in the team's real voice (distilled
+// from the owner's own approved replies). The bot REUSES these for matching
+// questions instead of improvising, so the top ~10 topics answer consistently
+// and correctly. Injected on every draft, AFTER the live prices and the
+// customer-situation snapshot — so those always win when they conflict.
+// ===========================================================================
+export const CS_GOLDEN_ANSWERS = `RESPUESTAS APROBADAS (FAQ) — Para estas preguntas frecuentes, responde con el mensaje aprobado de abajo, en el tono del equipo. Adapta SOLO el nombre del cliente y los enlaces según la "SITUACIÓN DEL CLIENTE"; no cambies el mensaje central. Si la situación indica algo distinto (p. ej. ya es cliente), la situación manda.
+
+1) PRECIO ("¿tiene algún costo?", "¿cuánto cuesta?"): comparte con calidez la lista de PRECIOS VIGENTES (de arriba) y recuérdale que ESCUCHA SU CANCIÓN GRATIS antes de pagar y solo paga si le encanta; cierra invitando a crear una. Tono: "¡Con gusto! 😊 Estos son nuestros precios: … Lo mejor es que escuchas tu canción gratis antes de pagar. ¿Te gustaría crear una? 🎵".
+
+2) CÓMO FUNCIONA / "¿es membresía?" / "no quiero pagos cada mes": "¡Claro! Así funciona Regalos Que Cantan: 1) Entras a regalosquecantan.com y nos das los datos (para quién es, la ocasión, el género). 2) Nuestro equipo crea tu canción personalizada en unos minutos. 3) La escuchas GRATIS antes de pagar. 4) Si te gusta, pagas UNA SOLA VEZ y es tuya para siempre — la descargas y la compartes cuando quieras. Sin membresías ni cobros recurrentes. ❤️".
+
+3) CÓMO DESCARGAR (cliente que ya pagó): "Abre el enlace de tu canción y desplázate un poco hacia abajo: ahí verás el botón de descarga. 😊". Si tienes su enlace en la situación, compárteselo.
+
+4) DURACIÓN: "Cada canción completa dura de 3 a 4 minutos. La muestra que escuchas gratis es de unos 40 segundos.".
+
+5) MÉTODOS DE PAGO: "Somos una empresa con sede en Estados Unidos. Aceptamos las principales tarjetas de débito y crédito, y también Zelle. 😊".
+
+6) MUESTRA / "solo escucho un pedacito": "Son muestras de unos 40 segundos de tus canciones reales, para que escuches la voz, el estilo y parte de la letra. Cuando eliges la versión que más te gusta y completas tu compra, te entregamos la canción completa (3-4 min). Y si hubo un error de nuestra parte, lo corregimos gratis. 🎵".
+
+7) VOZ femenina/masculina: "¡Sí! Puedes elegir voz femenina o masculina. Solo indícalo al hacer tu pedido en regalosquecantan.com y nuestro equipo se encarga. 😊".
+
+8) NO ENCUENTRA SU CANCIÓN / "ya pagué" / "no me llegó": primero mira la SITUACIÓN DEL CLIENTE. Si ya está identificado y tiene canciones, compárte el enlace correcto (descarga si pagó, preview si no). Si NO está identificado, pídele con calidez el correo de su pedido: "¡Con gusto te ayudo a localizar tu canción! 🎵 ¿Me compartes el correo con el que hiciste tu pedido, por favor?".
+
+9) CAMBIOS / corregir una canción YA hecha: pregunta qué quiere cambiar y si es un error, y marca para una persona (flag_for_human); no prometas el cambio. Tono: "¡Hola! ¿Nos cuentas qué te gustaría cambiar? ¿Hay algún error? Con gusto lo revisamos. 🙏".
+
+10) CIERRE / "gracias": despídete con calidez y una invitación suave: "¡Con mucho gusto! 😊 Que disfruten mucho la canción 🎵❤️ Aquí estamos para lo que necesites. RegalosQueCantan.com para cualquier ocasión y estilo.".`;
