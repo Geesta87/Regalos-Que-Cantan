@@ -207,18 +207,31 @@ export default function SmsInboxTab({ accessToken }) {
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const replyRef = useRef(null);
+  const copilotInputRef = useRef(null);
   // Auto-grow the reply box so long messages (e.g. a quick reply) are fully
   // visible instead of hidden in a one-line box.
   useEffect(() => {
     const el = replyRef.current;
     if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; }
   }, [reply]);
+  // Same auto-grow for the Ask-AI copilot input.
+  useEffect(() => {
+    const el = copilotInputRef.current;
+    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; }
+  }, [copilotInput]);
   // Push-notification button state:
   // 'hidden' (unsupported desktop browser), 'ios-install' (iPhone Safari tab —
   // must add to home screen first), 'off', 'busy', 'on', 'denied'.
   const [notifState, setNotifState] = useState('hidden');
   const [showIosHint, setShowIosHint] = useState(false);
   const scrollRef = useRef(null);
+  // Out-of-office auto-reply. When on, inbound texts get one friendly "we're
+  // away" reply until the team is back. `ooMessage` is the customer-facing text.
+  const [outOfOffice, setOutOfOffice] = useState(false);
+  const [ooMessage, setOoMessage] = useState('');
+  const [ooEditing, setOoEditing] = useState(false);
+  const [ooDraft, setOoDraft] = useState('');
+  const [ooBusy, setOoBusy] = useState(false);
 
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
@@ -264,6 +277,10 @@ export default function SmsInboxTab({ accessToken }) {
       if (!res.ok) throw new Error(`sms-admin ${res.status}`);
       const data = await res.json();
       setConversations(Array.isArray(data?.conversations) ? data.conversations : []);
+      if (data?.settings) {
+        setOutOfOffice(!!data.settings.out_of_office);
+        setOoMessage(data.settings.out_of_office_message || '');
+      }
       setIsDemo(false);
     } catch (_e) {
       // Quiet background polls must never clobber the live inbox with demo
@@ -279,6 +296,54 @@ export default function SmsInboxTab({ accessToken }) {
   }, [accessToken]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // Flip the out-of-office toggle (and optionally save an edited message).
+  const saveOutOfOffice = async (nextOn, nextMessage) => {
+    if (isDemo) { // Demo mode has no backend — just reflect the toggle locally.
+      setOutOfOffice(nextOn);
+      if (typeof nextMessage === 'string') setOoMessage(nextMessage);
+      setOoEditing(false);
+      return;
+    }
+    setOoBusy(true);
+    // Optimistic — snap the UI, roll back if the save fails.
+    const prevOn = outOfOffice;
+    const prevMsg = ooMessage;
+    setOutOfOffice(nextOn);
+    if (typeof nextMessage === 'string') setOoMessage(nextMessage);
+    try {
+      const payload = { action: 'set-out-of-office', out_of_office: nextOn };
+      if (typeof nextMessage === 'string' && nextMessage.trim()) {
+        payload.out_of_office_message = nextMessage.trim();
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `sms-admin ${res.status}`);
+      if (data?.settings) {
+        setOutOfOffice(!!data.settings.out_of_office);
+        setOoMessage(data.settings.out_of_office_message || '');
+      }
+      setOoEditing(false);
+    } catch (e) {
+      // Roll back.
+      setOutOfOffice(prevOn);
+      setOoMessage(prevMsg);
+      alert(`Could not update out-of-office: ${e.message}`);
+    } finally {
+      setOoBusy(false);
+    }
+  };
 
   // Keep the inbox fresh without manual refreshes: poll quietly every 25s and
   // re-sync whenever the tab/app regains focus (key for the phone PWA, where
@@ -600,6 +665,22 @@ export default function SmsInboxTab({ accessToken }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Out-of-office auto-reply toggle. When on, inbound texts get one
+              friendly "we're away" auto-reply until the team is back. */}
+          <button
+            onClick={() => saveOutOfOffice(!outOfOffice)}
+            disabled={ooBusy}
+            title={outOfOffice
+              ? 'Out of office is ON — customers get an auto-reply. Click to turn off.'
+              : 'Turn on to auto-reply to customers while you are away.'}
+            className={`px-3 py-2 rounded-xl text-sm font-medium transition disabled:opacity-60 ${
+              outOfOffice
+                ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40 hover:bg-amber-400/30'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            {outOfOffice ? '🌙 Out of office · ON' : '🌙 Out of office'}
+          </button>
           {notifState !== 'hidden' && (
             <button
               onClick={handleEnableNotifications}
@@ -665,6 +746,55 @@ export default function SmsInboxTab({ accessToken }) {
           );
         })}
       </div>
+
+      {/* Out-of-office banner — shows the message customers auto-receive while
+          away, and lets the owner edit it. Only visible when the toggle is on. */}
+      {outOfOffice && (
+        <div className="bg-amber-400/10 border border-amber-400/25 rounded-xl px-4 py-3 mb-4 text-sm text-amber-100">
+          {!ooEditing ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold text-amber-200 mb-0.5">🌙 Out of office is on</div>
+                <div className="text-amber-100/80 text-xs">
+                  New customers get this auto-reply (once each, until you turn it off):
+                </div>
+                <div className="mt-1 text-amber-50/90 italic">“{ooMessage}”</div>
+              </div>
+              <button
+                onClick={() => { setOoDraft(ooMessage); setOoEditing(true); }}
+                className="flex-shrink-0 text-xs font-medium bg-amber-400/15 text-amber-200 border border-amber-400/30 rounded-lg px-2.5 py-1.5 hover:bg-amber-400/25 transition"
+              >
+                ✏️ Edit
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="font-semibold text-amber-200 mb-1.5">Edit the away message</div>
+              <textarea
+                value={ooDraft}
+                onChange={(e) => setOoDraft(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 bg-black/20 border border-amber-400/30 rounded-lg text-amber-50 text-sm focus:outline-none focus:border-amber-400/60 resize-y"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => saveOutOfOffice(true, ooDraft)}
+                  disabled={ooBusy || !ooDraft.trim()}
+                  className="text-xs font-semibold bg-amber-400 text-black rounded-lg px-3 py-1.5 hover:bg-amber-300 transition disabled:opacity-50"
+                >
+                  {ooBusy ? 'Saving…' : 'Save message'}
+                </button>
+                <button
+                  onClick={() => setOoEditing(false)}
+                  className="text-xs font-medium text-amber-200/80 hover:text-amber-100 px-2 py-1.5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* iPhone: web push only works once the site is installed on the home
           screen (iOS 16.4+), so walk the user through that first. */}
@@ -1058,12 +1188,13 @@ export default function SmsInboxTab({ accessToken }) {
 
             <div className="px-3 py-3 border-t border-white/10 flex items-end gap-2">
               <textarea
+                ref={copilotInputRef}
                 value={copilotInput}
                 onChange={(e) => setCopilotInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCopilotSend(); } }}
                 rows={1}
                 placeholder="Ask about this order…"
-                className="flex-1 resize-none px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-400/50 max-h-32"
+                className="flex-1 resize-none overflow-y-auto px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm leading-relaxed placeholder-gray-500 focus:outline-none focus:border-indigo-400/50"
               />
               <button
                 onClick={handleCopilotSend}

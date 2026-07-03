@@ -21,6 +21,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { triggerCsAgent, runInBackground } from '../_shared/trigger-cs-agent.ts';
+import { maybeSendOutOfOffice } from '../_shared/out-of-office.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -90,7 +91,7 @@ serve(async (req) => {
 
     const { data: existing } = await admin
       .from('sms_conversations')
-      .select('id, unread, customer_name, order_id, opted_out')
+      .select('id, unread, customer_name, order_id, opted_out, oo_auto_replied_at')
       .eq('phone', phone)
       .maybeSingle();
 
@@ -165,10 +166,23 @@ serve(async (req) => {
       channel: 'whatsapp',
     });
 
-    // Draft an AI reply in the background (no-ops unless the bot is switched on;
-    // never sends). Skip opt-out keywords and opted-out numbers.
-    if (!isStop && !isStart && !(existing && existing.opted_out)) {
-      runInBackground(triggerCsAgent(conversationId));
+    // No reply owed on STOP/START keywords or to opted-out numbers.
+    const replyable = !isStop && !isStart && !(existing && existing.opted_out);
+
+    // Out-of-office: auto-reply ONCE (throttled) when the owner is away, and
+    // skip the AI draft. Otherwise draft an AI reply in the background (no-ops
+    // unless the bot is switched on; never sends).
+    if (replyable) {
+      runInBackground(
+        maybeSendOutOfOffice(admin, {
+          conversationId,
+          phone,
+          channel: 'whatsapp',
+          lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
+        }).then((r) => {
+          if (!r.sent) return triggerCsAgent(conversationId);
+        }),
+      );
     }
 
     // Notify admin devices.

@@ -31,6 +31,7 @@ import { sendSms } from '../_shared/send-sms.ts';
 import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { sendPush } from '../_shared/web-push.ts';
 import { redactPII } from '../_shared/cs-redact.ts';
+import { DEFAULT_OO_MESSAGE } from '../_shared/out-of-office.ts';
 
 // Deliver an outbound message on the conversation's channel.
 async function deliver(channel: string, to: string, body: string) {
@@ -129,6 +130,8 @@ serve(async (req) => {
       channel?: string; // 'sms' | 'whatsapp' — which channel to reply on
       subscription?: { endpoint?: string };
       endpoint?: string;
+      out_of_office?: boolean;
+      out_of_office_message?: string;
     } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
@@ -163,7 +166,50 @@ serve(async (req) => {
         ...c,
         messages: messagesByConvo[c.id] || [],
       }));
-      return json({ success: true, role, conversations });
+
+      // Out-of-office toggle state (shared cs_agent_settings singleton). Returned
+      // with the inbox so the header toggle reflects the real state on load.
+      const { data: ooRow } = await admin
+        .from('cs_agent_settings')
+        .select('out_of_office, out_of_office_message')
+        .eq('id', 1)
+        .maybeSingle();
+      const settings = {
+        out_of_office: !!ooRow?.out_of_office,
+        out_of_office_message: (ooRow?.out_of_office_message || '').trim() || DEFAULT_OO_MESSAGE,
+      };
+
+      return json({ success: true, role, conversations, settings });
+    }
+
+    // ─── action: set-out-of-office ───────────────────────────────────────
+    // Flip the out-of-office auto-reply on/off and (optionally) edit the
+    // message customers receive while the team is away.
+    if (action === 'set-out-of-office') {
+      const oo = !!body.out_of_office;
+      const update: Record<string, unknown> = { id: 1, out_of_office: oo };
+      // Only overwrite the message when one was provided (blank = keep current).
+      if (typeof body.out_of_office_message === 'string') {
+        const trimmed = body.out_of_office_message.trim();
+        if (trimmed) update.out_of_office_message = trimmed;
+      }
+      const { error: ooErr } = await admin
+        .from('cs_agent_settings')
+        .upsert(update, { onConflict: 'id' });
+      if (ooErr) return json({ success: false, error: ooErr.message }, 500);
+
+      const { data: ooRow } = await admin
+        .from('cs_agent_settings')
+        .select('out_of_office, out_of_office_message')
+        .eq('id', 1)
+        .maybeSingle();
+      return json({
+        success: true,
+        settings: {
+          out_of_office: !!ooRow?.out_of_office,
+          out_of_office_message: (ooRow?.out_of_office_message || '').trim() || DEFAULT_OO_MESSAGE,
+        },
+      });
     }
 
     // ─── action: send ────────────────────────────────────────────────────
@@ -267,6 +313,11 @@ serve(async (req) => {
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
           needs_human: false,
+          // Re-stamp to the SEND time. The draft was created when the AI wrote
+          // it, but the customer may have sent more messages before the owner
+          // approved — without this the approved reply appears mid-thread
+          // instead of at the bottom where it actually went out.
+          created_at: nowIso,
         })
         .eq('id', messageId)
         .select('id, direction, body, status, created_at, channel, ai_generated, needs_human')

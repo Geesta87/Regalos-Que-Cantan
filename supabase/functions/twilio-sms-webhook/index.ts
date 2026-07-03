@@ -24,6 +24,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { triggerCsAgent, runInBackground } from '../_shared/trigger-cs-agent.ts';
+import { maybeSendOutOfOffice } from '../_shared/out-of-office.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -108,7 +109,7 @@ serve(async (req) => {
     // Find or create the conversation for this phone.
     const { data: existing } = await admin
       .from('sms_conversations')
-      .select('id, unread, customer_name, order_id, opted_out')
+      .select('id, unread, customer_name, order_id, opted_out, oo_auto_replied_at')
       .eq('phone', phone)
       .maybeSingle();
 
@@ -184,13 +185,24 @@ serve(async (req) => {
       channel: 'sms',
     });
 
-    // Ask the customer-service AI to DRAFT a reply (best-effort, in the
-    // background so we don't slow the Twilio ack). cs-agent no-ops unless the
-    // owner has switched the bot on; it never sends — it only stores a draft the
-    // owner approves in the inbox. Skip for STOP/START keywords (no reply owed)
-    // and for opted-out numbers.
-    if (!isStop && !isStart && !(existing && existing.opted_out)) {
-      runInBackground(triggerCsAgent(conversationId));
+    // No reply owed on STOP/START keywords or to opted-out numbers.
+    const replyable = !isStop && !isStart && !(existing && existing.opted_out);
+
+    // Out-of-office: if the owner is away, auto-reply ONCE (throttled) and skip
+    // the AI draft — the customer already got an answer. Runs in the background
+    // so it doesn't slow the Twilio ack.
+    if (replyable) {
+      runInBackground(
+        maybeSendOutOfOffice(admin, {
+          conversationId,
+          phone,
+          channel: 'sms',
+          lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
+        }).then((r) => {
+          // Only fall through to the AI draft when we did NOT auto-reply.
+          if (!r.sent) return triggerCsAgent(conversationId);
+        }),
+      );
     }
 
     // Notify admin devices via web push (best effort — never blocks capture).

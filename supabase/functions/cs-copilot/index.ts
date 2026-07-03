@@ -54,7 +54,7 @@ function downloadLink(s: Record<string, unknown>): string {
 const TOOL = {
   name: 'get_order',
   description:
-    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` (an email or phone) to look up a different order. Returns FULL details: recipient, sender, occasion, genre, payment status, amount paid, preview link, download link, the customer's context/details they typed, and the song lyrics.",
+    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` (an email or phone) to look up a different order. Returns FULL details for each song: its `id`, recipient, sender, occasion, genre, payment status, amount paid, individual preview link, download link, the customer's context/details they typed, and the song lyrics. It ALSO returns `combined_preview_link` — ONE link that opens ALL of the returned songs together on the comparison page.",
   input_schema: {
     type: 'object',
     properties: {
@@ -104,28 +104,35 @@ serve(async (req) => {
         query = query.ilike('whatsapp_phone', `%${last10}`);
       }
       const { data: rows } = await query;
-      return {
-        orders: (rows || []).map((s) => {
-          const paid = isPaid(s);
-          return {
-            recipient_name: s.recipient_name,
-            sender_name: s.sender_name,
-            email: s.email,
-            occasion: s.occasion,
-            genre: s.genre_name || s.genre,
-            is_paid: paid,
-            paid_at: s.paid_at,
-            // Revenue is hidden from assistants (same as the orders list).
-            amount_paid: isAdmin ? s.amount_paid : undefined,
-            created_at: s.created_at,
-            song_ready: !!(s.audio_url && String(s.audio_url) !== ''),
-            preview_link: `${SITE}/listen?song_id=${s.id}`,
-            download_link: paid ? downloadLink(s) : null,
-            customer_context: s.details || null,
-            lyrics: s.lyrics || null,
-          };
-        }),
-      };
+      const orders = (rows || []).map((s) => {
+        const paid = isPaid(s);
+        return {
+          id: s.id,
+          recipient_name: s.recipient_name,
+          sender_name: s.sender_name,
+          email: s.email,
+          occasion: s.occasion,
+          genre: s.genre_name || s.genre,
+          is_paid: paid,
+          paid_at: s.paid_at,
+          // Revenue is hidden from assistants (same as the orders list).
+          amount_paid: isAdmin ? s.amount_paid : undefined,
+          created_at: s.created_at,
+          song_ready: !!(s.audio_url && String(s.audio_url) !== ''),
+          preview_link: `${SITE}/listen?song_id=${s.id}`,
+          download_link: paid ? downloadLink(s) : null,
+          customer_context: s.details || null,
+          lyrics: s.lyrics || null,
+        };
+      });
+      // ONE link that opens ALL of these songs together on the comparison page
+      // (exactly how we send a batch of songs so the customer can listen and
+      // pick). To send only SOME songs, build the same link with just those ids:
+      //   ${SITE}/listen?song_ids=ID1,ID2
+      const combined_preview_link = orders.length
+        ? `${SITE}/listen?song_ids=${orders.map((o) => o.id).join(',')}`
+        : null;
+      return { orders, combined_preview_link };
     }
 
     const system = `Eres el copiloto interno del equipo de soporte de Regalos Que Cantan. Estás ayudando a un AGENTE HUMANO (el dueño) que en este momento chatea con un cliente (teléfono ${convoPhone || 'desconocido'}${convo?.customer_name ? `, ${convo.customer_name}` : ''}).
@@ -137,7 +144,14 @@ REGLAS:
 - Tienes acceso completo al pedido: estado de pago, enlace de preview (/listen), enlace de descarga (solo si está pagado), detalles/contexto del cliente y la LETRA de la canción.
 - Cuando el agente te pida "algo para mandarle al cliente", dáselo en ESPAÑOL, listo para copiar y pegar.
 - El download_link solo existe si el pedido está pagado. Si no está pagado y piden el link de descarga, avisa que aún no ha pagado y ofrece el enlace de preview.
-- Nunca inventes datos; si get_order no devuelve algo, dilo.${isAdmin ? '' : '\n- NUNCA menciones montos, cantidades ni cifras de dinero (por ejemplo $39.99). Solo puedes decir si el pedido está pagado o no, nunca cuánto.'}`;
+- Nunca inventes datos; si get_order no devuelve algo, dilo.
+
+ENLACES DE PREVIEW (IMPORTANTE):
+- VARIAS canciones se pueden juntar en UN SOLO enlace usando \`combined_preview_link\` (formato /listen?song_ids=ID1,ID2,...). Ese enlace abre la página de comparación donde el cliente escucha TODAS las canciones y escoge la que quiere. Es EXACTAMENTE como se las presentamos al cliente.
+- Cuando el dueño pida "los dos/tres preview en un solo link" o "un solo URL con todas", SIEMPRE puedes hacerlo: es \`combined_preview_link\`. Nunca digas que es imposible juntarlos.
+- Para mandar solo ALGUNAS canciones (por ejemplo las 2 más recientes), arma el enlace tú mismo con esos \`id\` así: ${SITE}/listen?song_ids=ID1,ID2 (usa los \`id\` que devuelve get_order; los pedidos vienen ordenados del más reciente al más viejo).
+- Por defecto, prefiere dar UN SOLO enlace combinado en vez de varios enlaces sueltos, salvo que el dueño pida los enlaces por separado.
+- Si el cliente tiene VARIAS canciones (3 o más) y el dueño no dijo cuáles, PREGUNTA primero cuáles quiere incluir antes de dar el enlace: ¿las 2 más recientes, o todas las de hoy, o todas? No adivines.${isAdmin ? '' : '\n- NUNCA menciones montos, cantidades ni cifras de dinero (por ejemplo $39.99). Solo puedes decir si el pedido está pagado o no, nunca cuánto.'}`;
 
     const convo2: { role: 'user' | 'assistant'; content: unknown }[] = messages
       .filter((m: { role?: string; content?: string }) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
