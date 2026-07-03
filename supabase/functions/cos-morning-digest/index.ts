@@ -8,6 +8,7 @@
 // Trigger: pg_cron daily (cos-morning-digest job) — verify_jwt = false in config.toml.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendSms } from '../_shared/send-sms.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -16,6 +17,9 @@ const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM');
 const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO');
+// Owner's cell for plain-SMS delivery (E.164, e.g. +18182885001). SMS has no
+// WhatsApp 24h-window restriction, so it's the reliable channel for the digest.
+const ALERT_SMS_TO = Deno.env.get('ALERT_SMS_TO');
 const ALERT_EMAIL = Deno.env.get('ALERT_EMAIL') || 'hola@regalosquecantan.com';
 const SENDER_EMAIL = 'hola@regalosquecantan.com';
 
@@ -185,15 +189,17 @@ Deno.serve(async (_req: Request) => {
   ];
   const message = lines.join('\n');
 
-  const [wa, mail] = await Promise.all([
+  const [wa, mail, smsResult] = await Promise.all([
     sendWhatsApp(message),
     sendEmail(`☀️ Morning Digest — ${day.label}`, message),
+    ALERT_SMS_TO ? sendSms(ALERT_SMS_TO, message) : Promise.resolve({ ok: false, error: 'ALERT_SMS_TO not set' }),
   ]);
+  if (!smsResult.ok) console.warn('Digest SMS not sent:', smsResult.error);
 
-  console.log(`Digest sent (whatsapp=${wa}, email=${mail}) in ${Date.now() - started}ms\n${message}`);
+  console.log(`Digest sent (sms=${smsResult.ok}, whatsapp=${wa}, email=${mail}) in ${Date.now() - started}ms\n${message}`);
 
   return new Response(
-    JSON.stringify({ ok: true, whatsapp_sent: wa, email_sent: mail, digest: message, execution_ms: Date.now() - started }),
+    JSON.stringify({ ok: true, sms_sent: smsResult.ok, whatsapp_sent: wa, email_sent: mail, digest: message, execution_ms: Date.now() - started }),
     { headers: { 'Content-Type': 'application/json' } },
   );
 });

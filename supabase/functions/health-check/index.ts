@@ -6,6 +6,7 @@
 // Deploy with: supabase functions deploy health-check --project-ref yzbvajungshqcpusfiia --no-verify-jwt
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendSms } from '../_shared/send-sms.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -17,6 +18,10 @@ const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
 const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM'); // e.g. whatsapp:+14155238886
 const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO');       // e.g. whatsapp:+1XXXXXXXXXX
+// Owner's cell for plain-SMS alerts (E.164). SMS has no WhatsApp 24h-window
+// restriction, so it's the reliable urgent channel. Sent via _shared/send-sms.ts
+// (A2P Messaging Service).
+const ALERT_SMS_TO = Deno.env.get('ALERT_SMS_TO');
 
 // Where to send email alerts
 const ALERT_EMAIL = Deno.env.get('ALERT_EMAIL') || 'hola@regalosquecantan.com';
@@ -143,10 +148,15 @@ async function sendAlert(title: string, details: string, severity: 'critical' | 
     </html>
   `;
 
-  // Send both in parallel
+  // Send all channels in parallel (SMS is the reliable urgent one).
   await Promise.allSettled([
     sendEmailAlert(`${emoji} ${title}`, emailHtml),
-    sendWhatsAppAlert(whatsappMsg)
+    sendWhatsAppAlert(whatsappMsg),
+    ALERT_SMS_TO
+      ? sendSms(ALERT_SMS_TO, whatsappMsg).then((r) => {
+          if (!r.ok) console.warn('SMS alert not sent:', r.error);
+        })
+      : Promise.resolve(),
   ]);
 }
 
