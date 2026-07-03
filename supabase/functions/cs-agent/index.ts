@@ -290,7 +290,7 @@ ${CS_GOLDEN_ANSWERS}
 
 REGLAS ESTRICTAS:
 - ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.
-- Responde solo en español, en 1-3 frases cuando sea posible.
+- IDIOMA: responde normalmente en ESPAÑOL (la gran mayoría de clientes son hispanohablantes). SOLO si el cliente claramente escribe TODO su mensaje en otro idioma (inglés, portugués), respóndele en ESE idioma. Ante cualquier duda, español. 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
 - Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
@@ -359,7 +359,7 @@ serve(async (req) => {
     // Load recent history (oldest → newest).
     const { data: msgs } = await admin
       .from('sms_messages')
-      .select('direction, body, status, created_at')
+      .select('direction, body, status, created_at, media_path, media_type')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT);
@@ -387,6 +387,37 @@ serve(async (req) => {
     // The API requires the first message to be from the user.
     while (messages.length && messages[0].role !== 'user') messages.shift();
     if (!messages.length) return json({ ok: true, skipped: 'no user message' });
+
+    // VISION: if the latest customer message includes an image, attach it so the
+    // model can SEE what they're showing (an error, a screenshot, the song page).
+    // Best-effort — a failure just falls back to text-only.
+    if (last.media_path && String(last.media_type || '').startsWith('image/')) {
+      try {
+        const { data: blob } = await admin.storage.from('cs-media').download(last.media_path);
+        if (blob) {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          let bin = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+          }
+          const b64 = btoa(bin);
+          // Attach to the LAST user message (the one we're replying to).
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+              const txt = typeof messages[i].content === 'string' ? messages[i].content : '';
+              messages[i].content = [
+                { type: 'text', text: txt && txt.trim() ? txt : 'El cliente envió esta imagen (descríbela y ayúdalo según lo que muestra):' },
+                { type: 'image', source: { type: 'base64', media_type: last.media_type, data: b64 } },
+              ];
+              break;
+            }
+          }
+        }
+      } catch (visErr) {
+        console.warn('cs-agent: vision attach failed', visErr);
+      }
+    }
 
     // ── Always-on situation snapshot ────────────────────────────────────────
     // Ground the reply in WHO this customer is, before the model writes. Resolve

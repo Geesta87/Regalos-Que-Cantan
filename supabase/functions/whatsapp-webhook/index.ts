@@ -22,6 +22,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { triggerCsAgent, runInBackground } from '../_shared/trigger-cs-agent.ts';
 import { maybeSendOutOfOffice } from '../_shared/out-of-office.ts';
+import { storeInboundImage } from '../_shared/inbound-media.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -157,6 +158,17 @@ serve(async (req) => {
       displayName = customerName;
     }
 
+    // Capture an attached image (if any) so it shows in the thread and the bot
+    // can SEE it. Twilio delivers NumMedia + MediaUrl0/MediaContentType0.
+    let media: { path: string; type: string } | null = null;
+    if (parseInt(params['NumMedia'] || '0', 10) > 0 && params['MediaUrl0']) {
+      media = await storeInboundImage(admin, {
+        conversationId,
+        mediaUrl: params['MediaUrl0'],
+        contentType: params['MediaContentType0'] || '',
+      });
+    }
+
     await admin.from('sms_messages').insert({
       conversation_id: conversationId,
       direction: 'inbound',
@@ -164,6 +176,8 @@ serve(async (req) => {
       status: 'received',
       twilio_sid: twilioSid,
       channel: 'whatsapp',
+      media_path: media?.path || null,
+      media_type: media?.type || null,
     });
 
     // No reply owed on STOP/START keywords or to opted-out numbers.
