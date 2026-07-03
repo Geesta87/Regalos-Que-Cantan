@@ -936,6 +936,27 @@ Deno.serve(async (req) => {
     }
 
     // -----------------------------------------------------------------
+    // SIBLINGS — the OTHER version(s) of the same song from one generation.
+    // Every song creation makes 2 audio variants that share a `session_id`
+    // (present on both regardless of paid, and it survives a fix — unlike
+    // kie_task_id). Used by the admin "Corregir ambas versiones" button to fix
+    // both takes of a bundle at once. Read-only, no cost.
+    // -----------------------------------------------------------------
+    if (action === 'siblings') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId required' });
+      const { data: me } = await supabase.from('songs').select('session_id').eq('id', songId).single();
+      if (!me?.session_id) return json({ ok: true, siblings: [] });
+      const { data: sibs } = await supabase
+        .from('songs')
+        .select('id, version, paid, recipient_name, audio_url, provider')
+        .eq('session_id', me.session_id)
+        .neq('id', songId)
+        .order('version', { ascending: true });
+      return json({ ok: true, siblings: sibs || [] });
+    }
+
+    // -----------------------------------------------------------------
     // TRANSCRIBE — Whisper word-timestamps for a song (no Kie cost). Used to
     // inspect WHERE a lyric line falls in the audio while tuning section fixes.
     // Returns words + duration; pass verify=[...] to also get occurrence counts.

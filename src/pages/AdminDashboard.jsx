@@ -55,6 +55,9 @@ function FixSongCard({ song, showToast, onApplied }) {
     history: Array.isArray(song?.fix_history) ? song.fix_history : [],
   });
   const [showFixHistory, setShowFixHistory] = useState(false);
+  // Bundle: the OTHER version(s) of this song (same session_id) + their fixed previews.
+  const [siblings, setSiblings] = useState([]);
+  const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -64,7 +67,36 @@ function FixSongCard({ song, showToast, onApplied }) {
     body: JSON.stringify(body),
   }).then((r) => r.json());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const busy = chatting || phase === 'planning' || phase === 'working' || phase === 'applying';
+  const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+
+  // Find the other version(s) of this song (same generation session) so we can
+  // offer "Corregir ambas versiones" — even the unpaid one, in case the customer
+  // later wants it. Read-only, no cost.
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const d = await postFn({ action: 'siblings', songId: song.id });
+        if (!off && d?.ok) setSiblings(Array.isArray(d.siblings) ? d.siblings : []);
+      } catch { /* ignore */ }
+    })();
+    return () => { off = true; };
+  }, [song.id]);
+
+  // Keep the "🔧 This song was fixed" badge + history in sync with the song.
+  // fixed_at/fix_count come with the fast list data (so the badge shows), but
+  // fix_history only arrives with the full detail load a moment later — without
+  // this, the badge appears but clicking it expands nothing. Only re-syncs when
+  // the song's own fix data changes, so it never clobbers a local apply/undo.
+  useEffect(() => {
+    setFixStamp({
+      fixedAt: song?.fixed_at || null,
+      count: Number(song?.fix_count) || 0,
+      history: Array.isArray(song?.fix_history) ? song.fix_history : [],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [song?.id, song?.fixed_at, song?.fix_count, Array.isArray(song?.fix_history) ? song.fix_history.length : 0]);
+  const busy = chatting || phase === 'planning' || phase === 'working' || phase === 'bothWorking' || phase === 'applying';
 
   // A song is section-fixable unless it was made with Mureka (which has no Kie
   // voice-track to re-sing from). Everything else is Kie — and the backend
@@ -180,12 +212,12 @@ function FixSongCard({ song, showToast, onApplied }) {
   // Returns the chosen take + splice points, or throws (err.offerFull = fall back
   // to a full re-roll). This is the piece the old "pick the tightest take" logic
   // was missing (it silently accepted takes that skipped the corrected line).
-  async function resingOne({ note, approvedLyrics, verifyPhrases, correctedText }, onMsg) {
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText }, onMsg) {
     const ROUNDS = 4;
     let lastReason = '';
     for (let round = 1; round <= ROUNDS; round++) {
       onMsg?.(`Regenerating the part… (attempt ${round})`);
-      const sub = await postFn({ action: 'section-submit', mode: 'section', songId: song.id, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
+      const sub = await postFn({ action: 'section-submit', mode: 'section', songId, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
       if (!sub.ok) {
         const e = new Error(sub.reason || sub.error || 'Could not generate the fix.');
         if (sub.canFix === false || sub.eligible === false) e.offerFull = true;
@@ -252,6 +284,7 @@ function FixSongCard({ song, showToast, onApplied }) {
         fullLyrics: r.fullLyrics,
         corrections: null,
         originalAudioUrl: song.original_audio_url || song.audio_url,
+        changeMarks: r.startS > 0 ? [r.startS] : [],
         takes: [{ audioUrl: spliced.url, verified: true, lyrics: r.fullLyrics }],
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
@@ -265,39 +298,99 @@ function FixSongCard({ song, showToast, onApplied }) {
   // original and chain the splices (latest spot first, so earlier fixes aren't
   // clobbered) into one file with the SAME voice. `changes` come from the plan
   // step; combinedLyrics already has every correction applied.
+  // Fix ONE song (by id) — re-sing each correction from ITS OWN take (own voice)
+  // and chain the splices (latest spot first). Returns the finished blob, a
+  // preview URL, and each change's start-time (for the "jump to change" marker).
+  async function fixOneSong(songId, { changes, combinedLyrics }, onMsg) {
+    const done = [];
+    for (let i = 0; i < changes.length; i++) {
+      const c = changes[i];
+      const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
+      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
+      done.push(r);
+    }
+    const changeMarks = done.map((d) => d.startS).filter((n) => n > 0).sort((a, b) => a - b);
+    done.sort((a, b) => b.startS - a.startS); // latest-first
+    let baseUrl = done[0].originalAudioUrl; // pristine original
+    let blob = null;
+    for (const c of done) {
+      onMsg?.('Uniendo con la grabación original…');
+      const sp = await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
+      baseUrl = sp.url; blob = sp.blob;
+    }
+    return { splicedBlob: blob, correctedUrl: baseUrl, fullLyrics: combinedLyrics, changeMarks };
+  }
+
+  // Multi-part surgical fix on the CURRENT song.
   async function runMultiFix(combinedLyrics, changes) {
     setError(''); setResult(null); setInput('');
     setPhase('working');
     try {
-      const done = [];
-      for (let i = 0; i < changes.length; i++) {
-        const c = changes[i];
-        const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
-        setSurgicalMsg(`Fixing part ${i + 1} of ${changes.length}…`);
-        const r = await resingOne({ note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after }, (m) => setSurgicalMsg(`(${i + 1}/${changes.length}) ${m}`));
-        done.push(r);
-      }
-      done.sort((a, b) => b.startS - a.startS); // latest-first
-      let baseUrl = done[0].originalAudioUrl; // pristine original
-      let lastBlob = null;
-      for (const c of done) {
-        setSurgicalMsg('Stitching the corrections into the original…');
-        const sp = await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
-        baseUrl = sp.url; lastBlob = sp.blob;
-      }
+      const one = await fixOneSong(song.id, { changes, combinedLyrics }, setSurgicalMsg);
       setResult({
         surgical: true,
-        splicedBlob: lastBlob,
+        splicedBlob: one.splicedBlob,
         changeSummary: (plan?.changeSummary) || `${changes.length} correcciones`,
         fullLyrics: combinedLyrics,
         corrections: changes.map((c) => ({ before: c.before, after: c.after })),
         originalAudioUrl: song.original_audio_url || song.audio_url,
-        takes: [{ audioUrl: baseUrl, verified: true, lyrics: combinedLyrics }],
+        changeMarks: one.changeMarks,
+        takes: [{ audioUrl: one.correctedUrl, verified: true, lyrics: combinedLyrics }],
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
       if (e?.offerFull) setOfferFullReroll(true);
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+    }
+  }
+
+  // Correct BOTH bundle versions — same correction on each, each re-sung from its
+  // OWN take (own voice). Previews both before applying.
+  async function runBothFix(combinedLyrics, changes) {
+    setError(''); setBothResults(null); setResult(null); setInput('');
+    setPhase('bothWorking');
+    try {
+      const targets = [
+        { id: song.id, version: song.version, recipient_name: song.recipient_name, paid: song.paid, audio_url: song.original_audio_url || song.audio_url },
+        ...siblings,
+      ];
+      const results = [];
+      for (const t of targets) {
+        const one = await fixOneSong(t.id, { changes, combinedLyrics }, (m) => setSurgicalMsg(`Versión ${t.version ?? '?'}: ${m}`));
+        results.push({ ...t, ...one, corrections: changes.map((c) => ({ before: c.before, after: c.after })) });
+      }
+      setBothResults(results);
+      setSurgicalMsg(''); setPhase('bothPreview');
+    } catch (e) {
+      if (e?.offerFull) setOfferFullReroll(true);
+      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+    }
+  }
+
+  // Apply the fixed audio to EACH version's own row (own /song/<id> link).
+  async function applyBoth() {
+    if (!bothResults?.length) return;
+    setPhase('applying');
+    const summary = (plan?.changeSummary) || `${bothResults[0]?.corrections?.length || 1} corrección(es)`;
+    try {
+      for (const r of bothResults) {
+        const fd = new FormData();
+        fd.append('audio', r.splicedBlob, `fixed-${r.id}.mp3`);
+        fd.append('songId', r.id);
+        fd.append('fullLyrics', r.fullLyrics || '');
+        fd.append('summary', summary);
+        if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
+        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+        const d = await resp.json();
+        if (!d.ok) throw new Error(`Versión ${r.version ?? '?'}: ${d.error || 'apply failed'}`);
+        if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
+      }
+      showToast('✅ Both versions corrected. Each keeps its own link.');
+      setCanUndo(true);
+      stampFix(new Date().toISOString(), (fixStamp.count || 0) + 1, summary, 'section');
+      setPhase('idle'); setBothResults(null); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput('');
+    } catch (e) {
+      setError(e?.message || 'apply failed'); setPhase('bothPreview');
     }
   }
 
@@ -619,19 +712,70 @@ function FixSongCard({ song, showToast, onApplied }) {
                   ✏️ Keep editing
                 </button>
               </div>
+              {/* Bundle: correct BOTH versions at once (each in its own voice) */}
+              {pendingMode === 'section' && !offerFullReroll && siblings.length > 0 && Array.isArray(plan.changes) && plan.changes.length > 0 && (
+                <button
+                  onClick={() => runBothFix(plan.approvedLyrics, plan.changes)}
+                  className="w-full mt-2 py-2 px-4 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-400 transition"
+                >
+                  👥 Correct both versions ({siblings.length + 1}) — each in its own voice
+                </button>
+              )}
             </div>
           )}
 
-          {phase === 'working' && (
+          {(phase === 'working' || phase === 'bothWorking') && (
             <p className="text-sm text-purple-100 mt-1">
-              {surgicalMsg || (pendingMode === 'full' ? '⏳ Redoing the song…' : '⏳ Fixing that part…')} (1-3 min, don't close this window)
+              {surgicalMsg || (phase === 'bothWorking' ? '⏳ Correcting both versions…' : (pendingMode === 'full' ? '⏳ Redoing the song…' : '⏳ Fixing that part…'))} (don't close this window)
             </p>
+          )}
+
+          {/* Dual preview — both bundle versions, before/after each, with change markers */}
+          {(phase === 'bothPreview' || (phase === 'applying' && bothResults)) && bothResults && (
+            <div className="mt-1 space-y-3">
+              <p className="text-xs text-purple-100">📝 {(plan?.changeSummary) || 'Corrección aplicada a ambas versiones'}</p>
+              {bothResults.map((r) => (
+                <div key={r.id} className="bg-white/5 border border-white/10 rounded-lg p-3">
+                  <p className="text-xs text-gray-200 font-semibold mb-1">
+                    🎵 Version {r.version ?? '?'} {r.paid ? '· paid' : '· (not paid)'} {r.recipient_name ? `— ${r.recipient_name}` : ''}
+                  </p>
+                  {r.changeMarks?.length > 0 && (
+                    <p className="text-[11px] text-amber-300 mb-2">🕐 Change{r.changeMarks.length > 1 ? 's' : ''} at {r.changeMarks.map((m) => mmss(m)).join(', ')} — jump there to check</p>
+                  )}
+                  {r.audio_url && (<>
+                    <p className="text-[11px] text-gray-500 mb-1">Original (before):</p>
+                    <audio controls className="w-full mb-2" src={r.audio_url} />
+                  </>)}
+                  <p className="text-[11px] text-gray-300 mb-1">✅ Corrected (after):</p>
+                  <audio controls className="w-full" src={r.correctedUrl} />
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <button
+                  onClick={applyBoth}
+                  disabled={phase === 'applying'}
+                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
+                >
+                  {phase === 'applying' ? '⏳ Applying to both…' : '✅ Apply to both (each to its own link)'}
+                </button>
+                <button
+                  onClick={() => { setBothResults(null); setPhase('plan'); }}
+                  disabled={phase === 'applying'}
+                  className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
           )}
 
           {(phase === 'preview' || phase === 'applying') && result && (
             <div className="mt-1">
               {result.changeSummary && (
                 <p className="text-xs text-purple-100 mb-1">📝 {result.changeSummary}</p>
+              )}
+              {result.changeMarks?.length > 0 && (
+                <p className="text-[11px] text-amber-300 mb-2">🕐 Change{result.changeMarks.length > 1 ? 's' : ''} at {result.changeMarks.map((m) => mmss(m)).join(', ')} — jump there to check</p>
               )}
               {result.mode === 'full' ? (
                 <p className="text-[11px] text-gray-400 mb-2">🔁 Full song redone with the corrections</p>
