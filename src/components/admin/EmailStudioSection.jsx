@@ -204,6 +204,26 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     finally { setBusy(false); }
   };
 
+  // Drop a ready hero image into the email already in the preview. The image is
+  // otherwise only consumed by a full "Generate email"; without this, generating
+  // or uploading a hero after an email exists leaves the preview unchanged
+  // ("I don't see it applied"). A targeted refine inserts/replaces the hero
+  // without redesigning the copy. No-op (just stages it) if no email yet.
+  const applyHeroToEmail = async (url) => {
+    if (!url || !html) return;
+    setError(''); setStage('refine');
+    try {
+      const r = await call({
+        action: 'refine', html, style_id: styleId,
+        instruction: `Place this hosted hero image near the TOP of the email, full content width (about 600x400, rounded corners, descriptive alt text). If a hero image already exists, REPLACE its src with this one; otherwise insert it. Use EXACTLY this URL and change NOTHING else about the copy or layout: ${url}`,
+      });
+      if (!r.success) throw new Error(r.error || 'Could not apply the image');
+      setHtml(r.html); pushHistory(r.html, subject);
+      showToast?.('Hero image added to the email.');
+    } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
+    finally { setStage(''); }
+  };
+
   const uploadImage = async (fileList) => {
     const f = Array.from(fileList || []).find((x) => x.type.startsWith('image/'));
     if (!f) return;
@@ -217,7 +237,8 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       const r = await call({ action: 'upload_image', image: dataUrl });
       if (!r.success) throw new Error(r.error || 'Upload failed');
       setImageUrl(r.url);
-      showToast?.('Image hosted — it will be used as the hero.');
+      showToast?.(html ? 'Image hosted — applying it to the email…' : 'Image hosted — it will be used as the hero.');
+      await applyHeroToEmail(r.url);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setImageBusy(false); if (fileRef.current) fileRef.current.value = ''; }
   };
@@ -229,7 +250,8 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       const r = await call({ action: 'gen_image', prompt: imagePrompt });
       if (!r.success) throw new Error(r.error || 'Image generation failed');
       setImageUrl(r.url);
-      showToast?.('Hero image generated.');
+      showToast?.(html ? 'Image generated — applying it to the email…' : 'Hero image generated.');
+      await applyHeroToEmail(r.url);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setImageBusy(false); }
   };
