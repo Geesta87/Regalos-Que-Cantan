@@ -297,6 +297,17 @@ Body font-family: ${style.bodyFont}
 Web font <link> for <head> (include it): <link rel="preconnect" href="https://fonts.googleapis.com"><link href="${style.fontHref}" rel="stylesheet">`;
 }
 
+// Optional free-form color/theme override from the owner. Takes precedence over
+// the style's palette but keeps the style's typographic craft and every premium
+// / email-safe guardrail — so "4th of July, red white & blue" re-skins the color
+// story tastefully instead of turning into a clip-art flag flyer.
+function styleNoteBlock(note?: unknown): string {
+  const n = (note || '').toString().trim();
+  if (!n) return '';
+  return `\n\nTHEME / COLOR OVERRIDE (from the owner — this TAKES PRECEDENCE over the style's palette above): ${n}
+Re-map the color story to honor this override — you MAY depart from the style's accent/background/surface hexes to achieve it. But KEEP the style's typographic craft, layout sophistication, premium restraint, and every email-safe rule. Interpret the theme tastefully: still a premium boutique-DTC email, never a clip-art flyer, flag emoji, confetti, or party-blast. If the override names an occasion (e.g. a holiday), use its colors as a SOPHISTICATED accent story against a refined base, not loud full-width saturated bands.`;
+}
+
 function generateSystem(promoNotes?: string): string {
   return `You are an elite email designer with impeccable taste — your work looks like a premium DTC / editorial brand, never a generic promo template. You design marketing emails for "Regalos Que Cantan" (personalized Spanish songs as gifts, ${OFFERS.site}). The wordmark is the text "Regalos Que Cantan". Customer-facing copy is in natural US-Hispanic Spanish (English ONLY when the brief targets the English platform giftsthatsing.com).
 
@@ -312,16 +323,20 @@ You will receive a BRIEF from the owner plus a STYLE. Follow the brief for conte
 }
 
 // EmailForge's PASS 2 — the "senior designer critique & rewrite".
-function improveSystem(style: Style): string {
+function improveSystem(style: Style, note?: string): string {
+  const n = (note || '').toString().trim();
+  const paletteRule = n
+    ? `keep the current email's COLOR STORY, which follows the owner's theme override ("${n}") — do NOT revert it toward the style's default palette`
+    : 'keep the same style and palette';
   return `You are a world-class email ART DIRECTOR with impeccable, restrained taste, reviewing a PREMIUM but SALES-DRIVEN email for "Regalos Que Cantan". Silently critique it HARSHLY across: visual hierarchy, typography scale/contrast, hero impact, CTA desirability (top AND bottom), whitespace rhythm, copy economy, color restraint, component refinement, dark-mode classes, and the Outlook VML button fallback. Then emit ONE improved HTML email that fixes every issue.
 
-HARD CONSTRAINTS: keep it email-safe (table-based, inline styles); keep the same style and palette; keep ALL Spanish copy wording and every link href unchanged; keep the literal {{UNSUB_URL}} unsubscribe link in the footer; if there is a hero <img>, KEEP it and its exact src; do not add emoji.
+HARD CONSTRAINTS: keep it email-safe (table-based, inline styles); ${paletteRule}; keep ALL Spanish copy wording and every link href unchanged; keep the literal {{UNSUB_URL}} unsubscribe link in the footer; if there is a hero <img>, KEEP it and its exact src; do not add emoji.
 
 ${DESIGN_PHILOSOPHY}
 
 ${EMAIL_SAFE_RULES}
 
-Style being refined: ${style.name} — ${style.treatment}`;
+Style being refined: ${style.name} — ${style.treatment}${n ? `\n\nTHEME OVERRIDE IN EFFECT (honor it over the style's default palette): ${n}` : ''}`;
 }
 
 function refineSystem(style: Style): string {
@@ -427,6 +442,7 @@ Deno.serve(async (req: Request) => {
       const imageBlock = body.image_url
         ? `HERO IMAGE (hosted — place near the top, full card width, with width/height ≈600x400, rounded corners, alt text; the email must still fully sell if it never loads): <img src="${body.image_url}">`
         : 'NO hero image — design a clean, premium text + type layout.';
+      const noteBlock = styleNoteBlock(body.style_note);
       const ctaUrl = (body.cta_url || SITE).toString();
       // The owner's live "This week's push" (same box that steers ads & social)
       // biases studio emails too — one push, all channels.
@@ -434,7 +450,7 @@ Deno.serve(async (req: Request) => {
       const data = await callAnthropic({
         model: MODEL, max_tokens: 9000, system: generateSystem(cfg?.promo_notes),
         tools: [EMIT_EMAIL_TOOL], tool_choice: { type: 'tool', name: 'emit_email' },
-        messages: [{ role: 'user', content: `${styleBrief(style)}\n\n${imageBlock}\n\nCTA LINK (every button href — use EXACTLY this): ${ctaUrl}\n\nTHE OWNER'S BRIEF:\n${brief}\n\nDesign and emit the complete email now (subject + preview_text + full HTML).` }],
+        messages: [{ role: 'user', content: `${styleBrief(style)}${noteBlock}\n\n${imageBlock}\n\nCTA LINK (every button href — use EXACTLY this): ${ctaUrl}\n\nTHE OWNER'S BRIEF:\n${brief}\n\nDesign and emit the complete email now (subject + preview_text + full HTML).` }],
       });
       const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
       if (!tu?.input?.html) return json({ success: false, error: 'Model returned no HTML' }, 502);
@@ -454,7 +470,7 @@ Deno.serve(async (req: Request) => {
       if (isRefine && !instruction) return json({ success: false, error: 'instruction is required' }, 400);
       const data = await callAnthropic({
         model: MODEL, max_tokens: 9000,
-        system: isRefine ? refineSystem(style) : improveSystem(style),
+        system: isRefine ? refineSystem(style) : improveSystem(style, (body.style_note || '').toString()),
         tools: [EMIT_HTML_TOOL], tool_choice: { type: 'tool', name: 'emit_email_html' },
         messages: [{
           role: 'user',

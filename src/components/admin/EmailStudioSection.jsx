@@ -86,6 +86,7 @@ const SEGMENTS = [
 
 export default function EmailStudioSection({ accessToken, showToast, initialDraft, onDraftConsumed }) {
   const [styleId, setStyleId] = useState(STYLES[0].id);
+  const [styleNote, setStyleNote] = useState(''); // free-form color/theme override
   const [brief, setBrief] = useState('');
   const [presetId, setPresetId] = useState(null);
   const [ctaUrl, setCtaUrl] = useState(SITE);
@@ -152,13 +153,13 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setEditingId(null); // a fresh generate is a NEW email, not the queued draft
     setError(''); setStage('design'); setTab('preview');
     try {
-      const r = await call({ action: 'generate', brief, style_id: styleId, image_url: imageUrl || undefined, cta_url: ctaUrl });
+      const r = await call({ action: 'generate', brief, style_id: styleId, style_note: styleNote || undefined, image_url: imageUrl || undefined, cta_url: ctaUrl });
       if (!r.success) throw new Error(r.error || 'Generation failed');
       let out = r.html;
       setHtml(out); setSubject(r.subject || ''); setPreviewText(r.preview_text || '');
       if (polish) {
         setStage('polish');
-        const r2 = await call({ action: 'improve', html: out, style_id: styleId });
+        const r2 = await call({ action: 'improve', html: out, style_id: styleId, style_note: styleNote || undefined });
         if (r2.success && r2.html) { out = r2.html; setHtml(out); }
       }
       pushHistory(out, r.subject || '');
@@ -288,6 +289,12 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
               {STYLES.map((s) => <option key={s.id} value={s.id}>{s.label} — {s.blurb}</option>)}
             </select>
+
+            <SectionLabel className="mt-3 mb-2">Color / theme override (optional)</SectionLabel>
+            <input value={styleNote} onChange={(e) => setStyleNote(e.target.value)}
+              placeholder='e.g. "4th of July — red, white & blue American colors, festive but premium"'
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400" />
+            <p className="text-[11px] text-gray-400 mt-1.5">Overrides the style's colors — describe the palette or occasion in plain English. The style still controls the typography &amp; layout craft.</p>
 
             <SectionLabel className="mt-3 mb-2">Button link</SectionLabel>
             <input value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)}
