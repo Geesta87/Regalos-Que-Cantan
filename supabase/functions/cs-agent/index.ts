@@ -69,6 +69,123 @@ function buildOrderLink(o: Record<string, unknown>): string {
   return `${SITE}/success?song_id=${o.id}`;
 }
 
+// ── Always-on "situation snapshot" ─────────────────────────────────────────
+// Before the model writes anything, we hand it a factual picture of WHO this
+// customer is and WHERE they are in the journey — so it responds to the
+// situation, not just the words. Grounded by BOTH the conversation's phone AND
+// any email the customer typed (over half of people who message us can't be
+// found by phone — they bought on the web with no phone on file).
+const SNAPSHOT_SONG_COLS =
+  'id, recipient_name, sender_name, occasion, genre, genre_name, short_code, audio_url, has_video_addon, karaoke_status, karaoke_video_status, created_at, paid, payment_status, paid_at, amount_paid, stripe_payment_id, email, whatsapp_phone';
+
+function snapIsPaid(s: Record<string, unknown>): boolean {
+  if (!s.paid_at) return false;
+  if (s.paid !== true && s.payment_status !== 'paid') return false;
+  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
+  return amt > 0 || !!s.stripe_payment_id;
+}
+
+// Pull email addresses the CUSTOMER typed in the thread (for identity lookup).
+function extractEmails(texts: string[]): string[] {
+  const re = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  const found = new Set<string>();
+  for (const t of texts) {
+    const matches = String(t || '').match(re);
+    if (matches) for (const m of matches) found.add(m.toLowerCase());
+  }
+  return [...found];
+}
+
+// deno-lint-ignore no-explicit-any
+async function fetchByPhone(admin: any, last10: string): Promise<Record<string, unknown>[]> {
+  if (last10.length < 10) return [];
+  const { data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
+    .ilike('whatsapp_phone', `%${last10}`).order('created_at', { ascending: false }).limit(8);
+  return data || [];
+}
+
+// Email lookup with domain-typo tolerance (glail→gmail via the local-part),
+// mirroring the copilot fix.
+// deno-lint-ignore no-explicit-any
+async function fetchByEmail(admin: any, email: string): Promise<Record<string, unknown>[]> {
+  let { data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
+    .ilike('email', email).order('created_at', { ascending: false }).limit(8);
+  if (!data || !data.length) {
+    const local = email.split('@')[0].replace(/[%,()*]/g, '');
+    if (local.length >= 4) {
+      ({ data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
+        .ilike('email', `${local}@%`).order('created_at', { ascending: false }).limit(8));
+    }
+  }
+  return data || [];
+}
+
+function daysAgo(iso: unknown): number | null {
+  if (!iso) return null;
+  const t = new Date(String(iso)).getTime();
+  if (isNaN(t)) return null;
+  return Math.floor((Date.now() - t) / 86400000);
+}
+
+// deno-lint-ignore no-explicit-any
+async function buildSituationSnapshot(admin: any, opts: {
+  phoneLast10: string;
+  customerEmails: string[];
+  alreadySentLink: boolean;
+}): Promise<string> {
+  const rows: Record<string, unknown>[] = [];
+  rows.push(...(await fetchByPhone(admin, opts.phoneLast10)));
+  for (const em of opts.customerEmails.slice(0, 3)) {
+    rows.push(...(await fetchByEmail(admin, em)));
+  }
+  // Dedup by id, newest first.
+  const seen = new Set<string>();
+  const orders = rows
+    .filter((s) => { const id = String(s.id); if (seen.has(id)) return false; seen.add(id); return true; })
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+  const header =
+    'SITUACIÓN DEL CLIENTE (contexto real del sistema — LÉELO Y PIÉNSALO ANTES DE RESPONDER; responde según la SITUACIÓN, no solo según las palabras del mensaje):';
+
+  if (!orders.length) {
+    const gaveEmail = opts.customerEmails.length > 0;
+    return `${header}
+- NO pude identificar a este cliente${gaveEmail ? ' ni con el correo que dio' : ' por su número de teléfono'}. Esto NO significa que sea nuevo: puede haber comprado en la web con otro número o correo. NUNCA asumas que no ha comprado, y NUNCA le preguntes "¿ya hiciste tu canción?" como si fuera nuevo.
+- Con calidez, pídele el CORREO con el que hizo su pedido (o el nombre de la persona a quien va la canción) para ubicarlo. Si ya dio un correo y aun así no aparece, dile que un compañero del equipo lo verificará.`;
+  }
+
+  const paid = orders.filter((o) => snapIsPaid(o));
+  const unpaid = orders.filter((o) => !snapIsPaid(o));
+  const anyReady = orders.some((o) => o.audio_url && String(o.audio_url) !== '');
+  const recent = orders[0];
+  const d = daysAgo(recent.created_at);
+  const whenTxt = d === 0 ? 'hoy' : d === 1 ? 'ayer' : d != null ? `hace ${d} días` : 'recientemente';
+  const recipient = recent.recipient_name
+    ? ` (la más reciente para ${recent.recipient_name}${recent.occasion ? `, ${recent.occasion}` : ''})`
+    : '';
+
+  const lines: string[] = [header, `- Cliente IDENTIFICADO. Pedido más reciente: ${whenTxt}${recipient}.`];
+
+  if (paid.length) {
+    lines.push(
+      `- YA ES CLIENTE: tiene ${paid.length} canción(es) PAGADA(S)${anyReady ? ' y lista(s)' : ''}.${opts.alreadySentLink ? ' Ya le enviamos su enlace antes.' : ''} Trátalo como cliente existente y NUNCA le preguntes si ya hizo su canción. Si necesita su enlace, compárteselo:`,
+    );
+    for (const o of paid.slice(0, 4)) {
+      lines.push(`    · ${o.recipient_name || 'su canción'}: ${buildOrderLink(o)}`);
+    }
+  }
+  if (unpaid.length) {
+    const previewLink = `${SITE}/listen?song_ids=${unpaid.map((o) => o.id).join(',')}`;
+    lines.push(
+      `- Tiene ${unpaid.length} canción(es) SIN pagar. Si pregunta por ellas, comparte este enlace para que las ESCUCHE y explícale que al completar la compra se desbloquea la descarga (NUNCA compartas descarga de algo no pagado): ${previewLink}`,
+    );
+  }
+  if (paid.length > 1) {
+    lines.push(`- Es CLIENTE RECURRENTE (${paid.length} compradas). Trátalo con especial cariño y gratitud.`);
+  }
+  return lines.join('\n');
+}
+
 // LIVE PRICES — built from the same code-owned catalog the website and every
 // generator use (_shared/brand-brief.ts OFFERS). Appended AFTER the knowledge
 // doc so the bot never quotes a stale price even if the owner's custom
@@ -115,13 +232,14 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(customerName: string | null, channel: string, knowledge: string): string {
+function systemPrompt(customerName: string | null, channel: string, knowledge: string, snapshot: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
 
-${knowledge}${LIVE_PRICES}
+${snapshot ? snapshot + '\n\n' : ''}${knowledge}${LIVE_PRICES}
 
 REGLAS ESTRICTAS:
+- ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.
 - Responde solo en español, en 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
@@ -220,6 +338,24 @@ serve(async (req) => {
     while (messages.length && messages[0].role !== 'user') messages.shift();
     if (!messages.length) return json({ ok: true, skipped: 'no user message' });
 
+    // ── Always-on situation snapshot ────────────────────────────────────────
+    // Ground the reply in WHO this customer is, before the model writes. Resolve
+    // by the conversation phone AND any email the customer typed in the thread.
+    const customerEmails = extractEmails(
+      history.filter((m) => m.direction === 'inbound').map((m) => m.body || ''),
+    );
+    // Did we already send them a song link earlier in this thread? (so the bot
+    // doesn't re-ask or re-explain what we already delivered).
+    const alreadySentLink = history.some(
+      (m) => m.direction === 'outbound' && /\/s\/|\/success|\/listen|ya est\w* lista/i.test(m.body || ''),
+    );
+    let snapshot = '';
+    try {
+      snapshot = await buildSituationSnapshot(admin, { phoneLast10, customerEmails, alreadySentLink });
+    } catch (snapErr) {
+      console.warn('cs-agent: snapshot build failed', snapErr);
+    }
+
     // LEARNING: the most recent owner-approved / owner-sent replies teach the
     // bot the house voice. Edited approvals are flagged as corrections. These
     // are for TONE/STYLE only — real data comes from the tool, never here.
@@ -264,7 +400,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 700,
-          system: systemPrompt(convo.customer_name, convo.channel || 'sms', knowledge) + examplesBlock,
+          system: systemPrompt(convo.customer_name, convo.channel || 'sms', knowledge, snapshot) + examplesBlock,
           tools: TOOLS,
           messages,
         }),
