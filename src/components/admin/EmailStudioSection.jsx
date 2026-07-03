@@ -331,12 +331,21 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
           <Card className="p-4">
             <SectionLabel className="mb-2">Hero image (optional)</SectionLabel>
             {imageUrl ? (
-              <div className="relative">
-                <img src={imageUrl} alt="hero" className="w-full h-28 object-cover rounded-lg border border-gray-200" />
-                <button onClick={() => setImageUrl('')} className="absolute top-1.5 right-1.5 bg-white/90 rounded-full p-1 text-gray-500 hover:text-gray-800">
-                  <X size={14} />
-                </button>
-              </div>
+              <>
+                <div className="relative">
+                  <img src={imageUrl} alt="hero" className="w-full h-28 object-cover rounded-lg border border-gray-200" />
+                  <button onClick={() => setImageUrl('')} className="absolute top-1.5 right-1.5 bg-white/90 rounded-full p-1 text-gray-500 hover:text-gray-800">
+                    <X size={14} />
+                  </button>
+                </div>
+                {html ? (
+                  <button onClick={() => applyHeroToEmail(imageUrl)} disabled={!!stage || imageBusy} className={btn.ghost + ' w-full mt-2'}>
+                    {stage === 'refine' ? <Loader2 size={15} className="animate-spin" /> : <ImageIcon size={15} />} Add to current email
+                  </button>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-2">Will be placed as the hero when you Generate email.</p>
+                )}
+              </>
             ) : (
               <>
                 <div className="flex gap-2">
