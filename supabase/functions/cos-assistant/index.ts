@@ -206,6 +206,96 @@ async function buildAdReport(admin: any, from: string, to: string): Promise<stri
 }
 
 // ---------------------------------------------------------------------------
+// P&L — the CEO view: real revenue − real ad spend − operating costs = profit.
+// Same Pacific-9am day frame as buildAdReport (one Meta/Manila ad-day per
+// label) so spend and revenue always cover the same hours. Costs come from the
+// owner-editable operating_costs table (per_order × orders + monthly, prorated
+// per day) — ESTIMATES until the owner corrects them.
+// ---------------------------------------------------------------------------
+async function pnlForRange(admin: any, from: string, to: string): Promise<any> {
+  const metaFrom = shiftDate(from, 1); // Pacific start label -> Manila ad-day
+  const metaTo = shiftDate(to, 1);
+  const days = Math.max(1, Math.round((new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime()) / 864e5) + 1);
+
+  // Ad spend — live from Meta; fall back to the saved daily reports.
+  let spend: number | null = null;
+  let spendSource = 'meta_live';
+  if (META_ACCESS_TOKEN) {
+    try {
+      const j = await metaGet(`${META_AD_ACCOUNT_ID}/insights`, {
+        level: 'account', time_range: JSON.stringify({ since: metaFrom, until: metaTo }), fields: 'spend', limit: '1',
+      });
+      spend = (j.data || []).reduce((a: number, r: any) => a + num(r.spend), 0);
+    } catch (_) { /* fall through */ }
+  }
+  if (spend == null) {
+    spendSource = 'saved_reports';
+    const { data: reports } = await admin.from('media_buyer_reports')
+      .select('metrics').gte('report_for', from).lte('report_for', to);
+    spend = (reports || []).reduce((a: number, r: any) => a + num(r.metrics?.account_yesterday?.spend), 0);
+  }
+
+  // Real revenue — deduped paid orders inside the exact same Manila-day window.
+  const lo = `${metaFrom}T00:00:00+08:00`;
+  const hi = `${shiftDate(metaTo, 1)}T00:00:00+08:00`;
+  const { data: paid } = await admin.from('songs')
+    .select('stripe_session_id, amount_paid')
+    .eq('paid', true).eq('platform', RQC_PLATFORM)
+    .gte('paid_at', lo).lt('paid_at', hi)
+    .not('stripe_session_id', 'is', null).limit(20000);
+  const perSession = new Map<string, number>();
+  for (const r of (paid || [])) {
+    const amt = num(r.amount_paid), sid = r.stripe_session_id as string;
+    if (!perSession.has(sid) || amt > (perSession.get(sid) as number)) perSession.set(sid, amt);
+  }
+  const orders = perSession.size;
+  const revenue = Math.round([...perSession.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+
+  // Operating costs (owner-editable estimates).
+  const { data: costs } = await admin.from('operating_costs').select('key, label, kind, amount, notes').eq('active', true);
+  const perOrderRows = (costs || []).filter((c: any) => c.kind === 'per_order');
+  const monthlyRows = (costs || []).filter((c: any) => c.kind === 'monthly');
+  const perOrderCost = perOrderRows.reduce((a: number, c: any) => a + num(c.amount), 0);
+  const monthlyCost = monthlyRows.reduce((a: number, c: any) => a + num(c.amount), 0);
+  const orderCosts = Math.round(perOrderCost * orders * 100) / 100;
+  const overhead = Math.round((monthlyCost * days / 30) * 100) / 100;
+  const totalCosts = Math.round((orderCosts + overhead) * 100) / 100;
+  const profit = Math.round((revenue - (spend || 0) - totalCosts) * 100) / 100;
+
+  return {
+    from, to, days,
+    revenue, orders, aov: orders > 0 ? Math.round((revenue / orders) * 100) / 100 : null,
+    ad_spend: Math.round((spend || 0) * 100) / 100, ad_spend_source: spendSource,
+    est_order_costs: orderCosts, est_overhead: overhead, est_total_costs: totalCosts,
+    est_profit: profit,
+    est_margin_pct: revenue > 0 ? Math.round((profit / revenue) * 100) : null,
+    roas: (spend || 0) > 0 ? Math.round((revenue / (spend as number)) * 100) / 100 : null,
+    cost_assumptions: {
+      per_order: perOrderRows.map((c: any) => ({ item: c.label, usd: num(c.amount), notes: c.notes })),
+      monthly: monthlyRows.map((c: any) => ({ item: c.label, usd: num(c.amount), notes: c.notes })),
+    },
+  };
+}
+
+async function buildPnl(admin: any, from: string, to: string): Promise<string> {
+  const current = await pnlForRange(admin, from, to);
+  // Previous period of the same length, for trend.
+  let previous: any = null;
+  try {
+    const prevTo = shiftDate(from, -1);
+    const prevFrom = shiftDate(prevTo, -(current.days - 1));
+    previous = await pnlForRange(admin, prevFrom, prevTo);
+    delete previous.cost_assumptions; // keep the payload lean
+  } catch (_) { /* trend is optional */ }
+  const out = {
+    ...current,
+    previous_period: previous,
+    note: 'Dates are the owner\'s Pacific days (9am→9am frame, matching get_ad_report). Costs are ESTIMATES from the owner-editable operating_costs table — several rows are seeded guesses marked "correct me"; profit is only as accurate as those numbers. Revenue = real deduped paid orders (RQC Spanish funnel). This P&L excludes refunds/chargebacks and affiliate payouts.',
+  };
+  return `P&L ${from} → ${to}:\n${JSON.stringify(out, null, 2)}`;
+}
+
+// ---------------------------------------------------------------------------
 // ElevenLabs
 // ---------------------------------------------------------------------------
 async function listVoices() {
@@ -315,6 +405,7 @@ function tools() {
     { name: 'run_affiliate_scan', description: 'Trigger a fresh scan for affiliate/partner prospects.', input_schema: { type: 'object', properties: {} } },
     { name: 'refresh_briefing', description: 'Regenerate the morning Chief-of-Staff briefing.', input_schema: { type: 'object', properties: {} } },
     { name: 'generate_creatives', description: 'Ask the Creative Studio art director to generate creatives from a brief.', input_schema: { type: 'object', properties: { brief: { type: 'string', description: 'What to make, e.g. "5 Mother\'s Day photoreal ads".' } }, required: ['brief'] } },
+    { name: 'get_pnl', description: 'Pull the full PROFIT & LOSS for a date range: real revenue (deduped paid orders) − real Meta ad spend − operating costs (owner-editable estimates) = estimated profit, with margin %, AOV, ROAS, cost assumptions, and the previous period for trend. Use for ANY question about PROFIT, margin, "are we actually making money", "how profitable was this week/month", or costs. (get_sales = revenue only; get_ad_report = ad performance only; THIS is the whole picture.) Dates are the owner\'s Pacific days.', input_schema: { type: 'object', properties: { from: { type: 'string', description: 'Start date YYYY-MM-DD (Pacific). Defaults to today.' }, to: { type: 'string', description: 'End date YYYY-MM-DD (Pacific). Defaults to today.' } } } },
     { name: 'get_ad_report', description: 'Pull the real ad-performance report for a DATE RANGE — LIVE from Meta (full history), with per-day spend, real paid sales, ROAS, and top campaigns. Use this for ANY question about ad results over a period — "this week", "Monday to now", "last 7 days", "last month", or specific dates. Dates are the owner\'s PACIFIC days labeled by their 9am start (e.g. "2026-06-25" = Jun 25 9am → Jun 26 9am Pacific) — just pass his Pacific dates; the tool converts to the Meta/Manila ad-day internally. Do NOT answer ad-results questions from the yesterday snapshot.', input_schema: { type: 'object', properties: { from: { type: 'string', description: "Start date YYYY-MM-DD in the owner's Pacific frame (inclusive)." }, to: { type: 'string', description: "End date YYYY-MM-DD Pacific (inclusive). Defaults to today." } }, required: ['from'] } },
     { name: 'propose_ad_change', description: 'PROPOSE pausing, resuming, or changing the daily budget of a Meta campaign or ad set. This does NOT execute — it creates a confirmation card the owner must tap to approve. Use whenever the owner wants to turn off / pause / resume an ad, or raise/lower a budget. Match the campaign/ad-set by the name the owner uses.', input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['pause', 'resume', 'set_budget'] }, level: { type: 'string', enum: ['campaign', 'adset'], description: 'Whether the name refers to a campaign or an ad set. Default campaign.' }, name: { type: 'string', description: 'The campaign or ad-set name (or part of it).' }, daily_budget_usd: { type: 'number', description: 'For set_budget: the new daily budget in US dollars (e.g. 75).' } }, required: ['action', 'name'] } },
     { name: 'propose_extract_ad', description: 'PROPOSE taking a currently-running ad\'s visual + copy and handing it to the Art Director (Creative Studio) to generate more in that style. Does NOT execute — creates a confirmation card. Use when the owner wants "more like the ad that\'s running". If he wants a different angle/theme for the new ones, capture it in `instruction`.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'Campaign or ad name to pull the running creative from. If omitted, uses the top active ad.' }, instruction: { type: 'string', description: 'Any angle/twist the owner wants for the NEW ads, e.g. "Christian / faith angle, not Father\'s Day". Pass his exact extra direction.' } } } },
@@ -625,6 +716,12 @@ async function runTool(admin: any, authHeader: string, snap: any, name: string, 
       const from = String(input.from || to).slice(0, 10);
       return await buildAdReport(admin, from, to);
     }
+    if (name === 'get_pnl') {
+      const todayPT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+      const to = String(input.to || todayPT).slice(0, 10);
+      const from = String(input.from || to).slice(0, 10);
+      return await buildPnl(admin, from, to);
+    }
     return `Unknown action ${name}`;
   } catch (e: any) { return `Action failed: ${e?.message || e}`; }
 }
@@ -656,6 +753,8 @@ CRITICAL — affirmations: when you have just proposed an action and he replies 
 If he asks whether ads/creatives are done, landed, or how many are waiting, call check_creatives and answer from it — NEVER say you can't check or guess. These do NOT execute — they create a Confirm/Cancel card the owner must tap. After calling them, tell him it's staged and waiting for his tap; NEVER say a pause/budget change or generation already happened — it only runs after he confirms. Match campaigns/ad sets by the name he uses; if unsure which, ask or pull get_ad_report first. For ANY question that asks for ad spend, sales, revenue, ROAS or CPA — for ANY day or range, INCLUDING a single "yesterday", "today", or "${todayPT}" — you MUST call get_ad_report and report ONLY the numbers it returns. ALWAYS include CPA (cost per sale — real_cpa/blended_cpa from the tool) alongside spend, sales, revenue and ROAS in every ad-numbers answer. BUT — only when he's actually asking for PERFORMANCE NUMBERS. If the topic is ad CREATIVE / visuals / designs / "make more ads" / "which ad to copy" / "where did you pull that from" (meaning which creative), DO NOT call get_ad_report and do NOT recite spend/ROAS — stay on the creative track (propose_extract_ad / check_creatives). Answering a creative request with a numbers report is a major error. NEVER state these figures from the snapshot or memory: the snapshot's latest_saved_report is a stale, wrong-timezone heads-up with NO numbers. DATES: every report date is the owner's PACIFIC day labeled by its 9am start — e.g. "June 25" means Jun 25 9:00am → Jun 26 9:00am Pacific. Pass dates in his Pacific frame; the tool converts to the Meta/Manila ad-day internally. So "yesterday" = ${todayPT} minus one day — call get_ad_report with from=to=that date.
 
 SALES / BUSINESS DATA: for ANY question about sales, revenue, orders, AOV, or best-selling genre/occasion (NOT ad spend), call get_sales and answer from it — never guess. (get_ad_report = ad SPEND from Meta; get_sales = your real paid ORDERS from the database.)
+
+PROFIT / P&L: for ANY question about PROFIT, margin, costs, or "are we actually making money" — "how profitable was this week", "what did we net this month" — call get_pnl and answer from it. Lead with the profit number and margin, then the drivers (revenue, ad spend, costs), and compare to previous_period so he sees the trend. ALWAYS mention the profit is an ESTIMATE built on the operating_costs table — several cost rows are seeded guesses marked "correct me"; if he ever gives you a real cost figure (Stripe fees, API costs, a subscription), that's gold: tell him you'll note it and suggest he have the developer update operating_costs (you cannot edit it yourself). Also note it excludes refunds and affiliate payouts. When advising on scaling a campaign, think in PROFIT per order (AOV − per-order cost − CPA), not just ROAS.
 
 THINK LIKE A CEO ON ADS: get_ad_report's top_campaigns now carries REAL per-campaign return — real_orders, real_revenue, real_cpa, real_roas — from actual Stripe sales matched to each Meta campaign (NOT Meta's inflated pixel count). When you report ads, don't just list numbers: name the WINNERS (high real_roas) and the LOSERS (real spend with real_roas under ~1.5x = burning money) and recommend the move — scale the winner (propose_duplicate_scale), pause/cut the loser (propose_ad_change). Lead with the decision, then the numbers behind it. (Caveat: a campaign with real_orders:0 may just be missing its utm tag, not truly dead — flag it as "verify tagging" rather than declaring it dead.)
 
