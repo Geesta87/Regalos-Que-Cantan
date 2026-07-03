@@ -23,13 +23,25 @@ const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-
 
 // ES + EN keywords that surface personalized-song advertisers.
 const KEYWORDS: { q: string; lang: string }[] = [
+  // Spanish — US-Hispanic + Mexico
   { q: 'canción personalizada', lang: 'es' },
   { q: 'canción con tu nombre', lang: 'es' },
   { q: 'regalo canción personalizada', lang: 'es' },
+  { q: 'canción para dedicar', lang: 'es' },
+  { q: 'canción de cumpleaños personalizada', lang: 'es' },
+  { q: 'corrido personalizado', lang: 'es' },
+  { q: 'serenata personalizada', lang: 'es' },
+  { q: 'canción para regalar', lang: 'es' },
+  // English — US
   { q: 'personalized song gift', lang: 'en' },
   { q: 'custom song for someone', lang: 'en' },
   { q: 'make a song as a gift', lang: 'en' },
+  { q: 'custom song for her', lang: 'en' },
+  { q: 'birthday song with name', lang: 'en' },
+  { q: 'anniversary custom song', lang: 'en' },
 ];
+// Regions to search. Same ad running in both is de-duped by ad_archive_id/creative.
+const REGIONS = (Deno.env.get('COMPETITOR_REGIONS') || 'US,MX').split(',').map((c) => c.trim()).filter(Boolean);
 const PER_KEYWORD = Number(Deno.env.get('COMPETITOR_PER_KEYWORD') || '8');
 const MAX_NEW = Number(Deno.env.get('COMPETITOR_MAX_NEW') || '30');
 // Our own pages — never list ourselves as a "competitor".
@@ -56,10 +68,10 @@ function shapeAd(r: any, lang: string) {
   };
 }
 
-async function scSearch(q: string): Promise<any[]> {
-  const url = `${SC}?query=${encodeURIComponent(q)}&country=US&status=ACTIVE&sort_by=total_impressions&trim=true`;
+async function scSearch(q: string, country: string): Promise<any[]> {
+  const url = `${SC}?query=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}&status=ACTIVE&sort_by=total_impressions&trim=true`;
   const r = await fetch(url, { headers: { 'x-api-key': SC_KEY! } });
-  if (!r.ok) { console.warn(`SC ${q} ${r.status}`); return []; }
+  if (!r.ok) { console.warn(`SC ${q}/${country} ${r.status}`); return []; }
   const j = await r.json().catch(() => ({}));
   return Array.isArray(j.searchResults) ? j.searchResults : [];
 }
@@ -173,13 +185,20 @@ Deno.serve(async (req: Request) => {
   try {
     // Pull + flatten + shape. De-dupe by ad id AND by creative (same video/image
     // run under different ad ids / languages should only appear once).
+    // Fire every keyword×region search in parallel — sequential was ~28 round-trips
+    // and blew past the 150s edge timeout, which would kill the weekly cron.
+    const pairs = KEYWORDS.flatMap((k) => REGIONS.map((country) => ({ k, country })));
+    const searchResults = await Promise.all(pairs.map(async (p) => ({ lang: p.k.lang, results: await scSearch(p.k.q, p.country) })));
+
+    // De-dupe by ad id AND by creative (same video/image run under different ad
+    // ids / languages / regions should only appear once). Processed in a stable
+    // order so the winner (first hit) is deterministic.
     const seen = new Set<string>();
     const seenMedia = new Set<string>();
     const collected: any[] = [];
-    for (const k of KEYWORDS) {
-      const results = await scSearch(k.q);
+    for (const { lang, results } of searchResults) {
       for (const r of results.slice(0, PER_KEYWORD)) {
-        const ad = shapeAd(r, k.lang);
+        const ad = shapeAd(r, lang);
         if (!ad.ad_archive_id || seen.has(ad.ad_archive_id)) continue;
         if (isOwnBrand(ad.page_name)) continue; // never surface our own ads
         const mkey = (ad.video_url || ad.image_url || '').split('?')[0];
