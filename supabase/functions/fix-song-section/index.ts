@@ -229,6 +229,10 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
 - section_text debe ser TODO lo que se canta dentro de la ventana (la estrofa/líneas completas), ya con la corrección aplicada y dejando idénticas las demás palabras. La última línea de section_text marca dónde se hará el empalme.
 - full_lyrics debe ser la letra COMPLETA ya corregida: aplica SOLO el cambio pedido y deja idéntico todo lo demás. Conserva los marcadores de sección.
 - Para nombres mal pronunciados: reescribe el nombre con ortografía española fonética para que el modelo lo cante bien (p. ej. "Yareli" → "Yarelí", "Joaquin" → "Joaquín", "Yetzaeli" → "Yetsaelí"), tanto en full_lyrics como en section_text, manteniendo el nombre legible.
+- QUIRKS DEL MODELO (lecciones aprendidas — el modelo canta mal ciertas frases y hay que redactar la corrección para que las cante bien):
+  · Homófonos/elisiones: una frase que se presta a confundirse al cantarse la canta mal de forma consistente (p. ej. "me dicen el Potro" salió "me hice en el potro" en cada intento). Si la línea corregida contiene una construcción así, prefiere una redacción natural equivalente que conserve el significado y sea inequívoca al oído (p. ej. "me llaman el Potro"). No cambies el sentido; solo desambigua el sonido.
+  · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
+  · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
