@@ -206,6 +206,11 @@ const FIX_TOOL = {
         description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la parte corregida (el nombre o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
         items: { type: 'string' },
       },
+      add_line: {
+        type: 'object',
+        description: 'Solo si la petición es AGREGAR una línea NUEVA (no reemplazar) y esa línea va en el BLOQUE FINAL/despedida de la canción. En ese caso: { text: la línea nueva EXACTA en español (ya incluida también en section_text y full_lyrics en su lugar), anchor: UNA palabra distintiva de esa línea nueva (poco común en el resto de la canción, para ubicar el pase limpio) }. Si NO es una adición, o la adición NO está en el bloque final, OMITE add_line por completo (y si es una adición a media canción, pon can_fix=false).',
+        properties: { text: { type: 'string' }, anchor: { type: 'string' } },
+      },
     },
     required: ['can_fix', 'reason', 'infill_start_s', 'infill_end_s', 'section_text', 'full_lyrics', 'change_summary', 'verify_phrases'],
     additionalProperties: false,
@@ -233,6 +238,7 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
   · Homófonos/elisiones: una frase que se presta a confundirse al cantarse la canta mal de forma consistente (p. ej. "me dicen el Potro" salió "me hice en el potro" en cada intento). Si la línea corregida contiene una construcción así, prefiere una redacción natural equivalente que conserve el significado y sea inequívoca al oído (p. ej. "me llaman el Potro"). No cambies el sentido; solo desambigua el sonido.
   · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
   · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
+- AGREGAR UNA LÍNEA NUEVA (no reemplazar): solo es confiable en el BLOQUE FINAL / la despedida (ahí hay espacio instrumental y nada después que se desalinee). Si el dueño pide agregar una línea al final: inserta la línea EXACTA en su lugar dentro de section_text y de full_lyrics; define la ventana [infill_start_s, infill_end_s] = el bloque final completo (desde el inicio del último coro/despedida hasta el final del canto), y llena add_line = { text, anchor } con una palabra distintiva de la línea nueva. Si la canción tiene intro [Hablado] (los corridos), puedes agregarla como línea [Hablado] (lo hablado no necesita métrica → usa las palabras EXACTAS del cliente). Si la adición NO es al final (va a media canción), pon can_fix=false y explica que ese caso necesita rehacer la canción completa.
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
@@ -258,7 +264,7 @@ Your job:
 // Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
 // or the owner chooses to remake the whole song. Claude returns the complete
 // corrected lyrics; we then generate a fresh Kie song from them.
-const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Si la petición es AGREGAR una línea NUEVA (no reemplazar): inclúyela en full_lyrics en su lugar, repórtala en "changes" como { before: "(línea nueva)", after: la línea }, y si va en el BLOQUE FINAL/despedida llena add_line = { text, anchor } con una palabra distintiva y poco común de la línea nueva. Si la canción tiene intro [Hablado], puedes agregarla como línea [Hablado] con las palabras EXACTAS del cliente. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
 
 const FULL_FIX_TOOL = {
   name: 'submit_corrected_lyrics',
@@ -285,6 +291,11 @@ const FULL_FIX_TOOL = {
         type: 'array',
         description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la versión corregida (p. ej. el nombre corregido o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
         items: { type: 'string' },
+      },
+      add_line: {
+        type: 'object',
+        description: 'Solo si la petición es AGREGAR una línea NUEVA (no reemplazar) al BLOQUE FINAL/despedida de la canción. { text: la línea nueva EXACTA en español (ya incluida en full_lyrics en su lugar), anchor: UNA palabra distintiva y poco común de esa línea }. OMÍTELO si no es una adición al final; si es una adición a media canción, descríbela igual pero el arreglo por sección no la podrá hacer.',
+        properties: { text: { type: 'string' }, anchor: { type: 'string' } },
       },
     },
     required: ['full_lyrics', 'change_summary', 'changes', 'verify_phrases'],
@@ -1105,6 +1116,9 @@ Deno.serve(async (req) => {
         approvedLyrics: plan.full_lyrics,
         changes: Array.isArray(plan.changes) ? plan.changes : [],
         verifyPhrases: Array.isArray(plan.verify_phrases) ? plan.verify_phrases : [],
+        addLine: (plan.add_line && typeof plan.add_line?.text === 'string' && plan.add_line.text.trim())
+          ? { text: String(plan.add_line.text).trim(), anchor: String(plan.add_line.anchor || '').trim() }
+          : null,
       });
     }
 
