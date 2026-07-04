@@ -501,7 +501,7 @@ Deno.serve(async (req: Request) => {
       // "Edit in Studio" save path: update an existing pending draft in place
       // (never a sent/sending email) instead of inserting a duplicate.
       // Optional A/B second subject + audience segment (validated).
-      const SEGMENTS = ['all', 'recent', 'winback', 'video_buyers', 'no_video'];
+      const SEGMENTS = ['all', 'recent', 'winback', 'video_buyers', 'no_video', 'nonbuyers'];
       const segment = SEGMENTS.includes((body.segment || '').toString()) ? body.segment.toString() : 'all';
       const subjectB = (body.subject_b || '').toString().trim() || null;
       if (body.id) {
