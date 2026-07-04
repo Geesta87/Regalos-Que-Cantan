@@ -59,6 +59,8 @@ function FixSongCard({ song, showToast, onApplied }) {
   // Bundle: the OTHER version(s) of this song (same session_id) + their fixed previews.
   const [siblings, setSiblings] = useState([]);
   const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
+  const [failedTakes, setFailedTakes] = useState(null); // what Kie sang on a failed fix (diagnostic)
+  const [showFailedTakes, setShowFailedTakes] = useState(false);
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -161,6 +163,7 @@ function FixSongCard({ song, showToast, onApplied }) {
     setResult(null);
     setPlan(null);
     setOfferFullReroll(false);
+    setFailedTakes(null); setShowFailedTakes(false);
     setPendingMode(mode);
     setPhase('planning');
     try {
@@ -216,6 +219,7 @@ function FixSongCard({ song, showToast, onApplied }) {
   async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText }, onMsg) {
     const ROUNDS = 4;
     let lastReason = '';
+    const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
     for (let round = 1; round <= ROUNDS; round++) {
       onMsg?.(`Regenerating the part… (attempt ${round})`);
       const sub = await postFn({ action: 'section-submit', mode: 'section', songId, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
@@ -261,8 +265,12 @@ function FixSongCard({ song, showToast, onApplied }) {
         // grab the wrong spot and the splice DUPLICATES a chunk (a fix once came
         // out 5:19 instead of 3:50). ±25s covers normal padding, rejects repeats.
         const nearWindow = end != null && Math.abs(end - origCut) <= 25;
-        if (v.ok && end && nearWindow) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
-        else lastReason = !v.ok ? (v.reason || 'not sung') : (end == null ? 'splice point not found' : 'wrong spot (repeat/duplicate)');
+        const okTake = v.ok && end && nearWindow;
+        const reason = okTake ? 'clean' : (!v.ok ? (v.reason || 'no cantó lo corregido') : (end == null ? 'no se ubicó el corte' : 'lugar equivocado (repetido)'));
+        // Keep what Kie actually sang for the "Show me what Kie sang" diagnostic.
+        lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason });
+        if (okTake) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
+        else lastReason = reason;
       }
       if (cands.length) {
         cands.sort((a, b) => a.cut - b.cut); // tightest (least padded) clean take
@@ -270,7 +278,9 @@ function FixSongCard({ song, showToast, onApplied }) {
       }
       // none clean → next round (fresh takes)
     }
-    throw new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
+    const err = new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
+    err.takes = lastTakesSeen.slice(-4); // the last round's takes, for the diagnostic
+    throw err;
   }
 
   // Single-part surgical fix ("Fix just that part").
@@ -295,7 +305,8 @@ function FixSongCard({ song, showToast, onApplied }) {
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -345,7 +356,8 @@ function FixSongCard({ song, showToast, onApplied }) {
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -368,7 +380,8 @@ function FixSongCard({ song, showToast, onApplied }) {
       setBothResults(results);
       setSurgicalMsg(''); setPhase('bothPreview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -639,6 +652,33 @@ function FixSongCard({ song, showToast, onApplied }) {
           </div>
 
           {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
+
+          {/* Diagnostic: what Kie actually sang on the rejected takes, so the
+              owner can see WHY the surgical fix failed (skipped line, mangled a
+              name, babbled) and decide to reword or redo the full song. */}
+          {Array.isArray(failedTakes) && failedTakes.length > 0 && (
+            <div className="mb-3 bg-black/20 border border-amber-500/30 rounded-lg p-2">
+              <button
+                onClick={() => setShowFailedTakes((v) => !v)}
+                className="text-[11px] text-amber-300 hover:text-amber-200 transition"
+              >
+                🔍 {showFailedTakes ? 'Hide' : 'Show'} what the AI sang ({failedTakes.length} take{failedTakes.length > 1 ? 's' : ''} rejected)
+              </button>
+              {showFailedTakes && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[10px] text-gray-400">Each take was rejected because it didn't cleanly sing the correction. Listen, then reword the line or redo the full song.</p>
+                  {failedTakes.map((t, i) => (
+                    <div key={i} className="text-[11px] border-t border-white/5 pt-2">
+                      <p className="text-red-300/90 mb-1">✗ {t.reason || 'rejected'}</p>
+                      {t.url && <audio src={t.url} controls className="w-full h-8 mb-1" />}
+                      {t.text && <p className="text-gray-400 font-mono leading-snug max-h-20 overflow-y-auto">{t.text}</p>}
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-amber-200/80">💡 Tip: if the AI keeps mangling a word or name, reword the line (e.g. "me dicen"→"me llaman") so it's easier to sing, then try again.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {(phase === 'idle' || phase === 'planning') && (
             <div className="flex flex-col gap-2">
