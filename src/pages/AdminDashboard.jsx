@@ -1094,7 +1094,9 @@ export default function AdminDashboard() {
   // into the right tab (e.g. /admin/dashboard?tab=sms → Mensajes SMS).
   const [activeTab, setActiveTab] = useState(() => {
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos'];
+    // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
+    // content branch must be listed here so push/bookmark deep-links can reach it.
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -3282,7 +3284,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', affiliates: 'Affiliates', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animadolikeness: 'Animated: Likeness', animadofinal: 'Animated: Final Video', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -3741,6 +3743,16 @@ export default function AdminDashboard() {
                 💬 SMS Messages
               </button>
               <button
+                onClick={() => setActiveTab('training')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'training'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30'
+                }`}
+              >
+                🎓 Bot Training
+              </button>
+              <button
                 onClick={() => setActiveTab('fixsong')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
                   activeTab === 'fixsong'
@@ -3769,6 +3781,18 @@ export default function AdminDashboard() {
               >
                 🤝 Affiliates ({affiliates.length})
               </button>
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('recruit')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'recruit'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30'
+                }`}
+              >
+                👥 Recruit Partners
+              </button>
+              )}
             </div>
           </div>
 
@@ -3801,6 +3825,70 @@ export default function AdminDashboard() {
                 }`}
               >
                 🎙️ Clone Mi Voz
+              </button>
+              <button
+                onClick={() => setActiveTab('animadolikeness')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'animadolikeness'
+                    ? 'bg-fuchsia-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎬 Animated: Likeness
+              </button>
+              <button
+                onClick={() => setActiveTab('animadofinal')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'animadofinal'
+                    ? 'bg-fuchsia-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎞️ Animated: Final Video
+              </button>
+              <button
+                onClick={() => setActiveTab('videos')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'videos'
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📹 Videos (Slideshow)
+              </button>
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('chiefofstaff')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'chiefofstaff'
+                    ? 'bg-teal-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🧭 Chief of Staff
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('dailybriefing')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'dailybriefing'
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📰 Daily Briefing
+              </button>
+              )}
+              <button
+                onClick={() => setActiveTab('creativestudio')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'creativestudio'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                ✨ Creative Studio
               </button>
             </div>
           </div>
