@@ -20,6 +20,7 @@ const STATUS = {
 const SEGMENT_LABELS = {
   all: 'Everyone', recent: 'Recent buyers', winback: 'Win-back',
   video_buyers: 'Video-addon buyers', no_video: 'Bought song, never video',
+  nonbuyers: 'Non-buyers',
 };
 const pct = (num, den) => (den ? `${Math.round((100 * num) / den)}%` : '—');
 
