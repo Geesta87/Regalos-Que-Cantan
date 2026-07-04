@@ -179,6 +179,7 @@ serve(async (req) => {
       out_of_office?: boolean;
       out_of_office_message?: string;
       media_data_url?: string; // "data:image/png;base64,…" for an image attachment
+      phone?: string;           // start-conversation: the recipient's number
     } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
@@ -473,6 +474,80 @@ serve(async (req) => {
         .eq('status', 'draft');
       if (updErr) return json({ success: false, error: updErr.message }, 500);
       return json({ success: true });
+    }
+
+    // ─── action: start-conversation ──────────────────────────────────────
+    // Reach out to a phone number the owner types in (new outbound thread).
+    // WhatsApp free-text only works inside the customer's 24h window; if it
+    // fails, we AUTO FALL BACK to SMS so the message still gets through.
+    if (action === 'start-conversation') {
+      const text = (body.body || '').trim();
+      const wantCh = body.channel === 'whatsapp' ? 'whatsapp' : 'sms';
+      const rawPhone = (body.phone || '').trim();
+      const digits = rawPhone.replace(/\D/g, '');
+      if (digits.length < 10) return json({ success: false, error: 'Enter a valid phone number' }, 400);
+      if (!text) return json({ success: false, error: 'Message is required' }, 400);
+      // Normalize to E.164 (assume US when 10 digits).
+      const phone = rawPhone.startsWith('+')
+        ? `+${digits}`
+        : digits.length === 10 ? `+1${digits}` : `+${digits}`;
+
+      // Find or create the conversation for this number.
+      const { data: existing } = await admin
+        .from('sms_conversations').select('id, opted_out').eq('phone', phone).maybeSingle();
+      if (existing?.opted_out) {
+        return json({ success: false, error: 'This number opted out (STOP) — cannot message it' }, 409);
+      }
+      let conversationId = existing?.id as string | undefined;
+      if (!conversationId) {
+        // Best-effort: enrich name/order from a matching paid song (same as the webhooks).
+        let customerName: string | null = null;
+        let orderId: string | null = null;
+        try {
+          const last10 = digits.slice(-10);
+          const { data: song } = await admin
+            .from('songs').select('id, recipient_name, sender_name, whatsapp_phone')
+            .ilike('whatsapp_phone', `%${last10}`).order('created_at', { ascending: false }).limit(1).maybeSingle();
+          if (song) { customerName = song.sender_name || song.recipient_name || null; orderId = song.id || null; }
+        } catch (_e) { /* enrichment optional */ }
+        const { data: created, error: cErr } = await admin
+          .from('sms_conversations')
+          .insert({ phone, customer_name: customerName, order_id: orderId, unread: 0, last_message_at: new Date().toISOString(), channel: wantCh })
+          .select('id').single();
+        if (cErr || !created) return json({ success: false, error: cErr?.message || 'Could not create conversation' }, 500);
+        conversationId = created.id;
+      }
+
+      // Send, with WhatsApp → SMS fallback.
+      let sendCh = wantCh;
+      let result = wantCh === 'whatsapp' ? await sendWhatsApp(phone, text) : await sendSms(phone, text);
+      let fellBack = false;
+      if (wantCh === 'whatsapp' && !result.ok) {
+        sendCh = 'sms';
+        fellBack = true;
+        result = await sendSms(phone, text);
+      }
+
+      const nowIso = new Date().toISOString();
+      const { data: inserted, error: insErr } = await admin
+        .from('sms_messages')
+        .insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          body: text,
+          status: result.ok ? (result.status || 'sent') : 'failed',
+          twilio_sid: result.sid || null,
+          channel: sendCh,
+        })
+        .select('id, direction, body, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
+        .single();
+      if (insErr) return json({ success: false, error: insErr.message }, 500);
+      await admin.from('sms_conversations').update({ last_message_at: nowIso, channel: sendCh }).eq('id', conversationId);
+
+      if (!result.ok) {
+        return json({ success: false, error: result.error || 'Send failed', conversation_id: conversationId, message: inserted }, 502);
+      }
+      return json({ success: true, conversation_id: conversationId, channel_used: sendCh, fell_back: fellBack, message: inserted });
     }
 
     // ─── action: mark-read ───────────────────────────────────────────────

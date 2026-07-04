@@ -237,6 +237,12 @@ export default function SmsInboxTab({ accessToken }) {
   const [ooEditing, setOoEditing] = useState(false);
   const [ooDraft, setOoDraft] = useState('');
   const [ooBusy, setOoBusy] = useState(false);
+  // "New message" composer — start an outbound thread by typing a number.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composePhone, setComposePhone] = useState('');
+  const [composeChannel, setComposeChannel] = useState('sms');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeBusy, setComposeBusy] = useState(false);
 
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
@@ -421,6 +427,41 @@ export default function SmsInboxTab({ accessToken }) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [selectedId, selected?.messages?.length]);
+
+  // Start a brand-new outbound conversation from a typed phone number.
+  const handleStartConversation = async () => {
+    const phone = composePhone.trim();
+    const text = composeBody.trim();
+    if (!phone || !text || composeBusy) return;
+    setComposeBusy(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ action: 'start-conversation', phone, channel: composeChannel, body: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (data.fell_back) {
+        alert('WhatsApp couldn’t reach this number (they haven’t messaged recently), so it was sent by SMS instead.');
+      }
+      // Reset + close, refresh, and open the new thread.
+      setComposeOpen(false);
+      setComposePhone(''); setComposeBody(''); setComposeChannel('sms');
+      // Make sure we're viewing the channel the message actually went out on.
+      if (data.channel_used) setChannelTab(data.channel_used);
+      await loadConversations();
+      if (data.conversation_id) setSelectedId(data.conversation_id);
+    } catch (e) {
+      alert(`Could not send: ${e.message}`);
+    } finally {
+      setComposeBusy(false);
+    }
+  };
 
   const openConversation = (id) => {
     setSelectedId(id);
@@ -767,6 +808,12 @@ export default function SmsInboxTab({ accessToken }) {
                 : '🔔 Enable alerts'}
             </button>
           )}
+          <button
+            onClick={() => setComposeOpen(true)}
+            className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition"
+          >
+            ✏️ <span className="hidden sm:inline">New message</span>
+          </button>
           <button
             onClick={() => loadConversations()}
             className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition"
@@ -1266,6 +1313,69 @@ export default function SmsInboxTab({ accessToken }) {
           )}
         </div>
       </div>
+
+      {/* ── New message composer — start an outbound thread by number ── */}
+      {composeOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !composeBusy && setComposeOpen(false)} />
+          <div className="relative w-full max-w-md bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-white">✏️ New message</h3>
+              <button onClick={() => !composeBusy && setComposeOpen(false)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
+            </div>
+
+            <label className="block text-xs text-gray-400 mb-1">Phone number</label>
+            <input
+              type="tel"
+              value={composePhone}
+              onChange={(e) => setComposePhone(e.target.value)}
+              placeholder="+1 555 123 4567"
+              className="w-full mb-3 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-amber-400/50"
+            />
+
+            <label className="block text-xs text-gray-400 mb-1">Channel</label>
+            <div className="flex gap-2 mb-1">
+              {[{ k: 'sms', l: '💬 SMS' }, { k: 'whatsapp', l: '🟢 WhatsApp' }].map((c) => (
+                <button
+                  key={c.k}
+                  onClick={() => setComposeChannel(c.k)}
+                  className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold transition ${
+                    composeChannel === c.k ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                  }`}
+                >
+                  {c.l}
+                </button>
+              ))}
+            </div>
+            {composeChannel === 'whatsapp' && (
+              <p className="text-[11px] text-amber-400/80 mb-3">
+                WhatsApp only reaches people who messaged you in the last 24h. If it can’t, it’s sent by SMS automatically.
+              </p>
+            )}
+            {composeChannel === 'sms' && <div className="mb-3" />}
+
+            <label className="block text-xs text-gray-400 mb-1">Message</label>
+            <textarea
+              value={composeBody}
+              onChange={(e) => setComposeBody(e.target.value)}
+              rows={4}
+              placeholder="Type your message…"
+              className="w-full mb-4 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm resize-y focus:outline-none focus:border-amber-400/50"
+            />
+
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setComposeOpen(false)} disabled={composeBusy} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition">Cancel</button>
+              <button
+                onClick={handleStartConversation}
+                disabled={composeBusy || !composePhone.trim() || !composeBody.trim()}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {composeBusy ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Admin "Ask AI" copilot — private, about the open order ── */}
       {copilotOpen && selected && (
