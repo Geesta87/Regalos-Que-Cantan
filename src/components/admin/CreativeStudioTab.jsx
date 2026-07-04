@@ -9,6 +9,7 @@ import CreativeChatPanel from './CreativeChatPanel';
 import EmailMarketerSection from './EmailMarketerSection';
 import EmailStudioSection from './EmailStudioSection';
 import EmailResultsSection from './EmailResultsSection';
+import EmailPerformanceSection from './EmailPerformanceSection';
 import CompetitorsSection from './CompetitorsSection';
 import FreeformLabSection from './FreeformLabSection';
 import { Card, Badge, btn } from './ui';
@@ -33,7 +34,7 @@ const FILTERS = [
 const GROUPS = [
   { key: 'review',    label: 'Review',    views: [['ads', 'Ads'], ['social', 'Social']] },
   { key: 'create',    label: 'Create',    views: [['lab', 'Lab'], ['chat', 'Art director']] },
-  { key: 'marketing', label: 'Marketing', views: [['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['emailresults', 'Results'], ['competitors', 'Competitors']] },
+  { key: 'marketing', label: 'Marketing', views: [['performance', 'Performance'], ['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['emailresults', 'Results'], ['competitors', 'Competitors']] },
 ];
 
 export default function CreativeStudioTab({ accessToken, showToast }) {
@@ -214,7 +215,8 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
       {currentGroup.key === 'create' ? (
         view === 'lab' ? <FreeformLabSection accessToken={accessToken} showToast={showToast} /> : <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
       ) : currentGroup.key === 'marketing' ? (
-        view === 'emails' ? <EmailMarketerSection accessToken={accessToken} showToast={showToast}
+        view === 'performance' ? <EmailPerformanceSection accessToken={accessToken} showToast={showToast} />
+        : view === 'emails' ? <EmailMarketerSection accessToken={accessToken} showToast={showToast}
             onEditInStudio={(draft) => { setStudioDraft(draft); setView('emailstudio'); }} />
         : view === 'emailstudio' ? <EmailStudioSection accessToken={accessToken} showToast={showToast}
             initialDraft={studioDraft} onDraftConsumed={() => setStudioDraft(null)} />

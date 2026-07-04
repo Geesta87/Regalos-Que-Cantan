@@ -203,10 +203,20 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sendgrid-event-webhook]
-# SendGrid Event Webhook receiver. SendGrid POSTs delivery events (bounce,
-# spamreport, dropped, unsubscribe, group_unsubscribe) here; it cannot attach
-# a Supabase JWT. Authenticated internally via SENDGRID_EVENT_TOKEN in the
-# query string. Records hard opt-out events into email_unsubscribes.
+# SendGrid Event Webhook receiver. SendGrid POSTs delivery + engagement events
+# (delivered, open, click, bounce, dropped, deferred, spamreport, unsubscribe,
+# group_unsubscribe) here; it cannot attach a Supabase JWT. Authenticated
+# internally via SENDGRID_EVENT_TOKEN in the query string. Stores every event
+# into email_events (Email Command Center capture layer) and records opt-outs
+# into email_unsubscribes.
+verify_jwt = false
+
+[functions.refresh-email-analytics]
+# Email Command Center rollup refresher. Runs on pg_cron (no JWT) → verify_jwt
+# = false. Rebuilds email_campaign_daily via rebuild_email_campaign_daily()
+# (engagement + last-touch revenue attribution); read-only over songs, never
+# touches the payment funnel. Also supports POST {"action":"enable_tracking"}
+# to turn on SendGrid open/click tracking + engagement events (run once).
 verify_jwt = false
 
 # ---------------------------------------------------------------------------
@@ -409,6 +419,14 @@ verify_jwt = true
 # logged-in Supabase Auth user's JWT (same as admin-songs / creative-studio-admin),
 # so verify_jwt = true. Handler requires admin_users.role='admin' (the brief
 # contains spend + revenue). Read-only over media_buyer_reports + agent_runs.
+verify_jwt = true
+
+[functions.email-analytics]
+# Email Command Center reader (Creative Studio → Email Performance). Called from
+# the admin dashboard with a logged-in Supabase Auth user's JWT → verify_jwt =
+# true; handler requires admin_users.role='admin' (revenue-sensitive). Read-only
+# over email_campaign_daily / campaign_catalog / analytics_meta / songs; never
+# touches the payment funnel.
 verify_jwt = true
 
 [functions.media-buyer-daily]
