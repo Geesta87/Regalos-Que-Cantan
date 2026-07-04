@@ -256,8 +256,13 @@ function FixSongCard({ song, showToast, onApplied }) {
         const words = parseTimed(tr.timed);
         const v = validateTake(words, groups, { maxGapS: 5, maxSpanS });
         const end = findLastLineEnd(words, sectionText);
-        if (v.ok && end) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
-        else lastReason = v.reason || 'splice point not found';
+        // Location guard: the splice point MUST land near the real edit window.
+        // Without it, a repeated/scattered word elsewhere makes findLastLineEnd
+        // grab the wrong spot and the splice DUPLICATES a chunk (a fix once came
+        // out 5:19 instead of 3:50). ±25s covers normal padding, rejects repeats.
+        const nearWindow = end != null && Math.abs(end - origCut) <= 25;
+        if (v.ok && end && nearWindow) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
+        else lastReason = !v.ok ? (v.reason || 'not sung') : (end == null ? 'splice point not found' : 'wrong spot (repeat/duplicate)');
       }
       if (cands.length) {
         cands.sort((a, b) => a.cut - b.cut); // tightest (least padded) clean take
