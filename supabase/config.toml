@@ -442,6 +442,15 @@ verify_jwt = false
 # no user JWT; also called manually for dry-run/test sends.
 verify_jwt = false
 
+[functions.upsell-email-drip]
+# Runs every ~15 min via pg_cron — post-purchase upsell drip to song-only buyers
+# (touch 1 ~30 min after purchase, touch 2 "última oportunidad" ~3 h later). Cron
+# has no user JWT; also called manually for dry-run/test sends. Every CTA links to
+# the buyer's own /success page (song_ids + session_id) where the existing saved-
+# card one-tap upsell charges — this function only sends email, never charges, and
+# never touches the payment funnel. Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.retry-queued-songs]
 # Runs every 5 minutes via pg_cron — resubmits rate-limited songs stuck in
 # 'queued_retry' to whichever provider's payload was saved (Mureka or Kie).

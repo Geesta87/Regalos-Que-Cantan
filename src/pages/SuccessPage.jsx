@@ -1712,6 +1712,10 @@ export default function SuccessPage() {
   const oneTapItems = (() => {
     if (!oneTapSong) return [];
     const out = [];
+    // Photo-slideshow video ($9.99) — the email-drip hero. Only offered here to
+    // song-only buyers (no video addon yet); charging it flags has_video_addon
+    // and the page's existing video flow collects the photos.
+    if (!oneTapSong.has_video_addon) out.push({ key: 'video', price: 9.99, title: 'Video con fotos', sub: 'Hasta 15 fotos, al ritmo de la canción', media: { type: 'photos' } });
     const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
     if (!ownsAnimado) out.push({ key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
     if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } });
@@ -1740,6 +1744,10 @@ export default function SuccessPage() {
         }]);
       } else if (item === 'instrumental' || item === 'lyric_video') {
         // Reload so the existing "preparing…" UI + polling pick up the new status.
+        loadSongs();
+      } else if (item === 'video') {
+        // Reload so has_video_addon flips on and the photo-upload video flow
+        // (which replaces the player) renders for this now-video order.
         loadSongs();
       }
     }
