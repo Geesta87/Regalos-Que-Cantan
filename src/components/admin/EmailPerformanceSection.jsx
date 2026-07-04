@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Loader2, RefreshCw, TrendingUp, Mail, DollarSign,
   RotateCcw, ShieldCheck, AlertTriangle, CheckCircle2, Info, Zap,
+  Download, X, Clock, Users, FlaskConical,
 } from 'lucide-react';
 import { Card, Stat, SectionLabel, btn } from './ui';
 
@@ -71,10 +72,75 @@ function Bar({ value, max, tone = 'accent' }) {
   return <div className="h-2 rounded bg-gray-100 overflow-hidden"><div className={`h-full rounded ${bg}`} style={{ width: `${w}%` }} /></div>;
 }
 
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function Heatmap({ cells }) {
+  if (!cells || cells.length === 0) {
+    return <div className="flex items-center gap-2 text-sm text-gray-400 py-6 justify-center"><Clock size={15} /> Opens will appear here as they’re captured.</div>;
+  }
+  const map = {}; let max = 1;
+  cells.forEach((c) => { map[`${c.dow}-${c.hour}`] = c.opens; if (c.opens > max) max = c.opens; });
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[560px]">
+        <div className="grid" style={{ gridTemplateColumns: '34px repeat(24, 1fr)', gap: 2 }}>
+          <div />
+          {Array.from({ length: 24 }).map((_, h) => (
+            <div key={h} className="text-[8px] text-gray-300 text-center">{h % 6 === 0 ? h : ''}</div>
+          ))}
+          {DOW.map((d, dow) => (
+            <React.Fragment key={dow}>
+              <div className="text-[10px] text-gray-400 leading-4">{d}</div>
+              {Array.from({ length: 24 }).map((_, h) => {
+                const v = map[`${dow}-${h}`] || 0;
+                const op = v ? 0.15 + 0.85 * (v / max) : 0;
+                return <div key={h} title={`${d} ${h}:00 — ${v} opens`} className="rounded-sm" style={{ height: 14, backgroundColor: v ? `rgba(79,70,229,${op})` : '#f3f4f6' }} />;
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function toCsv(campaigns) {
+  const cols = ['family', 'display_name', 'kind', 'sent', 'open_rate', 'click_rate', 'purchases', 'revenue', 'conv_rate', 'rev_per_1k', 'unsub_rate'];
+  const head = cols.join(',');
+  const rows = (campaigns || []).map((c) => cols.map((k) => {
+    const v = c[k]; if (v == null) return ''; return typeof v === 'string' && v.includes(',') ? `"${v}"` : v;
+  }).join(','));
+  return [head, ...rows].join('\n');
+}
+function downloadCsv(campaigns) {
+  const blob = new Blob([toCsv(campaigns)], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `email-campaigns-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function EmailPerformanceSection({ accessToken, showToast }) {
   const [days, setDays] = useState(90);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const fetchDetail = useCallback(async (key) => {
+    setDetail({ key }); setDetailLoading(true);
+    try {
+      const res = await fetch(FN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ campaign: key }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || 'Failed');
+      setDetail(j.campaign);
+    } catch (e) {
+      showToast?.(e.message || 'Failed to load campaign', 'error'); setDetail(null);
+    } finally { setDetailLoading(false); }
+  }, [accessToken, showToast]);
 
   const load = useCallback(async (d) => {
     setLoading(true);
@@ -125,6 +191,7 @@ export default function EmailPerformanceSection({ accessToken, showToast }) {
                 className={`px-3 py-1.5 text-sm rounded-full transition ${days === d ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{l}</button>
             ))}
           </div>
+          <button onClick={() => data && downloadCsv(data.campaigns)} className={btn.ghost} title="Export campaigns to CSV"><Download size={15} /> CSV</button>
           <button onClick={() => load(days)} className={btn.iconGhost} title="Refresh"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
         </div>
       </div>
@@ -185,7 +252,7 @@ export default function EmailPerformanceSection({ accessToken, showToast }) {
                     <React.Fragment key={fam}>
                       <tr className="bg-gray-50"><td colSpan={9} className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{FAMILIES[fam]}</td></tr>
                       {grouped[fam].map((c) => (
-                        <tr key={c.key} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <tr key={c.key} onClick={() => fetchDetail(c.key)} className="border-b border-gray-50 hover:bg-indigo-50/40 cursor-pointer">
                           <td className="px-4 py-2">
                             <span className="font-medium text-gray-800">{c.display_name}</span>
                             <span className="ml-2 text-[10px] text-gray-400 uppercase">{c.kind}</span>
@@ -256,7 +323,70 @@ export default function EmailPerformanceSection({ accessToken, showToast }) {
               </div>
             </Card>
           )}
+
+          {/* Dormant opportunity + A/B */}
+          <div className="grid md:grid-cols-2 gap-5 my-5">
+            {data.dormant && (
+              <Card className="p-4">
+                <SectionLabel className="mb-2 flex items-center gap-1.5"><Users size={13} /> Dormant-buyer opportunity</SectionLabel>
+                <div className="flex items-end gap-6">
+                  <div><p className="text-2xl font-semibold text-gray-900">{intf(data.dormant.dormant_buyers)}</p><p className="text-xs text-gray-500">buyers dormant 60+ days</p></div>
+                  <div><p className="text-2xl font-semibold text-amber-600">{usd(data.dormant.revenue_at_risk)}</p><p className="text-xs text-gray-500">past value, no win-back flow</p></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3 leading-relaxed">Your biggest untapped segment. Build a re-engagement campaign for them in <span className="font-medium text-gray-700">Email Studio → Win-back</span>.</p>
+              </Card>
+            )}
+            <Card className="p-4">
+              <SectionLabel className="mb-1 flex items-center gap-1.5"><FlaskConical size={13} /> A/B subject tests</SectionLabel>
+              {(!data.ab_tests || data.ab_tests.length === 0) ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-6 justify-center"><FlaskConical size={15} /> No A/B tests yet — send one from Email Studio.</div>
+              ) : (
+                <div className="space-y-3 mt-2">
+                  {data.ab_tests.map((t, i) => {
+                    const aWin = (t.purch_a || 0) >= (t.purch_b || 0);
+                    return (
+                      <div key={i} className="text-sm border-b border-gray-50 pb-2 last:border-0">
+                        <div className="flex justify-between gap-2"><span className="text-gray-700 truncate">A: {t.subject_a}</span><span className={aWin ? 'text-green-600 font-medium whitespace-nowrap' : 'text-gray-500 whitespace-nowrap'}>{intf(t.sent_a)} · {intf(t.purch_a)} buys</span></div>
+                        <div className="flex justify-between gap-2"><span className="text-gray-700 truncate">B: {t.subject_b}</span><span className={!aWin ? 'text-green-600 font-medium whitespace-nowrap' : 'text-gray-500 whitespace-nowrap'}>{intf(t.sent_b)} · {intf(t.purch_b)} buys</span></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Send-time heatmap */}
+          <Card className="p-4 mb-2">
+            <div className="flex items-center justify-between mb-3"><SectionLabel className="flex items-center gap-1.5"><Clock size={13} /> Best send times</SectionLabel><span className="text-[11px] text-gray-400">unique opens · day × hour</span></div>
+            <Heatmap cells={data.heatmap} />
+          </Card>
         </>
+      )}
+
+      {/* Campaign drill-down */}
+      {detail && (
+        <div onClick={() => setDetail(null)} className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl max-w-lg w-full p-5 max-h-[85vh] overflow-auto">
+            <div className="flex items-start justify-between mb-3">
+              <div><h4 className="font-semibold text-gray-900">{detail.display_name || detail.key}</h4><p className="text-xs text-gray-500 uppercase">{detail.family} · {detail.kind}</p></div>
+              <button onClick={() => setDetail(null)} className={btn.iconGhost}><X size={16} /></button>
+            </div>
+            {detailLoading ? <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-gray-400" /></div> : (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <Stat label="Revenue" value={usd(detail.revenue)} tone="green" />
+                  <Stat label="Purchases" value={intf(detail.purchases)} />
+                  <Stat label="Sent" value={intf(detail.sent)} />
+                  <Stat label="Conv %" value={pctf(detail.conv_rate)} />
+                  <Stat label="Open %" value={pctf(detail.open_rate)} />
+                  <Stat label="Rev / 1k" value={usd(detail.rev_per_1k)} />
+                </div>
+                {detail.series?.length > 1 && (<><SectionLabel className="mb-1">Revenue over time</SectionLabel><Trend data={detail.series} /></>)}
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -165,11 +165,15 @@ serve(async (req) => {
     const highUnsub = campaigns.filter((c) => c.kind === 'blast' && c.unsub_rate !== null).sort((a, b) => b.unsub_rate! - a.unsub_rate!)[0];
     if (highUnsub && highUnsub.unsub_rate! > 0.4) alerts.push({ severity: 'warn', title: `${highUnsub.display_name} drives the most unsubscribes`, detail: `${highUnsub.unsub_rate}% unsub. Send seasonal blasts to engaged segments only.` });
 
-    // ── Dormant-buyer opportunity (light live query) ──
-    const dormantSince = new Date(Date.now() - 60 * 86400 * 1000).toISOString();
-    const { count: recentBuyers } = await admin.from('songs')
-      .select('*', { count: 'exact', head: true })
-      .eq('paid', true).eq('platform', 'es').gte('paid_at', dormantSince);
+    // ── Depth: heatmap, A/B, dormant segment (Phase 4 helper fns) ──
+    const [{ data: heatmap }, { data: abTests }, { data: dormant }] = await Promise.all([
+      admin.rpc('email_sendtime_heatmap'),
+      admin.rpc('email_ab_tests'),
+      admin.rpc('email_dormant_segment', { p_days: 60 }),
+    ]);
+    if (dormant?.dormant_buyers > 0) {
+      alerts.push({ severity: 'warn', title: `${Number(dormant.dormant_buyers).toLocaleString()} buyers have gone dormant`, detail: `No purchase in 60+ days — about $${Number(dormant.revenue_at_risk).toLocaleString()} of past value with no active win-back flow. A dormant re-engagement campaign is the biggest untapped opportunity.` });
+    }
 
     return json({
       success: true,
@@ -187,7 +191,10 @@ serve(async (req) => {
       families,
       campaigns,
       trend,
-      deliverability: { ...metrics(rows), suppression_list: suppression, reachable_list: leads, recent_buyers_60d: recentBuyers },
+      deliverability: { ...metrics(rows), suppression_list: suppression, reachable_list: leads },
+      heatmap: heatmap || [],
+      ab_tests: abTests || [],
+      dormant: dormant || null,
       alerts,
     });
   } catch (e: any) {
