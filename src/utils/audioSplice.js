@@ -117,6 +117,104 @@ export async function spliceIntoOriginal({ resungUrl, resungCutS, originalUrl, o
   return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
 }
 
+// ADD-A-LINE splice (base-front + resung-tail, optional outro graft).
+// REVERSED from spliceIntoOriginal: for adding a brand-new line at the OUTRO we
+// keep the pristine song up to its coro-final (joinP), then graft ONLY the clean
+// re-sung tail that contains the new line (resung[reJoin..reEnd]), then optionally
+// re-attach the pristine instrumental outro (outroStart..end) so the ending
+// doesn't clip. Proven recipe: memory project_add_new_line_to_song (Bryan). This
+// primitive is the browser port of bryan-fix.cjs + bryan-outro.cjs. NOT yet wired
+// to a one-click button — needs a live browser test on a real add-a-line order
+// before it can be trusted on a paid customer song.
+//   pristineUrl, resungUrl – audio sources
+//   joinP      – s: cut pristine here (biggest gap just before its coro-final)
+//   reJoin     – s: start of the clean re-sung pass (gap just before the new line)
+//   reEnd      – s: end of the re-sung despedida's last line (+~1.5s)
+//   outroStart – s|null: if set, append pristine[outroStart..end] as the outro
+//   xfade      – crossfade at each seam (default 0.4s, on instrumental)
+export async function spliceAddedTail({ pristineUrl, joinP, resungUrl, reJoin, reEnd, outroStart = null, xfade = 0.4 }) {
+  const ctx = getCtx();
+  let prBuf, reBuf;
+  try {
+    [prBuf, reBuf] = await Promise.all([decode(pristineUrl, ctx), decode(resungUrl, ctx)]);
+  } finally {
+    if (ctx.close) ctx.close();
+  }
+  const sr = prBuf.sampleRate;
+  const aLen = Math.max(0, Math.min(joinP, prBuf.duration));
+  const bLen = Math.max(0, Math.min(reEnd, reBuf.duration) - reJoin);
+  const hasOutro = outroStart != null && outroStart < prBuf.duration - 0.1;
+  const cLen = hasOutro ? (prBuf.duration - outroStart) : 0;
+  // Clamp each crossfade to the shortest adjacent segment so ramps never overrun.
+  const xf1 = Math.max(0, Math.min(xfade, aLen - 0.05, bLen - 0.05));
+  const xf2 = hasOutro ? Math.max(0, Math.min(xfade, bLen - 0.05, cLen - 0.05)) : 0;
+  const bStart = Math.max(0, aLen - xf1);
+  const cStart = hasOutro ? Math.max(0, bStart + bLen - xf2) : 0;
+  const totalDur = hasOutro ? (cStart + cLen) : (bStart + bLen);
+  if (totalDur <= 0) throw new Error('Puntos de empalme inválidos (add-a-line).');
+
+  const channels = Math.max(prBuf.numberOfChannels, reBuf.numberOfChannels) >= 2 ? 2 : 1;
+  const off = new OfflineAudioContext(channels, Math.ceil(totalDur * sr), sr);
+  const seg = (buf, startAt, offsetS, durS, fadeInS, fadeOutS) => {
+    const src = off.createBufferSource(); src.buffer = buf;
+    const g = off.createGain(); src.connect(g).connect(off.destination);
+    const endAt = startAt + durS;
+    g.gain.setValueAtTime(fadeInS > 0 ? 0 : 1, startAt);
+    if (fadeInS > 0) g.gain.linearRampToValueAtTime(1, startAt + fadeInS);
+    if (fadeOutS > 0) { g.gain.setValueAtTime(1, Math.max(startAt, endAt - fadeOutS)); g.gain.linearRampToValueAtTime(0, endAt); }
+    src.start(startAt, offsetS, durS);
+  };
+  // A: pristine front, fade out at seam 1.
+  seg(prBuf, 0, 0, aLen, 0, xf1);
+  // B: clean re-sung tail (new line), fade in at seam 1, fade out at seam 2.
+  seg(reBuf, bStart, reJoin, bLen, xf1, xf2);
+  // C: pristine instrumental outro, fade in at seam 2.
+  if (hasOutro) seg(prBuf, cStart, outroStart, cLen, xf2, 0);
+
+  const rendered = await off.startRendering();
+  const blob = audioBufferToMp3Blob(rendered, 192);
+  return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
+}
+
+// --- Pure detection helpers for the add-a-line recipe (unit-testable in Node) ---
+
+// Biggest instrumental gap (silence between sung words) inside [fromS, toS].
+// Returns { at, gap } where `at` is the midpoint of the gap (a clean cut point).
+export function biggestGap(words, fromS, toS) {
+  let best = { at: null, gap: 0 };
+  for (let i = 1; i < words.length; i++) {
+    const prev = words[i - 1], cur = words[i];
+    const mid = (prev.end + cur.start) / 2;
+    if (mid < fromS || mid > toS) continue; // gap counts if its midpoint is in range
+    const gap = cur.start - prev.end;
+    if (gap > best.gap) best = { at: +mid.toFixed(2), gap: +gap.toFixed(2) };
+  }
+  return best;
+}
+
+// End time of the last REAL sung word, ignoring Whisper's trailing hallucinations
+// (credits like "Subtítulos… Amara.org", "gracias por ver"). Used to find where the
+// pristine instrumental outro begins.
+const _HALLUC = new Set(['subtitulos', 'subtitulado', 'amara', 'org', 'gracias', 'por', 'ver', 'subscribe', 'suscribete', 'www', 'com']);
+export function lastSungWordEnd(words) {
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (!_HALLUC.has(norm(words[i].word))) return words[i].end;
+  }
+  return words.length ? words[words.length - 1].end : null;
+}
+
+// End time of the first occurrence of an anchor word at/after `afterS` (the added
+// line's distinctive word, e.g. "orgulloso"), used to locate the clean re-sung pass.
+export function findAnchorEnd(words, anchor, afterS = 0) {
+  const a = norm(anchor);
+  for (const w of words) {
+    if (w.start < afterS) continue;
+    const n = norm(w.word);
+    if (n === a || (n.length > 3 && a.length > 3 && (n.startsWith(a) || a.startsWith(n)))) return w.end;
+  }
+  return null;
+}
+
 // Parse the edge fn's `transcribe` "timed" string ("word[start-end] …") into
 // word objects, and find the END time of the last line of `sectionText` (the
 // splice point in the re-sung audio). Mirrors scripts/fix-song-surgical.cjs.
