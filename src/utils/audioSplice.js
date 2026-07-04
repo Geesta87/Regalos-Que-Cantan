@@ -177,18 +177,47 @@ export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } 
 }
 
 // Build ordered token-groups for validateTake from a corrected line of lyrics.
-// Content words become one-word groups; spelled Spanish years ("dos mil
-// diecinueve") also accept the digit form ("2019"), because Whisper transcribes
-// numbers as digits. Drops filler words so Whisper noise doesn't fail a good take.
-const _NUM19 = { dieciseis: 2016, diecisiete: 2017, dieciocho: 2018, diecinueve: 2019, veinte: 2020, veintiuno: 2021, veintidos: 2022, veintitres: 2023, veinticuatro: 2024, veinticinco: 2025 };
+// Content words become one-word groups. Spelled Spanish YEARS ("mil novecientos
+// setenta y cinco", "dos mil catorce") are collapsed to the DIGIT form Whisper
+// actually transcribes ("1975", "2014") — via a parser so ANY year 1900-2099
+// works (parents'/grandparents' birth years included), not a hand-listed table
+// that silently false-rejects the years it forgot. Standalone number words also
+// accept their digit form (age contexts, e.g. "catorce años" -> "14").
+const _UNITS = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+const _TEENS = { diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19 };
+const _TENS = { veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+const _COMPOUND = { veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
 const _FILLER = new Set(['de', 'del', 'la', 'el', 'y', 'a', 'en', 'que', 'lo', 'los', 'las', 'un', 'una', 'mi', 'me', 'te', 'su', 'con', 'por', 'dos', 'mil', 'has']);
+
+// Parse a 0-99 quantity at t[i]; returns { val, next } or null.
+function _parseUnder100(t, i) {
+  const w = t[i];
+  if (_COMPOUND[w] != null) return { val: _COMPOUND[w], next: i + 1 };
+  if (_TEENS[w] != null) return { val: _TEENS[w], next: i + 1 };
+  if (_TENS[w] != null) {
+    if (t[i + 1] === 'y' && _UNITS[t[i + 2]] != null) return { val: _TENS[w] + _UNITS[t[i + 2]], next: i + 3 };
+    return { val: _TENS[w], next: i + 1 };
+  }
+  if (_UNITS[w] != null) return { val: _UNITS[w], next: i + 1 };
+  return null;
+}
+// Parse a spelled year phrase at t[i]; returns { year, next } or null.
+function _parseYear(t, i) {
+  if (t[i] === 'mil' && t[i + 1] === 'novecientos') { const p = _parseUnder100(t, i + 2); return { year: 1900 + (p ? p.val : 0), next: p ? p.next : i + 2 }; }
+  if (t[i] === 'dos' && t[i + 1] === 'mil') { const p = _parseUnder100(t, i + 2); return { year: 2000 + (p ? p.val : 0), next: p ? p.next : i + 2 }; }
+  return null;
+}
 export function buildTokenGroups(correctedLine) {
-  const raw = String(correctedLine || '').split(/\s+/).map(norm).filter(Boolean);
+  const t = String(correctedLine || '').split(/\s+/).map(norm).filter(Boolean);
   const groups = [];
-  for (const w of raw) {
+  for (let i = 0; i < t.length;) {
+    const y = _parseYear(t, i);
+    if (y) { groups.push([String(y.year)]); i = y.next; continue; } // "dos mil catorce" -> ['2014']
+    const w = t[i]; i++;
     if (w.length < 2) continue;
-    if (_NUM19[w]) { groups.push([w, String(_NUM19[w])]); continue; } // year word + digit form
     if (_FILLER.has(w)) continue;
+    const numVal = _COMPOUND[w] ?? _TEENS[w] ?? _TENS[w] ?? _UNITS[w];
+    if (numVal != null) { groups.push([w, String(numVal)]); continue; } // standalone number + digit
     groups.push([w]);
   }
   return groups;
