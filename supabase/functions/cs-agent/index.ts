@@ -37,6 +37,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { CS_KNOWLEDGE, CS_GOLDEN_ANSWERS } from '../_shared/cs-knowledge.ts';
 import { OFFERS } from '../_shared/brand-brief.ts';
 import { embedText, embedTexts } from '../_shared/embed.ts';
+import { sendSms } from '../_shared/send-sms.ts';
+import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
+
+// Topics that can NEVER auto-send, even if added to the allowlist (belt & braces
+// with needs_human). Money, complaints, and edits to finished songs always go to
+// a human.
+const NEVER_AUTO = new Set(['billing_money', 'complaint', 'change_request']);
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -280,6 +287,39 @@ async function classifyCategory(text: string): Promise<string> {
   }
 }
 
+// #4 SAFETY CRITIC — a cheap second-model check that a draft doesn't break a
+// hard rule. `ran` is false if the check couldn't execute (no key / error) so
+// callers can fail CLOSED for auto-send (require ran && pass) while fail-open for
+// drafts (a human reviews anyway).
+async function safetyReview(draft: string): Promise<{ ran: boolean; pass: boolean; reason: string }> {
+  const t = (draft || '').trim();
+  if (!t || !ANTHROPIC_API_KEY) return { ran: false, pass: true, reason: '' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: CLASSIFY_MODEL,
+        max_tokens: 30,
+        system: `Eres un revisor de seguridad de respuestas de servicio al cliente de Regalos Que Cantan. Revisa SOLO si la RESPUESTA rompe una de estas reglas CLARAS (no juzgues precios ni datos del pedido — eso ya está verificado en otro lado):
+1. Revela o insinúa que es IA / bot / robot / automático / computadora / software / algoritmo.
+2. Promete un REEMBOLSO, o una fecha/plazo EXACTO garantizado (ej. "llega el martes sin falta").
+3. Tono grosero, ofensivo o claramente poco profesional.
+Si NO rompe ninguna de estas 3, responde "PASS". Solo responde "FAIL: <razón corta>" si rompe claramente una. Ante la duda, PASS.`,
+        messages: [{ role: 'user', content: t.slice(0, 1200) }],
+      }),
+    });
+    if (!res.ok) return { ran: false, pass: true, reason: '' };
+    const data = await res.json();
+    const out = (data.content?.[0]?.text || '').trim();
+    if (/^pass/i.test(out)) return { ran: true, pass: true, reason: '' };
+    if (/^fail/i.test(out)) return { ran: true, pass: false, reason: out.replace(/^fail:?\s*/i, '').slice(0, 200) };
+    return { ran: false, pass: true, reason: '' };
+  } catch {
+    return { ran: false, pass: true, reason: '' };
+  }
+}
+
 function systemPrompt(customerName: string | null, channel: string, knowledge: string, snapshot: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
@@ -335,7 +375,7 @@ serve(async (req) => {
     // Master switch — do nothing unless the owner has turned the bot on.
     const { data: settings } = await admin
       .from('cs_agent_settings')
-      .select('enabled, knowledge_doc')
+      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories')
       .eq('id', 1)
       .maybeSingle();
     if (!settings?.enabled) {
@@ -613,8 +653,68 @@ serve(async (req) => {
       escalateReason = escalateReason || 'no draft text produced';
     }
 
-    // Store the DRAFT (inert until the owner approves it in the inbox).
+    // #4 SAFETY CRITIC — check the finished draft against the hard rules. A real
+    // failure flags it for a human (and blocks auto-send).
+    const safety = await safetyReview(finalText);
+    if (safety.ran && !safety.pass) {
+      needsHuman = true;
+      escalateReason = `safety: ${safety.reason}`;
+    }
+
     const nowIso = new Date().toISOString();
+
+    // #2 AUTO-SEND (default OFF). Send WITHOUT owner approval only when the master
+    // switch is on, this category is on the allowlist (and not a never-auto one),
+    // nothing flagged a human, and the safety critic explicitly passed.
+    const autoCats: string[] = Array.isArray(settings?.auto_categories) ? settings.auto_categories : [];
+    const canAuto =
+      settings?.auto_send_enabled === true &&
+      autoCats.includes(category) &&
+      !NEVER_AUTO.has(category) &&
+      !needsHuman &&
+      !proposedAction &&           // email-resend proposals still need approval
+      safety.ran && safety.pass;
+
+    if (canAuto) {
+      const sendCh = convo.channel || 'sms';
+      const result = sendCh === 'whatsapp'
+        ? await sendWhatsApp(convo.phone, finalText)
+        : await sendSms(convo.phone, finalText);
+      const { data: sent } = await admin
+        .from('sms_messages')
+        .insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          body: finalText,
+          status: result.ok ? (result.status || 'sent') : 'failed',
+          twilio_sid: result.sid || null,
+          channel: sendCh,
+          ai_generated: true,
+          needs_human: false,
+          was_edited: false,
+          auto_sent: true,
+          category,
+        })
+        .select('id, status')
+        .single();
+      await admin.from('sms_conversations').update({ last_message_at: nowIso }).eq('id', conversationId);
+      // Light heads-up so the owner can still eyeball what went out on its own.
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            title: `🤖 Auto-respuesta enviada · ${convo.customer_name || convo.phone}`,
+            body: finalText.length > 110 ? finalText.slice(0, 110) + '…' : finalText,
+            url: '/admin/dashboard?tab=sms',
+            tag: `cs-auto-${conversationId}`,
+          }),
+        });
+      } catch (_e) { /* best-effort */ }
+      return json({ ok: true, auto_sent: true, category, send_ok: result.ok });
+    }
+
+    // Store the DRAFT (inert until the owner approves it in the inbox).
     const { data: inserted, error: insErr } = await admin
       .from('sms_messages')
       .insert({

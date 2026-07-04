@@ -85,6 +85,26 @@ export default function CsInsightsTab({ accessToken }) {
   const asIsRate = pct(ov?.as_is || 0, resolved);
   const trend = data?.trend || [];
   const maxTrend = 100;
+  const autonomy = data?.autonomy || { enabled: false, categories: [], never_auto: [] };
+
+  const setAutonomy = async (payload) => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cs-metrics`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'set-autonomy', ...payload }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || `HTTP ${res.status}`);
+      setData((d) => (d ? { ...d, autonomy: j.autonomy } : d));
+    } catch (e) {
+      alert(`Could not update auto-send: ${e.message}`);
+    }
+  };
 
   return (
     <div className="max-w-5xl">
@@ -166,6 +186,28 @@ export default function CsInsightsTab({ accessToken }) {
               "Sent as-is %" per topic. A topic is auto-send–ready around {TARGET}%+ over enough volume.
               Money, complaints and change requests always stay human.
             </div>
+
+            {/* #2 master auto-send switch */}
+            <div className="flex items-center justify-between gap-3 bg-black/20 border border-white/10 rounded-lg px-3 py-2.5 mb-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white">
+                  🤖 Auto-send {autonomy.enabled ? <span className="text-green-300">ON</span> : <span className="text-gray-400">OFF</span>}
+                </div>
+                <div className="text-[11px] text-gray-500">
+                  Master switch. When ON, topics you set to "Auto" below reply to customers <b>without your approval</b>. Everything else stays a draft for you.
+                </div>
+              </div>
+              <button
+                onClick={() => setAutonomy({ auto_send_enabled: !autonomy.enabled })}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  autonomy.enabled ? 'bg-green-500/20 text-green-200 border border-green-400/40 hover:bg-green-500/30'
+                                   : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                }`}
+              >
+                {autonomy.enabled ? 'Turn OFF' : 'Turn ON'}
+              </button>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -177,6 +219,7 @@ export default function CsInsightsTab({ accessToken }) {
                     <th className="text-right font-medium">Discarded</th>
                     <th className="text-right font-medium pr-2">As-is %</th>
                     <th className="text-left font-medium">Status</th>
+                    <th className="text-left font-medium pl-2">Auto-send</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,6 +227,7 @@ export default function CsInsightsTab({ accessToken }) {
                     const res = row.as_is + row.edited + row.discarded;
                     const rate = pct(row.as_is, res);
                     const human = ALWAYS_HUMAN.has(row.category);
+                    const autoOn = (autonomy.categories || []).includes(row.category);
                     let badge;
                     if (human) badge = <span className="text-purple-300">Always human</span>;
                     else if (rate == null || res < 10) badge = <span className="text-gray-500">Not enough data</span>;
@@ -199,11 +243,27 @@ export default function CsInsightsTab({ accessToken }) {
                         <td className="text-right text-red-300">{row.discarded}</td>
                         <td className="text-right pr-2 font-semibold text-white">{rate == null ? '—' : `${rate}%`}</td>
                         <td>{badge}</td>
+                        <td className="pl-2">
+                          {human ? (
+                            <span className="text-gray-600" title="Always human — cannot be auto-sent">🔒</span>
+                          ) : (
+                            <button
+                              onClick={() => setAutonomy({ category: row.category, mode: autoOn ? 'draft' : 'auto' })}
+                              title={autonomy.enabled ? '' : 'Also turn on the master Auto-send switch above for this to take effect'}
+                              className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                                autoOn ? 'bg-green-500/20 text-green-200 border border-green-400/40'
+                                       : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                              }`}
+                            >
+                              {autoOn ? 'Auto' : 'Draft'}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                   {(!data.by_category || data.by_category.length === 0) && (
-                    <tr><td colSpan={7} className="text-gray-500 py-3 text-center">No data yet.</td></tr>
+                    <tr><td colSpan={8} className="text-gray-500 py-3 text-center">No data yet.</td></tr>
                   )}
                 </tbody>
               </table>
