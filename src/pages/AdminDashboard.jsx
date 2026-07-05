@@ -1321,6 +1321,12 @@ export default function AdminDashboard() {
   // localStorage so each admin gets to keep their own preference. Default ON
   // so admins are alerted out of the box; they can mute via the bell button.
   const [paymentToasts, setPaymentToasts] = useState([]);
+  // Android "Install app" prompt. index.html captures the browser's
+  // beforeinstallprompt event (before React mounts) onto window and fires
+  // 'rqc-installable'; we surface a one-tap Install button so the owner never
+  // has to hunt Chrome's menu (which confusingly offers "Install" vs the
+  // useless "Create shortcut"). Hidden once the app is already installed.
+  const [canInstall, setCanInstall] = useState(false);
   const [paymentAlertsEnabled, setPaymentAlertsEnabled] = useState(() => {
     if (typeof window === 'undefined') return true;
     const v = window.localStorage.getItem('rqc_admin_payment_alerts');
@@ -1389,6 +1395,13 @@ export default function AdminDashboard() {
   // Falls back to the synthesized beep if the file fails to load or the
   // browser blocks playback.
   const playPaymentSound = useCallback(() => {
+    // Celebratory "ka-ching" buzz on the phone, in sync with the sound. Safe
+    // no-op on devices/browsers without the Vibration API (e.g. desktop, iOS).
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([150, 75, 150, 75, 400]);
+      }
+    } catch { /* ignore */ }
     try {
       const audio = new Audio('/sounds/happy-bells.mp3');
       audio.volume = 0.6;
@@ -1467,6 +1480,39 @@ export default function AdminDashboard() {
     // We deliberately do NOT bump paymentAlertCount on test fires so the
     // header counter reflects only real payments.
   }, [playPaymentSound, fireDesktopNotification]);
+
+  // Show the in-app Install button only when the browser has offered an
+  // install prompt AND the app isn't already installed (standalone display).
+  useEffect(() => {
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+    if (isStandalone) return;
+    if (window.__deferredInstallPrompt) setCanInstall(true);
+    const onInstallable = () => setCanInstall(true);
+    const onInstalled = () => setCanInstall(false);
+    window.addEventListener('rqc-installable', onInstallable);
+    window.addEventListener('rqc-installed', onInstalled);
+    return () => {
+      window.removeEventListener('rqc-installable', onInstallable);
+      window.removeEventListener('rqc-installed', onInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    const promptEvent = window.__deferredInstallPrompt;
+    if (!promptEvent) {
+      showToast('Open the browser menu (⋮) and tap Install to add the app.', 'info');
+      return;
+    }
+    promptEvent.prompt();
+    try {
+      const { outcome } = await promptEvent.userChoice;
+      if (outcome === 'accepted') setCanInstall(false);
+    } catch { /* ignore */ }
+    // The prompt can only be used once; drop it either way.
+    window.__deferredInstallPrompt = null;
+  }, [showToast]);
 
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
@@ -3434,6 +3480,21 @@ export default function AdminDashboard() {
                 <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
                 Loading data...
               </span>
+            )}
+            {/* One-tap Install — appears only when the browser offers an
+                install prompt and the app isn't installed yet. Tapping it
+                triggers the real WebAPK install (keeps the owner logged in),
+                so they never have to find it in Chrome's ⋮ menu. */}
+            {canInstall && (
+              <button
+                onClick={handleInstallApp}
+                className="px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-amber-400/30"
+                title="Install RQC Admin as an app — keeps you signed in"
+                aria-label="Install app"
+              >
+                <span>📲</span>
+                <span>Install app</span>
+              </button>
             )}
             {/* Big obvious "TEST" pill — fires a fake toast + sound + desktop
                 notification so admins can verify the wiring without waiting
