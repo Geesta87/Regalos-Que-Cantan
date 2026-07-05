@@ -241,6 +241,23 @@
     
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Capture Android's install prompt BEFORE React mounts so the admin
+         dashboard can show its own one-tap "Install app" button. Without this,
+         the browser only offers install via its ⋮ menu (where "Install" and the
+         useless "Create shortcut" look alike and confuse people). -->
+    <script>
+      window.__deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__deferredInstallPrompt = e;
+        window.dispatchEvent(new Event('rqc-installable'));
+      });
+      window.addEventListener('appinstalled', function () {
+        window.__deferredInstallPrompt = null;
+        window.dispatchEvent(new Event('rqc-installed'));
+      });
+    </script>
     
     <!-- Service worker: push notifications only — it has NO fetch handler and
          caches nothing (the 2026 stale-HTML incident must never repeat). It
