@@ -321,19 +321,38 @@ export function buildTokenGroups(correctedLine) {
   return groups;
 }
 
-export function findLastLineEnd(words, sectionText) {
+// `nearS` (optional) = the section's expected end in the ORIGINAL timeline
+// (window.endS). When the section's last line is a phrase that repeats — e.g. a
+// chorus that OPENS and CLOSES with the same line ("eres mi rayo de sol", sung 6×
+// across the song) — the plain first-match locks onto the chorus's OPENING line
+// and the splice throws away everything between that and the true end (~20s per
+// chorus; observed dropping a 3:52 song to 3:08 when a repeated line was fixed in
+// both choruses). Passing nearS disambiguates: among all matches, take the one
+// whose end is CLOSEST to the expected section end, i.e. the chorus's closing line.
+export function findLastLineEnd(words, sectionText, nearS = null) {
   const lines = String(sectionText || '').split('\n').map((s) => s.trim()).filter(Boolean);
   if (!lines.length || !words.length) return null;
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
   if (!tokens.length) return null;
   const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
   const eq = (a, b) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  // pick: nearest-to-nearS when the hint is given; otherwise legacy behavior
+  // (first full match / last single-word match) to stay byte-identical for any
+  // caller that doesn't pass a hint.
+  const pick = (cands, legacyLast) => {
+    if (!cands.length) return null;
+    if (nearS == null) return legacyLast ? cands[cands.length - 1] : cands[0];
+    return cands.reduce((best, e) => (Math.abs(e - nearS) < Math.abs(best - nearS) ? e : best));
+  };
+  const fulls = [];
   for (let i = 0; i + tokens.length <= atoms.length; i++) {
     let ok = true;
     for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
-    if (ok) return atoms[i + tokens.length - 1].end;
+    if (ok) fulls.push(atoms[i + tokens.length - 1].end);
   }
+  if (fulls.length) return pick(fulls, false);
   const last = tokens[tokens.length - 1];
-  for (let i = atoms.length - 1; i >= 0; i--) if (eq(atoms[i].n, last)) return atoms[i].end;
-  return null;
+  const singles = [];
+  for (let i = 0; i < atoms.length; i++) if (eq(atoms[i].n, last)) singles.push(atoms[i].end);
+  return pick(singles, true);
 }

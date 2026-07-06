@@ -272,7 +272,11 @@ function FixSongCard({ song, showToast, onApplied }) {
           continue;
         }
         const v = validateTake(words, groups, { maxGapS: 5, maxSpanS });
-        const end = findLastLineEnd(words, sectionText);
+        // Pass origCut (the section's expected end) so a chorus whose last line
+        // repeats (opens AND closes with the same phrase) cuts at the CLOSING
+        // occurrence, not the opening one — otherwise the splice drops the middle
+        // of the chorus (a 3:52 song came out 3:08 when both choruses were fixed).
+        const end = findLastLineEnd(words, sectionText, origCut);
         // Location guard: the splice point MUST land near the real edit window.
         // Without it, a repeated/scattered word elsewhere makes findLastLineEnd
         // grab the wrong spot and the splice DUPLICATES a chunk (a fix once came
