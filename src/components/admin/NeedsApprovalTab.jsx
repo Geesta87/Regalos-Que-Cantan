@@ -115,7 +115,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
       {!isLikeness && (
         <section>
           {finals.length === 0 ? <Empty text="No final approvals pending." /> : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               {finals.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
                   <div className="text-white font-semibold mb-3">{o.recipient}</div>
@@ -288,8 +288,8 @@ function SceneReview({ orderId, call, showToast, onRerender }) {
                 </div>
               )}
 
-              {/* every visual in song order, with its context + revise box */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {/* every visual in song order, with its context + revise box — 5-up on desktop */}
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
                 {uniques.map((u, idx) => {
                   const a = assetFor(u.image_id);
                   const draft = drafts[u.image_id] ?? u.prompt;
