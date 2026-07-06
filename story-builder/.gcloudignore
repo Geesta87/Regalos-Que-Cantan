@@ -1,0 +1,6 @@
+# Only ship the service to Cloud Run — exclude stray media and local artifacts.
+*.mp4
+*.mp3
+*.png
+!assets/*
+node_modules/

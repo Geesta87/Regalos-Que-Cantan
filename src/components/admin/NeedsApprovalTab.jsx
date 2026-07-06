@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // Admin "Needs Approval" tab for the animated story-video pipeline.
 // Two gates: pick 1 of 2 likeness options, then approve/reject the final video.
@@ -130,6 +130,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                       ↺ Redo
                     </button>
                   </div>
+                  <SceneReview orderId={o.id} call={call} showToast={showToast} onRerender={load} />
                 </div>
               ))}
             </div>
@@ -163,4 +164,237 @@ function Assumptions({ items }) {
 
 function Empty({ text }) {
   return <div className="rounded-xl border border-dashed border-gray-800 text-gray-500 text-sm px-4 py-8 text-center">{text}</div>;
+}
+
+// ---------------------------------------------------------------------------
+// Scene-by-scene review for a final video: every visual in song order with its
+// context, a per-scene Revise box (regenerates just that visual), a re-render
+// button, and an Ask-AI copilot grounded in the lyrics + the customer's story.
+// ---------------------------------------------------------------------------
+function SceneReview({ orderId, call, showToast, onRerender }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null); // { order, song }
+  const [loading, setLoading] = useState(false);
+  const [drafts, setDrafts] = useState({});   // image_id -> edited prompt
+  const [busyScene, setBusyScene] = useState(null);
+  const [revised, setRevised] = useState(false); // any revision since load -> show re-render
+  const pollRef = useRef(null);
+
+  const loadDetail = useCallback(async () => {
+    try {
+      const d = await call({ action: 'detail', id: orderId });
+      setDetail(d);
+      return d;
+    } catch (e) { showToast?.(e.message || 'Could not load scenes', 'error'); return null; }
+  }, [call, orderId, showToast]);
+
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    setOpen(true); setLoading(true);
+    await loadDetail();
+    setLoading(false);
+  }
+
+  // poll while any scene is regenerating so the new visual appears by itself
+  useEffect(() => {
+    const anyRevising = (detail?.order?.scene_assets || []).some((a) => a.revising);
+    if (open && anyRevising && !pollRef.current) {
+      pollRef.current = setInterval(async () => {
+        const d = await loadDetail();
+        if (!(d?.order?.scene_assets || []).some((a) => a.revising)) { clearInterval(pollRef.current); pollRef.current = null; }
+      }, 6000);
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [open, detail, loadDetail]);
+
+  async function revise(imageId) {
+    const text = (drafts[imageId] || '').trim();
+    if (!text) return;
+    setBusyScene(imageId);
+    try {
+      await call({ action: 'revise_scene', id: orderId, image_id: imageId, new_prompt: text });
+      showToast?.('Regenerating this scene — the new visual appears here in ~1 min', 'success');
+      setRevised(true);
+      await loadDetail();
+    } catch (e) { showToast?.(e.message || 'Revision failed', 'error'); }
+    finally { setBusyScene(null); }
+  }
+
+  async function rerender() {
+    if (!window.confirm('Re-render the final video with your revised scenes? Takes ~10-15 min; unchanged scenes are reused (no extra AI cost).')) return;
+    try {
+      await call({ action: 'rerender', id: orderId });
+      showToast?.('Re-rendering — the order returns here when the new video is ready', 'success');
+      setOpen(false);
+      onRerender?.();
+    } catch (e) { showToast?.(e.message || 'Re-render failed', 'error'); }
+  }
+
+  const order = detail?.order;
+  const song = detail?.song;
+  const scenes = order?.storyboard?.scenes || [];
+  const assetFor = (id) => (order?.scene_assets || []).find((a) => a.image_id === id);
+  // unique visuals in first-appearance (song) order; note every anchor where each repeats
+  const uniques = [];
+  scenes.forEach((s, i) => {
+    let u = uniques.find((x) => x.image_id === s.image_id);
+    if (!u) { u = { image_id: s.image_id, prompt: s.visual_prompt, hero: false, anchors: [], firstIdx: i }; uniques.push(u); }
+    if (s.hero) u.hero = true;
+    if (s.anchor) u.anchors.push(s.anchor);
+  });
+
+  return (
+    <div className="mt-3">
+      <button onClick={toggle}
+        className="w-full py-2 text-sm font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition">
+        {open ? '▴ Hide scenes' : '🎬 Review scenes & revise'}
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-4">
+          {loading && <div className="text-sm text-gray-400 py-4 text-center">Loading scenes…</div>}
+
+          {!loading && order && (
+            <>
+              {/* reference strip: what the customer gave us vs the approved character */}
+              <div className="flex gap-3">
+                {order.recipient_photo_url && (
+                  <div className="w-24">
+                    <img src={order.recipient_photo_url} alt="original" className="rounded-lg w-full aspect-[3/4] object-cover ring-1 ring-sky-500/40" />
+                    <div className="text-[10px] text-sky-300 text-center mt-1">Customer photo</div>
+                  </div>
+                )}
+                {order.approved_character_url && (
+                  <div className="w-24">
+                    <img src={order.approved_character_url} alt="character" className="rounded-lg w-full aspect-[3/4] object-cover ring-1 ring-emerald-500/40" />
+                    <div className="text-[10px] text-emerald-300 text-center mt-1">Approved character</div>
+                  </div>
+                )}
+                <div className="flex-1 text-xs text-gray-400 leading-relaxed">
+                  <span className="text-gray-300 font-semibold">{song?.recipient_name}</span>
+                  {song?.relationship ? <> · {song.relationship}</> : null}
+                  {song?.occasion ? <> · {song.occasion}</> : null}
+                  {song?.genre_name ? <> · {song.genre_name}</> : null}
+                  {song?.details && <p className="mt-1 text-gray-500 line-clamp-4">“{song.details}”</p>}
+                </div>
+              </div>
+
+              {(order.storyboard?.assumptions || []).length > 0 && (
+                <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+                  <p className="text-xs font-bold text-amber-300 mb-1">⚠️ AI guesses to verify:</p>
+                  {(order.storyboard.assumptions).map((a, i) => (
+                    <p key={i} className="text-xs text-amber-100/90">• <b>{a.assumed}</b>{a.image_id ? ` (${a.image_id})` : ''}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* every visual in song order, with its context + revise box */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {uniques.map((u, idx) => {
+                  const a = assetFor(u.image_id);
+                  const draft = drafts[u.image_id] ?? u.prompt;
+                  const changed = draft.trim() !== u.prompt.trim();
+                  return (
+                    <div key={u.image_id} className="rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden flex flex-col">
+                      <div className="relative">
+                        {a?.revising ? (
+                          <div className="w-full aspect-[9/16] flex flex-col items-center justify-center text-indigo-300 text-xs gap-2 bg-black/40">
+                            <div className="animate-spin h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full" />
+                            Regenerating…
+                          </div>
+                        ) : a?.motion_url ? (
+                          <video controls muted loop src={a.motion_url} className="w-full aspect-[9/16] object-cover bg-black" />
+                        ) : a?.image_url ? (
+                          <img src={a.image_url} alt={u.image_id} className="w-full aspect-[9/16] object-cover" />
+                        ) : (
+                          <div className="w-full aspect-[9/16] flex items-center justify-center text-gray-600 text-xs bg-black/40">no preview saved</div>
+                        )}
+                        <div className="absolute top-1 left-1 flex gap-1">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/70 text-gray-200">#{idx + 1}</span>
+                          {u.hero && <span className="text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-600/80 text-white font-semibold">MOTION</span>}
+                          {a?.revise_failed && <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-600/80 text-white">retry failed</span>}
+                        </div>
+                      </div>
+                      <div className="p-2 flex flex-col gap-1.5 flex-1">
+                        {u.anchors.length > 0 && (
+                          <p className="text-[10px] text-gray-500 italic line-clamp-2">♪ “{u.anchors[0]}”{u.anchors.length > 1 ? ` (+${u.anchors.length - 1} more)` : ''}</p>
+                        )}
+                        <textarea value={draft}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [u.image_id]: e.target.value }))}
+                          rows={4}
+                          className="w-full text-[11px] leading-snug bg-black/40 border border-gray-800 rounded-md p-1.5 text-gray-300 focus:border-indigo-500 focus:outline-none resize-y" />
+                        <button onClick={() => revise(u.image_id)}
+                          disabled={!changed || busyScene === u.image_id || a?.revising}
+                          className={`w-full py-1.5 text-xs font-semibold rounded-md transition ${changed ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-800 text-gray-500'} disabled:opacity-60`}>
+                          {busyScene === u.image_id ? 'Submitting…' : a?.revising ? 'Regenerating…' : changed ? '✎ Submit revision' : 'Edit context to revise'}
+                        </button>
+                        {u.hero && changed && <p className="text-[10px] text-fuchsia-300/70">Motion re-animates from the new visual during re-render.</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {(revised || (order.scene_assets || []).some((a) => a.revising === false && a.image_url)) && (
+                <button onClick={rerender}
+                  className="w-full py-2.5 text-sm font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition">
+                  🔁 Re-render final video with revised scenes
+                </button>
+              )}
+
+              <Copilot orderId={orderId} call={call} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Small Q&A box grounded in the order's lyrics + customer details, so the admin
+// can confirm what a scene SHOULD show (e.g. "does the story mention two boys?").
+function Copilot({ orderId, call }) {
+  const [msgs, setMsgs] = useState([]); // {role, content}
+  const [q, setQ] = useState('');
+  const [thinking, setThinking] = useState(false);
+
+  async function ask(e) {
+    e?.preventDefault();
+    const question = q.trim();
+    if (!question || thinking) return;
+    setQ('');
+    setMsgs((m) => [...m, { role: 'user', content: question }]);
+    setThinking(true);
+    try {
+      const d = await call({ action: 'copilot', id: orderId, question, history: msgs });
+      setMsgs((m) => [...m, { role: 'assistant', content: d.answer || '(no answer)' }]);
+    } catch (err) {
+      setMsgs((m) => [...m, { role: 'assistant', content: `Error: ${err.message}` }]);
+    } finally { setThinking(false); }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-800 bg-black/30 p-3">
+      <p className="text-xs font-bold text-indigo-300 mb-2">🤖 Ask AI — knows the lyrics & what the customer wrote</p>
+      {msgs.length > 0 && (
+        <div className="space-y-2 mb-2 max-h-56 overflow-y-auto pr-1">
+          {msgs.map((m, i) => (
+            <div key={i} className={`text-xs leading-relaxed rounded-md px-2.5 py-1.5 whitespace-pre-wrap ${m.role === 'user' ? 'bg-indigo-600/20 text-indigo-100' : 'bg-gray-800/80 text-gray-200'}`}>
+              {m.content}
+            </div>
+          ))}
+          {thinking && <div className="text-xs text-gray-500 px-2.5">Thinking…</div>}
+        </div>
+      )}
+      <form onSubmit={ask} className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder='e.g. "Does the customer mention two boys or a girl?"'
+          className="flex-1 text-xs bg-black/40 border border-gray-800 rounded-md px-2.5 py-2 text-gray-200 focus:border-indigo-500 focus:outline-none" />
+        <button type="submit" disabled={thinking || !q.trim()}
+          className="px-3 py-2 text-xs font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition disabled:opacity-50">
+          Ask
+        </button>
+      </form>
+    </div>
+  );
 }
