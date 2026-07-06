@@ -45,9 +45,11 @@ serve(async (req) => {
     const { action, id, index, reason, image_id, new_prompt, question, history } = await req.json();
 
     if (action === 'list') {
+      // building + failed included so a re-rendering order never "disappears"
+      // from the Final Video tab (it shows as a Rebuilding… / Failed card).
       const { data: rows, error } = await admin.from('story_video_orders')
-        .select('id, state, recipient_photo_url, character_options, approved_character_url, video_url, created_at, song_id')
-        .in('state', ['likeness_review', 'final_review']).order('created_at', { ascending: true });
+        .select('id, state, recipient_photo_url, character_options, approved_character_url, video_url, created_at, updated_at, error, song_id')
+        .in('state', ['likeness_review', 'final_review', 'building', 'failed']).order('created_at', { ascending: true });
       if (error) throw error;
       // attach recipient name
       const songIds = [...new Set((rows || []).map((r: any) => r.song_id).filter(Boolean))];

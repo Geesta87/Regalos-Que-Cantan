@@ -45,7 +45,18 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
 
   const likeness = orders.filter((o) => o.state === 'likeness_review');
   const finals = orders.filter((o) => o.state === 'final_review');
+  const rebuilding = orders.filter((o) => o.state === 'building');
+  const failed = orders.filter((o) => o.state === 'failed');
   const isLikeness = gate === 'likeness';
+
+  // auto-refresh while something is rebuilding so the finished video pops in by itself
+  useEffect(() => {
+    if (isLikeness || rebuilding.length === 0) return;
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isLikeness, rebuilding.length, load]);
+
+  const minsAgo = (ts) => Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
 
   return (
     <div className="space-y-6">
@@ -57,7 +68,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
           <p className="text-sm text-gray-400">
             {isLikeness
               ? `${likeness.length} likeness(es) pending`
-              : `${finals.length} video(s) to review`}
+              : `${finals.length} video(s) to review${rebuilding.length ? ` · ${rebuilding.length} building` : ''}${failed.length ? ` · ${failed.length} failed` : ''}`}
           </p>
         </div>
         <button onClick={load} disabled={loading}
@@ -113,8 +124,28 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
 
       {/* GATE 2 — approve the final video */}
       {!isLikeness && (
-        <section>
-          {finals.length === 0 ? <Empty text="No final approvals pending." /> : (
+        <section className="space-y-4">
+          {/* in-progress rebuilds stay visible so a re-rendered order never "disappears" */}
+          {rebuilding.map((o) => (
+            <div key={o.id} className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 flex items-center gap-3">
+              <div className="animate-spin h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-indigo-200">{o.recipient} — video is building…</p>
+                <p className="text-xs text-indigo-300/70">Started {minsAgo(o.updated_at)} min ago · usually ready in 10–30 min · it comes back here by itself for your approval.</p>
+              </div>
+            </div>
+          ))}
+          {failed.map((o) => (
+            <div key={o.id} className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3">
+              <p className="text-sm font-semibold text-rose-200">{o.recipient} — build failed</p>
+              {o.error && <p className="text-xs text-rose-300/80 mt-0.5 break-words">{o.error}</p>}
+              <button onClick={() => act(o.id, 'rerender')} disabled={busy}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition disabled:opacity-50">
+                ↻ Retry build
+              </button>
+            </div>
+          ))}
+          {finals.length === 0 && rebuilding.length === 0 && failed.length === 0 ? <Empty text="No final approvals pending." /> : finals.length === 0 ? null : (
             <div className="grid grid-cols-1 gap-4">
               {finals.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
