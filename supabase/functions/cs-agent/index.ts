@@ -227,9 +227,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'request_song_fix',
+    description:
+      'Úsala cuando el cliente pida un CAMBIO o CORRECCIÓN en una canción que YA se hizo (un nombre mal escrito o mal pronunciado, una fecha equivocada, una línea de la letra que quiere cambiar, "cámbienle esta parte", etc.). Registra una solicitud de arreglo para que el equipo corrija esa canción. NO cambia nada ahora mismo y NO promete un plazo: solo deja anotado el pedido con el detalle EXACTO de lo que el cliente quiere cambiar, y el equipo lo revisa. La solicitud se crea automáticamente cuando el equipo apruebe tu respuesta. En tu respuesta, confirma con calidez que tomamos nota del cambio y que el equipo lo revisará (sin prometer cuándo estará listo).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        what_to_change: {
+          type: 'string',
+          description: 'El cambio EXACTO que pide el cliente, con todo el detalle que dio: qué dice ahora y qué debería decir (nombre correcto, fecha correcta, la línea exacta de la letra, etc.). Escríbelo claro para que el equipo lo corrija sin volver a preguntar.',
+        },
+      },
+      required: ['what_to_change'],
+    },
+  },
+  {
     name: 'flag_for_human',
     description:
-      'Marca esta conversación para que la atienda una PERSONA del equipo. Úsala SIEMPRE que el tema sea de dinero (reembolsos, cargos, cobros dobles, disputas), una queja o molestia fuerte, un cambio en una canción ya hecha, o cualquier cosa de la que no estés seguro. Aun así, escribe una respuesta breve y cálida diciendo que un compañero dará seguimiento.',
+      'Marca esta conversación para que la atienda una PERSONA del equipo. Úsala SIEMPRE que el tema sea de dinero (reembolsos, cargos, cobros dobles, disputas), una queja o molestia fuerte, o cualquier cosa de la que no estés seguro. (Para un CAMBIO en una canción ya hecha, usa mejor request_song_fix.) Aun así, escribe una respuesta breve y cálida diciendo que un compañero dará seguimiento.',
     input_schema: {
       type: 'object',
       properties: {
@@ -336,7 +351,8 @@ REGLAS ESTRICTAS:
 - Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
 - Si el pedido NO está pagado (is_paid = false): comparte el preview_link_for_unpaid para que ESCUCHE sus versiones, y explícale con calidez que ahí puede escucharlas y que al COMPLETAR SU COMPRA se desbloquea la descarga para guardarla y compartirla. NUNCA compartas un download_link ni digas que la canción "ya está lista para descargar" en un pedido no pagado. El enlace de preview solo deja escuchar; la descarga sigue bloqueada hasta que pague.
 - Si no aparece ningún pedido para este número, no inventes: pide amablemente que escriba desde el número con el que hizo la compra, o que comparta su correo para que una persona lo verifique.
-- Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia, un cambio de letra en una canción ya hecha, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
+- Si el cliente pide un CAMBIO o corrección en una canción que YA se hizo (un nombre mal escrito o mal pronunciado, una fecha equivocada, una línea de la letra que quiere cambiar): usa request_song_fix con el detalle EXACTO del cambio, y responde con calidez que tomamos nota y que el equipo lo revisará (sin prometer plazo).
+- Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia fuerte, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
 - No prometas reembolsos, cambios ni plazos exactos.
 - Tu respuesta será revisada por una persona antes de enviarse, así que redáctala lista para enviar (sin notas internas).`;
 }
@@ -543,9 +559,11 @@ serve(async (req) => {
 
     let needsHuman = false;
     let escalateReason = '';
-    // Approval-gated side action (v1: resend paid link by email). Recorded on
-    // the draft; sms-admin executes it ONLY when the owner approves the draft.
-    let proposedAction: { type: string; email: string } | null = null;
+    // Approval-gated side action, recorded on the draft; sms-admin executes it
+    // ONLY when the owner approves the draft. Two shapes today:
+    //   { type: 'resend_email', email }           → resend the paid link by email
+    //   { type: 'song_fix_request', what_to_change } → queue a song fix for the team
+    let proposedAction: Record<string, unknown> | null = null;
 
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
@@ -633,6 +651,23 @@ serve(async (req) => {
             };
           } else {
             result = { ok: false, error: 'correo inválido — pide al cliente que escriba su correo de nuevo' };
+          }
+        } else if (tu.name === 'request_song_fix') {
+          // INERT at draft time: only RECORD the proposal. sms-admin creates the
+          // song_fix_requests row (resolving the song by this conversation's
+          // phone) when the owner approves the draft. A change to a finished song
+          // always wants a person's eyes, so surface it as needs-a-human too.
+          const whatToChange = String(tu.input?.what_to_change || '').trim();
+          if (whatToChange) {
+            proposedAction = { type: 'song_fix_request', what_to_change: whatToChange };
+            needsHuman = true;
+            escalateReason = escalateReason || 'song fix requested';
+            result = {
+              ok: true,
+              note: 'Anotado. Cuando el equipo apruebe tu respuesta, se creará una solicitud de arreglo para esta canción con el detalle que registraste, y el equipo la corregirá. Confirma al cliente con calidez que tomamos nota del cambio y que el equipo lo revisará, SIN prometer un plazo.',
+            };
+          } else {
+            result = { ok: false, error: 'describe el cambio exacto que pide el cliente' };
           }
         } else if (tu.name === 'flag_for_human') {
           needsHuman = true;
