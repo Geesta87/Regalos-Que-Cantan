@@ -6,6 +6,7 @@ import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
 import BotTrainingTab from '../components/admin/BotTrainingTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
+import FixQueue from '../components/admin/FixQueue';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
@@ -33,7 +34,13 @@ function useDebounce(value, delay = 350) {
 // Called with the anon key — fix-song-section is verify_jwt = false, same as
 // regenerate-paid-song-kie.
 // ---------------------------------------------------------------------------
-function FixSongCard({ song, showToast, onApplied }) {
+// When `stageRequest` (a song_fix_requests row) is passed, the card is in
+// QUEUE / STAGING mode: instead of swapping the customer's song immediately, the
+// final button SAVES the corrected audio for the owner's approval (song-fix-queue
+// stages it; nothing goes live until the owner releases it from the queue). Used
+// for AI-queued customer fix requests. Without it, the card behaves exactly as
+// before — a direct owner fix that applies on click.
+function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, onStaged }) {
   const [messages, setMessages] = useState([]); // {role:'user'|'assistant', text}
   const [input, setInput] = useState('');
   const [image, setImage] = useState(null); // { dataUrl, base64, media_type }
@@ -60,7 +67,9 @@ function FixSongCard({ song, showToast, onApplied }) {
   const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
+  const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const staging = !!stageRequest;
   const postFn = (body) => fetch(FN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
@@ -470,8 +479,62 @@ function FixSongCard({ song, showToast, onApplied }) {
     }
   }
 
+  // STAGING (queue mode): host the corrected audio on the fix request WITHOUT
+  // swapping the customer's live song. The owner releases it later from the
+  // queue. Surgical fixes upload the spliced MP3 blob; full re-rolls hand over
+  // the Kie take URL for the backend to re-host (so it survives until approval).
+  async function stageToQueue({ blob, remoteUrl, fullLyrics, summary, corrections, mode }) {
+    if (blob) {
+      const fd = new FormData();
+      fd.append('request_id', stageRequest.id);
+      fd.append('audio', blob, `fixed-${song.id}.mp3`);
+      fd.append('songId', song.id);
+      fd.append('fullLyrics', fullLyrics || '');
+      fd.append('summary', summary || '');
+      fd.append('mode', mode || 'section');
+      if (corrections) fd.append('corrections', JSON.stringify(corrections));
+      const resp = await fetch(QUEUE_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        body: fd,
+      });
+      return resp.json();
+    }
+    const resp = await fetch(QUEUE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      body: JSON.stringify({
+        action: 'stage-remote', request_id: stageRequest.id, remote_audio_url: remoteUrl,
+        songId: song.id, fullLyrics: fullLyrics || '', summary: summary || '', corrections: corrections || null, mode: mode || 'full',
+      }),
+    });
+    return resp.json();
+  }
+
+  // Save the previewed fix for the owner's approval instead of applying it.
+  async function stageCurrentFix() {
+    if (!result) return;
+    setPhase('applying');
+    try {
+      let d;
+      if (result.surgical) {
+        d = await stageToQueue({ blob: result.splicedBlob, fullLyrics: result.fullLyrics, summary: result.changeSummary, corrections: result.corrections, mode: 'section' });
+      } else {
+        d = await stageToQueue({ remoteUrl: take.audioUrl, fullLyrics: take.lyrics || result.fullLyrics, summary: result.changeSummary, corrections: null, mode: 'full' });
+      }
+      if (!d?.success) { setError(d?.error || 'Could not save the fix for approval.'); setPhase('preview'); return; }
+      showToast('📥 Saved for approval. The owner will confirm before it replaces the customer\'s song.');
+      setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+      if (onStaged) onStaged();
+    } catch (e) {
+      setError('Network error while saving: ' + (e?.message || 'unknown'));
+      setPhase('preview');
+    }
+  }
+
   async function applyFix() {
     if (!result) return;
+    if (staging) return stageCurrentFix();
     setPhase('applying');
     try {
       // Surgical (spliced-in-browser) result: upload the finished MP3 as
@@ -556,6 +619,11 @@ function FixSongCard({ song, showToast, onApplied }) {
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
       <p className="text-xs text-gray-300 mb-1">🔧 Fix or redo the song</p>
+      {staging && (
+        <div className="mb-2 rounded-lg bg-blue-500/10 border border-blue-500/30 px-3 py-2 text-[11px] text-blue-200">
+          📥 <strong>Approval mode.</strong> When you finish, the fix is <strong>saved for the owner to confirm</strong> — it does <strong>not</strong> replace the customer's song until the owner releases it from the queue.
+        </div>
+      )}
 
       {/* Footprint — this song has been repaired before */}
       {fixStamp.fixedAt && (
@@ -712,8 +780,10 @@ function FixSongCard({ song, showToast, onApplied }) {
                   ✏️ Keep editing
                 </button>
               </div>
-              {/* Bundle: correct BOTH versions at once (each in its own voice) */}
-              {pendingMode === 'section' && !offerFullReroll && siblings.length > 0 && Array.isArray(plan.changes) && plan.changes.length > 0 && (
+              {/* Bundle: correct BOTH versions at once (each in its own voice).
+                  Hidden in queue/staging mode — a customer request targets one
+                  song, and staging + approval covers only the linked song. */}
+              {!staging && pendingMode === 'section' && !offerFullReroll && siblings.length > 0 && Array.isArray(plan.changes) && plan.changes.length > 0 && (
                 <button
                   onClick={() => runBothFix(plan.approvedLyrics, plan.changes)}
                   className="w-full mt-2 py-2 px-4 bg-indigo-500 text-white rounded-lg text-sm font-semibold hover:bg-indigo-400 transition"
@@ -816,7 +886,9 @@ function FixSongCard({ song, showToast, onApplied }) {
                   disabled={phase === 'applying'}
                   className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
                 >
-                  {phase === 'applying' ? '⏳ Applying…' : '✅ Apply (replaces the customer\'s)'}
+                  {staging
+                    ? (phase === 'applying' ? '⏳ Saving…' : '📥 Save for approval')
+                    : (phase === 'applying' ? '⏳ Applying…' : '✅ Apply (replaces the customer\'s)')}
                 </button>
                 {result.surgical && sectionParams && (
                   <button
@@ -867,8 +939,107 @@ function FixSongTab({ accessToken, showToast }) {
   const [selected, setSelected] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // Pending-fixes queue (song-fix-queue edge function).
+  const [queue, setQueue] = useState([]);
+  const [queueRole, setQueueRole] = useState(null); // 'admin' | 'assistant'
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueBusyId, setQueueBusyId] = useState(null);
+  const [activeRequest, setActiveRequest] = useState(null); // the request being worked
+
   const BASE = import.meta.env.VITE_SUPABASE_URL;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const QUEUE_URL = `${BASE}/functions/v1/song-fix-queue`;
+
+  const postQueue = useCallback(async (payload) => {
+    const res = await fetch(QUEUE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  }, [QUEUE_URL, accessToken, ANON]);
+
+  const loadQueue = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const data = await postQueue({ action: 'list' });
+      if (data?.success) {
+        setQueue(Array.isArray(data.requests) ? data.requests : []);
+        setQueueRole(data.role || null);
+      }
+    } catch { /* ignore */ }
+    finally { setQueueLoading(false); }
+  }, [accessToken, postQueue]);
+
+  useEffect(() => { loadQueue(); }, [loadQueue]);
+
+  // Open a song into the fix workflow, optionally attached to a queue request.
+  async function pick(songId, request = null) {
+    setLoadingDetail(true);
+    setSelected(null);
+    try {
+      const r = await fetch(`${BASE}/functions/v1/admin-songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        body: JSON.stringify({ action: 'detail', songId }),
+      });
+      const res = await r.json();
+      if (res.success && res.song) {
+        setSelected(res.song);
+        // If we're working a request that had no song linked, attach this one.
+        if (request && !request.song_id) {
+          try { await postQueue({ action: 'link-song', request_id: request.id, song_id: songId }); } catch { /* best effort */ }
+          setActiveRequest({ ...request, song_id: songId });
+          setQueue((prev) => prev.map((x) => (x.id === request.id ? { ...x, song_id: songId } : x)));
+        }
+      } else showToast('❌ Could not load the song.');
+    } catch {
+      showToast('❌ Error loading the song.');
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
+  // Queue actions.
+  async function claimReq(req) {
+    setQueueBusyId(req.id);
+    try {
+      await postQueue({ action: 'claim', request_id: req.id });
+      setActiveRequest({ ...req, status: 'in_progress' });
+      if (req.song_id) await pick(req.song_id, req);
+      await loadQueue();
+    } finally { setQueueBusyId(null); }
+  }
+  async function workReq(req) {
+    setActiveRequest(req);
+    if (req.song_id) await pick(req.song_id, req);
+  }
+  async function unclaimReq(req) {
+    setQueueBusyId(req.id);
+    try { await postQueue({ action: 'unclaim', request_id: req.id }); await loadQueue(); }
+    finally { setQueueBusyId(null); }
+  }
+  async function releaseReq(req) {
+    setQueueBusyId(req.id);
+    try {
+      const d = await postQueue({ action: 'release', request_id: req.id });
+      if (d?.success) showToast('✅ Released. The customer\'s song now uses the corrected version.');
+      else showToast(`❌ ${d?.error || 'Could not release the fix.'}`);
+      await loadQueue();
+    } finally { setQueueBusyId(null); }
+  }
+  async function rejectReq(req, reason) {
+    setQueueBusyId(req.id);
+    try { await postQueue({ action: 'reject', request_id: req.id, reason }); await loadQueue(); }
+    finally { setQueueBusyId(null); }
+  }
+
+  // Clear the active request + refresh once a fix is staged.
+  const onStaged = useCallback(() => {
+    setActiveRequest(null);
+    setSelected(null);
+    loadQueue();
+  }, [loadQueue]);
 
   useEffect(() => {
     if (!dq.trim() || !accessToken) { setResults([]); return; }
@@ -886,25 +1057,6 @@ function FixSongTab({ accessToken, showToast }) {
     return () => { cancelled = true; };
   }, [dq, accessToken]);
 
-  async function pick(songId) {
-    setLoadingDetail(true);
-    setSelected(null);
-    try {
-      const r = await fetch(`${BASE}/functions/v1/admin-songs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
-        body: JSON.stringify({ action: 'detail', songId }),
-      });
-      const res = await r.json();
-      if (res.success && res.song) setSelected(res.song);
-      else showToast('❌ Could not load the song.');
-    } catch {
-      showToast('❌ Error loading the song.');
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
-
   const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } };
 
   return (
@@ -913,6 +1065,32 @@ function FixSongTab({ accessToken, showToast }) {
         <h2 className="text-xl font-bold text-white mb-1">🔧 Fix a song</h2>
         <p className="text-sm text-gray-400">Search for the song, listen to it, and let the AI correct one part (a mispronounced name, a wrong line) without redoing the whole thing.</p>
       </div>
+
+      {/* Pending fixes queue — fed by the AI chat (approved in Messages). Hidden
+          while a specific song is open so the fix workspace has room. */}
+      {!selected && (
+        <FixQueue
+          requests={queue}
+          role={queueRole}
+          busyId={queueBusyId}
+          loading={queueLoading}
+          onClaim={claimReq}
+          onWork={workReq}
+          onUnclaim={unclaimReq}
+          onRelease={releaseReq}
+          onReject={rejectReq}
+          onRefresh={loadQueue}
+        />
+      )}
+
+      {/* Working a queued request that has no song linked yet — prompt to find it. */}
+      {activeRequest && !selected && (
+        <div className="mb-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 px-4 py-3">
+          <p className="text-xs text-indigo-100"><strong>Working a customer request:</strong> {activeRequest.customer_request}</p>
+          <p className="text-[11px] text-indigo-200/70 mt-1">Search below for this customer's song to attach and fix it.</p>
+          <button onClick={() => setActiveRequest(null)} className="mt-1 text-[11px] text-gray-400 hover:text-white">✕ Cancel</button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-4">
@@ -931,7 +1109,13 @@ function FixSongTab({ accessToken, showToast }) {
 
       {selected ? (
         <div className="bg-[#1a1f26] rounded-2xl p-4 border border-white/10">
-          <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-white mb-3">← Back to search</button>
+          <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-white mb-3">← Back to {activeRequest ? 'the queue' : 'search'}</button>
+          {activeRequest && (
+            <div className="mb-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-indigo-300/80 mb-0.5">Customer request</p>
+              <p className="text-xs text-indigo-100 whitespace-pre-wrap break-words">{activeRequest.customer_request}</p>
+            </div>
+          )}
           <h3 className="font-bold text-base text-white">🎵 {selected.recipient_name || 'No name'}{selected.sender_name && <span className="text-gray-500 font-normal text-sm"> ← {selected.sender_name}</span>}</h3>
           <p className="text-xs text-gray-500 mt-1 mb-3">{(selected.genre_name || selected.genre || '').replace(/_/g, ' ')} • {fmtDate(selected.created_at)} • {selected.email || ''}</p>
 
@@ -948,6 +1132,9 @@ function FixSongTab({ accessToken, showToast }) {
               <FixSongCard
                 song={selected}
                 showToast={showToast}
+                accessToken={accessToken}
+                stageRequest={activeRequest}
+                onStaged={onStaged}
                 onApplied={(newUrl, newLyrics) => setSelected((p) => (p ? { ...p, audio_url: newUrl, ...(newLyrics ? { lyrics: newLyrics } : {}) } : p))}
               />
             </>

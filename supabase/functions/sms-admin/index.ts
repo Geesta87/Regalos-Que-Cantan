@@ -113,6 +113,89 @@ async function captureExample(
   }
 }
 
+// Best-effort: find the ONE song a fix request should target, from the phone on
+// the conversation. Prefers a paid, already-generated song, newest first. Returns
+// null when it can't confidently pick one — the person working the queue links it.
+async function resolveSongForPhone(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  phone: string,
+): Promise<{ id: string; recipient_name: string | null } | null> {
+  const last10 = String(phone || '').replace(/\D/g, '').slice(-10);
+  if (last10.length < 10) return null;
+  const { data } = await admin
+    .from('songs')
+    .select('id, recipient_name, audio_url, paid, paid_at, payment_status')
+    .ilike('whatsapp_phone', `%${last10}`)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  const rows = data || [];
+  if (!rows.length) return null;
+  // deno-lint-ignore no-explicit-any
+  const isPaid = (s: any) => s.paid === true || s.payment_status === 'paid' || !!s.paid_at;
+  // deno-lint-ignore no-explicit-any
+  const withAudio = rows.filter((s: any) => s.audio_url);
+  const pick =
+    withAudio.find(isPaid) || withAudio[0] || rows.find(isPaid) || rows[0];
+  return pick ? { id: String(pick.id), recipient_name: pick.recipient_name ?? null } : null;
+}
+
+// Create (or refresh) an open song-fix request from an approved cs-agent draft.
+// Idempotent per conversation: if an open request already exists for this
+// conversation, update its text instead of stacking duplicates.
+async function createSongFixRequest(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  opts: {
+    conversationId: string;
+    phone: string;
+    customerName: string | null;
+    whatToChange: string;
+    sourceMessage: string | null;
+  },
+): Promise<{ created: boolean; song_linked: boolean }> {
+  const song = await resolveSongForPhone(admin, opts.phone);
+  const context = {
+    customer_name: opts.customerName || null,
+    phone: opts.phone || null,
+    recipient_name: song?.recipient_name || null,
+    source: 'cs-agent',
+    source_message: opts.sourceMessage || null,
+  };
+
+  // Reuse an existing OPEN request for this conversation (don't stack copies).
+  const { data: existing } = await admin
+    .from('song_fix_requests')
+    .select('id')
+    .eq('conversation_id', opts.conversationId)
+    .in('status', ['pending', 'in_progress', 'awaiting_approval'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await admin
+      .from('song_fix_requests')
+      .update({
+        customer_request: opts.whatToChange,
+        context,
+        ...(song?.id ? { song_id: song.id } : {}),
+      })
+      .eq('id', existing.id);
+    return { created: false, song_linked: !!song?.id };
+  }
+
+  await admin.from('song_fix_requests').insert({
+    song_id: song?.id || null,
+    conversation_id: opts.conversationId,
+    customer_request: opts.whatToChange,
+    context,
+    status: 'pending',
+    created_by: 'cs-agent',
+  });
+  return { created: true, song_linked: !!song?.id };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -381,7 +464,7 @@ serve(async (req) => {
 
       const { data: convo, error: cErr } = await admin
         .from('sms_conversations')
-        .select('id, phone, opted_out, channel')
+        .select('id, phone, opted_out, channel, customer_name')
         .eq('id', convoId)
         .single();
       if (cErr || !convo) return json({ success: false, error: 'Conversation not found' }, 404);
@@ -433,7 +516,36 @@ serve(async (req) => {
       // same email, so nothing can leak to a third party).
       let sideAction: string | undefined;
       const pa = (draft as Record<string, any>).proposed_action;
-      if (pa?.type === 'resend_email') {
+      if (pa?.type === 'song_fix_request') {
+        // Queue a song fix for the "Fix Song" tab. The team makes the change and
+        // the OWNER releases it — nothing about the song changes here.
+        const whatToChange = String(pa.what_to_change || '').trim();
+        if (whatToChange) {
+          try {
+            const { data: lastIn } = await admin
+              .from('sms_messages')
+              .select('body')
+              .eq('conversation_id', convoId)
+              .eq('direction', 'inbound')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            const r = await createSongFixRequest(admin, {
+              conversationId: convoId,
+              phone: convo.phone,
+              customerName: convo.customer_name ?? null,
+              whatToChange,
+              sourceMessage: lastIn?.body ?? null,
+            });
+            sideAction = r.created
+              ? `Solicitud de arreglo creada${r.song_linked ? '' : ' (falta vincular la canción)'}`
+              : 'Solicitud de arreglo actualizada';
+          } catch (e) {
+            sideAction = `No se pudo crear la solicitud de arreglo: ${String(e).slice(0, 80)}`;
+            console.error('approve-draft song_fix_request failed', e);
+          }
+        }
+      } else if (pa?.type === 'resend_email') {
         const paEmail = String(pa.email || '').trim();
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(paEmail)) {
           try {

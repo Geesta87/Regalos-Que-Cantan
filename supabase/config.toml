@@ -611,6 +611,16 @@ verify_jwt = true
 # use it — no revenue fields are exposed.
 verify_jwt = true
 
+[functions.song-fix-queue]
+# Backs the "Pending fixes" queue in the admin "Fix Song" tab. Called from the
+# dashboard with a logged-in Supabase Auth user's JWT → verify_jwt = true; the
+# handler requires a row in admin_users. Both 'admin' and 'assistant' may list /
+# claim / stage / reject a request, but only role='admin' may RELEASE a staged
+# fix into the customer's live song (the owner-only second approval gate).
+# Reads/writes song_fix_requests + swaps the audio into public.songs on release
+# (with the same fix_backup undo snapshot as the direct Fix Song apply).
+verify_jwt = true
+
 [functions.admin-affiliates]
 # Admin-gated reader for affiliates / affiliate_events / affiliate_payouts.
 # Same pattern as admin-songs: gateway validates the user JWT, handler
