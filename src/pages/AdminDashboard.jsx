@@ -66,6 +66,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // Bundle: the OTHER version(s) of this song (same session_id) + their fixed previews.
   const [siblings, setSiblings] = useState([]);
   const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
+  const [appliedBothIds, setAppliedBothIds] = useState([]); // which bundle versions were applied (per-version apply)
+  const [busyBothId, setBusyBothId] = useState(null); // version id currently applying/redoing
   const [failedTakes, setFailedTakes] = useState(null); // what Kie sang on a failed fix (diagnostic)
   const [showFailedTakes, setShowFailedTakes] = useState(false);
 
@@ -447,6 +449,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // OWN take (own voice). Previews both before applying.
   async function runBothFix(combinedLyrics, changes) {
     setError(''); setBothResults(null); setResult(null); setInput('');
+    setAppliedBothIds([]); setBusyBothId(null);
     setPhase('bothWorking');
     try {
       const targets = [
@@ -467,30 +470,56 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     }
   }
 
-  // Apply the fixed audio to EACH version's own row (own /song/<id> link).
-  async function applyBoth() {
-    if (!bothResults?.length) return;
-    setPhase('applying');
-    const summary = (plan?.changeSummary) || `${bothResults[0]?.corrections?.length || 1} corrección(es)`;
+  // Apply ONE bundle version to its own /song/<id> link. Per-version so the owner
+  // can accept a clean take and leave the other for a retry (they don't always
+  // come out right on the same pass).
+  async function applyOneBoth(r) {
+    if (!r?.splicedBlob) return;
+    setBusyBothId(r.id); setError('');
+    const summary = (plan?.changeSummary) || `${r.corrections?.length || 1} corrección(es)`;
     try {
-      for (const r of bothResults) {
-        const fd = new FormData();
-        fd.append('audio', r.splicedBlob, `fixed-${r.id}.mp3`);
-        fd.append('songId', r.id);
-        fd.append('fullLyrics', r.fullLyrics || '');
-        fd.append('summary', summary);
-        if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
-        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
-        const d = await resp.json();
-        if (!d.ok) throw new Error(`Versión ${r.version ?? '?'}: ${d.error || 'apply failed'}`);
-        if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
-      }
-      showToast('✅ Both versions corrected. Each keeps its own link.');
+      const fd = new FormData();
+      fd.append('audio', r.splicedBlob, `fixed-${r.id}.mp3`);
+      fd.append('songId', r.id);
+      fd.append('fullLyrics', r.fullLyrics || '');
+      fd.append('summary', summary);
+      if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
+      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+      const d = await resp.json();
+      if (!d.ok) throw new Error(d.error || 'apply failed');
+      if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
+      setAppliedBothIds((s) => [...new Set([...s, r.id])]);
       setCanUndo(true);
       stampFix(new Date().toISOString(), (fixStamp.count || 0) + 1, summary, 'section');
-      setPhase('idle'); setBothResults(null); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput('');
+      showToast(`✅ Version ${r.version ?? '?'} corrected — its /song link is updated.`);
     } catch (e) {
-      setError(e?.message || 'apply failed'); setPhase('bothPreview');
+      setError(`Versión ${r.version ?? '?'}: ${e?.message || 'apply failed'}`);
+    } finally {
+      setBusyBothId(null);
+    }
+  }
+
+  // Re-run the fix for ONE version only (fresh takes), replacing its preview —
+  // for when v1 came out clean but v2 needs another attempt.
+  async function redoOneBoth(r) {
+    if (!plan?.changes) return;
+    setBusyBothId(r.id); setError(''); setFailedTakes(null);
+    try {
+      const one = await fixOneSong(r.id, { changes: plan.changes, combinedLyrics: plan.approvedLyrics }, (m) => setSurgicalMsg(`Versión ${r.version ?? '?'}: ${m}`));
+      setBothResults((list) => (list || []).map((x) => (x.id === r.id ? { ...x, ...one } : x)));
+      setSurgicalMsg('');
+    } catch (e) {
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      setError(`Versión ${r.version ?? '?'}: ${e?.message || 'redo failed'}`); setSurgicalMsg('');
+    } finally {
+      setBusyBothId(null);
+    }
+  }
+
+  // Convenience: apply every version not already applied.
+  async function applyAllRemainingBoth() {
+    for (const r of (bothResults || [])) {
+      if (!appliedBothIds.includes(r.id)) await applyOneBoth(r);
     }
   }
 
@@ -907,6 +936,18 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   ✏️ Keep editing
                 </button>
               </div>
+              {/* Always-available alternative: a full re-roll (fresh take, same
+                  style & voice). Works even when the surgical fix can't (a change
+                  spread across the song, OR a song older than ~14 days whose Kie
+                  source is gone). Hidden only when the system already forced it. */}
+              {pendingMode === 'section' && !offerFullReroll && (
+                <button
+                  onClick={() => runFullReroll(plan.approvedLyrics, plan.verifyPhrases)}
+                  className="w-full mt-2 py-2 px-4 bg-amber-500/90 text-black rounded-lg text-sm font-semibold hover:bg-amber-400 transition"
+                >
+                  🔄 Or redo the full song instead (fresh take — same style & voice)
+                </button>
+              )}
               {/* Bundle: correct BOTH versions at once (each in its own voice).
                   Hidden in queue/staging mode — a customer request targets one
                   song, and staging + approval covers only the linked song. */}
@@ -927,14 +968,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             </p>
           )}
 
-          {/* Dual preview — both bundle versions, before/after each, with change markers */}
+          {/* Dual preview — both bundle versions, before/after each, with change
+              markers. Each version applies (or re-does) INDEPENDENTLY: accept a
+              clean take and retry the other without losing the good one. */}
           {(phase === 'bothPreview' || (phase === 'applying' && bothResults)) && bothResults && (
             <div className="mt-1 space-y-3">
               <p className="text-xs text-purple-100">📝 {(plan?.changeSummary) || 'Corrección aplicada a ambas versiones'}</p>
-              {bothResults.map((r) => (
-                <div key={r.id} className="bg-white/5 border border-white/10 rounded-lg p-3">
+              {surgicalMsg && <p className="text-[11px] text-purple-200">{surgicalMsg}</p>}
+              {bothResults.map((r) => {
+                const applied = appliedBothIds.includes(r.id);
+                const busy = busyBothId === r.id;
+                return (
+                <div key={r.id} className={`bg-white/5 border rounded-lg p-3 ${applied ? 'border-green-500/40' : 'border-white/10'}`}>
                   <p className="text-xs text-gray-200 font-semibold mb-1">
                     🎵 Version {r.version ?? '?'} {r.paid ? '· paid' : '· (not paid)'} {r.recipient_name ? `— ${r.recipient_name}` : ''}
+                    {applied && <span className="ml-2 text-green-400">✅ applied</span>}
                   </p>
                   {r.changeMarks?.length > 0 && (
                     <p className="text-[11px] text-amber-300 mb-2">🕐 Change{r.changeMarks.length > 1 ? 's' : ''} at {r.changeMarks.map((m) => mmss(m)).join(', ')} — jump there to check</p>
@@ -944,23 +992,46 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                     <audio controls className="w-full mb-2" src={r.audio_url} />
                   </>)}
                   <p className="text-[11px] text-gray-300 mb-1">✅ Corrected (after):</p>
-                  <audio controls className="w-full" src={r.correctedUrl} />
+                  <audio controls className="w-full mb-2" src={r.correctedUrl} />
+                  {applied ? (
+                    <p className="text-[11px] text-green-400">This version is live on its own /song link.</p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => applyOneBoth(r)}
+                        disabled={!!busyBothId}
+                        className="flex-1 py-1.5 px-3 bg-green-500 text-black rounded-lg text-xs font-semibold hover:bg-green-400 transition disabled:opacity-50"
+                      >
+                        {busy ? '⏳ Applying…' : '✅ Apply this one'}
+                      </button>
+                      <button
+                        onClick={() => redoOneBoth(r)}
+                        disabled={!!busyBothId}
+                        className="py-1.5 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition disabled:opacity-50"
+                        title="Re-sing this version again (fresh takes)"
+                      >
+                        {busy ? '⏳ Redoing…' : '🔁 Redo this one'}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+              );})}
               <div className="flex gap-2">
+                {appliedBothIds.length < bothResults.length && (
+                  <button
+                    onClick={applyAllRemainingBoth}
+                    disabled={!!busyBothId}
+                    className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-500 transition disabled:opacity-60"
+                  >
+                    ✅ Apply {appliedBothIds.length > 0 ? 'the rest' : 'both'} (each to its own link)
+                  </button>
+                )}
                 <button
-                  onClick={applyBoth}
-                  disabled={phase === 'applying'}
-                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
-                >
-                  {phase === 'applying' ? '⏳ Applying to both…' : '✅ Apply to both (each to its own link)'}
-                </button>
-                <button
-                  onClick={() => { setBothResults(null); setPhase('plan'); }}
-                  disabled={phase === 'applying'}
+                  onClick={() => { setBothResults(null); setAppliedBothIds([]); setPhase(appliedBothIds.length ? 'idle' : 'plan'); if (appliedBothIds.length) { setPlan(null); setMessages([]); setImage(null); setInput(''); } }}
+                  disabled={!!busyBothId}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
-                  Discard
+                  {appliedBothIds.length ? 'Done' : 'Discard'}
                 </button>
               </div>
             </div>

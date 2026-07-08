@@ -1284,16 +1284,30 @@ Deno.serve(async (req) => {
     if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
 
     const ageDays = song.created_at ? (Date.now() - new Date(song.created_at).getTime()) / 86400000 : null;
-    const staleWarning = ageDays !== null && ageDays > 14
-      ? `La canción tiene ~${Math.round(ageDays)} días; Kie borra el audio después de ~14 días, así que el arreglo por sección podría fallar. Si falla, usa regeneración completa.`
-      : null;
+    // Songs older than Kie's ~14-day audio retention can't be section-fixed — the
+    // original voice-track is deleted, so the re-sing + splice have nothing to work
+    // from. Route straight to the full re-roll (fresh take, same style & voice)
+    // with a clear message, instead of failing later on a dead transcription/re-sing.
+    if (ageDays !== null && ageDays > 14) {
+      return json({ ok: false, eligible: false, tooOld: true,
+        reason: `Esta canción tiene ~${Math.round(ageDays)} días. Kie borra el audio original después de ~14 días, así que el arreglo por sección (misma voz exacta) ya no es posible. Usa "Rehacer la canción completa" — se vuelve a grabar con el mismo estilo y tipo de voz.` });
+    }
 
     // ---- Word-level timestamps of the PRISTINE original (fresh Whisper — the
     // cached lyrics_timestamps may be a previously-fixed version, and the splice
-    // must line up with the pristine timeline). ----
-    const whisper: WhisperResult | null = await transcribeAudio(pristineUrl);
+    // must line up with the pristine timeline). If the Kie tempfile is unreachable
+    // (flaky/expired) but the song is still young enough, fall back to OUR permanent
+    // copy (audio_url) — it's the same audio, so both transcription and splice work. ----
+    let whisper: WhisperResult | null = await transcribeAudio(pristineUrl);
+    let pristineForSplice = pristineUrl;
+    if ((!whisper || whisper.words.length === 0) && song.audio_url && song.audio_url !== pristineUrl) {
+      console.log('[fix] pristine Kie URL unreachable — retrying with permanent audio_url');
+      const w2 = await transcribeAudio(song.audio_url);
+      if (w2 && w2.words.length) { whisper = w2; pristineForSplice = song.audio_url; }
+    }
     if (!whisper || whisper.words.length === 0) {
-      return json({ ok: false, error: 'No se pudo transcribir el audio (Whisper). Revisa OPENAI_API_KEY o intenta de nuevo.' });
+      return json({ ok: false, eligible: false,
+        reason: 'No se pudo acceder al audio original para transcribirlo. Usa "Rehacer la canción completa" (mismo estilo y voz).' });
     }
 
     const duration = whisper.duration || (whisper.words.length ? whisper.words[whisper.words.length - 1].end : 0);
@@ -1381,10 +1395,10 @@ Deno.serve(async (req) => {
           changeSummary: fix.change_summary || '',
           window: { startS: start, endS: end },
           sectionText,                 // the corrected block lines (for splice-boundary detection)
-          originalAudioUrl: pristineUrl, // pristine original — everything after the block comes from here
+          originalAudioUrl: pristineForSplice, // pristine original (or our permanent copy) — everything after the block comes from here
           fullLyrics, // the REAL corrected lyrics to store on apply
           verifyPhrases: phrasesToVerify,
-          staleWarning,
+          staleWarning: null,
         });
       } catch (e: any) {
         await logAttempt(supabase, { song_id: songId, action: 'section-submit', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
@@ -1437,13 +1451,13 @@ Deno.serve(async (req) => {
         songId,
         changeSummary: fix.change_summary || '',
         window: { startS: start, endS: end },
-        originalAudioUrl: pristineUrl,
+        originalAudioUrl: pristineForSplice,
         fixedAudioUrl: best.audioUrl,
         fixTaskId: lastTaskId,
         fixAudioId: best.id,
         fixImageUrl: best.imageUrl,
         fullLyrics, // store the REAL corrected lyrics, not the filter-dodging paraphrase
-        staleWarning,
+        staleWarning: null,
         verified: best.verified,
         verifyNote,
         takes: ordered.map((t) => ({ audioUrl: t.audioUrl, id: t.id, imageUrl: t.imageUrl, verified: t.verified, lyrics: fullLyrics })),
