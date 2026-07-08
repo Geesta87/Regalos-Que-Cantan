@@ -736,9 +736,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         : null)
     : null;
 
+  // Shareable customer link — always visible so the owner can copy-paste it to
+  // resend right after a repair (single song, or the whole bundle in one URL).
+  const shareIds = [song, ...siblings]
+    .filter(Boolean)
+    .sort((a, b) => (a.version || 0) - (b.version || 0))
+    .map((s) => s.id)
+    .filter((id, i, arr) => id && arr.indexOf(id) === i);
+  const shareUrl = `https://www.regalosquecantan.com/song/${shareIds.join(',')}`;
+  const copyShare = async () => {
+    try { await navigator.clipboard.writeText(shareUrl); showToast('🔗 Customer link copied — ready to paste.'); }
+    catch { showToast('Copy blocked — long-press/select the link to copy.'); }
+  };
+
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
       <p className="text-xs text-gray-300 mb-1">🔧 Fix or redo the song</p>
+      {/* Customer's shareable link — copy to resend after any fix/re-roll. */}
+      <div className="mb-2 flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5">
+        <span className="text-[11px] text-gray-400 flex-shrink-0">🔗 {shareIds.length > 1 ? `Link (both ${shareIds.length})` : 'Customer link'}:</span>
+        <a href={shareUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-300 truncate hover:underline flex-1 min-w-0">{shareUrl.replace('https://www.', '')}</a>
+        <button onClick={copyShare} className="text-[11px] px-2 py-0.5 bg-indigo-500 text-white rounded flex-shrink-0 hover:bg-indigo-400 transition">📋 Copy</button>
+      </div>
       {staging && (
         <div className="mb-2 rounded-lg bg-blue-500/10 border border-blue-500/30 px-3 py-2 text-[11px] text-blue-200">
           📥 <strong>Approval mode.</strong> When you finish, the fix is <strong>saved for the owner to confirm</strong> — it does <strong>not</strong> replace the customer's song until the owner releases it from the queue.
