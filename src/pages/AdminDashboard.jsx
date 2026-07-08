@@ -1582,10 +1582,33 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  // Plays the "Happy bells" purchase chime (public/sounds/happy-bells.mp3).
-  // Falls back to the synthesized beep if the file fails to load or the
-  // browser blocks playback.
-  const playPaymentSound = useCallback(() => {
+  // Rotates the three generic "new sale" lines so back-to-back ordinary sales
+  // don't announce identically.
+  const genericClipRef = useRef(0);
+
+  // Picks the spoken "Jarvis" announcement (public/sounds/jarvis/*.mp3) that best
+  // fits the sale. Price tiers speak their exact amount, so we only use a tiered
+  // line when amount_paid matches an RQC price closely — anything else (US-market
+  // prices, discounts, unknown amounts) rotates the price-free generic lines so
+  // Jarvis never states a wrong figure.
+  const pickJarvisClip = useCallback((song) => {
+    const base = '/sounds/jarvis/';
+    const amt = song && song.amount_paid != null ? parseFloat(song.amount_paid) : NaN;
+    if (!Number.isNaN(amt)) {
+      if (Math.abs(amt - 9.99) < 1) return base + 'upsell-video.mp3';
+      if (Math.abs(amt - 49.99) < 1) return base + 'pack-three.mp3';
+      if (Math.abs(amt - 39.99) < 1) return base + 'pack-two.mp3';
+      if (Math.abs(amt - 29.99) < 1) return base + 'pack-single.mp3';
+    }
+    const generics = ['new-sale-1.mp3', 'new-sale-2.mp3', 'new-sale-3.mp3'];
+    const clip = generics[genericClipRef.current % generics.length];
+    genericClipRef.current += 1;
+    return base + clip;
+  }, []);
+
+  // Speaks the sale in the Jarvis voice (Daniel). Falls back to the synthesized
+  // beep if the clip fails to load or the browser blocks playback.
+  const playPaymentSound = useCallback((song) => {
     // Celebratory "ka-ching" buzz on the phone, in sync with the sound. Safe
     // no-op on devices/browsers without the Vibration API (e.g. desktop, iOS).
     try {
@@ -1594,8 +1617,8 @@ export default function AdminDashboard() {
       }
     } catch { /* ignore */ }
     try {
-      const audio = new Audio('/sounds/happy-bells.mp3');
-      audio.volume = 0.6;
+      const audio = new Audio(pickJarvisClip(song));
+      audio.volume = 0.75;
       const p = audio.play();
       if (p && typeof p.catch === 'function') {
         p.catch(() => playFallbackBeep());
@@ -1603,7 +1626,7 @@ export default function AdminDashboard() {
     } catch {
       playFallbackBeep();
     }
-  }, [playFallbackBeep]);
+  }, [playFallbackBeep, pickJarvisClip]);
 
   const fireDesktopNotification = useCallback((song) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
@@ -1639,7 +1662,7 @@ export default function AdminDashboard() {
     setTimeout(() => {
       setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
     }, 12000);
-    playPaymentSound();
+    playPaymentSound(song);
     fireDesktopNotification(song);
     setPaymentAlertCount(c => c + 1);
   }, [paymentAlertsEnabled, playPaymentSound, fireDesktopNotification]);
@@ -1666,7 +1689,7 @@ export default function AdminDashboard() {
     setTimeout(() => {
       setPaymentToasts(prev => prev.filter(t => t.id !== toastId));
     }, 12000);
-    playPaymentSound();
+    playPaymentSound(fakeSong);
     fireDesktopNotification(fakeSong);
     // We deliberately do NOT bump paymentAlertCount on test fires so the
     // header counter reflects only real payments.
