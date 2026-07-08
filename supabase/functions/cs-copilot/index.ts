@@ -54,7 +54,7 @@ function downloadLink(s: Record<string, unknown>): string {
 const TOOL = {
   name: 'get_order',
   description:
-    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` — an EMAIL, a PHONE number, or a NAME (sender or recipient) — to look up a different order. Email search tolerates domain typos (e.g. glail.com instead of gmail.com) by falling back to the part before the @. Returns FULL details for each song: its `id`, recipient, sender, occasion, genre, payment status, amount paid, individual preview link, download link, the customer's context/details they typed, and the song lyrics. It ALSO returns `combined_preview_link` (ONE link that opens ALL returned songs on the comparison page) and, when a fuzzy/typo/name fallback was used, a `match_note` you should heed.",
+    "Look up the customer's order(s). By default uses the phone number of the open conversation. Optionally pass `search` — an EMAIL, a PHONE number, or a NAME (sender or recipient) — to look up a different order. Email search tolerates domain typos (e.g. glail.com instead of gmail.com) by falling back to the part before the @. Returns FULL details for each song: its `id`, recipient, sender, occasion, genre, payment status, amount paid, individual preview link, download link, the customer's context/details they typed, and the song lyrics. It ALSO returns `combined_preview_link` (ONE /listen link that opens ALL songs on the comparison page — to LISTEN/choose before paying) and `combined_download_link` (ONE /success link with the PAID songs — where the customer DOWNLOADS). These are DIFFERENT pages: use preview for unpaid, download for paid — never mix them. When a fuzzy/typo/name fallback was used it also returns a `match_note` you should heed.",
   input_schema: {
     type: 'object',
     properties: {
@@ -163,14 +163,20 @@ serve(async (req) => {
           lyrics: s.lyrics || null,
         };
       });
-      // ONE link that opens ALL of these songs together on the comparison page
-      // (exactly how we send a batch of songs so the customer can listen and
-      // pick). To send only SOME songs, build the same link with just those ids:
-      //   ${SITE}/listen?song_ids=ID1,ID2
+      // PREVIEW (unpaid): ONE /listen link that opens ALL songs on the
+      // comparison page to listen & choose BEFORE paying.
       const combined_preview_link = orders.length
         ? `${SITE}/listen?song_ids=${orders.map((o) => o.id).join(',')}`
         : null;
-      return { orders, combined_preview_link, match_note };
+      // DOWNLOAD (paid): ONE /success link with just the PAID songs — the page
+      // where the customer actually downloads. This is the combined link to send
+      // a paying customer who wants all their songs together. Different page from
+      // preview — never mix them up.
+      const paidIds = orders.filter((o) => o.is_paid).map((o) => o.id);
+      const combined_download_link = paidIds.length
+        ? `${SITE}/success?song_ids=${paidIds.join(',')}`
+        : null;
+      return { orders, combined_preview_link, combined_download_link, match_note };
     }
 
     const system = `Eres el copiloto interno del equipo de soporte de Regalos Que Cantan. Estás ayudando a un AGENTE HUMANO (el dueño) que en este momento chatea con un cliente (teléfono ${convoPhone || 'desconocido'}${convo?.customer_name ? `, ${convo.customer_name}` : ''}).
@@ -190,11 +196,13 @@ BUSCAR EL PEDIDO (IMPORTANTE — no te rindas rápido):
 - Si el pedido en el sistema tiene un correo distinto (por un error de tipeo) al que el cliente te da en el chat, es MUY probable que SÍ sea su pedido. get_order te avisa con match_note; menciónalo al dueño ("aparece con el correo X, parece un error de dedo") y deja que confirme.
 - Cuando get_order devuelva match_note, tómalo en cuenta y adviértele al dueño que verifique que es el cliente correcto antes de mandar enlaces.
 
-ENLACES DE PREVIEW (IMPORTANTE):
-- VARIAS canciones se pueden juntar en UN SOLO enlace usando \`combined_preview_link\` (formato /listen?song_ids=ID1,ID2,...). Ese enlace abre la página de comparación donde el cliente escucha TODAS las canciones y escoge la que quiere. Es EXACTAMENTE como se las presentamos al cliente.
-- Cuando el dueño pida "los dos/tres preview en un solo link" o "un solo URL con todas", SIEMPRE puedes hacerlo: es \`combined_preview_link\`. Nunca digas que es imposible juntarlos.
-- Para mandar solo ALGUNAS canciones (por ejemplo las 2 más recientes), arma el enlace tú mismo con esos \`id\` así: ${SITE}/listen?song_ids=ID1,ID2 (usa los \`id\` que devuelve get_order; los pedidos vienen ordenados del más reciente al más viejo).
-- Por defecto, prefiere dar UN SOLO enlace combinado en vez de varios enlaces sueltos, salvo que el dueño pida los enlaces por separado.
+ENLACES — hay DOS páginas distintas; NO las confundas:
+- PREVIEW = página /listen. Es para ESCUCHAR y escoger ANTES de pagar (pedidos SIN pagar). Varias canciones en un solo enlace = \`combined_preview_link\` (/listen?song_ids=ID1,ID2,...).
+- DESCARGA = página /success. Es donde el cliente YA PAGADO DESCARGA sus canciones. Varias canciones pagadas en un solo enlace = \`combined_download_link\` (/success?song_ids=ID1,ID2,...). NUNCA mandes un enlace /listen diciendo que es de descarga.
+- REGLA SIMPLE: ¿el cliente YA PAGÓ y quiere sus canciones (para descargar/compartir)? → dale \`combined_download_link\` (o el \`download_link\` individual). ¿AÚN NO paga y quiere escuchar/escoger? → dale \`combined_preview_link\`.
+- Cuando el dueño pida "las dos/tres en un solo link", SIEMPRE puedes hacerlo: usa combined_download_link si ya pagaron, o combined_preview_link si es para escuchar. Nunca digas que es imposible juntarlas.
+- Para mandar solo ALGUNAS, arma el enlace con esos \`id\`: preview = ${SITE}/listen?song_ids=ID1,ID2 ; descarga (solo pagadas) = ${SITE}/success?song_ids=ID1,ID2. Los pedidos vienen del más reciente al más viejo.
+- Por defecto, prefiere UN SOLO enlace combinado en vez de varios sueltos, salvo que el dueño pida los enlaces por separado.
 - Si el cliente tiene VARIAS canciones (3 o más) y el dueño no dijo cuáles, PREGUNTA primero cuáles quiere incluir antes de dar el enlace: ¿las 2 más recientes, o todas las de hoy, o todas? No adivines.${isAdmin ? '' : '\n- NUNCA menciones montos, cantidades ni cifras de dinero (por ejemplo $39.99). Solo puedes decir si el pedido está pagado o no, nunca cuánto.'}`;
 
     const convo2: { role: 'user' | 'assistant'; content: unknown }[] = messages
