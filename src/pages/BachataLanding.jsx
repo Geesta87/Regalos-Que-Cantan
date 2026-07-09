@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import SocialProofToast from '../components/SocialProofToast';
 import { trackStep } from '../services/tracking';
+import genres from '../config/genres';
 
 // ============================================
 // BACHATA — dedicated landing page
@@ -19,11 +20,18 @@ const bachataSamples = [
   { id: 3, title: 'Bachata Clásica Dominicana', style: 'Clásica', emoji: '🎸', audioUrl: '/samples/bachata/muestra-tradicional.mp3', tag: 'Auténtica dominicana' }
 ];
 
-// Sub-styles — ids MUST match src/config/genres.js → bachata.subgenres
-const bachataStyles = [
-  { id: 'romantica', name: 'Romántica', emoji: '🌹', desc: 'Dulce y emotiva', popular: true },
-  { id: 'urbana_sensual', name: 'Urbana Sensual', emoji: '💋', desc: 'Moderna y sensual' }
-];
+// Sub-styles — pulled straight from src/config/genres.js so they are EXACTLY
+// the 3 bachata sub-genres a buyer sees in the regular funnel (same ids, names
+// and descriptions). Selecting one presets formData.subGenre and continues to
+// the funnel's next step (occasion), just like GenreStep does.
+const STYLE_EMOJI = { tradicional: '🎸', urbana_sensual: '💋', romantica: '🌹' };
+const bachataStyles = Object.entries(genres.bachata.subGenres).map(([id, s]) => ({
+  id,
+  name: s.name,
+  desc: s.description,
+  emoji: STYLE_EMOJI[id] || '🎵',
+  popular: id === 'romantica',
+}));
 
 const testimonials = [
   { text: "Le hice una bachata a mi esposa para nuestro aniversario. Lloró desde el primer verso. Suena idéntica a Romeo Santos.", name: "José L.", location: "Nueva York, NY", rating: 5 },
@@ -363,7 +371,7 @@ export default function BachataLanding() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {bachataStyles.map((style) => (
               <button
                 key={style.id}
