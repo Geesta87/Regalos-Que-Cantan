@@ -14,7 +14,7 @@ import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus } from 'lucide-react';
-import { spliceIntoOriginal, spliceAddedTail, parseTimed, findLastLineEnd, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
+import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -227,10 +227,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // Returns the chosen take + splice points, or throws (err.offerFull = fall back
   // to a full re-roll). This is the piece the old "pick the tightest take" logic
   // was missing (it silently accepted takes that skipped the corrected line).
-  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null }, onMsg) {
-    const ROUNDS = 4;
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null }, onMsg) {
+    const ROUNDS = 5;
     let lastReason = '';
     const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
+    let origLine = null; // pristine {startS,endS} of the line being changed (line-replace mode)
     for (let round = 1; round <= ROUNDS; round++) {
       onMsg?.(`Regenerating the part… (attempt ${round})`);
       const sub = await postFn({ action: 'section-submit', mode: 'section', songId, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
@@ -243,6 +244,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const startS = Number(sub.window?.startS);
       const origCut = Number(sub.window?.endS);
       if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) throw new Error('Incomplete response from the server.');
+
+      // LINE-REPLACE mode: locate the ORIGINAL line in the pristine once, so we can
+      // swap in JUST the corrected line from a take (cutting any gibberish Kie pads
+      // around it). Transcribe the pristine only on the first round.
+      if (lineReplace?.before && lineReplace?.after && !origLine) {
+        try {
+          const ptr = await postFn({ action: 'transcribe', audioUrl: originalAudioUrl });
+          const pw = parseTimed(ptr.timed);
+          origLine = findCleanLine(pw, buildTokenGroups(lineReplace.before), { nearS: origCut, maxGapS: 3.5 });
+        } catch { origLine = null; }
+      }
 
       // Poll until the re-sing is ready.
       let takeUrls = [];
@@ -266,9 +278,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const groups = buildTokenGroups(addLine ? addLine.text : (correctedText || sectionText));
       const maxSpanS = (origCut > startS ? origCut - startS : 20) + 12;
       const cands = [];
+      const lineCands = []; // line-replace candidates (clean corrected line found in-take)
       for (const url of takeUrls) {
         const tr = await postFn({ action: 'transcribe', audioUrl: url });
         const words = parseTimed(tr.timed);
+        // LINE-REPLACE: if the CLEAN corrected line is present in this take (even
+        // surrounded by gibberish), we can swap just that line — preferred, since
+        // it cuts the junk. Only when its length ~matches the original line's slot.
+        if (lineReplace && origLine) {
+          const cl = findCleanLine(words, groups, { nearS: origLine.startS, maxGapS: 3.5 });
+          if (cl && (cl.endS - cl.startS) <= (origLine.endS - origLine.startS) + 2.5) {
+            lineCands.push({ url, rStart: cl.startS, rEnd: cl.endS });
+          }
+        }
         // ADD-A-LINE: accept a take that cleanly SANG the new line (anchor present).
         // Return the take + its transcript so the caller can compute the outro
         // splice seams (biggestGap / anchor / outro) itself.
@@ -300,6 +322,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         if (okTake) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
         else lastReason = reason;
       }
+      if (lineCands.length) {
+        // Prefer the take whose corrected line starts nearest the original slot.
+        lineCands.sort((a, b) => Math.abs(a.rStart - origLine.startS) - Math.abs(b.rStart - origLine.startS));
+        const c = lineCands[0];
+        return { lineReplace: true, resungUrl: c.url, pStart: origLine.startS, pEnd: origLine.endS, rStart: c.rStart, rEnd: c.rEnd, originalAudioUrl, fullLyrics, changeSummary, startS };
+      }
       if (cands.length && addLine) {
         cands.sort((a, b) => a.maxGap - b.maxGap); // most continuous clean pass
         const c = cands[0];
@@ -323,9 +351,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setSectionParams({ approvedLyrics, verifyPhrases });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText }, setSurgicalMsg);
+      // A SINGLE within-line word change ⇒ line-replace mode: swap just that line
+      // (cuts any gibberish Kie pads around it, keeps the exact voice everywhere).
+      const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
+      const lineReplace = one && one.before && one.after ? { before: one.before, after: one.after } : null;
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace }, setSurgicalMsg);
       setSurgicalMsg('Stitching with the original recording…');
-      const spliced = await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
+      const spliced = r.lineReplace
+        ? await spliceLineReplace({ pristineUrl: r.originalAudioUrl, pStart: r.pStart, pEnd: r.pEnd, resungUrl: r.resungUrl, rStart: r.rStart, rEnd: r.rEnd })
+        : await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
       setResult({
         surgical: true,
         splicedBlob: spliced.blob,
@@ -406,16 +440,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     for (let i = 0; i < changes.length; i++) {
       const c = changes[i];
       const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
-      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
+      const lineReplace = c.before && c.after ? { before: c.before, after: c.after } : null;
+      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after, lineReplace }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
       done.push(r);
     }
     const changeMarks = done.map((d) => d.startS).filter((n) => n > 0).sort((a, b) => a - b);
-    done.sort((a, b) => b.startS - a.startS); // latest-first
+    done.sort((a, b) => b.startS - a.startS); // latest-first (earlier lines' timing stays valid)
     let baseUrl = done[0].originalAudioUrl; // pristine original
     let blob = null;
     for (const c of done) {
       onMsg?.('Uniendo con la grabación original…');
-      const sp = await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
+      const sp = c.lineReplace
+        ? await spliceLineReplace({ pristineUrl: baseUrl, pStart: c.pStart, pEnd: c.pEnd, resungUrl: c.resungUrl, rStart: c.rStart, rEnd: c.rEnd })
+        : await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
       baseUrl = sp.url; blob = sp.blob;
     }
     return { splicedBlob: blob, correctedUrl: baseUrl, fullLyrics: combinedLyrics, changeMarks };
