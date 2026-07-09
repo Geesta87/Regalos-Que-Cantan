@@ -21,9 +21,8 @@ const bachataSamples = [
 
 // Sub-styles — ids MUST match src/config/genres.js → bachata.subgenres
 const bachataStyles = [
-  { id: 'romantica', name: 'Romántica', emoji: '🌹', desc: 'Emotiva · Frank Reyes', popular: true },
-  { id: 'urbana_sensual', name: 'Urbana Sensual', emoji: '💋', desc: 'Moderna · Romeo Santos' },
-  { id: 'tradicional', name: 'Clásica Dominicana', emoji: '🎸', desc: 'Auténtica · Antony Santos' }
+  { id: 'romantica', name: 'Romántica', emoji: '🌹', desc: 'Dulce y emotiva', popular: true },
+  { id: 'urbana_sensual', name: 'Urbana Sensual', emoji: '💋', desc: 'Moderna y sensual' }
 ];
 
 const testimonials = [
@@ -266,6 +265,10 @@ export default function BachataLanding() {
           50% { box-shadow: 0 0 30px rgba(225,29,72,0.6), 0 0 60px rgba(225,29,72,0.3), 0 0 80px rgba(244,114,182,0.15); }
         }
         @keyframes floatSlow { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+        @keyframes cardGlowPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(244,63,94,0), 0 0 16px rgba(244,63,94,0.35); border-color: rgba(251,113,133,0.85); }
+          50% { box-shadow: 0 0 0 5px rgba(244,63,94,0.25), 0 0 36px rgba(244,63,94,0.65); border-color: rgba(251,113,133,1); }
+        }
       `}</style>
       <audio ref={audioRef} preload="metadata" />
       <SocialProofToast />
@@ -360,7 +363,7 @@ export default function BachataLanding() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
             {bachataStyles.map((style) => (
               <button
                 key={style.id}
@@ -374,9 +377,10 @@ export default function BachataLanding() {
                   selectedStyle?.id === style.id
                     ? 'border-rose-400 bg-rose-500/15 scale-[1.03] shadow-xl shadow-rose-500/25 ring-2 ring-rose-400/30'
                     : styleError && !selectedStyle
-                    ? 'border-red-500/40 bg-white/[0.03] hover:border-rose-500/40 hover:bg-white/[0.06]'
+                    ? 'border-rose-400 bg-rose-500/[0.08] scale-[1.02]'
                     : 'border-white/10 bg-white/[0.03] hover:border-rose-500/40 hover:bg-white/[0.06]'
                 }`}
+                style={styleError && !selectedStyle ? { animation: 'cardGlowPulse 1.2s ease-in-out infinite' } : undefined}
               >
                 {style.popular && (
                   <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-rose-500 text-white text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">POPULAR</div>
