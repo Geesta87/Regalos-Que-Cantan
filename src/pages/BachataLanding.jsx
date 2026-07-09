@@ -251,7 +251,13 @@ export default function BachataLanding() {
       genre: 'bachata',
       genreName: 'Bachata',
       subGenre: style.id,
-      subGenreName: style.name
+      subGenreName: style.name,
+      // Clear stale style fields from any previous session so the summary
+      // "Estilo" never shows a leftover artist (bachata has no artist step).
+      artistInspiration: '',
+      customStyle: '',
+      subGenrePrompt: '',
+      genreStyle: ''
     }));
     navigateTo('occasion');
   };
