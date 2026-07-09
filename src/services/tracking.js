@@ -264,6 +264,7 @@ export const trackStep = async (step, metadata = {}) => {
       const pixelEventMap = {
         'landing': { event: 'ViewContent', params: { content_name: 'Landing Page', content_category: 'funnel' }},
         'landing_v2': { event: 'ViewContent', params: { content_name: 'Landing Page V2', content_category: 'funnel' }},
+        'landing_bachata': { event: 'ViewContent', params: { content_name: 'Bachata Landing', content_category: 'funnel' }},
         'genre': { event: 'ViewContent', params: { content_name: 'Genre Selection', content_category: 'funnel' }},
         'artist': { event: 'ViewContent', params: { content_name: 'Artist Selection', content_category: 'funnel' }},
         'occasion': { event: 'ViewContent', params: { content_name: 'Occasion Selection', content_category: 'funnel' }},
@@ -298,6 +299,7 @@ export const trackStep = async (step, metadata = {}) => {
         'landing': 'ViewContent',
         'landing_v2': 'ViewContent',
         'landing_premium': 'ViewContent',
+        'landing_bachata': 'ViewContent',
         'genre': 'ViewContent',
         'artist': 'ViewContent',
         'occasion': 'ViewContent',
@@ -368,6 +370,7 @@ export const trackPurchase = async (songId, amount, couponCode = null) => {
 export const FUNNEL_STEPS = [
   { key: 'landing', label: 'Landing', icon: '🏠' },
   { key: 'landing_v2', label: 'Landing V2', icon: '🏠' },
+  { key: 'landing_bachata', label: 'Bachata Landing', icon: '🌹' },
   { key: 'genre', label: 'Género', icon: '🎵' },
   { key: 'artist', label: 'Artista', icon: '🎤' },
   { key: 'occasion', label: 'Ocasión', icon: '🎁' },

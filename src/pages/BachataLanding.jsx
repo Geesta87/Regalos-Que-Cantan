@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import SocialProofToast from '../components/SocialProofToast';
+import { trackStep } from '../services/tracking';
 
 // ============================================
 // BACHATA — dedicated landing page
@@ -204,7 +205,11 @@ export default function BachataLanding() {
   const audioRef = useRef(null);
   const styleRef = useRef(null);
 
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // Fire a dedicated ViewContent for ad optimization + clean attribution.
+    trackStep('landing_bachata');
+  }, []);
 
   useEffect(() => {
     if (!audioRef.current) return;
