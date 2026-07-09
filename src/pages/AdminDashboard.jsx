@@ -70,6 +70,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const [busyBothId, setBusyBothId] = useState(null); // version id currently applying/redoing
   const [failedTakes, setFailedTakes] = useState(null); // what Kie sang on a failed fix (diagnostic)
   const [showFailedTakes, setShowFailedTakes] = useState(false);
+  const [rewordSuggestions, setRewordSuggestions] = useState(null); // singable alternatives when a word keeps failing
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
@@ -174,7 +175,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setResult(null);
     setPlan(null);
     setOfferFullReroll(false);
-    setFailedTakes(null); setShowFailedTakes(false);
+    setFailedTakes(null); setShowFailedTakes(false); setRewordSuggestions(null);
     setPendingMode(mode);
     setPhase('planning');
     try {
@@ -344,6 +345,30 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     throw err;
   }
 
+  // On a stubborn failure (a single-line change the AI singer keeps refusing),
+  // ask the backend for singable rewordings and show them as one-click chips.
+  async function fetchRewordFor(e) {
+    const change = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
+    if (!change?.after) return;
+    const sang = Array.isArray(e?.takes) && e.takes.length ? (e.takes[e.takes.length - 1]?.text || '') : '';
+    try {
+      const r = await postFn({ action: 'reword', before: change.before || '', after: change.after, sang });
+      if (r?.ok && Array.isArray(r.suggestions) && r.suggestions.length) setRewordSuggestions(r.suggestions);
+    } catch { /* non-fatal */ }
+  }
+  // Owner picked a reworded line — update the plan and drop back to the confirm
+  // screen so they approve the new wording before we re-run (reword-then-ask).
+  function applyReword(newText) {
+    if (!plan?.changes?.length || !newText) return;
+    const oldAfter = plan.changes[0].after;
+    const changes = plan.changes.map((c, i) => (i === 0 ? { ...c, after: newText } : c));
+    const approved = (oldAfter && typeof plan.approvedLyrics === 'string') ? plan.approvedLyrics.replace(oldAfter, newText) : plan.approvedLyrics;
+    setPlan({ ...plan, changes, approvedLyrics: approved });
+    setRewordSuggestions(null); setFailedTakes(null); setShowFailedTakes(false); setOfferFullReroll(false); setError('');
+    setPhase('plan');
+    showToast('✏️ Reworded — review and press "Fix just that part" to try the new wording.');
+  }
+
   // Single-part surgical fix ("Fix just that part").
   async function runSectionSurgical(approvedLyrics, verifyPhrases) {
     setError(''); setResult(null); setInput('');
@@ -374,6 +399,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     } catch (e) {
       setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -385,7 +411,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // project_add_new_line_to_song. NEEDS a live test on a real order before trusted.
   async function runAddLine(approvedLyrics, addLine, verifyPhrases) {
     setError(''); setResult(null); setInput('');
-    setFailedTakes(null); setShowFailedTakes(false);
+    setFailedTakes(null); setShowFailedTakes(false); setRewordSuggestions(null);
     setPhase('working'); setSurgicalMsg('Re-singing the ending with the new line…');
     setSectionParams({ approvedLyrics, verifyPhrases });
     try {
@@ -478,6 +504,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     } catch (e) {
       setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -503,6 +530,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     } catch (e) {
       setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -881,6 +909,27 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           {/* Diagnostic: what Kie actually sang on the rejected takes, so the
               owner can see WHY the surgical fix failed (skipped line, mangled a
               name, babbled) and decide to reword or redo the full song. */}
+          {/* Reword suggestions — the AI singer won't sing the word; offer singable
+              alternatives that keep the meaning. Picking one drops back to the
+              confirm screen with the new wording (owner approves, then retries). */}
+          {Array.isArray(rewordSuggestions) && rewordSuggestions.length > 0 && (
+            <div className="mb-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-2.5">
+              <p className="text-[11px] text-indigo-200 mb-1.5">💡 The AI singer keeps refusing that wording. Try one of these — same meaning, easier to sing:</p>
+              <div className="space-y-1.5">
+                {rewordSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => applyReword(s.text)}
+                    className="w-full text-left rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1.5 transition"
+                  >
+                    <p className="text-[12px] text-green-200">“{s.text}”</p>
+                    {s.why && <p className="text-[10px] text-gray-400 mt-0.5">{s.why}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {Array.isArray(failedTakes) && failedTakes.length > 0 && (
             <div className="mb-3 bg-black/20 border border-amber-500/30 rounded-lg p-2">
               <button

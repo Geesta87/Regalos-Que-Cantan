@@ -418,6 +418,46 @@ async function callClaudeChat(lyrics: string, conversation: ChatMsg[], image?: I
   return null;
 }
 
+// Suggest alternate wordings of a line the AI singer keeps refusing (skips it,
+// garbles it, or reverts to the original word — e.g. llaman→llamarán, or a filter
+// block like "mi vida no tiene sentido"). Keeps the meaning; makes it singable.
+const REWORD_TOOL = {
+  name: 'suggest_rewordings',
+  description: 'Suggest 2-3 alternate wordings of a lyric line that keep the exact meaning but are easier for the AI singer to sing.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      suggestions: {
+        type: 'array',
+        items: { type: 'object', properties: { text: { type: 'string' }, why: { type: 'string' } }, required: ['text', 'why'], additionalProperties: false },
+      },
+    },
+    required: ['suggestions'],
+    additionalProperties: false,
+  },
+} as const;
+async function callClaudeReword(before: string, after: string, sang: string): Promise<any[]> {
+  if (!ANTHROPIC_API_KEY) return [];
+  const system = `Eres un letrista experto en canciones en español generadas por IA (Suno/Kie). El generador NO logra cantar cierta línea corregida: la salta, canta gibberish, o vuelve a la palabra original. Propón 2-3 REDACCIONES ALTERNATIVAS de la línea que: (a) conserven EXACTAMENTE el significado que el cliente pidió; (b) sean más fáciles de cantar — evita homófonos que el modelo confunde (p. ej. "me dicen"→"me hice"), y evita frases que disparan el filtro de contenido (autolesión: "mi vida no tiene sentido"); (c) mantengan métrica y rima parecidas. Cada sugerencia: text = la línea nueva completa en ESPAÑOL; why = una frase corta en INGLÉS para el dueño. Devuelve llamando a suggest_rewordings.`;
+  const user = `Línea original: "${before}"\nCorrección deseada: "${after}"\nLo que el generador cantó (fallando): "${sang || '(saltó la línea / gibberish)'}"\n\nPropón 2-3 redacciones alternativas de la línea corregida, cantables, mismo significado.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const model = attempt === 2 ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 800, system, tool_choice: { type: 'tool', name: 'suggest_rewordings' }, tools: [REWORD_TOOL], messages: [{ role: 'user', content: user }] }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const block = (data?.content || []).find((b: any) => b?.type === 'tool_use' && b?.name === 'suggest_rewordings');
+      const s = block?.input?.suggestions;
+      if (Array.isArray(s) && s.length) return s.slice(0, 3);
+    } catch { /* next model */ }
+  }
+  return [];
+}
+
 // Claude rewrites the FULL lyrics with the fix applied (for the whole-song
 // re-roll path). Same tool_use pattern as callClaudeForFix.
 async function callClaudeForFullLyrics(currentLyrics: string, complaint: string, image?: InlineImage): Promise<any | null> {
@@ -1092,6 +1132,15 @@ Deno.serve(async (req) => {
     // PLAN — cheap, instant: show the proposed lyric change(s) before
     // spending any Kie credits. No transcription, no audio generation.
     // -----------------------------------------------------------------
+    // Reword a stubborn line the AI singer keeps refusing (skip/garble/filter) —
+    // returns 2-3 singable alternatives that keep the meaning, for the owner to pick.
+    if (action === 'reword') {
+      const after = String(body?.after || '');
+      if (!after) return json({ ok: false, error: 'after line is required' });
+      const suggestions = await callClaudeReword(String(body?.before || ''), after, String(body?.sang || ''));
+      return json({ ok: true, suggestions });
+    }
+
     if (action === 'plan') {
       if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
       const songId: string | undefined = body?.songId;
