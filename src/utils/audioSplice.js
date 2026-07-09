@@ -176,6 +176,54 @@ export async function spliceAddedTail({ pristineUrl, joinP, resungUrl, reJoin, r
   return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
 }
 
+// LINE-REPLACE splice — swap ONE line in place, keeping everything else pristine.
+// Replaces the original's [pStart,pEnd] (the line being changed) with the take's
+// [rStart,rEnd] (the CLEAN corrected line located by findCleanLine), cutting any
+// gibberish Kie padded around it: pristine[0..pStart] + resung[rStart..rEnd] +
+// pristine[pEnd..]. Two crossfaded seams. This is what makes a "Kie sang it right
+// but wrapped it in nonsense" take usable, and keeps the exact original voice for
+// the whole rest of the song. Proven recipe (Ana Julia hijo→nieto, 2026-07). Web
+// Audio port — verify on a real fix before fully trusting.
+export async function spliceLineReplace({ pristineUrl, pStart, pEnd, resungUrl, rStart, rEnd, xfade = 0.18 }) {
+  const ctx = getCtx();
+  let prBuf, reBuf;
+  try {
+    [prBuf, reBuf] = await Promise.all([decode(pristineUrl, ctx), decode(resungUrl, ctx)]);
+  } finally {
+    if (ctx.close) ctx.close();
+  }
+  const sr = prBuf.sampleRate;
+  const aLen = Math.max(0, Math.min(pStart, prBuf.duration));            // pristine head
+  const bLen = Math.max(0, Math.min(rEnd, reBuf.duration) - rStart);     // clean corrected line
+  const cOff = Math.max(0, Math.min(pEnd, prBuf.duration));              // pristine tail start
+  const cLen = Math.max(0, prBuf.duration - cOff);
+  if (bLen <= 0 || aLen + bLen + cLen <= 0) throw new Error('Puntos de empalme inválidos (line-replace).');
+  const xf1 = Math.max(0, Math.min(xfade, aLen - 0.03, bLen - 0.03));
+  const xf2 = Math.max(0, Math.min(xfade, bLen - 0.03, cLen - 0.03));
+  const bStart = Math.max(0, aLen - xf1);
+  const cStart = Math.max(0, bStart + bLen - xf2);
+  const totalDur = cStart + cLen;
+
+  const channels = Math.max(prBuf.numberOfChannels, reBuf.numberOfChannels) >= 2 ? 2 : 1;
+  const off = new OfflineAudioContext(channels, Math.ceil(totalDur * sr), sr);
+  const seg = (buf, startAt, offsetS, durS, fadeInS, fadeOutS) => {
+    if (durS <= 0) return;
+    const src = off.createBufferSource(); src.buffer = buf;
+    const g = off.createGain(); src.connect(g).connect(off.destination);
+    const endAt = startAt + durS;
+    g.gain.setValueAtTime(fadeInS > 0 ? 0 : 1, startAt);
+    if (fadeInS > 0) g.gain.linearRampToValueAtTime(1, startAt + fadeInS);
+    if (fadeOutS > 0) { g.gain.setValueAtTime(1, Math.max(startAt, endAt - fadeOutS)); g.gain.linearRampToValueAtTime(0, endAt); }
+    src.start(startAt, offsetS, durS);
+  };
+  seg(prBuf, 0, 0, aLen, 0, xf1);            // A: pristine up to the line
+  seg(reBuf, bStart, rStart, bLen, xf1, xf2); // B: clean corrected line (gibberish cut)
+  seg(prBuf, cStart, cOff, cLen, xf2, 0);     // C: pristine after the line
+  const rendered = await off.startRendering();
+  const blob = audioBufferToMp3Blob(rendered, 192);
+  return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
+}
+
 // --- Pure detection helpers for the add-a-line recipe (unit-testable in Node) ---
 
 // Biggest instrumental gap (silence between sung words) inside [fromS, toS].
@@ -272,6 +320,37 @@ export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } 
   if (best.maxGap > maxGapS) return { ok: false, reason: `hueco de ${best.maxGap.toFixed(1)}s (¿balbuceo/repetición?)`, ...best };
   if (best.span > maxSpanS) return { ok: false, reason: `tramo de ${best.span.toFixed(1)}s demasiado largo`, ...best };
   return { ok: true, endS: best.endS, maxGap: best.maxGap, span: best.span };
+}
+
+// Locate the CLEAN corrected line inside a take and return its {startS, endS}.
+// Kie's replace-section often sings the corrected line correctly but pads it with
+// hallucinated gibberish (observed: "mi nieto no alcanzó esa comunión" surrounded
+// by nonsense). The old flow spliced the whole re-sung window (gibberish and all);
+// this finds the TIGHT, in-order run of the corrected words — the real line — even
+// when garbage surrounds it, so the caller can splice ONLY that line and cut the
+// junk. `tokenGroups` is buildTokenGroups(correctedLine). Prefers the occurrence
+// whose START is nearest `nearS` (the expected pristine position). Returns null if
+// no clean run exists (the line was truly skipped/garbled in this take).
+export function findCleanLine(words, tokenGroups, { nearS = null, maxGapS = 3.2 } = {}) {
+  if (!words?.length || !tokenGroups?.length) return null;
+  const atoms = words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }));
+  const grpEq = (n, group) => group.some((g) => n === g
+    || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n)))
+    || (Math.max(n.length, g.length) >= 5 && Math.abs(n.length - g.length) <= 1 && _lev(n, g) <= 1));
+  const cands = [];
+  for (let start = 0; start < atoms.length; start++) {
+    if (!grpEq(atoms[start].n, tokenGroups[0])) continue;
+    let gi = 0, ai = start, ok = true, prevE = atoms[start].s;
+    const hit = [];
+    while (gi < tokenGroups.length && ai < atoms.length) {
+      if (grpEq(atoms[ai].n, tokenGroups[gi])) { if (atoms[ai].s - prevE > maxGapS) { ok = false; break; } prevE = atoms[ai].e; hit.push(atoms[ai]); gi++; }
+      ai++;
+    }
+    if (gi === tokenGroups.length && ok) cands.push({ startS: hit[0].s, endS: hit[hit.length - 1].e });
+  }
+  if (!cands.length) return null;
+  if (nearS == null) return cands[0];
+  return cands.reduce((b, c) => (Math.abs(c.startS - nearS) < Math.abs(b.startS - nearS) ? c : b));
 }
 
 // Build ordered token-groups for validateTake from a corrected line of lyrics.
