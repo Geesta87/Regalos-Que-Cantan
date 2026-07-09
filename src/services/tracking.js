@@ -68,6 +68,39 @@ const storeUtmParams = () => {
   }
 };
 
+// ─── Meta click-ID (fbc) capture ────────────────────────────────────────────
+// The Meta pixel only writes the _fbc cookie when it loads with ?fbclid= in the
+// URL, and that cookie can be missing by the time checkout runs — which left the
+// server-side (CAPI) Purchase sending an EMPTY fbc, capping Event Match Quality.
+// We capture fbclid on landing, build the canonical fbc value (fb.1.<ts>.<fbclid>)
+// and persist it 90 days so createCheckout can always attach it to the order.
+const FBC_KEY = 'rqc_fbc';
+const FBC_TTL_DAYS = 90;
+
+const captureFbc = () => {
+  try {
+    const fbclid = new URLSearchParams(window.location.search).get('fbclid');
+    if (!fbclid) return;
+    // Only (re)build when a NEW click arrives, so the timestamp reflects the click.
+    const prev = JSON.parse(localStorage.getItem(FBC_KEY) || 'null');
+    if (prev && prev.fbclid === fbclid && prev.expiresAt > Date.now()) return;
+    localStorage.setItem(FBC_KEY, JSON.stringify({
+      fbc: `fb.1.${Date.now()}.${fbclid}`,
+      fbclid,
+      expiresAt: Date.now() + FBC_TTL_DAYS * 24 * 60 * 60 * 1000,
+    }));
+  } catch { /* storage disabled — cookie path still works */ }
+};
+
+// Best available fbc: prefer the live _fbc cookie, else our persisted value.
+export const getStoredFbc = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FBC_KEY) || 'null');
+    if (raw && raw.fbc && raw.expiresAt > Date.now()) return raw.fbc;
+  } catch { /* ignore */ }
+  return '';
+};
+
 // ─── Affiliate attribution storage ─────────────────────────────────────────
 // Affiliate codes persist across browser sessions for 30 days. Previously
 // stored in sessionStorage, which lost attribution the moment a buyer closed
@@ -254,7 +287,8 @@ export const trackStep = async (step, metadata = {}) => {
   try {
     // Store UTM params on first tracking call
     storeUtmParams();
-    
+    captureFbc();
+
     const sessionId = getSessionId();
     const utmParams = getStoredUtmParams();
     
