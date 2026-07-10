@@ -52,6 +52,10 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 // V5_5 only — V4_5 failed the 2026-06-12 regional-Mexican bake-off. Replace-
 // section must run on the same model family the source song was made with.
 const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V5_5';
+// In-house ffmpeg Cloud Run — does the seamless surgical splice server-side
+// (duration-match + equal-power crossfade + gain-match). Same host/secret as video render.
+const INHOUSE_RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
+const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 
 // Best model for the reasoning (locate the window + rewrite lyrics + phonetic
 // name respelling). Sonnet fallback matches the codebase's Claude retry order.
@@ -1170,6 +1174,37 @@ Deno.serve(async (req) => {
     if (action === 'summarize-request') {
       const summary = await callClaudeSummarizeRequest(String(body?.exchange || ''));
       return json({ ok: true, summary });
+    }
+
+    // Seamless splice — proxy to the in-house ffmpeg Cloud Run, which stitches the
+    // re-sung line into the pristine song with duration-match + equal-power
+    // crossfade + gain-match, and returns a hosted MP3 URL. The browser plays that
+    // URL for preview and fetches it into a blob to apply — replacing the old
+    // in-browser Web-Audio splice that made the seam audible. Falls through to the
+    // browser splice on the frontend if this errors.
+    if (action === 'splice') {
+      if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
+      const mode = body?.mode === 'section' ? 'section' : 'line';
+      const spec: Record<string, unknown> = {
+        mode,
+        pristine_url: body?.pristineUrl,
+        resung_url: body?.resungUrl,
+      };
+      if (mode === 'section') { spec.origCut = body?.origCut; spec.resungCut = body?.resungCut; }
+      else { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; }
+      if (!spec.pristine_url || !spec.resung_url) return json({ ok: false, error: 'pristineUrl and resungUrl required' });
+      try {
+        const r = await fetch(`${INHOUSE_RENDERER_URL}/splice-audio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+          body: JSON.stringify(spec),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d?.success) return json({ ok: false, error: d?.error || `splice ${r.status}` });
+        return json({ ok: true, url: d.url });
+      } catch (e) {
+        return json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
     }
 
     if (action === 'plan') {

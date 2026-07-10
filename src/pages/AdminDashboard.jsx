@@ -84,6 +84,36 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
+  // Splice the re-sung correction onto the pristine song. Prefers the SERVER
+  // recipe (fix-song-section 'splice' -> in-house ffmpeg Cloud Run: duration-match
+  // + equal-power crossfade + gain-match, which removes the audible seam), and
+  // falls back to the in-browser Web-Audio splice on any error so a Cloud Run blip
+  // never blocks a fix. Returns the SAME shape as the browser fns: { blob, url }.
+  //   mode 'line'    params: { pristineUrl, pStart, pEnd, resungUrl, rStart, rEnd }
+  //   mode 'section' params: { originalUrl, origCut, resungUrl, resungCut }
+  async function doSplice(mode, p) {
+    const srcUrl = mode === 'line' ? p.pristineUrl : p.originalUrl;
+    // The server can only fetch http(s) inputs. In a fallback chain the base can be
+    // a blob: URL from a prior browser splice — go straight to the browser then.
+    const serverOk = typeof srcUrl === 'string' && /^https?:/i.test(srcUrl);
+    if (serverOk) {
+      try {
+        const body = mode === 'line'
+          ? { action: 'splice', mode: 'line', pristineUrl: p.pristineUrl, pStart: p.pStart, pEnd: p.pEnd, resungUrl: p.resungUrl, rStart: p.rStart, rEnd: p.rEnd }
+          : { action: 'splice', mode: 'section', pristineUrl: p.originalUrl, origCut: p.origCut, resungUrl: p.resungUrl, resungCut: p.resungCut };
+        const d = await postFn(body);
+        if (d?.ok && d.url) {
+          const resp = await fetch(d.url);
+          if (resp.ok) return { blob: await resp.blob(), url: d.url };
+        }
+        // else: fall through to the browser splice below
+      } catch { /* fall through */ }
+    }
+    return mode === 'line'
+      ? await spliceLineReplace({ pristineUrl: p.pristineUrl, pStart: p.pStart, pEnd: p.pEnd, resungUrl: p.resungUrl, rStart: p.rStart, rEnd: p.rEnd })
+      : await spliceIntoOriginal({ resungUrl: p.resungUrl, resungCutS: p.resungCut, originalUrl: p.originalUrl, origCutS: p.origCut });
+  }
+
   // Find the other version(s) of this song (same generation session) so we can
   // offer "Corregir ambas versiones" — even the unpaid one, in case the customer
   // later wants it. Read-only, no cost.
@@ -383,8 +413,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace }, setSurgicalMsg);
       setSurgicalMsg('Stitching with the original recording…');
       const spliced = r.lineReplace
-        ? await spliceLineReplace({ pristineUrl: r.originalAudioUrl, pStart: r.pStart, pEnd: r.pEnd, resungUrl: r.resungUrl, rStart: r.rStart, rEnd: r.rEnd })
-        : await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
+        ? await doSplice('line', { pristineUrl: r.originalAudioUrl, pStart: r.pStart, pEnd: r.pEnd, resungUrl: r.resungUrl, rStart: r.rStart, rEnd: r.rEnd })
+        : await doSplice('section', { resungUrl: r.resungUrl, resungCut: r.resungCut, originalUrl: r.originalAudioUrl, origCut: r.origCut });
       setResult({
         surgical: true,
         splicedBlob: spliced.blob,
@@ -477,8 +507,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     for (const c of done) {
       onMsg?.('Uniendo con la grabación original…');
       const sp = c.lineReplace
-        ? await spliceLineReplace({ pristineUrl: baseUrl, pStart: c.pStart, pEnd: c.pEnd, resungUrl: c.resungUrl, rStart: c.rStart, rEnd: c.rEnd })
-        : await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
+        ? await doSplice('line', { pristineUrl: baseUrl, pStart: c.pStart, pEnd: c.pEnd, resungUrl: c.resungUrl, rStart: c.rStart, rEnd: c.rEnd })
+        : await doSplice('section', { resungUrl: c.resungUrl, resungCut: c.resungCut, originalUrl: baseUrl, origCut: c.origCut });
       baseUrl = sp.url; blob = sp.blob;
     }
     return { splicedBlob: blob, correctedUrl: baseUrl, fullLyrics: combinedLyrics, changeMarks };
