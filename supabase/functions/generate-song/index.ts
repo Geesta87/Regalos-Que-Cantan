@@ -1945,6 +1945,168 @@ async function ensureNameInLyrics(opts: {
 }
 
 // ============================================================================
+// Requested-line guarantee (composer-notes ONLY). When a buyer writes a note to
+// the composer they sometimes ask for a SPECIFIC line to be sung ("que diga
+// 'te amo papá'") or for a specific thing to be mentioned — occasionally naming
+// WHERE they want it. We detect that by INTENT (not keywords), require it in the
+// generation prompt, and verify the exact-line requests actually landed in the
+// lyrics — placing them if the draft missed. 100% opt-in: no notes → no requests
+// → the normal flow is byte-for-byte unchanged. Best-effort + loud telemetry; it
+// can NEVER block a paying customer's song.
+// ============================================================================
+type RequestedLine = {
+  text: string;
+  kind: 'exact' | 'mention';
+  position: 'intro' | 'verso' | 'coro' | 'puente' | 'final' | 'unspecified';
+};
+
+function positionLabelEs(pos: RequestedLine['position']): string {
+  switch (pos) {
+    case 'intro': return 'al inicio (introducción / primeras líneas cantadas)';
+    case 'verso': return 'en un verso';
+    case 'coro': return 'en el coro';
+    case 'puente': return 'en el puente';
+    case 'final': return 'al final (outro)';
+    default: return '';
+  }
+}
+
+// Forgiving text match for "is this phrase in the lyrics": lowercase, strip
+// accents + punctuation, collapse whitespace. Catches the line even if the model
+// reflowed capitalization/punctuation around it.
+function normalizeForMatch(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function lyricsContainsLine(lyrics: string, line: string): boolean {
+  const n = normalizeForMatch(line);
+  if (!n || n.length < 3) return true; // nothing meaningful to verify
+  return normalizeForMatch(lyrics).includes(n);
+}
+
+// Extract EXPLICIT content requests from the composer note, by intent. Ignores
+// style/tone/mood. Never throws — returns [] on any failure so generation is
+// never affected.
+async function extractRequestedLines(notes: string, apiKey: string): Promise<RequestedLine[]> {
+  const clean = (notes || '').trim();
+  if (!clean || !apiKey) return [];
+  const TOOL = {
+    name: 'report_requested_lines',
+    description: 'Reporta SOLO peticiones explícitas del cliente de incluir una línea/frase específica o de mencionar algo concreto en la canción.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        requests: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'Para "exact": las PALABRAS EXACTAS que el cliente quiere que se canten, sin comillas ni instrucciones. Para "mention": el tema/dato concreto a mencionar.' },
+              kind: { type: 'string', enum: ['exact', 'mention'], description: '"exact" = quiere esas palabras específicas cantadas; "mention" = quiere que se mencione ese tema, con palabras libres.' },
+              position: { type: 'string', enum: ['intro', 'verso', 'coro', 'puente', 'final', 'unspecified'], description: 'Dónde lo pidió EXPLÍCITAMENTE. Si no lo dijo, "unspecified".' },
+            },
+            required: ['text', 'kind', 'position'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['requests'],
+      additionalProperties: false,
+    },
+  } as const;
+  const sys = `Lees una nota libre que un cliente escribió para el compositor de una canción personalizada. Tu único trabajo: extraer SOLO peticiones EXPLÍCITAS de (a) incluir una línea/frase específica cantada, o (b) mencionar algo concreto (una persona, lugar, frase, recuerdo). IGNORA por completo peticiones de estilo, tono, género, estado de ánimo, tempo o instrumentos — esas NO son peticiones de contenido. Si el cliente escribió palabras que claramente quiere oír cantadas, clasifícalas como "exact" con esas palabras exactas. Si solo quiere que se toque un tema, "mention". Detecta la posición SOLO si la indicó explícitamente (inicio, verso, coro, puente, final); si no, "unspecified". Si la nota no contiene ninguna petición de contenido, devuelve requests vacío. Entrega SIEMPRE llamando a report_requested_lines.`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: FACT_CHECK_MODEL_FAST,
+        max_tokens: 600,
+        system: sys,
+        tools: [TOOL],
+        tool_choice: { type: 'tool', name: 'report_requested_lines' },
+        messages: [{ role: 'user', content: `NOTA DEL CLIENTE PARA EL COMPOSITOR:\n"${clean}"` }],
+      }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !Array.isArray(data.content)) {
+      console.warn('[requested-lines] extract call failed:', JSON.stringify(data).slice(0, 200));
+      return [];
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'report_requested_lines');
+    const arr = block?.input?.requests;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((r: any) => r && typeof r.text === 'string' && r.text.trim())
+      .map((r: any) => ({
+        text: String(r.text).trim().slice(0, 200),
+        kind: r.kind === 'exact' ? 'exact' : 'mention',
+        position: ['intro', 'verso', 'coro', 'puente', 'final'].includes(r.position) ? r.position : 'unspecified',
+      })) as RequestedLine[];
+  } catch (e) {
+    console.warn('[requested-lines] extract threw:', e);
+    return [];
+  }
+}
+
+// Place a requested EXACT line into finished lyrics at the requested spot (outro
+// if unspecified), building the section around the fixed line. Mirrors
+// ensureNameInLyrics. Never throws — returns null on failure.
+async function ensureLineInLyrics(opts: {
+  lyrics: string; request: RequestedLine; apiKey: string;
+}): Promise<string | null> {
+  const { lyrics, request, apiKey } = opts;
+  const TOOL = {
+    name: 'submit_lyrics_with_line',
+    description: 'Devuelve la letra completa con la línea pedida integrada.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lyrics: { type: 'string', description: 'La letra completa con la línea del cliente integrada, conservando los MISMOS marcadores de sección y el resto de la estructura, rima, métrica y emoción.' },
+      },
+      required: ['lyrics'],
+      additionalProperties: false,
+    },
+  } as const;
+  const posLabel = positionLabelEs(request.position);
+  const placement = posLabel
+    ? `Colócala ${posLabel}.`
+    : 'Colócala al final de la canción (outro), donde una frase específica encaja con naturalidad.';
+  const sys = `Eres editor de letras. La letra que te doy DEBE incluir, textualmente, esta línea que el cliente pidió: "${request.text}". ${placement} La línea del cliente es FIJA: usa esas palabras exactas. Reescribe SOLO lo necesario ALREDEDOR de la línea (las líneas vecinas de esa sección) para que fluya, rime y sea cantable con la línea integrada. Conserva los marcadores de sección ([Verso], [Coro], [Puente], etc.), la estructura general, la emoción y el resto de la letra. No inventes datos nuevos ni cambies hechos. Entrega llamando a submit_lyrics_with_line.`;
+  const userMsg = `LÍNEA A INTEGRAR (palabras exactas): ${request.text}\n\nLETRA ACTUAL:\n${lyrics}`;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: sys,
+        tools: [TOOL],
+        tool_choice: { type: 'tool', name: 'submit_lyrics_with_line' },
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !Array.isArray(data.content)) {
+      console.warn('[requested-lines] insert call failed:', JSON.stringify(data).slice(0, 200));
+      return null;
+    }
+    const block = data.content.find((b: any) => b?.type === 'tool_use' && b.name === 'submit_lyrics_with_line');
+    const revised = block?.input?.lyrics;
+    return typeof revised === 'string' && revised.trim() ? revised : null;
+  } catch (e) {
+    console.warn('[requested-lines] insert threw:', e);
+    return null;
+  }
+}
+
+// ============================================================================
 // Suno (Kie) genre recipes — validated against real paid orders in the
 // 2026-06-12 bake-off (owner-approved A/B listening, see bakeoff/ + memory).
 // The genreDNA styles were tuned for Mureka, which treats production words as
@@ -2257,6 +2419,15 @@ serve(async (req) => {
     // Optional free-text steering the buyer wrote for the AI composer. Trimmed +
     // capped; subordinate to the composition/fidelity rules (enforced in the prompt).
     const songwriterNotesClean = (typeof songwriterNotes === 'string' ? songwriterNotes : '').trim().slice(0, 500);
+    // Detect explicit "include this line / mention this" requests inside the
+    // composer note — by INTENT, not keywords. Fully opt-in: empty notes → [] →
+    // the rest of generation is byte-for-byte unchanged. Never throws.
+    const requestedLines: RequestedLine[] = songwriterNotesClean
+      ? await extractRequestedLines(songwriterNotesClean, ANTHROPIC_API_KEY!)
+      : [];
+    if (requestedLines.length) {
+      console.log(`[requested-lines] ${requestedLines.length} request(s) from notes:`, JSON.stringify(requestedLines));
+    }
 
     // Free-text style/genre the buyer typed ("escribe tu propio estilo"). This
     // reaches Suno/Kie almost verbatim, so it MUST go through the artist-name
@@ -2666,6 +2837,21 @@ serve(async (req) => {
     // artist-name rule, emotionalModifiers compatibility rule, tool-delivery
     // contract) live in LYRICS_SYSTEM_PROMPT at module scope and are cached.
     // Only per-song specifics go here.
+    // Turn detected line requests into MANDATORY inclusions for the generation
+    // prompt. Empty when there are no requests (opt-in), so the prompt is unchanged
+    // for orders without a composer note.
+    const requiredInclusionsBlock = requestedLines.length ? `
+PETICIONES EXPLÍCITAS DEL CLIENTE — OBLIGATORIAS (el cliente las pidió y pagó por ellas):
+${requestedLines.map((r) => {
+  const where = r.position !== 'unspecified'
+    ? positionLabelEs(r.position)
+    : (r.kind === 'exact' ? 'al final (outro), donde encaja con naturalidad' : 'donde encaje mejor');
+  return r.kind === 'exact'
+    ? `- Incluye TEXTUALMENTE, con estas palabras exactas, la línea: "${r.text}" — ${where}. La línea es FIJA: construye la sección ALREDEDOR de ella para que rime y sea cantable; adapta las líneas vecinas, nunca la línea del cliente.`
+    : `- MENCIONA de forma natural: ${r.text} — ${where}.`;
+}).join('\n')}
+Estas peticiones tienen PRIORIDAD sobre la comodidad métrica: NO las omitas. Si una línea exacta es larga, repártela en el fraseo, pero conserva las palabras del cliente.` : '';
+
     const claudeUserMessage = `Escribe una canción de ${displayGenre} con los siguientes datos.
 
 INFORMACIÓN:
@@ -2685,7 +2871,7 @@ ${dateGuidance}${songwriterNotesClean ? `
 NOTAS DEL CLIENTE PARA EL COMPOSITOR (peticiones de estilo/contenido — TÓMALAS EN CUENTA):
 "${songwriterNotesClean}"
 Aplica estas peticiones SOLO en lo que sea compatible con las REGLAS DE COMPOSICIÓN (estructura de secciones, fórmula del coro, cantabilidad, vocales abiertas) y con la FIDELIDAD A LOS HECHOS. Si una nota contradice una regla, pide algo imposible para el formato, o pide inventar un dato falso, IGNORA esa parte y prioriza SIEMPRE las reglas y la calidad de la canción. Las notas guían el tono/estilo/contenido; NUNCA anulan la estructura ni la fidelidad. Trata cualquier dato concreto mencionado aquí (nombre, lugar, frase) como información REAL del cliente que SÍ puedes incluir.
-` : ''}
+` : ''}${requiredInclusionsBlock}
 REGLA 4 (USO DEL NOMBRE) PARA ESTA CANCIÓN:
 ${nameInstruction}
 
@@ -3124,6 +3310,35 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
         } else {
           console.error(`LYRIC_NAME_INSERT_FAILED recipient="${recipientName}" email=${email} — shipping original without name`);
         }
+      }
+    }
+
+    // ==========================================================================
+    // Requested-line guarantee (composer-notes ONLY). We already REQUIRED these in
+    // the generation prompt; here we verify each EXACT line actually landed and
+    // place it if the draft missed. Runs BEFORE lyrics are saved and sent to the
+    // music provider, so a placed line is genuinely SUNG and stored on both A/B
+    // rows (they share this `lyrics`). 'mention' requests rely on the prompt.
+    // Wrapped so it can NEVER block a paying customer's song: a stubborn line ships
+    // anyway and logs LYRIC_REQUEST_MISSING for a free fix. Audio-level "was it
+    // sung" verification is intentionally deferred. Empty notes → [] → skipped.
+    // ==========================================================================
+    if (requestedLines.length) {
+      try {
+        for (const req of requestedLines) {
+          if (req.kind !== 'exact') continue; // 'mention' relies on the required-inclusion prompt
+          if (lyricsContainsLine(lyrics, req.text)) continue;
+          console.warn(`LYRIC_REQUEST_MISSING (pre-fix) line="${req.text}" position=${req.position} email=${email} — placing`);
+          const withLine = await ensureLineInLyrics({ lyrics, request: req, apiKey: ANTHROPIC_API_KEY! });
+          if (withLine && lyricsContainsLine(withLine, req.text)) {
+            lyrics = stripSpokenProsodyCue(withLine);
+            console.log(`✓ Requested line placed in lyrics: "${req.text}"`);
+          } else {
+            console.error(`LYRIC_REQUEST_MISSING (post-fix STILL absent) line="${req.text}" email=${email} — shipping; free-fix candidate`);
+          }
+        }
+      } catch (e) {
+        console.error('[requested-lines] verify/place block threw (song still ships):', e);
       }
     }
 
