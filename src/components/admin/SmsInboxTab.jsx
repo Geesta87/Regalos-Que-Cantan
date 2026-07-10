@@ -244,6 +244,12 @@ export default function SmsInboxTab({ accessToken }) {
   const [composeBody, setComposeBody] = useState('');
   const [composeBusy, setComposeBusy] = useState(false);
 
+  // "Send to Fix Song" — confirmation modal fed by the open chat. Shows the
+  // full recent exchange for the owner to review PLUS an AI summary of what the
+  // customer wants changed (editable), then queues it into the Fix-Song list.
+  // { exchange, summary, loading, submitting, error, done }
+  const [fixModal, setFixModal] = useState(null);
+
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
     if (!supported) {
@@ -420,6 +426,94 @@ export default function SmsInboxTab({ accessToken }) {
     () => conversations.reduce((sum, c) => sum + (c.unread || 0), 0),
     [conversations]
   );
+
+  // ── "Send to Fix Song" ────────────────────────────────────────────────────
+  // Build a readable transcript of the open chat (both sides, most recent last)
+  // so the owner sees exactly what the customer asked for.
+  const buildExchange = (conv) => {
+    return (conv?.messages || [])
+      .map((m) => {
+        const who = m.direction === 'inbound' ? 'Cliente' : 'Nosotros';
+        const text = (m.body || '').trim();
+        return text ? `${who}: ${text}` : '';
+      })
+      .filter(Boolean)
+      .slice(-16) // last ~16 turns is plenty of context
+      .join('\n');
+  };
+
+  // Open the confirmation modal and kick off the AI summary in the background.
+  const openFixModal = async () => {
+    if (!selected) return;
+    const exchange = buildExchange(selected);
+    setFixModal({ exchange, summary: '', loading: true, submitting: false, error: '', done: false });
+    if (isDemo) {
+      setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'summarize-request', exchange }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      const summary = (data && (data.summary || data.result)) || '';
+      setFixModal((m) => (m ? { ...m, summary, loading: false } : m));
+    } catch (e) {
+      // A failed summary is non-fatal — the owner can type the change themselves.
+      setFixModal((m) => (m ? { ...m, summary: '', loading: false, error: 'AI summary unavailable — write what to fix below.' } : m));
+    }
+  };
+
+  // Queue the (owner-confirmed) request into the Fix-Song pending list.
+  const submitFixRequest = async () => {
+    if (!fixModal || !selected) return;
+    const customerRequest = (fixModal.summary || '').trim();
+    if (!customerRequest) {
+      setFixModal((m) => (m ? { ...m, error: 'Add a short note of what to fix first.' } : m));
+      return;
+    }
+    if (isDemo) {
+      setFixModal((m) => (m ? { ...m, submitting: false, done: true } : m));
+      return;
+    }
+    setFixModal((m) => (m ? { ...m, submitting: true, error: '' } : m));
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'create',
+            conversation_id: selected.id || null,
+            customer_request: customerRequest,      // AI summary, owner-confirmed
+            source_message: fixModal.exchange,       // full chat exchange, for review
+            phone: selected.phone || null,
+            customer_name: selected.customer_name || null,
+            song_id: selected.song_id || null,       // usually null → owner links it in Fix Song
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `song-fix-queue ${res.status}`);
+      setFixModal((m) => (m ? { ...m, submitting: false, done: true } : m));
+    } catch (e) {
+      setFixModal((m) => (m ? { ...m, submitting: false, error: `Could not send: ${e.message}` } : m));
+    }
+  };
 
   // Auto-scroll the open thread to the newest message.
   useEffect(() => {
@@ -1228,6 +1322,15 @@ export default function SmsInboxTab({ accessToken }) {
                         {q.label}
                       </button>
                     ))}
+                    {/* Route this customer to the Fix-Song queue with the full
+                        chat + an AI summary of what they want changed. */}
+                    <button
+                      onClick={openFixModal}
+                      className="flex-shrink-0 text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
+                      title="Send this song to the Fix Song queue for a correction"
+                    >
+                      🔧 Enviar a arreglar
+                    </button>
                   </div>
                   {/* Staged image preview — paste (Ctrl+V), drag-drop, or 📎. */}
                   {attachment && (
@@ -1373,6 +1476,69 @@ export default function SmsInboxTab({ accessToken }) {
                 {composeBusy ? 'Sending…' : 'Send'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── "Send to Fix Song" confirmation ──────────────────────────────────
+          Shows the full chat exchange for the owner to review PLUS an editable
+          AI summary of what to fix, then queues it into the Fix-Song list. */}
+      {fixModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !fixModal.submitting && setFixModal(null)} />
+          <div className="relative w-full max-w-lg bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-white">🔧 Send to Fix Song</h3>
+              <button onClick={() => !fixModal.submitting && setFixModal(null)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
+            </div>
+
+            {fixModal.done ? (
+              <div className="text-center py-6">
+                <p className="text-3xl mb-2">✅</p>
+                <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
+                <p className="text-xs text-gray-400 mb-4">Open the <strong>Fix Song</strong> tab to find the customer's song and make the correction.</p>
+                <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-3">
+                  Are you sure this song needs a correction? Review the conversation, confirm what to change, then send it to the queue.
+                </p>
+
+                {/* Full conversation, for the owner to verify against */}
+                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Conversation</label>
+                <div className="mb-4 px-3 py-2 bg-black/30 border border-white/10 rounded-xl text-xs text-gray-300 whitespace-pre-wrap break-words max-h-52 overflow-y-auto">
+                  {fixModal.exchange || 'No messages in this conversation yet.'}
+                </div>
+
+                {/* AI summary of what to fix — editable */}
+                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1 flex items-center gap-2">
+                  What to fix (AI summary — edit if needed)
+                  {fixModal.loading && <span className="text-indigo-300 normal-case tracking-normal">✨ summarizing…</span>}
+                </label>
+                <textarea
+                  value={fixModal.summary}
+                  onChange={(e) => setFixModal((m) => (m ? { ...m, summary: e.target.value } : m))}
+                  rows={3}
+                  disabled={fixModal.loading}
+                  placeholder={fixModal.loading ? 'Reading the conversation…' : 'e.g. Change “hijo” to “nieto” in the chorus'}
+                  className="w-full mb-2 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm resize-y focus:outline-none focus:border-amber-400/50 disabled:opacity-60"
+                />
+
+                {fixModal.error && <p className="text-[11px] text-red-300 mb-2">{fixModal.error}</p>}
+
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <button onClick={() => setFixModal(null)} disabled={fixModal.submitting} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition disabled:opacity-40">Cancel</button>
+                  <button
+                    onClick={submitFixRequest}
+                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim()}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

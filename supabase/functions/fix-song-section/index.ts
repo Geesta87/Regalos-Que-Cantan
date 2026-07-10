@@ -458,6 +458,30 @@ async function callClaudeReword(before: string, after: string, sang: string): Pr
   return [];
 }
 
+// Read a customer↔team conversation and summarize, in one or two plain Spanish
+// sentences, WHAT the customer wants corrected in their song (the exact line/word/
+// date/name when identifiable). Used by the "Send to Fix Song" chat button so the
+// owner gets an actionable summary alongside the raw exchange.
+async function callClaudeSummarizeRequest(exchange: string): Promise<string> {
+  if (!ANTHROPIC_API_KEY || !exchange.trim()) return '';
+  const system = `Eres un asistente que lee una conversación entre el equipo de soporte y un cliente sobre su CANCIÓN personalizada. Resume en UNA o DOS frases claras QUÉ quiere corregir el cliente en la canción (la línea, palabra, fecha o nombre EXACTO si se identifica). Escribe en ESPAÑOL, directo y accionable para quien hará el arreglo. Si NO es una corrección de canción, responde exactamente "(no parece una corrección de canción)". Devuelve SOLO el resumen, sin preámbulo.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const model = attempt === 2 ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 300, system, messages: [{ role: 'user', content: `CONVERSACIÓN:\n${exchange}` }] }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const text = (data?.content || []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim();
+      if (text) return text;
+    } catch { /* next model */ }
+  }
+  return '';
+}
+
 // Claude rewrites the FULL lyrics with the fix applied (for the whole-song
 // re-roll path). Same tool_use pattern as callClaudeForFix.
 async function callClaudeForFullLyrics(currentLyrics: string, complaint: string, image?: InlineImage): Promise<any | null> {
@@ -1139,6 +1163,13 @@ Deno.serve(async (req) => {
       if (!after) return json({ ok: false, error: 'after line is required' });
       const suggestions = await callClaudeReword(String(body?.before || ''), after, String(body?.sang || ''));
       return json({ ok: true, suggestions });
+    }
+
+    // Summarize a chat exchange into "what the customer wants corrected" — for the
+    // "Send to Fix Song" button (owner reviews the raw exchange + this summary).
+    if (action === 'summarize-request') {
+      const summary = await callClaudeSummarizeRequest(String(body?.exchange || ''));
+      return json({ ok: true, summary });
     }
 
     if (action === 'plan') {

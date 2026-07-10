@@ -69,12 +69,21 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
         </span>
       </div>
 
-      {/* What the customer wants changed */}
+      {/* What the customer wants changed — AI summary up top, with the full
+          chat exchange tucked into an expandable block for the owner to verify
+          against before acting on it. */}
       <div className="rounded-lg bg-black/20 border border-white/5 px-3 py-2 mb-2">
         <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Customer wants changed</p>
         <p className="text-sm text-gray-100 whitespace-pre-wrap break-words">{req.customer_request}</p>
         {ctx(req, 'source_message') && ctx(req, 'source_message') !== req.customer_request && (
-          <p className="text-[11px] text-gray-500 mt-1 italic">“{ctx(req, 'source_message')}”</p>
+          <details className="mt-1.5">
+            <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-200 select-none">
+              View full conversation
+            </summary>
+            <p className="text-[11px] text-gray-400 whitespace-pre-wrap break-words mt-1 bg-black/30 rounded-md p-2 max-h-52 overflow-y-auto">
+              {ctx(req, 'source_message')}
+            </p>
+          </details>
         )}
       </div>
 

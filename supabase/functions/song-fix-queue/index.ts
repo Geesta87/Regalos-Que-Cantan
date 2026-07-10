@@ -323,8 +323,14 @@ serve(async (req) => {
       const { data: inserted, error } = await admin.from('song_fix_requests').insert({
         song_id: body.song_id || null,
         conversation_id: body.conversation_id || null,
-        customer_request: customerRequest,
-        context: { source: 'owner', created_by_email: actor },
+        customer_request: customerRequest, // the AI summary / what to fix (owner-confirmed)
+        candidate_summary: body.summary ? String(body.summary) : null,
+        context: {
+          source: 'owner', created_by_email: actor,
+          source_message: body.source_message ? String(body.source_message) : null, // the FULL chat exchange, for review
+          phone: body.phone ? String(body.phone) : null,
+          customer_name: body.customer_name ? String(body.customer_name) : null,
+        },
         status: 'pending',
         created_by: actor,
       }).select('id').single();
