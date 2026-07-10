@@ -171,9 +171,9 @@ export default function DetailsStep() {
 
               {!useOwnLyrics && (<>
               {/* Accuracy reminder */}
-              <div className="bg-bougainvillea/10 border border-bougainvillea/40 rounded-xl px-5 py-4">
+              <div className="bg-bougainvillea/15 border-2 border-bougainvillea/50 rounded-xl px-5 py-4 shadow-lg shadow-bougainvillea/5">
                 <p className="text-white/90 text-sm leading-relaxed">
-                  ⚠️ <strong>Revisa bien los nombres, las fechas y la ortografía.</strong> Tu canción se crea exactamente con la información que escribas aquí.
+                  ⚠️ <strong>Revisa bien los nombres, las fechas y la ortografía.</strong> Tu canción se crea exactamente con la información que escribas aquí — <strong>este es el momento de incluir todo lo que quieras que tenga.</strong>
                 </p>
               </div>
 
@@ -241,25 +241,25 @@ export default function DetailsStep() {
                 </div>
               </div>
 
-              {/* Notes for our songwriter — optional steering the AI composer
-                  takes into account while still honoring the song structure. */}
-              <div className="space-y-2 pt-2 border-t border-white/5">
+              {/* Requests to the composer — elevated into a visible card so buyers
+                  add specific asks UP FRONT (an exact line, a must-mention, or where
+                  it goes) rather than after delivery. Pairs with the requested-line
+                  guarantee in generate-song. */}
+              <div className="bg-gold/[0.07] border-2 border-gold/40 rounded-2xl p-5 space-y-3 shadow-lg shadow-gold/5">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-gold text-base">edit_note</span>
-                  <span className="text-xs font-bold text-white/60 uppercase tracking-widest">
-                    Notas para nuestro compositor <span className="text-white/30 normal-case font-normal">(opcional)</span>
+                  <span className="material-symbols-outlined text-gold text-xl">star</span>
+                  <span className="text-sm font-extrabold text-gold uppercase tracking-widest">
+                    ¿Hay algo que no puede faltar? <span className="text-white/40 normal-case font-normal tracking-normal">(opcional)</span>
                   </span>
                 </div>
-                <p className="text-white/45 text-xs leading-relaxed">
-                  ¿Algún pedido especial para la letra? Ej: "que sea alegre", "que mencione a sus nietos",
-                  "tono más romántico", o incluir una frase especial. Lo tomamos en cuenta al componer,
-                  siempre dentro de la estructura de la canción.
+                <p className="text-white/75 text-sm leading-relaxed">
+                  Este es el momento perfecto para pedirlo. Si quieres que la canción diga una <strong className="text-white">frase exacta</strong> (por ejemplo: "te amo, papá"), que <strong className="text-white">mencione</strong> un nombre, un recuerdo o un detalle importante, o incluso <strong className="text-white">dónde</strong> te gustaría que vaya (al inicio, en el coro o al final), escríbelo aquí. Nos aseguramos de incluirlo. 💛
                 </p>
                 <textarea
                   value={songwriterNotes}
                   onChange={(e) => setSongwriterNotes(e.target.value.slice(0, maxNotesChars))}
-                  placeholder="Ej: que el tono sea alegre y esperanzador; si se puede, que mencione su rancho..."
-                  className="w-full h-24 bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-gold/40"
+                  placeholder={`Ej: que al final diga "siempre serás mi héroe"; que mencione a sus tres hijos: Ana, Luis y Sofía...`}
+                  className="w-full h-24 bg-white/5 border border-gold/30 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-gold/40"
                 />
                 <div className="text-right">
                   <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
