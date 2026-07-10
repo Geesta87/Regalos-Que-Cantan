@@ -264,10 +264,31 @@ export default function EmailStep() {
                     Editar
                   </button>
                 </div>
-                <p className="text-white/80 italic text-sm leading-relaxed">
-                  "{formData.details.slice(0, 150)}{formData.details.length > 150 ? '...' : ''}"
+                <p className="text-white/80 italic text-sm leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
+                  "{formData.details}"
                 </p>
                 <p className="text-gold/40 text-xs mt-2">{formData.details.length} caracteres</p>
+              </div>
+            )}
+
+            {/* Composer notes preview — only shown if the buyer left notes (story
+                mode). Full text so they can review their exact requests (a specific
+                line, a mention, placement) before submitting. */}
+            {!formData.useCustomLyrics && formData.songwriterNotes && (
+              <div className="pt-6 border-t border-gold/10 group">
+                <div className="flex items-center justify-between">
+                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Notas para el compositor</p>
+                  <button
+                    onClick={() => handleEditSection('details')}
+                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                  >
+                    Editar
+                  </button>
+                </div>
+                <p className="text-white/80 italic text-sm leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
+                  "{formData.songwriterNotes}"
+                </p>
+                <p className="text-gold/40 text-xs mt-2">{formData.songwriterNotes.length} caracteres</p>
               </div>
             )}
 
@@ -285,7 +306,7 @@ export default function EmailStep() {
                   </button>
                 </div>
                 <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-                  {formData.customLyrics.slice(0, 300)}{formData.customLyrics.length > 300 ? '…' : ''}
+                  {formData.customLyrics}
                 </p>
                 <p className="text-gold/40 text-xs mt-2">{formData.customLyrics.length} caracteres</p>
               </div>
