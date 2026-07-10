@@ -428,25 +428,29 @@ export default function SmsInboxTab({ accessToken }) {
   );
 
   // ── "Send to Fix Song" ────────────────────────────────────────────────────
-  // Build a readable transcript of the open chat (both sides, most recent last)
-  // so the owner sees exactly what the customer asked for.
-  const buildExchange = (conv) => {
+  // Structured turns for the modal's chat view — customer on one side, us on the
+  // other. Most recent last; last ~16 turns is plenty of context.
+  const buildTurns = (conv) => {
     return (conv?.messages || [])
-      .map((m) => {
-        const who = m.direction === 'inbound' ? 'Cliente' : 'Nosotros';
-        const text = (m.body || '').trim();
-        return text ? `${who}: ${text}` : '';
-      })
-      .filter(Boolean)
-      .slice(-16) // last ~16 turns is plenty of context
-      .join('\n');
+      .map((m) => ({
+        who: m.direction === 'inbound' ? 'customer' : 'us',
+        text: (m.body || '').trim(),
+      }))
+      .filter((t) => t.text)
+      .slice(-16);
   };
+
+  // Flatten those turns into a readable transcript string for the backend (the
+  // AI summary + the stored source_message).
+  const turnsToText = (turns) =>
+    turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
 
   // Open the confirmation modal and kick off the AI summary in the background.
   const openFixModal = async () => {
     if (!selected) return;
-    const exchange = buildExchange(selected);
-    setFixModal({ exchange, summary: '', loading: true, submitting: false, error: '', done: false });
+    const turns = buildTurns(selected);
+    const exchange = turnsToText(turns);
+    setFixModal({ turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false });
     if (isDemo) {
       setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
       return;
@@ -1505,10 +1509,36 @@ export default function SmsInboxTab({ accessToken }) {
                   Are you sure this song needs a correction? Review the conversation, confirm what to change, then send it to the queue.
                 </p>
 
-                {/* Full conversation, for the owner to verify against */}
-                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Conversation</label>
-                <div className="mb-4 px-3 py-2 bg-black/30 border border-white/10 rounded-xl text-xs text-gray-300 whitespace-pre-wrap break-words max-h-52 overflow-y-auto">
-                  {fixModal.exchange || 'No messages in this conversation yet.'}
+                {/* Full conversation as chat bubbles — customer on the left,
+                    us on the right — so it's easy to see who said what. */}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] uppercase tracking-wide text-gray-500">Conversation</label>
+                  <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-white/20" />Customer</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-400/70" />Us</span>
+                  </div>
+                </div>
+                <div className="mb-4 px-2.5 py-2.5 bg-black/30 border border-white/10 rounded-xl max-h-56 overflow-y-auto space-y-1.5">
+                  {(fixModal.turns && fixModal.turns.length) ? (
+                    fixModal.turns.map((t, i) => (
+                      <div key={i} className={`flex ${t.who === 'customer' ? 'justify-start' : 'justify-end'}`}>
+                        <div className="max-w-[82%]">
+                          <p className={`text-[9px] uppercase tracking-wide mb-0.5 ${t.who === 'customer' ? 'text-gray-500 text-left' : 'text-amber-300/70 text-right'}`}>
+                            {t.who === 'customer' ? 'Customer' : 'Us'}
+                          </p>
+                          <div className={`rounded-2xl px-3 py-1.5 text-xs whitespace-pre-wrap break-words ${
+                            t.who === 'customer'
+                              ? 'bg-white/8 text-gray-100 rounded-tl-sm'
+                              : 'bg-amber-500/15 text-amber-50 border border-amber-500/25 rounded-tr-sm'
+                          }`}>
+                            {t.text}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500">No messages in this conversation yet.</p>
+                  )}
                 </div>
 
                 {/* AI summary of what to fix — editable */}
