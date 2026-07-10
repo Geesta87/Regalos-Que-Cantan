@@ -19,7 +19,7 @@ const path = require('path');
 const os = require('os');
 const { renderOrder } = require('./render');
 const { execFileSync } = require('child_process');
-const { spliceLine, spliceSection } = require('./spliceAudio');
+const { spliceLine, spliceSection } = require('./spliceAudio.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
