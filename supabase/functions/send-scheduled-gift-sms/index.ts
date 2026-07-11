@@ -23,11 +23,15 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { sendSms, scheduleSms } from '../_shared/send-sms.ts';
+import { sendSms, scheduleSms, fetchSmsStatus } from '../_shared/send-sms.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SITE = 'https://regalosquecantan.com';
+// Twilio POSTs delivery-status updates for each gift text here so the row gets
+// reconciled to its TRUE outcome (delivered / undelivered / failed) instead of
+// staying "scheduled" forever after Twilio takes over.
+const STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/sms-status-callback`;
 
 // Twilio native scheduling accepts ~15 min .. 7 days ahead. Use 16 min as a
 // safe lower edge and 7 days as the upper edge.
@@ -63,6 +67,7 @@ serve(async () => {
   let failed = 0;
   let canceled = 0;
 
+  let reconciled = 0;
   try {
     // Self-heal: free rows that got stuck mid-flight on a previous run.
     const stuckBefore = new Date(Date.now() - STUCK_MS).toISOString();
@@ -71,6 +76,34 @@ serve(async () => {
       .update({ status: 'scheduled', updated_at: nowIso })
       .eq('status', 'processing')
       .lt('updated_at', stuckBefore);
+
+    // Reconcile rows handed to Twilio native scheduling: once their send time is
+    // past, Twilio has a terminal status (delivered/undelivered/failed) but sends
+    // us no callback for messages created before StatusCallback was wired. Pull
+    // the true status directly so the row stops reading "scheduled" forever and
+    // any post-handoff carrier failure becomes visible. Bounded per run.
+    const reconcileBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: pending } = await admin
+      .from('scheduled_gift_messages')
+      .select('id, twilio_sid, status')
+      .eq('twilio_scheduled', true)
+      .in('status', ['scheduled', 'sent'])
+      .not('twilio_sid', 'is', null)
+      .lt('send_at', reconcileBefore)
+      .order('send_at', { ascending: true })
+      .limit(25);
+    for (const p of pending || []) {
+      const r = await fetchSmsStatus(String(p.twilio_sid));
+      if (!r.ok || !r.status) continue;
+      const s = r.status.toLowerCase();
+      const stamp = new Date().toISOString();
+      let patch: Record<string, unknown> | null = null;
+      if (s === 'delivered') patch = { status: 'delivered', sent_at: stamp, error_message: null, updated_at: stamp };
+      else if (s === 'sent' && p.status !== 'sent') patch = { status: 'sent', sent_at: stamp, error_message: null, updated_at: stamp };
+      else if (s === 'undelivered' || s === 'failed') patch = { status: 'failed', error_message: (`twilio_${s}${r.errorCode ? ': ' + r.errorCode : ''}`).slice(0, 500), updated_at: stamp };
+      else if (s === 'canceled') patch = { status: 'canceled', error_message: 'twilio_canceled', updated_at: stamp };
+      if (patch) { await admin.from('scheduled_gift_messages').update(patch).eq('id', p.id); reconciled++; }
+    }
 
     // Actionable rows: paid + scheduled, not yet handed to Twilio, due within the
     // Twilio window (too-far rows are left for a later run).
@@ -86,7 +119,7 @@ serve(async () => {
     if (error) throw new Error(`query failed: ${error.message}`);
 
     if (!rows || rows.length === 0) {
-      return new Response(JSON.stringify({ ok: true, candidates: 0 }), {
+      return new Response(JSON.stringify({ ok: true, candidates: 0, reconciled }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -149,7 +182,7 @@ serve(async () => {
       try {
         if (msUntil <= DUE_NOW_MS) {
           // Due now (or slightly past) → send immediately.
-          const r = await sendSms(to, body);
+          const r = await sendSms(to, body, undefined, STATUS_CALLBACK_URL);
           if (r.ok) {
             await admin
               .from('scheduled_gift_messages')
@@ -166,7 +199,7 @@ serve(async () => {
           }
         } else if (msUntil >= TWILIO_MIN_LEAD_MS && msUntil <= TWILIO_MAX_LEAD_MS) {
           // In-window → hand to Twilio native scheduling (exact-second delivery).
-          const r = await scheduleSms(to, body, new Date(row.send_at).toISOString());
+          const r = await scheduleSms(to, body, new Date(row.send_at).toISOString(), STATUS_CALLBACK_URL);
           if (r.ok) {
             await admin
               .from('scheduled_gift_messages')
@@ -198,7 +231,7 @@ serve(async () => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, candidates: rows.length, scheduledViaTwilio, sentNow, failed, canceled }),
+      JSON.stringify({ ok: true, candidates: rows.length, scheduledViaTwilio, sentNow, failed, canceled, reconciled }),
       { headers: { 'Content-Type': 'application/json' } },
     );
   } catch (e) {

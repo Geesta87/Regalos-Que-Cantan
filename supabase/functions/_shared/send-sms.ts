@@ -42,7 +42,16 @@ export function isSmsConfigured(): boolean {
 // `mediaUrl` (optional): a publicly-fetchable image URL. When set, Twilio sends
 // an MMS. NOTE: US A2P 10DLC does not always support MMS — if the campaign/number
 // can't do it, Twilio returns an error and the caller records a failed message.
-export async function sendSms(to: string, body: string, mediaUrl?: string): Promise<SendSmsResult> {
+// `statusCallback` (optional): a public URL Twilio POSTs delivery-status updates
+// to (sent/delivered/undelivered/failed). Only pass it when you have a receiver
+// wired up (e.g. the $5 gift path → sms-status-callback); other callers omit it
+// so their sends generate no extra callback traffic.
+export async function sendSms(
+  to: string,
+  body: string,
+  mediaUrl?: string,
+  statusCallback?: string,
+): Promise<SendSmsResult> {
   if (!isSmsConfigured()) {
     return {
       ok: false,
@@ -59,6 +68,7 @@ export async function sendSms(to: string, body: string, mediaUrl?: string): Prom
       : { From: TWILIO_SMS_FROM! };
     const form = new URLSearchParams({ ...sender, To: to, Body: body });
     if (mediaUrl) form.append('MediaUrl', mediaUrl);
+    if (statusCallback) form.append('StatusCallback', statusCallback);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -80,6 +90,34 @@ export async function sendSms(to: string, body: string, mediaUrl?: string): Prom
   }
 }
 
+// Actively fetch a message's current status from Twilio's REST API by SID.
+// Used to reconcile rows Twilio already finished (e.g. gifts handed to native
+// scheduled-send before any StatusCallback was wired) where no callback will
+// ever arrive. Returns { ok, status, errorCode?, error? }.
+export interface SmsStatusResult {
+  ok: boolean;
+  status?: string;
+  errorCode?: string | number | null;
+  error?: string;
+}
+export async function fetchSmsStatus(sid: string): Promise<SmsStatusResult> {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    return { ok: false, error: 'twilio_not_configured' };
+  }
+  try {
+    const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages/${sid}.json`,
+      { headers: { Authorization: `Basic ${auth}` } },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data?.message || `Twilio HTTP ${res.status}` };
+    return { ok: true, status: data.status, errorCode: data.error_code ?? null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Twilio NATIVE scheduled send — Twilio itself delivers the message at sendAtIso
 // (exact-second), so we don't depend on cron timing for in-window gifts. Twilio
 // only supports scheduling through a Messaging Service (MG...) with
@@ -88,7 +126,13 @@ export async function sendSms(to: string, body: string, mediaUrl?: string): Prom
 // handles the out-of-window cases by sending immediately when the gift comes due.
 //
 // sendAtIso: ISO-8601 UTC instant, e.g. new Date(sendAt).toISOString().
-export async function scheduleSms(to: string, body: string, sendAtIso: string): Promise<SendSmsResult> {
+// statusCallback (optional): public URL Twilio POSTs delivery-status updates to.
+export async function scheduleSms(
+  to: string,
+  body: string,
+  sendAtIso: string,
+  statusCallback?: string,
+): Promise<SendSmsResult> {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_MESSAGING_SERVICE_SID) {
     return {
       ok: false,
@@ -105,6 +149,7 @@ export async function scheduleSms(to: string, body: string, sendAtIso: string): 
       ScheduleType: 'fixed',
       SendAt: sendAtIso,
     });
+    if (statusCallback) form.append('StatusCallback', statusCallback);
 
     const res = await fetch(url, {
       method: 'POST',

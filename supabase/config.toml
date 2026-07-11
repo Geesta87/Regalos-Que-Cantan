@@ -170,6 +170,14 @@ verify_jwt = false
 # TWILIO_VALIDATE_SIGNATURE — same pattern as twilio-sms-webhook.
 verify_jwt = false
 
+[functions.sms-status-callback]
+# Twilio DELIVERY-STATUS receiver for the $5 scheduled gift texts. Twilio POSTs
+# here as each gift SMS progresses (sent/delivered/undelivered/failed); it cannot
+# attach a Supabase JWT, so verification must be OFF. Twilio callbacks are
+# authenticated via X-Twilio-Signature (gated by TWILIO_VALIDATE_SIGNATURE); the
+# JSON backfill mode enforces its own service-role bearer check in the handler.
+verify_jwt = false
+
 [functions.cs-copilot]
 # Admin-only "Ask AI" copilot inside a conversation. Called from the dashboard
 # with a logged-in Supabase Auth user's JWT → verify_jwt = true; handler
