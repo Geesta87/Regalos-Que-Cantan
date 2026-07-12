@@ -99,8 +99,11 @@ const DEMO_CONVERSATIONS = [
         body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821' },
       { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:40:00Z',
         body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?' },
+      // A WhatsApp VOICE NOTE — stored audio + Whisper auto-transcript. media_type
+      // starting with 'audio/' is what flags it as a voice message in the UI.
       { id: 'm3', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:42:00Z',
-        body: 'Es para nuestro aniversario el sábado 🙏' },
+        media_type: 'audio/ogg', media_url: '/sounds/jarvis/new-sale-1.mp3',
+        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏' },
       // AI draft that escalates (a change to a finished song → needs a human).
       { id: 'm4', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: true,
         created_at: '2026-06-09T17:43:00Z',
@@ -391,7 +394,10 @@ export default function SmsInboxTab({ accessToken }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const inChannel = conversations.filter((c) => convChannels(c).has(channelTab));
+    // "Unread" pools both channels: any conversation with unread messages.
+    const inChannel = channelTab === 'unread'
+      ? conversations.filter((c) => (c.unread || 0) > 0)
+      : conversations.filter((c) => convChannels(c).has(channelTab));
     const sorted = [...inChannel].sort(
       (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
     );
@@ -422,8 +428,28 @@ export default function SmsInboxTab({ accessToken }) {
     [conversations, selectedId]
   );
 
+  // Which channel the OPEN thread is on. On the SMS/WhatsApp tabs it's the tab
+  // itself; on the "Unread" tab (which mixes both) it's the channel of the
+  // conversation's most recent message — so replies go out on the right rail.
+  const threadChannel = useMemo(() => {
+    if (channelTab !== 'unread') return channelTab;
+    if (!selected) return 'sms';
+    const msgs = selected.messages || [];
+    const last = msgs.length ? msgs[msgs.length - 1] : null;
+    return last ? msgChannel(last) : (selected.channel || 'sms');
+  }, [channelTab, selected]);
+
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unread || 0), 0),
+    [conversations]
+  );
+
+  // Conversations with an AI draft waiting anywhere — for the Unread tab badge.
+  const totalDrafts = useMemo(
+    () => conversations.reduce(
+      (n, c) => n + ((c.messages || []).some((m) => m.status === 'draft') ? 1 : 0),
+      0
+    ),
     [conversations]
   );
 
@@ -552,7 +578,7 @@ export default function SmsInboxTab({ accessToken }) {
       setComposePhone(''); setComposeBody(''); setComposeChannel('sms');
       // Make sure we're viewing the channel the message actually went out on.
       if (data.channel_used) setChannelTab(data.channel_used);
-      await loadConversations();
+      await loadConversations({ silent: true });
       if (data.conversation_id) setSelectedId(data.conversation_id);
     } catch (e) {
       alert(`Could not send: ${e.message}`);
@@ -643,6 +669,7 @@ export default function SmsInboxTab({ accessToken }) {
     if (!body && !hasAttachment) return; // nothing to send
     const optimistic = {
       id: `local-${Date.now()}`,
+      channel: threadChannel,
       direction: 'outbound',
       status: 'queued',
       created_at: new Date().toISOString(),
@@ -683,7 +710,7 @@ export default function SmsInboxTab({ accessToken }) {
           )
         );
       } else {
-        const payload = { action: 'send', conversation_id: selected.id, body, channel: channelTab };
+        const payload = { action: 'send', conversation_id: selected.id, body, channel: threadChannel };
         if (fileToSend) payload.media_data_url = await fileToDataUrl(fileToSend);
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
@@ -698,7 +725,7 @@ export default function SmsInboxTab({ accessToken }) {
           }
         );
         if (!res.ok) throw new Error(`send ${res.status}`);
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       setConversations((prev) =>
@@ -765,7 +792,7 @@ export default function SmsInboxTab({ accessToken }) {
           message_id: msg.id,
           body: edited,
         });
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       // Surface a soft failure without clobbering the thread.
@@ -791,7 +818,7 @@ export default function SmsInboxTab({ accessToken }) {
         );
       } else {
         await postToSmsAdmin({ action: 'discard-draft', message_id: msg.id });
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       // ignore
@@ -925,10 +952,13 @@ export default function SmsInboxTab({ accessToken }) {
           its own unread count + how many AI drafts are waiting for approval. */}
       <div className="flex items-center gap-2 mb-4">
         {[
+          { key: 'unread', label: '📬 Unread' },
           { key: 'sms', label: '💬 SMS' },
           { key: 'whatsapp', label: '🟢 WhatsApp' },
         ].map((t) => {
-          const stats = channelStats[t.key] || { unread: 0, drafts: 0 };
+          const stats = t.key === 'unread'
+            ? { unread: totalUnread, drafts: totalDrafts }
+            : (channelStats[t.key] || { unread: 0, drafts: 0 });
           const activeTab = channelTab === t.key;
           return (
             <button
@@ -1053,14 +1083,24 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
             ) : filtered.length === 0 ? (
               <div className="p-6 text-center text-gray-500 text-sm">
-                No conversations yet.
+                {channelTab === 'unread' ? '✅ All caught up — no unread messages.' : 'No conversations yet.'}
               </div>
             ) : (
               filtered.map((c) => {
                 const msgs = c.messages || [];
-                // Preview the last message ON THIS TAB's channel.
-                const last = [...msgs].reverse().find((m) => msgChannel(m) === channelTab)
-                  || msgs[msgs.length - 1];
+                // Preview the last message ON THIS TAB's channel. On the Unread
+                // tab (mixed channels) just preview the overall last message.
+                const last = channelTab === 'unread'
+                  ? msgs[msgs.length - 1]
+                  : ([...msgs].reverse().find((m) => msgChannel(m) === channelTab)
+                    || msgs[msgs.length - 1]);
+                const hasDraft = channelTab === 'unread'
+                  ? msgs.some((m) => m.status === 'draft')
+                  : hasPendingDraftInChannel(c, channelTab);
+                const lastIsAudio = (last?.media_type || '').startsWith('audio/');
+                const preview = lastIsAudio
+                  ? `🎤 ${last?.body || 'Voice message'}`
+                  : (last?.body || '');
                 const active = c.id === selectedId;
                 return (
                   <button
@@ -1084,10 +1124,10 @@ export default function SmsInboxTab({ accessToken }) {
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
                         <span className={`text-xs truncate ${c.unread > 0 ? 'text-gray-200 font-medium' : 'text-gray-500'}`}>
-                          {last?.direction === 'outbound' ? '↩ ' : ''}{last?.body}
+                          {last?.direction === 'outbound' ? '↩ ' : ''}{preview}
                         </span>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {hasPendingDraftInChannel(c, channelTab) && (
+                          {hasDraft && (
                             <span className="bg-purple-500/30 text-purple-200 text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center" title="AI draft waiting for approval">
                               ✍️
                             </span>
@@ -1168,7 +1208,7 @@ export default function SmsInboxTab({ accessToken }) {
                   // its own tab (approve it there), so hide it here; a real
                   // message shows as a muted "— sent via SMS/WhatsApp · time"
                   // context line so you keep the full history without confusion.
-                  if (mCh !== channelTab) {
+                  if (mCh !== threadChannel) {
                     if (m.status === 'draft') return null;
                     const outX = m.direction === 'outbound';
                     return (
@@ -1256,6 +1296,7 @@ export default function SmsInboxTab({ accessToken }) {
                   }
 
                   const out = m.direction === 'outbound';
+                  const isAudio = (m.media_type || '').startsWith('audio/');
                   return (
                     <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
                       <div
@@ -1265,7 +1306,22 @@ export default function SmsInboxTab({ accessToken }) {
                             : 'bg-white/8 text-white rounded-bl-sm'
                         }`}
                       >
-                        {m.media_url && (
+                        {isAudio ? (
+                          // Voice message — clearly badged, with a play button and
+                          // the auto-transcript underneath.
+                          <div className="mb-1">
+                            <div className={`text-[11px] font-semibold mb-1 flex items-center gap-1 ${out ? 'text-black/60' : 'text-amber-300'}`}>
+                              🎤 Voice message
+                            </div>
+                            {m.media_url ? (
+                              <audio controls src={m.media_url} className="w-56 max-w-full h-9" />
+                            ) : (
+                              <div className={`text-xs italic ${out ? 'text-black/50' : 'text-gray-400'}`}>
+                                Downloading audio…
+                              </div>
+                            )}
+                          </div>
+                        ) : m.media_url ? (
                           <a href={m.media_url} target="_blank" rel="noreferrer" className="block mb-1">
                             <img
                               src={m.media_url}
@@ -1273,8 +1329,21 @@ export default function SmsInboxTab({ accessToken }) {
                               className="max-w-full max-h-64 rounded-lg border border-black/10"
                             />
                           </a>
+                        ) : null}
+                        {m.body && (
+                          isAudio ? (
+                            <p className={`text-sm whitespace-pre-wrap break-words italic ${out ? 'text-black/80' : 'text-gray-200'}`}>
+                              “{m.body}”
+                            </p>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
+                          )
                         )}
-                        {m.body && <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>}
+                        {isAudio && (
+                          <div className={`text-[9px] mt-0.5 ${out ? 'text-black/40' : 'text-gray-500'}`}>
+                            {m.body ? 'transcribed automatically' : 'transcribing…'}
+                          </div>
+                        )}
                         <div className={`text-[10px] mt-1 flex items-center gap-1 ${out ? 'text-black/50 justify-end' : 'text-gray-400'}`}>
                           {m.ai_generated && out && <span title="Sent from an approved AI draft">🤖</span>}
                           <span>{formatTime(m.created_at)}</span>
@@ -1394,7 +1463,7 @@ export default function SmsInboxTab({ accessToken }) {
                   </div>
                   {/* WhatsApp works cleanly for images; SMS becomes MMS and may be
                       rejected by the A2P carrier. Warn on the SMS tab. */}
-                  {attachment && channelTab === 'sms' && (
+                  {attachment && threadChannel === 'sms' && (
                     <div className="mt-1.5 text-[11px] text-amber-400/80">
                       Images send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
                     </div>
