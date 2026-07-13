@@ -23,6 +23,7 @@ export default function BotTrainingTab({ accessToken }) {
   const [savedKnowledge, setSavedKnowledge] = useState('');
   const [isCustom, setIsCustom] = useState(false);
   const [examples, setExamples] = useState([]);
+  const [insights, setInsights] = useState(null);
 
   const dirty = knowledge !== savedKnowledge;
 
@@ -54,6 +55,11 @@ export default function BotTrainingTab({ accessToken }) {
       setSavedKnowledge(data.knowledge || '');
       setIsCustom(!!data.is_custom);
       setExamples(Array.isArray(data.examples) ? data.examples : []);
+      // Scoreboard — non-fatal: if it fails, the rest of the page still loads.
+      try {
+        const ins = await call({ action: 'insights' });
+        setInsights(ins.insights || null);
+      } catch { /* ignore — panel just won't render */ }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -64,6 +70,10 @@ export default function BotTrainingTab({ accessToken }) {
   useEffect(() => { load(); }, [load]);
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  // Edit-rate → color. Lower is better: green ≤15%, amber ≤35%, red above.
+  const rateColor = (r) => (r == null ? 'text-gray-500' : r <= 15 ? 'text-green-300' : r <= 35 ? 'text-amber-300' : 'text-red-300');
+  const barColor = (r) => (r == null ? 'bg-white/10' : r <= 15 ? 'bg-green-400' : r <= 35 ? 'bg-amber-400' : 'bg-red-400');
 
   const handleSave = async () => {
     if (!dirty || !knowledge.trim()) return;
@@ -147,6 +157,74 @@ export default function BotTrainingTab({ accessToken }) {
         <div className="p-10 text-center text-gray-500">Loading…</div>
       ) : (
         <>
+          {/* Performance scoreboard — edit rate by question type */}
+          {insights && (
+            <div className="bg-[#1a1f26] rounded-2xl border border-white/5 p-4 mb-6">
+              <h3 className="text-sm font-semibold text-white mb-1 flex items-center gap-2">📊 Performance</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                How often you had to edit the bot's reply, by question type — lower is better. A type becomes safe to auto-send once its edit rate stays near 0%.
+                <span className="text-gray-600"> Based on {insights.totals?.sample_size ?? 0} replies.</span>
+              </p>
+
+              {/* Totals */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="bg-black/20 rounded-xl px-3 py-2.5 border border-white/5">
+                  <div className={`text-lg font-bold ${rateColor(insights.totals?.edit_rate)}`}>{insights.totals?.edit_rate ?? '—'}%</div>
+                  <div className="text-[11px] text-gray-500">Overall edit rate</div>
+                </div>
+                <div className="bg-black/20 rounded-xl px-3 py-2.5 border border-white/5">
+                  <div className="text-lg font-bold text-indigo-300">{insights.totals?.adoption_rate ?? '—'}%</div>
+                  <div className="text-[11px] text-gray-500">Bot-drafted (vs you writing)</div>
+                </div>
+                <div className="bg-black/20 rounded-xl px-3 py-2.5 border border-white/5">
+                  <div className="text-lg font-bold text-gray-200">{insights.totals?.manual ?? 0}</div>
+                  <div className="text-[11px] text-gray-500">You wrote from scratch</div>
+                </div>
+              </div>
+
+              {/* By category */}
+              <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide text-gray-600 px-1 mb-1">
+                <div className="col-span-4">Question type</div>
+                <div className="col-span-2 text-right">Bot used</div>
+                <div className="col-span-2 text-right">You wrote</div>
+                <div className="col-span-4">Edit rate</div>
+              </div>
+              <div className="space-y-0.5">
+                {insights.by_category.filter((c) => c.total > 0).map((c) => (
+                  <div key={c.category} className="grid grid-cols-12 gap-2 items-center px-1 py-1 rounded-lg hover:bg-white/5">
+                    <div className="col-span-4 text-xs text-gray-200 truncate">{c.label}</div>
+                    <div className="col-span-2 text-right text-xs text-gray-300">{c.ai_used}</div>
+                    <div className="col-span-2 text-right text-xs text-gray-500">{c.manual}</div>
+                    <div className="col-span-4 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className={`h-full rounded-full ${barColor(c.edit_rate)}`} style={{ width: `${c.edit_rate ?? 0}%` }} />
+                      </div>
+                      <span className={`text-xs tabular-nums w-9 text-right ${rateColor(c.edit_rate)}`}>{c.edit_rate == null ? '—' : `${c.edit_rate}%`}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Weekly trend */}
+              {insights.trend_weekly?.length > 1 && (
+                <div className="mt-4 pt-3 border-t border-white/5">
+                  <div className="text-[11px] text-gray-500 mb-2">Weekly edit rate (is it improving?)</div>
+                  <div className="flex items-end gap-2">
+                    {insights.trend_weekly.map((w) => (
+                      <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
+                        <div className="w-full h-16 flex items-end">
+                          <div className={`w-full rounded-t ${barColor(w.edit_rate)} opacity-80`} style={{ height: `${Math.max(4, w.edit_rate ?? 0)}%` }} title={`${w.edit_rate ?? '—'}% edited · ${w.ai_used} drafts`} />
+                        </div>
+                        <div className="text-[9px] text-gray-600">{w.week.slice(5)}</div>
+                        <div className={`text-[10px] ${rateColor(w.edit_rate)}`}>{w.edit_rate == null ? '—' : `${w.edit_rate}%`}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Knowledge editor */}
           <div className="bg-[#1a1f26] rounded-2xl border border-white/5 p-4 mb-6">
             <div className="flex items-center justify-between mb-2">
