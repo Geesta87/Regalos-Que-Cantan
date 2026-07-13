@@ -1395,6 +1395,18 @@ export default function SuccessPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // Share ONLY the currently-selected song (one-touch, per-song). Uses the clean
+  // single-song /song/<id> link so the recipient sees just this one — for buyers
+  // who want to send each song to a different person, or only bought one.
+  const handleShareWhatsAppSingle = () => {
+    const name = currentSong?.recipient_name || '';
+    const url = currentSong?.id
+      ? `${window.location.origin}/song/${currentSong.id}`
+      : (songUrl || window.location.href);
+    const text = `🎵 ¡Escucha esta canción que hice especialmente para ${name}! 🎁\n\n${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const handleCopyLink = () => {
     const url = songUrl || window.location.href;
     navigator.clipboard.writeText(url);
@@ -2385,7 +2397,7 @@ export default function SuccessPage() {
               <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 12px 0' }}>
                 Comparte el enlace para que {currentSong?.recipient_name || 'tu ser querido'} escuche su canción
               </p>
-              <button onClick={handleShareWhatsApp}
+              <button onClick={handleShareWhatsAppSingle}
                 style={{
                   width: '100%', padding: '16px',
                   background: 'linear-gradient(135deg, #25d366, #128c7e)',
@@ -2395,8 +2407,21 @@ export default function SuccessPage() {
                   boxShadow: '0 6px 25px rgba(37,211,102,0.35)',
                   transition: 'all 0.3s', fontFamily: ts.font
                 }}>
-                💬 Enviar por WhatsApp
+                💬 Compartir esta canción
               </button>
+              {isCombo && (
+                <button onClick={handleShareWhatsApp}
+                  style={{
+                    width: '100%', padding: '14px', marginTop: '10px',
+                    background: 'transparent',
+                    color: '#25d366', fontWeight: '800', fontSize: '15px',
+                    border: '2px solid #25d366', borderRadius: '14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    transition: 'all 0.3s', fontFamily: ts.font
+                  }}>
+                  💬 Compartir las 2 canciones
+                </button>
+              )}
             </div>
 
             {/* Helpful tip */}
