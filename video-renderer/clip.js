@@ -115,7 +115,7 @@ function groupWords(words, perGroup) {
   return groups.filter((g) => g.length);
 }
 
-function buildAss(words, styleKey, aspectKey) {
+function buildAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = STYLES[styleKey] || STYLES.boldpop;
 
@@ -124,6 +124,8 @@ function buildAss(words, styleKey, aspectKey) {
     : `1,${Math.round(geo.fontsize / 11)},0`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
+  const hookSize = Math.round(geo.fontsize * 0.72);
+  const hookMarginTop = geo.h >= 1900 ? 170 : 100;
 
   const header = [
     '[Script Info]',
@@ -136,12 +138,18 @@ function buildAss(words, styleKey, aspectKey) {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: Cap,DejaVu Sans,${geo.fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
+    // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
+    `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
 
   const lines = [];
+  if (opts.hookTitle) {
+    const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
+    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,${assEscape(opts.hookTitle).toUpperCase()}`);
+  }
   const groups = groupWords(words, st.wordsPerGroup);
   for (const group of groups) {
     const texts = group.map((w) => {
@@ -169,7 +177,59 @@ function buildAss(words, styleKey, aspectKey) {
 }
 
 // ---------------------------------------------------------------------------
-// render: cut + crop + burn captions
+// silence removal: keep-segments from word gaps + caption remapping
+// ---------------------------------------------------------------------------
+
+// Words (clip-local time) -> segments of speech to KEEP. Gaps between words
+// longer than maxGap become jump cuts; each kept segment gets a little
+// breathing room (pad) so cuts don't clip consonants.
+function buildKeepSegments(words, clipDur, { pad = 0.22, maxGap = 1.0 } = {}) {
+  if (!words.length) return [{ start: 0, end: clipDur }];
+  const segs = [];
+  let s = words[0].start;
+  let e = words[0].end;
+  for (let i = 1; i < words.length; i++) {
+    if (words[i].start - e <= maxGap) {
+      e = Math.max(e, words[i].end);
+    } else {
+      segs.push({ start: s, end: e });
+      s = words[i].start;
+      e = words[i].end;
+    }
+  }
+  segs.push({ start: s, end: e });
+  // pad + clamp + merge overlaps created by padding
+  const padded = segs.map((g) => ({ start: Math.max(0, g.start - pad), end: Math.min(clipDur, g.end + pad) }));
+  const merged = [padded[0]];
+  for (let i = 1; i < padded.length; i++) {
+    const last = merged[merged.length - 1];
+    if (padded[i].start <= last.end + 0.05) last.end = Math.max(last.end, padded[i].end);
+    else merged.push(padded[i]);
+  }
+  return merged;
+}
+
+// Shift word timestamps onto the post-cut timeline so captions stay in sync.
+function remapWords(words, segs) {
+  const out = [];
+  let acc = 0;
+  for (const seg of segs) {
+    for (const w of words) {
+      if (w.start >= seg.start - 0.02 && w.start < seg.end) {
+        out.push({
+          word: w.word,
+          start: acc + Math.max(0, w.start - seg.start),
+          end: acc + Math.min(seg.end - seg.start, Math.max(0.05, w.end - seg.start)),
+        });
+      }
+    }
+    acc += seg.end - seg.start;
+  }
+  return { words: out, totalDur: acc };
+}
+
+// ---------------------------------------------------------------------------
+// render: cut (+ jump cuts) + crop/frame + optional zoom + burn captions
 // ---------------------------------------------------------------------------
 async function renderClip(job, { dir, log }) {
   fs.mkdirSync(dir, { recursive: true });
@@ -177,6 +237,7 @@ async function renderClip(job, { dir, log }) {
   log(`downloading source ${job.source_url.slice(0, 100)}`);
   await download(job.source_url, src);
 
+  const opts = job.options || {};
   const start = Math.max(0, Number(job.start_sec) || 0);
   const sourceDur = probeDuration(dir, 'source.mp4');
   const end = Math.min(Number(job.end_sec) || sourceDur, sourceDur);
@@ -184,32 +245,64 @@ async function renderClip(job, { dir, log }) {
   const clipDur = end - start;
 
   // Filter Whisper words to the clip range and re-base to t=0.
-  const words = (job.words || [])
+  let words = (job.words || [])
     .filter((w) => w.end > start + 0.05 && w.start < end - 0.05)
     .map((w) => ({ word: w.word, start: Math.max(0, w.start - start), end: Math.min(clipDur, w.end - start) }));
-  log(`${words.length} words in range ${start.toFixed(1)}-${end.toFixed(1)}s, style=${job.style}, aspect=${job.aspect}`);
 
-  fs.writeFileSync(path.join(dir, 'captions.ass'), buildAss(words, job.style, job.aspect));
+  // Jump cuts: keep only speech segments, then remap caption timing.
+  let segs = [{ start: 0, end: clipDur }];
+  let outDur = clipDur;
+  if (opts.remove_silences && words.length) {
+    segs = buildKeepSegments(words, clipDur);
+    const remapped = remapWords(words, segs);
+    words = remapped.words;
+    outDur = remapped.totalDur;
+    log(`silence removal: ${segs.length} segments, ${clipDur.toFixed(1)}s -> ${outDur.toFixed(1)}s`);
+  }
+  log(`${words.length} words, style=${job.style}, aspect=${job.aspect}, framing=${opts.framing || 'center'}, zoom=${!!opts.zoom}, hook=${!!opts.hook_title_text}`);
+
+  fs.writeFileSync(path.join(dir, 'captions.ass'), buildAss(words, job.style, job.aspect, {
+    hookTitle: opts.hook_title_text || null,
+    totalDur: outDur,
+  }));
 
   const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
-  const vf = [
+  const cropX = opts.framing === 'left' ? '0' : opts.framing === 'right' ? 'iw-ow' : '(iw-ow)/2';
+  const post = [
     `scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase`,
-    `crop=${geo.w}:${geo.h}`,
-    'fps=30',
+    `crop=${geo.w}:${geo.h}:${cropX}:(ih-oh)/2`,
+    // Subtle push-in: ~+2.4%/s, capped at 112%. zoompan emits 30fps itself.
+    opts.zoom
+      ? `zoompan=z='min(1+0.0008*on,1.12)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`
+      : 'fps=30',
     'subtitles=captions.ass',
   ].join(',');
 
-  const outPath = path.join(dir, 'clip.mp4');
-  ff(dir, [
-    '-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4',
-    '-vf', vf,
-    '-c:v', 'libx264', '-preset', 'fast', '-crf', '19', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k',
-    '-movflags', '+faststart',
-    'clip.mp4',
-  ]);
+  const hasAudio = (() => {
+    try {
+      return execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', 'source.mp4'], { cwd: dir }).toString().includes('audio');
+    } catch { return false; }
+  })();
 
-  return { finalPath: outPath, durationSec: clipDur };
+  // One filter graph for both paths: trim the kept segments (a single segment
+  // when silence removal is off), concat, then crop/zoom/subtitles.
+  const parts = [];
+  const vRefs = [];
+  segs.forEach((seg, i) => {
+    parts.push(`[0:v]trim=start=${(start + seg.start).toFixed(3)}:end=${(start + seg.end).toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+    if (hasAudio) parts.push(`[0:a]atrim=start=${(start + seg.start).toFixed(3)}:end=${(start + seg.end).toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+    vRefs.push(hasAudio ? `[v${i}][a${i}]` : `[v${i}]`);
+  });
+  parts.push(`${vRefs.join('')}concat=n=${segs.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[vc][ac]' : '[vc]'}`);
+  parts.push(`[vc]${post}[vout]`);
+
+  const outPath = path.join(dir, 'clip.mp4');
+  const args = ['-i', 'source.mp4', '-filter_complex', parts.join(';'), '-map', '[vout]'];
+  if (hasAudio) args.push('-map', '[ac]', '-c:a', 'aac', '-b:a', '192k');
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
+  ff(dir, args);
+
+  return { finalPath: outPath, durationSec: outDur };
 }
 
-module.exports = { prepareClipSource, renderClip, buildAss, groupWords };
+module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords };
