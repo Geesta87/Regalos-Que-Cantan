@@ -25,7 +25,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     const { data: order, error } = await supabase.from('story_video_orders')
-      .select('id, song_id, state, approved_character_url, recipient_photo_url, storyboard').eq('id', story_video_order_id).single();
+      .select('id, song_id, state, approved_character_url, recipient_photo_url, storyboard, scene_assets, morph_asset').eq('id', story_video_order_id).single();
     if (error || !order) throw new Error('order not found');
     if (!order.approved_character_url) throw new Error('no approved_character_url (gate 1 not passed)');
 
@@ -55,7 +55,12 @@ serve(async (req) => {
       approved_character_url: order.approved_character_url,
       recipient_photo_url: order.recipient_photo_url,
     };
-    return json(200, { success: true, config, storyboard, song_audio_url: song.audio_url, timing: song.lyrics_timestamps });
+    return json(200, {
+      success: true, config, storyboard, song_audio_url: song.audio_url, timing: song.lyrics_timestamps,
+      // persisted per-scene assets (revise flow): the builder seeds its workdir with
+      // these so only cleared/new scenes are regenerated on a rebuild.
+      scene_assets: order.scene_assets || [], morph_asset: order.morph_asset || null,
+    });
   } catch (e: any) {
     console.error('story-build-context error:', e.message);
     return json(500, { success: false, error: e.message });

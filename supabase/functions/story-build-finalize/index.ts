@@ -20,7 +20,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (c: number, o: unknown) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: c });
   try {
-    const { mode, story_video_order_id, error: errMsg, cost_credits } = await req.json();
+    const { mode, story_video_order_id, error: errMsg, cost_credits, file, scene_assets, morph_asset } = await req.json();
     if (!story_video_order_id) throw new Error('Missing story_video_order_id');
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
     const path = `${story_video_order_id}/final.mp4`;
@@ -29,6 +29,25 @@ serve(async (req) => {
       const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true });
       if (error) throw new Error(error.message);
       return json(200, { success: true, path, token: data.token, signed_url: data.signedUrl });
+    }
+    // signed upload for a per-scene asset (motion clip / morph) so the admin can
+    // review + revise individual scenes. Filename is whitelisted (no traversal).
+    if (mode === 'asset-upload-url') {
+      if (!/^[a-zA-Z0-9_-]+\.(png|mp4|jpg|jpeg)$/.test(String(file || ''))) throw new Error('bad file name');
+      const assetPath = `${story_video_order_id}/assets/${file}`;
+      const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(assetPath, { upsert: true });
+      if (error) throw new Error(error.message);
+      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(assetPath);
+      return json(200, { success: true, path: assetPath, signed_url: data.signedUrl, public_url: pub.publicUrl });
+    }
+    // persist the per-scene asset map: [{image_id, image_url, motion_url}] + morph url
+    if (mode === 'save-assets') {
+      if (!Array.isArray(scene_assets)) throw new Error('scene_assets must be an array');
+      const clean = scene_assets
+        .filter((a: any) => a && typeof a.image_id === 'string')
+        .map((a: any) => ({ image_id: a.image_id, image_url: a.image_url || null, motion_url: a.motion_url || null }));
+      await supabase.from('story_video_orders').update({ scene_assets: clean, morph_asset: morph_asset || null }).eq('id', story_video_order_id);
+      return json(200, { success: true, saved: clean.length });
     }
     if (mode === 'fail') {
       await supabase.from('story_video_orders').update({ state: 'failed', error: String(errMsg || 'build failed') }).eq('id', story_video_order_id);

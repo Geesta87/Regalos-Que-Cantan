@@ -52,6 +52,10 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 // V5_5 only — V4_5 failed the 2026-06-12 regional-Mexican bake-off. Replace-
 // section must run on the same model family the source song was made with.
 const KIE_MODEL = Deno.env.get('KIE_MODEL') || 'V5_5';
+// In-house ffmpeg Cloud Run — does the seamless surgical splice server-side
+// (duration-match + equal-power crossfade + gain-match). Same host/secret as video render.
+const INHOUSE_RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
+const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 
 // Best model for the reasoning (locate the window + rewrite lyrics + phonetic
 // name respelling). Sonnet fallback matches the codebase's Claude retry order.
@@ -206,6 +210,11 @@ const FIX_TOOL = {
         description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la parte corregida (el nombre o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
         items: { type: 'string' },
       },
+      add_line: {
+        type: 'object',
+        description: 'Solo si la petición es AGREGAR una línea NUEVA (no reemplazar) y esa línea va en el BLOQUE FINAL/despedida de la canción. En ese caso: { text: la línea nueva EXACTA en español (ya incluida también en section_text y full_lyrics en su lugar), anchor: UNA palabra distintiva de esa línea nueva (poco común en el resto de la canción, para ubicar el pase limpio) }. Si NO es una adición, o la adición NO está en el bloque final, OMITE add_line por completo (y si es una adición a media canción, pon can_fix=false).',
+        properties: { text: { type: 'string' }, anchor: { type: 'string' } },
+      },
     },
     required: ['can_fix', 'reason', 'infill_start_s', 'infill_end_s', 'section_text', 'full_lyrics', 'change_summary', 'verify_phrases'],
     additionalProperties: false,
@@ -229,6 +238,11 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
 - section_text debe ser TODO lo que se canta dentro de la ventana (la estrofa/líneas completas), ya con la corrección aplicada y dejando idénticas las demás palabras. La última línea de section_text marca dónde se hará el empalme.
 - full_lyrics debe ser la letra COMPLETA ya corregida: aplica SOLO el cambio pedido y deja idéntico todo lo demás. Conserva los marcadores de sección.
 - Para nombres mal pronunciados: reescribe el nombre con ortografía española fonética para que el modelo lo cante bien (p. ej. "Yareli" → "Yarelí", "Joaquin" → "Joaquín", "Yetzaeli" → "Yetsaelí"), tanto en full_lyrics como en section_text, manteniendo el nombre legible.
+- QUIRKS DEL MODELO (lecciones aprendidas — el modelo canta mal ciertas frases y hay que redactar la corrección para que las cante bien):
+  · Homófonos/elisiones: una frase que se presta a confundirse al cantarse la canta mal de forma consistente (p. ej. "me dicen el Potro" salió "me hice en el potro" en cada intento). Si la línea corregida contiene una construcción así, prefiere una redacción natural equivalente que conserve el significado y sea inequívoca al oído (p. ej. "me llaman el Potro"). No cambies el sentido; solo desambigua el sonido.
+  · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
+  · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
+- AGREGAR UNA LÍNEA NUEVA (no reemplazar): solo es confiable en el BLOQUE FINAL / la despedida (ahí hay espacio instrumental y nada después que se desalinee). Si el dueño pide agregar una línea al final: inserta la línea EXACTA en su lugar dentro de section_text y de full_lyrics; define la ventana [infill_start_s, infill_end_s] = el bloque final completo (desde el inicio del último coro/despedida hasta el final del canto), y llena add_line = { text, anchor } con una palabra distintiva de la línea nueva. Si la canción tiene intro [Hablado] (los corridos), puedes agregarla como línea [Hablado] (lo hablado no necesita métrica → usa las palabras EXACTAS del cliente). Si la adición NO es al final (va a media canción), pon can_fix=false y explica que ese caso necesita rehacer la canción completa.
 - Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
@@ -254,7 +268,7 @@ Your job:
 // Full-song re-roll: used when section-fix isn't possible (e.g. a Mureka song)
 // or the owner chooses to remake the whole song. Claude returns the complete
 // corrected lyrics; we then generate a fresh Kie song from them.
-const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
+const FULL_FIX_SYSTEM_PROMPT = `Eres un editor de letras de canciones regionales mexicanas en español. Te dan la letra actual de una canción y una queja/instrucción (puede incluir una conversación con el dueño y/o una captura de WhatsApp del cliente). Devuelve la letra COMPLETA ya corregida aplicando SOLO el cambio pedido y dejando idéntico todo lo demás; conserva los marcadores de sección como [Coro] y [Verso]. Para nombres mal pronunciados, reescríbelos con ortografía española fonética (p. ej. "Yareli"→"Yarelí", "Joaquin"→"Joaquín"). Lee la imagen si viene adjunta. En "changes" lista cada línea o frase que cambió, con el texto exacto ANTES y DESPUÉS, para que el dueño lo confirme. Si la petición es AGREGAR una línea NUEVA (no reemplazar): inclúyela en full_lyrics en su lugar, repórtala en "changes" como { before: "(línea nueva)", after: la línea }, y si va en el BLOQUE FINAL/despedida llena add_line = { text, anchor } con una palabra distintiva y poco común de la línea nueva. Si la canción tiene intro [Hablado], puedes agregarla como línea [Hablado] con las palabras EXACTAS del cliente. IDIOMA: change_summary va en INGLÉS (el dueño habla inglés); la LETRA (full_lyrics) y los textos antes/después en "changes" permanecen en ESPAÑOL — nunca traduzcas la letra. Responde SIEMPRE llamando a la herramienta submit_corrected_lyrics.`;
 
 const FULL_FIX_TOOL = {
   name: 'submit_corrected_lyrics',
@@ -281,6 +295,11 @@ const FULL_FIX_TOOL = {
         type: 'array',
         description: '1 a 3 palabras o frases cortas EXACTAS que DEBEN escucharse en la versión corregida (p. ej. el nombre corregido o la frase nueva). Se usan para verificar con transcripción que el cambio sí se cantó.',
         items: { type: 'string' },
+      },
+      add_line: {
+        type: 'object',
+        description: 'Solo si la petición es AGREGAR una línea NUEVA (no reemplazar) al BLOQUE FINAL/despedida de la canción. { text: la línea nueva EXACTA en español (ya incluida en full_lyrics en su lugar), anchor: UNA palabra distintiva y poco común de esa línea }. OMÍTELO si no es una adición al final; si es una adición a media canción, descríbela igual pero el arreglo por sección no la podrá hacer.',
+        properties: { text: { type: 'string' }, anchor: { type: 'string' } },
       },
     },
     required: ['full_lyrics', 'change_summary', 'changes', 'verify_phrases'],
@@ -401,6 +420,70 @@ async function callClaudeChat(lyrics: string, conversation: ChatMsg[], image?: I
     if (text) return text;
   }
   return null;
+}
+
+// Suggest alternate wordings of a line the AI singer keeps refusing (skips it,
+// garbles it, or reverts to the original word — e.g. llaman→llamarán, or a filter
+// block like "mi vida no tiene sentido"). Keeps the meaning; makes it singable.
+const REWORD_TOOL = {
+  name: 'suggest_rewordings',
+  description: 'Suggest 2-3 alternate wordings of a lyric line that keep the exact meaning but are easier for the AI singer to sing.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      suggestions: {
+        type: 'array',
+        items: { type: 'object', properties: { text: { type: 'string' }, why: { type: 'string' } }, required: ['text', 'why'], additionalProperties: false },
+      },
+    },
+    required: ['suggestions'],
+    additionalProperties: false,
+  },
+} as const;
+async function callClaudeReword(before: string, after: string, sang: string): Promise<any[]> {
+  if (!ANTHROPIC_API_KEY) return [];
+  const system = `Eres un letrista experto en canciones en español generadas por IA (Suno/Kie). El generador NO logra cantar cierta línea corregida: la salta, canta gibberish, o vuelve a la palabra original. Propón 2-3 REDACCIONES ALTERNATIVAS de la línea que: (a) conserven EXACTAMENTE el significado que el cliente pidió; (b) sean más fáciles de cantar — evita homófonos que el modelo confunde (p. ej. "me dicen"→"me hice"), y evita frases que disparan el filtro de contenido (autolesión: "mi vida no tiene sentido"); (c) mantengan métrica y rima parecidas. Cada sugerencia: text = la línea nueva completa en ESPAÑOL; why = una frase corta en INGLÉS para el dueño. Devuelve llamando a suggest_rewordings.`;
+  const user = `Línea original: "${before}"\nCorrección deseada: "${after}"\nLo que el generador cantó (fallando): "${sang || '(saltó la línea / gibberish)'}"\n\nPropón 2-3 redacciones alternativas de la línea corregida, cantables, mismo significado.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const model = attempt === 2 ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 800, system, tool_choice: { type: 'tool', name: 'suggest_rewordings' }, tools: [REWORD_TOOL], messages: [{ role: 'user', content: user }] }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const block = (data?.content || []).find((b: any) => b?.type === 'tool_use' && b?.name === 'suggest_rewordings');
+      const s = block?.input?.suggestions;
+      if (Array.isArray(s) && s.length) return s.slice(0, 3);
+    } catch { /* next model */ }
+  }
+  return [];
+}
+
+// Read a customer↔team conversation and summarize, in one or two plain Spanish
+// sentences, WHAT the customer wants corrected in their song (the exact line/word/
+// date/name when identifiable). Used by the "Send to Fix Song" chat button so the
+// owner gets an actionable summary alongside the raw exchange.
+async function callClaudeSummarizeRequest(exchange: string): Promise<string> {
+  if (!ANTHROPIC_API_KEY || !exchange.trim()) return '';
+  const system = `Eres un asistente que lee una conversación entre el equipo de soporte y un cliente sobre su CANCIÓN personalizada. Resume en UNA o DOS frases claras QUÉ quiere corregir el cliente en la canción (la línea, palabra, fecha o nombre EXACTO si se identifica). Escribe en ESPAÑOL, directo y accionable para quien hará el arreglo. Si NO es una corrección de canción, responde exactamente "(no parece una corrección de canción)". Devuelve SOLO el resumen, sin preámbulo.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const model = attempt === 2 ? CLAUDE_FALLBACK_MODEL : CLAUDE_PRIMARY_MODEL;
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 300, system, messages: [{ role: 'user', content: `CONVERSACIÓN:\n${exchange}` }] }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const text = (data?.content || []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('').trim();
+      if (text) return text;
+    } catch { /* next model */ }
+  }
+  return '';
 }
 
 // Claude rewrites the FULL lyrics with the fix applied (for the whole-song
@@ -1077,6 +1160,53 @@ Deno.serve(async (req) => {
     // PLAN — cheap, instant: show the proposed lyric change(s) before
     // spending any Kie credits. No transcription, no audio generation.
     // -----------------------------------------------------------------
+    // Reword a stubborn line the AI singer keeps refusing (skip/garble/filter) —
+    // returns 2-3 singable alternatives that keep the meaning, for the owner to pick.
+    if (action === 'reword') {
+      const after = String(body?.after || '');
+      if (!after) return json({ ok: false, error: 'after line is required' });
+      const suggestions = await callClaudeReword(String(body?.before || ''), after, String(body?.sang || ''));
+      return json({ ok: true, suggestions });
+    }
+
+    // Summarize a chat exchange into "what the customer wants corrected" — for the
+    // "Send to Fix Song" button (owner reviews the raw exchange + this summary).
+    if (action === 'summarize-request') {
+      const summary = await callClaudeSummarizeRequest(String(body?.exchange || ''));
+      return json({ ok: true, summary });
+    }
+
+    // Seamless splice — proxy to the in-house ffmpeg Cloud Run, which stitches the
+    // re-sung line into the pristine song with duration-match + equal-power
+    // crossfade + gain-match, and returns a hosted MP3 URL. The browser plays that
+    // URL for preview and fetches it into a blob to apply — replacing the old
+    // in-browser Web-Audio splice that made the seam audible. Falls through to the
+    // browser splice on the frontend if this errors.
+    if (action === 'splice') {
+      if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
+      const mode = body?.mode === 'section' ? 'section' : 'line';
+      const spec: Record<string, unknown> = {
+        mode,
+        pristine_url: body?.pristineUrl,
+        resung_url: body?.resungUrl,
+      };
+      if (mode === 'section') { spec.origCut = body?.origCut; spec.resungCut = body?.resungCut; }
+      else { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; }
+      if (!spec.pristine_url || !spec.resung_url) return json({ ok: false, error: 'pristineUrl and resungUrl required' });
+      try {
+        const r = await fetch(`${INHOUSE_RENDERER_URL}/splice-audio`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+          body: JSON.stringify(spec),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d?.success) return json({ ok: false, error: d?.error || `splice ${r.status}` });
+        return json({ ok: true, url: d.url });
+      } catch (e) {
+        return json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
     if (action === 'plan') {
       if (!ANTHROPIC_API_KEY) return json({ ok: false, error: 'ANTHROPIC_API_KEY missing on Supabase' });
       const songId: string | undefined = body?.songId;
@@ -1101,6 +1231,9 @@ Deno.serve(async (req) => {
         approvedLyrics: plan.full_lyrics,
         changes: Array.isArray(plan.changes) ? plan.changes : [],
         verifyPhrases: Array.isArray(plan.verify_phrases) ? plan.verify_phrases : [],
+        addLine: (plan.add_line && typeof plan.add_line?.text === 'string' && plan.add_line.text.trim())
+          ? { text: String(plan.add_line.text).trim(), anchor: String(plan.add_line.anchor || '').trim() }
+          : null,
       });
     }
 
@@ -1266,16 +1399,30 @@ Deno.serve(async (req) => {
     if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
 
     const ageDays = song.created_at ? (Date.now() - new Date(song.created_at).getTime()) / 86400000 : null;
-    const staleWarning = ageDays !== null && ageDays > 14
-      ? `La canción tiene ~${Math.round(ageDays)} días; Kie borra el audio después de ~14 días, así que el arreglo por sección podría fallar. Si falla, usa regeneración completa.`
-      : null;
+    // Songs older than Kie's ~14-day audio retention can't be section-fixed — the
+    // original voice-track is deleted, so the re-sing + splice have nothing to work
+    // from. Route straight to the full re-roll (fresh take, same style & voice)
+    // with a clear message, instead of failing later on a dead transcription/re-sing.
+    if (ageDays !== null && ageDays > 14) {
+      return json({ ok: false, eligible: false, tooOld: true,
+        reason: `Esta canción tiene ~${Math.round(ageDays)} días. Kie borra el audio original después de ~14 días, así que el arreglo por sección (misma voz exacta) ya no es posible. Usa "Rehacer la canción completa" — se vuelve a grabar con el mismo estilo y tipo de voz.` });
+    }
 
     // ---- Word-level timestamps of the PRISTINE original (fresh Whisper — the
     // cached lyrics_timestamps may be a previously-fixed version, and the splice
-    // must line up with the pristine timeline). ----
-    const whisper: WhisperResult | null = await transcribeAudio(pristineUrl);
+    // must line up with the pristine timeline). If the Kie tempfile is unreachable
+    // (flaky/expired) but the song is still young enough, fall back to OUR permanent
+    // copy (audio_url) — it's the same audio, so both transcription and splice work. ----
+    let whisper: WhisperResult | null = await transcribeAudio(pristineUrl);
+    let pristineForSplice = pristineUrl;
+    if ((!whisper || whisper.words.length === 0) && song.audio_url && song.audio_url !== pristineUrl) {
+      console.log('[fix] pristine Kie URL unreachable — retrying with permanent audio_url');
+      const w2 = await transcribeAudio(song.audio_url);
+      if (w2 && w2.words.length) { whisper = w2; pristineForSplice = song.audio_url; }
+    }
     if (!whisper || whisper.words.length === 0) {
-      return json({ ok: false, error: 'No se pudo transcribir el audio (Whisper). Revisa OPENAI_API_KEY o intenta de nuevo.' });
+      return json({ ok: false, eligible: false,
+        reason: 'No se pudo acceder al audio original para transcribirlo. Usa "Rehacer la canción completa" (mismo estilo y voz).' });
     }
 
     const duration = whisper.duration || (whisper.words.length ? whisper.words[whisper.words.length - 1].end : 0);
@@ -1363,10 +1510,10 @@ Deno.serve(async (req) => {
           changeSummary: fix.change_summary || '',
           window: { startS: start, endS: end },
           sectionText,                 // the corrected block lines (for splice-boundary detection)
-          originalAudioUrl: pristineUrl, // pristine original — everything after the block comes from here
+          originalAudioUrl: pristineForSplice, // pristine original (or our permanent copy) — everything after the block comes from here
           fullLyrics, // the REAL corrected lyrics to store on apply
           verifyPhrases: phrasesToVerify,
-          staleWarning,
+          staleWarning: null,
         });
       } catch (e: any) {
         await logAttempt(supabase, { song_id: songId, action: 'section-submit', mode: 'section', complaint: complaint.slice(0, 2000), window_start: start, window_end: end, kie_error_message: String(e?.message || e).slice(0, 500), outcome: isContentError(e) ? 'blocked' : 'failed' });
@@ -1419,13 +1566,13 @@ Deno.serve(async (req) => {
         songId,
         changeSummary: fix.change_summary || '',
         window: { startS: start, endS: end },
-        originalAudioUrl: pristineUrl,
+        originalAudioUrl: pristineForSplice,
         fixedAudioUrl: best.audioUrl,
         fixTaskId: lastTaskId,
         fixAudioId: best.id,
         fixImageUrl: best.imageUrl,
         fullLyrics, // store the REAL corrected lyrics, not the filter-dodging paraphrase
-        staleWarning,
+        staleWarning: null,
         verified: best.verified,
         verifyNote,
         takes: ordered.map((t) => ({ audioUrl: t.audioUrl, id: t.id, imageUrl: t.imageUrl, verified: t.verified, lyrics: fullLyrics })),

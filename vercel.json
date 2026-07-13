@@ -15,6 +15,10 @@
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/:songId"
     },
     {
+      "source": "/animado/:orderId",
+      "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/story-video-assets/:orderId/final.mp4"
+    },
+    {
       "source": "/lyric-video/:file(.+\\.[a-zA-Z0-9]+)",
       "destination": "https://yzbvajungshqcpusfiia.supabase.co/storage/v1/object/public/videos/lyric/:file"
     },

@@ -678,6 +678,16 @@ verify_jwt = true
 # use it — no revenue fields are exposed.
 verify_jwt = true
 
+[functions.song-fix-queue]
+# Backs the "Pending fixes" queue in the admin "Fix Song" tab. Called from the
+# dashboard with a logged-in Supabase Auth user's JWT → verify_jwt = true; the
+# handler requires a row in admin_users. Both 'admin' and 'assistant' may list /
+# claim / stage / reject a request, but only role='admin' may RELEASE a staged
+# fix into the customer's live song (the owner-only second approval gate).
+# Reads/writes song_fix_requests + swaps the audio into public.songs on release
+# (with the same fix_backup undo snapshot as the direct Fix Song apply).
+verify_jwt = true
+
 [functions.admin-affiliates]
 # Admin-gated reader for affiliates / affiliate_events / affiliate_payouts.
 # Same pattern as admin-songs: gateway validates the user JWT, handler
@@ -880,3 +890,14 @@ verify_jwt = false
 # Remove this function (and this block, and the Supabase secret) once
 # voice-cloning quality is validated and the paid tier launches.
 verify_jwt = true
+
+# cs-metrics — read-only CS quality dashboard. Called by the admin frontend with
+# the owner's Supabase JWT, so keep JWT verification ON (admin_users gate inside).
+[functions.cs-metrics]
+verify_jwt = true
+
+# cs-distill-knowledge — weekly pg_cron job that proposes knowledge updates from
+# recent corrections. Called by pg_cron with no JWT; only writes PENDING
+# proposals (owner approves in Bot Training), so an unauthenticated call is safe.
+[functions.cs-distill-knowledge]
+verify_jwt = false

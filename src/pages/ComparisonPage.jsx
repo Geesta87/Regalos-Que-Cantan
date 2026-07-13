@@ -1121,9 +1121,9 @@ export default function ComparisonPage() {
             lineHeight: '1.5'
           }}>
             <div style={{fontSize: '16px', fontWeight: 800, marginBottom: '4px'}}>
-              ✅ Garantía de calidad
+              ✅ Nuestra garantía de calidad
             </div>
-            Tu canción se crea con los datos que tú ingresaste. Si encuentras un error <strong>nuestro</strong> en la producción, lo corregimos sin costo.
+            Tu canción se crea con los datos que tú confirmaste. Nuestra garantía cubre cualquier error <strong>de nuestra parte</strong> en la producción: si lo encuentras, lo corregimos con gusto y sin costo.
           </div>
         </div>
         <div style={{

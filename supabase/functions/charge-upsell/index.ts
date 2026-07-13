@@ -48,6 +48,7 @@ const cors = {
 // form (recipient / message / schedule) and moderation, so it stays on its own
 // flow until that's wired. Keep prices in sync with create-checkout.
 const ITEMS: Record<string, { cents: number; label: string }> = {
+  video: { cents: 999, label: 'Video con fotos' },
   animado: { cents: 2900, label: 'Película animada' },
   instrumental: { cents: 799, label: 'Pista instrumental' },
   lyric_video: { cents: 999, label: 'Video con letra' },
@@ -196,7 +197,13 @@ serve(async (req) => {
     // exact isolated patterns stripe-webhook already uses.
     let animadoOrderId: string | null = null;
     try {
-      if (item === 'animado') {
+      if (item === 'video') {
+        // Photo-slideshow video ($9.99). Flag the song exactly like a checkout-
+        // time video addon — the success page then lazily creates the
+        // video_orders row, collects the photos, and generate-video renders it.
+        // No new fulfillment code: identical downstream path to create-checkout.
+        await supabase.from('songs').update({ has_video_addon: true, video_addon_count: 1 }).eq('id', song_id);
+      } else if (item === 'animado') {
         // Park an awaiting_photo story_video_order (idempotent per song). The
         // success page then collects the recipient photo (AnimadoPhotoUpload).
         const r = await fetch(`${SUPABASE_URL}/functions/v1/create-story-video-order`, {

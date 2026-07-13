@@ -146,9 +146,19 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       return match ? match.split('=').slice(1).join('=').trim() : '';
     } catch { return ''; }
   };
-  const fbc = getCookie('_fbc');
+  // Prefer the live _fbc cookie; fall back to the fbclid we captured + persisted
+  // on landing (tracking.js), so the server-side CAPI Purchase is never sent with
+  // an empty click-ID even when the cookie is missing at checkout time.
+  const getStoredFbc = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('rqc_fbc') || 'null');
+      if (raw && raw.fbc && raw.expiresAt > Date.now()) return raw.fbc;
+    } catch { /* ignore */ }
+    return '';
+  };
+  const fbc = getCookie('_fbc') || getStoredFbc();
   const fbp = getCookie('_fbp');
-  
+
   const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
     method: 'POST',
     headers: {

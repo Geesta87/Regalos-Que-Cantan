@@ -27,6 +27,12 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   const title = data.title || 'Regalos Que Cantan';
+  const tag = data.tag || 'rqc';
+  // Sales get the celebratory treatment: a distinctive "ka-ching" vibration,
+  // a quick-action button, and they stay on screen until tapped. notify-new-sales
+  // tags these 'sale-<id>'. (Android plays the notification channel's default
+  // sound; web push can't attach a custom audio file, so there's no sound field.)
+  const isSale = /^sale-/.test(tag) || /venta|paid|sale/i.test(title);
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || '',
@@ -34,7 +40,11 @@ self.addEventListener('push', (event) => {
       // Badge must be a white-on-transparent silhouette — Android renders only
       // its alpha channel; a colored image becomes a solid white box.
       badge: '/icons/badge-96.png',
-      tag: data.tag || 'rqc',
+      tag,
+      renotify: true,
+      vibrate: isSale ? [150, 75, 150, 75, 400] : [200, 100, 200],
+      requireInteraction: isSale,
+      actions: [{ action: 'view', title: isSale ? '💸 Ver pedido' : 'Abrir' }],
       data: { url: data.url || '/admin/dashboard?tab=sms' },
     })
   );

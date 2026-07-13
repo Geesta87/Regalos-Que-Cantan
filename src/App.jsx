@@ -39,6 +39,7 @@ import ComboLanding from './pages/seo/ComboLanding';
 import { getComboBySlug } from './data/seoData';
 import NotFoundPage from './pages/NotFoundPage';
 import CorridosLanding from './pages/CorridosLanding';
+import BachataLanding from './pages/BachataLanding';
 import AffiliateLogin from './pages/AffiliateLogin';
 import AffiliateResetPassword from './pages/AffiliateResetPassword';
 import AffiliateOnboarding from './pages/AffiliateOnboarding';
@@ -100,6 +101,7 @@ const pathToPage = {
   '/dia-de-las-madres': 'diaDeLasMadres',
   '/dia-del-padre': 'diaDelPadre',
   '/corridos': 'corridos',
+  '/bachata': 'bachata',
   '/afiliados': 'affiliateLanding',
   '/partners': 'affiliateVSL',
   '/afiliado': 'affiliateLogin',
@@ -315,6 +317,7 @@ export default function App() {
       diaDeLasMadres: '/dia-de-las-madres',
       diaDelPadre: '/dia-del-padre',
       corridos: '/corridos',
+      bachata: '/bachata',
       affiliateLanding: '/afiliados',
       affiliateVSL: '/partners',
       affiliateLogin: '/afiliado',
@@ -463,6 +466,7 @@ export default function App() {
           {currentPage === 'diaDeLasMadres' && <DiaDeLasMadresLanding />}
           {currentPage === 'diaDelPadre' && <DiaDelPadreLanding />}
           {currentPage === 'corridos' && <CorridosLanding />}
+          {currentPage === 'bachata' && <BachataLanding />}
 
           {/* SEO Dynamic Genre pages */}
           {currentPage.startsWith('generos/') && (

@@ -5,6 +5,7 @@ import { trackStep, FUNNEL_STEPS } from '../services/tracking';
 import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
 import BotTrainingTab from '../components/admin/BotTrainingTab';
+import CsInsightsTab from '../components/admin/CsInsightsTab';
 import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import FixQueue from '../components/admin/FixQueue';
 import VideosTab from '../components/admin/VideosTab';
@@ -14,7 +15,7 @@ import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors } from 'lucide-react';
-import { spliceIntoOriginal, parseTimed, findLastLineEnd, validateTake, buildTokenGroups } from '../utils/audioSplice';
+import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -66,6 +67,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // Bundle: the OTHER version(s) of this song (same session_id) + their fixed previews.
   const [siblings, setSiblings] = useState([]);
   const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
+  const [appliedBothIds, setAppliedBothIds] = useState([]); // which bundle versions were applied (per-version apply)
+  const [busyBothId, setBusyBothId] = useState(null); // version id currently applying/redoing
+  const [failedTakes, setFailedTakes] = useState(null); // what Kie sang on a failed fix (diagnostic)
+  const [showFailedTakes, setShowFailedTakes] = useState(false);
+  const [rewordSuggestions, setRewordSuggestions] = useState(null); // singable alternatives when a word keeps failing
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
@@ -78,6 +84,36 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   }).then((r) => r.json());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+
+  // Splice the re-sung correction onto the pristine song. Prefers the SERVER
+  // recipe (fix-song-section 'splice' -> in-house ffmpeg Cloud Run: duration-match
+  // + equal-power crossfade + gain-match, which removes the audible seam), and
+  // falls back to the in-browser Web-Audio splice on any error so a Cloud Run blip
+  // never blocks a fix. Returns the SAME shape as the browser fns: { blob, url }.
+  //   mode 'line'    params: { pristineUrl, pStart, pEnd, resungUrl, rStart, rEnd }
+  //   mode 'section' params: { originalUrl, origCut, resungUrl, resungCut }
+  async function doSplice(mode, p) {
+    const srcUrl = mode === 'line' ? p.pristineUrl : p.originalUrl;
+    // The server can only fetch http(s) inputs. In a fallback chain the base can be
+    // a blob: URL from a prior browser splice — go straight to the browser then.
+    const serverOk = typeof srcUrl === 'string' && /^https?:/i.test(srcUrl);
+    if (serverOk) {
+      try {
+        const body = mode === 'line'
+          ? { action: 'splice', mode: 'line', pristineUrl: p.pristineUrl, pStart: p.pStart, pEnd: p.pEnd, resungUrl: p.resungUrl, rStart: p.rStart, rEnd: p.rEnd }
+          : { action: 'splice', mode: 'section', pristineUrl: p.originalUrl, origCut: p.origCut, resungUrl: p.resungUrl, resungCut: p.resungCut };
+        const d = await postFn(body);
+        if (d?.ok && d.url) {
+          const resp = await fetch(d.url);
+          if (resp.ok) return { blob: await resp.blob(), url: d.url };
+        }
+        // else: fall through to the browser splice below
+      } catch { /* fall through */ }
+    }
+    return mode === 'line'
+      ? await spliceLineReplace({ pristineUrl: p.pristineUrl, pStart: p.pStart, pEnd: p.pEnd, resungUrl: p.resungUrl, rStart: p.rStart, rEnd: p.rEnd })
+      : await spliceIntoOriginal({ resungUrl: p.resungUrl, resungCutS: p.resungCut, originalUrl: p.originalUrl, origCutS: p.origCut });
+  }
 
   // Find the other version(s) of this song (same generation session) so we can
   // offer "Corregir ambas versiones" — even the unpaid one, in case the customer
@@ -170,6 +206,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setResult(null);
     setPlan(null);
     setOfferFullReroll(false);
+    setFailedTakes(null); setShowFailedTakes(false); setRewordSuggestions(null);
     setPendingMode(mode);
     setPhase('planning');
     try {
@@ -222,9 +259,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // Returns the chosen take + splice points, or throws (err.offerFull = fall back
   // to a full re-roll). This is the piece the old "pick the tightest take" logic
   // was missing (it silently accepted takes that skipped the corrected line).
-  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText }, onMsg) {
-    const ROUNDS = 4;
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null }, onMsg) {
+    const ROUNDS = 5;
     let lastReason = '';
+    const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
+    let origLine = null; // pristine {startS,endS} of the line being changed (line-replace mode)
     for (let round = 1; round <= ROUNDS; round++) {
       onMsg?.(`Regenerating the part… (attempt ${round})`);
       const sub = await postFn({ action: 'section-submit', mode: 'section', songId, note: note || undefined, conversation: note ? [] : messages, image: note ? undefined : imagePayload(), approvedLyrics, verifyPhrases });
@@ -237,6 +276,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const startS = Number(sub.window?.startS);
       const origCut = Number(sub.window?.endS);
       if (!fixTaskId || !sectionText || !originalAudioUrl || !(origCut > 0)) throw new Error('Incomplete response from the server.');
+
+      // LINE-REPLACE mode: locate the ORIGINAL line in the pristine once, so we can
+      // swap in JUST the corrected line from a take (cutting any gibberish Kie pads
+      // around it). Transcribe the pristine only on the first round.
+      if (lineReplace?.before && lineReplace?.after && !origLine) {
+        try {
+          const ptr = await postFn({ action: 'transcribe', audioUrl: originalAudioUrl });
+          const pw = parseTimed(ptr.timed);
+          origLine = findCleanLine(pw, buildTokenGroups(lineReplace.before), { nearS: origCut, maxGapS: 3.5 });
+        } catch { origLine = null; }
+      }
 
       // Poll until the re-sing is ready.
       let takeUrls = [];
@@ -257,16 +307,63 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // Validate the CORRECTED line specifically (not the whole re-sung block) —
       // otherwise an unusual proper noun elsewhere in the block (e.g. "Josemir"
       // heard as "José Emil") or natural multi-line gaps false-reject a good take.
-      const groups = buildTokenGroups(correctedText || sectionText);
+      const groups = buildTokenGroups(addLine ? addLine.text : (correctedText || sectionText));
       const maxSpanS = (origCut > startS ? origCut - startS : 20) + 12;
       const cands = [];
+      const lineCands = []; // line-replace candidates (clean corrected line found in-take)
       for (const url of takeUrls) {
         const tr = await postFn({ action: 'transcribe', audioUrl: url });
         const words = parseTimed(tr.timed);
+        // LINE-REPLACE: if the CLEAN corrected line is present in this take (even
+        // surrounded by gibberish), we can swap just that line — preferred, since
+        // it cuts the junk. Only when its length ~matches the original line's slot.
+        if (lineReplace && origLine) {
+          const cl = findCleanLine(words, groups, { nearS: origLine.startS, maxGapS: 3.5 });
+          if (cl && (cl.endS - cl.startS) <= (origLine.endS - origLine.startS) + 2.5) {
+            lineCands.push({ url, rStart: cl.startS, rEnd: cl.endS });
+          }
+        }
+        // ADD-A-LINE: accept a take that cleanly SANG the new line (anchor present).
+        // Return the take + its transcript so the caller can compute the outro
+        // splice seams (biggestGap / anchor / outro) itself.
+        if (addLine) {
+          const va = validateTake(words, groups, { maxGapS: 6, maxSpanS: maxSpanS + 20 });
+          const anchorEnd = findAnchorEnd(words, addLine.anchor);
+          const okAdd = va.ok && anchorEnd != null;
+          const reasonA = okAdd ? 'clean' : (!va.ok ? (va.reason || 'no cantó la línea nueva') : 'no se ubicó la línea nueva');
+          lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: reasonA });
+          if (okAdd) cands.push({ url, words, anchorEnd, maxGap: va.maxGap ?? 0 });
+          else lastReason = reasonA;
+          continue;
+        }
         const v = validateTake(words, groups, { maxGapS: 5, maxSpanS });
-        const end = findLastLineEnd(words, sectionText);
-        if (v.ok && end) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
-        else lastReason = v.reason || 'splice point not found';
+        // Pass origCut (the section's expected end) so a chorus whose last line
+        // repeats (opens AND closes with the same phrase) cuts at the CLOSING
+        // occurrence, not the opening one — otherwise the splice drops the middle
+        // of the chorus (a 3:52 song came out 3:08 when both choruses were fixed).
+        const end = findLastLineEnd(words, sectionText, origCut);
+        // Location guard: the splice point MUST land near the real edit window.
+        // Without it, a repeated/scattered word elsewhere makes findLastLineEnd
+        // grab the wrong spot and the splice DUPLICATES a chunk (a fix once came
+        // out 5:19 instead of 3:50). ±25s covers normal padding, rejects repeats.
+        const nearWindow = end != null && Math.abs(end - origCut) <= 25;
+        const okTake = v.ok && end && nearWindow;
+        const reason = okTake ? 'clean' : (!v.ok ? (v.reason || 'no cantó lo corregido') : (end == null ? 'no se ubicó el corte' : 'lugar equivocado (repetido)'));
+        // Keep what Kie actually sang for the "Show me what Kie sang" diagnostic.
+        lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason });
+        if (okTake) cands.push({ url, cut: +(end + 0.3).toFixed(2) });
+        else lastReason = reason;
+      }
+      if (lineCands.length) {
+        // Prefer the take whose corrected line starts nearest the original slot.
+        lineCands.sort((a, b) => Math.abs(a.rStart - origLine.startS) - Math.abs(b.rStart - origLine.startS));
+        const c = lineCands[0];
+        return { lineReplace: true, resungUrl: c.url, pStart: origLine.startS, pEnd: origLine.endS, rStart: c.rStart, rEnd: c.rEnd, originalAudioUrl, fullLyrics, changeSummary, startS };
+      }
+      if (cands.length && addLine) {
+        cands.sort((a, b) => a.maxGap - b.maxGap); // most continuous clean pass
+        const c = cands[0];
+        return { addLine: true, resungUrl: c.url, resungWords: c.words, anchorEnd: c.anchorEnd, origCut, startS, originalAudioUrl, fullLyrics, changeSummary, sectionText };
       }
       if (cands.length) {
         cands.sort((a, b) => a.cut - b.cut); // tightest (least padded) clean take
@@ -274,7 +371,33 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       // none clean → next round (fresh takes)
     }
-    throw new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
+    const err = new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
+    err.takes = lastTakesSeen.slice(-4); // the last round's takes, for the diagnostic
+    throw err;
+  }
+
+  // On a stubborn failure (a single-line change the AI singer keeps refusing),
+  // ask the backend for singable rewordings and show them as one-click chips.
+  async function fetchRewordFor(e) {
+    const change = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
+    if (!change?.after) return;
+    const sang = Array.isArray(e?.takes) && e.takes.length ? (e.takes[e.takes.length - 1]?.text || '') : '';
+    try {
+      const r = await postFn({ action: 'reword', before: change.before || '', after: change.after, sang });
+      if (r?.ok && Array.isArray(r.suggestions) && r.suggestions.length) setRewordSuggestions(r.suggestions);
+    } catch { /* non-fatal */ }
+  }
+  // Owner picked a reworded line — update the plan and drop back to the confirm
+  // screen so they approve the new wording before we re-run (reword-then-ask).
+  function applyReword(newText) {
+    if (!plan?.changes?.length || !newText) return;
+    const oldAfter = plan.changes[0].after;
+    const changes = plan.changes.map((c, i) => (i === 0 ? { ...c, after: newText } : c));
+    const approved = (oldAfter && typeof plan.approvedLyrics === 'string') ? plan.approvedLyrics.replace(oldAfter, newText) : plan.approvedLyrics;
+    setPlan({ ...plan, changes, approvedLyrics: approved });
+    setRewordSuggestions(null); setFailedTakes(null); setShowFailedTakes(false); setOfferFullReroll(false); setError('');
+    setPhase('plan');
+    showToast('✏️ Reworded — review and press "Fix just that part" to try the new wording.');
   }
 
   // Single-part surgical fix ("Fix just that part").
@@ -284,9 +407,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setSectionParams({ approvedLyrics, verifyPhrases });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText }, setSurgicalMsg);
+      // A SINGLE within-line word change ⇒ line-replace mode: swap just that line
+      // (cuts any gibberish Kie pads around it, keeps the exact voice everywhere).
+      const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
+      const lineReplace = one && one.before && one.after ? { before: one.before, after: one.after } : null;
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace }, setSurgicalMsg);
       setSurgicalMsg('Stitching with the original recording…');
-      const spliced = await spliceIntoOriginal({ resungUrl: r.resungUrl, resungCutS: r.resungCut, originalUrl: r.originalAudioUrl, origCutS: r.origCut });
+      const spliced = r.lineReplace
+        ? await doSplice('line', { pristineUrl: r.originalAudioUrl, pStart: r.pStart, pEnd: r.pEnd, resungUrl: r.resungUrl, rStart: r.rStart, rEnd: r.rEnd })
+        : await doSplice('section', { resungUrl: r.resungUrl, resungCut: r.resungCut, originalUrl: r.originalAudioUrl, origCut: r.origCut });
       setResult({
         surgical: true,
         splicedBlob: spliced.blob,
@@ -299,7 +428,59 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
+      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+    }
+  }
+
+  // ADD-A-LINE surgical flow — add a brand-new line at the OUTRO while keeping
+  // the voice. Re-sings the final block (with the new line), keeps ONLY the clean
+  // re-sung tail that contains the new line, and grafts it onto the pristine song
+  // + the pristine instrumental outro. Proven recipe: memory
+  // project_add_new_line_to_song. NEEDS a live test on a real order before trusted.
+  async function runAddLine(approvedLyrics, addLine, verifyPhrases) {
+    setError(''); setResult(null); setInput('');
+    setFailedTakes(null); setShowFailedTakes(false); setRewordSuggestions(null);
+    setPhase('working'); setSurgicalMsg('Re-singing the ending with the new line…');
+    setSectionParams({ approvedLyrics, verifyPhrases });
+    try {
+      const note = `En el BLOQUE FINAL, AGREGA una línea nueva: "${addLine.text}". Re-canta el bloque final UNA sola vez, en orden, sin repetir el coro ni la despedida, incluyendo esta línea nueva en su lugar.`;
+      const r = await resingOne({ note, approvedLyrics, verifyPhrases, addLine }, setSurgicalMsg);
+      setSurgicalMsg('Locating the seams…');
+      // Pristine transcript → where to cut the original (just before its coro-final)
+      // and where its instrumental outro begins.
+      const pr = await postFn({ action: 'transcribe', audioUrl: r.originalAudioUrl });
+      const prWords = parseTimed(pr.timed);
+      const outroStart = lastSungWordEnd(prWords);
+      // joinP: biggest instrumental gap in the pristine just before the coro-final
+      // (≈ the re-sing window start). Fall back to window start if none stands out.
+      const jg = biggestGap(prWords, Math.max(0, r.startS - 10), r.startS + 4);
+      const joinP = jg.at != null ? jg.at : r.startS;
+      // reJoin: biggest gap in the re-sung take within ~14s before the new line
+      // (drops the model's 1st partial pass + the long instrumental gap it inserts).
+      const rg = biggestGap(r.resungWords, Math.max(0, r.anchorEnd - 14), r.anchorEnd - 0.5);
+      const reJoin = rg.at != null ? rg.at : Math.max(0, r.anchorEnd - 10);
+      // reEnd: end of the last real sung word after the new line (+1.5s), dropping padding.
+      const tail = r.resungWords.filter((w) => w.start >= r.anchorEnd);
+      const reEnd = (lastSungWordEnd(tail) || r.anchorEnd) + 1.5;
+      setSurgicalMsg('Stitching with the original recording…');
+      const spliced = await spliceAddedTail({ pristineUrl: r.originalAudioUrl, joinP, resungUrl: r.resungUrl, reJoin, reEnd, outroStart });
+      setResult({
+        surgical: true,
+        splicedBlob: spliced.blob,
+        changeSummary: r.changeSummary || `Added line: "${addLine.text}"`,
+        fullLyrics: r.fullLyrics,
+        corrections: [{ before: '(nueva línea)', after: addLine.text }],
+        originalAudioUrl: song.original_audio_url || song.audio_url,
+        changeMarks: joinP > 0 ? [joinP] : [],
+        takes: [{ audioUrl: spliced.url, verified: true, lyrics: r.fullLyrics }],
+      });
+      setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+    } catch (e) {
+      setOfferFullReroll(true);
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -316,16 +497,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     for (let i = 0; i < changes.length; i++) {
       const c = changes[i];
       const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
-      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
+      const lineReplace = c.before && c.after ? { before: c.before, after: c.after } : null;
+      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after, lineReplace }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
       done.push(r);
     }
     const changeMarks = done.map((d) => d.startS).filter((n) => n > 0).sort((a, b) => a - b);
-    done.sort((a, b) => b.startS - a.startS); // latest-first
+    done.sort((a, b) => b.startS - a.startS); // latest-first (earlier lines' timing stays valid)
     let baseUrl = done[0].originalAudioUrl; // pristine original
     let blob = null;
     for (const c of done) {
       onMsg?.('Uniendo con la grabación original…');
-      const sp = await spliceIntoOriginal({ resungUrl: c.resungUrl, resungCutS: c.resungCut, originalUrl: baseUrl, origCutS: c.origCut });
+      const sp = c.lineReplace
+        ? await doSplice('line', { pristineUrl: baseUrl, pStart: c.pStart, pEnd: c.pEnd, resungUrl: c.resungUrl, rStart: c.rStart, rEnd: c.rEnd })
+        : await doSplice('section', { resungUrl: c.resungUrl, resungCut: c.resungCut, originalUrl: baseUrl, origCut: c.origCut });
       baseUrl = sp.url; blob = sp.blob;
     }
     return { splicedBlob: blob, correctedUrl: baseUrl, fullLyrics: combinedLyrics, changeMarks };
@@ -349,7 +533,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
@@ -358,6 +544,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // OWN take (own voice). Previews both before applying.
   async function runBothFix(combinedLyrics, changes) {
     setError(''); setBothResults(null); setResult(null); setInput('');
+    setAppliedBothIds([]); setBusyBothId(null);
     setPhase('bothWorking');
     try {
       const targets = [
@@ -372,35 +559,63 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       setBothResults(results);
       setSurgicalMsg(''); setPhase('bothPreview');
     } catch (e) {
-      if (e?.offerFull) setOfferFullReroll(true);
+      setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
     }
   }
 
-  // Apply the fixed audio to EACH version's own row (own /song/<id> link).
-  async function applyBoth() {
-    if (!bothResults?.length) return;
-    setPhase('applying');
-    const summary = (plan?.changeSummary) || `${bothResults[0]?.corrections?.length || 1} corrección(es)`;
+  // Apply ONE bundle version to its own /song/<id> link. Per-version so the owner
+  // can accept a clean take and leave the other for a retry (they don't always
+  // come out right on the same pass).
+  async function applyOneBoth(r) {
+    if (!r?.splicedBlob) return;
+    setBusyBothId(r.id); setError('');
+    const summary = (plan?.changeSummary) || `${r.corrections?.length || 1} corrección(es)`;
     try {
-      for (const r of bothResults) {
-        const fd = new FormData();
-        fd.append('audio', r.splicedBlob, `fixed-${r.id}.mp3`);
-        fd.append('songId', r.id);
-        fd.append('fullLyrics', r.fullLyrics || '');
-        fd.append('summary', summary);
-        if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
-        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
-        const d = await resp.json();
-        if (!d.ok) throw new Error(`Versión ${r.version ?? '?'}: ${d.error || 'apply failed'}`);
-        if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
-      }
-      showToast('✅ Both versions corrected. Each keeps its own link.');
+      const fd = new FormData();
+      fd.append('audio', r.splicedBlob, `fixed-${r.id}.mp3`);
+      fd.append('songId', r.id);
+      fd.append('fullLyrics', r.fullLyrics || '');
+      fd.append('summary', summary);
+      if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
+      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+      const d = await resp.json();
+      if (!d.ok) throw new Error(d.error || 'apply failed');
+      if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
+      setAppliedBothIds((s) => [...new Set([...s, r.id])]);
       setCanUndo(true);
       stampFix(new Date().toISOString(), (fixStamp.count || 0) + 1, summary, 'section');
-      setPhase('idle'); setBothResults(null); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput('');
+      showToast(`✅ Version ${r.version ?? '?'} corrected — its /song link is updated.`);
     } catch (e) {
-      setError(e?.message || 'apply failed'); setPhase('bothPreview');
+      setError(`Versión ${r.version ?? '?'}: ${e?.message || 'apply failed'}`);
+    } finally {
+      setBusyBothId(null);
+    }
+  }
+
+  // Re-run the fix for ONE version only (fresh takes), replacing its preview —
+  // for when v1 came out clean but v2 needs another attempt.
+  async function redoOneBoth(r) {
+    if (!plan?.changes) return;
+    setBusyBothId(r.id); setError(''); setFailedTakes(null);
+    try {
+      const one = await fixOneSong(r.id, { changes: plan.changes, combinedLyrics: plan.approvedLyrics }, (m) => setSurgicalMsg(`Versión ${r.version ?? '?'}: ${m}`));
+      setBothResults((list) => (list || []).map((x) => (x.id === r.id ? { ...x, ...one } : x)));
+      setSurgicalMsg('');
+    } catch (e) {
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      setError(`Versión ${r.version ?? '?'}: ${e?.message || 'redo failed'}`); setSurgicalMsg('');
+    } finally {
+      setBusyBothId(null);
+    }
+  }
+
+  // Convenience: apply every version not already applied.
+  async function applyAllRemainingBoth() {
+    for (const r of (bothResults || [])) {
+      if (!appliedBothIds.includes(r.id)) await applyOneBoth(r);
     }
   }
 
@@ -617,9 +832,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         : null)
     : null;
 
+  // Shareable customer link — always visible so the owner can copy-paste it to
+  // resend right after a repair (single song, or the whole bundle in one URL).
+  const shareIds = [song, ...siblings]
+    .filter(Boolean)
+    .sort((a, b) => (a.version || 0) - (b.version || 0))
+    .map((s) => s.id)
+    .filter((id, i, arr) => id && arr.indexOf(id) === i);
+  const shareUrl = `https://www.regalosquecantan.com/song/${shareIds.join(',')}`;
+  const copyShare = async () => {
+    try { await navigator.clipboard.writeText(shareUrl); showToast('🔗 Customer link copied — ready to paste.'); }
+    catch { showToast('Copy blocked — long-press/select the link to copy.'); }
+  };
+
   return (
     <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
       <p className="text-xs text-gray-300 mb-1">🔧 Fix or redo the song</p>
+      {/* Customer's shareable link — copy to resend after any fix/re-roll. */}
+      <div className="mb-2 flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5">
+        <span className="text-[11px] text-gray-400 flex-shrink-0">🔗 {shareIds.length > 1 ? `Link (both ${shareIds.length})` : 'Customer link'}:</span>
+        <a href={shareUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-300 truncate hover:underline flex-1 min-w-0">{shareUrl.replace('https://www.', '')}</a>
+        <button onClick={copyShare} className="text-[11px] px-2 py-0.5 bg-indigo-500 text-white rounded flex-shrink-0 hover:bg-indigo-400 transition">📋 Copy</button>
+      </div>
       {staging && (
         <div className="mb-2 rounded-lg bg-blue-500/10 border border-blue-500/30 px-3 py-2 text-[11px] text-blue-200">
           📥 <strong>Approval mode.</strong> When you finish, the fix is <strong>saved for the owner to confirm</strong> — it does <strong>not</strong> replace the customer's song until the owner releases it from the queue.
@@ -703,6 +937,54 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
           {error && <p className="text-xs text-red-300 mb-2">❌ {error}</p>}
 
+          {/* Diagnostic: what Kie actually sang on the rejected takes, so the
+              owner can see WHY the surgical fix failed (skipped line, mangled a
+              name, babbled) and decide to reword or redo the full song. */}
+          {/* Reword suggestions — the AI singer won't sing the word; offer singable
+              alternatives that keep the meaning. Picking one drops back to the
+              confirm screen with the new wording (owner approves, then retries). */}
+          {Array.isArray(rewordSuggestions) && rewordSuggestions.length > 0 && (
+            <div className="mb-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-2.5">
+              <p className="text-[11px] text-indigo-200 mb-1.5">💡 The AI singer keeps refusing that wording. Try one of these — same meaning, easier to sing:</p>
+              <div className="space-y-1.5">
+                {rewordSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => applyReword(s.text)}
+                    className="w-full text-left rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1.5 transition"
+                  >
+                    <p className="text-[12px] text-green-200">“{s.text}”</p>
+                    {s.why && <p className="text-[10px] text-gray-400 mt-0.5">{s.why}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {Array.isArray(failedTakes) && failedTakes.length > 0 && (
+            <div className="mb-3 bg-black/20 border border-amber-500/30 rounded-lg p-2">
+              <button
+                onClick={() => setShowFailedTakes((v) => !v)}
+                className="text-[11px] text-amber-300 hover:text-amber-200 transition"
+              >
+                🔍 {showFailedTakes ? 'Hide' : 'Show'} what the AI sang ({failedTakes.length} take{failedTakes.length > 1 ? 's' : ''} rejected)
+              </button>
+              {showFailedTakes && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[10px] text-gray-400">Each take was rejected because it didn't cleanly sing the correction. Listen, then reword the line or redo the full song.</p>
+                  {failedTakes.map((t, i) => (
+                    <div key={i} className="text-[11px] border-t border-white/5 pt-2">
+                      <p className="text-red-300/90 mb-1">✗ {t.reason || 'rejected'}</p>
+                      {t.url && <audio src={t.url} controls className="w-full h-8 mb-1" />}
+                      {t.text && <p className="text-gray-400 font-mono leading-snug max-h-20 overflow-y-auto">{t.text}</p>}
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-amber-200/80">💡 Tip: if the AI keeps mangling a word or name, reword the line (e.g. "me dicen"→"me llaman") so it's easier to sing, then try again.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {(phase === 'idle' || phase === 'planning') && (
             <div className="flex flex-col gap-2">
               {eligible && (
@@ -746,9 +1028,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               </details>
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full'
                 ? 'The full song will be redone. Takes 1-3 min.'
-                : (Array.isArray(plan.changes) && plan.changes.length > 1
-                  ? `${plan.changes.length} parts will be re-sung separately and stitched into one file — same voice. Takes ~${plan.changes.length * 2}-${plan.changes.length * 3} min.`
-                  : 'Only the affected part will be regenerated. Takes 1-3 min.')}</p>
+                : plan.addLine
+                  ? 'The new line will be sung into the ending and grafted onto the original — same voice. Takes 1-3 min.'
+                  : (Array.isArray(plan.changes) && plan.changes.length > 1
+                    ? `${plan.changes.length} parts will be re-sung separately and stitched into one file — same voice. Takes ~${plan.changes.length * 2}-${plan.changes.length * 3} min.`
+                    : 'Only the affected part will be regenerated. Takes 1-3 min.')}</p>
+              {pendingMode === 'section' && plan.addLine && (
+                <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". This is newer — listen to the preview end-to-end before applying.</p>
+              )}
               {offerFullReroll && pendingMode === 'section' && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ This change is spread across several parts of the song, so a one-part fix can't cover it. Redo the full song to apply all the corrections at once (same voice & style).</p>
               )}
@@ -763,15 +1050,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 ) : (
                   <button
                     onClick={() => (pendingMode === 'section'
-                      ? (Array.isArray(plan.changes) && plan.changes.length > 1
-                        ? runMultiFix(plan.approvedLyrics, plan.changes)
-                        : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases))
+                      ? (plan.addLine
+                        ? runAddLine(plan.approvedLyrics, plan.addLine, plan.verifyPhrases)
+                        : (Array.isArray(plan.changes) && plan.changes.length > 1
+                          ? runMultiFix(plan.approvedLyrics, plan.changes)
+                          : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)))
                       : runFullReroll(plan.approvedLyrics, plan.verifyPhrases))}
                     className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                   >
-                    {pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
-                      ? `✅ Fix all ${plan.changes.length} parts (same voice)`
-                      : '✅ Confirm and generate'}
+                    {pendingMode === 'section' && plan.addLine
+                      ? '✅ Add the line (same voice)'
+                      : pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
+                        ? `✅ Fix all ${plan.changes.length} parts (same voice)`
+                        : '✅ Confirm and generate'}
                   </button>
                 )}
                 <button
@@ -781,6 +1072,18 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   ✏️ Keep editing
                 </button>
               </div>
+              {/* Always-available alternative: a full re-roll (fresh take, same
+                  style & voice). Works even when the surgical fix can't (a change
+                  spread across the song, OR a song older than ~14 days whose Kie
+                  source is gone). Hidden only when the system already forced it. */}
+              {pendingMode === 'section' && !offerFullReroll && (
+                <button
+                  onClick={() => runFullReroll(plan.approvedLyrics, plan.verifyPhrases)}
+                  className="w-full mt-2 py-2 px-4 bg-amber-500/90 text-black rounded-lg text-sm font-semibold hover:bg-amber-400 transition"
+                >
+                  🔄 Or redo the full song instead (fresh take — same style & voice)
+                </button>
+              )}
               {/* Bundle: correct BOTH versions at once (each in its own voice).
                   Hidden in queue/staging mode — a customer request targets one
                   song, and staging + approval covers only the linked song. */}
@@ -801,14 +1104,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             </p>
           )}
 
-          {/* Dual preview — both bundle versions, before/after each, with change markers */}
+          {/* Dual preview — both bundle versions, before/after each, with change
+              markers. Each version applies (or re-does) INDEPENDENTLY: accept a
+              clean take and retry the other without losing the good one. */}
           {(phase === 'bothPreview' || (phase === 'applying' && bothResults)) && bothResults && (
             <div className="mt-1 space-y-3">
               <p className="text-xs text-purple-100">📝 {(plan?.changeSummary) || 'Corrección aplicada a ambas versiones'}</p>
-              {bothResults.map((r) => (
-                <div key={r.id} className="bg-white/5 border border-white/10 rounded-lg p-3">
+              {surgicalMsg && <p className="text-[11px] text-purple-200">{surgicalMsg}</p>}
+              {bothResults.map((r) => {
+                const applied = appliedBothIds.includes(r.id);
+                const busy = busyBothId === r.id;
+                return (
+                <div key={r.id} className={`bg-white/5 border rounded-lg p-3 ${applied ? 'border-green-500/40' : 'border-white/10'}`}>
                   <p className="text-xs text-gray-200 font-semibold mb-1">
                     🎵 Version {r.version ?? '?'} {r.paid ? '· paid' : '· (not paid)'} {r.recipient_name ? `— ${r.recipient_name}` : ''}
+                    {applied && <span className="ml-2 text-green-400">✅ applied</span>}
                   </p>
                   {r.changeMarks?.length > 0 && (
                     <p className="text-[11px] text-amber-300 mb-2">🕐 Change{r.changeMarks.length > 1 ? 's' : ''} at {r.changeMarks.map((m) => mmss(m)).join(', ')} — jump there to check</p>
@@ -818,23 +1128,46 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                     <audio controls className="w-full mb-2" src={r.audio_url} />
                   </>)}
                   <p className="text-[11px] text-gray-300 mb-1">✅ Corrected (after):</p>
-                  <audio controls className="w-full" src={r.correctedUrl} />
+                  <audio controls className="w-full mb-2" src={r.correctedUrl} />
+                  {applied ? (
+                    <p className="text-[11px] text-green-400">This version is live on its own /song link.</p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => applyOneBoth(r)}
+                        disabled={!!busyBothId}
+                        className="flex-1 py-1.5 px-3 bg-green-500 text-black rounded-lg text-xs font-semibold hover:bg-green-400 transition disabled:opacity-50"
+                      >
+                        {busy ? '⏳ Applying…' : '✅ Apply this one'}
+                      </button>
+                      <button
+                        onClick={() => redoOneBoth(r)}
+                        disabled={!!busyBothId}
+                        className="py-1.5 px-3 bg-white/10 text-white rounded-lg text-xs font-medium hover:bg-white/20 transition disabled:opacity-50"
+                        title="Re-sing this version again (fresh takes)"
+                      >
+                        {busy ? '⏳ Redoing…' : '🔁 Redo this one'}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+              );})}
               <div className="flex gap-2">
+                {appliedBothIds.length < bothResults.length && (
+                  <button
+                    onClick={applyAllRemainingBoth}
+                    disabled={!!busyBothId}
+                    className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-500 transition disabled:opacity-60"
+                  >
+                    ✅ Apply {appliedBothIds.length > 0 ? 'the rest' : 'both'} (each to its own link)
+                  </button>
+                )}
                 <button
-                  onClick={applyBoth}
-                  disabled={phase === 'applying'}
-                  className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition disabled:opacity-60"
-                >
-                  {phase === 'applying' ? '⏳ Applying to both…' : '✅ Apply to both (each to its own link)'}
-                </button>
-                <button
-                  onClick={() => { setBothResults(null); setPhase('plan'); }}
-                  disabled={phase === 'applying'}
+                  onClick={() => { setBothResults(null); setAppliedBothIds([]); setPhase(appliedBothIds.length ? 'idle' : 'plan'); if (appliedBothIds.length) { setPlan(null); setMessages([]); setImage(null); setInput(''); } }}
+                  disabled={!!busyBothId}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
-                  Discard
+                  {appliedBothIds.length ? 'Done' : 'Discard'}
                 </button>
               </div>
             </div>
@@ -3414,6 +3747,9 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('training')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'training' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'training' ? '' : 'grayscale'}`}>🎓</span> Bot Training
         </button>
+        <button onClick={() => setActiveTab('csinsights')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'csinsights' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'csinsights' ? '' : 'grayscale'}`}>📊</span> CS Insights
+        </button>
         <button onClick={() => setActiveTab('fixsong')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'fixsong' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Wrench size={18} className={`flex-shrink-0 ${activeTab === 'fixsong' ? 'text-amber-400' : ''}`} /> Fix Song
         </button>
@@ -5961,6 +6297,10 @@ export default function AdminDashboard() {
           /* Bot Training — self-serve knowledge editor + learned-example manager
              for the customer-service AI rep (cs-training-admin edge function). */
           <BotTrainingTab accessToken={accessToken} />
+        ) : activeTab === 'csinsights' ? (
+          /* CS Insights — quality dashboard for the customer-service AI
+             (cs-metrics edge function). */
+          <CsInsightsTab accessToken={accessToken} />
         ) : activeTab === 'fixsong' ? (
           /* Arreglar Canción — dedicated workspace. Search any song, hear it,
              and fix one part via fix-song-section (Whisper + Claude + Kie

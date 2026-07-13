@@ -99,8 +99,11 @@ const DEMO_CONVERSATIONS = [
         body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821' },
       { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:40:00Z',
         body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?' },
+      // A WhatsApp VOICE NOTE — stored audio + Whisper auto-transcript. media_type
+      // starting with 'audio/' is what flags it as a voice message in the UI.
       { id: 'm3', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:42:00Z',
-        body: 'Es para nuestro aniversario el sábado 🙏' },
+        media_type: 'audio/ogg', media_url: '/sounds/jarvis/new-sale-1.mp3',
+        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏' },
       // AI draft that escalates (a change to a finished song → needs a human).
       { id: 'm4', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: true,
         created_at: '2026-06-09T17:43:00Z',
@@ -237,6 +240,18 @@ export default function SmsInboxTab({ accessToken }) {
   const [ooEditing, setOoEditing] = useState(false);
   const [ooDraft, setOoDraft] = useState('');
   const [ooBusy, setOoBusy] = useState(false);
+  // "New message" composer — start an outbound thread by typing a number.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composePhone, setComposePhone] = useState('');
+  const [composeChannel, setComposeChannel] = useState('sms');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeBusy, setComposeBusy] = useState(false);
+
+  // "Send to Fix Song" — confirmation modal fed by the open chat. Shows the
+  // full recent exchange for the owner to review PLUS an AI summary of what the
+  // customer wants changed (editable), then queues it into the Fix-Song list.
+  // { exchange, summary, loading, submitting, error, done }
+  const [fixModal, setFixModal] = useState(null);
 
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
@@ -379,7 +394,10 @@ export default function SmsInboxTab({ accessToken }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const inChannel = conversations.filter((c) => convChannels(c).has(channelTab));
+    // "Unread" pools both channels: any conversation with unread messages.
+    const inChannel = channelTab === 'unread'
+      ? conversations.filter((c) => (c.unread || 0) > 0)
+      : conversations.filter((c) => convChannels(c).has(channelTab));
     const sorted = [...inChannel].sort(
       (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
     );
@@ -410,10 +428,122 @@ export default function SmsInboxTab({ accessToken }) {
     [conversations, selectedId]
   );
 
+  // Which channel the OPEN thread is on. On the SMS/WhatsApp tabs it's the tab
+  // itself; on the "Unread" tab (which mixes both) it's the channel of the
+  // conversation's most recent message — so replies go out on the right rail.
+  const threadChannel = useMemo(() => {
+    if (channelTab !== 'unread') return channelTab;
+    if (!selected) return 'sms';
+    const msgs = selected.messages || [];
+    const last = msgs.length ? msgs[msgs.length - 1] : null;
+    return last ? msgChannel(last) : (selected.channel || 'sms');
+  }, [channelTab, selected]);
+
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unread || 0), 0),
     [conversations]
   );
+
+  // Conversations with an AI draft waiting anywhere — for the Unread tab badge.
+  const totalDrafts = useMemo(
+    () => conversations.reduce(
+      (n, c) => n + ((c.messages || []).some((m) => m.status === 'draft') ? 1 : 0),
+      0
+    ),
+    [conversations]
+  );
+
+  // ── "Send to Fix Song" ────────────────────────────────────────────────────
+  // Structured turns for the modal's chat view — customer on one side, us on the
+  // other. Most recent last; last ~16 turns is plenty of context.
+  const buildTurns = (conv) => {
+    return (conv?.messages || [])
+      .map((m) => ({
+        who: m.direction === 'inbound' ? 'customer' : 'us',
+        text: (m.body || '').trim(),
+      }))
+      .filter((t) => t.text)
+      .slice(-16);
+  };
+
+  // Flatten those turns into a readable transcript string for the backend (the
+  // AI summary + the stored source_message).
+  const turnsToText = (turns) =>
+    turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
+
+  // Open the confirmation modal and kick off the AI summary in the background.
+  const openFixModal = async () => {
+    if (!selected) return;
+    const turns = buildTurns(selected);
+    const exchange = turnsToText(turns);
+    setFixModal({ turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false });
+    if (isDemo) {
+      setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'summarize-request', exchange }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      const summary = (data && (data.summary || data.result)) || '';
+      setFixModal((m) => (m ? { ...m, summary, loading: false } : m));
+    } catch (e) {
+      // A failed summary is non-fatal — the owner can type the change themselves.
+      setFixModal((m) => (m ? { ...m, summary: '', loading: false, error: 'AI summary unavailable — write what to fix below.' } : m));
+    }
+  };
+
+  // Queue the (owner-confirmed) request into the Fix-Song pending list.
+  const submitFixRequest = async () => {
+    if (!fixModal || !selected) return;
+    const customerRequest = (fixModal.summary || '').trim();
+    if (!customerRequest) {
+      setFixModal((m) => (m ? { ...m, error: 'Add a short note of what to fix first.' } : m));
+      return;
+    }
+    if (isDemo) {
+      setFixModal((m) => (m ? { ...m, submitting: false, done: true } : m));
+      return;
+    }
+    setFixModal((m) => (m ? { ...m, submitting: true, error: '' } : m));
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'create',
+            conversation_id: selected.id || null,
+            customer_request: customerRequest,      // AI summary, owner-confirmed
+            source_message: fixModal.exchange,       // full chat exchange, for review
+            phone: selected.phone || null,
+            customer_name: selected.customer_name || null,
+            song_id: selected.song_id || null,       // usually null → owner links it in Fix Song
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `song-fix-queue ${res.status}`);
+      setFixModal((m) => (m ? { ...m, submitting: false, done: true } : m));
+    } catch (e) {
+      setFixModal((m) => (m ? { ...m, submitting: false, error: `Could not send: ${e.message}` } : m));
+    }
+  };
 
   // Auto-scroll the open thread to the newest message.
   useEffect(() => {
@@ -421,6 +551,41 @@ export default function SmsInboxTab({ accessToken }) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [selectedId, selected?.messages?.length]);
+
+  // Start a brand-new outbound conversation from a typed phone number.
+  const handleStartConversation = async () => {
+    const phone = composePhone.trim();
+    const text = composeBody.trim();
+    if (!phone || !text || composeBusy) return;
+    setComposeBusy(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ action: 'start-conversation', phone, channel: composeChannel, body: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (data.fell_back) {
+        alert('WhatsApp couldn’t reach this number (they haven’t messaged recently), so it was sent by SMS instead.');
+      }
+      // Reset + close, refresh, and open the new thread.
+      setComposeOpen(false);
+      setComposePhone(''); setComposeBody(''); setComposeChannel('sms');
+      // Make sure we're viewing the channel the message actually went out on.
+      if (data.channel_used) setChannelTab(data.channel_used);
+      await loadConversations({ silent: true });
+      if (data.conversation_id) setSelectedId(data.conversation_id);
+    } catch (e) {
+      alert(`Could not send: ${e.message}`);
+    } finally {
+      setComposeBusy(false);
+    }
+  };
 
   const openConversation = (id) => {
     setSelectedId(id);
@@ -504,6 +669,7 @@ export default function SmsInboxTab({ accessToken }) {
     if (!body && !hasAttachment) return; // nothing to send
     const optimistic = {
       id: `local-${Date.now()}`,
+      channel: threadChannel,
       direction: 'outbound',
       status: 'queued',
       created_at: new Date().toISOString(),
@@ -544,7 +710,7 @@ export default function SmsInboxTab({ accessToken }) {
           )
         );
       } else {
-        const payload = { action: 'send', conversation_id: selected.id, body, channel: channelTab };
+        const payload = { action: 'send', conversation_id: selected.id, body, channel: threadChannel };
         if (fileToSend) payload.media_data_url = await fileToDataUrl(fileToSend);
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-admin`,
@@ -559,7 +725,7 @@ export default function SmsInboxTab({ accessToken }) {
           }
         );
         if (!res.ok) throw new Error(`send ${res.status}`);
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       setConversations((prev) =>
@@ -626,7 +792,7 @@ export default function SmsInboxTab({ accessToken }) {
           message_id: msg.id,
           body: edited,
         });
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       // Surface a soft failure without clobbering the thread.
@@ -652,7 +818,7 @@ export default function SmsInboxTab({ accessToken }) {
         );
       } else {
         await postToSmsAdmin({ action: 'discard-draft', message_id: msg.id });
-        await loadConversations();
+        await loadConversations({ silent: true });
       }
     } catch (_e) {
       // ignore
@@ -768,6 +934,12 @@ export default function SmsInboxTab({ accessToken }) {
             </button>
           )}
           <button
+            onClick={() => setComposeOpen(true)}
+            className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition"
+          >
+            ✏️ <span className="hidden sm:inline">New message</span>
+          </button>
+          <button
             onClick={() => loadConversations()}
             className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition"
           >
@@ -780,10 +952,13 @@ export default function SmsInboxTab({ accessToken }) {
           its own unread count + how many AI drafts are waiting for approval. */}
       <div className="flex items-center gap-2 mb-4">
         {[
+          { key: 'unread', label: '📬 Unread' },
           { key: 'sms', label: '💬 SMS' },
           { key: 'whatsapp', label: '🟢 WhatsApp' },
         ].map((t) => {
-          const stats = channelStats[t.key] || { unread: 0, drafts: 0 };
+          const stats = t.key === 'unread'
+            ? { unread: totalUnread, drafts: totalDrafts }
+            : (channelStats[t.key] || { unread: 0, drafts: 0 });
           const activeTab = channelTab === t.key;
           return (
             <button
@@ -908,14 +1083,24 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
             ) : filtered.length === 0 ? (
               <div className="p-6 text-center text-gray-500 text-sm">
-                No conversations yet.
+                {channelTab === 'unread' ? '✅ All caught up — no unread messages.' : 'No conversations yet.'}
               </div>
             ) : (
               filtered.map((c) => {
                 const msgs = c.messages || [];
-                // Preview the last message ON THIS TAB's channel.
-                const last = [...msgs].reverse().find((m) => msgChannel(m) === channelTab)
-                  || msgs[msgs.length - 1];
+                // Preview the last message ON THIS TAB's channel. On the Unread
+                // tab (mixed channels) just preview the overall last message.
+                const last = channelTab === 'unread'
+                  ? msgs[msgs.length - 1]
+                  : ([...msgs].reverse().find((m) => msgChannel(m) === channelTab)
+                    || msgs[msgs.length - 1]);
+                const hasDraft = channelTab === 'unread'
+                  ? msgs.some((m) => m.status === 'draft')
+                  : hasPendingDraftInChannel(c, channelTab);
+                const lastIsAudio = (last?.media_type || '').startsWith('audio/');
+                const preview = lastIsAudio
+                  ? `🎤 ${last?.body || 'Voice message'}`
+                  : (last?.body || '');
                 const active = c.id === selectedId;
                 return (
                   <button
@@ -939,10 +1124,10 @@ export default function SmsInboxTab({ accessToken }) {
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
                         <span className={`text-xs truncate ${c.unread > 0 ? 'text-gray-200 font-medium' : 'text-gray-500'}`}>
-                          {last?.direction === 'outbound' ? '↩ ' : ''}{last?.body}
+                          {last?.direction === 'outbound' ? '↩ ' : ''}{preview}
                         </span>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {hasPendingDraftInChannel(c, channelTab) && (
+                          {hasDraft && (
                             <span className="bg-purple-500/30 text-purple-200 text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center" title="AI draft waiting for approval">
                               ✍️
                             </span>
@@ -1023,7 +1208,7 @@ export default function SmsInboxTab({ accessToken }) {
                   // its own tab (approve it there), so hide it here; a real
                   // message shows as a muted "— sent via SMS/WhatsApp · time"
                   // context line so you keep the full history without confusion.
-                  if (mCh !== channelTab) {
+                  if (mCh !== threadChannel) {
                     if (m.status === 'draft') return null;
                     const outX = m.direction === 'outbound';
                     return (
@@ -1111,6 +1296,7 @@ export default function SmsInboxTab({ accessToken }) {
                   }
 
                   const out = m.direction === 'outbound';
+                  const isAudio = (m.media_type || '').startsWith('audio/');
                   return (
                     <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
                       <div
@@ -1120,7 +1306,22 @@ export default function SmsInboxTab({ accessToken }) {
                             : 'bg-white/8 text-white rounded-bl-sm'
                         }`}
                       >
-                        {m.media_url && (
+                        {isAudio ? (
+                          // Voice message — clearly badged, with a play button and
+                          // the auto-transcript underneath.
+                          <div className="mb-1">
+                            <div className={`text-[11px] font-semibold mb-1 flex items-center gap-1 ${out ? 'text-black/60' : 'text-amber-300'}`}>
+                              🎤 Voice message
+                            </div>
+                            {m.media_url ? (
+                              <audio controls src={m.media_url} className="w-56 max-w-full h-9" />
+                            ) : (
+                              <div className={`text-xs italic ${out ? 'text-black/50' : 'text-gray-400'}`}>
+                                Downloading audio…
+                              </div>
+                            )}
+                          </div>
+                        ) : m.media_url ? (
                           <a href={m.media_url} target="_blank" rel="noreferrer" className="block mb-1">
                             <img
                               src={m.media_url}
@@ -1128,8 +1329,21 @@ export default function SmsInboxTab({ accessToken }) {
                               className="max-w-full max-h-64 rounded-lg border border-black/10"
                             />
                           </a>
+                        ) : null}
+                        {m.body && (
+                          isAudio ? (
+                            <p className={`text-sm whitespace-pre-wrap break-words italic ${out ? 'text-black/80' : 'text-gray-200'}`}>
+                              “{m.body}”
+                            </p>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
+                          )
                         )}
-                        {m.body && <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>}
+                        {isAudio && (
+                          <div className={`text-[9px] mt-0.5 ${out ? 'text-black/40' : 'text-gray-500'}`}>
+                            {m.body ? 'transcribed automatically' : 'transcribing…'}
+                          </div>
+                        )}
                         <div className={`text-[10px] mt-1 flex items-center gap-1 ${out ? 'text-black/50 justify-end' : 'text-gray-400'}`}>
                           {m.ai_generated && out && <span title="Sent from an approved AI draft">🤖</span>}
                           <span>{formatTime(m.created_at)}</span>
@@ -1181,6 +1395,15 @@ export default function SmsInboxTab({ accessToken }) {
                         {q.label}
                       </button>
                     ))}
+                    {/* Route this customer to the Fix-Song queue with the full
+                        chat + an AI summary of what they want changed. */}
+                    <button
+                      onClick={openFixModal}
+                      className="flex-shrink-0 text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
+                      title="Send this song to the Fix Song queue for a correction"
+                    >
+                      🔧 Enviar a arreglar
+                    </button>
                   </div>
                   {/* Staged image preview — paste (Ctrl+V), drag-drop, or 📎. */}
                   {attachment && (
@@ -1240,7 +1463,7 @@ export default function SmsInboxTab({ accessToken }) {
                   </div>
                   {/* WhatsApp works cleanly for images; SMS becomes MMS and may be
                       rejected by the A2P carrier. Warn on the SMS tab. */}
-                  {attachment && channelTab === 'sms' && (
+                  {attachment && threadChannel === 'sms' && (
                     <div className="mt-1.5 text-[11px] text-amber-400/80">
                       Images send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
                     </div>
@@ -1266,6 +1489,158 @@ export default function SmsInboxTab({ accessToken }) {
           )}
         </div>
       </div>
+
+      {/* ── New message composer — start an outbound thread by number ── */}
+      {composeOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !composeBusy && setComposeOpen(false)} />
+          <div className="relative w-full max-w-md bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-white">✏️ New message</h3>
+              <button onClick={() => !composeBusy && setComposeOpen(false)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
+            </div>
+
+            <label className="block text-xs text-gray-400 mb-1">Phone number</label>
+            <input
+              type="tel"
+              value={composePhone}
+              onChange={(e) => setComposePhone(e.target.value)}
+              placeholder="+1 555 123 4567"
+              className="w-full mb-3 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm focus:outline-none focus:border-amber-400/50"
+            />
+
+            <label className="block text-xs text-gray-400 mb-1">Channel</label>
+            <div className="flex gap-2 mb-1">
+              {[{ k: 'sms', l: '💬 SMS' }, { k: 'whatsapp', l: '🟢 WhatsApp' }].map((c) => (
+                <button
+                  key={c.k}
+                  onClick={() => setComposeChannel(c.k)}
+                  className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold transition ${
+                    composeChannel === c.k ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                  }`}
+                >
+                  {c.l}
+                </button>
+              ))}
+            </div>
+            {composeChannel === 'whatsapp' && (
+              <p className="text-[11px] text-amber-400/80 mb-3">
+                WhatsApp only reaches people who messaged you in the last 24h. If it can’t, it’s sent by SMS automatically.
+              </p>
+            )}
+            {composeChannel === 'sms' && <div className="mb-3" />}
+
+            <label className="block text-xs text-gray-400 mb-1">Message</label>
+            <textarea
+              value={composeBody}
+              onChange={(e) => setComposeBody(e.target.value)}
+              rows={4}
+              placeholder="Type your message…"
+              className="w-full mb-4 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm resize-y focus:outline-none focus:border-amber-400/50"
+            />
+
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setComposeOpen(false)} disabled={composeBusy} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition">Cancel</button>
+              <button
+                onClick={handleStartConversation}
+                disabled={composeBusy || !composePhone.trim() || !composeBody.trim()}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {composeBusy ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── "Send to Fix Song" confirmation ──────────────────────────────────
+          Shows the full chat exchange for the owner to review PLUS an editable
+          AI summary of what to fix, then queues it into the Fix-Song list. */}
+      {fixModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !fixModal.submitting && setFixModal(null)} />
+          <div className="relative w-full max-w-lg bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-white">🔧 Send to Fix Song</h3>
+              <button onClick={() => !fixModal.submitting && setFixModal(null)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
+            </div>
+
+            {fixModal.done ? (
+              <div className="text-center py-6">
+                <p className="text-3xl mb-2">✅</p>
+                <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
+                <p className="text-xs text-gray-400 mb-4">Open the <strong>Fix Song</strong> tab to find the customer's song and make the correction.</p>
+                <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-3">
+                  Are you sure this song needs a correction? Review the conversation, confirm what to change, then send it to the queue.
+                </p>
+
+                {/* Full conversation as chat bubbles — customer on the left,
+                    us on the right — so it's easy to see who said what. */}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] uppercase tracking-wide text-gray-500">Conversation</label>
+                  <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-white/20" />Customer</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-400/70" />Us</span>
+                  </div>
+                </div>
+                <div className="mb-4 px-2.5 py-2.5 bg-black/30 border border-white/10 rounded-xl max-h-56 overflow-y-auto space-y-1.5">
+                  {(fixModal.turns && fixModal.turns.length) ? (
+                    fixModal.turns.map((t, i) => (
+                      <div key={i} className={`flex ${t.who === 'customer' ? 'justify-start' : 'justify-end'}`}>
+                        <div className="max-w-[82%]">
+                          <p className={`text-[9px] uppercase tracking-wide mb-0.5 ${t.who === 'customer' ? 'text-gray-500 text-left' : 'text-amber-300/70 text-right'}`}>
+                            {t.who === 'customer' ? 'Customer' : 'Us'}
+                          </p>
+                          <div className={`rounded-2xl px-3 py-1.5 text-xs whitespace-pre-wrap break-words ${
+                            t.who === 'customer'
+                              ? 'bg-white/8 text-gray-100 rounded-tl-sm'
+                              : 'bg-amber-500/15 text-amber-50 border border-amber-500/25 rounded-tr-sm'
+                          }`}>
+                            {t.text}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500">No messages in this conversation yet.</p>
+                  )}
+                </div>
+
+                {/* AI summary of what to fix — editable */}
+                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1 flex items-center gap-2">
+                  What to fix (AI summary — edit if needed)
+                  {fixModal.loading && <span className="text-indigo-300 normal-case tracking-normal">✨ summarizing…</span>}
+                </label>
+                <textarea
+                  value={fixModal.summary}
+                  onChange={(e) => setFixModal((m) => (m ? { ...m, summary: e.target.value } : m))}
+                  rows={3}
+                  disabled={fixModal.loading}
+                  placeholder={fixModal.loading ? 'Reading the conversation…' : 'e.g. Change “hijo” to “nieto” in the chorus'}
+                  className="w-full mb-2 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-sm resize-y focus:outline-none focus:border-amber-400/50 disabled:opacity-60"
+                />
+
+                {fixModal.error && <p className="text-[11px] text-red-300 mb-2">{fixModal.error}</p>}
+
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <button onClick={() => setFixModal(null)} disabled={fixModal.submitting} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition disabled:opacity-40">Cancel</button>
+                  <button
+                    onClick={submitFixRequest}
+                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim()}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Admin "Ask AI" copilot — private, about the open order ── */}
       {copilotOpen && selected && (

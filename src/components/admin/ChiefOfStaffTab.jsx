@@ -164,7 +164,28 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
   const a = briefing?.analysis;
   // Guard: a malformed briefing (top_actions as a string) must never crash the tab.
   const topActions = Array.isArray(a?.top_actions) ? a.top_actions : [];
-  const briefingText = a ? `${a.greeting}\n\n${topActions.map((x, i) => `${i + 1}. ${x?.action} (${x?.where})`).join('\n')}` : '';
+  // Include the snapshot — that's where the sales/campaign numbers live — so the
+  // spoken briefing actually reads the results, not just the headline + actions.
+  const briefingText = a
+    ? [a.greeting, a.snapshot, topActions.map((x, i) => `${i + 1}. ${x?.action} (${x?.where})`).join('\n')]
+        .filter(Boolean).join('\n\n')
+    : '';
+
+  // The daily briefing is read aloud in the "Jarvis" voice (Daniel) — an
+  // authoritative news-anchor read of the sales + campaign numbers — regardless
+  // of Sofía's own chat voice. preview_voice forces a voice_id without touching
+  // the persona, so the interactive chat keeps her voice.
+  const JARVIS_VOICE_ID = 'onwK4e9ZLuTAKqWW03F9'; // Daniel — British broadcaster
+  const speakBriefing = async () => {
+    if (!briefingText) return;
+    setSpeakingId('briefing');
+    try {
+      const { body } = await call(COS, { action: 'preview_voice', voice_id: JARVIS_VOICE_ID, text: briefingText });
+      if (body.success) play(body.audio_url);
+      else showToast?.(`Error: ${body.error || 'briefing voice failed'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setSpeakingId(null); }
+  };
   const tier = score ? (TIER_META[score.tier] || TIER_META.building) : null;
 
   const Avatar = ({ size }) => avatar
@@ -401,7 +422,7 @@ export default function ChiefOfStaffTab({ accessToken, showToast }) {
             <div className="flex gap-2.5">
               <Avatar size={32} />
               <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 max-w-[85%]">
-                <div className="flex items-center gap-2 mb-1"><span className="text-xs font-medium text-indigo-700">Today's briefing</span><button onClick={() => speak(briefingText)} className="text-indigo-400 hover:text-indigo-700">{speakingId === 'briefing' ? <Loader2 size={13} className="animate-spin" /> : <Volume2 size={13} />}</button></div>
+                <div className="flex items-center gap-2 mb-1"><span className="text-xs font-medium text-indigo-700">Today's briefing</span><button onClick={speakBriefing} title="Read aloud in the Jarvis voice" className="text-indigo-400 hover:text-indigo-700">{speakingId === 'briefing' ? <Loader2 size={13} className="animate-spin" /> : <Volume2 size={13} />}</button></div>
                 <p className="text-sm font-medium text-gray-900">{a.greeting}</p>
                 <ol className="text-xs text-gray-600 mt-2 space-y-1.5 list-decimal pl-4">
                   {topActions.map((x, i) => (

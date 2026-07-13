@@ -37,7 +37,9 @@ serve(async (req) => {
     const to = song?.email;
     if (!to) throw new Error('no customer email on the song');
     const recipient = song?.recipient_name || 'tu ser querido';
-    const html = emailHtml(recipient, order.video_url);
+    // branded link (vercel.json rewrites /animado/:orderId -> the storage mp4)
+    const videoLink = `https://regalosquecantan.com/animado/${order.id}`;
+    const html = emailHtml(recipient, videoLink);
 
     if (dry_run) return json(200, { success: true, dry_run: true, to, subject: `🎬 El video animado de ${recipient} ya está listo`, html_preview: html.slice(0, 200) + '...' });
     if (!SENDGRID_API_KEY) throw new Error('SENDGRID_API_KEY not set');

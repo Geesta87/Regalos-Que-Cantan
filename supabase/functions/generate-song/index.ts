@@ -1752,6 +1752,101 @@ function spellOutNumbersInLyrics(text: string): string {
 }
 
 // ============================================================================
+// Custom-lyrics structuring. A customer's own letra ("Escribir mi propia letra")
+// almost always arrives with NO Suno section tags ([Verso]/[Coro]) and no ending
+// marker. With short, un-tagged lyrics Suno pads the runtime by LOOPING the
+// verses — observed on song 5077e28c: an ~8-minute triple-loop that also dropped
+// the spoken bridge and the despedida. We insert structure tags so Suno sings the
+// letra ONCE, in order, and STOPS ([End]). Critically, we do this WITHOUT changing
+// a single one of the customer's words: after the model tags it, a verbatim guard
+// compares the word-sequence and, on ANY mismatch, discards the tagged version and
+// falls back to the raw lyrics (today's behavior). Structure gained, zero risk of
+// rewriting the buyer's words.
+// ============================================================================
+
+// Reduce a lyric body to its ordered word tokens, IGNORING [section] tags, stray
+// { } braces, punctuation, accents and case — so we can prove the structurer only
+// INSERTED tag lines and left every real word (and its order) untouched.
+function lyricWordTokens(s: string): string[] {
+  return String(s || '')
+    .replace(/\[[^\]]*\]/g, ' ')                  // drop [Verso]/[Coro]/… tags
+    .replace(/[{}\[\]]/g, ' ')                      // drop stray brace/bracket chars
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9ñ\s]/g, ' ')
+    .split(/\s+/).filter(Boolean);
+}
+
+// True iff `a` and `b` have the IDENTICAL ordered sequence of lyric words (tags
+// and punctuation ignored). The verbatim safety gate.
+function sameLyricWords(a: string, b: string): boolean {
+  const x = lyricWordTokens(a), y = lyricWordTokens(b);
+  if (x.length !== y.length) return false;
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
+}
+
+const STRUCTURE_SYSTEM = `Eres un editor musical. Recibes la LETRA EXACTA de una canción escrita por el CLIENTE (regional mexicana: corrido, norteño, banda, ranchera, etc.), normalmente SIN etiquetas de sección. Tu ÚNICO trabajo es INSERTAR etiquetas de estructura estilo Suno para que el modelo cante la letra UNA sola vez, completa y en orden, sin repetir de más ni alargarla.
+
+REGLAS ABSOLUTAS:
+1. NO cambies, agregues, quites, reordenes ni "corrijas" NINGUNA palabra de la letra. Ni ortografía, ni acentos. SOLO puedes AGREGAR líneas nuevas que sean etiquetas entre [corchetes]. Cada palabra del cliente debe seguir presente, igual y en el mismo orden.
+2. Etiquetas permitidas: [Intro], [Verso], [Coro], [Puente], [Hablado], [Final], [End].
+3. Agrupa por estrofas (bloques separados por líneas en blanco): pon una etiqueta ANTES de la primera línea de cada estrofa.
+4. Si una estrofa se repite idéntica, esa es el [Coro]. Si no hay repetición (típico en corridos), usa [Intro] para la primera y [Verso] para las demás.
+5. Un bloque hablado/recitado (viene entre {llaves} o EN MAYÚSCULAS) va con [Hablado]: quita SOLO los símbolos { } y conserva las palabras EXACTAS.
+6. La estrofa de despedida (p. ej. empieza con "Ya con esta me despido") lleva [Final].
+7. Termina SIEMPRE con una línea [End] para que Suno no repita ni alargue la canción.
+8. Devuelve la letra completa ya etiquetada llamando a la herramienta submit_structured_lyrics.`;
+
+const STRUCTURE_TOOL = {
+  name: 'submit_structured_lyrics',
+  description: 'Return the customer lyrics with Suno section tags inserted — same words, only tag lines added.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      structured: { type: 'string', description: 'La letra EXACTA del cliente con etiquetas [Intro]/[Verso]/[Coro]/[Hablado]/[Final]/[End] insertadas. Mismas palabras, mismo orden; solo se agregan líneas de etiqueta y se quitan los símbolos { }.' },
+    },
+    required: ['structured'],
+    additionalProperties: false,
+  },
+} as const;
+
+// Insert Suno section tags into a customer's raw lyrics. Returns the tagged
+// lyrics on success, or the ORIGINAL unchanged on any failure / verbatim-guard
+// rejection (fail-safe — never blocks or alters a generation).
+async function structureCustomLyrics(raw: string, apiKey: string | undefined): Promise<{ lyrics: string; structured: boolean; reason: string }> {
+  if (!raw || !raw.trim()) return { lyrics: raw, structured: false, reason: 'empty' };
+  if (!apiKey) return { lyrics: raw, structured: false, reason: 'no api key' };
+  const models = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'];
+  for (const model of models) {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model, max_tokens: 2500, system: STRUCTURE_SYSTEM,
+          tool_choice: { type: 'tool', name: 'submit_structured_lyrics' }, tools: [STRUCTURE_TOOL],
+          messages: [{ role: 'user', content: `LETRA DEL CLIENTE (etiqueta la estructura, sin cambiar ninguna palabra):\n\n${raw}` }],
+        }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const block = (data?.content || []).find((b: any) => b?.type === 'tool_use' && b?.name === 'submit_structured_lyrics');
+      const structured = block?.input?.structured;
+      if (typeof structured !== 'string' || !structured.trim()) continue;
+      if (!sameLyricWords(raw, structured)) {
+        console.log(`[structureCustomLyrics] ${model} changed words — verbatim guard REJECTED, trying next/fallback`);
+        continue;
+      }
+      return { lyrics: structured.trim(), structured: true, reason: `tagged by ${model}` };
+    } catch (e: any) {
+      console.log(`[structureCustomLyrics] ${model} error: ${e?.message || e}`);
+    }
+  }
+  return { lyrics: raw, structured: false, reason: 'guard/failed → raw' };
+}
+
+// ============================================================================
 // Independent fact-check gate. The writer model is TOLD to stay faithful, but
 // "told" is not "verified" — a single wrong date, age, place or relationship
 // ruins the gift. After the lyrics are written we run a SECOND, independent
@@ -2896,8 +2991,16 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       const spelledCustom = spellOutNumbersInLyrics(customLyrics);
       if (spelledCustom !== customLyrics) console.log('Custom lyrics: spelled out digit(s) into words for singability');
       lyrics = sanitizeArtistNames(spelledCustom).trim().substring(0, 4000);
+      // Insert Suno section tags so Suno sings the letra ONCE and stops, instead
+      // of looping short un-tagged lyrics into an 8-min repeat (song 5077e28c).
+      // Verbatim-guarded: any word change → falls back to the raw lyrics above.
+      if (!/\[[A-Za-zÁÉÍÓÚÑáéíóúñ ]+\]/.test(lyrics)) { // skip if the buyer already tagged it
+        const s = await structureCustomLyrics(lyrics, ANTHROPIC_API_KEY);
+        if (s.structured) { lyrics = s.lyrics.substring(0, 4200); console.log(`Custom lyrics: inserted Suno section tags (${s.reason}, verbatim preserved)`); }
+        else console.log(`Custom lyrics: kept raw (${s.reason})`);
+      }
       emotionalModifiers = '';
-      console.log(`Using customer-supplied lyrics (${lyrics.length} chars, numbers spelled) — Claude skipped`);
+      console.log(`Using customer-supplied lyrics (${lyrics.length} chars) — Claude composition skipped`);
     } else {
     console.log('Calling Claude (structured tool output)...');
 

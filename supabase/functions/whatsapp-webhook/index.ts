@@ -22,6 +22,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { triggerCsAgent, runInBackground } from '../_shared/trigger-cs-agent.ts';
 import { maybeSendOutOfOffice } from '../_shared/out-of-office.ts';
+import { storeInboundImage, storeInboundVoice, transcribeVoiceMessage } from '../_shared/inbound-media.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -157,22 +158,55 @@ serve(async (req) => {
       displayName = customerName;
     }
 
-    await admin.from('sms_messages').insert({
+    // Capture attached media. Twilio delivers NumMedia + MediaUrl0/MediaContentType0.
+    // Images are stored synchronously so they show in the thread and the bot can
+    // SEE them. Voice notes are stored synchronously too (so the audio plays
+    // immediately) and transcribed with Whisper in the background.
+    const mediaUrl = params['MediaUrl0'] || '';
+    const mediaCt = params['MediaContentType0'] || '';
+    const hasMedia = parseInt(params['NumMedia'] || '0', 10) > 0 && !!mediaUrl;
+    const isVoice = hasMedia && mediaCt.toLowerCase().startsWith('audio/');
+
+    let media: { path: string; type: string } | null = null;
+    let voiceBytes: Uint8Array | null = null;
+    if (isVoice) {
+      const v = await storeInboundVoice(admin, { conversationId, mediaUrl, contentType: mediaCt });
+      if (v) { media = { path: v.path, type: v.type }; voiceBytes = v.bytes; }
+    } else if (hasMedia) {
+      media = await storeInboundImage(admin, { conversationId, mediaUrl, contentType: mediaCt });
+    }
+
+    const { data: insertedMsg } = await admin.from('sms_messages').insert({
       conversation_id: conversationId,
       direction: 'inbound',
       body: messageBody,
       status: 'received',
       twilio_sid: twilioSid,
       channel: 'whatsapp',
-    });
+      media_path: media?.path || null,
+      media_type: media?.type || null,
+    }).select('id').single();
 
     // No reply owed on STOP/START keywords or to opted-out numbers.
     const replyable = !isStop && !isStart && !(existing && existing.opted_out);
 
-    // Out-of-office: auto-reply ONCE (throttled) when the owner is away, and
-    // skip the AI draft. Otherwise draft an AI reply in the background (no-ops
-    // unless the bot is switched on; never sends).
-    if (replyable) {
+    if (isVoice && voiceBytes && insertedMsg?.id) {
+      // Voice note: transcribe in the background, then run the OO/AI-draft
+      // follow-up AFTER the transcript lands (so the agent reads real text).
+      transcribeVoiceMessage(admin, {
+        messageId: insertedMsg.id,
+        bytes: voiceBytes,
+        contentType: media?.type || mediaCt,
+        conversationId,
+        phone,
+        channel: 'whatsapp',
+        replyable,
+        lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
+      });
+    } else if (replyable) {
+      // Out-of-office: auto-reply ONCE (throttled) when the owner is away, and
+      // skip the AI draft. Otherwise draft an AI reply in the background (no-ops
+      // unless the bot is switched on; never sends).
       runInBackground(
         maybeSendOutOfOffice(admin, {
           conversationId,
@@ -187,7 +221,9 @@ serve(async (req) => {
 
     // Notify admin devices.
     try {
-      const preview = messageBody.length > 110 ? messageBody.slice(0, 110) + '…' : messageBody;
+      const preview = isVoice
+        ? '🎤 Nota de voz'
+        : (messageBody.length > 110 ? messageBody.slice(0, 110) + '…' : messageBody);
       await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
         method: 'POST',
         headers: {

@@ -37,6 +37,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { CS_KNOWLEDGE, CS_GOLDEN_ANSWERS } from '../_shared/cs-knowledge.ts';
 import { OFFERS } from '../_shared/brand-brief.ts';
 import { embedText, embedTexts } from '../_shared/embed.ts';
+import { sendSms } from '../_shared/send-sms.ts';
+import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
+
+// Topics that can NEVER auto-send, even if added to the allowlist (belt & braces
+// with needs_human). Money, complaints, and edits to finished songs always go to
+// a human.
+const NEVER_AUTO = new Set(['billing_money', 'complaint', 'change_request']);
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -220,9 +227,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'request_song_fix',
+    description:
+      'Úsala cuando el cliente pida un CAMBIO o CORRECCIÓN en una canción que YA se hizo (un nombre mal escrito o mal pronunciado, una fecha equivocada, una línea de la letra que quiere cambiar, "cámbienle esta parte", etc.). Registra una solicitud de arreglo para que el equipo corrija esa canción. NO cambia nada ahora mismo y NO promete un plazo: solo deja anotado el pedido con el detalle EXACTO de lo que el cliente quiere cambiar, y el equipo lo revisa. La solicitud se crea automáticamente cuando el equipo apruebe tu respuesta. En tu respuesta, confirma con calidez que tomamos nota del cambio y que el equipo lo revisará (sin prometer cuándo estará listo).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        what_to_change: {
+          type: 'string',
+          description: 'El cambio EXACTO que pide el cliente, con todo el detalle que dio: qué dice ahora y qué debería decir (nombre correcto, fecha correcta, la línea exacta de la letra, etc.). Escríbelo claro para que el equipo lo corrija sin volver a preguntar.',
+        },
+      },
+      required: ['what_to_change'],
+    },
+  },
+  {
     name: 'flag_for_human',
     description:
-      'Marca esta conversación para que la atienda una PERSONA del equipo. Úsala SIEMPRE que el tema sea de dinero (reembolsos, cargos, cobros dobles, disputas), una queja o molestia fuerte, un cambio en una canción ya hecha, o cualquier cosa de la que no estés seguro. Aun así, escribe una respuesta breve y cálida diciendo que un compañero dará seguimiento.',
+      'Marca esta conversación para que la atienda una PERSONA del equipo. Úsala SIEMPRE que el tema sea de dinero (reembolsos, cargos, cobros dobles, disputas), una queja o molestia fuerte, o cualquier cosa de la que no estés seguro. (Para un CAMBIO en una canción ya hecha, usa mejor request_song_fix.) Aun así, escribe una respuesta breve y cálida diciendo que un compañero dará seguimiento.',
     input_schema: {
       type: 'object',
       properties: {
@@ -232,6 +254,86 @@ const TOOLS = [
     },
   },
 ];
+
+// Finite set of question categories (the "states" a message can be about) — used
+// to measure quality BY topic in the dashboard and, later, to gate auto-send.
+const CS_CATEGORIES = [
+  'price', 'how_it_works', 'locate_song', 'download_help', 'song_status',
+  'change_request', 'billing_money', 'complaint', 'voice_options', 'upsell',
+  'greeting', 'thanks_closing', 'other',
+] as const;
+const CLASSIFY_MODEL = Deno.env.get('CS_CLASSIFY_MODEL') || 'claude-haiku-4-5-20251001';
+
+// Tag the incoming customer message with ONE category (cheap Haiku call).
+// Best-effort: returns 'other' on anything unexpected so it never blocks a draft.
+async function classifyCategory(text: string): Promise<string> {
+  const t = (text || '').trim();
+  if (!t || !ANTHROPIC_API_KEY) return 'other';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: CLASSIFY_MODEL,
+        max_tokens: 12,
+        system: `Clasifica el mensaje de un cliente de una tienda de canciones personalizadas en UNA sola categoría. Responde SOLO con el id exacto, sin nada más.
+- price: pregunta por precio/costo
+- how_it_works: cómo funciona, si es membresía
+- locate_song: no encuentra su canción / ya pagó / no le llegó / dónde está
+- download_help: cómo o no puede descargar
+- song_status: si ya está lista / estado del pedido
+- change_request: cambiar o corregir una canción YA hecha
+- billing_money: reembolso, cargo, cobro doble, disputa
+- complaint: queja, molestia, no le gustó
+- voice_options: voz femenina/masculina u opciones de la canción
+- upsell: video, karaoke, clona mi voz, extras
+- greeting: saludo sin pregunta clara
+- thanks_closing: agradecimiento o despedida
+- other: cualquier otra cosa`,
+        messages: [{ role: 'user', content: t.slice(0, 500) }],
+      }),
+    });
+    if (!res.ok) return 'other';
+    const data = await res.json();
+    const raw = (data.content?.[0]?.text || '').trim().toLowerCase().replace(/[^a-z_]/g, '');
+    return (CS_CATEGORIES as readonly string[]).includes(raw) ? raw : 'other';
+  } catch {
+    return 'other';
+  }
+}
+
+// #4 SAFETY CRITIC — a cheap second-model check that a draft doesn't break a
+// hard rule. `ran` is false if the check couldn't execute (no key / error) so
+// callers can fail CLOSED for auto-send (require ran && pass) while fail-open for
+// drafts (a human reviews anyway).
+async function safetyReview(draft: string): Promise<{ ran: boolean; pass: boolean; reason: string }> {
+  const t = (draft || '').trim();
+  if (!t || !ANTHROPIC_API_KEY) return { ran: false, pass: true, reason: '' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: CLASSIFY_MODEL,
+        max_tokens: 30,
+        system: `Eres un revisor de seguridad de respuestas de servicio al cliente de Regalos Que Cantan. Revisa SOLO si la RESPUESTA rompe una de estas reglas CLARAS (no juzgues precios ni datos del pedido — eso ya está verificado en otro lado):
+1. Revela o insinúa que es IA / bot / robot / automático / computadora / software / algoritmo.
+2. Promete un REEMBOLSO, o una fecha/plazo EXACTO garantizado (ej. "llega el martes sin falta").
+3. Tono grosero, ofensivo o claramente poco profesional.
+Si NO rompe ninguna de estas 3, responde "PASS". Solo responde "FAIL: <razón corta>" si rompe claramente una. Ante la duda, PASS.`,
+        messages: [{ role: 'user', content: t.slice(0, 1200) }],
+      }),
+    });
+    if (!res.ok) return { ran: false, pass: true, reason: '' };
+    const data = await res.json();
+    const out = (data.content?.[0]?.text || '').trim();
+    if (/^pass/i.test(out)) return { ran: true, pass: true, reason: '' };
+    if (/^fail/i.test(out)) return { ran: true, pass: false, reason: out.replace(/^fail:?\s*/i, '').slice(0, 200) };
+    return { ran: false, pass: true, reason: '' };
+  } catch {
+    return { ran: false, pass: true, reason: '' };
+  }
+}
 
 function systemPrompt(customerName: string | null, channel: string, knowledge: string, snapshot: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
@@ -243,13 +345,14 @@ ${CS_GOLDEN_ANSWERS}
 
 REGLAS ESTRICTAS:
 - ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.
-- Responde solo en español, en 1-3 frases cuando sea posible.
+- IDIOMA: responde normalmente en ESPAÑOL (la gran mayoría de clientes son hispanohablantes). SOLO si el cliente claramente escribe TODO su mensaje en otro idioma (inglés, portugués), respóndele en ESE idioma. Ante cualquier duda, español. 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
 - Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
 - Si el pedido NO está pagado (is_paid = false): comparte el preview_link_for_unpaid para que ESCUCHE sus versiones, y explícale con calidez que ahí puede escucharlas y que al COMPLETAR SU COMPRA se desbloquea la descarga para guardarla y compartirla. NUNCA compartas un download_link ni digas que la canción "ya está lista para descargar" en un pedido no pagado. El enlace de preview solo deja escuchar; la descarga sigue bloqueada hasta que pague.
 - Si no aparece ningún pedido para este número, no inventes: pide amablemente que escriba desde el número con el que hizo la compra, o que comparta su correo para que una persona lo verifique.
-- Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia, un cambio de letra en una canción ya hecha, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
+- Si el cliente pide un CAMBIO o corrección en una canción que YA se hizo (un nombre mal escrito o mal pronunciado, una fecha equivocada, una línea de la letra que quiere cambiar): usa request_song_fix con el detalle EXACTO del cambio, y responde con calidez que tomamos nota y que el equipo lo revisará (sin prometer plazo).
+- Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia fuerte, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
 - No prometas reembolsos, cambios ni plazos exactos.
 - Tu respuesta será revisada por una persona antes de enviarse, así que redáctala lista para enviar (sin notas internas).`;
 }
@@ -288,7 +391,7 @@ serve(async (req) => {
     // Master switch — do nothing unless the owner has turned the bot on.
     const { data: settings } = await admin
       .from('cs_agent_settings')
-      .select('enabled, knowledge_doc')
+      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories')
       .eq('id', 1)
       .maybeSingle();
     if (!settings?.enabled) {
@@ -312,7 +415,7 @@ serve(async (req) => {
     // Load recent history (oldest → newest).
     const { data: msgs } = await admin
       .from('sms_messages')
-      .select('direction, body, status, created_at')
+      .select('direction, body, status, created_at, media_path, media_type')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT);
@@ -341,6 +444,37 @@ serve(async (req) => {
     while (messages.length && messages[0].role !== 'user') messages.shift();
     if (!messages.length) return json({ ok: true, skipped: 'no user message' });
 
+    // VISION: if the latest customer message includes an image, attach it so the
+    // model can SEE what they're showing (an error, a screenshot, the song page).
+    // Best-effort — a failure just falls back to text-only.
+    if (last.media_path && String(last.media_type || '').startsWith('image/')) {
+      try {
+        const { data: blob } = await admin.storage.from('cs-media').download(last.media_path);
+        if (blob) {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          let bin = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+          }
+          const b64 = btoa(bin);
+          // Attach to the LAST user message (the one we're replying to).
+          for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+              const txt = typeof messages[i].content === 'string' ? messages[i].content : '';
+              messages[i].content = [
+                { type: 'text', text: txt && txt.trim() ? txt : 'El cliente envió esta imagen (descríbela y ayúdalo según lo que muestra):' },
+                { type: 'image', source: { type: 'base64', media_type: last.media_type, data: b64 } },
+              ];
+              break;
+            }
+          }
+        }
+      } catch (visErr) {
+        console.warn('cs-agent: vision attach failed', visErr);
+      }
+    }
+
     // ── Always-on situation snapshot ────────────────────────────────────────
     // Ground the reply in WHO this customer is, before the model writes. Resolve
     // by the conversation phone AND any email the customer typed in the thread.
@@ -358,6 +492,9 @@ serve(async (req) => {
     } catch (snapErr) {
       console.warn('cs-agent: snapshot build failed', snapErr);
     }
+
+    // Tag this message's topic for the quality dashboard (best-effort).
+    const category = await classifyCategory(String(last.body || ''));
 
     // LEARNING: retrieve the team's most RELEVANT past replies (semantic match on
     // the incoming message), not just the newest — so the bot learns from
@@ -422,9 +559,11 @@ serve(async (req) => {
 
     let needsHuman = false;
     let escalateReason = '';
-    // Approval-gated side action (v1: resend paid link by email). Recorded on
-    // the draft; sms-admin executes it ONLY when the owner approves the draft.
-    let proposedAction: { type: string; email: string } | null = null;
+    // Approval-gated side action, recorded on the draft; sms-admin executes it
+    // ONLY when the owner approves the draft. Two shapes today:
+    //   { type: 'resend_email', email }           → resend the paid link by email
+    //   { type: 'song_fix_request', what_to_change } → queue a song fix for the team
+    let proposedAction: Record<string, unknown> | null = null;
 
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
@@ -513,6 +652,23 @@ serve(async (req) => {
           } else {
             result = { ok: false, error: 'correo inválido — pide al cliente que escriba su correo de nuevo' };
           }
+        } else if (tu.name === 'request_song_fix') {
+          // INERT at draft time: only RECORD the proposal. sms-admin creates the
+          // song_fix_requests row (resolving the song by this conversation's
+          // phone) when the owner approves the draft. A change to a finished song
+          // always wants a person's eyes, so surface it as needs-a-human too.
+          const whatToChange = String(tu.input?.what_to_change || '').trim();
+          if (whatToChange) {
+            proposedAction = { type: 'song_fix_request', what_to_change: whatToChange };
+            needsHuman = true;
+            escalateReason = escalateReason || 'song fix requested';
+            result = {
+              ok: true,
+              note: 'Anotado. Cuando el equipo apruebe tu respuesta, se creará una solicitud de arreglo para esta canción con el detalle que registraste, y el equipo la corregirá. Confirma al cliente con calidez que tomamos nota del cambio y que el equipo lo revisará, SIN prometer un plazo.',
+            };
+          } else {
+            result = { ok: false, error: 'describe el cambio exacto que pide el cliente' };
+          }
         } else if (tu.name === 'flag_for_human') {
           needsHuman = true;
           escalateReason = String(tu.input?.reason || 'flagged');
@@ -532,8 +688,68 @@ serve(async (req) => {
       escalateReason = escalateReason || 'no draft text produced';
     }
 
-    // Store the DRAFT (inert until the owner approves it in the inbox).
+    // #4 SAFETY CRITIC — check the finished draft against the hard rules. A real
+    // failure flags it for a human (and blocks auto-send).
+    const safety = await safetyReview(finalText);
+    if (safety.ran && !safety.pass) {
+      needsHuman = true;
+      escalateReason = `safety: ${safety.reason}`;
+    }
+
     const nowIso = new Date().toISOString();
+
+    // #2 AUTO-SEND (default OFF). Send WITHOUT owner approval only when the master
+    // switch is on, this category is on the allowlist (and not a never-auto one),
+    // nothing flagged a human, and the safety critic explicitly passed.
+    const autoCats: string[] = Array.isArray(settings?.auto_categories) ? settings.auto_categories : [];
+    const canAuto =
+      settings?.auto_send_enabled === true &&
+      autoCats.includes(category) &&
+      !NEVER_AUTO.has(category) &&
+      !needsHuman &&
+      !proposedAction &&           // email-resend proposals still need approval
+      safety.ran && safety.pass;
+
+    if (canAuto) {
+      const sendCh = convo.channel || 'sms';
+      const result = sendCh === 'whatsapp'
+        ? await sendWhatsApp(convo.phone, finalText)
+        : await sendSms(convo.phone, finalText);
+      const { data: sent } = await admin
+        .from('sms_messages')
+        .insert({
+          conversation_id: conversationId,
+          direction: 'outbound',
+          body: finalText,
+          status: result.ok ? (result.status || 'sent') : 'failed',
+          twilio_sid: result.sid || null,
+          channel: sendCh,
+          ai_generated: true,
+          needs_human: false,
+          was_edited: false,
+          auto_sent: true,
+          category,
+        })
+        .select('id, status')
+        .single();
+      await admin.from('sms_conversations').update({ last_message_at: nowIso }).eq('id', conversationId);
+      // Light heads-up so the owner can still eyeball what went out on its own.
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/notify-admin-push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            title: `🤖 Auto-respuesta enviada · ${convo.customer_name || convo.phone}`,
+            body: finalText.length > 110 ? finalText.slice(0, 110) + '…' : finalText,
+            url: '/admin/dashboard?tab=sms',
+            tag: `cs-auto-${conversationId}`,
+          }),
+        });
+      } catch (_e) { /* best-effort */ }
+      return json({ ok: true, auto_sent: true, category, send_ok: result.ok });
+    }
+
+    // Store the DRAFT (inert until the owner approves it in the inbox).
     const { data: inserted, error: insErr } = await admin
       .from('sms_messages')
       .insert({
@@ -545,6 +761,7 @@ serve(async (req) => {
         ai_generated: true,
         needs_human: needsHuman,
         proposed_action: proposedAction,
+        category,
       })
       .select('id, body, status, needs_human, created_at')
       .single();
