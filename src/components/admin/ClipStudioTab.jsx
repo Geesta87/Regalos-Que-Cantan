@@ -1,12 +1,17 @@
 // src/components/admin/ClipStudioTab.jsx
-// Clip Studio (Phase 1) — upload a video, get a word-timed transcript, burn
-// animated social-media captions (Submagic-style) and download the clips.
+// Clip Studio — upload a video, get a word-timed transcript, burn animated
+// social-media captions (Submagic-style) and download the clips.
 // Standalone tool: talks only to the clip-studio edge function (own tables +
 // own 'clip-studio' bucket), so the whole feature can move to its own project.
+//
+// Detail view is a guided 3-step flow: 1) pick the moment (AI picks first),
+// 2) choose the look, 3) name + generate. Finished clips live in their own
+// gallery section below.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
-  Download, Play, AlertTriangle, ChevronRight, Captions, Clock, Sparkles,
+  Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
+  Captions, Clock, Sparkles, Check,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -62,6 +67,43 @@ function StylePreview({ styleKey }) {
   );
 }
 
+// Numbered header for each step of the flow.
+function StepHeader({ n, title, hint }) {
+  return (
+    <div className="flex items-center gap-2.5 mb-3">
+      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">{n}</span>
+      <span className="text-sm font-semibold text-gray-900">{title}</span>
+      {hint && <span className="text-[11px] text-gray-400">{hint}</span>}
+    </div>
+  );
+}
+
+// "Uploaded → Reading → Transcribing → Ready" progress while a video processes.
+function PipelineProgress({ status }) {
+  const steps = [
+    { key: 'uploaded', label: 'Uploaded' },
+    { key: 'preparing', label: 'Reading video' },
+    { key: 'transcribing', label: 'Transcribing' },
+    { key: 'ready', label: 'Ready' },
+  ];
+  const idx = Math.max(0, steps.findIndex((s) => s.key === status));
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {steps.map((s, i) => (
+        <React.Fragment key={s.key}>
+          <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full ${
+            i < idx ? 'bg-green-100 text-green-700' : i === idx ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
+          }`}>
+            {i < idx ? <Check size={11} /> : i === idx && s.key !== 'ready' ? <Loader2 size={11} className="animate-spin" /> : null}
+            {s.label}
+          </span>
+          {i < steps.length - 1 && <span className="text-gray-300">→</span>}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
 export default function ClipStudioTab({ accessToken, showToast }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +116,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const fileRef = useRef(null);
   const videoRef = useRef(null);
 
@@ -163,7 +207,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
   const useSuggestion = (s) => {
     setForm((f) => ({ ...f, start: String(s.start_sec), end: String(s.end_sec), label: s.title || f.label }));
-    showToast?.('Range loaded — pick a style and generate');
+    if (videoRef.current) { videoRef.current.currentTime = s.start_sec; }
+    showToast?.('Moment selected — now choose the look below');
   };
 
   const retryIngest = async (project) => {
@@ -195,7 +240,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
         aspect: form.aspect, style: form.style, label: form.label || null,
         options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook },
       });
-      showToast?.('Clip rendering — usually under a minute');
+      showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
@@ -235,9 +280,17 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   // ---------------- DETAIL VIEW ----------------
   if (project) {
     const ps = PROJECT_STATUS[project.status] || PROJECT_STATUS.uploaded;
-    const working = ['preparing', 'transcribing'].includes(project.status);
+    const working = ['uploaded', 'preparing', 'transcribing'].includes(project.status);
+    const ready = project.status === 'ready';
+    const suggestions = project.ai_suggestions?.suggestions || [];
+    const selStart = parseFloat(form.start) || 0;
+    const selEnd = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
+    const selDur = Math.max(0, selEnd - selStart);
+    const hasSelection = form.start !== '' || form.end !== '';
+    const extrasOn = [form.silences && 'no silences', form.zoom && 'zoom', form.hook && 'title'].filter(Boolean);
+
     return (
-      <div className="max-w-5xl">
+      <div className="max-w-6xl">
         <button onClick={() => setSelectedId(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4">
           <ArrowLeft size={16} /> All videos
         </button>
@@ -245,13 +298,13 @@ export default function ClipStudioTab({ accessToken, showToast }) {
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900 break-all">{project.title}</h2>
-            <div className="flex items-center gap-2 mt-1.5">
-              <Badge tone={ps.tone}>{working && <Loader2 size={11} className="animate-spin mr-1" />}{ps.label}</Badge>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <Badge tone={ps.tone}>{ps.label}</Badge>
               {project.duration_sec != null && <span className="text-xs text-gray-400 flex items-center gap-1"><Clock size={12} /> {fmtTime(project.duration_sec)}</span>}
               {project.word_count > 0 && <span className="text-xs text-gray-400">{project.word_count} words</span>}
             </div>
           </div>
-          <button onClick={() => removeProject(project)} className={btn.iconGhost} title="Delete video">
+          <button onClick={() => removeProject(project)} className={btn.iconGhost} title="Delete video and all its clips">
             <Trash2 size={16} />
           </button>
         </div>
@@ -269,83 +322,106 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* left: player + transcript */}
-          <div>
-            {project.source_url && (
-              <video ref={videoRef} src={project.source_url} controls className="w-full rounded-xl bg-black mb-3" />
-            )}
-            {working && (
-              <Card className="p-4 text-sm text-gray-500 flex items-center gap-2">
-                <Loader2 size={15} className="animate-spin text-indigo-500" />
-                {project.status === 'preparing' ? 'Reading the video and extracting audio…' : 'Transcribing with word-level timing…'} This page updates automatically.
-              </Card>
-            )}
-            {project.transcript_text && (
-              <Card className="p-4">
-                <SectionLabel className="mb-2">Transcript</SectionLabel>
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">{project.transcript_text}</p>
-              </Card>
-            )}
+        {working && (
+          <Card className="p-4 mb-4">
+            <PipelineProgress status={project.status} />
+            <p className="text-xs text-gray-400 mt-2">Getting your video ready — this page updates by itself. Longer videos take a few minutes.</p>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          {/* LEFT: player + transcript */}
+          <div className="lg:col-span-2">
+            <div className="lg:sticky lg:top-4">
+              {project.source_url && (
+                <video ref={videoRef} src={project.source_url} controls className="w-full rounded-xl bg-black mb-3" />
+              )}
+              {project.transcript_text && (
+                <Card className="p-4">
+                  <button onClick={() => setTranscriptOpen((v) => !v)} className="w-full flex items-center justify-between">
+                    <SectionLabel>Transcript</SectionLabel>
+                    {transcriptOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                  </button>
+                  {transcriptOpen && (
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto mt-2">{project.transcript_text}</p>
+                  )}
+                </Card>
+              )}
+            </div>
           </div>
 
-          {/* right: make a clip */}
-          <div>
-            {/* AI clip picks — Claude reads the transcript and proposes the
-                strongest self-contained moments; "Use" loads one into the form. */}
-            <Card className="p-4 mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <SectionLabel>AI clip picks</SectionLabel>
-                <button onClick={() => suggestClips(project)} disabled={suggesting || project.status !== 'ready'}
-                  className={project.ai_suggestions ? btn.ghost : btn.accent}>
+          {/* RIGHT: guided 3-step flow */}
+          <div className="lg:col-span-3 space-y-4">
+            {/* STEP 1 — pick the moment */}
+            <Card className="p-4">
+              <StepHeader n={1} title="Pick the moment" hint="what part of the video becomes the clip" />
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs text-gray-500">Let the AI read the transcript and propose the strongest moments — or pick a range yourself.</p>
+                <button onClick={() => suggestClips(project)} disabled={suggesting || !ready}
+                  className={suggestions.length ? btn.ghost : btn.accent}>
                   {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {suggesting ? 'Reading transcript…' : project.ai_suggestions ? 'Pick again' : 'Find best clips'}
+                  {suggesting ? 'Reading…' : suggestions.length ? 'Pick again' : 'Find best clips'}
                 </button>
               </div>
-              {!project.ai_suggestions && !suggesting && (
-                <p className="text-xs text-gray-400">Let the AI read the transcript and propose the 3–5 strongest moments, with a reason for each.</p>
-              )}
-              {(project.ai_suggestions?.suggestions || []).map((s, i) => (
-                <div key={i} className="flex items-start gap-3 border border-gray-100 rounded-lg p-2.5 mt-2">
-                  <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-semibold flex items-center justify-center">
-                    {Number(s.score).toFixed(0)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 leading-snug">{s.title}</p>
-                    <p className="text-[11px] text-gray-400">{fmtTime(s.start_sec)}–{fmtTime(s.end_sec)} · {Math.round(s.end_sec - s.start_sec)}s</p>
-                    {s.reason && <p className="text-xs text-gray-500 mt-1 leading-snug">{s.reason}</p>}
+
+              {suggestions.map((s, i) => {
+                const active = form.start === String(s.start_sec) && form.end === String(s.end_sec);
+                return (
+                  <div key={i} className={`flex items-start gap-3 border rounded-lg p-2.5 mt-2 transition ${active ? 'border-indigo-500 ring-2 ring-indigo-100 bg-indigo-50/40' : 'border-gray-100'}`}>
+                    <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-semibold flex items-center justify-center">
+                      {Number(s.score).toFixed(0)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 leading-snug">{s.title}</p>
+                      <p className="text-[11px] text-gray-400">{fmtTime(s.start_sec)}–{fmtTime(s.end_sec)} · {Math.round(s.end_sec - s.start_sec)}s</p>
+                      {s.reason && <p className="text-xs text-gray-500 mt-1 leading-snug">{s.reason}</p>}
+                    </div>
+                    <button onClick={() => useSuggestion(s)}
+                      className={`flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg transition ${active ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                      {active ? <span className="inline-flex items-center gap-1"><Check size={12} /> Selected</span> : 'Use'}
+                    </button>
                   </div>
-                  <button onClick={() => useSuggestion(s)} className="flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">
-                    Use
-                  </button>
+                );
+              })}
+
+              <button onClick={() => setManualOpen((v) => !v)} className="mt-3 text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1">
+                {manualOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Pick the range manually
+              </button>
+              {manualOpen && (
+                <div className="mt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    {['start', 'end'].map((field) => (
+                      <div key={field}>
+                        <label className="text-xs text-gray-500 block mb-1">{field === 'start' ? 'Start (seconds)' : 'End (seconds)'}</label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="number" min="0" step="0.1"
+                            value={form[field]}
+                            placeholder={field === 'start' ? '0' : project.duration_sec ? String(Math.floor(project.duration_sec)) : 'end'}
+                            onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                          />
+                          <button onClick={() => setFromPlayer(field)} className="text-[11px] px-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 whitespace-nowrap" title="Use the player's current position">
+                            <Play size={11} className="inline -mt-0.5" /> here
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-2">Pause the player where you want a cut and press “here”. Empty = whole video (up to 3 minutes).</p>
                 </div>
-              ))}
+              )}
+
+              <div className={`mt-3 text-xs rounded-lg px-3 py-2 ${hasSelection ? 'bg-indigo-50 text-indigo-800' : 'bg-gray-50 text-gray-400'}`}>
+                {hasSelection
+                  ? <>Selected: <strong>{fmtTime(selStart)}–{fmtTime(selEnd)}</strong> ({Math.round(selDur)}s)</>
+                  : 'Nothing selected yet — the whole video will be used.'}
+              </div>
             </Card>
 
-            <Card className="p-4 mb-4">
-              <SectionLabel className="mb-3">Make a captioned clip</SectionLabel>
-
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                {['start', 'end'].map((field) => (
-                  <div key={field}>
-                    <label className="text-xs text-gray-500 block mb-1">{field === 'start' ? 'Start (seconds)' : 'End (seconds)'}</label>
-                    <div className="flex gap-1.5">
-                      <input
-                        type="number" min="0" step="0.1"
-                        value={form[field]}
-                        placeholder={field === 'start' ? '0' : project.duration_sec ? String(Math.floor(project.duration_sec)) : 'end'}
-                        onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                      />
-                      <button onClick={() => setFromPlayer(field)} className="text-[11px] px-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 whitespace-nowrap" title="Use the player's current position">
-                        <Play size={11} className="inline -mt-0.5" /> here
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-gray-400 mb-3">Leave both empty to caption the whole video (up to 3 minutes). Pause the player where you want a cut and press “here”.</p>
-
+            {/* STEP 2 — choose the look */}
+            <Card className="p-4">
+              <StepHeader n={2} title="Choose the look" />
               <label className="text-xs text-gray-500 block mb-1">Format</label>
               <div className="flex gap-2 mb-3">
                 {Object.entries(ASPECT_META).map(([key, a]) => (
@@ -359,7 +435,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
               {form.aspect !== '16:9' && (
                 <>
-                  <label className="text-xs text-gray-500 block mb-1">Framing <span className="text-gray-300">— where the speaker is in the shot</span></label>
+                  <label className="text-xs text-gray-500 block mb-1">Where is the speaker in the shot?</label>
                   <div className="flex gap-2 mb-3">
                     {[['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
                       <button key={key} onClick={() => setForm((f) => ({ ...f, framing: key }))}
@@ -370,22 +446,6 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   </div>
                 </>
               )}
-
-              <label className="text-xs text-gray-500 block mb-1">Extras</label>
-              <div className="space-y-1.5 mb-3">
-                {[
-                  ['silences', 'Remove silences', 'auto-cuts pauses and dead air (jump cuts)'],
-                  ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
-                  ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
-                ].map(([key, name, desc]) => (
-                  <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={form[key]}
-                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
-                      className="mt-0.5 accent-indigo-600" />
-                    <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
-                  </label>
-                ))}
-              </div>
 
               <label className="text-xs text-gray-500 block mb-1">Caption style</label>
               <div className="grid grid-cols-3 gap-2 mb-3">
@@ -399,54 +459,90 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 ))}
               </div>
 
-              <label className="text-xs text-gray-500 block mb-1">Name (optional)</label>
+              <label className="text-xs text-gray-500 block mb-1">Extras</label>
+              <div className="space-y-1.5">
+                {[
+                  ['silences', 'Remove silences', 'auto-cuts pauses and dead air (jump cuts)'],
+                  ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
+                  ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
+                ].map(([key, name, desc]) => (
+                  <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form[key]}
+                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
+                      className="mt-0.5 accent-indigo-600" />
+                    <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
+                  </label>
+                ))}
+              </div>
+            </Card>
+
+            {/* STEP 3 — name + generate */}
+            <Card className="p-4">
+              <StepHeader n={3} title="Name it and generate" />
+              <label className="text-xs text-gray-500 block mb-1">
+                Clip name {form.hook ? <span className="text-indigo-500">(shown as the title overlay)</span> : '(optional — used for the file name)'}
+              </label>
               <input
                 value={form.label}
                 onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
                 placeholder="e.g. Testimonial hook v1"
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
-
-              <button onClick={() => renderClip(project)} disabled={rendering || project.status !== 'ready'} className={`${btn.accent} w-full`}>
+              <p className="text-[11px] text-gray-400 mb-3">
+                {ASPECT_META[form.aspect].name} · {STYLE_META[form.style].name} · {fmtTime(selStart)}–{fmtTime(selEnd)} ({Math.round(selDur)}s)
+                {extrasOn.length ? ` · ${extrasOn.join(' + ')}` : ''}
+              </p>
+              <button onClick={() => renderClip(project)} disabled={rendering || !ready} className={`${btn.accent} w-full`}>
                 {rendering ? <Loader2 size={15} className="animate-spin" /> : <Captions size={15} />}
-                {project.status === 'ready' ? 'Generate captioned clip' : 'Waiting for transcript…'}
+                {ready ? 'Generate captioned clip' : 'Waiting for transcript…'}
               </button>
             </Card>
-
-            {/* clips list */}
-            {(project.clips || []).length > 0 && (
-              <div className="space-y-3">
-                <SectionLabel>Clips</SectionLabel>
-                {project.clips.map((c) => {
-                  const cs = CLIP_STATUS[c.status] || CLIP_STATUS.rendering;
-                  return (
-                    <Card key={c.id} className="p-3">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Badge tone={cs.tone}>{c.status === 'rendering' && <Loader2 size={11} className="animate-spin mr-1" />}{cs.label}</Badge>
-                          <span className="text-sm text-gray-800 truncate">{c.label || `${STYLE_META[c.style]?.name || c.style} · ${c.aspect}`}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {c.status === 'ready' && (
-                            <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
-                          )}
-                          <button onClick={() => removeClip(c)} className={btn.iconGhost} title="Delete clip"><Trash2 size={15} /></button>
-                        </div>
-                      </div>
-                      <div className="text-[11px] text-gray-400 mb-2">
-                        {fmtTime(c.start_sec)}–{fmtTime(c.end_sec)} · {ASPECT_META[c.aspect]?.name || c.aspect} · {STYLE_META[c.style]?.name || c.style}
-                        {c.render_seconds ? ` · rendered in ${c.render_seconds}s` : ''}
-                      </div>
-                      {c.status === 'ready' && c.video_url && (
-                        <video src={c.video_url} controls className="w-full rounded-lg bg-black" style={{ maxHeight: 300 }} />
-                      )}
-                      {c.status === 'failed' && <div className="text-xs text-red-600">{c.error_message}</div>}
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
           </div>
+        </div>
+
+        {/* YOUR CLIPS — full-width gallery */}
+        <div className="mt-8">
+          <SectionLabel className="mb-3">Your clips {project.clips?.length ? `(${project.clips.length})` : ''}</SectionLabel>
+          {(project.clips || []).length === 0 ? (
+            <div className="text-center text-gray-400 text-sm py-10 border border-dashed border-gray-200 rounded-xl">
+              No clips yet. {ready ? 'Start with “Find best clips” above.' : 'They will appear here once the video is ready.'}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {project.clips.map((c) => {
+                const cs = CLIP_STATUS[c.status] || CLIP_STATUS.rendering;
+                return (
+                  <Card key={c.id} className="p-3">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge tone={cs.tone}>{c.status === 'rendering' && <Loader2 size={11} className="animate-spin mr-1" />}{cs.label}</Badge>
+                        <span className="text-sm text-gray-800 truncate">{c.label || `${STYLE_META[c.style]?.name || c.style} · ${c.aspect}`}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {c.status === 'ready' && (
+                          <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
+                        )}
+                        <button onClick={() => removeClip(c)} className={btn.iconGhost} title="Delete clip"><Trash2 size={15} /></button>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mb-2">
+                      {fmtTime(c.start_sec)}–{fmtTime(c.end_sec)} · {ASPECT_META[c.aspect]?.name || c.aspect} · {STYLE_META[c.style]?.name || c.style}
+                      {c.render_seconds ? ` · ${c.render_seconds}s render` : ''}
+                    </div>
+                    {c.status === 'rendering' && (
+                      <div className="rounded-lg bg-gray-50 text-gray-400 text-xs flex items-center justify-center h-40">
+                        <Loader2 size={14} className="animate-spin mr-1.5" /> Rendering — usually under a minute for short clips
+                      </div>
+                    )}
+                    {c.status === 'ready' && c.video_url && (
+                      <video src={c.video_url} controls className="w-full rounded-lg bg-black" style={{ maxHeight: 320 }} />
+                    )}
+                    {c.status === 'failed' && <div className="text-xs text-red-600">{c.error_message}</div>}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
