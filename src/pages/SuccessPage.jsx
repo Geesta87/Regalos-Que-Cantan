@@ -1395,6 +1395,18 @@ export default function SuccessPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // Share ONLY the currently-selected song (one-touch, per-song). Uses the clean
+  // single-song /song/<id> link so the recipient sees just this one — for buyers
+  // who want to send each song to a different person, or only bought one.
+  const handleShareWhatsAppSingle = () => {
+    const name = currentSong?.recipient_name || '';
+    const url = currentSong?.id
+      ? `${window.location.origin}/song/${currentSong.id}`
+      : (songUrl || window.location.href);
+    const text = `🎵 ¡Escucha esta canción que hice especialmente para ${name}! 🎁\n\n${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const handleCopyLink = () => {
     const url = songUrl || window.location.href;
     navigator.clipboard.writeText(url);
@@ -1712,6 +1724,10 @@ export default function SuccessPage() {
   const oneTapItems = (() => {
     if (!oneTapSong) return [];
     const out = [];
+    // Photo-slideshow video ($9.99) — the email-drip hero. Only offered here to
+    // song-only buyers (no video addon yet); charging it flags has_video_addon
+    // and the page's existing video flow collects the photos.
+    if (!oneTapSong.has_video_addon) out.push({ key: 'video', price: 9.99, title: 'Video con fotos', sub: 'Hasta 15 fotos, al ritmo de la canción', media: { type: 'photos' } });
     const ownsAnimado = animadoOrders.some((o) => o.song_id === oneTapSong.id);
     if (!ownsAnimado) out.push({ key: 'animado', price: 29, title: 'Película animada', sub: 'Su rostro hecho personaje', media: { type: 'video', src: '/animado-sample.mp4' } });
     if (!oneTapSong.karaoke_status) out.push({ key: 'instrumental', price: 7.99, title: 'Pista instrumental', sub: 'Solo la música, para cantar', media: { type: 'ab' } });
@@ -1740,6 +1756,10 @@ export default function SuccessPage() {
         }]);
       } else if (item === 'instrumental' || item === 'lyric_video') {
         // Reload so the existing "preparing…" UI + polling pick up the new status.
+        loadSongs();
+      } else if (item === 'video') {
+        // Reload so has_video_addon flips on and the photo-upload video flow
+        // (which replaces the player) renders for this now-video order.
         loadSongs();
       }
     }
@@ -2377,7 +2397,7 @@ export default function SuccessPage() {
               <p style={{ fontSize: '12px', color: ts.textSecondary, margin: '0 0 12px 0' }}>
                 Comparte el enlace para que {currentSong?.recipient_name || 'tu ser querido'} escuche su canción
               </p>
-              <button onClick={handleShareWhatsApp}
+              <button onClick={handleShareWhatsAppSingle}
                 style={{
                   width: '100%', padding: '16px',
                   background: 'linear-gradient(135deg, #25d366, #128c7e)',
@@ -2387,8 +2407,21 @@ export default function SuccessPage() {
                   boxShadow: '0 6px 25px rgba(37,211,102,0.35)',
                   transition: 'all 0.3s', fontFamily: ts.font
                 }}>
-                💬 Enviar por WhatsApp
+                💬 Compartir esta canción
               </button>
+              {isCombo && (
+                <button onClick={handleShareWhatsApp}
+                  style={{
+                    width: '100%', padding: '14px', marginTop: '10px',
+                    background: 'transparent',
+                    color: '#25d366', fontWeight: '800', fontSize: '15px',
+                    border: '2px solid #25d366', borderRadius: '14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    transition: 'all 0.3s', fontFamily: ts.font
+                  }}>
+                  💬 Compartir las 2 canciones
+                </button>
+              )}
             </div>
 
             {/* Helpful tip */}
