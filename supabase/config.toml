@@ -127,6 +127,12 @@ verify_jwt = false
 # by pg_cron / another edge function (no Supabase JWT). Must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.recover-stuck-story-builds]
+# Backstop cron for the Animado build pipeline: re-triggers Cloud Run builds that
+# were killed mid-render (order stuck at 'building'), and marks 'failed' + SMSes the
+# owner after MAX_ATTEMPTS. Runs via pg_cron (no Supabase JWT). Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.notify-upsell-ready]
 # Async "your extra is ready" notifier. Called server-to-server (no Supabase JWT)
 # from inhouse-video-callback (the $9.99 video finishes) and api/render-lyric-video.js
@@ -141,6 +147,13 @@ verify_jwt = false
 # handler authenticates via the shared X-Render-Token header instead. Persists
 # the render into the `videos` bucket and marks the order completed, mirroring
 # video-callback. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.clip-studio-callback]
+# Completion hook for Clip Studio jobs on the in-house Cloud Run renderer
+# (rqc-video-renderer /clip-prepare + /clip-render). Cloud Run cannot attach a
+# Supabase JWT — authenticated via the shared x-render-token header, same
+# contract as inhouse-video-callback. Runs Whisper on the extracted audio.
 verify_jwt = false
 
 [functions.mureka-useapi-callback]
@@ -203,10 +216,20 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sendgrid-event-webhook]
-# SendGrid Event Webhook receiver. SendGrid POSTs delivery events (bounce,
-# spamreport, dropped, unsubscribe, group_unsubscribe) here; it cannot attach
-# a Supabase JWT. Authenticated internally via SENDGRID_EVENT_TOKEN in the
-# query string. Records hard opt-out events into email_unsubscribes.
+# SendGrid Event Webhook receiver. SendGrid POSTs delivery + engagement events
+# (delivered, open, click, bounce, dropped, deferred, spamreport, unsubscribe,
+# group_unsubscribe) here; it cannot attach a Supabase JWT. Authenticated
+# internally via SENDGRID_EVENT_TOKEN in the query string. Stores every event
+# into email_events (Email Command Center capture layer) and records opt-outs
+# into email_unsubscribes.
+verify_jwt = false
+
+[functions.refresh-email-analytics]
+# Email Command Center rollup refresher. Runs on pg_cron (no JWT) → verify_jwt
+# = false. Rebuilds email_campaign_daily via rebuild_email_campaign_daily()
+# (engagement + last-touch revenue attribution); read-only over songs, never
+# touches the payment funnel. Also supports POST {"action":"enable_tracking"}
+# to turn on SendGrid open/click tracking + engagement events (run once).
 verify_jwt = false
 
 # ---------------------------------------------------------------------------
@@ -284,6 +307,25 @@ verify_jwt = false
 # verify_jwt = false. Finalizes 'generating' creative_queue rows: polls Kie
 # recordInfo, stores finished media in the creative-studio bucket, flips to
 # 'ready' for owner approval. Mirrors poll-processing-songs.
+verify_jwt = false
+
+[functions.song-ad-daily]
+# SONG-AD generator. Runs on its own pg_cron schedule (no JWT) → verify_jwt =
+# false. Rotates the full genre×occasion catalog, asks Claude for ONE fresh
+# "que [emotional result]" ad each (never-repeat block-list), generates the
+# song-moment photo, parks rows in creative_queue (status=generating,
+# design.template='song') for poll-creative-queue to typeset. Owner approves
+# before anything posts. Reads ANTHROPIC_API_KEY + OPENAI_API_KEY.
+verify_jwt = false
+
+[functions.corrido-ads]
+# One-shot corrido-audience poster-ad seeder. Generates a curated batch of
+# text-free gpt-image-2 photos and parks them in creative_queue (status=
+# generating, design.template='poster') for poll-creative-queue to typeset and
+# the owner to approve in Creative Studio → Ads. Invoked manually via curl (no
+# Supabase user JWT); authenticates internally via the x-seed-token header, so
+# the gateway must NOT verify a Supabase JWT → verify_jwt = false. Throwaway —
+# safe to delete once the batch exists. Reads OPENAI_API_KEY + service-role.
 verify_jwt = false
 
 [functions.affiliate-recruiter]
@@ -411,6 +453,14 @@ verify_jwt = true
 # contains spend + revenue). Read-only over media_buyer_reports + agent_runs.
 verify_jwt = true
 
+[functions.email-analytics]
+# Email Command Center reader (Creative Studio → Email Performance). Called from
+# the admin dashboard with a logged-in Supabase Auth user's JWT → verify_jwt =
+# true; handler requires admin_users.role='admin' (revenue-sensitive). Read-only
+# over email_campaign_daily / campaign_catalog / analytics_meta / songs; never
+# touches the payment funnel.
+verify_jwt = true
+
 [functions.media-buyer-daily]
 # AGENT 1 — Media Buyer. Runs once each morning via pg_cron (no JWT context),
 # so verify_jwt = false. RECOMMEND-ONLY: reads Meta Ads insights + cross-checks
@@ -440,6 +490,15 @@ verify_jwt = false
 # Runs every 30 minutes via pg_cron — emails customers who paid for the video
 # addon but never uploaded their photos (so no video was ever made). Cron has
 # no user JWT; also called manually for dry-run/test sends.
+verify_jwt = false
+
+[functions.upsell-email-drip]
+# Runs every ~15 min via pg_cron — post-purchase upsell drip to song-only buyers
+# (touch 1 ~30 min after purchase, touch 2 "última oportunidad" ~3 h later). Cron
+# has no user JWT; also called manually for dry-run/test sends. Every CTA links to
+# the buyer's own /success page (song_ids + session_id) where the existing saved-
+# card one-tap upsell charges — this function only sends email, never charges, and
+# never touches the payment funnel. Must stay verify_jwt = false.
 verify_jwt = false
 
 [functions.retry-queued-songs]
@@ -596,6 +655,14 @@ verify_jwt = true
 # ---------------------------------------------------------------------------
 # Frontend-authenticated functions — verify_jwt = true (default, explicit)
 # ---------------------------------------------------------------------------
+
+[functions.clip-studio]
+# Clip Studio (auto-caption tool) admin API. Called from the admin dashboard
+# with a logged-in Supabase Auth user's JWT → verify_jwt = true; handler
+# requires a row in admin_users (same pattern as admin-videos). Dispatches
+# heavy work to the in-house Cloud Run renderer via INHOUSE_RENDERER_URL +
+# RENDER_TOKEN; results return through clip-studio-callback.
+verify_jwt = true
 
 [functions.admin-songs]
 # Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
