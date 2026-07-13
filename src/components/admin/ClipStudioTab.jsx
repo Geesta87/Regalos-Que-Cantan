@@ -69,6 +69,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({ start: '', end: '', aspect: '9:16', style: 'boldpop', label: '' });
   const [rendering, setRendering] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const fileRef = useRef(null);
   const videoRef = useRef(null);
 
@@ -140,6 +141,19 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     } catch (e) {
       setUpload(null);
       showToast?.(`Upload error: ${e.message}`);
+    }
+  };
+
+  const retryIngest = async (project) => {
+    setRetrying(true);
+    try {
+      await call({ action: 'ingest', project_id: project.id, path: project.source_path });
+      showToast?.('Retrying — reading the video again');
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -218,7 +232,14 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
         {project.status === 'error' && (
           <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">
-            <AlertTriangle size={15} /> {project.error_message}
+            <AlertTriangle size={15} className="flex-shrink-0" />
+            <span className="flex-1">{project.error_message}</span>
+            {project.source_path && (
+              <button onClick={() => retryIngest(project)} disabled={retrying}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition">
+                {retrying ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Retry
+              </button>
+            )}
           </div>
         )}
 

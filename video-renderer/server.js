@@ -197,14 +197,39 @@ async function postJobCallback(job, payload) {
   }
 }
 
+// Upload via the pre-signed PUT URL minted by the clip-studio edge function.
+// This service holds NO Supabase key (SUPABASE_KEY here is the anon key from
+// the shadow era) — signed URLs are the house pattern, like the Animado builder.
+async function uploadToSignedUrl(localPath, signedUrl, contentType) {
+  const body = fs.readFileSync(localPath);
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
+        body,
+        duplex: 'half',
+      });
+      if (!res.ok) throw new Error(`signed upload ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`signed upload attempt ${attempt} failed: ${e.message}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 async function runClipPrepare(job) {
   const id = job.project_id;
   const workDir = path.join(os.tmpdir(), `clip-prep-${id}-${Date.now()}`);
   try {
+    if (!job.audio_upload_url) throw new Error('job missing audio_upload_url');
     const { audioPath, durationSec } = await prepareClipSource(job, { dir: workDir, log: (m) => console.log(`[clip:${id}] ${m}`) });
-    const audioKey = `${id}/audio.mp3`;
-    const audio_url = await uploadToSupabase(audioPath, audioKey, { bucket: job.bucket, contentType: 'audio/mpeg' });
-    await postJobCallback(job, { kind: 'prepare', success: true, project_id: id, duration_sec: durationSec, audio_path: audioKey, audio_url });
+    await uploadToSignedUrl(audioPath, job.audio_upload_url, 'audio/mpeg');
+    await postJobCallback(job, { kind: 'prepare', success: true, project_id: id, duration_sec: durationSec, audio_path: job.audio_path, audio_url: job.audio_public_url });
   } catch (err) {
     console.error(`[clip:${id}] prepare error:`, err.message);
     await postJobCallback(job, { kind: 'prepare', success: false, project_id: id, error: err.message });
@@ -218,12 +243,12 @@ async function runClipRender(job) {
   const started = Date.now();
   const workDir = path.join(os.tmpdir(), `clip-${id}-${started}`);
   try {
+    if (!job.output_upload_url) throw new Error('job missing output_upload_url');
     const result = await renderClip(job, { dir: workDir, log: (m) => console.log(`[clip:${id}] ${m}`) });
-    const objectKey = `${job.project_id}/clips/${id}.mp4`;
-    const video_url = await uploadToSupabase(result.finalPath, objectKey, { bucket: job.bucket, contentType: 'video/mp4' });
+    await uploadToSignedUrl(result.finalPath, job.output_upload_url, 'video/mp4');
     const renderSeconds = Math.round((Date.now() - started) / 1000);
-    console.log(`[clip:${id}] uploaded ${video_url} in ${renderSeconds}s`);
-    await postJobCallback(job, { kind: 'clip', success: true, clip_id: id, project_id: job.project_id, storage_path: objectKey, video_url, duration_sec: result.durationSec, render_seconds: renderSeconds });
+    console.log(`[clip:${id}] uploaded ${job.output_path} in ${renderSeconds}s`);
+    await postJobCallback(job, { kind: 'clip', success: true, clip_id: id, project_id: job.project_id, storage_path: job.output_path, video_url: job.output_public_url, duration_sec: result.durationSec, render_seconds: renderSeconds });
   } catch (err) {
     console.error(`[clip:${id}] render error:`, err.message);
     await postJobCallback(job, { kind: 'clip', success: false, clip_id: id, project_id: job.project_id, error: err.message });

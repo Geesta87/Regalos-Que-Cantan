@@ -103,8 +103,15 @@ serve(async (req) => {
         .update({ source_path: sourcePath, source_url, status: 'preparing', error_message: null, updated_at: new Date().toISOString() })
         .eq('id', project_id);
       if (error) throw new Error(error.message);
+      // Cloud Run holds no Supabase key (house pattern, same as the Animado
+      // builder) — hand it a pre-signed PUT URL for the audio it extracts.
+      const audioPath = `${project_id}/audio.mp3`;
+      const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(audioPath, { upsert: true });
+      if (se) throw new Error(`sign audio: ${se.message}`);
       await dispatchRenderer('/clip-prepare', {
         project_id, source_url, bucket: BUCKET, callback_url: CALLBACK_URL,
+        audio_upload_url: signed.signedUrl, audio_path: audioPath,
+        audio_public_url: admin.storage.from(BUCKET).getPublicUrl(audioPath).data.publicUrl,
       });
       return json({ success: true, status: 'preparing' });
     }
@@ -134,10 +141,15 @@ serve(async (req) => {
       if (ce) throw new Error(ce.message);
 
       try {
+        const outPath = `${project_id}/clips/${clip.id}.mp4`;
+        const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(outPath, { upsert: true });
+        if (se) throw new Error(`sign output: ${se.message}`);
         await dispatchRenderer('/clip-render', {
           clip_id: clip.id, project_id, source_url: proj.source_url,
           start_sec: start, end_sec: end, aspect, style, words,
           bucket: BUCKET, callback_url: CALLBACK_URL,
+          output_upload_url: signed.signedUrl, output_path: outPath,
+          output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
         });
       } catch (e) {
         await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: new Date().toISOString() }).eq('id', clip.id);
