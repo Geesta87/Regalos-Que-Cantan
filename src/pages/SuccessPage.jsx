@@ -3472,9 +3472,21 @@ export default function SuccessPage() {
                   </a>
                 )}
 
-                {/* Share hint */}
-                <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '12px', fontWeight: 600 }}>
-                  💡 Compártelo por WhatsApp para sorprender a {recipientName}
+                {/* Share via WhatsApp — one-touch (video view had no button before) */}
+                <button onClick={handleShareWhatsAppSingle}
+                  style={{
+                    width: '100%', padding: '14px 24px', marginTop: '10px',
+                    background: 'linear-gradient(135deg, #25d366, #128c7e)',
+                    color: 'white', fontWeight: '800', fontSize: '15px',
+                    border: 'none', borderRadius: '14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    boxShadow: '0 6px 20px rgba(37,211,102,0.35)',
+                    transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  💬 Compartir por WhatsApp
+                </button>
+                <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '10px', fontWeight: 600 }}>
+                  💡 Descarga el video para enviarlo, o comparte el enlace para sorprender a {recipientName}
                 </p>
               </>
             )}
