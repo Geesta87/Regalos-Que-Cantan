@@ -20,6 +20,7 @@ const os = require('os');
 const { renderOrder } = require('./render');
 const { execFileSync } = require('child_process');
 const { spliceLine, spliceSection } = require('./spliceAudio.cjs');
+const { prepareClipSource, renderClip } = require('./clip');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,9 +29,9 @@ const RENDER_TOKEN = process.env.RENDER_TOKEN;       // shared secret required o
 const CALLBACK_URL = process.env.CALLBACK_URL || ''; // optional completion hook
 const PORT = process.env.PORT || 8080;
 
-async function uploadToSupabase(localPath, objectPath) {
+async function uploadToSupabase(localPath, objectPath, { bucket = OUTPUT_BUCKET, contentType = 'video/mp4' } = {}) {
   const body = fs.readFileSync(localPath);
-  const url = `${SUPABASE_URL}/storage/v1/object/${OUTPUT_BUCKET}/${objectPath}`;
+  const url = `${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`;
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -39,14 +40,14 @@ async function uploadToSupabase(localPath, objectPath) {
         headers: {
           apikey: SUPABASE_KEY,
           Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'video/mp4',
+          'Content-Type': contentType,
           'x-upsert': 'true',
         },
         body,
         duplex: 'half',
       });
       if (!res.ok) throw new Error(`upload ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return `${SUPABASE_URL}/storage/v1/object/public/${OUTPUT_BUCKET}/${objectPath}`;
+      return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${objectPath}`;
     } catch (e) {
       lastErr = e;
       console.warn(`upload attempt ${attempt} failed: ${e.message}${e.cause ? ' / ' + (e.cause.code || e.cause.message) : ''}`);
@@ -177,6 +178,66 @@ function enqueueRender(order, id) {
     .catch((e) => console.error(`[${id}] background render crashed:`, e?.message || e));
 }
 
+// --------------------------------------------------------------------------
+// Clip Studio jobs (auto-captions). Same 202-then-background contract as
+// /render; results are persisted by POSTing to the job's callback_url (the
+// clip-studio-callback edge function), authenticated with x-render-token.
+// --------------------------------------------------------------------------
+async function postJobCallback(job, payload) {
+  if (!job.callback_url) return;
+  try {
+    const res = await fetch(job.callback_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN || '' },
+      body: JSON.stringify(payload),
+    });
+    console.log(`[clip:${payload.project_id || payload.clip_id}] callback ${res.status}`);
+  } catch (e) {
+    console.error(`[clip] callback failed: ${e.message}`);
+  }
+}
+
+async function runClipPrepare(job) {
+  const id = job.project_id;
+  const workDir = path.join(os.tmpdir(), `clip-prep-${id}-${Date.now()}`);
+  try {
+    const { audioPath, durationSec } = await prepareClipSource(job, { dir: workDir, log: (m) => console.log(`[clip:${id}] ${m}`) });
+    const audioKey = `${id}/audio.mp3`;
+    const audio_url = await uploadToSupabase(audioPath, audioKey, { bucket: job.bucket, contentType: 'audio/mpeg' });
+    await postJobCallback(job, { kind: 'prepare', success: true, project_id: id, duration_sec: durationSec, audio_path: audioKey, audio_url });
+  } catch (err) {
+    console.error(`[clip:${id}] prepare error:`, err.message);
+    await postJobCallback(job, { kind: 'prepare', success: false, project_id: id, error: err.message });
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+async function runClipRender(job) {
+  const id = job.clip_id;
+  const started = Date.now();
+  const workDir = path.join(os.tmpdir(), `clip-${id}-${started}`);
+  try {
+    const result = await renderClip(job, { dir: workDir, log: (m) => console.log(`[clip:${id}] ${m}`) });
+    const objectKey = `${job.project_id}/clips/${id}.mp4`;
+    const video_url = await uploadToSupabase(result.finalPath, objectKey, { bucket: job.bucket, contentType: 'video/mp4' });
+    const renderSeconds = Math.round((Date.now() - started) / 1000);
+    console.log(`[clip:${id}] uploaded ${video_url} in ${renderSeconds}s`);
+    await postJobCallback(job, { kind: 'clip', success: true, clip_id: id, project_id: job.project_id, storage_path: objectKey, video_url, duration_sec: result.durationSec, render_seconds: renderSeconds });
+  } catch (err) {
+    console.error(`[clip:${id}] render error:`, err.message);
+    await postJobCallback(job, { kind: 'clip', success: false, clip_id: id, project_id: job.project_id, error: err.message });
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+function enqueueClipJob(fn, job, id) {
+  renderChain = renderChain
+    .then(() => fn(job))
+    .catch((e) => console.error(`[clip:${id}] background job crashed:`, e?.message || e));
+}
+
 const server = http.createServer(async (req, res) => {
   const send = (code, obj) => {
     res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -204,6 +265,24 @@ const server = http.createServer(async (req, res) => {
       console.error('[splice] error:', err.message);
       return send(500, { success: false, error: err.message });
     }
+  }
+
+  // Clip Studio: prepare (audio extract for Whisper) + render (captioned clip)
+  if (req.method === 'POST' && (req.url === '/clip-prepare' || req.url === '/clip-render')) {
+    if (RENDER_TOKEN && req.headers['x-render-token'] !== RENDER_TOKEN) return send(401, { error: 'unauthorized' });
+    let job;
+    try {
+      job = JSON.parse(await readBody(req));
+      if (!job.source_url || !job.bucket || !job.callback_url) throw new Error('missing source_url, bucket, or callback_url');
+      if (req.url === '/clip-prepare' && !job.project_id) throw new Error('missing project_id');
+      if (req.url === '/clip-render' && !job.clip_id) throw new Error('missing clip_id');
+    } catch (err) {
+      return send(400, { success: false, error: err.message });
+    }
+    const id = job.clip_id || job.project_id;
+    send(202, { accepted: true, id });
+    enqueueClipJob(req.url === '/clip-prepare' ? runClipPrepare : runClipRender, job, id);
+    return;
   }
 
   if (req.method !== 'POST' || req.url !== '/render') return send(404, { error: 'not found' });

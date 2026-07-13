@@ -10,10 +10,11 @@ import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
 import FixQueue from '../components/admin/FixQueue';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
+import ClipStudioTab from '../components/admin/ClipStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors } from 'lucide-react';
 import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -1616,7 +1617,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -3790,6 +3791,9 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('creativestudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'creativestudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Sparkles size={18} className={`flex-shrink-0 ${activeTab === 'creativestudio' ? 'text-amber-400' : ''}`} /> Creative Studio
         </button>
+        <button onClick={() => setActiveTab('clipstudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clipstudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Scissors size={18} className={`flex-shrink-0 ${activeTab === 'clipstudio' ? 'text-amber-400' : ''}`} /> Clip Studio
+        </button>
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
@@ -3876,7 +3880,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animadolikeness: 'Animated: Likeness', animadofinal: 'Animated: Final Video', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animadolikeness: 'Animated: Likeness', animadofinal: 'Animated: Final Video', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -4496,6 +4500,16 @@ export default function AdminDashboard() {
                 }`}
               >
                 ✨ Creative Studio
+              </button>
+              <button
+                onClick={() => setActiveTab('clipstudio')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'clipstudio'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                ✂️ Clip Studio
               </button>
             </div>
           </div>
@@ -6321,6 +6335,10 @@ export default function AdminDashboard() {
           /* Creative Studio (Agent 2) — review the daily AI batch + approve/reject.
              Approve auto-posts via GHL. creative-studio-admin edge function. */
           <CreativeStudioTab accessToken={accessToken} showToast={showToast} />
+        ) : activeTab === 'clipstudio' ? (
+          /* Clip Studio — standalone auto-caption tool (upload video → Whisper
+             transcript → burned animated captions). clip-studio edge function. */
+          <ClipStudioTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 

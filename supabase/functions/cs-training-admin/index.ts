@@ -177,6 +177,89 @@ serve(async (req) => {
       });
     }
 
+    // ── insights: CS scoreboard — edit-rate BY question type + weekly trend ──
+    // Read-only (both roles may view). This is the instrument panel: it shows
+    // which answer types the bot nails vs. which the owner keeps rewriting, and
+    // whether that's improving. It's also the gate for auto-send later: a type
+    // is only safe to auto-send once its edit-rate is consistently near zero.
+    if (action === 'insights') {
+      // Pull the reply log (owner-approved AI drafts + owner-written replies).
+      const { data: rows } = await admin
+        .from('cs_examples')
+        .select('customer_msg, was_edited, source, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5000);
+      const examples = rows || [];
+
+      // Monday-anchored week key, computed without Date.now (stable for a given row).
+      const weekKey = (iso: string): string => {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return 'unknown';
+        const day = (d.getUTCDay() + 6) % 7; // 0 = Monday
+        const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day));
+        return monday.toISOString().slice(0, 10);
+      };
+
+      type Bucket = { ai_used: number; edited: number; manual: number };
+      const fresh = (): Bucket => ({ ai_used: 0, edited: 0, manual: 0 });
+      const byCat: Record<string, Bucket> = {};
+      const byWeek: Record<string, Bucket> = {};
+
+      for (const e of examples) {
+        const cat = classifyCs(e.customer_msg as string);
+        const wk = weekKey(String(e.created_at));
+        byCat[cat] ||= fresh();
+        byWeek[wk] ||= fresh();
+        const isApprove = e.source === 'approve';
+        const isManual = e.source === 'manual';
+        for (const bkt of [byCat[cat], byWeek[wk]]) {
+          if (isApprove) { bkt.ai_used++; if (e.was_edited) bkt.edited++; }
+          else if (isManual) { bkt.manual++; }
+        }
+      }
+
+      const pct = (n: number, d: number) => (d > 0 ? Math.round((100 * n) / d) : null);
+      const by_category = Object.entries(byCat)
+        .map(([category, b]) => ({
+          category,
+          label: CS_CATEGORY_LABELS[category as CsCategory] || category,
+          ai_used: b.ai_used,
+          edited: b.edited,
+          sent_asis: b.ai_used - b.edited,
+          edit_rate: pct(b.edited, b.ai_used),
+          manual: b.manual,
+          // Adoption = of all replies for this type, how many the bot actually produced.
+          adoption_rate: pct(b.ai_used, b.ai_used + b.manual),
+          total: b.ai_used + b.manual,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      const trend_weekly = Object.entries(byWeek)
+        .filter(([wk]) => wk !== 'unknown')
+        .map(([week, b]) => ({ week, ai_used: b.ai_used, edited: b.edited, edit_rate: pct(b.edited, b.ai_used) }))
+        .sort((a, b) => a.week.localeCompare(b.week))
+        .slice(-8);
+
+      const totalApprove = examples.filter((e) => e.source === 'approve').length;
+      const totalEdited = examples.filter((e) => e.source === 'approve' && e.was_edited).length;
+      const totalManual = examples.filter((e) => e.source === 'manual').length;
+      return json({
+        success: true,
+        insights: {
+          by_category,
+          trend_weekly,
+          totals: {
+            ai_used: totalApprove,
+            edited: totalEdited,
+            edit_rate: pct(totalEdited, totalApprove),
+            manual: totalManual,
+            adoption_rate: pct(totalApprove, totalApprove + totalManual),
+            sample_size: examples.length,
+          },
+        },
+      });
+    }
+
     // Everything below changes bot behavior → admins only.
     if (role !== 'admin') return json({ success: false, error: 'Only admins can edit training' }, 403);
 

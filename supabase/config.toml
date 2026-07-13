@@ -127,6 +127,12 @@ verify_jwt = false
 # by pg_cron / another edge function (no Supabase JWT). Must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.recover-stuck-story-builds]
+# Backstop cron for the Animado build pipeline: re-triggers Cloud Run builds that
+# were killed mid-render (order stuck at 'building'), and marks 'failed' + SMSes the
+# owner after MAX_ATTEMPTS. Runs via pg_cron (no Supabase JWT). Must stay verify_jwt = false.
+verify_jwt = false
+
 [functions.notify-upsell-ready]
 # Async "your extra is ready" notifier. Called server-to-server (no Supabase JWT)
 # from inhouse-video-callback (the $9.99 video finishes) and api/render-lyric-video.js
@@ -141,6 +147,13 @@ verify_jwt = false
 # handler authenticates via the shared X-Render-Token header instead. Persists
 # the render into the `videos` bucket and marks the order completed, mirroring
 # video-callback. Must stay verify_jwt = false.
+verify_jwt = false
+
+[functions.clip-studio-callback]
+# Completion hook for Clip Studio jobs on the in-house Cloud Run renderer
+# (rqc-video-renderer /clip-prepare + /clip-render). Cloud Run cannot attach a
+# Supabase JWT — authenticated via the shared x-render-token header, same
+# contract as inhouse-video-callback. Runs Whisper on the extracted audio.
 verify_jwt = false
 
 [functions.mureka-useapi-callback]
@@ -294,6 +307,25 @@ verify_jwt = false
 # verify_jwt = false. Finalizes 'generating' creative_queue rows: polls Kie
 # recordInfo, stores finished media in the creative-studio bucket, flips to
 # 'ready' for owner approval. Mirrors poll-processing-songs.
+verify_jwt = false
+
+[functions.song-ad-daily]
+# SONG-AD generator. Runs on its own pg_cron schedule (no JWT) → verify_jwt =
+# false. Rotates the full genre×occasion catalog, asks Claude for ONE fresh
+# "que [emotional result]" ad each (never-repeat block-list), generates the
+# song-moment photo, parks rows in creative_queue (status=generating,
+# design.template='song') for poll-creative-queue to typeset. Owner approves
+# before anything posts. Reads ANTHROPIC_API_KEY + OPENAI_API_KEY.
+verify_jwt = false
+
+[functions.corrido-ads]
+# One-shot corrido-audience poster-ad seeder. Generates a curated batch of
+# text-free gpt-image-2 photos and parks them in creative_queue (status=
+# generating, design.template='poster') for poll-creative-queue to typeset and
+# the owner to approve in Creative Studio → Ads. Invoked manually via curl (no
+# Supabase user JWT); authenticates internally via the x-seed-token header, so
+# the gateway must NOT verify a Supabase JWT → verify_jwt = false. Throwaway —
+# safe to delete once the batch exists. Reads OPENAI_API_KEY + service-role.
 verify_jwt = false
 
 [functions.affiliate-recruiter]
@@ -623,6 +655,14 @@ verify_jwt = true
 # ---------------------------------------------------------------------------
 # Frontend-authenticated functions — verify_jwt = true (default, explicit)
 # ---------------------------------------------------------------------------
+
+[functions.clip-studio]
+# Clip Studio (auto-caption tool) admin API. Called from the admin dashboard
+# with a logged-in Supabase Auth user's JWT → verify_jwt = true; handler
+# requires a row in admin_users (same pattern as admin-videos). Dispatches
+# heavy work to the in-house Cloud Run renderer via INHOUSE_RENDERER_URL +
+# RENDER_TOKEN; results return through clip-studio-callback.
+verify_jwt = true
 
 [functions.admin-songs]
 # Called from the admin dashboard with a logged-in Supabase Auth user's JWT.
