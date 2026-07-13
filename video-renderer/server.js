@@ -18,6 +18,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { renderOrder } = require('./render');
+const { execFileSync } = require('child_process');
+const { spliceLine, spliceSection } = require('./spliceAudio.cjs');
 const { prepareClipSource, renderClip } = require('./clip');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -53,6 +55,63 @@ async function uploadToSupabase(localPath, objectPath, { bucket = OUTPUT_BUCKET,
     }
   }
   throw lastErr;
+}
+
+// Upload an MP3 to the public `audio` bucket and return its public URL. Used by
+// /splice-audio (the surgical song-fix seam is an MP3, not a video).
+async function uploadAudioToSupabase(localPath, objectPath) {
+  const body = fs.readFileSync(localPath);
+  const url = `${SUPABASE_URL}/storage/v1/object/audio/${objectPath}`;
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'audio/mpeg', 'x-upsert': 'true' },
+        body,
+        duplex: 'half',
+      });
+      if (!res.ok) throw new Error(`upload ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return `${SUPABASE_URL}/storage/v1/object/public/audio/${objectPath}`;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
+// Download a URL to a local file.
+async function download(url, dest) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download ${res.status} for ${url.slice(0, 80)}`);
+  fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+}
+
+// Run one surgical splice (line or section) end-to-end: download the two inputs,
+// stitch with the seamless recipe, encode MP3, upload, return the public URL.
+async function runSplice(spec) {
+  const id = `splice-${Date.now()}-${Math.floor(process.hrtime()[1] % 1e6)}`;
+  const dir = path.join(os.tmpdir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const pristine = path.join(dir, 'pristine.mp3');
+    const resung = path.join(dir, 'resung.mp3');
+    await download(spec.pristine_url, pristine);
+    await download(spec.resung_url, resung);
+    const outWav = path.join(dir, 'out.wav');
+    if (spec.mode === 'section') {
+      spliceSection({ pristine, resung, origCut: +spec.origCut, resungCut: +spec.resungCut, out: outWav, tmp: dir });
+    } else {
+      spliceLine({ pristine, resung, pStart: +spec.pStart, pEnd: +spec.pEnd, rStart: +spec.rStart, rEnd: +spec.rEnd, out: outWav, tmp: dir });
+    }
+    const outMp3 = path.join(dir, 'out.mp3');
+    execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', outWav, '-c:a', 'libmp3lame', '-b:a', '192k', outMp3], { stdio: ['ignore', 'ignore', 'inherit'] });
+    const url = await uploadAudioToSupabase(outMp3, `songs/fix-${id}.mp3`);
+    return { url };
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
 }
 
 async function notifyCallback(payload) {
@@ -186,6 +245,27 @@ const server = http.createServer(async (req, res) => {
   };
 
   if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) return send(200, { ok: true });
+
+  // Surgical song-fix splice — SYNCHRONOUS (a splice is seconds, not minutes). The
+  // caller (fix-song-section edge fn) waits for the hosted MP3 URL. Guarded by the
+  // same shared secret as /render.
+  if (req.method === 'POST' && req.url === '/splice-audio') {
+    if (RENDER_TOKEN && req.headers['x-render-token'] !== RENDER_TOKEN) return send(401, { error: 'unauthorized' });
+    let spec;
+    try {
+      spec = JSON.parse(await readBody(req));
+      if (!spec.pristine_url || !spec.resung_url) throw new Error('missing pristine_url or resung_url');
+    } catch (err) {
+      return send(400, { success: false, error: err.message });
+    }
+    try {
+      const out = await runSplice(spec);
+      return send(200, { success: true, url: out.url });
+    } catch (err) {
+      console.error('[splice] error:', err.message);
+      return send(500, { success: false, error: err.message });
+    }
+  }
 
   // Clip Studio: prepare (audio extract for Whisper) + render (captioned clip)
   if (req.method === 'POST' && (req.url === '/clip-prepare' || req.url === '/clip-render')) {
