@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
-  Download, Play, AlertTriangle, ChevronRight, Captions, Clock,
+  Download, Play, AlertTriangle, ChevronRight, Captions, Clock, Sparkles,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -70,6 +70,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [form, setForm] = useState({ start: '', end: '', aspect: '9:16', style: 'boldpop', label: '' });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const fileRef = useRef(null);
   const videoRef = useRef(null);
 
@@ -142,6 +143,24 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       setUpload(null);
       showToast?.(`Upload error: ${e.message}`);
     }
+  };
+
+  const suggestClips = async (project) => {
+    setSuggesting(true);
+    try {
+      await call({ action: 'suggest_clips', project_id: project.id });
+      showToast?.('AI picked the best moments');
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const useSuggestion = (s) => {
+    setForm((f) => ({ ...f, start: String(s.start_sec), end: String(s.end_sec), label: s.title || f.label }));
+    showToast?.('Range loaded — pick a style and generate');
   };
 
   const retryIngest = async (project) => {
@@ -265,6 +284,37 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
           {/* right: make a clip */}
           <div>
+            {/* AI clip picks — Claude reads the transcript and proposes the
+                strongest self-contained moments; "Use" loads one into the form. */}
+            <Card className="p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <SectionLabel>AI clip picks</SectionLabel>
+                <button onClick={() => suggestClips(project)} disabled={suggesting || project.status !== 'ready'}
+                  className={project.ai_suggestions ? btn.ghost : btn.accent}>
+                  {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {suggesting ? 'Reading transcript…' : project.ai_suggestions ? 'Pick again' : 'Find best clips'}
+                </button>
+              </div>
+              {!project.ai_suggestions && !suggesting && (
+                <p className="text-xs text-gray-400">Let the AI read the transcript and propose the 3–5 strongest moments, with a reason for each.</p>
+              )}
+              {(project.ai_suggestions?.suggestions || []).map((s, i) => (
+                <div key={i} className="flex items-start gap-3 border border-gray-100 rounded-lg p-2.5 mt-2">
+                  <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-semibold flex items-center justify-center">
+                    {Number(s.score).toFixed(0)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 leading-snug">{s.title}</p>
+                    <p className="text-[11px] text-gray-400">{fmtTime(s.start_sec)}–{fmtTime(s.end_sec)} · {Math.round(s.end_sec - s.start_sec)}s</p>
+                    {s.reason && <p className="text-xs text-gray-500 mt-1 leading-snug">{s.reason}</p>}
+                  </div>
+                  <button onClick={() => useSuggestion(s)} className="flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">
+                    Use
+                  </button>
+                </div>
+              ))}
+            </Card>
+
             <Card className="p-4 mb-4">
               <SectionLabel className="mb-3">Make a captioned clip</SectionLabel>
 

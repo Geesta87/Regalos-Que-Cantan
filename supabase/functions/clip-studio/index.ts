@@ -27,6 +27,8 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
 const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 
 const BUCKET = 'clip-studio';
 const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
@@ -34,6 +36,102 @@ const ASPECTS = ['9:16', '1:1', '16:9'];
 const STYLES = ['boldpop', 'goldglow', 'cleanbox'];
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+
+// Transcript words -> compact timestamped lines Claude can reason over:
+//   [12.4] and the drama team memorized five skits
+function timedTranscript(words: Array<{ word: string; start: number; end: number }>) {
+  const lines: string[] = [];
+  let cur: string[] = [];
+  let lineStart = 0;
+  for (let i = 0; i < words.length; i++) {
+    if (cur.length === 0) lineStart = words[i].start;
+    cur.push(words[i].word.trim());
+    const gap = i + 1 < words.length ? words[i + 1].start - words[i].end : 99;
+    if (cur.length >= 14 || /[.!?…]$/.test(words[i].word.trim()) || gap > 1.2) {
+      lines.push(`[${lineStart.toFixed(1)}] ${cur.join(' ')}`);
+      cur = [];
+    }
+  }
+  if (cur.length) lines.push(`[${lineStart.toFixed(1)}] ${cur.join(' ')}`);
+  return lines.join('\n');
+}
+
+const SUGGEST_TOOL = {
+  name: 'propose_clips',
+  description: 'Propose the best short-form clips from this transcript.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      suggestions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            start_sec: { type: 'number', description: 'clip start, seconds' },
+            end_sec: { type: 'number', description: 'clip end, seconds' },
+            title: { type: 'string', description: 'short hook-style name for the clip, in the language of the transcript, max 8 words' },
+            reason: { type: 'string', description: 'one sentence: why this moment will perform, in English' },
+            score: { type: 'number', description: '1-10 how strong this clip is' },
+          },
+          required: ['start_sec', 'end_sec', 'title', 'reason', 'score'],
+        },
+      },
+    },
+    required: ['suggestions'],
+  },
+};
+
+async function proposeClips(words: Array<{ word: string; start: number; end: number }>, durationSec: number) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CLIP_AI_MODEL,
+      max_tokens: 2000,
+      system:
+        'You are a short-form video editor who cuts long videos into clips that perform on TikTok, Reels and as social ads. ' +
+        'You receive a transcript where each line starts with its timestamp in seconds. Pick the 3-5 STRONGEST self-contained moments. ' +
+        'Rules: each clip 10-45 seconds; must begin at a natural sentence start whose first line works as a hook; must end on a completed thought; ' +
+        'never start mid-sentence; prefer emotional, surprising, persuasive or highly concrete moments over generic ones; do not overlap clips. ' +
+        'Call the propose_clips tool with your picks.',
+      messages: [{
+        role: 'user',
+        content: `Video duration: ${Math.round(durationSec)}s. Transcript:\n\n${timedTranscript(words).slice(0, 60000)}`,
+      }],
+      tools: [SUGGEST_TOOL],
+      tool_choice: { type: 'tool', name: 'propose_clips' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  const data = await resp.json();
+  const toolUse = (data.content || []).find((b: any) => b.type === 'tool_use');
+  const raw = toolUse?.input?.suggestions;
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error('AI returned no suggestions');
+
+  // Snap to word boundaries so caption timing starts exactly on speech.
+  const snap = (s: any) => {
+    let start = Number(s.start_sec), end = Number(s.end_sec);
+    if (Number.isNaN(start) || Number.isNaN(end)) return null;
+    const first = words.find((w) => w.start >= start - 0.3);
+    const lastCandidates = words.filter((w) => w.end <= end + 0.3);
+    if (!first || !lastCandidates.length) return null;
+    start = Math.max(0, first.start - 0.25);
+    end = Math.min(durationSec, lastCandidates[lastCandidates.length - 1].end + 0.35);
+    if (end - start < 6 || end - start > 90) return null;
+    return {
+      start_sec: Math.round(start * 10) / 10,
+      end_sec: Math.round(end * 10) / 10,
+      title: String(s.title || 'Clip').slice(0, 80),
+      reason: String(s.reason || '').slice(0, 300),
+      score: Math.max(1, Math.min(10, Number(s.score) || 5)),
+    };
+  };
+  const cleaned = raw.map(snap).filter(Boolean) as any[];
+  if (!cleaned.length) throw new Error('AI suggestions did not map to the transcript');
+  cleaned.sort((a, b) => b.score - a.score);
+  return cleaned.slice(0, 5);
+}
 
 async function dispatchRenderer(path: string, job: Record<string, unknown>) {
   if (!RENDERER_URL) throw new Error('INHOUSE_RENDERER_URL not configured');
@@ -114,6 +212,22 @@ serve(async (req) => {
         audio_public_url: admin.storage.from(BUCKET).getPublicUrl(audioPath).data.publicUrl,
       });
       return json({ success: true, status: 'preparing' });
+    }
+
+    if (action === 'suggest_clips') {
+      const { project_id } = body;
+      if (!project_id) throw new Error('Missing project_id');
+      const { data: proj, error: pe } = await admin.from('clip_projects')
+        .select('id, duration_sec, transcript, status').eq('id', project_id).single();
+      if (pe || !proj) throw new Error('project not found');
+      if (proj.status !== 'ready') throw new Error(`project is '${proj.status}', not ready`);
+      const words = proj.transcript?.words;
+      if (!Array.isArray(words) || words.length < 20) throw new Error('Not enough speech in this video to pick clips from');
+
+      const suggestions = await proposeClips(words, Number(proj.duration_sec) || words[words.length - 1].end);
+      const ai_suggestions = { generated_at: new Date().toISOString(), model: CLIP_AI_MODEL, suggestions };
+      await admin.from('clip_projects').update({ ai_suggestions, updated_at: new Date().toISOString() }).eq('id', project_id);
+      return json({ success: true, ai_suggestions });
     }
 
     if (action === 'render_clip') {
