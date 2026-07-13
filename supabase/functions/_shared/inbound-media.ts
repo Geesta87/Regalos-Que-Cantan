@@ -83,7 +83,10 @@ export async function storeInboundVoice(
 ): Promise<{ path: string; type: string; bytes: Uint8Array } | null> {
   try {
     if (!opts.mediaUrl) return null;
-    if (!opts.contentType || !opts.contentType.toLowerCase().startsWith('audio/')) return null;
+    // Strip any MIME parameters ("audio/ogg; codecs=opus" → "audio/ogg") so the
+    // bucket's allowed_mime_types exact-match check accepts it.
+    const cleanType = (opts.contentType || '').split(';')[0].trim().toLowerCase();
+    if (!cleanType.startsWith('audio/')) return null;
     const headers: Record<string, string> = {};
     if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
       headers['Authorization'] = 'Basic ' + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
@@ -98,15 +101,15 @@ export async function storeInboundVoice(
       console.warn('inbound-media: voice bad size', buf.length);
       return null;
     }
-    const path = `voice/${opts.conversationId}/${crypto.randomUUID()}.${audioExt(opts.contentType)}`;
+    const path = `voice/${opts.conversationId}/${crypto.randomUUID()}.${audioExt(cleanType)}`;
     const { error } = await admin.storage
       .from(MEDIA_BUCKET)
-      .upload(path, buf, { contentType: opts.contentType, upsert: false });
+      .upload(path, buf, { contentType: cleanType, upsert: false });
     if (error) {
       console.warn('inbound-media: voice upload failed', error.message);
       return null;
     }
-    return { path, type: opts.contentType, bytes: buf };
+    return { path, type: cleanType, bytes: buf };
   } catch (e) {
     console.warn('inbound-media: voice error', e);
     return null;

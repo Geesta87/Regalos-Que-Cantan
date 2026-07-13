@@ -612,23 +612,32 @@ export default function SmsInboxTab({ accessToken }) {
   const segInfo = estimateSegments(reply);
   const replyCost = (segInfo.segments * COST_PER_SEGMENT_USD).toFixed(3);
 
-  const MAX_ATTACH_BYTES = 5 * 1024 * 1024; // 5MB — Twilio media ceiling
+  const MAX_ATTACH_BYTES = 16 * 1024 * 1024; // 16MB — WhatsApp media ceiling
 
-  // Validate + stage an image for sending. Shared by paste, drag-drop, and 📎.
+  // Validate + stage an image OR video for sending. Shared by paste, drag-drop,
+  // and 📎. Videos send reliably over WhatsApp (over SMS/MMS they're carrier-flaky
+  // — warned below the composer).
   const attachImageFile = (file) => {
     setAttachError('');
     if (!file) return;
-    if (!file.type || !file.type.startsWith('image/')) {
-      setAttachError('Only image files can be attached.');
+    const isImg = !!file.type && file.type.startsWith('image/');
+    const isVid = !!file.type && file.type.startsWith('video/');
+    if (!isImg && !isVid) {
+      setAttachError('Only image or video files can be attached.');
       return;
     }
     if (file.size > MAX_ATTACH_BYTES) {
-      setAttachError('Image is too large (max 5MB).');
+      setAttachError(`${isVid ? 'Video' : 'Image'} is too large (max 16MB).`);
       return;
     }
     // Revoke any previous preview URL to avoid leaks.
     if (attachment?.url) URL.revokeObjectURL(attachment.url);
-    setAttachment({ file, url: URL.createObjectURL(file), name: file.name || 'screenshot.png' });
+    setAttachment({
+      file,
+      url: URL.createObjectURL(file),
+      name: file.name || (isVid ? 'video.mp4' : 'screenshot.png'),
+      isVideo: isVid,
+    });
   };
 
   const clearAttachment = () => {
@@ -637,21 +646,24 @@ export default function SmsInboxTab({ accessToken }) {
     setAttachError('');
   };
 
-  // Paste a screenshot straight into the message box (Ctrl+V).
+  // Paste a screenshot/clip straight into the message box (Ctrl+V).
   const handleComposerPaste = (e) => {
     const items = e.clipboardData?.items || [];
     for (const it of items) {
-      if (it.kind === 'file' && it.type.startsWith('image/')) {
+      if (it.kind === 'file' && (it.type.startsWith('image/') || it.type.startsWith('video/'))) {
         const file = it.getAsFile();
         if (file) { e.preventDefault(); attachImageFile(file); return; }
       }
     }
   };
 
-  // Drag a screenshot onto the composer.
+  // Drag an image/video onto the composer.
   const handleComposerDrop = (e) => {
     const file = e.dataTransfer?.files?.[0];
-    if (file && file.type.startsWith('image/')) { e.preventDefault(); attachImageFile(file); }
+    if (file && (file.type.startsWith('image/') || file.type.startsWith('video/'))) {
+      e.preventDefault();
+      attachImageFile(file);
+    }
   };
 
   // Read a File as a base64 data URL for the JSON payload.
@@ -675,6 +687,7 @@ export default function SmsInboxTab({ accessToken }) {
       created_at: new Date().toISOString(),
       body,
       media_url: attachment?.url || null,
+      media_type: attachment?.file?.type || null,
     };
     // Optimistic append.
     setConversations((prev) =>
@@ -1297,6 +1310,7 @@ export default function SmsInboxTab({ accessToken }) {
 
                   const out = m.direction === 'outbound';
                   const isAudio = (m.media_type || '').startsWith('audio/');
+                  const isVideo = (m.media_type || '').startsWith('video/');
                   return (
                     <div key={m.id} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
                       <div
@@ -1321,6 +1335,12 @@ export default function SmsInboxTab({ accessToken }) {
                               </div>
                             )}
                           </div>
+                        ) : isVideo && m.media_url ? (
+                          <video
+                            controls
+                            src={m.media_url}
+                            className="max-w-full max-h-64 rounded-lg border border-black/10 mb-1"
+                          />
                         ) : m.media_url ? (
                           <a href={m.media_url} target="_blank" rel="noreferrer" className="block mb-1">
                             <img
@@ -1405,10 +1425,14 @@ export default function SmsInboxTab({ accessToken }) {
                       🔧 Enviar a arreglar
                     </button>
                   </div>
-                  {/* Staged image preview — paste (Ctrl+V), drag-drop, or 📎. */}
+                  {/* Staged image/video preview — paste (Ctrl+V), drag-drop, or 📎. */}
                   {attachment && (
                     <div className="mb-2 flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-2 w-max max-w-full">
-                      <img src={attachment.url} alt="preview" className="h-14 w-14 object-cover rounded-lg" />
+                      {attachment.isVideo ? (
+                        <video src={attachment.url} className="h-14 w-14 object-cover rounded-lg" muted />
+                      ) : (
+                        <img src={attachment.url} alt="preview" className="h-14 w-14 object-cover rounded-lg" />
+                      )}
                       <span className="text-xs text-gray-300 truncate max-w-[160px]">{attachment.name}</span>
                       <button
                         onClick={clearAttachment}
@@ -1427,13 +1451,13 @@ export default function SmsInboxTab({ accessToken }) {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*"
                       className="hidden"
                       onChange={(e) => { attachImageFile(e.target.files?.[0]); e.target.value = ''; }}
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      title="Attach an image (or paste/drag one in)"
+                      title="Attach an image or video (or paste/drag one in)"
                       className="px-3 py-2.5 rounded-xl text-lg bg-white/5 text-gray-300 hover:bg-white/10 transition flex-shrink-0"
                     >
                       📎
@@ -1461,11 +1485,16 @@ export default function SmsInboxTab({ accessToken }) {
                       {sending ? '…' : 'Send'}
                     </button>
                   </div>
-                  {/* WhatsApp works cleanly for images; SMS becomes MMS and may be
-                      rejected by the A2P carrier. Warn on the SMS tab. */}
+                  {/* WhatsApp works cleanly for images/videos; SMS becomes MMS and
+                      may be rejected by the A2P carrier. Warn on the SMS tab. */}
                   {attachment && threadChannel === 'sms' && (
                     <div className="mt-1.5 text-[11px] text-amber-400/80">
-                      Images send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
+                      {attachment.isVideo ? 'Videos' : 'Images'} send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
+                    </div>
+                  )}
+                  {attachment?.isVideo && threadChannel === 'whatsapp' && (
+                    <div className="mt-1.5 text-[11px] text-gray-500">
+                      Tip: MP4 plays everywhere. Very large or .mov clips may not deliver — keep it short (under 16MB).
                     </div>
                   )}
                   {/* Cost / encoding hint — reinforces the Spanish-accent cost gotcha */}

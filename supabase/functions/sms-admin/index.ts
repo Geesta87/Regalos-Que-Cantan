@@ -49,11 +49,13 @@ const MEDIA_BUCKET = 'cs-media';
 const MEDIA_SIGN_TTL = 3600; // seconds
 
 // Decode a base64 data URL ("data:image/png;base64,AAAA…") to bytes + mime.
+// Accepts images and videos — the composer can attach either (WhatsApp delivers
+// both; over SMS/MMS video is carrier-flaky, warned in the UI).
 function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; contentType: string } | null {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || '');
   if (!m) return null;
   const contentType = m[1];
-  if (!contentType.startsWith('image/')) return null;
+  if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) return null;
   try {
     const bin = atob(m[2]);
     const bytes = new Uint8Array(bin.length);
@@ -370,21 +372,21 @@ serve(async (req) => {
 
       const sendCh = body.channel || convo.channel || 'sms';
 
-      // Upload the image (if any) to the private bucket and sign a short-lived
-      // URL for Twilio to fetch. Done BEFORE sending so a bad upload never sends
-      // a broken link.
+      // Upload the image/video (if any) to the private bucket and sign a
+      // short-lived URL for Twilio to fetch. Done BEFORE sending so a bad upload
+      // never sends a broken link.
       let mediaPath: string | null = null;
       let mediaType: string | null = null;
       let mediaSignedUrl: string | undefined;
       if (hasMedia) {
         const decoded = decodeDataUrl(body.media_data_url!);
         if (!decoded) {
-          return json({ success: false, error: 'Attachment must be a base64 image data URL' }, 400);
+          return json({ success: false, error: 'Attachment must be a base64 image or video data URL' }, 400);
         }
-        if (decoded.bytes.length > 5_242_880) {
-          return json({ success: false, error: 'Attachment too large (max 5MB)' }, 413);
+        if (decoded.bytes.length > 16_777_216) {
+          return json({ success: false, error: 'Attachment too large (max 16MB)' }, 413);
         }
-        const ext = (decoded.contentType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const ext = (decoded.contentType.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('quicktime', 'mov');
         mediaPath = `${convoId}/${crypto.randomUUID()}.${ext}`;
         mediaType = decoded.contentType;
         const { error: upErr } = await admin.storage
