@@ -67,7 +67,10 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [upload, setUpload] = useState(null); // { name, pct, phase }
-  const [form, setForm] = useState({ start: '', end: '', aspect: '9:16', style: 'boldpop', label: '' });
+  const [form, setForm] = useState({
+    start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
+    framing: 'center', silences: false, zoom: false, hook: false,
+  });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -187,7 +190,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     const end = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
     setRendering(true);
     try {
-      await call({ action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end, aspect: form.aspect, style: form.style, label: form.label || null });
+      await call({
+        action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
+        aspect: form.aspect, style: form.style, label: form.label || null,
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook },
+      });
       showToast?.('Clip rendering — usually under a minute');
       load(true);
     } catch (e) {
@@ -347,6 +354,36 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     <div className="text-sm font-medium text-gray-800">{a.name}</div>
                     <div className="text-[10px] text-gray-400">{a.desc}</div>
                   </button>
+                ))}
+              </div>
+
+              {form.aspect !== '16:9' && (
+                <>
+                  <label className="text-xs text-gray-500 block mb-1">Framing <span className="text-gray-300">— where the speaker is in the shot</span></label>
+                  <div className="flex gap-2 mb-3">
+                    {[['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
+                      <button key={key} onClick={() => setForm((f) => ({ ...f, framing: key }))}
+                        className={`flex-1 rounded-lg border px-2 py-1.5 text-sm transition ${form.framing === key ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <label className="text-xs text-gray-500 block mb-1">Extras</label>
+              <div className="space-y-1.5 mb-3">
+                {[
+                  ['silences', 'Remove silences', 'auto-cuts pauses and dead air (jump cuts)'],
+                  ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
+                  ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
+                ].map(([key, name, desc]) => (
+                  <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={form[key]}
+                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
+                      className="mt-0.5 accent-indigo-600" />
+                    <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
+                  </label>
                 ))}
               </div>
 

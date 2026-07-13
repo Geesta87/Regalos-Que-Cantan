@@ -248,9 +248,20 @@ serve(async (req) => {
       if (end - start < 0.5) throw new Error('clip range too short');
       if (end - start > 180) throw new Error('Phase 1 caps clips at 3 minutes — pick a shorter range');
 
+      // Phase 3 render options (all optional, validated here).
+      const rawOpts = body.options || {};
+      const cleanLabel = label ? String(label).slice(0, 120) : null;
+      const options = {
+        framing: ['left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
+        remove_silences: !!rawOpts.remove_silences,
+        zoom: !!rawOpts.zoom,
+        hook_title: !!rawOpts.hook_title,
+      };
+      if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
+
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id, start_sec: start, end_sec: end, aspect, style,
-        label: label ? String(label).slice(0, 120) : null, status: 'rendering',
+        label: cleanLabel, status: 'rendering', options,
       }).select().single();
       if (ce) throw new Error(ce.message);
 
@@ -261,6 +272,7 @@ serve(async (req) => {
         await dispatchRenderer('/clip-render', {
           clip_id: clip.id, project_id, source_url: proj.source_url,
           start_sec: start, end_sec: end, aspect, style, words,
+          options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null },
           bucket: BUCKET, callback_url: CALLBACK_URL,
           output_upload_url: signed.signedUrl, output_path: outPath,
           output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
