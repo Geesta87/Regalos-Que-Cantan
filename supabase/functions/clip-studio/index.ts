@@ -484,7 +484,7 @@ serve(async (req) => {
       const rawOpts = body.options || {};
       const cleanLabel = label ? String(label).slice(0, 120) : null;
       const options = {
-        framing: ['auto', 'left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
+        framing: ['auto', 'wide', 'left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
         remove_silences: !!rawOpts.remove_silences,
         zoom: !!rawOpts.zoom,
         hook_title: !!rawOpts.hook_title,

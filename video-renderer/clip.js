@@ -265,20 +265,18 @@ async function getGcpToken() {
   return (await res.json()).access_token;
 }
 
-// Returns smoothed [{t, cx}] keyframes (t clip-local seconds, cx 0..1 face
-// center across the frame width), or null when no faces were found at all.
-async function detectFaceTrack(dir, start, clipDur, log) {
-  // ~1 snapshot/second, capped at 60 per clip to bound Vision cost.
+// Sample ~1fps and return every face per frame: [{t, faces:[{cx,x0,x1,area}]}].
+async function sampleFaces(dir, start, clipDur, log) {
   const rate = Math.min(1, 60 / clipDur);
   const facesDir = path.join(dir, 'faces');
   fs.mkdirSync(facesDir, { recursive: true });
   ff(dir, ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4',
     '-vf', `fps=${rate.toFixed(4)},scale=${SAMPLE_W}:-2`, '-q:v', '5', 'faces/f%04d.jpg']);
   const files = fs.readdirSync(facesDir).filter((f) => f.endsWith('.jpg')).sort();
-  if (!files.length) return null;
+  if (!files.length) return { frames: [], rate };
 
   const token = await getGcpToken();
-  const centers = new Array(files.length).fill(null);
+  const frames = files.map((_, i) => ({ t: (i + 0.5) / rate, faces: [] }));
   for (let ofs = 0; ofs < files.length; ofs += 16) {
     const batch = files.slice(ofs, ofs + 16);
     const res = await fetch('https://vision.googleapis.com/v1/images:annotate', {
@@ -287,31 +285,73 @@ async function detectFaceTrack(dir, start, clipDur, log) {
       body: JSON.stringify({
         requests: batch.map((f) => ({
           image: { content: fs.readFileSync(path.join(facesDir, f)).toString('base64') },
-          features: [{ type: 'FACE_DETECTION', maxResults: 3 }],
+          features: [{ type: 'FACE_DETECTION', maxResults: 5 }],
         })),
       }),
     });
     if (!res.ok) throw new Error(`vision ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
     (data.responses || []).forEach((r, i) => {
-      const faces = r.faceAnnotations || [];
-      if (!faces.length) return;
-      // Track the LARGEST face (the main speaker).
-      let best = null, bestArea = 0;
-      for (const face of faces) {
+      for (const face of r.faceAnnotations || []) {
         const v = (face.boundingPoly || {}).vertices || [];
         if (v.length < 3) continue;
         const xs = v.map((p) => p.x || 0), ys = v.map((p) => p.y || 0);
-        const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
-        if (area > bestArea) { bestArea = area; best = (Math.max(...xs) + Math.min(...xs)) / 2 / SAMPLE_W; }
+        const x0 = Math.min(...xs) / SAMPLE_W, x1 = Math.max(...xs) / SAMPLE_W;
+        frames[ofs + i].faces.push({
+          cx: (x0 + x1) / 2,
+          x0: Math.max(0, x0), x1: Math.min(1, x1),
+          area: (x1 - x0) * ((Math.max(...ys) - Math.min(...ys)) / SAMPLE_W),
+        });
       }
-      if (best != null) centers[ofs + i] = Math.max(0, Math.min(1, best));
     });
   }
-  if (centers.every((c) => c == null)) return null;
+  const withFaces = frames.filter((f) => f.faces.length).length;
+  log(`face sampling: ${withFaces}/${frames.length} frames with faces`);
+  return { frames, rate };
+}
 
-  // Fill gaps with the nearest detection, then smooth (window 3) and clamp
-  // the pan speed so the camera never whips.
+// Decide how to frame a multi/single-person shot.
+//   cropFrac = the fraction of the source width a full-height crop can show.
+// Returns { mode:'track', keyframes } | { mode:'wide', x0, x1 } | null.
+function decideFraming(frames, rate, cropFrac) {
+  const detections = frames.flatMap((f) => f.faces.map((face) => ({ ...face, t: f.t })));
+  if (!detections.length) return null;
+
+  // Cluster faces by x-position into "persons" (interview shots are static).
+  const clusters = [];
+  for (const d of detections) {
+    const hit = clusters.find((c) => Math.abs(c.center - d.cx) < 0.1);
+    if (hit) {
+      hit.center = (hit.center * hit.n + d.cx) / (hit.n + 1);
+      hit.n += 1;
+      hit.x0 = Math.min(hit.x0, d.x0);
+      hit.x1 = Math.max(hit.x1, d.x1);
+      hit.area += d.area;
+    } else {
+      clusters.push({ center: d.cx, n: 1, x0: d.x0, x1: d.x1, area: d.area });
+    }
+  }
+  const framesWithFaces = frames.filter((f) => f.faces.length).length;
+  const persistent = clusters.filter((c) => c.n >= Math.max(2, framesWithFaces * 0.2));
+  if (!persistent.length) return null;
+
+  // Multiple people wider than the crop can hold -> wide (blurred-band) layout.
+  if (persistent.length >= 2) {
+    const x0 = Math.min(...persistent.map((c) => c.x0));
+    const x1 = Math.max(...persistent.map((c) => c.x1));
+    if (x1 - x0 + 0.1 > cropFrac * 0.95) {
+      return { mode: 'wide', x0: Math.max(0, x0 - 0.05), x1: Math.min(1, x1 + 0.05) };
+    }
+  }
+
+  // Single person (or a tight group): track the dominant cluster like before.
+  const main = persistent.sort((a, b) => b.area - a.area)[0];
+  const centers = frames.map((f) => {
+    const near = f.faces.filter((face) => Math.abs(face.cx - main.center) < 0.15);
+    if (!near.length) return null;
+    return near.sort((a, b) => b.area - a.area)[0].cx;
+  });
+  if (centers.every((c) => c == null)) return null;
   let last = centers.find((c) => c != null);
   const filled = centers.map((c) => (c != null ? (last = c) : last));
   const smoothed = filled.map((_, i) => {
@@ -324,9 +364,7 @@ async function detectFaceTrack(dir, start, clipDur, log) {
     const d = smoothed[i] - smoothed[i - 1];
     if (Math.abs(d) > maxDelta) smoothed[i] = smoothed[i - 1] + Math.sign(d) * maxDelta;
   }
-  const found = centers.filter((c) => c != null).length;
-  log(`face track: ${found}/${files.length} frames with a face`);
-  return smoothed.map((cx, i) => ({ t: (i + 0.5) * step, cx }));
+  return { mode: 'track', keyframes: smoothed.map((cx, i) => ({ t: (i + 0.5) * step, cx })) };
 }
 
 // Keyframes -> ffmpeg crop x expression (piecewise-linear pan, clamped to the
@@ -456,16 +494,46 @@ async function renderClip(job, { dir, log }) {
 
   const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
 
-  // Crop focus. 'auto' asks Google Vision where the speaker is and pans to
-  // follow (falls back to center when no face is found or Vision errors).
+  // Framing. 'auto' = Vision looks at who is in the shot: one person -> pan to
+  // follow them; several people spread wider than the crop can hold -> 'wide'
+  // (full-width band over a blurred backdrop, nobody ever cut off). 'wide' can
+  // also be forced manually. Everything falls back to a center crop on errors.
   let cropX = opts.framing === 'left' ? '0' : opts.framing === 'right' ? 'iw-ow' : '(iw-ow)/2';
-  if (opts.framing === 'auto' && job.aspect !== '16:9') {
+  let wide = null; // { x0, x1 } normalized source-width band to feature
+  if ((opts.framing === 'auto' || opts.framing === 'wide') && job.aspect !== '16:9') {
     try {
-      const track = await detectFaceTrack(dir, start, clipDur, log);
-      if (track) cropX = faceCropExpr(track);
-      else log('face track: no faces found — using center crop');
+      const dims = (() => {
+        const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', 'source.mp4'], { cwd: dir }).toString().trim().split(',');
+        return { w: Number(out[0]) || 1920, h: Number(out[1]) || 1080 };
+      })();
+      const cropFrac = Math.min(1, (geo.w / geo.h) / (dims.w / dims.h));
+      const { frames, rate } = await sampleFaces(dir, start, clipDur, log);
+      const decision = decideFraming(frames, rate, cropFrac);
+      if (opts.framing === 'wide') {
+        wide = decision && decision.mode === 'wide' ? decision
+          : decision && decision.mode === 'track'
+            ? { x0: 0, x1: 1 } // one person but wide was forced -> full width
+            : { x0: 0, x1: 1 };
+      } else if (decision?.mode === 'wide') {
+        wide = decision;
+        log(`framing: ${'multiple people wider than the crop'} — using wide layout (${decision.x0.toFixed(2)}-${decision.x1.toFixed(2)})`);
+      } else if (decision?.mode === 'track') {
+        cropX = faceCropExpr(decision.keyframes);
+        log('framing: tracking a single speaker');
+      } else {
+        log('framing: no faces found — using center crop');
+      }
+      if (wide) {
+        // Keep the featured band tall enough that captions stay clear below it.
+        const minFrac = Math.min(1, (geo.w * dims.h) / (dims.w * Math.round(geo.h * 0.55)));
+        if (wide.x1 - wide.x0 < minFrac) {
+          const mid = (wide.x0 + wide.x1) / 2;
+          wide = { x0: Math.max(0, Math.min(1 - minFrac, mid - minFrac / 2)), x1: 0 };
+          wide.x1 = wide.x0 + minFrac;
+        }
+      }
     } catch (e) {
-      log(`face track failed (${e.message}) — using center crop`);
+      log(`framing analysis failed (${e.message}) — using center crop`);
     }
   }
 
@@ -513,7 +581,19 @@ async function renderClip(job, { dir, log }) {
   // segments are trimmed and concatenated, then zoom/captions. The input is
   // pre-seeked with -ss/-t so only the clip range is decoded.
   const parts = [];
-  parts.push(`[0:v]scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}:x='${cropX}':y=(ih-oh)/2[vs]`);
+  if (wide) {
+    // Wide (podcast) layout: the featured band across the middle shows the
+    // full people-span; blurred+darkened copy of the shot fills the rest.
+    // Band sits slightly above center so the captions area stays clean.
+    parts.push(
+      `[0:v]split=2[bgsrc][fgsrc];` +
+      `[bgsrc]scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h},boxblur=24:2,eq=brightness=-0.14[bgw];` +
+      `[fgsrc]crop=iw*${(wide.x1 - wide.x0).toFixed(4)}:ih:iw*${wide.x0.toFixed(4)}:0,scale=${geo.w}:-2[fgw];` +
+      `[bgw][fgw]overlay=x=0:y=(H-h)/2-${Math.round(geo.h * 0.06)}[vs]`
+    );
+  } else {
+    parts.push(`[0:v]scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}:x='${cropX}':y=(ih-oh)/2[vs]`);
+  }
   // A pad can only be consumed once — fan [vs] (and the audio) out to one
   // copy per segment.
   parts.push(`[vs]split=${segs.length}${segs.map((_, i) => `[s${i}]`).join('')}`);
@@ -601,4 +681,4 @@ async function renderClip(job, { dir, log }) {
   return { finalPath: outPath, durationSec: outDur };
 }
 
-module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords };
+module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords, decideFraming };
