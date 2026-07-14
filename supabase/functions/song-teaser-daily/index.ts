@@ -125,6 +125,10 @@ serve(async (req) => {
       words = out.words;
       duration = out.duration;
     }
+    // Kie's aligned words include section markers ([Intro], [Verse 1], …) as
+    // "words" — they must never reach the captions.
+    words = words.filter((w: any) => !/^\[.*\]$/.test(String(w.word || '').trim()));
+    if (!words.length) throw new Error('no sung words after filtering section tags');
     duration = Number(duration) || words[words.length - 1].end;
 
     const win = await pickWindow(words, duration, song.recipient_name || null);

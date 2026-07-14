@@ -124,7 +124,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     : `1,${Math.round(geo.fontsize / 11)},0`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
-  const hookSize = Math.round(geo.fontsize * 0.72);
+  const hookSize = Math.round(geo.fontsize * 0.6);
   const hookMarginTop = geo.h >= 1900 ? 170 : 100;
 
   const header = [
@@ -148,7 +148,10 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const lines = [];
   if (opts.hookTitle) {
     const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
-    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,${assEscape(opts.hookTitle).toUpperCase()}`);
+    // {\q0} = smart wrapping for this line only (WrapStyle 2 disables it
+    // globally so caption groups never wrap) — long hooks fold into 2 lines
+    // instead of running off both edges.
+    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,{\\q0}${assEscape(opts.hookTitle).toUpperCase()}`);
   }
   // Emphasized (AI-tagged) words render gold and ~18% bigger at all times;
   // the active-word paint still walks across the non-emphasized ones.

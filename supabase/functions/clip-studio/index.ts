@@ -354,14 +354,18 @@ serve(async (req) => {
       if (se || !song) throw new Error('song not found');
       if (!song.audio_url) throw new Error('song has no audio yet');
 
-      const timed = Array.isArray(song.lyrics_timestamps?.words) && song.lyrics_timestamps.words.length > 0;
+      // Kie's aligned words include section markers ([Intro], [Verse 1], …)
+      // as "words" — strip them so they never reach the captions.
+      const stripTags = (ws: any[]) => (ws || []).filter((w: any) => !/^\[.*\]$/.test(String(w.word || '').trim()));
+      const cachedWords = stripTags(song.lyrics_timestamps?.words || []);
+      const timed = cachedWords.length > 0;
       const title = `Teaser — ${song.recipient_name || 'canción'} (${song.genre_name || song.genre || 'song'})`;
       const { data: proj, error: pe } = await admin.from('clip_projects').insert({
         kind: 'song_teaser',
         title,
         source_url: song.audio_url,
         status: timed ? 'ready' : 'transcribing',
-        transcript: timed ? { words: song.lyrics_timestamps.words, text: song.lyrics || '', duration: song.lyrics_timestamps.duration } : null,
+        transcript: timed ? { words: cachedWords, text: song.lyrics || '', duration: song.lyrics_timestamps.duration } : null,
         duration_sec: timed ? song.lyrics_timestamps.duration : null,
         meta: { song_id: song.id, cover_url: song.image_url, recipient: song.recipient_name },
       }).select('id').single();
@@ -378,8 +382,10 @@ serve(async (req) => {
             });
             const out = await r.json();
             if (!out.success || !Array.isArray(out.words)) throw new Error(out.error || 'no words');
+            const cleanWords = stripTags(out.words);
+            if (!cleanWords.length) throw new Error('no sung words after filtering section tags');
             await admin.from('clip_projects').update({
-              transcript: { words: out.words, text: song.lyrics || '', duration: out.duration },
+              transcript: { words: cleanWords, text: song.lyrics || '', duration: out.duration },
               duration_sec: out.duration, status: 'ready', updated_at: new Date().toISOString(),
             }).eq('id', proj.id);
           } catch (e) {
