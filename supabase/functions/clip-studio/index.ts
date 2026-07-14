@@ -82,7 +82,19 @@ const SUGGEST_TOOL = {
   },
 };
 
-async function proposeClips(words: Array<{ word: string; start: number; end: number }>, durationSec: number) {
+// For song teasers the brief changes: we want the chorus / emotional peak of
+// SUNG LYRICS, ideally the moment the recipient's name is sung.
+function teaserSystemPrompt(recipient: string | null) {
+  return (
+    'You pick the best TEASER windows from a personalized SONG for a social media ad. ' +
+    'You receive the sung lyrics where each line starts with its timestamp in seconds. Pick the 2-3 strongest 18-30 second windows. ' +
+    `Rules: prefer the chorus or the emotional peak; ${recipient ? `the window that contains the recipient's name ("${recipient}") being sung is the most valuable — include it; ` : ''}` +
+    'start at the beginning of a sung line, end at the end of one; title = a short scroll-stopping hook IN SPANISH for the ad (max 8 words). ' +
+    'Call the propose_clips tool with your picks.'
+  );
+}
+
+async function proposeClips(words: Array<{ word: string; start: number; end: number }>, durationSec: number, teaserRecipient?: string | null, isTeaser = false) {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -90,7 +102,7 @@ async function proposeClips(words: Array<{ word: string; start: number; end: num
     body: JSON.stringify({
       model: CLIP_AI_MODEL,
       max_tokens: 2000,
-      system:
+      system: isTeaser ? teaserSystemPrompt(teaserRecipient ?? null) :
         'You are a short-form video editor who cuts long videos into clips that perform on TikTok, Reels and as social ads. ' +
         'You receive a transcript where each line starts with its timestamp in seconds. Pick the 3-5 STRONGEST self-contained moments. ' +
         'Rules: each clip 10-45 seconds; must begin at a natural sentence start whose first line works as a hook; must end on a completed thought; ' +
@@ -315,17 +327,95 @@ serve(async (req) => {
       return json({ success: true, status: 'preparing' });
     }
 
+    if (action === 'song_search') {
+      const q = String(body.q || '').trim();
+      let query = admin.from('songs')
+        .select('id, recipient_name, genre, genre_name, occasion, created_at, image_url')
+        .eq('paid', true).not('audio_url', 'is', null)
+        .order('created_at', { ascending: false }).limit(15);
+      if (q) query = query.ilike('recipient_name', `%${q}%`);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return json({
+        success: true,
+        songs: (data || []).map((s: any) => ({
+          id: s.id, recipient_name: s.recipient_name, genre: s.genre_name || s.genre,
+          occasion: s.occasion, created_at: s.created_at, has_cover: !!s.image_url,
+        })),
+      });
+    }
+
+    if (action === 'create_teaser_project') {
+      const { song_id } = body;
+      if (!song_id) throw new Error('Missing song_id');
+      const { data: song, error: se } = await admin.from('songs')
+        .select('id, recipient_name, genre, genre_name, audio_url, image_url, lyrics, lyrics_timestamps')
+        .eq('id', song_id).single();
+      if (se || !song) throw new Error('song not found');
+      if (!song.audio_url) throw new Error('song has no audio yet');
+
+      const timed = Array.isArray(song.lyrics_timestamps?.words) && song.lyrics_timestamps.words.length > 0;
+      const title = `Teaser — ${song.recipient_name || 'canción'} (${song.genre_name || song.genre || 'song'})`;
+      const { data: proj, error: pe } = await admin.from('clip_projects').insert({
+        kind: 'song_teaser',
+        title,
+        source_url: song.audio_url,
+        status: timed ? 'ready' : 'transcribing',
+        transcript: timed ? { words: song.lyrics_timestamps.words, text: song.lyrics || '', duration: song.lyrics_timestamps.duration } : null,
+        duration_sec: timed ? song.lyrics_timestamps.duration : null,
+        meta: { song_id: song.id, cover_url: song.image_url, recipient: song.recipient_name },
+      }).select('id').single();
+      if (pe) throw new Error(pe.message);
+
+      if (!timed) {
+        // Kie aligned-words (fast, free) with Whisper fallback — transcribe-song
+        // caches onto the song row; we copy the result onto the project.
+        const run = async () => {
+          try {
+            const r = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-song`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ songId: song.id }),
+            });
+            const out = await r.json();
+            if (!out.success || !Array.isArray(out.words)) throw new Error(out.error || 'no words');
+            await admin.from('clip_projects').update({
+              transcript: { words: out.words, text: song.lyrics || '', duration: out.duration },
+              duration_sec: out.duration, status: 'ready', updated_at: new Date().toISOString(),
+            }).eq('id', proj.id);
+          } catch (e) {
+            await admin.from('clip_projects').update({
+              status: 'error', error_message: `Could not get word timing for this song: ${(e as Error).message}`,
+              updated_at: new Date().toISOString(),
+            }).eq('id', proj.id);
+          }
+        };
+        // deno-lint-ignore no-explicit-any
+        if (typeof (globalThis as any).EdgeRuntime !== 'undefined') (globalThis as any).EdgeRuntime.waitUntil(run()); else run();
+      }
+      return json({ success: true, project_id: proj.id });
+    }
+
+    if (action === 'pool_add') {
+      const { song_id, note } = body;
+      if (!song_id) throw new Error('Missing song_id');
+      const { error } = await admin.from('marketing_song_pool')
+        .upsert({ song_id, note: note ? String(note).slice(0, 200) : null, active: true }, { onConflict: 'song_id' });
+      if (error) throw new Error(error.message);
+      return json({ success: true });
+    }
+
     if (action === 'suggest_clips') {
       const { project_id } = body;
       if (!project_id) throw new Error('Missing project_id');
       const { data: proj, error: pe } = await admin.from('clip_projects')
-        .select('id, duration_sec, transcript, status').eq('id', project_id).single();
+        .select('id, duration_sec, transcript, status, kind, meta').eq('id', project_id).single();
       if (pe || !proj) throw new Error('project not found');
       if (proj.status !== 'ready') throw new Error(`project is '${proj.status}', not ready`);
       const words = proj.transcript?.words;
       if (!Array.isArray(words) || words.length < 20) throw new Error('Not enough speech in this video to pick clips from');
 
-      const suggestions = await proposeClips(words, Number(proj.duration_sec) || words[words.length - 1].end);
+      const isTeaser = proj.kind === 'song_teaser';
+      const suggestions = await proposeClips(words, Number(proj.duration_sec) || words[words.length - 1].end, proj.meta?.recipient, isTeaser);
       const ai_suggestions = { generated_at: new Date().toISOString(), model: CLIP_AI_MODEL, suggestions };
       await admin.from('clip_projects').update({ ai_suggestions, updated_at: new Date().toISOString() }).eq('id', project_id);
       return json({ success: true, ai_suggestions });
@@ -338,11 +428,45 @@ serve(async (req) => {
       if (!STYLES.includes(style)) throw new Error(`style must be one of ${STYLES.join(', ')}`);
 
       const { data: proj, error: pe } = await admin.from('clip_projects')
-        .select('id, source_url, duration_sec, transcript, status').eq('id', project_id).single();
+        .select('id, source_url, duration_sec, transcript, status, kind, meta').eq('id', project_id).single();
       if (pe || !proj) throw new Error('project not found');
       if (proj.status !== 'ready') throw new Error(`project is '${proj.status}', not ready`);
       const words = proj.transcript?.words;
       if (!Array.isArray(words) || words.length === 0) throw new Error('project has no transcript words');
+
+      // Song teasers take a simpler path: audio window over the cover art.
+      if (proj.kind === 'song_teaser') {
+        const tStart = Math.max(0, Number(start_sec) || 0);
+        const tEnd = Math.min(Number(end_sec) || 0, Number(proj.duration_sec) || Infinity);
+        if (tEnd - tStart < 10) throw new Error('Teaser windows need at least 10 seconds');
+        if (tEnd - tStart > 45) throw new Error('Teasers work best under 45 seconds — pick a shorter window');
+        const tLabel = label ? String(label).slice(0, 120) : null;
+        const { data: clip, error: ce } = await admin.from('clips').insert({
+          project_id, start_sec: tStart, end_sec: tEnd, aspect, style,
+          label: tLabel, status: 'rendering',
+          options: { teaser: true, hook_title: !!tLabel },
+        }).select().single();
+        if (ce) throw new Error(ce.message);
+        try {
+          const outPath = `${project_id}/clips/${clip.id}.mp4`;
+          const { data: signed, error: sge } = await admin.storage.from(BUCKET).createSignedUploadUrl(outPath, { upsert: true });
+          if (sge) throw new Error(`sign output: ${sge.message}`);
+          await dispatchRenderer('/clip-render', {
+            mode: 'teaser', clip_id: clip.id, project_id,
+            audio_src: proj.source_url, bg_image_url: proj.meta?.cover_url || null,
+            start_sec: tStart, end_sec: tEnd, aspect, style, words,
+            options: { hook_title_text: tLabel },
+            endcard_text: 'regalosquecantan.com',
+            bucket: BUCKET, callback_url: CALLBACK_URL,
+            output_upload_url: signed.signedUrl, output_path: outPath,
+            output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
+          });
+        } catch (e) {
+          await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: new Date().toISOString() }).eq('id', clip.id);
+          throw e;
+        }
+        return json({ success: true, clip });
+      }
 
       const start = Math.max(0, Number(start_sec) || 0);
       const end = Math.min(Number(end_sec) || Number(proj.duration_sec) || 0, Number(proj.duration_sec) || Infinity);

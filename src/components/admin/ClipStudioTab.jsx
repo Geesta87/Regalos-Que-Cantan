@@ -121,6 +121,9 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [sendingId, setSendingId] = useState(null);
   const [musicBusy, setMusicBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
+  const [songQ, setSongQ] = useState('');
+  const [songResults, setSongResults] = useState(null);
+  const [songBusy, setSongBusy] = useState(false);
   const fileRef = useRef(null);
   const musicRef = useRef(null);
   const videoRef = useRef(null);
@@ -314,6 +317,43 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     }
   };
 
+  const searchSongs = async () => {
+    setSongBusy(true);
+    try {
+      const r = await call({ action: 'song_search', q: songQ });
+      setSongResults(r.songs || []);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSongBusy(false);
+    }
+  };
+
+  const makeTeaser = async (song) => {
+    setSongBusy(true);
+    try {
+      const r = await call({ action: 'create_teaser_project', song_id: song.id });
+      setSelectedId(r.project_id);
+      setSongResults(null);
+      setSongQ('');
+      showToast?.("Getting the song's word timing — usually a few seconds");
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSongBusy(false);
+    }
+  };
+
+  const addToPool = async (project) => {
+    try {
+      await call({ action: 'pool_add', song_id: project.meta?.song_id });
+      showToast?.('Added to the daily teaser pool');
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    }
+  };
+
   const onMusicFile = async (file) => {
     if (!file) return;
     if (file.size > 20 * 1024 * 1024) { showToast?.('Music files up to 20MB'); return; }
@@ -347,6 +387,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   // ---------------- DETAIL VIEW ----------------
   if (project) {
     const ps = PROJECT_STATUS[project.status] || PROJECT_STATUS.uploaded;
+    const isTeaser = project.kind === 'song_teaser';
     const working = ['uploaded', 'preparing', 'transcribing'].includes(project.status);
     const ready = project.status === 'ready';
     const suggestions = project.ai_suggestions?.suggestions || [];
@@ -371,9 +412,16 @@ export default function ClipStudioTab({ accessToken, showToast }) {
               {project.word_count > 0 && <span className="text-xs text-gray-400">{project.word_count} words</span>}
             </div>
           </div>
-          <button onClick={() => removeProject(project)} className={btn.iconGhost} title="Delete video and all its clips">
-            <Trash2 size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {isTeaser && project.meta?.song_id && (
+              <button onClick={() => addToPool(project)} className={btn.ghost} title="Clear this song for the daily teaser factory (rights-checked songs only)">
+                <Music size={14} /> Add to daily pool
+              </button>
+            )}
+            <button onClick={() => removeProject(project)} className={btn.iconGhost} title="Delete video and all its clips">
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
 
         {project.status === 'error' && (
@@ -508,7 +556,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 ))}
               </div>
 
-              {form.aspect !== '16:9' && (
+              {form.aspect !== '16:9' && !isTeaser && (
                 <>
                   <label className="text-xs text-gray-500 block mb-1">Framing</label>
                   <div className="flex gap-2 mb-1">
@@ -539,26 +587,32 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 ))}
               </div>
 
-              <label className="text-xs text-gray-500 block mb-1">Extras</label>
-              <div className="space-y-1.5">
-                {[
-                  ['silences', 'Remove silences & filler words', 'auto-cuts pauses, dead air, and "um/uh/eh"'],
-                  ['emphasis', 'Highlight key words', 'AI paints the power words gold and bigger'],
-                  ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
-                  ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
-                  ['music', 'Background music', 'a track from your music library, ducked under speech'],
-                  ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
-                  ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
-                  ['clean', 'Clean audio', 'reduce background noise in the voice'],
-                ].map(([key, name, desc]) => (
-                  <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={form[key]}
-                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
-                      className="mt-0.5 accent-indigo-600" />
-                    <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
-                  </label>
-                ))}
-              </div>
+              {isTeaser ? (
+                <p className="text-[11px] text-gray-400">Teasers use the song's cover art with a slow cinematic push-in, karaoke captions, and a brand end-card — the extras for spoken video don't apply.</p>
+              ) : (
+                <>
+                  <label className="text-xs text-gray-500 block mb-1">Extras</label>
+                  <div className="space-y-1.5">
+                    {[
+                      ['silences', 'Remove silences & filler words', 'auto-cuts pauses, dead air, and "um/uh/eh"'],
+                      ['emphasis', 'Highlight key words', 'AI paints the power words gold and bigger'],
+                      ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
+                      ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
+                      ['music', 'Background music', 'a track from your music library, ducked under speech'],
+                      ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
+                      ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
+                      ['clean', 'Clean audio', 'reduce background noise in the voice'],
+                    ].map(([key, name, desc]) => (
+                      <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
+                        <input type="checkbox" checked={form[key]}
+                          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
+                          className="mt-0.5 accent-indigo-600" />
+                        <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
             </Card>
 
             {/* STEP 3 — name + generate */}
@@ -679,6 +733,45 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 1GB — transcription starts automatically</div>
         </button>
       )}
+
+      {/* Song teasers: turn a catalog song into a karaoke-caption teaser ad. */}
+      <Card className="p-4 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Music size={16} className="text-indigo-500" />
+          <span className="text-sm font-semibold text-gray-900">Song teaser</span>
+          <span className="text-[11px] text-gray-400">— turn one of your songs into a video ad (cover art + lyrics lighting up)</span>
+        </div>
+        <p className="text-[11px] text-amber-600 mb-2">Only publish teasers from songs cleared for marketing (samples, demos, or customer-approved).</p>
+        <div className="flex gap-2">
+          <input
+            value={songQ}
+            onChange={(e) => setSongQ(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && searchSongs()}
+            placeholder="Search recent songs by recipient name (empty = latest)"
+            className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          />
+          <button onClick={searchSongs} disabled={songBusy} className={btn.accent}>
+            {songBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Search
+          </button>
+        </div>
+        {songResults && (
+          <div className="mt-3 space-y-1.5 max-h-64 overflow-y-auto">
+            {songResults.length === 0 && <p className="text-xs text-gray-400">No songs found.</p>}
+            {songResults.map((s) => (
+              <div key={s.id} className="flex items-center gap-3 border border-gray-100 rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-gray-800">{s.recipient_name || 'Sin nombre'}</span>
+                  <span className="text-[11px] text-gray-400 ml-2">{s.genre || ''}{s.occasion ? ` · ${s.occasion}` : ''} · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                </div>
+                <button onClick={() => makeTeaser(s)} disabled={songBusy}
+                  className="flex-shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition">
+                  Make teaser
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
