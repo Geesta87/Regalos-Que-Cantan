@@ -454,20 +454,37 @@ async function renderClip(job, { dir, log }) {
   // copy per segment.
   parts.push(`[vs]split=${segs.length}${segs.map((_, i) => `[s${i}]`).join('')}`);
   if (hasAudio) parts.push(`[0:a]asplit=${segs.length}${segs.map((_, i) => `[sa${i}]`).join('')}`);
+  // Transitions ('fx'): a very short fade-in at the head of every segment
+  // after the first softens the jump cuts WITHOUT changing durations (a true
+  // crossfade would shift the timeline and desync every caption).
+  const fx = opts.transitions !== false;
   const vRefs = [];
   segs.forEach((seg, i) => {
-    parts.push(`[s${i}]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+    const softener = fx && i > 0 ? ',fade=t=in:st=0:d=0.08' : '';
+    parts.push(`[s${i}]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS${softener}[v${i}]`);
     if (hasAudio) parts.push(`[sa${i}]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
     vRefs.push(hasAudio ? `[v${i}][a${i}]` : `[v${i}]`);
   });
   parts.push(`${vRefs.join('')}concat=n=${segs.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[vc][ac]' : '[vc]'}`);
 
+  // Clean audio: gentle rumble cut + FFT denoise on the voice before any
+  // music is mixed in.
+  let speechLabel = hasAudio ? '[ac]' : null;
+  if (opts.clean_audio && hasAudio) {
+    parts.push(`[ac]highpass=f=70,afftdn=nf=-28[acl]`);
+    speechLabel = '[acl]';
+  }
+
   // B-roll: full-frame cutaways on the post-cut timeline; the speaker's audio
   // keeps playing underneath, captions render on top (post comes after).
+  // With fx on, each cutaway alpha-fades in and out.
   let vbase = 'vc';
   broll.forEach((b, i) => {
     const idx = brollInputBase + i;
-    parts.push(`[${idx}:v]trim=end=${(b.e - b.s).toFixed(3)},setpts=PTS-STARTPTS+${b.s.toFixed(3)}/TB,scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}[bb${i}]`);
+    const bfade = fx
+      ? `,format=yuva420p,fade=t=in:st=${b.s.toFixed(3)}:d=0.15:alpha=1,fade=t=out:st=${(b.e - 0.18).toFixed(3)}:d=0.15:alpha=1`
+      : '';
+    parts.push(`[${idx}:v]trim=end=${(b.e - b.s).toFixed(3)},setpts=PTS-STARTPTS+${b.s.toFixed(3)}/TB,scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}${bfade}[bb${i}]`);
     parts.push(`[${vbase}][bb${i}]overlay=enable='between(t,${b.s.toFixed(3)},${b.e.toFixed(3)})':eof_action=pass[ov${i}]`);
     vbase = `ov${i}`;
   });
@@ -475,13 +492,13 @@ async function renderClip(job, { dir, log }) {
 
   // Music bed: looped track as a second input, volume-dropped and side-chain
   // ducked under the speech, then mixed back in (no re-normalizing).
-  let audioLabel = hasAudio ? '[ac]' : null;
+  let audioLabel = speechLabel;
   if (withMusic) {
     log(`music bed: ${job.music_url.slice(0, 100)}`);
     await download(job.music_url, path.join(dir, 'music.mp3'));
     if (hasAudio) {
       parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.16[mus]`);
-      parts.push(`[ac]asplit=2[spA][spB]`);
+      parts.push(`${speechLabel}asplit=2[spA][spB]`);
       parts.push(`[mus][spB]sidechaincompress=threshold=0.03:ratio=10:attack=40:release=500[duck]`);
       parts.push(`[spA][duck]amix=inputs=2:duration=first:normalize=0[aout]`);
       audioLabel = '[aout]';
@@ -491,10 +508,27 @@ async function renderClip(job, { dir, log }) {
     }
   }
 
+  // Whoosh on each b-roll entry — only when the owner has uploaded a sound
+  // (clip-studio/sfx/whoosh.mp3); the edge fn passes sfx_url when it exists.
+  const withSfx = fx && !!job.sfx_url && broll.length > 0 && audioLabel;
+  if (withSfx) {
+    await download(job.sfx_url, path.join(dir, 'sfx.mp3'));
+    const sfxIdx = brollInputBase + broll.length;
+    parts.push(`[${sfxIdx}:a]asplit=${broll.length}${broll.map((_, i) => `[w${i}]`).join('')}`);
+    const wRefs = broll.map((b, i) => {
+      const ms = Math.max(0, Math.round((b.s - 0.12) * 1000));
+      parts.push(`[w${i}]adelay=${ms}|${ms},volume=0.35[wd${i}]`);
+      return `[wd${i}]`;
+    });
+    parts.push(`${audioLabel}${wRefs.join('')}amix=inputs=${1 + broll.length}:duration=first:normalize=0[afx]`);
+    audioLabel = '[afx]';
+  }
+
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
   broll.forEach((_, i) => args.push('-i', `broll${i}.mp4`));
+  if (withSfx) args.push('-i', 'sfx.mp3');
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');

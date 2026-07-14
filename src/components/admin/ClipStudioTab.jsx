@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -111,7 +111,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false,
+    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false,
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -120,6 +120,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [musicBusy, setMusicBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
   const fileRef = useRef(null);
   const musicRef = useRef(null);
   const videoRef = useRef(null);
@@ -195,6 +196,41 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     }
   };
 
+  // One click: make sure we have AI picks, then render every pick with the
+  // current step-2 look. Silences+fillers, key words, and the hook title are
+  // forced on — that's the whole point of auto-edit.
+  const autoEdit = async (project) => {
+    setAutoBusy(true);
+    try {
+      let sugg = project.ai_suggestions?.suggestions || [];
+      if (!sugg.length) {
+        const r = await call({ action: 'suggest_clips', project_id: project.id });
+        sugg = r.ai_suggestions?.suggestions || [];
+      }
+      if (!sugg.length) throw new Error('No strong moments found in this video');
+      let n = 0;
+      for (const s of sugg) {
+        await call({
+          action: 'render_clip', project_id: project.id,
+          start_sec: s.start_sec, end_sec: s.end_sec,
+          aspect: form.aspect, style: form.style, label: s.title,
+          options: {
+            framing: form.framing, remove_silences: true, zoom: form.zoom,
+            hook_title: true, emphasis: true, music: form.music,
+            broll: form.broll, transitions: form.fx, clean_audio: form.clean,
+          },
+        });
+        n++;
+      }
+      showToast?.(`Auto-edit: ${n} clips rendering — they'll appear below as they finish`);
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
   const suggestClips = async (project) => {
     setSuggesting(true);
     try {
@@ -241,7 +277,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, broll: form.broll },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, broll: form.broll, transitions: form.fx, clean_audio: form.clean },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -388,11 +424,19 @@ export default function ClipStudioTab({ accessToken, showToast }) {
               <StepHeader n={1} title="Pick the moment" hint="what part of the video becomes the clip" />
               <div className="flex items-center justify-between gap-3 mb-2">
                 <p className="text-xs text-gray-500">Let the AI read the transcript and propose the strongest moments — or pick a range yourself.</p>
-                <button onClick={() => suggestClips(project)} disabled={suggesting || !ready}
-                  className={suggestions.length ? btn.ghost : btn.accent}>
-                  {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {suggesting ? 'Reading…' : suggestions.length ? 'Pick again' : 'Find best clips'}
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => suggestClips(project)} disabled={suggesting || autoBusy || !ready}
+                    className={suggestions.length ? btn.ghost : btn.accent}>
+                    {suggesting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {suggesting ? 'Reading…' : suggestions.length ? 'Pick again' : 'Find best clips'}
+                  </button>
+                  <button onClick={() => autoEdit(project)} disabled={autoBusy || suggesting || !ready}
+                    className={btn.primary}
+                    title="One click: find the best moments and render ALL of them with the look chosen in step 2">
+                    {autoBusy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                    {autoBusy ? 'Auto-editing…' : 'Auto-edit'}
+                  </button>
+                </div>
               </div>
 
               {suggestions.map((s, i) => {
@@ -504,6 +548,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
                   ['music', 'Background music', 'a track from your music library, ducked under speech'],
                   ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
+                  ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
+                  ['clean', 'Clean audio', 'reduce background noise in the voice'],
                 ].map(([key, name, desc]) => (
                   <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={form[key]}

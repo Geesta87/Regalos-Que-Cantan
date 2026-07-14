@@ -360,6 +360,8 @@ serve(async (req) => {
         emphasis: rawOpts.emphasis !== false,
         music: !!rawOpts.music,
         broll: !!rawOpts.broll,
+        transitions: rawOpts.transitions !== false,
+        clean_audio: !!rawOpts.clean_audio,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
@@ -387,6 +389,14 @@ serve(async (req) => {
         } catch (e) { console.warn('broll picking failed:', (e as Error).message); }
       }
 
+      // Whoosh SFX for b-roll entries — only if the owner uploaded one.
+      let sfx_url: string | null = null;
+      if (options.transitions && broll.length) {
+        const { data: sfx } = await admin.storage.from(BUCKET).list('sfx');
+        const whoosh = (sfx || []).find((f: any) => /^whoosh.*\.(mp3|m4a|aac)$/i.test(f.name || ''));
+        if (whoosh) sfx_url = admin.storage.from(BUCKET).getPublicUrl(`sfx/${whoosh.name}`).data.publicUrl;
+      }
+
       // Music bed: pick a random track from the clip-studio/music library.
       let music_url: string | null = null;
       if (options.music) {
@@ -411,7 +421,7 @@ serve(async (req) => {
           clip_id: clip.id, project_id, source_url: proj.source_url,
           start_sec: start, end_sec: end, aspect, style, words,
           options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
-          music_url, broll,
+          music_url, broll, sfx_url,
           bucket: BUCKET, callback_url: CALLBACK_URL,
           output_upload_url: signed.signedUrl, output_path: outPath,
           output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
@@ -439,18 +449,65 @@ serve(async (req) => {
     if (action === 'send_to_creative') {
       const { clip_id } = body;
       if (!clip_id) throw new Error('Missing clip_id');
-      const { data: clip } = await admin.from('clips').select('id, project_id, label, video_url, status, aspect').eq('id', clip_id).single();
+      const { data: clip } = await admin.from('clips').select('id, project_id, label, video_url, status, aspect, start_sec, end_sec').eq('id', clip_id).single();
       if (!clip) throw new Error('clip not found');
       if (clip.status !== 'ready' || !clip.video_url) throw new Error('Clip is not ready yet');
-      const { data: proj } = await admin.from('clip_projects').select('title').eq('id', clip.project_id).single();
+      const { data: proj } = await admin.from('clip_projects').select('title, transcript').eq('id', clip.project_id).single();
       const name = clip.label || proj?.title || 'Clip Studio clip';
+
+      // Auto description: Claude writes the post caption + hashtags from what
+      // is actually said in the clip. Falls back to the clip name on failure.
+      let caption = name;
+      let hashtags: string[] | null = null;
+      try {
+        const words = (proj?.transcript?.words || []) as Array<{ word: string; start: number; end: number }>;
+        const said = words
+          .filter((w) => w.end > Number(clip.start_sec) && w.start < (clip.end_sec != null ? Number(clip.end_sec) : Infinity))
+          .map((w) => w.word.trim()).join(' ').slice(0, 2500);
+        if (ANTHROPIC_API_KEY && said.length > 40) {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 400,
+              system:
+                'You write social post captions for Regalos Que Cantan (personalized song gifts, warm Spanish-speaking brand). ' +
+                'Given what is said in a short video clip, write ONE caption in the language of the clip: a scroll-stopping first line, 1-2 short warm sentences, no links, no emoji spam (max 2 emoji). ' +
+                'Also give 4-6 relevant hashtags (no # in the strings). Call the tool.',
+              messages: [{ role: 'user', content: `Clip title: ${name}\nWhat is said:\n${said}` }],
+              tools: [{
+                name: 'post',
+                description: 'The caption and hashtags.',
+                input_schema: {
+                  type: 'object',
+                  properties: {
+                    caption: { type: 'string' },
+                    hashtags: { type: 'array', items: { type: 'string' } },
+                  },
+                  required: ['caption', 'hashtags'],
+                },
+              }],
+              tool_choice: { type: 'tool', name: 'post' },
+            }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const out = (data.content || []).find((b: any) => b.type === 'tool_use')?.input;
+            if (out?.caption) caption = String(out.caption).slice(0, 900);
+            if (Array.isArray(out?.hashtags)) hashtags = out.hashtags.map((h: unknown) => String(h).replace(/^#/, '').slice(0, 40)).slice(0, 6);
+          }
+        }
+      } catch (e) { console.warn('auto description failed:', (e as Error).message); }
+
       const { error: qe } = await admin.from('creative_queue').insert({
         kind: 'video',
         status: 'ready',
         intended_use: 'organic',
         batch_date: new Date().toISOString().slice(0, 10),
         concept: `Clip Studio — ${name}`,
-        caption: name,
+        caption,
+        ...(hashtags ? { hashtags } : {}),
         media_url: clip.video_url,
         design: { source: 'clip-studio', clip_id: clip.id, aspect: clip.aspect },
       });
