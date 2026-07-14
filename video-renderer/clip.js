@@ -229,6 +229,96 @@ function remapWords(words, segs) {
 }
 
 // ---------------------------------------------------------------------------
+// auto speaker tracking (framing: 'auto'): sample frames -> Google Vision face
+// detection -> smoothed pan keyframes -> dynamic crop x expression.
+// ---------------------------------------------------------------------------
+const SAMPLE_W = 480; // width of the low-res frames sent to Vision
+
+async function getGcpToken() {
+  const res = await fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token', {
+    headers: { 'Metadata-Flavor': 'Google' },
+  });
+  if (!res.ok) throw new Error(`metadata token ${res.status}`);
+  return (await res.json()).access_token;
+}
+
+// Returns smoothed [{t, cx}] keyframes (t clip-local seconds, cx 0..1 face
+// center across the frame width), or null when no faces were found at all.
+async function detectFaceTrack(dir, start, clipDur, log) {
+  // ~1 snapshot/second, capped at 60 per clip to bound Vision cost.
+  const rate = Math.min(1, 60 / clipDur);
+  const facesDir = path.join(dir, 'faces');
+  fs.mkdirSync(facesDir, { recursive: true });
+  ff(dir, ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4',
+    '-vf', `fps=${rate.toFixed(4)},scale=${SAMPLE_W}:-2`, '-q:v', '5', 'faces/f%04d.jpg']);
+  const files = fs.readdirSync(facesDir).filter((f) => f.endsWith('.jpg')).sort();
+  if (!files.length) return null;
+
+  const token = await getGcpToken();
+  const centers = new Array(files.length).fill(null);
+  for (let ofs = 0; ofs < files.length; ofs += 16) {
+    const batch = files.slice(ofs, ofs + 16);
+    const res = await fetch('https://vision.googleapis.com/v1/images:annotate', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: batch.map((f) => ({
+          image: { content: fs.readFileSync(path.join(facesDir, f)).toString('base64') },
+          features: [{ type: 'FACE_DETECTION', maxResults: 3 }],
+        })),
+      }),
+    });
+    if (!res.ok) throw new Error(`vision ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    (data.responses || []).forEach((r, i) => {
+      const faces = r.faceAnnotations || [];
+      if (!faces.length) return;
+      // Track the LARGEST face (the main speaker).
+      let best = null, bestArea = 0;
+      for (const face of faces) {
+        const v = (face.boundingPoly || {}).vertices || [];
+        if (v.length < 3) continue;
+        const xs = v.map((p) => p.x || 0), ys = v.map((p) => p.y || 0);
+        const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+        if (area > bestArea) { bestArea = area; best = (Math.max(...xs) + Math.min(...xs)) / 2 / SAMPLE_W; }
+      }
+      if (best != null) centers[ofs + i] = Math.max(0, Math.min(1, best));
+    });
+  }
+  if (centers.every((c) => c == null)) return null;
+
+  // Fill gaps with the nearest detection, then smooth (window 3) and clamp
+  // the pan speed so the camera never whips.
+  let last = centers.find((c) => c != null);
+  const filled = centers.map((c) => (c != null ? (last = c) : last));
+  const smoothed = filled.map((_, i) => {
+    const win = filled.slice(Math.max(0, i - 1), i + 2);
+    return win.reduce((a, b) => a + b, 0) / win.length;
+  });
+  const step = 1 / rate;
+  const maxDelta = 0.08 * step; // ≤8% of the width per second
+  for (let i = 1; i < smoothed.length; i++) {
+    const d = smoothed[i] - smoothed[i - 1];
+    if (Math.abs(d) > maxDelta) smoothed[i] = smoothed[i - 1] + Math.sign(d) * maxDelta;
+  }
+  const found = centers.filter((c) => c != null).length;
+  log(`face track: ${found}/${files.length} frames with a face`);
+  return smoothed.map((cx, i) => ({ t: (i + 0.5) * step, cx }));
+}
+
+// Keyframes -> ffmpeg crop x expression (piecewise-linear pan, clamped to the
+// frame). Evaluated per output frame because it references t.
+function faceCropExpr(keyframes) {
+  let expr = keyframes[keyframes.length - 1].cx.toFixed(4);
+  for (let i = keyframes.length - 2; i >= 0; i--) {
+    const a = keyframes[i], b = keyframes[i + 1];
+    const slope = (b.cx - a.cx) / Math.max(0.001, b.t - a.t);
+    expr = `if(lt(t,${b.t.toFixed(2)}),${a.cx.toFixed(4)}+${slope.toFixed(5)}*(t-${a.t.toFixed(2)}),${expr})`;
+  }
+  return `clip((${expr})*iw-ow/2,0,iw-ow)`;
+}
+
+// ---------------------------------------------------------------------------
 // render: cut (+ jump cuts) + crop/frame + optional zoom + burn captions
 // ---------------------------------------------------------------------------
 async function renderClip(job, { dir, log }) {
@@ -267,10 +357,21 @@ async function renderClip(job, { dir, log }) {
   }));
 
   const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
-  const cropX = opts.framing === 'left' ? '0' : opts.framing === 'right' ? 'iw-ow' : '(iw-ow)/2';
+
+  // Crop focus. 'auto' asks Google Vision where the speaker is and pans to
+  // follow (falls back to center when no face is found or Vision errors).
+  let cropX = opts.framing === 'left' ? '0' : opts.framing === 'right' ? 'iw-ow' : '(iw-ow)/2';
+  if (opts.framing === 'auto' && job.aspect !== '16:9') {
+    try {
+      const track = await detectFaceTrack(dir, start, clipDur, log);
+      if (track) cropX = faceCropExpr(track);
+      else log('face track: no faces found — using center crop');
+    } catch (e) {
+      log(`face track failed (${e.message}) — using center crop`);
+    }
+  }
+
   const post = [
-    `scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase`,
-    `crop=${geo.w}:${geo.h}:${cropX}:(ih-oh)/2`,
     // Subtle push-in: ~+2.4%/s, capped at 112%. zoompan emits 30fps itself.
     opts.zoom
       ? `zoompan=z='min(1+0.0008*on,1.12)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`
@@ -284,20 +385,25 @@ async function renderClip(job, { dir, log }) {
     } catch { return false; }
   })();
 
-  // One filter graph for both paths: trim the kept segments (a single segment
-  // when silence removal is off), concat, then crop/zoom/subtitles.
+  // Graph order matters: scale+crop FIRST (so the pan expression sees the
+  // same clip-local t the face keyframes were sampled on), then the kept
+  // segments are trimmed and concatenated, then zoom/captions. The input is
+  // pre-seeked with -ss/-t so only the clip range is decoded.
   const parts = [];
+  parts.push(`[0:v]scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}:x='${cropX}':y=(ih-oh)/2[vs]`);
+  // A pad can only be consumed once — fan [vs] out to one copy per segment.
+  parts.push(`[vs]split=${segs.length}${segs.map((_, i) => `[s${i}]`).join('')}`);
   const vRefs = [];
   segs.forEach((seg, i) => {
-    parts.push(`[0:v]trim=start=${(start + seg.start).toFixed(3)}:end=${(start + seg.end).toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
-    if (hasAudio) parts.push(`[0:a]atrim=start=${(start + seg.start).toFixed(3)}:end=${(start + seg.end).toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+    parts.push(`[s${i}]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+    if (hasAudio) parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
     vRefs.push(hasAudio ? `[v${i}][a${i}]` : `[v${i}]`);
   });
   parts.push(`${vRefs.join('')}concat=n=${segs.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[vc][ac]' : '[vc]'}`);
   parts.push(`[vc]${post}[vout]`);
 
   const outPath = path.join(dir, 'clip.mp4');
-  const args = ['-i', 'source.mp4', '-filter_complex', parts.join(';'), '-map', '[vout]'];
+  const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4', '-filter_complex', parts.join(';'), '-map', '[vout]'];
   if (hasAudio) args.push('-map', '[ac]', '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
   ff(dir, args);

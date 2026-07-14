@@ -111,7 +111,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'center', silences: false, zoom: false, hook: false,
+    framing: 'auto', silences: false, zoom: false, hook: false,
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -435,15 +435,20 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
               {form.aspect !== '16:9' && (
                 <>
-                  <label className="text-xs text-gray-500 block mb-1">Where is the speaker in the shot?</label>
-                  <div className="flex gap-2 mb-3">
-                    {[['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
+                  <label className="text-xs text-gray-500 block mb-1">Framing</label>
+                  <div className="flex gap-2 mb-1">
+                    {[['auto', 'Auto — track speaker'], ['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
                       <button key={key} onClick={() => setForm((f) => ({ ...f, framing: key }))}
                         className={`flex-1 rounded-lg border px-2 py-1.5 text-sm transition ${form.framing === key ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                         {name}
                       </button>
                     ))}
                   </div>
+                  <p className="text-[11px] text-gray-400 mb-3">
+                    {form.framing === 'auto'
+                      ? 'The camera follows the speaker automatically (falls back to center if no face is found).'
+                      : 'Fixed crop — use when Auto misses or there is no face on screen.'}
+                  </p>
                 </>
               )}
 
