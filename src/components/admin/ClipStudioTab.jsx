@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check,
+  Captions, Clock, Sparkles, Check, Send, Music,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -111,14 +111,17 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'auto', silences: false, zoom: false, hook: false,
+    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false,
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [sendingId, setSendingId] = useState(null);
+  const [musicBusy, setMusicBusy] = useState(false);
   const fileRef = useRef(null);
+  const musicRef = useRef(null);
   const videoRef = useRef(null);
 
   const call = useCallback(async (payload) => {
@@ -238,7 +241,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -260,6 +263,34 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       URL.revokeObjectURL(a.href);
     } catch {
       window.open(clip.video_url, '_blank');
+    }
+  };
+
+  const sendToCreative = async (clip) => {
+    setSendingId(clip.id);
+    try {
+      await call({ action: 'send_to_creative', clip_id: clip.id });
+      showToast?.('Sent — waiting for your approval in Creative Studio');
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const onMusicFile = async (file) => {
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { showToast?.('Music files up to 20MB'); return; }
+    setMusicBusy(true);
+    try {
+      const { signed_url } = await call({ action: 'sign_music', filename: file.name });
+      const res = await fetch(signed_url, { method: 'PUT', headers: { 'Content-Type': file.type || 'audio/mpeg' }, body: file });
+      if (!res.ok) throw new Error(`upload ${res.status}`);
+      showToast?.(`Added "${file.name}" to the music library`);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setMusicBusy(false);
     }
   };
 
@@ -467,9 +498,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
               <label className="text-xs text-gray-500 block mb-1">Extras</label>
               <div className="space-y-1.5">
                 {[
-                  ['silences', 'Remove silences', 'auto-cuts pauses and dead air (jump cuts)'],
+                  ['silences', 'Remove silences & filler words', 'auto-cuts pauses, dead air, and "um/uh/eh"'],
+                  ['emphasis', 'Highlight key words', 'AI paints the power words gold and bigger'],
                   ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
                   ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
+                  ['music', 'Background music', 'a track from your music library, ducked under speech'],
                 ].map(([key, name, desc]) => (
                   <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={form[key]}
@@ -525,7 +558,12 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       </div>
                       <div className="flex items-center gap-1">
                         {c.status === 'ready' && (
-                          <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
+                          <>
+                            <button onClick={() => sendToCreative(c)} disabled={sendingId === c.id} className={btn.iconGhost} title="Send to Creative Studio (ads/social approval queue)">
+                              {sendingId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                            </button>
+                            <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
+                          </>
                         )}
                         <button onClick={() => removeClip(c)} className={btn.iconGhost} title="Delete clip"><Trash2 size={15} /></button>
                       </div>
@@ -563,13 +601,20 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           </h2>
           <p className="text-sm text-gray-500 mt-1">Upload a video, get an automatic transcript, and burn animated captions ready for Reels, TikTok, and ads.</p>
         </div>
-        <button onClick={() => load()} disabled={loading} className={btn.ghost}>
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => musicRef.current?.click()} disabled={musicBusy} className={btn.ghost}
+            title="Upload MP3s here to use with the Background music extra">
+            {musicBusy ? <Loader2 size={15} className="animate-spin" /> : <Music size={15} />} Music library
+          </button>
+          <button onClick={() => load()} disabled={loading} className={btn.ghost}>
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* upload zone */}
       <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={musicRef} type="file" accept=".mp3,.m4a,.aac,audio/*" className="hidden" onChange={(e) => { onMusicFile(e.target.files?.[0]); e.target.value = ''; }} />
       {upload ? (
         <Card className="p-5 mb-6">
           <div className="flex items-center gap-2 text-sm text-gray-700 mb-2">

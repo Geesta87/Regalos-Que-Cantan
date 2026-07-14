@@ -150,15 +150,21 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
     lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,${assEscape(opts.hookTitle).toUpperCase()}`);
   }
+  // Emphasized (AI-tagged) words render gold and ~18% bigger at all times;
+  // the active-word paint still walks across the non-emphasized ones.
+  const empSize = Math.round(geo.fontsize * 1.18);
+  const empOpen = `{\\c${GOLD}&\\fs${empSize}}`;
+  const empClose = `{\\c${WHITE}&\\fs${geo.fontsize}}`;
   const groups = groupWords(words, st.wordsPerGroup);
   for (const group of groups) {
     const texts = group.map((w) => {
       const t = assEscape(w.word);
-      return st.upper ? t.toUpperCase() : t;
+      return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp };
     });
     if (!st.highlight) {
       // One dialogue per group, no per-word paint.
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${texts.join(' ')}`);
+      const text = texts.map((x) => (x.emp ? `${empOpen}${x.txt}${empClose}` : x.txt)).join(' ');
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${text}`);
       continue;
     }
     // One dialogue per word: full group shown, the spoken word painted.
@@ -167,7 +173,11 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const to = i < group.length - 1 ? group[i + 1].start : group[group.length - 1].end;
       if (to - from < 0.01) continue;
       const text = texts
-        .map((t, j) => (j === i ? `{\\c${st.highlight}&}${t}{\\c${WHITE}&}` : t))
+        .map((x, j) => {
+          if (x.emp) return `${empOpen}${x.txt}${empClose}`;
+          if (j === i) return `{\\c${st.highlight}&}${x.txt}{\\c${WHITE}&}`;
+          return x.txt;
+        })
         .join(' ');
       lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${text}`);
     }
@@ -180,33 +190,42 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
 // silence removal: keep-segments from word gaps + caption remapping
 // ---------------------------------------------------------------------------
 
+// Pure vocal fillers safe to cut in EN + ES. Deliberately conservative:
+// words like "este"/"pues"/"like" carry real meaning too often.
+const FILLERS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'hmm', 'mm', 'mmm', 'mhm', 'huh', 'er', 'erm', 'eh', 'ehh']);
+const isFiller = (w) => FILLERS.has(String(w).toLowerCase().replace(/[.,!?…¿¡]+/g, '').trim());
+
 // Words (clip-local time) -> segments of speech to KEEP. Gaps between words
-// longer than maxGap become jump cuts; each kept segment gets a little
-// breathing room (pad) so cuts don't clip consonants.
-function buildKeepSegments(words, clipDur, { pad = 0.22, maxGap = 1.0 } = {}) {
+// longer than maxGap become jump cuts, and any span in `breaks` (removed
+// filler words) forces a cut too. Silence boundaries get breathing room
+// (pad) so cuts don't clip consonants; filler boundaries cut tight (0.03s)
+// so the "um" actually disappears.
+function buildKeepSegments(words, clipDur, { pad = 0.22, maxGap = 1.0, breaks = [] } = {}) {
   if (!words.length) return [{ start: 0, end: clipDur }];
-  const segs = [];
-  let s = words[0].start;
-  let e = words[0].end;
-  for (let i = 1; i < words.length; i++) {
-    if (words[i].start - e <= maxGap) {
-      e = Math.max(e, words[i].end);
+  const hasBreak = (a, b) => breaks.some((x) => x.start >= a - 0.06 && x.end <= b + 0.06);
+  const raw = [];
+  let segStart = words[0].start, segEnd = words[0].end, padBefore = pad;
+  for (let i = 1; i <= words.length; i++) {
+    const next = words[i];
+    const gap = next ? next.start - segEnd : Infinity;
+    const fillerCut = next ? hasBreak(segEnd, next.start) : false;
+    if (!next || gap > maxGap || fillerCut) {
+      raw.push({ start: segStart, end: segEnd, padBefore, padAfter: fillerCut ? 0.03 : pad });
+      if (next) { segStart = next.start; segEnd = next.end; padBefore = fillerCut ? 0.03 : pad; }
     } else {
-      segs.push({ start: s, end: e });
-      s = words[i].start;
-      e = words[i].end;
+      segEnd = Math.max(segEnd, next.end);
     }
   }
-  segs.push({ start: s, end: e });
-  // pad + clamp + merge overlaps created by padding
-  const padded = segs.map((g) => ({ start: Math.max(0, g.start - pad), end: Math.min(clipDur, g.end + pad) }));
-  const merged = [padded[0]];
-  for (let i = 1; i < padded.length; i++) {
-    const last = merged[merged.length - 1];
-    if (padded[i].start <= last.end + 0.05) last.end = Math.max(last.end, padded[i].end);
-    else merged.push(padded[i]);
+  // apply pads, then clamp so neighbouring segments never overlap
+  const out = raw.map((g) => ({ start: Math.max(0, g.start - g.padBefore), end: Math.min(clipDur, g.end + g.padAfter) }));
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].start < out[i - 1].end + 0.01) {
+      const mid = (raw[i].start + raw[i - 1].end) / 2;
+      out[i - 1].end = Math.min(out[i - 1].end, Math.max(raw[i - 1].end, mid - 0.005));
+      out[i].start = Math.max(out[i].start, Math.min(raw[i].start, mid + 0.005));
+    }
   }
-  return merged;
+  return out.filter((g) => g.end - g.start > 0.05);
 }
 
 // Shift word timestamps onto the post-cut timeline so captions stay in sync.
@@ -218,6 +237,7 @@ function remapWords(words, segs) {
       if (w.start >= seg.start - 0.02 && w.start < seg.end) {
         out.push({
           word: w.word,
+          emp: !!w.emp,
           start: acc + Math.max(0, w.start - seg.start),
           end: acc + Math.min(seg.end - seg.start, Math.max(0.05, w.end - seg.start)),
         });
@@ -334,16 +354,30 @@ async function renderClip(job, { dir, log }) {
   if (end - start < 0.5) throw new Error(`clip range too short (${start}-${end})`);
   const clipDur = end - start;
 
-  // Filter Whisper words to the clip range and re-base to t=0.
+  // Filter Whisper words to the clip range and re-base to t=0. `emp` marks
+  // the AI-tagged emphasis words (matched by their absolute start time).
+  const empStarts = new Set((opts.emphasis_starts || []).map((t) => Math.round(Number(t) * 100)));
   let words = (job.words || [])
     .filter((w) => w.end > start + 0.05 && w.start < end - 0.05)
-    .map((w) => ({ word: w.word, start: Math.max(0, w.start - start), end: Math.min(clipDur, w.end - start) }));
+    .map((w) => ({
+      word: w.word,
+      emp: empStarts.has(Math.round(Number(w.start) * 100)),
+      start: Math.max(0, w.start - start),
+      end: Math.min(clipDur, w.end - start),
+    }));
 
-  // Jump cuts: keep only speech segments, then remap caption timing.
+  // Jump cuts: keep only speech segments (dropping filler words entirely —
+  // they get cut from the audio AND never appear in the captions), then
+  // remap caption timing onto the post-cut timeline.
   let segs = [{ start: 0, end: clipDur }];
   let outDur = clipDur;
   if (opts.remove_silences && words.length) {
-    segs = buildKeepSegments(words, clipDur);
+    const fillerSpans = words.filter((w) => isFiller(w.word)).map((w) => ({ start: w.start, end: w.end }));
+    if (fillerSpans.length) {
+      words = words.filter((w) => !isFiller(w.word));
+      log(`filler removal: cutting ${fillerSpans.length} filler word(s)`);
+    }
+    segs = buildKeepSegments(words, clipDur, { breaks: fillerSpans });
     const remapped = remapWords(words, segs);
     words = remapped.words;
     outDur = remapped.totalDur;
@@ -402,9 +436,30 @@ async function renderClip(job, { dir, log }) {
   parts.push(`${vRefs.join('')}concat=n=${segs.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[vc][ac]' : '[vc]'}`);
   parts.push(`[vc]${post}[vout]`);
 
+  // Music bed: looped track as a second input, volume-dropped and side-chain
+  // ducked under the speech, then mixed back in (no re-normalizing).
+  let audioLabel = hasAudio ? '[ac]' : null;
+  const withMusic = !!job.music_url;
+  if (withMusic) {
+    log(`music bed: ${job.music_url.slice(0, 100)}`);
+    await download(job.music_url, path.join(dir, 'music.mp3'));
+    if (hasAudio) {
+      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.16[mus]`);
+      parts.push(`[ac]asplit=2[spA][spB]`);
+      parts.push(`[mus][spB]sidechaincompress=threshold=0.03:ratio=10:attack=40:release=500[duck]`);
+      parts.push(`[spA][duck]amix=inputs=2:duration=first:normalize=0[aout]`);
+      audioLabel = '[aout]';
+    } else {
+      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.5[aout]`);
+      audioLabel = '[aout]';
+    }
+  }
+
   const outPath = path.join(dir, 'clip.mp4');
-  const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4', '-filter_complex', parts.join(';'), '-map', '[vout]'];
-  if (hasAudio) args.push('-map', '[ac]', '-c:a', 'aac', '-b:a', '192k');
+  const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
+  if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
+  args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
+  if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
   ff(dir, args);
 
