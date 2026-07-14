@@ -298,7 +298,8 @@ const server = http.createServer(async (req, res) => {
     let job;
     try {
       job = JSON.parse(await readBody(req));
-      if (!job.source_url || !job.bucket || !job.callback_url) throw new Error('missing source_url, bucket, or callback_url');
+      // teaser jobs carry audio_src (a song) instead of source_url (a video)
+      if ((!job.source_url && !(job.mode === 'teaser' && job.audio_src)) || !job.bucket || !job.callback_url) throw new Error('missing source_url/audio_src, bucket, or callback_url');
       if (req.url === '/clip-prepare' && !job.project_id) throw new Error('missing project_id');
       if (req.url === '/clip-render' && !job.clip_id) throw new Error('missing clip_id');
     } catch (err) {

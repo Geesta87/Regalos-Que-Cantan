@@ -149,6 +149,14 @@ verify_jwt = false
 # video-callback. Must stay verify_jwt = false.
 verify_jwt = false
 
+[functions.song-teaser-daily]
+# Clip Studio's song-teaser factory. Invoked by pg_cron (daily rotation over
+# marketing_song_pool) or by the operator for one-off previews — never a
+# logged-in browser, so it cannot carry a Supabase JWT -> verify_jwt = false.
+# Fails closed unless x-teaser-token matches the TEASER_TRIGGER_SECRET project
+# secret (same pattern as send-fathers-day-campaign).
+verify_jwt = false
+
 [functions.clip-studio-callback]
 # Completion hook for Clip Studio jobs on the in-house Cloud Run renderer
 # (rqc-video-renderer /clip-prepare + /clip-render). Cloud Run cannot attach a

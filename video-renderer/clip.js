@@ -124,7 +124,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     : `1,${Math.round(geo.fontsize / 11)},0`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
-  const hookSize = Math.round(geo.fontsize * 0.72);
+  const hookSize = Math.round(geo.fontsize * 0.6);
   const hookMarginTop = geo.h >= 1900 ? 170 : 100;
 
   const header = [
@@ -148,7 +148,10 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const lines = [];
   if (opts.hookTitle) {
     const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
-    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,${assEscape(opts.hookTitle).toUpperCase()}`);
+    // {\q0} = smart wrapping for this line only (WrapStyle 2 disables it
+    // globally so caption groups never wrap) — long hooks fold into 2 lines
+    // instead of running off both edges.
+    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,{\\q0}${assEscape(opts.hookTitle).toUpperCase()}`);
   }
   // Emphasized (AI-tagged) words render gold and ~18% bigger at all times;
   // the active-word paint still walks across the non-emphasized ones.
@@ -339,9 +342,70 @@ function faceCropExpr(keyframes) {
 }
 
 // ---------------------------------------------------------------------------
+// song teaser: a window of a catalog song over its cover art (slow Ken Burns),
+// karaoke captions from the song's word timestamps, brand end-card, audio fades.
+// ---------------------------------------------------------------------------
+const SERIF = process.env.SERIF_PATH || path.join(__dirname, 'assets', 'serif.ttf');
+const drawEsc = (s) => String(s).replace(/\\/g, '').replace(/'/g, '’').replace(/[:%,]/g, ' ').trim();
+
+async function renderTeaser(job, { dir, log }) {
+  fs.mkdirSync(dir, { recursive: true });
+  const opts = job.options || {};
+  log(`teaser: downloading audio ${job.audio_src.slice(0, 100)}`);
+  await download(job.audio_src, path.join(dir, 'song.mp3'));
+
+  const start = Math.max(0, Number(job.start_sec) || 0);
+  const end = Number(job.end_sec);
+  if (!end || end - start < 5) throw new Error('teaser window too short');
+  const D = end - start;
+
+  const words = (job.words || [])
+    .filter((w) => w.end > start + 0.05 && w.start < end - 0.05)
+    .map((w) => ({ word: w.word, start: Math.max(0, w.start - start), end: Math.min(D, w.end - start) }));
+  log(`teaser: ${words.length} words in ${start.toFixed(1)}-${end.toFixed(1)}s, style=${job.style}, aspect=${job.aspect}`);
+
+  fs.writeFileSync(path.join(dir, 'captions.ass'), buildAss(words, job.style, job.aspect, {
+    hookTitle: opts.hook_title_text || null,
+    totalDur: D,
+  }));
+  fs.copyFileSync(SERIF, path.join(dir, 'serif.ttf'));
+
+  const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
+  const hasBg = !!job.bg_image_url;
+  if (hasBg) await download(job.bg_image_url, path.join(dir, 'bg.jpg'));
+
+  // Video: cover art scaled to fill, slow push-in, darkened a touch so the
+  // captions carry; brand end-card fades in over the last ~2.2s.
+  const endcard = job.endcard_text
+    ? `,drawtext=fontfile=serif.ttf:text='${drawEsc(job.endcard_text)}':fontcolor=white:fontsize=${Math.round(geo.fontsize * 0.62)}:x=(w-text_w)/2:y=h*0.42:alpha='clip((t-${(D - 2.2).toFixed(2)})/0.4\\,0\\,1)':shadowcolor=black@0.7:shadowx=2:shadowy=2`
+    : '';
+  const vchain =
+    `scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h},` +
+    `zoompan=z='1+0.06*on/${Math.round(D * 30)}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30,` +
+    `eq=brightness=-0.04:saturation=1.05,subtitles=captions.ass${endcard}`;
+
+  const parts = [];
+  parts.push(`[0:v]${vchain}[vout]`);
+  parts.push(`[1:a]afade=t=in:st=0:d=0.35,afade=t=out:st=${(D - 1.6).toFixed(2)}:d=1.6[aout]`);
+
+  const outPath = path.join(dir, 'clip.mp4');
+  const args = [];
+  if (hasBg) args.push('-loop', '1', '-framerate', '30', '-t', String(D), '-i', 'bg.jpg');
+  else args.push('-f', 'lavfi', '-i', `color=c=0x161219:s=${geo.w}x${geo.h}:d=${D}:r=30`);
+  args.push('-ss', String(start), '-t', String(D), '-i', 'song.mp3');
+  args.push('-filter_complex', parts.join(';'), '-map', '[vout]', '-map', '[aout]',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', 'clip.mp4');
+  ff(dir, args);
+
+  return { finalPath: outPath, durationSec: D };
+}
+
+// ---------------------------------------------------------------------------
 // render: cut (+ jump cuts) + crop/frame + optional zoom + burn captions
 // ---------------------------------------------------------------------------
 async function renderClip(job, { dir, log }) {
+  if (job.mode === 'teaser') return renderTeaser(job, { dir, log });
   fs.mkdirSync(dir, { recursive: true });
   const src = path.join(dir, 'source.mp4');
   log(`downloading source ${job.source_url.slice(0, 100)}`);
