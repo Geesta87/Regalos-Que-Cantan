@@ -560,7 +560,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 <>
                   <label className="text-xs text-gray-500 block mb-1">Framing</label>
                   <div className="flex gap-2 mb-1">
-                    {[['auto', 'Auto — track speaker'], ['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
+                    {[['auto', 'Auto'], ['wide', 'Wide — everyone'], ['left', 'Left'], ['center', 'Center'], ['right', 'Right']].map(([key, name]) => (
                       <button key={key} onClick={() => setForm((f) => ({ ...f, framing: key }))}
                         className={`flex-1 rounded-lg border px-2 py-1.5 text-sm transition ${form.framing === key ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                         {name}
@@ -569,7 +569,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   </div>
                   <p className="text-[11px] text-gray-400 mb-3">
                     {form.framing === 'auto'
-                      ? 'The camera follows the speaker automatically (falls back to center if no face is found).'
+                      ? 'One person: the camera follows them. Several people spread out: switches to the Wide layout so nobody is cut off.'
                       : 'Fixed crop — use when Auto misses or there is no face on screen.'}
                   </p>
                 </>
