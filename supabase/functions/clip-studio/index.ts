@@ -29,6 +29,7 @@ const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
 const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
+const PEXELS_API_KEY = Deno.env.get('PEXELS_API_KEY');
 
 const BUCKET = 'clip-studio';
 const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
@@ -131,6 +132,106 @@ async function proposeClips(words: Array<{ word: string; start: number; end: num
   if (!cleaned.length) throw new Error('AI suggestions did not map to the transcript');
   cleaned.sort((a, b) => b.score - a.score);
   return cleaned.slice(0, 5);
+}
+
+// Tag the "power words" of a clip (numbers, names, benefits, emotional
+// spikes) so the renderer can paint them gold and bigger. Cheap + fast model;
+// failures degrade gracefully to no emphasis.
+async function tagEmphasis(words: Array<{ word: string; start: number }>): Promise<number[]> {
+  if (!ANTHROPIC_API_KEY || words.length < 6) return [];
+  const listing = words.map((w) => `${w.start.toFixed(2)}|${w.word.trim()}`).join('\n');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      system:
+        'You tag the power words of a social-video caption track: numbers, names, benefits, emotionally loaded or surprising words. ' +
+        `Tag AT MOST ${Math.max(2, Math.ceil(words.length / 8))} words — only the ones that deserve visual emphasis. ` +
+        'Call the tag tool with the start timestamps of the chosen words, exactly as given.',
+      messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],
+      tools: [{
+        name: 'tag',
+        description: 'Tag emphasis words by their start timestamps.',
+        input_schema: { type: 'object', properties: { starts: { type: 'array', items: { type: 'number' } } }, required: ['starts'] },
+      }],
+      tool_choice: { type: 'tool', name: 'tag' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`emphasis ${resp.status}`);
+  const data = await resp.json();
+  const starts = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.starts;
+  return Array.isArray(starts) ? starts.filter((s: unknown) => typeof s === 'number').slice(0, 20) : [];
+}
+
+// B-roll: Claude reads the clip's transcript and proposes 2-4 short visual
+// moments with a stock-footage search query each; Pexels supplies the videos.
+async function pickBrollCuts(words: Array<{ word: string; start: number; end: number }>, start: number, end: number) {
+  if (!ANTHROPIC_API_KEY) return [];
+  const listing = words.map((w) => `${w.start.toFixed(1)}|${w.word.trim()}`).join('\n');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CLIP_AI_MODEL,
+      max_tokens: 700,
+      system:
+        'You add B-ROLL to a talking-head social clip. From the timestamped transcript, pick 2-4 moments where cutting to stock footage of WHAT IS BEING DESCRIBED makes the clip more visual. ' +
+        `Rules: each cut 2.0-4.0 seconds; the first cut must start after ${(start + 3).toFixed(1)} (keep the hook on the speaker); the last must end before ${(end - 2).toFixed(1)}; ` +
+        'leave at least 4 seconds of speaker between cuts; never cover a moment where the speaker says something personal/direct-to-camera. ' +
+        'query = a concrete 2-4 word ENGLISH stock-video search for what is described (visual nouns: "kids rehearsing stage", "volunteers church hall"). Call the tool.',
+      messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],
+      tools: [{
+        name: 'broll',
+        description: 'Propose b-roll cuts.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            cuts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  t_start: { type: 'number' }, t_end: { type: 'number' },
+                  query: { type: 'string', description: '2-4 word English stock search' },
+                },
+                required: ['t_start', 't_end', 'query'],
+              },
+            },
+          },
+          required: ['cuts'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'broll' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`broll pick ${resp.status}`);
+  const data = await resp.json();
+  const cuts = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.cuts;
+  if (!Array.isArray(cuts)) return [];
+  return cuts
+    .map((c: any) => ({ start: Number(c.t_start), end: Number(c.t_end), query: String(c.query || '').slice(0, 60) }))
+    .filter((c) => !Number.isNaN(c.start) && !Number.isNaN(c.end) && c.query &&
+      c.start >= start + 2.5 && c.end <= end - 1.5 && c.end - c.start >= 1.5 && c.end - c.start <= 5)
+    .slice(0, 4);
+}
+
+async function searchPexelsVideo(query: string, aspect: string): Promise<string | null> {
+  const orientation = aspect === '9:16' ? 'portrait' : aspect === '1:1' ? 'square' : 'landscape';
+  const res = await fetch(
+    `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=3&size=medium`,
+    { headers: { Authorization: PEXELS_API_KEY! } },
+  );
+  if (!res.ok) throw new Error(`pexels ${res.status}`);
+  const data = await res.json();
+  for (const video of data.videos || []) {
+    const files = (video.video_files || [])
+      .filter((f: any) => f.file_type === 'video/mp4' && Math.min(f.width || 0, f.height || 0) >= 700)
+      .sort((a: any, b: any) => (a.width * a.height) - (b.width * b.height));
+    if (files.length) return files[0].link;
+  }
+  return null;
 }
 
 async function dispatchRenderer(path: string, job: Record<string, unknown>) {
@@ -252,12 +353,49 @@ serve(async (req) => {
       const rawOpts = body.options || {};
       const cleanLabel = label ? String(label).slice(0, 120) : null;
       const options = {
-        framing: ['left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
+        framing: ['auto', 'left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
         remove_silences: !!rawOpts.remove_silences,
         zoom: !!rawOpts.zoom,
         hook_title: !!rawOpts.hook_title,
+        emphasis: rawOpts.emphasis !== false,
+        music: !!rawOpts.music,
+        broll: !!rawOpts.broll,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
+
+      // Emphasis words (best-effort — a failure just means plain captions).
+      let emphasis_starts: number[] = [];
+      if (options.emphasis) {
+        const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
+        try { emphasis_starts = await tagEmphasis(inRange); } catch (e) { console.warn('emphasis tagging failed:', (e as Error).message); }
+      }
+
+      // B-roll: Claude picks the moments + queries, Pexels supplies footage.
+      // Best-effort per cut — a failed search just means fewer cuts.
+      const broll: Array<{ start: number; end: number; url: string }> = [];
+      if (options.broll) {
+        if (!PEXELS_API_KEY) throw new Error('B-roll needs the Pexels key (PEXELS_API_KEY) configured');
+        const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
+        try {
+          const cuts = await pickBrollCuts(inRange, start, end);
+          for (const cut of cuts) {
+            try {
+              const url = await searchPexelsVideo(cut.query, aspect);
+              if (url) broll.push({ start: cut.start, end: cut.end, url });
+            } catch (e) { console.warn(`pexels search "${cut.query}" failed:`, (e as Error).message); }
+          }
+        } catch (e) { console.warn('broll picking failed:', (e as Error).message); }
+      }
+
+      // Music bed: pick a random track from the clip-studio/music library.
+      let music_url: string | null = null;
+      if (options.music) {
+        const { data: tracks } = await admin.storage.from(BUCKET).list('music');
+        const mp3s = (tracks || []).filter((f: any) => /\.(mp3|m4a|aac)$/i.test(f.name || ''));
+        if (!mp3s.length) throw new Error('The music library is empty — use "Music library" on the Clip Studio home screen to upload an MP3 first');
+        const pick = mp3s[Math.floor(Math.random() * mp3s.length)];
+        music_url = admin.storage.from(BUCKET).getPublicUrl(`music/${pick.name}`).data.publicUrl;
+      }
 
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id, start_sec: start, end_sec: end, aspect, style,
@@ -272,7 +410,8 @@ serve(async (req) => {
         await dispatchRenderer('/clip-render', {
           clip_id: clip.id, project_id, source_url: proj.source_url,
           start_sec: start, end_sec: end, aspect, style, words,
-          options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null },
+          options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
+          music_url, broll,
           bucket: BUCKET, callback_url: CALLBACK_URL,
           output_upload_url: signed.signedUrl, output_path: outPath,
           output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
@@ -282,6 +421,41 @@ serve(async (req) => {
         throw e;
       }
       return json({ success: true, clip });
+    }
+
+    if (action === 'sign_music') {
+      const name = String(body.filename || 'track.mp3').replace(/[^a-z0-9._-]/gi, '_').slice(0, 80);
+      if (!/\.(mp3|m4a|aac)$/i.test(name)) throw new Error('Music must be an MP3/M4A file');
+      const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(`music/${name}`, { upsert: true });
+      if (se) throw new Error(`sign: ${se.message}`);
+      return json({ success: true, signed_url: signed.signedUrl, path: `music/${name}` });
+    }
+
+    if (action === 'music_list') {
+      const { data: tracks } = await admin.storage.from(BUCKET).list('music');
+      return json({ success: true, tracks: (tracks || []).map((f: any) => f.name).filter((n: string) => /\.(mp3|m4a|aac)$/i.test(n)) });
+    }
+
+    if (action === 'send_to_creative') {
+      const { clip_id } = body;
+      if (!clip_id) throw new Error('Missing clip_id');
+      const { data: clip } = await admin.from('clips').select('id, project_id, label, video_url, status, aspect').eq('id', clip_id).single();
+      if (!clip) throw new Error('clip not found');
+      if (clip.status !== 'ready' || !clip.video_url) throw new Error('Clip is not ready yet');
+      const { data: proj } = await admin.from('clip_projects').select('title').eq('id', clip.project_id).single();
+      const name = clip.label || proj?.title || 'Clip Studio clip';
+      const { error: qe } = await admin.from('creative_queue').insert({
+        kind: 'video',
+        status: 'ready',
+        intended_use: 'organic',
+        batch_date: new Date().toISOString().slice(0, 10),
+        concept: `Clip Studio — ${name}`,
+        caption: name,
+        media_url: clip.video_url,
+        design: { source: 'clip-studio', clip_id: clip.id, aspect: clip.aspect },
+      });
+      if (qe) throw new Error(qe.message);
+      return json({ success: true });
     }
 
     if (action === 'delete_clip') {
