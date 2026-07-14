@@ -366,12 +366,13 @@ function SceneReview({ orderId, call, showToast, onRerender }) {
                 })}
               </div>
 
-              {(revised || (order.scene_assets || []).some((a) => a.revising === false && a.image_url)) && (
-                <button onClick={rerender}
-                  className="w-full py-2.5 text-sm font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition">
-                  🔁 Re-render final video with revised scenes
-                </button>
-              )}
+              {/* Always available: re-render reuses every persisted scene (near-free;
+                  only heroes whose motion was cleared re-animate), so it must stay
+                  reachable even when scenes were revised outside this session. */}
+              <button onClick={rerender}
+                className="w-full py-2.5 text-sm font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition">
+                🔁 Re-render final video with current scenes
+              </button>
 
               <Copilot orderId={orderId} call={call} />
             </>
