@@ -356,7 +356,8 @@ serve(async (req) => {
 
       // Kie's aligned words include section markers ([Intro], [Verse 1], …)
       // as "words" — strip them so they never reach the captions.
-      const stripTags = (ws: any[]) => (ws || []).filter((w: any) => !/^\[.*\]$/.test(String(w.word || '').trim()));
+      // ("[Verse 1]" arrives as TWO tokens "[Verse" and "1]" — match either bracket edge)
+      const stripTags = (ws: any[]) => (ws || []).filter((w: any) => !/^\[|\]$/.test(String(w.word || '').trim()));
       const cachedWords = stripTags(song.lyrics_timestamps?.words || []);
       const timed = cachedWords.length > 0;
       const title = `Teaser — ${song.recipient_name || 'canción'} (${song.genre_name || song.genre || 'song'})`;
