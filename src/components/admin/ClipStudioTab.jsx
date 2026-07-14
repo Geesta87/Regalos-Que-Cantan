@@ -111,7 +111,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false,
+    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false,
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -241,7 +241,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, broll: form.broll },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -503,6 +503,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
                   ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
                   ['music', 'Background music', 'a track from your music library, ducked under speech'],
+                  ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
                 ].map(([key, name, desc]) => (
                   <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={form[key]}

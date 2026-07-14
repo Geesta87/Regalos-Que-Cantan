@@ -29,6 +29,7 @@ const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
 const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
+const PEXELS_API_KEY = Deno.env.get('PEXELS_API_KEY');
 
 const BUCKET = 'clip-studio';
 const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
@@ -164,6 +165,75 @@ async function tagEmphasis(words: Array<{ word: string; start: number }>): Promi
   return Array.isArray(starts) ? starts.filter((s: unknown) => typeof s === 'number').slice(0, 20) : [];
 }
 
+// B-roll: Claude reads the clip's transcript and proposes 2-4 short visual
+// moments with a stock-footage search query each; Pexels supplies the videos.
+async function pickBrollCuts(words: Array<{ word: string; start: number; end: number }>, start: number, end: number) {
+  if (!ANTHROPIC_API_KEY) return [];
+  const listing = words.map((w) => `${w.start.toFixed(1)}|${w.word.trim()}`).join('\n');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CLIP_AI_MODEL,
+      max_tokens: 700,
+      system:
+        'You add B-ROLL to a talking-head social clip. From the timestamped transcript, pick 2-4 moments where cutting to stock footage of WHAT IS BEING DESCRIBED makes the clip more visual. ' +
+        `Rules: each cut 2.0-4.0 seconds; the first cut must start after ${(start + 3).toFixed(1)} (keep the hook on the speaker); the last must end before ${(end - 2).toFixed(1)}; ` +
+        'leave at least 4 seconds of speaker between cuts; never cover a moment where the speaker says something personal/direct-to-camera. ' +
+        'query = a concrete 2-4 word ENGLISH stock-video search for what is described (visual nouns: "kids rehearsing stage", "volunteers church hall"). Call the tool.',
+      messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],
+      tools: [{
+        name: 'broll',
+        description: 'Propose b-roll cuts.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            cuts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  t_start: { type: 'number' }, t_end: { type: 'number' },
+                  query: { type: 'string', description: '2-4 word English stock search' },
+                },
+                required: ['t_start', 't_end', 'query'],
+              },
+            },
+          },
+          required: ['cuts'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'broll' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`broll pick ${resp.status}`);
+  const data = await resp.json();
+  const cuts = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.cuts;
+  if (!Array.isArray(cuts)) return [];
+  return cuts
+    .map((c: any) => ({ start: Number(c.t_start), end: Number(c.t_end), query: String(c.query || '').slice(0, 60) }))
+    .filter((c) => !Number.isNaN(c.start) && !Number.isNaN(c.end) && c.query &&
+      c.start >= start + 2.5 && c.end <= end - 1.5 && c.end - c.start >= 1.5 && c.end - c.start <= 5)
+    .slice(0, 4);
+}
+
+async function searchPexelsVideo(query: string, aspect: string): Promise<string | null> {
+  const orientation = aspect === '9:16' ? 'portrait' : aspect === '1:1' ? 'square' : 'landscape';
+  const res = await fetch(
+    `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=${orientation}&per_page=3&size=medium`,
+    { headers: { Authorization: PEXELS_API_KEY! } },
+  );
+  if (!res.ok) throw new Error(`pexels ${res.status}`);
+  const data = await res.json();
+  for (const video of data.videos || []) {
+    const files = (video.video_files || [])
+      .filter((f: any) => f.file_type === 'video/mp4' && Math.min(f.width || 0, f.height || 0) >= 700)
+      .sort((a: any, b: any) => (a.width * a.height) - (b.width * b.height));
+    if (files.length) return files[0].link;
+  }
+  return null;
+}
+
 async function dispatchRenderer(path: string, job: Record<string, unknown>) {
   if (!RENDERER_URL) throw new Error('INHOUSE_RENDERER_URL not configured');
   const res = await fetch(`${RENDERER_URL}${path}`, {
@@ -289,6 +359,7 @@ serve(async (req) => {
         hook_title: !!rawOpts.hook_title,
         emphasis: rawOpts.emphasis !== false,
         music: !!rawOpts.music,
+        broll: !!rawOpts.broll,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
@@ -297,6 +368,23 @@ serve(async (req) => {
       if (options.emphasis) {
         const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
         try { emphasis_starts = await tagEmphasis(inRange); } catch (e) { console.warn('emphasis tagging failed:', (e as Error).message); }
+      }
+
+      // B-roll: Claude picks the moments + queries, Pexels supplies footage.
+      // Best-effort per cut — a failed search just means fewer cuts.
+      const broll: Array<{ start: number; end: number; url: string }> = [];
+      if (options.broll) {
+        if (!PEXELS_API_KEY) throw new Error('B-roll needs the Pexels key (PEXELS_API_KEY) configured');
+        const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
+        try {
+          const cuts = await pickBrollCuts(inRange, start, end);
+          for (const cut of cuts) {
+            try {
+              const url = await searchPexelsVideo(cut.query, aspect);
+              if (url) broll.push({ start: cut.start, end: cut.end, url });
+            } catch (e) { console.warn(`pexels search "${cut.query}" failed:`, (e as Error).message); }
+          }
+        } catch (e) { console.warn('broll picking failed:', (e as Error).message); }
       }
 
       // Music bed: pick a random track from the clip-studio/music library.
@@ -323,7 +411,7 @@ serve(async (req) => {
           clip_id: clip.id, project_id, source_url: proj.source_url,
           start_sec: start, end_sec: end, aspect, style, words,
           options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
-          music_url,
+          music_url, broll,
           bucket: BUCKET, callback_url: CALLBACK_URL,
           output_upload_url: signed.signedUrl, output_path: outPath,
           output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,

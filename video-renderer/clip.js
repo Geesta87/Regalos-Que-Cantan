@@ -418,6 +418,31 @@ async function renderClip(job, { dir, log }) {
       return execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', 'source.mp4'], { cwd: dir }).toString().includes('audio');
     } catch { return false; }
   })();
+  const withMusic = !!job.music_url;
+
+  // B-roll cutaways: spans arrive on the SOURCE timeline (absolute seconds);
+  // map them clip-local and then through the silence cuts so they land where
+  // the words actually play. Cap 4; drop spans the cuts shrank below 1.2s.
+  const mapTime = (t) => {
+    let acc = 0;
+    for (const seg of segs) {
+      if (t < seg.start) return acc;
+      if (t <= seg.end) return acc + (t - seg.start);
+      acc += seg.end - seg.start;
+    }
+    return acc;
+  };
+  const broll = [];
+  for (const b of (Array.isArray(job.broll) ? job.broll : []).slice(0, 4)) {
+    const s = mapTime(Math.max(0, Number(b.start) - start));
+    const e = mapTime(Math.max(0, Number(b.end) - start));
+    if (b.url && e - s >= 1.2 && s < outDur - 1.5) broll.push({ s, e: Math.min(e, outDur - 0.3), url: b.url });
+  }
+  for (let i = 0; i < broll.length; i++) {
+    log(`b-roll ${i}: ${broll[i].s.toFixed(1)}-${broll[i].e.toFixed(1)}s <- ${broll[i].url.slice(0, 90)}`);
+    await download(broll[i].url, path.join(dir, `broll${i}.mp4`));
+  }
+  const brollInputBase = 1 + (withMusic ? 1 : 0);
 
   // Graph order matters: scale+crop FIRST (so the pan expression sees the
   // same clip-local t the face keyframes were sampled on), then the kept
@@ -425,21 +450,32 @@ async function renderClip(job, { dir, log }) {
   // pre-seeked with -ss/-t so only the clip range is decoded.
   const parts = [];
   parts.push(`[0:v]scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}:x='${cropX}':y=(ih-oh)/2[vs]`);
-  // A pad can only be consumed once — fan [vs] out to one copy per segment.
+  // A pad can only be consumed once — fan [vs] (and the audio) out to one
+  // copy per segment.
   parts.push(`[vs]split=${segs.length}${segs.map((_, i) => `[s${i}]`).join('')}`);
+  if (hasAudio) parts.push(`[0:a]asplit=${segs.length}${segs.map((_, i) => `[sa${i}]`).join('')}`);
   const vRefs = [];
   segs.forEach((seg, i) => {
     parts.push(`[s${i}]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
-    if (hasAudio) parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+    if (hasAudio) parts.push(`[sa${i}]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
     vRefs.push(hasAudio ? `[v${i}][a${i}]` : `[v${i}]`);
   });
   parts.push(`${vRefs.join('')}concat=n=${segs.length}:v=1:a=${hasAudio ? 1 : 0}${hasAudio ? '[vc][ac]' : '[vc]'}`);
-  parts.push(`[vc]${post}[vout]`);
+
+  // B-roll: full-frame cutaways on the post-cut timeline; the speaker's audio
+  // keeps playing underneath, captions render on top (post comes after).
+  let vbase = 'vc';
+  broll.forEach((b, i) => {
+    const idx = brollInputBase + i;
+    parts.push(`[${idx}:v]trim=end=${(b.e - b.s).toFixed(3)},setpts=PTS-STARTPTS+${b.s.toFixed(3)}/TB,scale=${geo.w}:${geo.h}:force_original_aspect_ratio=increase,crop=${geo.w}:${geo.h}[bb${i}]`);
+    parts.push(`[${vbase}][bb${i}]overlay=enable='between(t,${b.s.toFixed(3)},${b.e.toFixed(3)})':eof_action=pass[ov${i}]`);
+    vbase = `ov${i}`;
+  });
+  parts.push(`[${vbase}]${post}[vout]`);
 
   // Music bed: looped track as a second input, volume-dropped and side-chain
   // ducked under the speech, then mixed back in (no re-normalizing).
   let audioLabel = hasAudio ? '[ac]' : null;
-  const withMusic = !!job.music_url;
   if (withMusic) {
     log(`music bed: ${job.music_url.slice(0, 100)}`);
     await download(job.music_url, path.join(dir, 'music.mp3'));
@@ -458,6 +494,7 @@ async function renderClip(job, { dir, log }) {
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
+  broll.forEach((_, i) => args.push('-i', `broll${i}.mp4`));
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
