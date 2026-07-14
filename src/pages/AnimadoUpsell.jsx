@@ -439,28 +439,82 @@ function formatNames(names = []) {
 //  Main person photo is required; a family photo slot appears ONLY when the
 //  story includes other people. Who's-who is resolved at the admin review gate.
 // ═══════════════════════════════════════════════════════════════════════════
-export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, otherPeople = [], askPhone = false, onSubmit = null }) {
+// Customer-facing labels for the cast roles (keys match animado-photo's ROLES enum).
+const ROLE_LABELS = {
+  recipient: 'El festejado/a (para quién es)',
+  sender: 'Yo (quien regala)',
+  spouse: 'Mi pareja / esposo(a)',
+  daughter: 'Hija',
+  son: 'Hijo',
+  mother: 'Mamá',
+  father: 'Papá',
+  grandmother: 'Abuela',
+  grandfather: 'Abuelo',
+  sibling: 'Hermano(a)',
+  friend: 'Amigo(a)',
+  other: 'Otro',
+};
+
+export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, otherPeople = [], askPhone = false, onSubmit = null, onAnalyze = null, onConfirm = null }) {
   const [mainPhoto, setMainPhoto] = useState(null);   // File
   const [familyPhoto, setFamilyPhoto] = useState(null); // File
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(null);
+  const [phase, setPhase] = useState('pick');   // 'pick' | 'tagging'
+  const [cast, setCast] = useState([]);          // [{ key, description, role, name, in_photo }]
+  const [previewUrl, setPreviewUrl] = useState(null); // object URL of the photo, for the tagging step
 
-  const handleSubmit = async () => {
+  // Stage 3 flow when the parent wires onAnalyze/onConfirm: upload -> analyze the
+  // photo -> if 2+ people, have the customer confirm who is who -> confirm+attach.
+  // Falls back to the legacy one-shot onSubmit when those props aren't provided.
+  const handleContinue = async () => {
     if (!mainPhoto || submitting) return;
     setError(null);
-    if (!onSubmit) { setDone(true); return; } // demo mode — no real upload
+    if (!onAnalyze) {
+      if (!onSubmit) { setDone(true); return; } // demo mode — no real upload
+      setSubmitting(true);
+      try { await onSubmit({ mainFile: mainPhoto, familyFile: familyPhoto, phone: phone.trim() || null }); setDone(true); }
+      catch (e) { setError(e?.message || 'No se pudo subir la foto. Intenta de nuevo.'); }
+      finally { setSubmitting(false); }
+      return;
+    }
     setSubmitting(true);
     try {
-      await onSubmit({ mainFile: mainPhoto, familyFile: familyPhoto, phone: phone.trim() || null });
-      setDone(true);
+      const proposed = await onAnalyze({ mainFile: mainPhoto, familyFile: familyPhoto, phone: phone.trim() || null });
+      const list = Array.isArray(proposed) ? proposed : [];
+      if (list.length >= 2) {
+        setCast(list.map((c) => ({ ...c, role: c.role || 'other', name: c.name || '' })));
+        try { setPreviewUrl(URL.createObjectURL(familyPhoto || mainPhoto)); } catch { /* preview optional */ }
+        setPhase('tagging');
+        setSubmitting(false);
+      } else {
+        // single person (or analysis unavailable) — nothing to disambiguate
+        await onConfirm({ cast: list, phone: phone.trim() || null, hasFamily: !!familyPhoto });
+        setDone(true);
+      }
     } catch (e) {
-      setError(e?.message || 'No se pudo subir la foto. Intenta de nuevo.');
-    } finally {
+      setError(e?.message || 'No se pudo procesar la foto. Intenta de nuevo.');
       setSubmitting(false);
     }
   };
+
+  const handleConfirmCast = async () => {
+    if (submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onConfirm({ cast, phone: phone.trim() || null, hasFamily: !!familyPhoto });
+      setDone(true);
+    } catch (e) {
+      setError(e?.message || 'No se pudo guardar. Intenta de nuevo.');
+      setSubmitting(false);
+    }
+  };
+
+  const setCastField = (i, field, val) =>
+    setCast((prev) => prev.map((c, idx) => (idx === i ? { ...c, [field]: val } : c)));
 
   const steps = [
     { n: 1, t: 'Creamos 2 bocetos de su personaje', s: 'Tú no haces nada — nuestro equipo elige el mejor' },
@@ -468,6 +522,91 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     { n: 3, t: 'Revisamos la calidad a mano', s: 'Nada se envía sin nuestra aprobación' },
     { n: 4, t: 'Te lo enviamos por email', s: 'En 1–2 días, en HD y listo para compartir' },
   ];
+
+  // Stage 3 — "who is who": the customer confirms each detected person so the
+  // video animates the right people (and knows who is grandma vs. daughter).
+  if (phase === 'tagging') {
+    const allTagged = cast.length > 0 && cast.every((c) => c.role);
+    return (
+      <div style={{
+        background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
+        border: '2px solid rgba(245,185,66,0.45)', borderRadius: 20, padding: 22,
+        animation: 'aniFade 0.5s ease-out both',
+      }}>
+        <style>{ANIM_CSS}</style>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          <h2 style={{ margin: '0 0 6px', fontSize: 21, fontWeight: 900, color: '#fff' }}>¿Quién es quién? 👀</h2>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>
+            Encontramos <strong style={{ color: GOLD }}>{cast.length} personas</strong> en tu foto.
+            Dinos quién es cada una para que salgan perfectas en el video.
+          </p>
+        </div>
+
+        {previewUrl && (
+          <img src={previewUrl} alt="tu foto" style={{
+            display: 'block', width: '100%', maxHeight: 220, objectFit: 'contain',
+            borderRadius: 12, marginBottom: 16, background: 'rgba(0,0,0,0.25)',
+          }} />
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {cast.map((c, i) => (
+            <div key={c.key || i} style={{
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 12, padding: '12px 13px',
+            }}>
+              <p style={{ margin: '0 0 9px', fontSize: 12.5, color: '#fde68a', lineHeight: 1.4, fontWeight: 600 }}>
+                👤 {c.description || `Persona ${i + 1}`}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <select
+                  value={c.role || 'other'}
+                  onChange={(e) => setCastField(i, 'role', e.target.value)}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '10px 10px', fontSize: 13.5,
+                    background: 'rgba(255,255,255,0.08)', color: '#fff', borderRadius: 9,
+                    border: '1.5px solid rgba(255,255,255,0.14)', outline: 'none',
+                  }}
+                >
+                  {Object.keys(ROLE_LABELS).map((r) => (
+                    <option key={r} value={r} style={{ background: '#1a1020' }}>{ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={c.name || ''}
+                  onChange={(e) => setCastField(i, 'name', e.target.value.slice(0, 40))}
+                  placeholder="Nombre (opcional)"
+                  maxLength={40}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', padding: '10px 12px', fontSize: 14,
+                    background: 'rgba(255,255,255,0.06)', color: '#fff', borderRadius: 9,
+                    border: '1.5px solid rgba(255,255,255,0.12)', outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {error && (
+          <p style={{ margin: '12px 0 0', fontSize: 12.5, color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{error}</p>
+        )}
+        <button onClick={handleConfirmCast} disabled={!allTagged || submitting} style={{
+          width: '100%', marginTop: 16, padding: 15, borderRadius: 14, border: 'none',
+          cursor: allTagged && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
+          color: allTagged ? '#1a1020' : 'rgba(255,255,255,0.35)',
+          background: allTagged ? `linear-gradient(135deg, ${GOLD}, ${PINK})` : 'rgba(255,255,255,0.06)',
+          boxShadow: allTagged && !submitting ? '0 6px 20px rgba(247,77,166,0.4)' : 'none', transition: 'all 0.25s',
+        }}>
+          {submitting ? 'Guardando…' : 'Confirmar y crear 🎬'}
+        </button>
+        <p style={{ margin: '10px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'center', lineHeight: 1.45 }}>
+          Esto nos ayuda a animar a cada persona correctamente en tu video.
+        </p>
+      </div>
+    );
+  }
 
   // Confirmation view after the photo is submitted
   if (done) {
@@ -598,7 +737,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       {error && (
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{error}</p>
       )}
-      <button onClick={handleSubmit} disabled={!mainPhoto || submitting} style={{
+      <button onClick={handleContinue} disabled={!mainPhoto || submitting} style={{
         width: '100%', padding: 15, borderRadius: 14, border: 'none',
         cursor: mainPhoto && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
         color: mainPhoto ? '#1a1020' : 'rgba(255,255,255,0.35)',
