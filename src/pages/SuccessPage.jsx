@@ -508,6 +508,29 @@ export default function SuccessPage() {
     if (error || !data?.success) throw new Error(data?.error || 'No se pudo procesar la foto.');
   };
 
+  // Stage 3 (cast lock): upload the photo(s), then ask Claude to propose who is in
+  // it so the customer can confirm each person before we build. Returns the cast
+  // proposal; a failure returns [] so the customer can still proceed (attach then
+  // falls back to the AI's own guess).
+  const analyzeAnimadoPhotos = async (orderId, { mainFile, familyFile }) => {
+    await uploadAnimadoFile(orderId, 'main', mainFile);
+    if (familyFile) await uploadAnimadoFile(orderId, 'family', familyFile);
+    try {
+      const { data } = await supabase.functions.invoke('animado-photo', {
+        body: { action: 'analyze', story_video_order_id: orderId, has_family: !!familyFile },
+      });
+      return Array.isArray(data?.cast) ? data.cast : [];
+    } catch { return []; }
+  };
+
+  // Confirm the (possibly customer-edited) cast and finalize the upload.
+  const confirmAnimadoCast = async (orderId, { cast, phone, hasFamily }) => {
+    const { data, error } = await supabase.functions.invoke('animado-photo', {
+      body: { action: 'attach', story_video_order_id: orderId, has_family: !!hasFamily, phone: phone || null, cast: cast || null },
+    });
+    if (error || !data?.success) throw new Error(data?.error || 'No se pudo procesar la foto.');
+  };
+
   // ------ 🔥 META PIXEL: Track Purchase after Stripe payment ------
   // Guard uses sessionStorage keyed by Stripe session_id so the pixel
   // fires exactly ONCE per checkout — survives page reloads, redirects,
@@ -1865,6 +1888,8 @@ export default function SuccessPage() {
                 otherPeople={o.other_people || []}
                 askPhone={!o.has_phone}
                 onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
+                onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
+                onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
               />
             </div>
           ))}
