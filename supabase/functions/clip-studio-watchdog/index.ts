@@ -21,7 +21,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { BUCKET, autoPilotRun, dispatchClip, nowIso } from '../_shared/clip-studio-lib.ts';
+import { BUCKET, CALLBACK_URL, autoPilotRun, dispatchClip, dispatchRenderer, nowIso } from '../_shared/clip-studio-lib.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -79,6 +79,44 @@ serve(async (req) => {
     }
     report.retried = retried;
     report.timed_out = timedOut;
+
+    // ---- 1b. finished uploads whose ingest never fired --------------------
+    // The browser calls 'ingest' right after the multi-GB PUT completes; if
+    // the admin session expired during a long upload (or the tab closed),
+    // the file sits in storage with the project stuck at 'uploaded'. If the
+    // source file exists, run the ingest step here.
+    const { data: orphanUploads } = await admin.from('clip_projects')
+      .select('id')
+      .eq('status', 'uploaded')
+      .lt('created_at', minutesAgo(10))
+      .limit(5);
+    const ingested: string[] = [];
+    for (const proj of orphanUploads || []) {
+      const { data: files } = await admin.storage.from(BUCKET).list(proj.id);
+      const source = (files || []).find((f: any) => /^source\./.test(f.name || ''));
+      if (!source) continue; // upload still in flight (or abandoned) — leave it
+      try {
+        const sourcePath = `${proj.id}/${source.name}`;
+        const source_url = admin.storage.from(BUCKET).getPublicUrl(sourcePath).data.publicUrl;
+        const audioPath = `${proj.id}/audio.mp3`;
+        const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(audioPath, { upsert: true });
+        if (se) throw new Error(`sign audio: ${se.message}`);
+        await admin.from('clip_projects')
+          .update({ source_path: sourcePath, source_url, status: 'preparing', error_message: null, updated_at: nowIso() })
+          .eq('id', proj.id);
+        await dispatchRenderer('/clip-prepare', {
+          project_id: proj.id, source_url, bucket: BUCKET, callback_url: CALLBACK_URL,
+          audio_upload_url: signed.signedUrl, audio_path: audioPath,
+          audio_public_url: admin.storage.from(BUCKET).getPublicUrl(audioPath).data.publicUrl,
+        });
+        ingested.push(proj.id);
+      } catch (e) {
+        await admin.from('clip_projects').update({
+          status: 'error', error_message: `Could not start processing: ${(e as Error).message}`, updated_at: nowIso(),
+        }).eq('id', proj.id);
+      }
+    }
+    if (ingested.length) report.ingested = ingested;
 
     // ---- 2. stuck projects (prepare/transcribe) --------------------------
     const { data: stuckProjects } = await admin.from('clip_projects')
