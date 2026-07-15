@@ -421,7 +421,7 @@ Deno.serve(async (req) => {
     {
       const { data: reuploadSongs, error: reuploadError } = await supabase
         .from('songs')
-        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count')
+        .select('id, audio_url, original_audio_url, recipient_name, regenerate_count, fix_count')
         .eq('needs_reupload', true)
         .eq('status', 'completed')
         .order('created_at', { ascending: true })
@@ -482,11 +482,14 @@ Deno.serve(async (req) => {
 
             const { data: publicUrlData } = supabase.storage.from('audio').getPublicUrl(fileName);
             // Re-hosts overwrite the deterministic filename in place, so a re-rolled
-            // song keeps the SAME URL and the browser/CDN serve the cached OLD audio.
-            // Append a cache-buster that changes each re-roll (regenerate_count) so the
-            // new take shows immediately. Fresh songs (count 0) stay clean (no prior cache).
-            const regenN = Number(song.regenerate_count) || 0;
-            const permanentUrl = publicUrlData.publicUrl + (regenN > 0 ? `?v=${regenN}` : '');
+            // OR fixed song keeps the SAME URL and the browser/CDN serve the cached OLD
+            // audio. Append a cache-buster keyed on BOTH counters — regenerate_count
+            // (bumped by full re-rolls) AND fix_count (bumped by Fix Song). Either one
+            // changing yields a new URL, so any correction shows immediately. Both are
+            // monotonic, so the version only ever moves forward. Fresh songs (0) stay
+            // clean — no prior cache to bust.
+            const ver = (Number(song.regenerate_count) || 0) + (Number(song.fix_count) || 0);
+            const permanentUrl = publicUrlData.publicUrl + (ver > 0 ? `?v=${ver}` : '');
 
             await supabase.from('songs').update({
               audio_url: permanentUrl,

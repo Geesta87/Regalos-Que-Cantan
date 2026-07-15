@@ -30,6 +30,27 @@ function meanDb(file) {
 }
 const SR = '44100';
 
+// Snap a cut time to the QUIETEST micro-moment within ±win seconds. Legato
+// singing has no real breath gaps, so cutting exactly on a Whisper word-boundary
+// still slices mid-voice; landing the seam on the local energy minimum (a
+// consonant edge / the dip between syllables) masks the join between two takes.
+// Returns the absolute time (seconds) of the lowest-RMS ~8ms frame in the window.
+function snapQuiet(file, targetS, win = 0.12) {
+  const start = Math.max(0, targetS - win);
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-ss', String(start), '-t', String(2 * win), '-i', file, '-f', 's16le', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '8000', 'pipe:1'], { maxBuffer: 1 << 24 });
+  const buf = r.stdout;
+  if (!buf || buf.length < 320) return targetS;
+  const frame = 64; // ~8ms at 8kHz
+  let best = { rms: Infinity, i: 0 };
+  for (let i = 0; i + frame <= buf.length / 2; i += frame) {
+    let sum = 0;
+    for (let j = 0; j < frame; j++) { const s = buf.readInt16LE((i + j) * 2); sum += s * s; }
+    const rms = sum / frame;
+    if (rms < best.rms) best = { rms, i };
+  }
+  return start + (best.i + frame / 2) / 8000;
+}
+
 // Extract [start,end] of `src` into `out` (input-side seek so filters see full res).
 function cut(src, start, dur, out, filter) {
   const a = ['-ss', String(start)];
@@ -56,23 +77,39 @@ function crossfade(a, b, out, xfade) {
 
 // LINE mode — replace pristine[pStart,pEnd] with the take's [rStart,rEnd],
 // time-stretched to fill the hole exactly. Writes `out` (wav).
-function spliceLine({ pristine, pStart, pEnd, resung, rStart, rEnd, out, xfade = 0.07, tmp }) {
+function spliceLine({ pristine, pStart, pEnd, resung, rStart, rEnd, out, xfade = 0.09, snapWin = 0.12, noStretch = false, tmp }) {
+  // Snap all four cut points to the local quiet spot so each seam lands in the
+  // lowest-energy micro-moment (masks the voice-to-voice join).
+  if (snapWin > 0) {
+    pStart = snapQuiet(pristine, pStart, snapWin);
+    pEnd = snapQuiet(pristine, pEnd, snapWin);
+    rStart = snapQuiet(resung, rStart, snapWin);
+    rEnd = snapQuiet(resung, rEnd, snapWin);
+  }
   const holeLen = pEnd - pStart, lineLen = rEnd - rStart;
   if (holeLen <= 0 || lineLen <= 0) throw new Error('bad line window');
-  const targetLen = holeLen + 2 * xfade;                 // two acrossfades each eat `xfade`
-  // atempo (not rubberband) — built into every ffmpeg (no librubberband dep), and
-  // for our small factors (~0.85–1.15×) it's transparent. Pitch is preserved.
-  const tempo = Math.max(0.5, Math.min(2.0, lineLen / targetLen));
   const A = `${tmp}/_A.wav`, B = `${tmp}/_B.wav`, C = `${tmp}/_C.wav`, AB = `${tmp}/_AB.wav`;
   cut(pristine, 0, pStart, A);
-  cut(pristine, pEnd, null, C);
-  cut(resung, rStart, rEnd - rStart, B, `atempo=${tempo.toFixed(6)}`);
-  // Gain-match the corrected line to the pristine just before the hole.
+  let tempo = 1;
+  if (noStretch) {
+    // NO time-stretch: the corrected words play at their natural speed, and the
+    // original resumes right after them (pEnd is ignored — the tail simply shifts
+    // by the natural length difference, which is tiny for a short segment). This
+    // is the fix for material where the re-sing tempo differs from the original.
+    cut(resung, rStart, lineLen, B);
+    cut(pristine, pStart + lineLen, null, C);
+  } else {
+    const targetLen = holeLen + 2 * xfade;               // two acrossfades each eat `xfade`
+    tempo = Math.max(0.5, Math.min(2.0, lineLen / targetLen));
+    cut(resung, rStart, lineLen, B, `atempo=${tempo.toFixed(6)}`);
+    cut(pristine, pEnd, null, C);
+  }
+  // Gain-match the corrected words to the pristine just before the seam.
   const ref = `${tmp}/_ref.wav`; cut(pristine, Math.max(0, pStart - 3), 3, ref);
   gainMatchTo(B, meanDb(ref), tmp);
   crossfade(A, B, AB, xfade);
   crossfade(AB, C, out, xfade);
-  return { out, tempo, holeLen, targetLen };
+  return { out, tempo, holeLen, lineLen, noStretch };
 }
 
 // SECTION mode — resung[0,resungCut] then pristine[origCut..end], one seam.

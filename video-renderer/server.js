@@ -95,6 +95,16 @@ async function runSplice(spec) {
   const dir = path.join(os.tmpdir(), id);
   fs.mkdirSync(dir, { recursive: true });
   try {
+    // rehost — just re-host an audio URL permanently in our bucket (no splice).
+    // Used to pin a Kie tempfile so a preview link survives past its expiry.
+    if (spec.mode === 'rehost') {
+      const src = path.join(dir, 'src.mp3');
+      await download(spec.pristine_url, src);
+      const outMp3 = path.join(dir, 'out.mp3');
+      execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', src, '-c:a', 'libmp3lame', '-b:a', '192k', outMp3], { stdio: ['ignore', 'ignore', 'inherit'] });
+      const url = await uploadAudioToSupabase(outMp3, `songs/rehost-${id}.mp3`);
+      return { url };
+    }
     const pristine = path.join(dir, 'pristine.mp3');
     const resung = path.join(dir, 'resung.mp3');
     await download(spec.pristine_url, pristine);
@@ -103,7 +113,7 @@ async function runSplice(spec) {
     if (spec.mode === 'section') {
       spliceSection({ pristine, resung, origCut: +spec.origCut, resungCut: +spec.resungCut, out: outWav, tmp: dir });
     } else {
-      spliceLine({ pristine, resung, pStart: +spec.pStart, pEnd: +spec.pEnd, rStart: +spec.rStart, rEnd: +spec.rEnd, out: outWav, tmp: dir });
+      spliceLine({ pristine, resung, pStart: +spec.pStart, pEnd: +spec.pEnd, rStart: +spec.rStart, rEnd: +spec.rEnd, noStretch: !!spec.noStretch, out: outWav, tmp: dir });
     }
     const outMp3 = path.join(dir, 'out.mp3');
     execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', outWav, '-c:a', 'libmp3lame', '-b:a', '192k', outMp3], { stdio: ['ignore', 'ignore', 'inherit'] });
@@ -279,7 +289,11 @@ const server = http.createServer(async (req, res) => {
     let spec;
     try {
       spec = JSON.parse(await readBody(req));
-      if (!spec.pristine_url || !spec.resung_url) throw new Error('missing pristine_url or resung_url');
+      if (spec.mode === 'rehost') {
+        if (!spec.pristine_url) throw new Error('missing pristine_url');
+      } else if (!spec.pristine_url || !spec.resung_url) {
+        throw new Error('missing pristine_url or resung_url');
+      }
     } catch (err) {
       return send(400, { success: false, error: err.message });
     }

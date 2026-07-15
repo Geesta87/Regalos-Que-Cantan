@@ -1184,15 +1184,16 @@ Deno.serve(async (req) => {
     // browser splice on the frontend if this errors.
     if (action === 'splice') {
       if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
-      const mode = body?.mode === 'section' ? 'section' : 'line';
+      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : 'line';
       const spec: Record<string, unknown> = {
         mode,
         pristine_url: body?.pristineUrl,
         resung_url: body?.resungUrl,
       };
       if (mode === 'section') { spec.origCut = body?.origCut; spec.resungCut = body?.resungCut; }
-      else { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; }
-      if (!spec.pristine_url || !spec.resung_url) return json({ ok: false, error: 'pristineUrl and resungUrl required' });
+      else if (mode === 'line') { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; spec.noStretch = !!body?.noStretch; }
+      if (!spec.pristine_url) return json({ ok: false, error: 'pristineUrl required' });
+      if (mode !== 'rehost' && !spec.resung_url) return json({ ok: false, error: 'resungUrl required' });
       try {
         const r = await fetch(`${INHOUSE_RENDERER_URL}/splice-audio`, {
           method: 'POST',
