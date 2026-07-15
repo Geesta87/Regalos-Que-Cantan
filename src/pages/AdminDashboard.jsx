@@ -6,7 +6,7 @@ import ClonamivozAdminTab from '../components/admin/ClonamivozAdminTab';
 import SmsInboxTab from '../components/admin/SmsInboxTab';
 import BotTrainingTab from '../components/admin/BotTrainingTab';
 import CsInsightsTab from '../components/admin/CsInsightsTab';
-import NeedsApprovalTab from '../components/admin/NeedsApprovalTab';
+import NeedsApprovalTab, { AnimadoAdmin } from '../components/admin/NeedsApprovalTab';
 import FixQueue from '../components/admin/FixQueue';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
@@ -1617,7 +1617,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animadolikeness', 'animadofinal', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio'];
+    const valid = ['orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio'];
     return valid.includes(tab) ? tab : 'orders';
   });
   // Toast notifications — replaces blocking window.alert() popups. showToast
@@ -3769,11 +3769,8 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('clonamivoz')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clonamivoz' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Mic size={18} className={`flex-shrink-0 ${activeTab === 'clonamivoz' ? 'text-amber-400' : ''}`} /> Clone Mi Voz
         </button>
-        <button onClick={() => setActiveTab('animadolikeness')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadolikeness' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadolikeness' ? 'text-amber-400' : ''}`} /> Animated: Likeness
-        </button>
-        <button onClick={() => setActiveTab('animadofinal')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animadofinal' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animadofinal' ? 'text-amber-400' : ''}`} /> Animated: Final Video
+        <button onClick={() => setActiveTab('animado')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'animado' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Film size={18} className={`flex-shrink-0 ${activeTab === 'animado' ? 'text-amber-400' : ''}`} /> Animado&trade;
         </button>
         <button onClick={() => setActiveTab('videos')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'videos' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Video size={18} className={`flex-shrink-0 ${activeTab === 'videos' ? 'text-amber-400' : ''}`} /> Videos (Slideshow)
@@ -3880,7 +3877,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animadolikeness: 'Animated: Likeness', animadofinal: 'Animated: Final Video', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -4438,24 +4435,14 @@ export default function AdminDashboard() {
                 🎙️ Clone Mi Voz
               </button>
               <button
-                onClick={() => setActiveTab('animadolikeness')}
+                onClick={() => setActiveTab('animado')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
-                  activeTab === 'animadolikeness'
+                  activeTab === 'animado'
                     ? 'bg-fuchsia-500 text-white'
                     : 'bg-white/5 text-gray-400 hover:bg-white/10'
                 }`}
               >
-                🎬 Animated: Likeness
-              </button>
-              <button
-                onClick={() => setActiveTab('animadofinal')}
-                className={`px-5 py-2.5 rounded-xl font-medium transition ${
-                  activeTab === 'animadofinal'
-                    ? 'bg-fuchsia-500 text-white'
-                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                }`}
-              >
-                🎞️ Animated: Final Video
+                🎬 Animado&trade;
               </button>
               <button
                 onClick={() => setActiveTab('videos')}
@@ -6306,13 +6293,9 @@ export default function AdminDashboard() {
              and fix one part via fix-song-section (Whisper + Claude + Kie
              replace-section). Self-contained component. */
           <FixSongTab accessToken={accessToken} showToast={showToast} />
-        ) : activeTab === 'animadolikeness' ? (
-          /* Animado Gate 1 — pick 1 of 2 likeness options (original photo shown
-             for comparison). admin-story-videos edge function. */
-          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} gate="likeness" />
-        ) : activeTab === 'animadofinal' ? (
-          /* Animado Gate 2 — review + approve/reject the final auto-built video. */
-          <NeedsApprovalTab accessToken={accessToken} showToast={showToast} gate="final" />
+        ) : activeTab === 'animado' ? (
+          /* Animado™ — both gates housed as sub-tabs (Likeness / Final Video). */
+          <AnimadoAdmin accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'videos' ? (
           /* Videos (slideshow $9.99) — list paid videos + links, surface
              failed/stuck ones with retry, search any customer. admin-videos fn. */
