@@ -388,6 +388,7 @@ function faceCropExpr(keyframes) {
 // ---------------------------------------------------------------------------
 const SERIF = process.env.SERIF_PATH || path.join(__dirname, 'assets', 'serif.ttf');
 const LOGO = process.env.LOGO_PATH || path.join(__dirname, 'assets', 'logo.png');
+const WHOOSH = process.env.WHOOSH_PATH || path.join(__dirname, 'assets', 'whoosh.mp3');
 
 // ---------------------------------------------------------------------------
 // Brand outro (options.outro): a 2.8s end-card — RQC logo + site on the brand
@@ -605,11 +606,11 @@ async function renderClip(job, { dir, log }) {
     }
   }
 
-  // Zoom layer: the subtle push-in and/or punch zooms share one zoompan pass.
-  // Punch zooms = a fast 8% hook zoom over the first ~2s (in by 0.35s, eased
-  // out by 2s) plus short 4.5% camera "hits" on each emphasized word (their
-  // post-cut start times are already on the words). t = on/30 (zoompan emits
-  // 30fps itself).
+  // Zoom layer: the subtle push-in and/or the hook zoom share one zoompan pass.
+  // Hook zoom (opts.punch_zooms) = an exaggerated 15% zoom-in over the first
+  // 0.3s that eases back out by ~1.8s, INTRO ONLY (owner: no hits later in
+  // the clip), paired with a whoosh mixed into the audio below.
+  // t = on/30 (zoompan emits 30fps itself).
   const punch = !!opts.punch_zooms;
   let zoomStage = 'fps=30';
   if (opts.zoom || punch) {
@@ -617,20 +618,8 @@ async function renderClip(job, { dir, log }) {
     const zterms = [];
     zterms.push(opts.zoom ? 'min(1+0.0008*on,1.12)' : '1');
     if (punch) {
-      zterms.push(`0.08*(min(max(${t}/0.35,0),1)-min(max((${t}-1.3)/0.7,0),1))`);
-      const punchTimes = [];
-      for (const w of words) {
-        if (!w.emp) continue;
-        const T = Number(w.start);
-        if (T < 2.2 || T > outDur - 0.6) continue;                     // clear of hook + tail
-        if (punchTimes.length && T - punchTimes[punchTimes.length - 1] < 0.6) continue;
-        punchTimes.push(Math.round(T * 100) / 100);
-        if (punchTimes.length >= 12) break;
-      }
-      for (const T of punchTimes) {
-        zterms.push(`0.045*between(${t},${T},${T + 0.32})*(1-(${t}-${T})/0.32)`);
-      }
-      log(`punch zooms: hook + ${punchTimes.length} word hits`);
+      zterms.push(`0.15*(min(max(${t}/0.3,0),1)-min(max((${t}-0.9)/0.9,0),1))`);
+      log('hook zoom: 15% intro punch');
     }
     // fps=30 FIRST: zoompan stamps its output at fps regardless of input
     // timing, so a non-30fps source (DJI shoots 25!) would play 30/25 too
@@ -788,12 +777,24 @@ async function renderClip(job, { dir, log }) {
     audioLabel = '[afx]';
   }
 
+  // Hook-zoom whoosh: the intro punch gets its swoosh (built-in asset, mixed
+  // under the speech at the very start).
+  const withHookWhoosh = punch && !!audioLabel;
+  if (withHookWhoosh) {
+    fs.copyFileSync(WHOOSH, path.join(dir, 'hook-whoosh.mp3'));
+    const hwIdx = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0);
+    parts.push(`[${hwIdx}:a]volume=0.5[hw]`);
+    parts.push(`${audioLabel}[hw]amix=inputs=2:duration=first:normalize=0[ahw]`);
+    audioLabel = '[ahw]';
+  }
+
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
   broll.forEach((_, i) => args.push('-i', `broll${i}.mp4`));
   if (withWatermark) args.push('-i', 'wm.png'); // index = wmIdx (right after b-roll)
   if (withSfx) args.push('-i', 'sfx.mp3');
+  if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');

@@ -769,7 +769,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
                       ['clean', 'Clean audio', 'reduce background noise in the voice'],
                       ['outro', 'Brand outro', 'adds a 3s end-card: RQC logo + regalosquecantan.com'],
-                      ['punch', 'Punch zooms', 'quick zoom hook in the first 2s + camera hits on the gold key words'],
+                      ['punch', 'Hook zoom', 'exaggerated zoom-in with a whoosh in the first seconds — intro only'],
                       ['progress', 'Progress bar', 'thin gold bar fills along the bottom as the clip plays'],
                       ['watermark', 'Corner logo', 'small translucent RQC logo in the top corner the whole clip'],
                     ].map(([key, name, desc]) => (
