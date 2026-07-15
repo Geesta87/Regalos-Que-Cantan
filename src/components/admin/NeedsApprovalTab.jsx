@@ -92,10 +92,17 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
             <div className="space-y-4">
               {likeness.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="text-white font-semibold">{o.recipient}</div>
-                    <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
-                      className="text-xs text-gray-400 hover:text-rose-400">Reject / request another photo</button>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <button onClick={() => act(o.id, 'redo_likeness')} disabled={busy}
+                        className="text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-50"
+                        title="Regenerate the 2 options from the same photo">
+                        {busy === `${o.id}:redo_likeness` ? '…' : '↻ Redo likeness'}
+                      </button>
+                      <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
+                        className="text-xs text-gray-400 hover:text-rose-400 disabled:opacity-50">Reject / request another photo</button>
+                    </div>
                   </div>
                   <Assumptions items={o.assumptions} />
                   <p className="text-xs text-gray-500 mb-2">Compare against the real photo and pick the closest likeness:</p>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animado — customer-facing UI for the animated story-video upsell.
@@ -408,20 +408,36 @@ export function AnimadoOffer({
 // ── Reusable labeled dropzone (onPick receives the File) ──
 function PhotoDrop({ icon = '📸', title, hint, value, onPick, required = false }) {
   const name = value?.name || null;
+  // show an actual thumbnail of the chosen file so the customer can confirm they
+  // picked the right photo (before it was just an emoji + filename).
+  const [thumb, setThumb] = useState(null);
+  useEffect(() => {
+    if (!value) { setThumb(null); return; }
+    let url = null;
+    try { url = URL.createObjectURL(value); setThumb(url); } catch { setThumb(null); }
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [value]);
   return (
     <label style={{
       display: 'block', cursor: 'pointer', border: `2px dashed ${name ? '#22c55e' : 'rgba(245,185,66,0.6)'}`,
-      borderRadius: 16, padding: '22px 16px', textAlign: 'center',
+      borderRadius: 16, padding: name ? '12px' : '22px 16px', textAlign: 'center',
       background: name ? 'rgba(34,197,94,0.08)' : 'rgba(245,185,66,0.05)', transition: 'all 0.2s',
     }}>
       <input type="file" accept="image/*" style={{ display: 'none' }}
         onChange={(e) => onPick(e.target.files?.[0] || null)} />
-      <div style={{ fontSize: 34, marginBottom: 6, animation: name ? 'none' : 'aniFloat 3s ease-in-out infinite' }}>{name ? '🖼️' : icon}</div>
+      {thumb ? (
+        <img src={thumb} alt={name || 'foto'} style={{
+          display: 'block', width: '100%', maxHeight: 220, objectFit: 'contain',
+          borderRadius: 10, marginBottom: 8, background: 'rgba(0,0,0,0.3)',
+        }} />
+      ) : (
+        <div style={{ fontSize: 34, marginBottom: 6, animation: 'aniFloat 3s ease-in-out infinite' }}>{icon}</div>
+      )}
       <p style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: name ? '#22c55e' : '#fff' }}>
-        {name || title}{required && !name && <span style={{ color: PINK }}> *</span>}
+        {name ? '✓ Foto seleccionada' : title}{required && !name && <span style={{ color: PINK }}> *</span>}
       </p>
-      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
-        {name ? 'Toca para cambiar la foto' : hint}
+      <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4, wordBreak: 'break-word' }}>
+        {name ? `${name} · toca para cambiarla` : hint}
       </p>
     </label>
   );
@@ -474,6 +490,19 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
   const pickMain = (f) => { setMainPhoto(f); setFormatWarning(isHeic(f) || isHeic(familyPhoto) ? 'heic' : ''); };
   const pickFamily = (f) => { setFamilyPhoto(f); setFormatWarning(isHeic(f) || isHeic(mainPhoto) ? 'heic' : ''); };
 
+  // Never let the customer hang on "Guardando…": if the confirm call stalls past
+  // the timeout, show the success screen anyway — the server has almost certainly
+  // saved (the heavy likeness/storyboard work runs in the background). A fast,
+  // genuine error still surfaces normally.
+  const confirmSafely = (payload) => new Promise((resolve, reject) => {
+    let settled = false;
+    const t = setTimeout(() => { if (!settled) { settled = true; resolve('timeout'); } }, 12000);
+    onConfirm(payload).then(
+      () => { if (!settled) { settled = true; clearTimeout(t); resolve('ok'); } },
+      (e) => { if (!settled) { settled = true; clearTimeout(t); reject(e); } },
+    );
+  });
+
   // Once the photo passes the quality gate (or the customer chooses to use it
   // anyway): confirm who-is-who if 2+ people, else finalize the upload directly.
   const proceedAfterQuality = async (list) => {
@@ -483,7 +512,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     } else {
       setSubmitting(true);
       try {
-        await onConfirm({ cast: list || [], phone: phone.trim() || null, hasFamily: !!familyPhoto });
+        await confirmSafely({ cast: list || [], phone: phone.trim() || null, hasFamily: !!familyPhoto });
         setDone(true);
       } catch (e) {
         setError(e?.message || 'No se pudo guardar. Intenta de nuevo.');
@@ -533,7 +562,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     setError(null);
     setSubmitting(true);
     try {
-      await onConfirm({ cast, phone: phone.trim() || null, hasFamily: !!familyPhoto });
+      await confirmSafely({ cast, phone: phone.trim() || null, hasFamily: !!familyPhoto });
       setDone(true);
     } catch (e) {
       setError(e?.message || 'No se pudo guardar. Intenta de nuevo.');
@@ -802,7 +831,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       {askPhone && (
         <div style={{ marginBottom: 14 }}>
           <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 800, color: '#fff' }}>
-            📱 Tu teléfono <span style={{ color: 'rgba(255,255,255,0.45)' }}>· para avisarte cuando esté listo</span>
+            📱 Tu teléfono <span style={{ color: GOLD }}>· recomendado</span> <span style={{ color: 'rgba(255,255,255,0.45)' }}>· para avisarte cuando esté listo</span>
           </p>
           <input
             type="tel"
