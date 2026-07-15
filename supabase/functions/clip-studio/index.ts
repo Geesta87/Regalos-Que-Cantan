@@ -353,6 +353,9 @@ serve(async (req) => {
         transitions: rawOpts.transitions !== false,
         clean_audio: !!rawOpts.clean_audio,
         outro: !!rawOpts.outro,
+        punch_zooms: !!rawOpts.punch_zooms,
+        progress_bar: !!rawOpts.progress_bar,
+        watermark: !!rawOpts.watermark,
         // Specific track from the music library ('' / null = random pick)
         music_track: typeof rawOpts.music_track === 'string' && rawOpts.music_track
           ? rawOpts.music_track.replace(/[^a-z0-9._-]/gi, '_').slice(0, 80) : null,

@@ -605,13 +605,36 @@ async function renderClip(job, { dir, log }) {
     }
   }
 
-  const post = [
-    // Subtle push-in: ~+2.4%/s, capped at 112%. zoompan emits 30fps itself.
-    opts.zoom
-      ? `zoompan=z='min(1+0.0008*on,1.12)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`
-      : 'fps=30',
-    'subtitles=captions.ass',
-  ].join(',');
+  // Zoom layer: the subtle push-in and/or punch zooms share one zoompan pass.
+  // Punch zooms = a fast 8% hook zoom over the first ~2s (in by 0.35s, eased
+  // out by 2s) plus short 4.5% camera "hits" on each emphasized word (their
+  // post-cut start times are already on the words). t = on/30 (zoompan emits
+  // 30fps itself).
+  const punch = !!opts.punch_zooms;
+  let zoomStage = 'fps=30';
+  if (opts.zoom || punch) {
+    const t = '(on/30)';
+    const zterms = [];
+    zterms.push(opts.zoom ? 'min(1+0.0008*on,1.12)' : '1');
+    if (punch) {
+      zterms.push(`0.08*(min(max(${t}/0.35,0),1)-min(max((${t}-1.3)/0.7,0),1))`);
+      const punchTimes = [];
+      for (const w of words) {
+        if (!w.emp) continue;
+        const T = Number(w.start);
+        if (T < 2.2 || T > outDur - 0.6) continue;                     // clear of hook + tail
+        if (punchTimes.length && T - punchTimes[punchTimes.length - 1] < 0.6) continue;
+        punchTimes.push(Math.round(T * 100) / 100);
+        if (punchTimes.length >= 12) break;
+      }
+      for (const T of punchTimes) {
+        zterms.push(`0.045*between(${t},${T},${T + 0.32})*(1-(${t}-${T})/0.32)`);
+      }
+      log(`punch zooms: hook + ${punchTimes.length} word hits`);
+    }
+    zoomStage = `zoompan=z='min(${zterms.join('+')},1.25)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`;
+  }
+  const post = [zoomStage, 'subtitles=captions.ass'].join(',');
 
   const hasAudio = (() => {
     try {
@@ -700,7 +723,31 @@ async function renderClip(job, { dir, log }) {
     parts.push(`[${vbase}][bb${i}]overlay=enable='between(t,${b.s.toFixed(3)},${b.e.toFixed(3)})':eof_action=pass[ov${i}]`);
     vbase = `ov${i}`;
   });
-  parts.push(`[${vbase}]${post}[vout]`);
+  // Captions render, then brand layers on top of EVERYTHING (b-roll included):
+  // corner watermark first, progress bar last so it's never covered.
+  const withWatermark = !!opts.watermark;
+  const withProgress = !!opts.progress_bar;
+  // wm.png is pushed as an input right after the b-roll files (before sfx),
+  // so its index never depends on the audio decisions made further down.
+  const wmIdx = brollInputBase + broll.length;
+  let vfinal = 'vsub';
+  parts.push(`[${vbase}]${post}[vsub]`);
+  if (withWatermark) {
+    fs.copyFileSync(LOGO, path.join(dir, 'wm.png'));
+    parts.push(`[${wmIdx}:v]scale=${Math.round(geo.w * 0.13)}:-1,format=rgba,colorchannelmixer=aa=0.55[wm]`);
+    parts.push(`[${vfinal}][wm]overlay=W-w-${Math.round(geo.w * 0.03)}:${Math.round(geo.w * 0.03)}[vwm]`);
+    vfinal = 'vwm';
+  }
+  if (withProgress) {
+    // Gold bar slides in from the left and fills exactly at the end. overlay
+    // x is evaluated per frame; the bar source is bounded to the clip length
+    // (an unbounded color source would stall the graph at EOF).
+    const barH = Math.max(6, Math.round(geo.h * 0.007));
+    parts.push(`color=c=0xD4AF37@0.85:s=${geo.w}x${barH}:r=30:d=${outDur.toFixed(3)}[pbar]`);
+    parts.push(`[${vfinal}][pbar]overlay=x='-W+W*min(t/${outDur.toFixed(3)},1)':y=${geo.h - barH}:eof_action=pass[vpb]`);
+    vfinal = 'vpb';
+  }
+  parts.push(`[${vfinal}]null[vout]`);
 
   // Music bed: looped track as a second input, volume-dropped and side-chain
   // ducked under the speech, then mixed back in (no re-normalizing).
@@ -725,7 +772,7 @@ async function renderClip(job, { dir, log }) {
   const withSfx = fx && !!job.sfx_url && broll.length > 0 && audioLabel;
   if (withSfx) {
     await download(job.sfx_url, path.join(dir, 'sfx.mp3'));
-    const sfxIdx = brollInputBase + broll.length;
+    const sfxIdx = brollInputBase + broll.length + (withWatermark ? 1 : 0);
     parts.push(`[${sfxIdx}:a]asplit=${broll.length}${broll.map((_, i) => `[w${i}]`).join('')}`);
     const wRefs = broll.map((b, i) => {
       const ms = Math.max(0, Math.round((b.s - 0.12) * 1000));
@@ -740,6 +787,7 @@ async function renderClip(job, { dir, log }) {
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
   broll.forEach((_, i) => args.push('-i', `broll${i}.mp4`));
+  if (withWatermark) args.push('-i', 'wm.png'); // index = wmIdx (right after b-roll)
   if (withSfx) args.push('-i', 'sfx.mp3');
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
