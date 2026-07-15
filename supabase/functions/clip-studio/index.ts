@@ -352,6 +352,9 @@ serve(async (req) => {
         broll: !!rawOpts.broll,
         transitions: rawOpts.transitions !== false,
         clean_audio: !!rawOpts.clean_audio,
+        // Specific track from the music library ('' / null = random pick)
+        music_track: typeof rawOpts.music_track === 'string' && rawOpts.music_track
+          ? rawOpts.music_track.replace(/[^a-z0-9._-]/gi, '_').slice(0, 80) : null,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
@@ -387,13 +390,18 @@ serve(async (req) => {
         if (whoosh) sfx_url = admin.storage.from(BUCKET).getPublicUrl(`sfx/${whoosh.name}`).data.publicUrl;
       }
 
-      // Music bed: pick a random track from the clip-studio/music library.
+      // Music bed: the chosen library track, or a random one if none picked.
       let music_url: string | null = null;
       if (options.music) {
         const { data: tracks } = await admin.storage.from(BUCKET).list('music');
         const mp3s = (tracks || []).filter((f: any) => /\.(mp3|m4a|aac)$/i.test(f.name || ''));
         if (!mp3s.length) throw new Error('The music library is empty — use "Music library" on the Clip Studio home screen to upload an MP3 first');
-        const pick = mp3s[Math.floor(Math.random() * mp3s.length)];
+        let pick = mp3s[Math.floor(Math.random() * mp3s.length)];
+        if (options.music_track) {
+          const chosen = mp3s.find((f: any) => f.name === options.music_track);
+          if (!chosen) throw new Error(`"${options.music_track}" is no longer in the music library — pick another track`);
+          pick = chosen;
+        }
         music_url = admin.storage.from(BUCKET).getPublicUrl(`music/${pick.name}`).data.publicUrl;
       }
 

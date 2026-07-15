@@ -12,3 +12,4 @@ node_modules
 
 # In-house FFmpeg video-renderer POC: large test renders + downloaded order assets (never commit)
 video-poc/
+supabase/.temp/

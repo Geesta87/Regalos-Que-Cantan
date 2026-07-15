@@ -45,6 +45,37 @@ serve(async (req) => {
   const report: Record<string, unknown> = {};
 
   try {
+    // ---- 0. seed the music library (once) ---------------------------------
+    // If the library is EMPTY, install one instrumental per top-selling style
+    // (real extracted stems from the karaoke upsell) as the starting template
+    // set. Only fires on an empty folder, so owner deletions stick.
+    const SEED_TRACKS: Array<{ name: string; url: string }> = [
+      { name: 'instrumental-romantica.mp3', url: 'https://www.regalosquecantan.com/karaoke/b9e8b684-891b-4db4-b994-7d8d4a33edeb.mp3' },
+      { name: 'instrumental-corrido.mp3',   url: 'https://www.regalosquecantan.com/karaoke/a6248058-b3e3-4238-98b0-f5a807741110.mp3' },
+      { name: 'instrumental-banda.mp3',     url: 'https://www.regalosquecantan.com/karaoke/1c7fa8ef-dbae-462c-bed8-8939e456ed0f.mp3' },
+      { name: 'instrumental-balada.mp3',    url: 'https://www.regalosquecantan.com/karaoke/55ec114d-ea0f-4c53-9d44-ab66f97a58eb.mp3' },
+      { name: 'instrumental-ranchera.mp3',  url: 'https://www.regalosquecantan.com/karaoke/5526d8b2-a9c0-4216-8f1e-15d5863dde24.mp3' },
+    ];
+    const { data: existingMusic } = await admin.storage.from(BUCKET).list('music');
+    const hasTracks = (existingMusic || []).some((f: any) => /\.(mp3|m4a|aac)$/i.test(f.name || ''));
+    if (!hasTracks) {
+      const seeded: string[] = [];
+      for (const t of SEED_TRACKS) {
+        try {
+          const res = await fetch(t.url);
+          if (!res.ok) throw new Error(`fetch ${res.status}`);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const { error: upErr } = await admin.storage.from(BUCKET)
+            .upload(`music/${t.name}`, bytes, { contentType: 'audio/mpeg', upsert: true });
+          if (upErr) throw new Error(upErr.message);
+          seeded.push(t.name);
+        } catch (e) {
+          console.warn(`music seed ${t.name} failed:`, (e as Error).message);
+        }
+      }
+      if (seeded.length) report.music_seeded = seeded;
+    }
+
     // ---- 1. stuck clip renders -------------------------------------------
     const { data: stuckClips } = await admin.from('clips')
       .select('*')

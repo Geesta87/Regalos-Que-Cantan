@@ -112,6 +112,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
     framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false,
+    musicTrack: '', // '' = random pick from the library
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -231,7 +232,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           aspect: form.aspect, style: form.style, label: s.title,
           options: {
             framing: form.framing, remove_silences: true, zoom: form.zoom,
-            hook_title: true, emphasis: true, music: form.music,
+            hook_title: true, emphasis: true, music: form.music, music_track: form.musicTrack || null,
             broll: form.broll, transitions: form.fx, clean_audio: form.clean,
           },
         });
@@ -292,7 +293,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, broll: form.broll, transitions: form.fx, clean_audio: form.clean },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -406,6 +407,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       framing: o.framing || 'auto', silences: !!o.remove_silences, zoom: !!o.zoom,
       hook: !!o.hook_title, emphasis: o.emphasis !== false, music: !!o.music,
       broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio,
+      musicTrack: o.music_track || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast?.('Clip settings loaded — change anything and press Generate');
@@ -764,12 +766,34 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
                       ['clean', 'Clean audio', 'reduce background noise in the voice'],
                     ].map(([key, name, desc]) => (
-                      <label key={key} className="flex items-start gap-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={form[key]}
-                          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
-                          className="mt-0.5 accent-indigo-600" />
-                        <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
-                      </label>
+                      <React.Fragment key={key}>
+                        <label className="flex items-start gap-2 cursor-pointer select-none">
+                          <input type="checkbox" checked={form[key]}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setForm((f) => ({ ...f, [key]: checked }));
+                              if (key === 'music' && checked && tracks === null) refreshTracks();
+                            }}
+                            className="mt-0.5 accent-indigo-600" />
+                          <span className="text-sm text-gray-700">{name} <span className="text-[11px] text-gray-400">— {desc}</span></span>
+                        </label>
+                        {key === 'music' && form.music && (
+                          <div className="ml-6 mb-1">
+                            <select
+                              value={form.musicTrack}
+                              onChange={(e) => setForm((f) => ({ ...f, musicTrack: e.target.value }))}
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                              <option value="">Surprise me — random track</option>
+                              {(tracks || []).map((name) => (
+                                <option key={name} value={name}>
+                                  {name.replace(/^instrumental-/, '').replace(/\.(mp3|m4a|aac)$/i, '')}
+                                </option>
+                              ))}
+                            </select>
+                            {tracks === null && <p className="text-[11px] text-gray-400 mt-1">Loading your music library…</p>}
+                          </div>
+                        )}
+                      </React.Fragment>
                     ))}
                   </div>
                 </>
