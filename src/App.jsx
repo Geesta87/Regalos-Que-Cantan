@@ -55,6 +55,7 @@ import ClonaMiVoz from './pages/ClonaMiVoz';
 import StorePage from './pages/StorePage';
 import PackReadyPage from './pages/PackReadyPage';
 import AnimadoUpsell from './pages/AnimadoUpsell';
+import PaqueteLanding from './pages/PaqueteLanding';
 import OneTapUpsellDemo from './components/OneTapUpsell';
 import { captureAffiliateRef } from './services/tracking';
 
@@ -115,6 +116,7 @@ const pathToPage = {
   '/sms-consent-marketing-preview': 'smsConsentMarketingPreview',
   '/clonamivoz': 'clonamivoz',
   '/tienda': 'store',
+  '/paquete': 'paquete',
   '/pack-listo': 'packReady',
   '/animado-demo': 'animadoDemo',
   '/upsell-demo': 'upsellDemo'
@@ -331,6 +333,7 @@ export default function App() {
       smsConsentMarketingPreview: '/sms-consent-marketing-preview',
       clonamivoz: '/clonamivoz',
       store: '/tienda',
+      paquete: '/paquete',
       packReady: '/pack-listo'
     };
 
@@ -446,6 +449,9 @@ export default function App() {
 
           {/* Store — e-commerce catalog of the song + all upsells (/tienda) */}
           {currentPage === 'store' && <StorePage />}
+
+          {/* Paquete — bundle landing: song + Animado video in one page (/paquete) */}
+          {currentPage === 'paquete' && <PaqueteLanding />}
 
           {/* 3-song pack post-purchase confirmation (/pack-listo) */}
           {currentPage === 'packReady' && <PackReadyPage />}
