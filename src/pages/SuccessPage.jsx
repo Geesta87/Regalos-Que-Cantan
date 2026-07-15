@@ -519,8 +519,11 @@ export default function SuccessPage() {
       const { data } = await supabase.functions.invoke('animado-photo', {
         body: { action: 'analyze', story_video_order_id: orderId, has_family: !!familyFile },
       });
-      return Array.isArray(data?.cast) ? data.cast : [];
-    } catch { return []; }
+      return {
+        cast: Array.isArray(data?.cast) ? data.cast : [],
+        quality: data?.quality || { usable: true, issues: [] },
+      };
+    } catch { return { cast: [], quality: { usable: true, issues: [] } }; }
   };
 
   // Confirm the (possibly customer-edited) cast and finalize the upload.
