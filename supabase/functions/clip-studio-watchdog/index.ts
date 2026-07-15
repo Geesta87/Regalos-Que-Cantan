@@ -27,7 +27,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const MAX_ATTEMPTS = 2;           // dispatch attempts before a clip is marked failed
-const STUCK_CLIP_MIN = 8;         // minutes without a callback before a render counts as stuck
+// The renderer works its queue ONE job at a time, and dispatched_at is stamped
+// at dispatch — so this window must cover queue wait + render for a full
+// auto-clip batch (up to 8 clips × ~2-3 min), not just one render.
+const STUCK_CLIP_MIN = 20;        // minutes without a callback before a render counts as stuck
 const STUCK_PROJECT_MIN = 30;     // minutes before preparing/transcribing counts as stuck
 const PURGE_AFTER_DAYS = 14;      // source cleanup age
 const PURGE_PER_RUN = 2;
