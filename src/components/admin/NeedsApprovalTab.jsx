@@ -45,6 +45,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
   }
 
   const likeness = orders.filter((o) => o.state === 'likeness_review');
+  const regenLikeness = orders.filter((o) => o.state === 'generating_likeness'); // redo in progress
   const finals = orders.filter((o) => o.state === 'final_review');
   const rebuilding = orders.filter((o) => o.state === 'building');
   const failed = orders.filter((o) => o.state === 'failed');
@@ -56,12 +57,14 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
     .sort((a, b) => new Date(b.approved_character_at || b.updated_at) - new Date(a.approved_character_at || a.updated_at));
   const isLikeness = gate === 'likeness';
 
-  // auto-refresh while something is rebuilding so the finished video pops in by itself
+  // auto-refresh while in-progress work exists for THIS gate, so finished results
+  // pop in by themselves: regenerating likenesses (gate 1) or building videos (gate 2).
   useEffect(() => {
-    if (isLikeness || rebuilding.length === 0) return;
-    const t = setInterval(load, 60000);
+    const inProgress = isLikeness ? regenLikeness.length : rebuilding.length;
+    if (inProgress === 0) return;
+    const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [isLikeness, rebuilding.length, load]);
+  }, [isLikeness, regenLikeness.length, rebuilding.length, load]);
 
   const minsAgo = (ts) => Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
 
@@ -74,7 +77,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
           </h2>
           <p className="text-sm text-gray-400">
             {isLikeness
-              ? `${likeness.length} likeness(es) pending`
+              ? `${likeness.length} likeness(es) pending${regenLikeness.length ? ` · ${regenLikeness.length} regenerating` : ''}`
               : `${finals.length} video(s) to review${rebuilding.length ? ` · ${rebuilding.length} building` : ''}${failed.length ? ` · ${failed.length} failed` : ''}`}
           </p>
         </div>
@@ -87,8 +90,18 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
 
       {/* GATE 1 — pick the likeness (compare the 2 options against the original photo) */}
       {isLikeness && (
-        <section>
-          {likeness.length === 0 ? <Empty text="No likenesses pending." /> : (
+        <section className="space-y-4">
+          {/* redo in progress — shows so a regenerating likeness never just vanishes */}
+          {regenLikeness.map((o) => (
+            <div key={o.id} className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-center gap-3">
+              <div className="animate-spin h-5 w-5 border-2 border-amber-400 border-t-transparent rounded-full flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-200">{o.recipient} — regenerating likeness…</p>
+                <p className="text-xs text-amber-300/70">New options usually ready in under a minute · they appear here by themselves.</p>
+              </div>
+            </div>
+          ))}
+          {likeness.length === 0 && regenLikeness.length === 0 ? <Empty text="No likenesses pending." /> : likeness.length === 0 ? null : (
             <div className="space-y-4">
               {likeness.map((o) => (
                 <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
