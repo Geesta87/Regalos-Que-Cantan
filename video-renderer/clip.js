@@ -387,6 +387,69 @@ function faceCropExpr(keyframes) {
 // karaoke captions from the song's word timestamps, brand end-card, audio fades.
 // ---------------------------------------------------------------------------
 const SERIF = process.env.SERIF_PATH || path.join(__dirname, 'assets', 'serif.ttf');
+const LOGO = process.env.LOGO_PATH || path.join(__dirname, 'assets', 'logo.png');
+
+// ---------------------------------------------------------------------------
+// Brand outro (options.outro): a 2.8s end-card — RQC logo + site on the brand
+// green — encoded with the exact same settings as the main clip so the two
+// concat via stream copy (no full re-encode). Falls back to a re-encoding
+// concat if the copy is rejected.
+// ---------------------------------------------------------------------------
+const OUTRO_SEC = 2.8;
+
+function probeAudio(dir, file) {
+  try {
+    const out = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=sample_rate,channels', '-of', 'csv=p=0', file],
+      { cwd: dir },
+    ).toString().trim();
+    if (!out) return null;
+    const [sr, ch] = out.split(',').map((n) => parseInt(n, 10));
+    return sr && ch ? { sampleRate: sr, channels: ch } : null;
+  } catch { return null; }
+}
+
+function appendBrandOutro(dir, geo, log) {
+  // Work with local copies so font/logo paths need no ffmpeg escaping.
+  fs.copyFileSync(LOGO, path.join(dir, 'outro-logo.png'));
+  fs.copyFileSync(SERIF, path.join(dir, 'outro-serif.ttf'));
+  const audio = probeAudio(dir, 'clip.mp4');
+
+  const logoW = Math.round(geo.w * 0.42);
+  const textSize = Math.round(geo.w * 0.052);
+  const logoY = `(H-h)/2-${Math.round(geo.h * 0.06)}`;
+  const textY = `(h-text_h)/2+${Math.round(geo.h * 0.17)}`;
+  const filter = [
+    `[1:v]scale=${logoW}:-1[logo]`,
+    `[0:v][logo]overlay=(W-w)/2:${logoY}[bg]`,
+    `[bg]drawtext=fontfile=outro-serif.ttf:text='regalosquecantan.com':fontcolor=0xD4AF37:fontsize=${textSize}:x=(w-text_w)/2:y=${textY},fade=t=in:st=0:d=0.3,fps=30[vout]`,
+  ].join(';');
+
+  const args = [
+    '-f', 'lavfi', '-i', `color=c=0x1A4338:s=${geo.w}x${geo.h}:r=30:d=${OUTRO_SEC}`,
+    '-i', 'outro-logo.png',
+  ];
+  if (audio) args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=${audio.channels === 1 ? 'mono' : 'stereo'}:sample_rate=${audio.sampleRate}`);
+  args.push('-filter_complex', filter, '-map', '[vout]');
+  if (audio) args.push('-map', '2:a', '-t', String(OUTRO_SEC), '-c:a', 'aac', '-b:a', '192k');
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'outro.mp4');
+  ff(dir, args);
+
+  fs.renameSync(path.join(dir, 'clip.mp4'), path.join(dir, 'main.mp4'));
+  fs.writeFileSync(path.join(dir, 'list.txt'), "file 'main.mp4'\nfile 'outro.mp4'\n");
+  try {
+    ff(dir, ['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', 'clip.mp4']);
+  } catch (e) {
+    log(`outro copy-concat rejected (${e.message.slice(0, 80)}) — re-encoding join`);
+    const re = ['-f', 'concat', '-safe', '0', '-i', 'list.txt',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p'];
+    if (audio) re.push('-c:a', 'aac', '-b:a', '192k');
+    re.push('-movflags', '+faststart', 'clip.mp4');
+    ff(dir, re);
+  }
+  log(`brand outro appended (+${OUTRO_SEC}s)`);
+}
 const drawEsc = (s) => String(s).replace(/\\/g, '').replace(/'/g, '’').replace(/[:%,]/g, ' ').trim();
 
 async function renderTeaser(job, { dir, log }) {
@@ -681,7 +744,12 @@ async function renderClip(job, { dir, log }) {
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
   ff(dir, args);
 
+  if (opts.outro) {
+    appendBrandOutro(dir, geo, log);
+    outDur += OUTRO_SEC;
+  }
+
   return { finalPath: outPath, durationSec: outDur };
 }
 
-module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords, decideFraming };
+module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords, decideFraming, appendBrandOutro };

@@ -111,7 +111,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false,
+    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
     musicTrack: '', // '' = random pick from the library
   });
   const [rendering, setRendering] = useState(false);
@@ -233,7 +233,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           options: {
             framing: form.framing, remove_silences: true, zoom: form.zoom,
             hook_title: true, emphasis: true, music: form.music, music_track: form.musicTrack || null,
-            broll: form.broll, transitions: form.fx, clean_audio: form.clean,
+            broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro,
           },
         });
         n++;
@@ -293,7 +293,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -406,7 +406,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       aspect: clip.aspect, style: clip.style, label: clip.label || '',
       framing: o.framing || 'auto', silences: !!o.remove_silences, zoom: !!o.zoom,
       hook: !!o.hook_title, emphasis: o.emphasis !== false, music: !!o.music,
-      broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio,
+      broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio, outro: !!o.outro,
       musicTrack: o.music_track || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -765,6 +765,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
                       ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
                       ['clean', 'Clean audio', 'reduce background noise in the voice'],
+                      ['outro', 'Brand outro', 'adds a 3s end-card: RQC logo + regalosquecantan.com'],
                     ].map(([key, name, desc]) => (
                       <React.Fragment key={key}>
                         <label className="flex items-start gap-2 cursor-pointer select-none">
