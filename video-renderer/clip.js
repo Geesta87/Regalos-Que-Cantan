@@ -416,18 +416,20 @@ function appendBrandOutro(dir, geo, log) {
   fs.copyFileSync(SERIF, path.join(dir, 'outro-serif.ttf'));
   const audio = probeAudio(dir, 'clip.mp4');
 
-  const logoW = Math.round(geo.w * 0.42);
-  const textSize = Math.round(geo.w * 0.052);
-  const logoY = `(H-h)/2-${Math.round(geo.h * 0.06)}`;
-  const textY = `(h-text_h)/2+${Math.round(geo.h * 0.17)}`;
+  // White card so the full-color circular badge sits naturally; site name in
+  // the logo's own navy underneath.
+  const logoW = Math.round(geo.w * 0.46);
+  const textSize = Math.round(geo.w * 0.05);
+  const logoY = `(H-h)/2-${Math.round(geo.h * 0.05)}`;
+  const textY = `(h-text_h)/2+${Math.round(geo.h * 0.16)}`;
   const filter = [
     `[1:v]scale=${logoW}:-1[logo]`,
     `[0:v][logo]overlay=(W-w)/2:${logoY}[bg]`,
-    `[bg]drawtext=fontfile=outro-serif.ttf:text='regalosquecantan.com':fontcolor=0xD4AF37:fontsize=${textSize}:x=(w-text_w)/2:y=${textY},fade=t=in:st=0:d=0.3,fps=30[vout]`,
+    `[bg]drawtext=fontfile=outro-serif.ttf:text='regalosquecantan.com':fontcolor=0x1B2653:fontsize=${textSize}:x=(w-text_w)/2:y=${textY},fade=t=in:st=0:d=0.3:color=white,fps=30[vout]`,
   ].join(';');
 
   const args = [
-    '-f', 'lavfi', '-i', `color=c=0x1A4338:s=${geo.w}x${geo.h}:r=30:d=${OUTRO_SEC}`,
+    '-f', 'lavfi', '-i', `color=c=white:s=${geo.w}x${geo.h}:r=30:d=${OUTRO_SEC}`,
     '-i', 'outro-logo.png',
   ];
   if (audio) args.push('-f', 'lavfi', '-i', `anullsrc=channel_layout=${audio.channels === 1 ? 'mono' : 'stereo'}:sample_rate=${audio.sampleRate}`);
