@@ -578,7 +578,7 @@ export default function SuccessPage() {
         quantity: songs.length,
         value: purchaseValue,
         currency: 'USD'
-      });
+      }, { event_id: sessionId }); // dedup with the server-side Events API CompletePayment
       console.log('[TikTok Pixel] CompletePayment fired:', purchaseValue, 'USD for session:', sessionId);
     }
   }, [songs]);

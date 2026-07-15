@@ -35,6 +35,17 @@ const META_CAPI_ACCESS_TOKEN =
   '';
 const META_TEST_EVENT_CODE = Deno.env.get('META_TEST_EVENT_CODE') || '';
 
+// TikTok Events API — server-side fallback for the browser TikTok pixel, exactly
+// analogous to Meta CAPI above. The pixel CODE is public (it ships in index.html)
+// so we default it; the ACCESS TOKEN is a secret. If the token is missing the
+// helper logs and skips, so this block is a safe no-op until configured.
+const TIKTOK_PIXEL_CODE = Deno.env.get('TIKTOK_PIXEL_CODE') || 'D671I7RC77UB00O70TK0';
+const TIKTOK_EVENTS_API_TOKEN =
+  Deno.env.get('TIKTOK_EVENTS_API_TOKEN') ||
+  Deno.env.get('TIKTOK_ACCESS_TOKEN') ||
+  '';
+const TIKTOK_TEST_EVENT_CODE = Deno.env.get('TIKTOK_TEST_EVENT_CODE') || '';
+
 // SHA-256 lowercase-trim hash for Meta user_data fields. Meta rejects
 // PII in cleartext — every match field except fbc/fbp/IP/UA must be hashed.
 async function metaHash(value: string): Promise<string> {
@@ -123,6 +134,97 @@ async function sendMetaCAPIPurchase(args: {
     console.log(`[meta-capi] Purchase sent — session=${args.sessionId} value=${args.amountUsd} events_received=${json?.events_received ?? '?'} fbtrace=${json?.fbtrace_id ?? '?'}`);
   } catch (err: any) {
     console.error(`[meta-capi] threw for session ${args.sessionId}:`, err?.message || err);
+  }
+}
+
+// Fire a server-side CompletePayment to the TikTok Events API. Mirrors
+// sendMetaCAPIPurchase: NEVER throws, gated on the access token, dedupes with
+// the browser pixel via event_id = stripe session.id (the SuccessPage pixel
+// passes the same value). email is SHA-256 hashed (metaHash does the exact
+// lowercase-trim-sha256 TikTok requires); ttclid/ttp/ip/ua are sent raw.
+async function sendTikTokEventsAPIPurchase(args: {
+  sessionId: string;
+  email: string | null | undefined;
+  amountUsd: number | null;
+  songIds: string[];
+  ttclid: string;
+  ttp: string;
+  clientIp: string;
+  clientUserAgent: string;
+  recipientName?: string | null;
+}): Promise<void> {
+  if (!TIKTOK_EVENTS_API_TOKEN) {
+    console.log('[tiktok-eapi] skipped — TIKTOK_EVENTS_API_TOKEN not set');
+    return;
+  }
+  try {
+    const user: Record<string, any> = {};
+    if (args.email) user.email = await metaHash(args.email);
+    if (args.ttclid) user.ttclid = args.ttclid;
+    if (args.ttp) user.ttp = args.ttp;
+    if (args.clientIp) user.ip = args.clientIp;
+    if (args.clientUserAgent) user.user_agent = args.clientUserAgent;
+
+    const payload: Record<string, any> = {
+      event_source: 'web',
+      event_source_id: TIKTOK_PIXEL_CODE,
+      data: [{
+        event: 'CompletePayment',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: args.sessionId, // dedup key with browser pixel
+        user,
+        page: { url: 'https://regalosquecantan.com/success' },
+        properties: {
+          currency: 'USD',
+          value: args.amountUsd ?? 0,
+          content_type: 'product',
+          contents: args.songIds.map(id => ({
+            content_id: id,
+            content_name: args.recipientName
+              ? `Canción para ${args.recipientName}`
+              : 'Canción personalizada'
+          }))
+        }
+      }]
+    };
+    if (TIKTOK_TEST_EVENT_CODE) payload.test_event_code = TIKTOK_TEST_EVENT_CODE;
+
+    // 5s hard timeout — a hung TikTok endpoint must NEVER block the webhook.
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    let resp: Response;
+    try {
+      resp = await fetch(
+        'https://business-api.tiktok.com/open_api/v1.3/event/track/',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Token': TIKTOK_EVENTS_API_TOKEN
+          },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal
+        }
+      );
+    } finally {
+      clearTimeout(t);
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`[tiktok-eapi] non-2xx ${resp.status} for session ${args.sessionId}: ${errText.slice(0, 500)}`);
+      return;
+    }
+    // TikTok returns 200 with { code, message } — code 0 = success, anything
+    // else is a logical failure (bad token, bad pixel) even though HTTP is 200.
+    const json = await resp.json().catch(() => ({}));
+    if (json?.code && json.code !== 0) {
+      console.error(`[tiktok-eapi] api-error code=${json.code} msg=${json?.message} session=${args.sessionId}`);
+      return;
+    }
+    console.log(`[tiktok-eapi] CompletePayment sent — session=${args.sessionId} value=${args.amountUsd} code=${json?.code ?? '?'} req=${json?.request_id ?? '?'}`);
+  } catch (err: any) {
+    console.error(`[tiktok-eapi] threw for session ${args.sessionId}:`, err?.message || err);
   }
 }
 
@@ -1065,6 +1167,25 @@ serve(async (req) => {
         // Defensive: sendMetaCAPIPurchase already swallows everything, but
         // re-catch here so a future refactor can never block the email path.
         console.error('[meta-capi] outer guard caught:', capiErr?.message || capiErr);
+      }
+
+      // TikTok Events API — server-side CompletePayment. Dedupes with the
+      // browser pixel via event_id = session.id (SuccessPage passes the same
+      // value). Gated on TIKTOK_EVENTS_API_TOKEN; never throws.
+      try {
+        await sendTikTokEventsAPIPurchase({
+          sessionId: session.id,
+          email: email || null,
+          amountUsd: amountPaid,
+          songIds,
+          ttclid: session.metadata?.ttclid || '',
+          ttp: session.metadata?.ttp || '',
+          clientIp: session.metadata?.client_ip || '',
+          clientUserAgent: session.metadata?.client_user_agent || '',
+          recipientName: firstSong?.recipient_name || null
+        });
+      } catch (ttErr: any) {
+        console.error('[tiktok-eapi] outer guard caught:', ttErr?.message || ttErr);
       }
 
       // Send email with download link via SendGrid (use first song for template).

@@ -101,6 +101,40 @@ export const getStoredFbc = () => {
   return '';
 };
 
+// ─── TikTok click-ID (ttclid) capture ───────────────────────────────────────
+// TikTok's equivalent of fbclid. It lands on the URL (?ttclid=...) when a user
+// clicks a TikTok ad, and is what the server-side Events API needs to attribute
+// a Purchase back to the exact ad/click. Almost all TikTok traffic arrives in
+// TikTok's in-app browser where cookies/pixel are flaky, so we persist ttclid
+// on landing (30 days) and attach it at checkout — otherwise the server-side
+// CompletePayment goes out with no click-ID and TikTok can't match the sale.
+const TTCLID_KEY = 'rqc_ttclid';
+const TTCLID_TTL_DAYS = 30;
+
+const captureTtclid = () => {
+  try {
+    const ttclid = new URLSearchParams(window.location.search).get('ttclid');
+    if (!ttclid) return;
+    const prev = JSON.parse(localStorage.getItem(TTCLID_KEY) || 'null');
+    // A fresh click always wins (last-touch) and resets the 30-day window.
+    if (prev && prev.ttclid === ttclid && prev.expiresAt > Date.now()) return;
+    localStorage.setItem(TTCLID_KEY, JSON.stringify({
+      ttclid,
+      expiresAt: Date.now() + TTCLID_TTL_DAYS * 24 * 60 * 60 * 1000,
+    }));
+  } catch { /* storage disabled — the _ttp cookie path still works */ }
+};
+
+// Best available ttclid: our persisted landing value (TikTok has no live cookie
+// equivalent that survives the in-app browser reliably).
+export const getStoredTtclid = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TTCLID_KEY) || 'null');
+    if (raw && raw.ttclid && raw.expiresAt > Date.now()) return raw.ttclid;
+  } catch { /* ignore */ }
+  return '';
+};
+
 // ─── Affiliate attribution storage ─────────────────────────────────────────
 // Affiliate codes persist across browser sessions for 30 days. Previously
 // stored in sessionStorage, which lost attribution the moment a buyer closed
@@ -288,6 +322,7 @@ export const trackStep = async (step, metadata = {}) => {
     // Store UTM params on first tracking call
     storeUtmParams();
     captureFbc();
+    captureTtclid();
 
     const sessionId = getSessionId();
     const utmParams = getStoredUtmParams();

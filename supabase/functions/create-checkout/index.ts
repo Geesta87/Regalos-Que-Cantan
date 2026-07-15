@@ -87,7 +87,7 @@ serve(async (req) => {
     }
 
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, clientUserAgent, affiliateCode } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, ttclid, ttp, clientUserAgent, affiliateCode } = body;
     // Gift-SMS add-on payload (optional): { recipient_name, recipient_phone,
     // buyer_name, personal_message, send_at (ISO UTC), buyer_timezone, attestation }
     const giftRaw = body.giftSms || null;
@@ -652,6 +652,10 @@ serve(async (req) => {
         // checkout.session.completed. Stripe metadata cap is 500 chars/value.
         fbc: (fbc || '').slice(0, 500),
         fbp: (fbp || '').slice(0, 500),
+        // TikTok Events API identifiers — read by stripe-webhook to fire the
+        // server-side CompletePayment. Same 500-char metadata cap as Meta's.
+        ttclid: (ttclid || '').slice(0, 500),
+        ttp: (ttp || '').slice(0, 500),
         client_ip: (clientIp || '').slice(0, 100),
         client_user_agent: (clientUserAgent || '').slice(0, 500)
       }
