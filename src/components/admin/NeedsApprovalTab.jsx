@@ -211,7 +211,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                     <div className="animate-spin h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full flex-shrink-0" />
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-indigo-200">{o.recipient} — video is building…</p>
-                      <p className="text-xs text-indigo-300/70">Started {minsAgo(o.updated_at)} min ago · usually ready in 10–30 min · it comes back here by itself for your approval.</p>
+                      <p className="text-xs text-indigo-300/70">Started {minsAgo(o.build_started_at || o.updated_at)} min ago · usually ready in 10–30 min · it comes back here by itself for your approval.</p>
                     </div>
                   </div>
                 ))}
