@@ -572,7 +572,9 @@ serve(async (req) => {
       const { error: qe } = await admin.from('creative_queue').insert({
         kind: 'video',
         status: 'ready',
-        intended_use: 'organic',
+        // Must be 'social' or 'ad' — the Creative Studio review views filter on
+        // exactly these (an earlier 'organic' made sent clips invisible).
+        intended_use: 'social',
         batch_date: new Date().toISOString().slice(0, 10),
         concept: `Clip Studio — ${name}`,
         caption,
