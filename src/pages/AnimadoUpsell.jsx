@@ -462,13 +462,39 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(null);
-  const [phase, setPhase] = useState('pick');   // 'pick' | 'tagging'
+  const [phase, setPhase] = useState('pick');   // 'pick' | 'quality' | 'tagging'
   const [cast, setCast] = useState([]);          // [{ key, description, role, name, in_photo }]
   const [previewUrl, setPreviewUrl] = useState(null); // object URL of the photo, for the tagging step
+  const [qualityIssues, setQualityIssues] = useState([]); // reasons the photo may be too poor to use
+  const [formatWarning, setFormatWarning] = useState(''); // 'heic' when an iPhone HEIC file is picked
 
-  // Stage 3 flow when the parent wires onAnalyze/onConfirm: upload -> analyze the
-  // photo -> if 2+ people, have the customer confirm who is who -> confirm+attach.
-  // Falls back to the legacy one-shot onSubmit when those props aren't provided.
+  // iPhone's default HEIC/HEIF format isn't readable by the image models and would
+  // fail the build — detect it on pick and ask for a JPG/PNG.
+  const isHeic = (f) => !!f && (/\.hei[cf]$/i.test(f.name || '') || /image\/hei[cf]/i.test(f.type || ''));
+  const pickMain = (f) => { setMainPhoto(f); setFormatWarning(isHeic(f) || isHeic(familyPhoto) ? 'heic' : ''); };
+  const pickFamily = (f) => { setFamilyPhoto(f); setFormatWarning(isHeic(f) || isHeic(mainPhoto) ? 'heic' : ''); };
+
+  // Once the photo passes the quality gate (or the customer chooses to use it
+  // anyway): confirm who-is-who if 2+ people, else finalize the upload directly.
+  const proceedAfterQuality = async (list) => {
+    if ((list || []).length >= 2) {
+      setPhase('tagging');
+      setSubmitting(false);
+    } else {
+      setSubmitting(true);
+      try {
+        await onConfirm({ cast: list || [], phone: phone.trim() || null, hasFamily: !!familyPhoto });
+        setDone(true);
+      } catch (e) {
+        setError(e?.message || 'No se pudo guardar. Intenta de nuevo.');
+        setSubmitting(false);
+      }
+    }
+  };
+
+  // Stage 3 + quality gate: upload -> analyze (grade photo + detect people). A poor
+  // photo routes to the 'quality' warning first; then 2+ people -> tagging, else
+  // confirm. Falls back to the legacy one-shot onSubmit when props aren't wired.
   const handleContinue = async () => {
     if (!mainPhoto || submitting) return;
     setError(null);
@@ -482,18 +508,20 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     }
     setSubmitting(true);
     try {
-      const proposed = await onAnalyze({ mainFile: mainPhoto, familyFile: familyPhoto, phone: phone.trim() || null });
-      const list = Array.isArray(proposed) ? proposed : [];
-      if (list.length >= 2) {
-        setCast(list.map((c) => ({ ...c, role: c.role || 'other', name: c.name || '' })));
-        try { setPreviewUrl(URL.createObjectURL(familyPhoto || mainPhoto)); } catch { /* preview optional */ }
-        setPhase('tagging');
+      const res = await onAnalyze({ mainFile: mainPhoto, familyFile: familyPhoto, phone: phone.trim() || null });
+      // supports the {cast,quality} shape or a bare array (older callers)
+      const list = (Array.isArray(res) ? res : (Array.isArray(res?.cast) ? res.cast : []))
+        .map((c) => ({ ...c, role: c.role || 'other', name: c.name || '' }));
+      const quality = (res && res.quality) ? res.quality : { usable: true, issues: [] };
+      setCast(list);
+      try { setPreviewUrl(URL.createObjectURL(familyPhoto || mainPhoto)); } catch { /* preview optional */ }
+      if (quality.usable === false) {
+        setQualityIssues(Array.isArray(quality.issues) ? quality.issues : []);
+        setPhase('quality');
         setSubmitting(false);
-      } else {
-        // single person (or analysis unavailable) — nothing to disambiguate
-        await onConfirm({ cast: list, phone: phone.trim() || null, hasFamily: !!familyPhoto });
-        setDone(true);
+        return;
       }
+      await proceedAfterQuality(list);
     } catch (e) {
       setError(e?.message || 'No se pudo procesar la foto. Intenta de nuevo.');
       setSubmitting(false);
@@ -522,6 +550,54 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
     { n: 3, t: 'Revisamos la calidad a mano', s: 'Nada se envía sin nuestra aprobación' },
     { n: 4, t: 'Te lo enviamos por email', s: 'En 1–2 días, en HD y listo para compartir' },
   ];
+
+  // Quality gate — the photo looks too poor to build a faithful likeness from.
+  // Strongly nudge a better photo, but let them proceed if they insist.
+  if (phase === 'quality') {
+    return (
+      <div style={{
+        background: 'linear-gradient(160deg, #1a1020 0%, #140d18 100%)',
+        border: '2px solid rgba(245,185,66,0.5)', borderRadius: 20, padding: 22,
+        animation: 'aniFade 0.5s ease-out both',
+      }}>
+        <style>{ANIM_CSS}</style>
+        <div style={{ textAlign: 'center', marginBottom: 14 }}>
+          <div style={{
+            width: 54, height: 54, borderRadius: '50%', margin: '0 auto 12px',
+            background: 'rgba(245,185,66,0.15)', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 28,
+          }}>⚠️</div>
+          <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 900, color: '#fff' }}>Esta foto podría no salir bien</h2>
+          <p style={{ margin: 0, fontSize: 13.5, color: 'rgba(255,255,255,0.62)', lineHeight: 1.5 }}>
+            Para lograr el mejor parecido, te recomendamos subir una foto más clara.
+          </p>
+        </div>
+        {previewUrl && (
+          <img src={previewUrl} alt="tu foto" style={{
+            display: 'block', width: '100%', maxHeight: 200, objectFit: 'contain',
+            borderRadius: 12, marginBottom: 14, background: 'rgba(0,0,0,0.25)',
+          }} />
+        )}
+        {qualityIssues.length > 0 && (
+          <div style={{ background: 'rgba(245,185,66,0.08)', border: '1px solid rgba(245,185,66,0.3)', borderRadius: 12, padding: '11px 13px', marginBottom: 14 }}>
+            {qualityIssues.map((iss, i) => (
+              <p key={i} style={{ margin: i ? '5px 0 0' : 0, fontSize: 12.5, color: '#fde68a', lineHeight: 1.4 }}>• {iss}</p>
+            ))}
+          </div>
+        )}
+        <button onClick={() => { setPhase('pick'); setSubmitting(false); }} style={{
+          width: '100%', padding: 14, borderRadius: 14, border: 'none', cursor: 'pointer',
+          fontSize: 15.5, fontWeight: 900, color: '#1a1020', background: `linear-gradient(135deg, ${GOLD}, ${PINK})`,
+          boxShadow: '0 6px 20px rgba(247,77,166,0.4)', transition: 'all 0.25s',
+        }}>📷 Subir otra foto</button>
+        <button onClick={() => proceedAfterQuality(cast)} disabled={submitting} style={{
+          width: '100%', marginTop: 10, padding: 12, borderRadius: 12, border: '1.5px solid rgba(255,255,255,0.18)',
+          cursor: submitting ? 'wait' : 'pointer', fontSize: 13.5, fontWeight: 700,
+          color: 'rgba(255,255,255,0.7)', background: 'transparent', transition: 'all 0.25s',
+        }}>{submitting ? 'Procesando…' : 'Usar esta de todos modos'}</button>
+      </div>
+    );
+  }
 
   // Stage 3 — "who is who": the customer confirms each detected person so the
   // video animates the right people (and knows who is grandma vs. daughter).
@@ -667,9 +743,20 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
         title={`Sube una foto clara de ${recipientName}`}
         hint="JPG o PNG · de frente, buena luz, rostro cercano"
         value={mainPhoto}
-        onPick={setMainPhoto}
+        onPick={pickMain}
         required
       />
+
+      {formatWarning === 'heic' && (
+        <div style={{ marginTop: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, padding: '10px 12px' }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: '#fca5a5', lineHeight: 1.45, fontWeight: 700 }}>
+            ⚠️ Esa foto es formato HEIC (iPhone) y no la podemos procesar.
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.4 }}>
+            Ábrela y toma una captura de pantalla, o cámbiala a JPG, y súbela de nuevo.
+          </p>
+        </div>
+      )}
 
       {/* Optional: family photo — only when the story has other people */}
       {isFamily && (
@@ -689,7 +776,7 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
             title="Sube una foto familiar (todos juntos)"
             hint="JPG o PNG · que se vean bien todas las caras"
             value={familyPhoto}
-            onPick={setFamilyPhoto}
+            onPick={pickFamily}
           />
         </div>
       )}
@@ -698,13 +785,13 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
         <div style={{ background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 12, padding: '11px 12px' }}>
           <p style={{ margin: '0 0 7px', fontSize: 12.5, fontWeight: 800, color: '#4ade80' }}>✅ Sí funciona</p>
-          {['De frente y bien iluminada', 'Rostro claro y cercano', isFamily ? 'Todas las caras visibles' : 'Una sola persona'].map((t, i) => (
+          {['De frente y bien iluminada', 'Rostro claro y cercano', isFamily ? 'Todos completos, sin cortar a nadie' : 'Una sola persona', 'Una foto reciente y nítida'].map((t, i) => (
             <p key={i} style={{ margin: '0 0 4px', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.35 }}>• {t}</p>
           ))}
         </div>
         <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 12, padding: '11px 12px' }}>
           <p style={{ margin: '0 0 7px', fontSize: 12.5, fontWeight: 800, color: '#f87171' }}>❌ Evita</p>
-          {['Borrosa o muy oscura', 'Lentes de sol o gorra tapando', 'De muy lejos o de lado'].map((t, i) => (
+          {['Borrosa o muy oscura', 'Lentes de sol o gorra tapando', 'Filtros o efectos (deforman el rostro)', 'De muy lejos o de lado'].map((t, i) => (
             <p key={i} style={{ margin: '0 0 4px', fontSize: 11.5, color: 'rgba(255,255,255,0.6)', lineHeight: 1.35 }}>• {t}</p>
           ))}
         </div>
@@ -737,15 +824,17 @@ export function AnimadoPhotoUpload({ recipientName = 'Papá', isFamily = false, 
       {error && (
         <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#f87171', textAlign: 'center', fontWeight: 700 }}>{error}</p>
       )}
-      <button onClick={handleContinue} disabled={!mainPhoto || submitting} style={{
+      {(() => { const ready = mainPhoto && formatWarning !== 'heic'; return (
+      <button onClick={handleContinue} disabled={!ready || submitting} style={{
         width: '100%', padding: 15, borderRadius: 14, border: 'none',
-        cursor: mainPhoto && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
-        color: mainPhoto ? '#1a1020' : 'rgba(255,255,255,0.35)',
-        background: mainPhoto ? `linear-gradient(135deg, ${GOLD}, ${PINK})` : 'rgba(255,255,255,0.06)',
-        boxShadow: mainPhoto && !submitting ? '0 6px 20px rgba(247,77,166,0.4)' : 'none', transition: 'all 0.25s', marginBottom: 20,
+        cursor: ready && !submitting ? 'pointer' : 'not-allowed', fontSize: 16, fontWeight: 900,
+        color: ready ? '#1a1020' : 'rgba(255,255,255,0.35)',
+        background: ready ? `linear-gradient(135deg, ${GOLD}, ${PINK})` : 'rgba(255,255,255,0.06)',
+        boxShadow: ready && !submitting ? '0 6px 20px rgba(247,77,166,0.4)' : 'none', transition: 'all 0.25s', marginBottom: 20,
       }}>
-        {submitting ? 'Subiendo…' : mainPhoto ? 'Enviar y empezar 🚀' : `Sube la foto de ${recipientName} para continuar`}
+        {submitting ? 'Subiendo…' : formatWarning === 'heic' ? 'Sube una foto JPG o PNG' : mainPhoto ? 'Enviar y empezar 🚀' : `Sube la foto de ${recipientName} para continuar`}
       </button>
+      ); })()}
 
       {/* What happens next */}
       <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: '#fff', textAlign: 'center' }}>Qué sigue</p>
