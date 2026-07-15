@@ -1935,6 +1935,24 @@ export default function AdminDashboard() {
     window.__deferredInstallPrompt = null;
   }, [showToast]);
 
+  // Keep accessToken CURRENT for the whole session. supabase-js silently
+  // refreshes the auth token in the background (~hourly), but this state held
+  // the mount-time snapshot forever — after the first refresh every admin
+  // action 401'd until the owner reloaded the page (and a Clip Studio ingest
+  // was lost after a 30-min upload on 2026-07-15).
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.access_token) {
+        setAccessToken(session.access_token);
+      } else if (event === 'SIGNED_OUT') {
+        setAccessToken(null);
+        navigateTo('adminLogin');
+      }
+    });
+    return () => sub?.subscription?.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
     let cancelled = false;
