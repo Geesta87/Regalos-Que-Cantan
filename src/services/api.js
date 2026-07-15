@@ -159,6 +159,21 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
   const fbc = getCookie('_fbc') || getStoredFbc();
   const fbp = getCookie('_fbp');
 
+  // TikTok attribution — mirror of the Meta fbc/fbp capture above. ttclid is the
+  // click-ID we persisted on landing (tracking.js); _ttp is TikTok's first-party
+  // cookie. Both are passed to create-checkout → stripe metadata → the server-side
+  // TikTok Events API CompletePayment, so a sale attributes even when the browser
+  // pixel drops (the common case inside TikTok's in-app browser).
+  const getStoredTtclid = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('rqc_ttclid') || 'null');
+      if (raw && raw.ttclid && raw.expiresAt > Date.now()) return raw.ttclid;
+    } catch { /* ignore */ }
+    return '';
+  };
+  const ttclid = getStoredTtclid();
+  const ttp = getCookie('_ttp');
+
   const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
     method: 'POST',
     headers: {
@@ -181,6 +196,8 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       lyricVideoAddon,
       fbc,
       fbp,
+      ttclid,
+      ttp,
       clientUserAgent: navigator.userAgent,
       // 30-day localStorage attribution (see tracking.js). Falls back to the
       // legacy sessionStorage location during the rollout window so anyone

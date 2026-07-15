@@ -709,6 +709,14 @@ verify_jwt = true
 # requires a row in admin_users.
 verify_jwt = true
 
+[functions.admin-source-scoreboard]
+# Admin-gated traffic-source scoreboard (visits/purchases/revenue per channel).
+# Called from the admin dashboard with a logged-in Supabase Auth user JWT (same
+# pattern as admin-songs / admin-affiliates), so verify_jwt = true. Handler
+# requires a row in admin_users; aggregation runs in the get_source_scoreboard()
+# Postgres function.
+verify_jwt = true
+
 [functions.create-affiliate]
 # Admin-only writer that creates an affiliate, optional matching coupon, and
 # emails credentials. Handler requires admin_users.role = 'admin'. Gateway

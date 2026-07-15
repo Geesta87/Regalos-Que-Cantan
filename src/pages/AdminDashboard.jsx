@@ -1641,6 +1641,12 @@ export default function AdminDashboard() {
   const [blastData, setBlastData] = useState(null);
   const [dateRange, setDateRange] = useState('7days');
   const [funnelData, setFunnelData] = useState([]);
+  // Traffic-source scoreboard (visits/purchases/revenue per channel). Loaded
+  // from the admin-source-scoreboard edge function; collapsed by default.
+  const [scoreboard, setScoreboard] = useState(null); // { days, sources: [...] } | null
+  const [scoreboardDays, setScoreboardDays] = useState(30);
+  const [scoreboardLoading, setScoreboardLoading] = useState(false);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
   const [emailLogs, setEmailLogs] = useState([]);
   const [emailPreview, setEmailPreview] = useState(null);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
@@ -1813,6 +1819,24 @@ export default function AdminDashboard() {
     return base + clip;
   }, []);
 
+  // Short "…from TikTok" tag played AFTER the sale line so Jarvis names the
+  // channel the order came from. Normalizes the messy utm_source the same way
+  // the scoreboard does, and only announces a paid ad channel — organic /
+  // unknown / affiliate-junk sources get no tag (returns null). Returns a clip
+  // path even if the file doesn't exist yet; the player 404s silently, so this
+  // is safe to ship before the voice clips are generated.
+  const jarvisSourceClip = useCallback((song) => {
+    const raw = (song && song.utm_source ? String(song.utm_source) : '').toLowerCase().trim();
+    if (!raw) return null;
+    let key = null;
+    if (raw.startsWith('tiktok') || raw.startsWith('tikt') || raw === 'tt') key = 'tiktok';
+    else if (raw === 'fb' || raw === 'facebook' || raw === 'meta' || raw.startsWith('fb-') || raw.startsWith('facebook')) key = 'facebook';
+    else if (raw === 'ig' || raw.startsWith('instagram')) key = 'instagram';
+    else if (raw.startsWith('google')) key = 'google';
+    else return null; // don't announce organic / unknown channels
+    return `/sounds/jarvis/from-${key}.mp3`;
+  }, []);
+
   // Speaks the sale in the Jarvis voice (Daniel). Falls back to the synthesized
   // beep if the clip fails to load or the browser blocks playback.
   const playPaymentSound = useCallback((song) => {
@@ -1826,6 +1850,19 @@ export default function AdminDashboard() {
     try {
       const audio = new Audio(pickJarvisClip(song));
       audio.volume = 0.75;
+      // Chain the "…from <channel>" tag after the sale line finishes. Silent
+      // no-op if the clip is missing or blocked — never breaks the alert.
+      const srcClip = jarvisSourceClip(song);
+      if (srcClip) {
+        audio.addEventListener('ended', () => {
+          try {
+            const tag = new Audio(srcClip);
+            tag.volume = 0.75;
+            const tp = tag.play();
+            if (tp && typeof tp.catch === 'function') tp.catch(() => {});
+          } catch { /* ignore */ }
+        }, { once: true });
+      }
       const p = audio.play();
       if (p && typeof p.catch === 'function') {
         p.catch(() => playFallbackBeep());
@@ -1833,7 +1870,7 @@ export default function AdminDashboard() {
     } catch {
       playFallbackBeep();
     }
-  }, [playFallbackBeep, pickJarvisClip]);
+  }, [playFallbackBeep, pickJarvisClip, jarvisSourceClip]);
 
   const fireDesktopNotification = useCallback((song) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
@@ -1994,6 +2031,7 @@ export default function AdminDashboard() {
       // setAccessToken's async state commit.
       fetchSongs(session.access_token);
       fetchFunnelData();
+      fetchScoreboard(30, session.access_token);
       fetchEmailLogs();
       fetchEmailCampaigns();
       // Credit balance banner is visible to both roles. The edit button +
@@ -2515,6 +2553,32 @@ export default function AdminDashboard() {
       setFunnelData(stepCounts);
     } catch (err) {
       console.error('Error fetching funnel data:', err);
+    }
+  };
+
+  // Traffic-source scoreboard: visits + purchases + revenue per marketing
+  // channel, aggregated server-side (admin-source-scoreboard → the
+  // get_source_scoreboard Postgres function). Kept off the browser's plate so
+  // the 42k-row songs table is never pulled client-side.
+  const fetchScoreboard = async (days = scoreboardDays, tokenOverride) => {
+    const token = tokenOverride || accessToken;
+    if (!token) return;
+    setScoreboardLoading(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-source-scoreboard?days=${days}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setScoreboard({ days: data.days, sources: data.sources || [] });
+      } else {
+        console.error('admin-source-scoreboard error:', data.error);
+      }
+    } catch (err) {
+      console.error('Failed to fetch source scoreboard:', err);
+    } finally {
+      setScoreboardLoading(false);
     }
   };
 
@@ -4306,6 +4370,101 @@ export default function AdminDashboard() {
           </div>
         )}
         </>)}
+
+        {/* Traffic Sources scoreboard — visits → purchases → revenue per channel
+            so the owner can see exactly what each ad platform (TikTok, Facebook,
+            …) actually drives. Collapsed by default; sources are normalized
+            server-side (messy utm tags like 'tikt'/'meta' roll up correctly). */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 mb-6 overflow-hidden">
+          <button
+            onClick={() => { setScoreboardOpen(o => !o); if (!scoreboard) fetchScoreboard(scoreboardDays); }}
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition"
+          >
+            <span className="flex items-center gap-2 font-semibold text-white">
+              📊 Traffic Sources
+              <span className="text-xs font-normal text-gray-500">visits · sales · revenue by channel</span>
+            </span>
+            <span className="text-gray-400 text-sm">{scoreboardOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {scoreboardOpen && (
+            <div className="px-4 pb-4">
+              {/* Window selector */}
+              <div className="flex items-center gap-2 mb-3">
+                {[7, 30, 90].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => { setScoreboardDays(d); fetchScoreboard(d); }}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                      scoreboardDays === d ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+                {scoreboardLoading && <span className="text-xs text-gray-500 animate-pulse ml-1">Loading…</span>}
+              </div>
+
+              {scoreboard && scoreboard.sources.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500 text-xs border-b border-white/10">
+                        <th className="py-2 pr-2 font-medium">Source</th>
+                        <th className="py-2 px-2 font-medium text-right">Visits</th>
+                        <th className="py-2 px-2 font-medium text-right">Sales</th>
+                        <th className="py-2 px-2 font-medium text-right">Revenue</th>
+                        <th className="py-2 pl-2 font-medium text-right">Conv.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scoreboard.sources.map((s) => {
+                        const meta = {
+                          tiktok:    { icon: '🎵', label: 'TikTok',    hl: 'text-cyan-400' },
+                          facebook:  { icon: '📘', label: 'Facebook',  hl: 'text-blue-400' },
+                          instagram: { icon: '📷', label: 'Instagram', hl: 'text-purple-400' },
+                          email:     { icon: '📧', label: 'Email',     hl: 'text-amber-400' },
+                          google:    { icon: '🔴', label: 'Google',    hl: 'text-red-400' },
+                          organic:   { icon: '🌱', label: 'Organic',   hl: 'text-green-400' },
+                        }[s.source] || { icon: '🔗', label: s.source, hl: 'text-gray-300' };
+                        const isTikTok = s.source === 'tiktok';
+                        return (
+                          <tr
+                            key={s.source}
+                            className={`border-b border-white/5 ${isTikTok ? 'bg-cyan-500/10' : ''}`}
+                          >
+                            <td className={`py-2 pr-2 font-medium ${meta.hl}`}>
+                              {meta.icon} {meta.label}
+                            </td>
+                            <td className="py-2 px-2 text-right text-gray-300 tabular-nums">
+                              {s.visits.toLocaleString()}
+                            </td>
+                            <td className="py-2 px-2 text-right text-gray-300 tabular-nums">
+                              {s.purchases.toLocaleString()}
+                            </td>
+                            <td className="py-2 px-2 text-right text-white tabular-nums">
+                              {userRole === 'admin' ? formatCurrency(s.revenue) : '—'}
+                            </td>
+                            <td className="py-2 pl-2 text-right tabular-nums text-gray-400">
+                              {s.convPct != null ? `${s.convPct}%` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">
+                    Last {scoreboard.days} days. A low conversion vs. visits usually means the channel's
+                    sales are being under-attributed (leaking into Organic) — the exact gap the TikTok
+                    server-side tracking closes.
+                  </p>
+                </div>
+              ) : (
+                !scoreboardLoading && <p className="text-sm text-gray-500 py-2">No source data for this window.</p>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Tabs — visually grouped so a new admin's eye knows where to start.
             Group 1: Día a día (Órdenes / Por Enviar / Hot Leads).
