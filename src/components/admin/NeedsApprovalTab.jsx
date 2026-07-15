@@ -165,18 +165,17 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
             ))}
           </div>
 
-          {/* COMPLETED — delivered videos with a shareable link + send actions */}
+          {/* COMPLETED — delivered videos, compact grid (card = the 9:16 visual, so
+              several fit per row) with a shareable link + send actions */}
           {finalTab === 'completed' && (
             delivered.length === 0 ? <Empty text="No delivered videos yet." /> : (
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {delivered.map((o) => (
-                  <div key={o.id} className="rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-white font-semibold">{o.recipient}</div>
-                      <span className="text-xs text-emerald-300">Delivered{o.delivered_at ? ` · ${minsAgo(o.delivered_at) > 1440 ? new Date(o.delivered_at).toLocaleDateString() : `${minsAgo(o.delivered_at)}m ago`}` : ''}</span>
-                    </div>
-                    {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[420px] mx-auto" />}
-                    <SendLinks order={o} showToast={showToast} />
+                  <div key={o.id} className="rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-2.5">
+                    <div className="text-xs text-white font-semibold truncate mb-1.5">{o.recipient}</div>
+                    {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16]" />}
+                    <div className="text-[10px] text-emerald-300/80 mt-1">Delivered{o.delivered_at ? ` · ${minsAgo(o.delivered_at) > 1440 ? new Date(o.delivered_at).toLocaleDateString() : `${minsAgo(o.delivered_at)}m ago`}` : ''}</div>
+                    <SendLinks order={o} showToast={showToast} compact />
                   </div>
                 ))}
               </div>
@@ -240,6 +239,25 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
   );
 }
 
+// One admin tab ("Animado™") housing BOTH gates as sub-tabs so they share a single
+// nav entry: Likeness (gate 1) and Final Video (gate 2).
+export function AnimadoAdmin({ accessToken, showToast }) {
+  const [tab, setTab] = useState('likeness');
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5">
+        {[{ k: 'likeness', l: '🎬 Likeness' }, { k: 'final', l: '🎞️ Final Video' }].map((t) => (
+          <button key={t.k} onClick={() => setTab(t.k)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === t.k ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+            {t.l}
+          </button>
+        ))}
+      </div>
+      <NeedsApprovalTab accessToken={accessToken} showToast={showToast} gate={tab} />
+    </div>
+  );
+}
+
 // Shows the AI's flagged guesses (details it depicted that the customer didn't state),
 // so the admin can catch a wrong assumption (e.g. "construction worker") BEFORE the build.
 function Assumptions({ items }) {
@@ -277,7 +295,7 @@ function StatusBadge({ state }) {
 }
 
 // Delivered-video actions: the shareable customer link + copy / open / WhatsApp send.
-function SendLinks({ order, showToast }) {
+function SendLinks({ order, showToast, compact = false }) {
   const link = order.share_url || (order.id ? `https://regalosquecantan.com/animado/${order.id}` : null);
   if (!link) return null;
   const waText = `🎬 ${order.recipient ? `El video animado de ${String(order.recipient).split(' · ')[0]}` : 'Tu video animado'} ya está listo:\n${link}`;
@@ -285,6 +303,19 @@ function SendLinks({ order, showToast }) {
     try { await navigator.clipboard.writeText(link); showToast?.('Link copied', 'success'); }
     catch { showToast?.('Could not copy', 'error'); }
   };
+  // compact: icon-only row that fits under a narrow grid card
+  if (compact) {
+    return (
+      <div className="flex gap-1.5 mt-1.5">
+        <button onClick={copy} title="Copy link"
+          className="flex-1 py-1 text-xs font-semibold rounded-md bg-gray-700 hover:bg-gray-600 text-white transition">📋</button>
+        <a href={link} target="_blank" rel="noreferrer" title="Open"
+          className="flex-1 text-center py-1 text-xs font-semibold rounded-md bg-gray-700 hover:bg-gray-600 text-white transition">↗</a>
+        <a href={`https://wa.me/?text=${encodeURIComponent(waText)}`} target="_blank" rel="noreferrer" title="Send on WhatsApp"
+          className="flex-1 text-center py-1 text-xs font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition">💬</a>
+      </div>
+    );
+  }
   return (
     <div className="mt-3">
       <div className="flex items-center gap-2 rounded-lg bg-black/30 border border-gray-800 px-3 py-2 mb-2">
