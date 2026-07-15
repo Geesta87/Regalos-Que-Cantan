@@ -632,7 +632,12 @@ async function renderClip(job, { dir, log }) {
       }
       log(`punch zooms: hook + ${punchTimes.length} word hits`);
     }
-    zoomStage = `zoompan=z='min(${zterms.join('+')},1.25)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`;
+    // fps=30 FIRST: zoompan stamps its output at fps regardless of input
+    // timing, so a non-30fps source (DJI shoots 25!) would play 30/25 too
+    // fast and drift out of sync with the audio — the 2026-07-15 lip-sync
+    // bug. Converting to true CFR 30 before zoompan makes its
+    // one-frame-in-one-frame-out assumption exact.
+    zoomStage = `fps=30,zoompan=z='min(${zterms.join('+')},1.25)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`;
   }
   const post = [zoomStage, 'subtitles=captions.ass'].join(',');
 
