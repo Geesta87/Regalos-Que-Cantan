@@ -15,16 +15,19 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
 
 function ff(dir, args) {
   return execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args], { cwd: dir });
 }
 
-function download(url, dest) {
-  return fetch(url).then(async (res) => {
-    if (!res.ok) throw new Error(`download ${res.status} for ${url.slice(0, 120)}`);
-    fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
-  });
+// Stream straight to disk — buffering a multi-GB source through arrayBuffer +
+// Buffer.from would transiently double it in RAM and OOM the instance.
+async function download(url, dest) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download ${res.status} for ${url.slice(0, 120)}`);
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(dest));
 }
 
 function probeDuration(dir, file) {

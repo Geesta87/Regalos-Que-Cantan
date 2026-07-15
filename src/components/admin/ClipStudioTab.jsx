@@ -180,7 +180,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   // ---- upload flow: create_project -> XHR PUT (progress) -> ingest ----
   const onFile = async (file) => {
     if (!file) return;
-    if (file.size > 1024 * 1024 * 1024) { showToast?.('Max upload size is 1GB'); return; }
+    if (file.size > 3 * 1024 * 1024 * 1024) { showToast?.('Max upload size is 3GB'); return; }
     const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
     setUpload({ name: file.name, pct: 0, phase: 'Preparing upload…' });
     try {
@@ -932,7 +932,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
             className="w-full border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40 rounded-xl p-8 text-center transition group">
             <UploadCloud size={28} className="mx-auto text-gray-300 group-hover:text-indigo-400 mb-2" />
             <div className="text-sm font-medium text-gray-700">Upload a video</div>
-            <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 1GB — transcription starts automatically</div>
+            <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 3GB — transcription starts automatically</div>
           </button>
           <label className="flex items-start gap-2 cursor-pointer select-none mt-2 px-1">
             <input type="checkbox" checked={autoClip} onChange={(e) => setAutoClip(e.target.checked)} className="mt-0.5 accent-indigo-600" />
