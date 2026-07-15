@@ -11,6 +11,7 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(null); // `${id}:${action}`
   const [error, setError] = useState('');
+  const [finalTab, setFinalTab] = useState('review'); // final gate: 'building' | 'review' | 'completed'
 
   const call = useCallback(async (body) => {
     const res = await fetch(FN_URL, {
@@ -47,6 +48,12 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
   const finals = orders.filter((o) => o.state === 'final_review');
   const rebuilding = orders.filter((o) => o.state === 'building');
   const failed = orders.filter((o) => o.state === 'failed');
+  const delivered = orders.filter((o) => o.state === 'delivered');
+  // Approved-likeness history: everything past the likeness gate that has a chosen
+  // cartoon (so the owner can see every likeness they've approved, not just pending).
+  const approvedLikeness = orders
+    .filter((o) => o.approved_character_url && ['building', 'final_review', 'delivered'].includes(o.state))
+    .sort((a, b) => new Date(b.approved_character_at || b.updated_at) - new Date(a.approved_character_at || a.updated_at));
   const isLikeness = gate === 'likeness';
 
   // auto-refresh while something is rebuilding so the finished video pops in by itself
@@ -122,49 +129,110 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
         </section>
       )}
 
-      {/* GATE 2 — approve the final video */}
+      {/* Approved-likeness history — every likeness already chosen, newest first */}
+      {isLikeness && approvedLikeness.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Approved likenesses · {approvedLikeness.length}</h3>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            {approvedLikeness.map((o) => (
+              <div key={o.id} className="rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-800">
+                {o.approved_character_url
+                  ? <img src={o.approved_character_url} alt={o.recipient} className="w-full aspect-[3/4] object-cover" />
+                  : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs">—</div>}
+                <div className="px-2 py-1.5">
+                  <div className="text-xs text-white font-medium truncate">{o.recipient}</div>
+                  <StatusBadge state={o.state} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* GATE 2 — approve the final video: 3 sub-tabs (Building / Pending / Completed) */}
       {!isLikeness && (
         <section className="space-y-4">
-          {/* in-progress rebuilds stay visible so a re-rendered order never "disappears" */}
-          {rebuilding.map((o) => (
-            <div key={o.id} className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 flex items-center gap-3">
-              <div className="animate-spin h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-indigo-200">{o.recipient} — video is building…</p>
-                <p className="text-xs text-indigo-300/70">Started {minsAgo(o.updated_at)} min ago · usually ready in 10–30 min · it comes back here by itself for your approval.</p>
-              </div>
-            </div>
-          ))}
-          {failed.map((o) => (
-            <div key={o.id} className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3">
-              <p className="text-sm font-semibold text-rose-200">{o.recipient} — build failed</p>
-              {o.error && <p className="text-xs text-rose-300/80 mt-0.5 break-words">{o.error}</p>}
-              <button onClick={() => act(o.id, 'rerender')} disabled={busy}
-                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition disabled:opacity-50">
-                ↻ Retry build
+          <div className="flex gap-1.5 border-b border-gray-800 pb-2">
+            {[
+              { key: 'building', label: 'Building', n: rebuilding.length },
+              { key: 'review', label: 'Pending review', n: finals.length + failed.length },
+              { key: 'completed', label: 'Completed', n: delivered.length },
+            ].map((t) => (
+              <button key={t.key} onClick={() => setFinalTab(t.key)}
+                className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition ${finalTab === t.key ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                {t.label}{t.n ? ` · ${t.n}` : ''}
               </button>
-            </div>
-          ))}
-          {finals.length === 0 && rebuilding.length === 0 && failed.length === 0 ? <Empty text="No final approvals pending." /> : finals.length === 0 ? null : (
-            <div className="grid grid-cols-1 gap-4">
-              {finals.map((o) => (
-                <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
-                  <div className="text-white font-semibold mb-3">{o.recipient}</div>
-                  {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto" />}
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
-                      className="flex-1 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
-                      {busy === `${o.id}:approve_final` ? '...' : '✓ Approve and send'}
-                    </button>
-                    <button onClick={() => act(o.id, 'reject_final')} disabled={busy}
-                      className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50">
-                      ↺ Redo
+            ))}
+          </div>
+
+          {/* COMPLETED — delivered videos with a shareable link + send actions */}
+          {finalTab === 'completed' && (
+            delivered.length === 0 ? <Empty text="No delivered videos yet." /> : (
+              <div className="grid grid-cols-1 gap-4">
+                {delivered.map((o) => (
+                  <div key={o.id} className="rounded-xl border border-emerald-700/40 bg-emerald-500/5 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-white font-semibold">{o.recipient}</div>
+                      <span className="text-xs text-emerald-300">Delivered{o.delivered_at ? ` · ${minsAgo(o.delivered_at) > 1440 ? new Date(o.delivered_at).toLocaleDateString() : `${minsAgo(o.delivered_at)}m ago`}` : ''}</span>
+                    </div>
+                    {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[420px] mx-auto" />}
+                    <SendLinks order={o} showToast={showToast} />
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* BUILDING — orders currently rendering */}
+          {finalTab === 'building' && (
+            rebuilding.length === 0 ? <Empty text="Nothing building right now." /> : (
+              <div className="space-y-3">
+                {rebuilding.map((o) => (
+                  <div key={o.id} className="rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 flex items-center gap-3">
+                    <div className="animate-spin h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-indigo-200">{o.recipient} — video is building…</p>
+                      <p className="text-xs text-indigo-300/70">Started {minsAgo(o.updated_at)} min ago · usually ready in 10–30 min · it comes back here by itself for your approval.</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* PENDING REVIEW — built videos awaiting approval (+ any failed builds) */}
+          {finalTab === 'review' && (
+            finals.length === 0 && failed.length === 0 ? <Empty text="No videos waiting for review." /> : (
+              <div className="space-y-4">
+                {failed.map((o) => (
+                  <div key={o.id} className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3">
+                    <p className="text-sm font-semibold text-rose-200">{o.recipient} — build failed</p>
+                    {o.error && <p className="text-xs text-rose-300/80 mt-0.5 break-words">{o.error}</p>}
+                    <button onClick={() => act(o.id, 'rerender')} disabled={busy}
+                      className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition disabled:opacity-50">
+                      ↻ Retry build
                     </button>
                   </div>
-                  <SceneReview orderId={o.id} call={call} showToast={showToast} onRerender={load} />
-                </div>
-              ))}
-            </div>
+                ))}
+                {finals.map((o) => (
+                  <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-4">
+                    <div className="text-white font-semibold mb-3">{o.recipient}</div>
+                    {o.video_url && <video controls src={o.video_url} className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto" />}
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => act(o.id, 'approve_final')} disabled={busy}
+                        className="flex-1 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50">
+                        {busy === `${o.id}:approve_final` ? '...' : '✓ Approve and send'}
+                      </button>
+                      <button onClick={() => act(o.id, 'reject_final')} disabled={busy}
+                        className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition disabled:opacity-50">
+                        ↺ Redo
+                      </button>
+                    </div>
+                    <SceneReview orderId={o.id} call={call} showToast={showToast} onRerender={load} />
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </section>
       )}
@@ -195,6 +263,43 @@ function Assumptions({ items }) {
 
 function Empty({ text }) {
   return <div className="rounded-xl border border-dashed border-gray-800 text-gray-500 text-sm px-4 py-8 text-center">{text}</div>;
+}
+
+// Small colored status pill for the approved-likeness history.
+function StatusBadge({ state }) {
+  const map = {
+    building: ['Building', 'text-indigo-300 bg-indigo-500/15'],
+    final_review: ['Awaiting approval', 'text-amber-300 bg-amber-500/15'],
+    delivered: ['Delivered', 'text-emerald-300 bg-emerald-500/15'],
+  };
+  const [label, cls] = map[state] || [state, 'text-gray-400 bg-white/5'];
+  return <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${cls}`}>{label}</span>;
+}
+
+// Delivered-video actions: the shareable customer link + copy / open / WhatsApp send.
+function SendLinks({ order, showToast }) {
+  const link = order.share_url || (order.id ? `https://regalosquecantan.com/animado/${order.id}` : null);
+  if (!link) return null;
+  const waText = `🎬 ${order.recipient ? `El video animado de ${String(order.recipient).split(' · ')[0]}` : 'Tu video animado'} ya está listo:\n${link}`;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); showToast?.('Link copied', 'success'); }
+    catch { showToast?.('Could not copy', 'error'); }
+  };
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2 rounded-lg bg-black/30 border border-gray-800 px-3 py-2 mb-2">
+        <span className="text-xs text-gray-400 truncate flex-1">{link}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={copy}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition">📋 Copy link</button>
+        <a href={link} target="_blank" rel="noreferrer"
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition">↗ Open</a>
+        <a href={`https://wa.me/?text=${encodeURIComponent(waText)}`} target="_blank" rel="noreferrer"
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition">💬 Send on WhatsApp</a>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
