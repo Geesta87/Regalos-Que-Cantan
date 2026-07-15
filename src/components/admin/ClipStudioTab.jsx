@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music, Zap,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -124,6 +124,14 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [songQ, setSongQ] = useState('');
   const [songResults, setSongResults] = useState(null);
   const [songBusy, setSongBusy] = useState(false);
+  const [autoClip, setAutoClip] = useState(true);       // auto-clip new uploads
+  const [retryingClipId, setRetryingClipId] = useState(null);
+  const [musicPanel, setMusicPanel] = useState(false);  // music library panel
+  const [tracks, setTracks] = useState(null);
+  const [editWords, setEditWords] = useState(null);     // caption editor: full word list
+  const [wordEdits, setWordEdits] = useState({});       // {index: corrected word}
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [savingWords, setSavingWords] = useState(false);
   const fileRef = useRef(null);
   const musicRef = useRef(null);
   const videoRef = useRef(null);
@@ -158,9 +166,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll every 5s while anything is in flight (prepare / transcribe / render).
+  // Poll every 5s while anything is in flight (prepare / transcribe / render / auto-clip).
   const busy = projects.some((p) =>
-    ['preparing', 'transcribing'].includes(p.status) || (p.clips || []).some((c) => c.status === 'rendering'));
+    ['preparing', 'transcribing'].includes(p.status) ||
+    (p.auto_pilot && ['pending', 'running'].includes(p.auto_pilot_state)) ||
+    (p.clips || []).some((c) => c.status === 'rendering'));
   useEffect(() => {
     if (!busy) return;
     const t = setInterval(() => load(true), 5000);
@@ -174,7 +184,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
     setUpload({ name: file.name, pct: 0, phase: 'Preparing upload…' });
     try {
-      const { project_id, signed_url, path } = await call({ action: 'create_project', title: file.name, ext });
+      const { project_id, signed_url, path } = await call({ action: 'create_project', title: file.name, ext, auto_pilot: autoClip });
       setUpload({ name: file.name, pct: 0, phase: 'Uploading…' });
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -191,7 +201,9 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({ action: 'ingest', project_id, path });
       setUpload(null);
       setSelectedId(project_id);
-      showToast?.('Video uploaded — transcribing now');
+      showToast?.(autoClip
+        ? 'Video uploaded — transcribing, then auto-clipping the best moments'
+        : 'Video uploaded — transcribing now');
       load(true);
     } catch (e) {
       setUpload(null);
@@ -363,11 +375,86 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       const res = await fetch(signed_url, { method: 'PUT', headers: { 'Content-Type': file.type || 'audio/mpeg' }, body: file });
       if (!res.ok) throw new Error(`upload ${res.status}`);
       showToast?.(`Added "${file.name}" to the music library`);
+      if (musicPanel) refreshTracks();
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
     } finally {
       setMusicBusy(false);
     }
+  };
+
+  const retryClip = async (clip) => {
+    setRetryingClipId(clip.id);
+    try {
+      await call({ action: 'retry_clip', clip_id: clip.id });
+      showToast?.('Retrying the render');
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setRetryingClipId(null);
+    }
+  };
+
+  // Load a finished clip's exact settings into the 3-step form so one tweak
+  // (new style, new format) is a two-click re-render.
+  const duplicateClip = (clip) => {
+    const o = clip.options || {};
+    setForm({
+      start: String(clip.start_sec), end: String(clip.end_sec),
+      aspect: clip.aspect, style: clip.style, label: clip.label || '',
+      framing: o.framing || 'auto', silences: !!o.remove_silences, zoom: !!o.zoom,
+      hook: !!o.hook_title, emphasis: o.emphasis !== false, music: !!o.music,
+      broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast?.('Clip settings loaded — change anything and press Generate');
+  };
+
+  // ---- caption editor: click a word, fix it, save ----
+  const openCaptionEditor = async () => {
+    try {
+      const r = await call({ action: 'get_words', project_id: selectedId });
+      setEditWords(r.words || []);
+      setWordEdits({});
+      setEditingIdx(null);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    }
+  };
+
+  const saveCaptionEdits = async () => {
+    const edits = Object.entries(wordEdits).map(([i, word]) => ({ i: Number(i), word }));
+    if (!edits.length) { setEditWords(null); return; }
+    setSavingWords(true);
+    try {
+      await call({ action: 'update_transcript', project_id: selectedId, edits });
+      setEditWords(null);
+      setWordEdits({});
+      showToast?.(`Fixed ${edits.length} word${edits.length === 1 ? '' : 's'} — every clip you generate from now on uses the correction`);
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setSavingWords(false);
+    }
+  };
+
+  // ---- music library panel ----
+  const refreshTracks = async () => {
+    try { const r = await call({ action: 'music_list' }); setTracks(r.tracks || []); }
+    catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
+  const toggleMusicPanel = () => {
+    setMusicPanel((v) => !v);
+    if (!musicPanel) refreshTracks();
+  };
+
+  const deleteTrack = async (name) => {
+    if (!window.confirm(`Remove "${name}" from the music library?`)) return;
+    try { await call({ action: 'music_delete', name }); refreshTracks(); }
+    catch (e) { showToast?.(`Error: ${e.message}`); }
   };
 
   const removeClip = async (clip) => {
@@ -440,8 +527,28 @@ export default function ClipStudioTab({ accessToken, showToast }) {
         {working && (
           <Card className="p-4 mb-4">
             <PipelineProgress status={project.status} />
-            <p className="text-xs text-gray-400 mt-2">Getting your video ready — this page updates by itself. Longer videos take a few minutes.</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Getting your video ready — this page updates by itself. Longer videos take a few minutes.
+              {project.auto_pilot && ' Auto-clip will start as soon as the transcript is done.'}
+            </p>
           </Card>
+        )}
+
+        {/* Auto-clip status */}
+        {project.auto_pilot && ready && ['pending', 'running'].includes(project.auto_pilot_state) && (
+          <Card className="p-4 mb-4 border-indigo-200 bg-indigo-50/40">
+            <div className="flex items-center gap-2 text-sm text-indigo-800">
+              <Zap size={15} className="text-indigo-500" />
+              <Loader2 size={14} className="animate-spin text-indigo-500" />
+              Auto-clip is reading the whole video and rendering every strong, complete moment — clips appear in “Your clips” below as they finish.
+            </div>
+          </Card>
+        )}
+        {project.auto_pilot_state === 'error' && (
+          <div className="flex items-center gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
+            <AlertTriangle size={15} className="flex-shrink-0" />
+            Auto-clip could not finish: {project.meta?.auto_pilot_error || 'unknown error'}. You can still make clips with the steps below.
+          </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -453,11 +560,65 @@ export default function ClipStudioTab({ accessToken, showToast }) {
               )}
               {project.transcript_text && (
                 <Card className="p-4">
-                  <button onClick={() => setTranscriptOpen((v) => !v)} className="w-full flex items-center justify-between">
-                    <SectionLabel>Transcript</SectionLabel>
-                    {transcriptOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                  </button>
-                  {transcriptOpen && (
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => setTranscriptOpen((v) => !v)} className="flex-1 flex items-center justify-between">
+                      <SectionLabel>Transcript</SectionLabel>
+                      {transcriptOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                    </button>
+                    {ready && !editWords && (
+                      <button onClick={openCaptionEditor} className="ml-3 text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0"
+                        title="Fix misheard words (names!) before rendering — click any word to correct it">
+                        <Pencil size={12} /> Fix captions
+                      </button>
+                    )}
+                  </div>
+
+                  {/* caption editor: every word is clickable */}
+                  {editWords && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-gray-500 mb-2">
+                        Click any word the AI misheard (names especially) and type the correction. Timing is kept, so captions stay in sync.
+                      </p>
+                      <div className="max-h-72 overflow-y-auto leading-7 text-sm border border-gray-100 rounded-lg p-2.5">
+                        {editWords.map((w, i) => (
+                          editingIdx === i ? (
+                            <input
+                              key={i} autoFocus defaultValue={wordEdits[i] ?? w.word.trim()}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                setWordEdits((prev) => {
+                                  const next = { ...prev };
+                                  if (v && v !== w.word.trim()) next[i] = v; else delete next[i];
+                                  return next;
+                                });
+                                setEditingIdx(null);
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+                              className="inline-block w-28 border border-indigo-300 rounded px-1 py-0 text-sm mx-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            />
+                          ) : (
+                            <span key={i} onClick={() => setEditingIdx(i)}
+                              className={`cursor-pointer rounded px-0.5 ${wordEdits[i] ? 'bg-amber-100 text-amber-900 font-medium' : 'hover:bg-indigo-50'}`}
+                              title={wordEdits[i] ? `was: ${w.word.trim()}` : 'Click to correct'}>
+                              {(wordEdits[i] ?? w.word.trim()) + ' '}
+                            </span>
+                          )
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button onClick={saveCaptionEdits} disabled={savingWords || !Object.keys(wordEdits).length}
+                          className={`${btn.accent} text-xs`}>
+                          {savingWords ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          Save {Object.keys(wordEdits).length ? `${Object.keys(wordEdits).length} fix${Object.keys(wordEdits).length === 1 ? '' : 'es'}` : 'corrections'}
+                        </button>
+                        <button onClick={() => { setEditWords(null); setWordEdits({}); setEditingIdx(null); }} className={`${btn.ghost} text-xs`}>
+                          <X size={13} /> Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {transcriptOpen && !editWords && (
                     <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto mt-2">{project.transcript_text}</p>
                   )}
                 </Card>
@@ -666,6 +827,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                             <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
                           </>
                         )}
+                        {c.status !== 'rendering' && (
+                          <button onClick={() => duplicateClip(c)} className={btn.iconGhost} title="Duplicate — load these settings into the form to re-render with tweaks">
+                            <Copy size={15} />
+                          </button>
+                        )}
                         <button onClick={() => removeClip(c)} className={btn.iconGhost} title="Delete clip"><Trash2 size={15} /></button>
                       </div>
                     </div>
@@ -681,7 +847,15 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     {c.status === 'ready' && c.video_url && (
                       <video src={c.video_url} controls className="w-full rounded-lg bg-black" style={{ maxHeight: 320 }} />
                     )}
-                    {c.status === 'failed' && <div className="text-xs text-red-600">{c.error_message}</div>}
+                    {c.status === 'failed' && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-red-600 flex-1">{c.error_message}</span>
+                        <button onClick={() => retryClip(c)} disabled={retryingClipId === c.id}
+                          className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition">
+                          {retryingClipId === c.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Retry
+                        </button>
+                      </div>
+                    )}
                   </Card>
                 );
               })}
@@ -703,9 +877,9 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           <p className="text-sm text-gray-500 mt-1">Upload a video, get an automatic transcript, and burn animated captions ready for Reels, TikTok, and ads.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => musicRef.current?.click()} disabled={musicBusy} className={btn.ghost}
-            title="Upload MP3s here to use with the Background music extra">
-            {musicBusy ? <Loader2 size={15} className="animate-spin" /> : <Music size={15} />} Music library
+          <button onClick={toggleMusicPanel} className={btn.ghost}
+            title="Manage the MP3s used by the Background music extra">
+            <Music size={15} /> Music library {musicPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
           <button onClick={() => load()} disabled={loading} className={btn.ghost}>
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh
@@ -716,6 +890,33 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       {/* upload zone */}
       <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
       <input ref={musicRef} type="file" accept=".mp3,.m4a,.aac,audio/*" className="hidden" onChange={(e) => { onMusicFile(e.target.files?.[0]); e.target.value = ''; }} />
+
+      {/* music library panel */}
+      {musicPanel && (
+        <Card className="p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <SectionLabel>Music library</SectionLabel>
+            <button onClick={() => musicRef.current?.click()} disabled={musicBusy} className={`${btn.ghost} text-xs`}>
+              {musicBusy ? <Loader2 size={13} className="animate-spin" /> : <UploadCloud size={13} />} Upload MP3
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2">These tracks power the “Background music” extra — one is picked per clip and ducked under the speech.</p>
+          {tracks === null ? (
+            <div className="text-xs text-gray-400 flex items-center gap-1.5 py-2"><Loader2 size={13} className="animate-spin" /> Loading…</div>
+          ) : tracks.length === 0 ? (
+            <div className="text-xs text-gray-400 py-2">No tracks yet — upload an MP3 to get started.</div>
+          ) : (
+            <div className="space-y-1">
+              {tracks.map((name) => (
+                <div key={name} className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-2.5 py-1.5">
+                  <span className="text-sm text-gray-700 truncate flex items-center gap-2"><Music size={13} className="text-gray-300 flex-shrink-0" /> {name}</span>
+                  <button onClick={() => deleteTrack(name)} className={btn.iconGhost} title="Remove from library"><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
       {upload ? (
         <Card className="p-5 mb-6">
           <div className="flex items-center gap-2 text-sm text-gray-700 mb-2">
@@ -726,12 +927,21 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           </div>
         </Card>
       ) : (
-        <button onClick={() => fileRef.current?.click()}
-          className="w-full border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40 rounded-xl p-8 text-center transition mb-6 group">
-          <UploadCloud size={28} className="mx-auto text-gray-300 group-hover:text-indigo-400 mb-2" />
-          <div className="text-sm font-medium text-gray-700">Upload a video</div>
-          <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 1GB — transcription starts automatically</div>
-        </button>
+        <div className="mb-6">
+          <button onClick={() => fileRef.current?.click()}
+            className="w-full border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40 rounded-xl p-8 text-center transition group">
+            <UploadCloud size={28} className="mx-auto text-gray-300 group-hover:text-indigo-400 mb-2" />
+            <div className="text-sm font-medium text-gray-700">Upload a video</div>
+            <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 1GB — transcription starts automatically</div>
+          </button>
+          <label className="flex items-start gap-2 cursor-pointer select-none mt-2 px-1">
+            <input type="checkbox" checked={autoClip} onChange={(e) => setAutoClip(e.target.checked)} className="mt-0.5 accent-indigo-600" />
+            <span className="text-sm text-gray-700">
+              <Zap size={13} className="inline -mt-0.5 text-indigo-500" /> Auto-clip
+              <span className="text-[11px] text-gray-400"> — after upload, the AI reads the whole video and renders every strong, complete moment on its own (nothing cut off mid-thought)</span>
+            </span>
+          </label>
+        </div>
       )}
 
       {/* Song teasers: turn a catalog song into a karaoke-caption teaser ad. */}

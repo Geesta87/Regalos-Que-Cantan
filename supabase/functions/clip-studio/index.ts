@@ -10,172 +10,37 @@
 //
 // Actions:
 //   list                                        -> projects (with clips)
-//   create_project { title, ext }               -> row + signed upload URL
+//   create_project { title, ext, auto_pilot }   -> row + signed upload URL
 //   ingest        { project_id }                -> kick prepare (audio+duration) after upload
-//   render_clip   { project_id, start_sec, end_sec, aspect, style, label }
+//   render_clip   { project_id, start_sec, end_sec, aspect, style, label, options }
+//   retry_clip    { clip_id }                   -> re-dispatch a failed render
+//   get_words     { project_id }                -> word-timed transcript for the caption editor
+//   update_transcript { project_id, edits }     -> fix misheard words before rendering
+//   music_delete  { name }                      -> remove a track from the music library
 //   delete_clip   { clip_id }
 //   delete_project{ project_id }
+//
+// Shared AI + dispatch logic lives in _shared/clip-studio-lib.ts (also used by
+// clip-studio-callback for auto-pilot and clip-studio-watchdog for recovery).
 //
 // Auth: verify_jwt = true (admin JWT). Caller must be in admin_users — same
 // pattern as admin-videos. Service-role for data.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  BUCKET, CALLBACK_URL, ASPECTS, STYLES,
+  dispatchRenderer, dispatchClip, proposeClips, tagEmphasis, nowIso,
+} from '../_shared/clip-studio-lib.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
-const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN') || '';
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 const PEXELS_API_KEY = Deno.env.get('PEXELS_API_KEY');
 
-const BUCKET = 'clip-studio';
-const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
-const ASPECTS = ['9:16', '1:1', '16:9'];
-const STYLES = ['boldpop', 'goldglow', 'cleanbox'];
-
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
-
-// Transcript words -> compact timestamped lines Claude can reason over:
-//   [12.4] and the drama team memorized five skits
-function timedTranscript(words: Array<{ word: string; start: number; end: number }>) {
-  const lines: string[] = [];
-  let cur: string[] = [];
-  let lineStart = 0;
-  for (let i = 0; i < words.length; i++) {
-    if (cur.length === 0) lineStart = words[i].start;
-    cur.push(words[i].word.trim());
-    const gap = i + 1 < words.length ? words[i + 1].start - words[i].end : 99;
-    if (cur.length >= 14 || /[.!?…]$/.test(words[i].word.trim()) || gap > 1.2) {
-      lines.push(`[${lineStart.toFixed(1)}] ${cur.join(' ')}`);
-      cur = [];
-    }
-  }
-  if (cur.length) lines.push(`[${lineStart.toFixed(1)}] ${cur.join(' ')}`);
-  return lines.join('\n');
-}
-
-const SUGGEST_TOOL = {
-  name: 'propose_clips',
-  description: 'Propose the best short-form clips from this transcript.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      suggestions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            start_sec: { type: 'number', description: 'clip start, seconds' },
-            end_sec: { type: 'number', description: 'clip end, seconds' },
-            title: { type: 'string', description: 'short hook-style name for the clip, in the language of the transcript, max 8 words' },
-            reason: { type: 'string', description: 'one sentence: why this moment will perform, in English' },
-            score: { type: 'number', description: '1-10 how strong this clip is' },
-          },
-          required: ['start_sec', 'end_sec', 'title', 'reason', 'score'],
-        },
-      },
-    },
-    required: ['suggestions'],
-  },
-};
-
-// For song teasers the brief changes: we want the chorus / emotional peak of
-// SUNG LYRICS, ideally the moment the recipient's name is sung.
-function teaserSystemPrompt(recipient: string | null) {
-  return (
-    'You pick the best TEASER windows from a personalized SONG for a social media ad. ' +
-    'You receive the sung lyrics where each line starts with its timestamp in seconds. Pick the 2-3 strongest 18-30 second windows. ' +
-    `Rules: prefer the chorus or the emotional peak; ${recipient ? `the window that contains the recipient's name ("${recipient}") being sung is the most valuable — include it; ` : ''}` +
-    'start at the beginning of a sung line, end at the end of one; title = a short scroll-stopping hook IN SPANISH for the ad (max 8 words). ' +
-    'Call the propose_clips tool with your picks.'
-  );
-}
-
-async function proposeClips(words: Array<{ word: string; start: number; end: number }>, durationSec: number, teaserRecipient?: string | null, isTeaser = false) {
-  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: CLIP_AI_MODEL,
-      max_tokens: 2000,
-      system: isTeaser ? teaserSystemPrompt(teaserRecipient ?? null) :
-        'You are a short-form video editor who cuts long videos into clips that perform on TikTok, Reels and as social ads. ' +
-        'You receive a transcript where each line starts with its timestamp in seconds. Pick the 3-5 STRONGEST self-contained moments. ' +
-        'Rules: each clip 10-45 seconds; must begin at a natural sentence start whose first line works as a hook; must end on a completed thought; ' +
-        'never start mid-sentence; prefer emotional, surprising, persuasive or highly concrete moments over generic ones; do not overlap clips. ' +
-        'Call the propose_clips tool with your picks.',
-      messages: [{
-        role: 'user',
-        content: `Video duration: ${Math.round(durationSec)}s. Transcript:\n\n${timedTranscript(words).slice(0, 60000)}`,
-      }],
-      tools: [SUGGEST_TOOL],
-      tool_choice: { type: 'tool', name: 'propose_clips' },
-    }),
-  });
-  if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-  const data = await resp.json();
-  const toolUse = (data.content || []).find((b: any) => b.type === 'tool_use');
-  const raw = toolUse?.input?.suggestions;
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error('AI returned no suggestions');
-
-  // Snap to word boundaries so caption timing starts exactly on speech.
-  const snap = (s: any) => {
-    let start = Number(s.start_sec), end = Number(s.end_sec);
-    if (Number.isNaN(start) || Number.isNaN(end)) return null;
-    const first = words.find((w) => w.start >= start - 0.3);
-    const lastCandidates = words.filter((w) => w.end <= end + 0.3);
-    if (!first || !lastCandidates.length) return null;
-    start = Math.max(0, first.start - 0.25);
-    end = Math.min(durationSec, lastCandidates[lastCandidates.length - 1].end + 0.35);
-    if (end - start < 6 || end - start > 90) return null;
-    return {
-      start_sec: Math.round(start * 10) / 10,
-      end_sec: Math.round(end * 10) / 10,
-      title: String(s.title || 'Clip').slice(0, 80),
-      reason: String(s.reason || '').slice(0, 300),
-      score: Math.max(1, Math.min(10, Number(s.score) || 5)),
-    };
-  };
-  const cleaned = raw.map(snap).filter(Boolean) as any[];
-  if (!cleaned.length) throw new Error('AI suggestions did not map to the transcript');
-  cleaned.sort((a, b) => b.score - a.score);
-  return cleaned.slice(0, 5);
-}
-
-// Tag the "power words" of a clip (numbers, names, benefits, emotional
-// spikes) so the renderer can paint them gold and bigger. Cheap + fast model;
-// failures degrade gracefully to no emphasis.
-async function tagEmphasis(words: Array<{ word: string; start: number }>): Promise<number[]> {
-  if (!ANTHROPIC_API_KEY || words.length < 6) return [];
-  const listing = words.map((w) => `${w.start.toFixed(2)}|${w.word.trim()}`).join('\n');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
-      system:
-        'You tag the power words of a social-video caption track: numbers, names, benefits, emotionally loaded or surprising words. ' +
-        `Tag AT MOST ${Math.max(2, Math.ceil(words.length / 8))} words — only the ones that deserve visual emphasis. ` +
-        'Call the tag tool with the start timestamps of the chosen words, exactly as given.',
-      messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],
-      tools: [{
-        name: 'tag',
-        description: 'Tag emphasis words by their start timestamps.',
-        input_schema: { type: 'object', properties: { starts: { type: 'array', items: { type: 'number' } } }, required: ['starts'] },
-      }],
-      tool_choice: { type: 'tool', name: 'tag' },
-    }),
-  });
-  if (!resp.ok) throw new Error(`emphasis ${resp.status}`);
-  const data = await resp.json();
-  const starts = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.starts;
-  return Array.isArray(starts) ? starts.filter((s: unknown) => typeof s === 'number').slice(0, 20) : [];
-}
 
 // B-roll: Claude reads the clip's transcript and proposes 2-4 short visual
 // moments with a stock-footage search query each; Pexels supplies the videos.
@@ -246,16 +111,6 @@ async function searchPexelsVideo(query: string, aspect: string): Promise<string 
   return null;
 }
 
-async function dispatchRenderer(path: string, job: Record<string, unknown>) {
-  if (!RENDERER_URL) throw new Error('INHOUSE_RENDERER_URL not configured');
-  const res = await fetch(`${RENDERER_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
-    body: JSON.stringify(job),
-  });
-  if (res.status !== 202) throw new Error(`renderer ${path} replied ${res.status}: ${(await res.text()).slice(0, 200)}`);
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (o: unknown, code = 200) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: code });
@@ -297,8 +152,11 @@ serve(async (req) => {
     if (action === 'create_project') {
       const title = String(body.title || 'Untitled video').slice(0, 120);
       const ext = String(body.ext || 'mp4').replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'mp4';
+      // auto_pilot: once the transcript lands, segment the whole video into
+      // complete clips and render them hands-free (callback + watchdog).
+      const autoPilot = !!body.auto_pilot;
       const { data: proj, error } = await admin.from('clip_projects')
-        .insert({ title, status: 'uploaded' }).select().single();
+        .insert({ title, status: 'uploaded', auto_pilot: autoPilot, auto_pilot_state: autoPilot ? 'pending' : null }).select().single();
       if (error) throw new Error(error.message);
       const sourcePath = `${proj.id}/source.${ext}`;
       const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(sourcePath, { upsert: true });
@@ -422,7 +280,9 @@ serve(async (req) => {
       if (!Array.isArray(words) || words.length < 20) throw new Error('Not enough speech in this video to pick clips from');
 
       const isTeaser = proj.kind === 'song_teaser';
-      const suggestions = await proposeClips(words, Number(proj.duration_sec) || words[words.length - 1].end, proj.meta?.recipient, isTeaser);
+      const suggestions = await proposeClips(words, Number(proj.duration_sec) || words[words.length - 1].end, {
+        mode: isTeaser ? 'teaser' : 'best', recipient: proj.meta?.recipient,
+      });
       const ai_suggestions = { generated_at: new Date().toISOString(), model: CLIP_AI_MODEL, suggestions };
       await admin.from('clip_projects').update({ ai_suggestions, updated_at: new Date().toISOString() }).eq('id', project_id);
       return json({ success: true, ai_suggestions });
@@ -435,9 +295,12 @@ serve(async (req) => {
       if (!STYLES.includes(style)) throw new Error(`style must be one of ${STYLES.join(', ')}`);
 
       const { data: proj, error: pe } = await admin.from('clip_projects')
-        .select('id, source_url, duration_sec, transcript, status, kind, meta').eq('id', project_id).single();
+        .select('id, source_url, source_purged_at, duration_sec, transcript, status, kind, meta').eq('id', project_id).single();
       if (pe || !proj) throw new Error('project not found');
       if (proj.status !== 'ready') throw new Error(`project is '${proj.status}', not ready`);
+      if (proj.kind !== 'song_teaser' && (proj.source_purged_at || !proj.source_url)) {
+        throw new Error('The original video was cleaned up after 14 days of inactivity — upload it again to make new clips');
+      }
       const words = proj.transcript?.words;
       if (!Array.isArray(words) || words.length === 0) throw new Error('project has no transcript words');
 
@@ -448,28 +311,24 @@ serve(async (req) => {
         if (tEnd - tStart < 10) throw new Error('Teaser windows need at least 10 seconds');
         if (tEnd - tStart > 45) throw new Error('Teasers work best under 45 seconds — pick a shorter window');
         const tLabel = label ? String(label).slice(0, 120) : null;
+        const render_job = {
+          mode: 'teaser',
+          audio_src: proj.source_url, bg_image_url: proj.meta?.cover_url || null,
+          start_sec: tStart, end_sec: tEnd, aspect, style,
+          options: { hook_title_text: tLabel },
+          endcard_text: 'regalosquecantan.com',
+        };
         const { data: clip, error: ce } = await admin.from('clips').insert({
           project_id, start_sec: tStart, end_sec: tEnd, aspect, style,
           label: tLabel, status: 'rendering',
           options: { teaser: true, hook_title: !!tLabel },
+          render_job, dispatched_at: nowIso(),
         }).select().single();
         if (ce) throw new Error(ce.message);
         try {
-          const outPath = `${project_id}/clips/${clip.id}.mp4`;
-          const { data: signed, error: sge } = await admin.storage.from(BUCKET).createSignedUploadUrl(outPath, { upsert: true });
-          if (sge) throw new Error(`sign output: ${sge.message}`);
-          await dispatchRenderer('/clip-render', {
-            mode: 'teaser', clip_id: clip.id, project_id,
-            audio_src: proj.source_url, bg_image_url: proj.meta?.cover_url || null,
-            start_sec: tStart, end_sec: tEnd, aspect, style, words,
-            options: { hook_title_text: tLabel },
-            endcard_text: 'regalosquecantan.com',
-            bucket: BUCKET, callback_url: CALLBACK_URL,
-            output_upload_url: signed.signedUrl, output_path: outPath,
-            output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
-          });
+          await dispatchClip(admin, proj, clip);
         } catch (e) {
-          await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: new Date().toISOString() }).eq('id', clip.id);
+          await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: nowIso() }).eq('id', clip.id);
           throw e;
         }
         return json({ success: true, clip });
@@ -538,30 +397,100 @@ serve(async (req) => {
         music_url = admin.storage.from(BUCKET).getPublicUrl(`music/${pick.name}`).data.publicUrl;
       }
 
+      // The stable payload is stored on the row so the watchdog / Retry button
+      // can re-dispatch without re-resolving music, b-roll, or emphasis.
+      const render_job = {
+        source_url: proj.source_url,
+        start_sec: start, end_sec: end, aspect, style,
+        options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
+        music_url, broll, sfx_url,
+      };
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id, start_sec: start, end_sec: end, aspect, style,
         label: cleanLabel, status: 'rendering', options,
+        render_job, dispatched_at: nowIso(),
       }).select().single();
       if (ce) throw new Error(ce.message);
 
       try {
-        const outPath = `${project_id}/clips/${clip.id}.mp4`;
-        const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(outPath, { upsert: true });
-        if (se) throw new Error(`sign output: ${se.message}`);
-        await dispatchRenderer('/clip-render', {
-          clip_id: clip.id, project_id, source_url: proj.source_url,
-          start_sec: start, end_sec: end, aspect, style, words,
-          options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
-          music_url, broll, sfx_url,
-          bucket: BUCKET, callback_url: CALLBACK_URL,
-          output_upload_url: signed.signedUrl, output_path: outPath,
-          output_public_url: admin.storage.from(BUCKET).getPublicUrl(outPath).data.publicUrl,
-        });
+        await dispatchClip(admin, proj, clip);
       } catch (e) {
-        await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: new Date().toISOString() }).eq('id', clip.id);
+        await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: nowIso() }).eq('id', clip.id);
         throw e;
       }
       return json({ success: true, clip });
+    }
+
+    // Re-dispatch a failed render. Everything needed is on the clip row
+    // (render_job) or rebuildable for pre-v2 clips; attempts resets so the
+    // watchdog gives it a fresh timeout cycle.
+    if (action === 'retry_clip') {
+      const { clip_id } = body;
+      if (!clip_id) throw new Error('Missing clip_id');
+      const { data: clip } = await admin.from('clips').select('*').eq('id', clip_id).single();
+      if (!clip) throw new Error('clip not found');
+      if (clip.status === 'ready') throw new Error('Clip already rendered');
+      const { data: proj } = await admin.from('clip_projects').select('*').eq('id', clip.project_id).single();
+      if (!proj) throw new Error('project not found');
+      if (proj.kind !== 'song_teaser' && (proj.source_purged_at || !proj.source_url)) {
+        throw new Error('The original video was cleaned up after 14 days of inactivity — upload it again to make new clips');
+      }
+      await admin.from('clips').update({
+        status: 'rendering', error_message: null, attempts: 0, dispatched_at: nowIso(), updated_at: nowIso(),
+      }).eq('id', clip_id);
+      try {
+        await dispatchClip(admin, proj, clip);
+      } catch (e) {
+        await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: nowIso() }).eq('id', clip_id);
+        throw e;
+      }
+      return json({ success: true });
+    }
+
+    // Word-timed transcript for the caption editor.
+    if (action === 'get_words') {
+      const { project_id } = body;
+      if (!project_id) throw new Error('Missing project_id');
+      const { data: proj } = await admin.from('clip_projects').select('transcript').eq('id', project_id).single();
+      if (!proj) throw new Error('project not found');
+      return json({ success: true, words: proj.transcript?.words || [] });
+    }
+
+    // Fix misheard words (names!) before rendering. Edits patch word TEXT
+    // only — timings stay untouched so caption sync is preserved. Rendered
+    // clips keep their old captions; every render after this uses the fix.
+    if (action === 'update_transcript') {
+      const { project_id, edits } = body;
+      if (!project_id) throw new Error('Missing project_id');
+      if (!Array.isArray(edits) || !edits.length) throw new Error('No edits given');
+      if (edits.length > 300) throw new Error('Too many edits in one save');
+      const { data: proj } = await admin.from('clip_projects').select('transcript').eq('id', project_id).single();
+      if (!proj?.transcript?.words) throw new Error('project has no transcript');
+      const wordsArr = [...proj.transcript.words];
+      let applied = 0;
+      for (const e of edits) {
+        const i = Number(e?.i);
+        const word = String(e?.word ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        if (!Number.isInteger(i) || i < 0 || i >= wordsArr.length || !word) continue;
+        wordsArr[i] = { ...wordsArr[i], word };
+        applied++;
+      }
+      if (!applied) throw new Error('No valid edits to apply');
+      const text = wordsArr.map((w: any) => String(w.word).trim()).join(' ');
+      const { error: te } = await admin.from('clip_projects').update({
+        transcript: { ...proj.transcript, words: wordsArr, text },
+        updated_at: nowIso(),
+      }).eq('id', project_id);
+      if (te) throw new Error(te.message);
+      return json({ success: true, applied });
+    }
+
+    if (action === 'music_delete') {
+      const name = String(body.name || '').replace(/[^a-z0-9._-]/gi, '_').slice(0, 80);
+      if (!name || !/\.(mp3|m4a|aac)$/i.test(name)) throw new Error('Invalid track name');
+      const { error: de } = await admin.storage.from(BUCKET).remove([`music/${name}`]);
+      if (de) throw new Error(de.message);
+      return json({ success: true });
     }
 
     if (action === 'sign_music') {

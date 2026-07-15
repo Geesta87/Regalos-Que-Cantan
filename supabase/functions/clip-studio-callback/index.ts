@@ -16,6 +16,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { autoPilotRun } from '../_shared/clip-studio-lib.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,6 +59,10 @@ async function transcribeProject(projectId: string, audioUrl: string) {
       .update({ transcript, status: 'ready', error_message: null, updated_at: now() })
       .eq('id', projectId);
     console.log(`[${projectId}] transcript ready: ${transcript.words.length} words (${transcript.language})`);
+    // Auto-pilot: segment the whole video into complete clips and render them
+    // hands-free. Idempotent (auto_pilot_state) — the watchdog is the backup
+    // if this invocation dies mid-run.
+    await autoPilotRun(supabase, projectId);
   } catch (e) {
     console.error(`[${projectId}] whisper failed:`, (e as Error).message);
     await supabase.from('clip_projects')

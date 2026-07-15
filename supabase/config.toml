@@ -161,7 +161,14 @@ verify_jwt = false
 # Completion hook for Clip Studio jobs on the in-house Cloud Run renderer
 # (rqc-video-renderer /clip-prepare + /clip-render). Cloud Run cannot attach a
 # Supabase JWT — authenticated via the shared x-render-token header, same
-# contract as inhouse-video-callback. Runs Whisper on the extracted audio.
+# contract as inhouse-video-callback. Runs Whisper on the extracted audio,
+# then kicks auto-pilot clip generation for auto_pilot projects.
+verify_jwt = false
+
+[functions.clip-studio-watchdog]
+# Clip Studio recovery cron (pg_cron every 5 min — same no-JWT pattern as
+# health-check). Retries stuck renders, times out dead ones, sweeps missed
+# auto-pilot projects, purges 14-day-old source uploads from storage.
 verify_jwt = false
 
 [functions.mureka-useapi-callback]
