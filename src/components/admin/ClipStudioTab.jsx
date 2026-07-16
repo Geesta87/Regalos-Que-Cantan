@@ -132,6 +132,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [tracks, setTracks] = useState(null);
   const [editWords, setEditWords] = useState(null);     // caption editor: full word list
   const [wordEdits, setWordEdits] = useState({});       // {index: corrected word}
+  const [wordCuts, setWordCuts] = useState({});         // {index: true=cut, false=un-cut} pending changes
+  const [editorMode, setEditorMode] = useState('fix');  // 'fix' word text | 'cut' words out
   const [editingIdx, setEditingIdx] = useState(null);
   const [savingWords, setSavingWords] = useState(false);
   const fileRef = useRef(null);
@@ -422,21 +424,36 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       const r = await call({ action: 'get_words', project_id: selectedId });
       setEditWords(r.words || []);
       setWordEdits({});
+      setWordCuts({});
+      setEditorMode('fix');
       setEditingIdx(null);
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
     }
   };
 
+  const toggleCut = (i, w) => {
+    setWordCuts((prev) => {
+      const current = prev[i] !== undefined ? prev[i] : !!w.cut;
+      const next = { ...prev, [i]: !current };
+      if (next[i] === !!w.cut) delete next[i]; // back to the saved state
+      return next;
+    });
+  };
+
   const saveCaptionEdits = async () => {
-    const edits = Object.entries(wordEdits).map(([i, word]) => ({ i: Number(i), word }));
+    const edits = [
+      ...Object.entries(wordEdits).map(([i, word]) => ({ i: Number(i), word })),
+      ...Object.entries(wordCuts).map(([i, cut]) => ({ i: Number(i), cut })),
+    ];
     if (!edits.length) { setEditWords(null); return; }
     setSavingWords(true);
     try {
       await call({ action: 'update_transcript', project_id: selectedId, edits });
       setEditWords(null);
       setWordEdits({});
-      showToast?.(`Fixed ${edits.length} word${edits.length === 1 ? '' : 's'} — every clip you generate from now on uses the correction`);
+      setWordCuts({});
+      showToast?.(`Saved ${edits.length} change${edits.length === 1 ? '' : 's'} — every clip you generate from now on uses them (crossed-out words are cut from audio, video and captions)`);
       load(true);
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
@@ -578,45 +595,63 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     )}
                   </div>
 
-                  {/* caption editor: every word is clickable */}
+                  {/* caption editor: fix word text, or cross words out to cut them from the video */}
                   {editWords && (
                     <div className="mt-3">
-                      <p className="text-[11px] text-gray-500 mb-2">
-                        Click any word the AI misheard (names especially) and type the correction. Timing is kept, so captions stay in sync.
-                      </p>
-                      <div className="max-h-72 overflow-y-auto leading-7 text-sm border border-gray-100 rounded-lg p-2.5">
-                        {editWords.map((w, i) => (
-                          editingIdx === i ? (
-                            <input
-                              key={i} autoFocus defaultValue={wordEdits[i] ?? w.word.trim()}
-                              onBlur={(e) => {
-                                const v = e.target.value.trim();
-                                setWordEdits((prev) => {
-                                  const next = { ...prev };
-                                  if (v && v !== w.word.trim()) next[i] = v; else delete next[i];
-                                  return next;
-                                });
-                                setEditingIdx(null);
-                              }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
-                              className="inline-block w-28 border border-indigo-300 rounded px-1 py-0 text-sm mx-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                            />
-                          ) : (
-                            <span key={i} onClick={() => setEditingIdx(i)}
-                              className={`cursor-pointer rounded px-0.5 ${wordEdits[i] ? 'bg-amber-100 text-amber-900 font-medium' : 'hover:bg-indigo-50'}`}
-                              title={wordEdits[i] ? `was: ${w.word.trim()}` : 'Click to correct'}>
-                              {(wordEdits[i] ?? w.word.trim()) + ' '}
-                            </span>
-                          )
+                      <div className="flex gap-1.5 mb-2">
+                        {[['fix', 'Fix a word'], ['cut', 'Cut words out']].map(([m, label]) => (
+                          <button key={m} onClick={() => { setEditorMode(m); setEditingIdx(null); }}
+                            className={`text-xs px-2.5 py-1 rounded-lg border transition ${editorMode === m ? 'border-indigo-500 bg-indigo-50 text-indigo-800 font-medium' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                            {label}
+                          </button>
                         ))}
                       </div>
+                      <p className="text-[11px] text-gray-500 mb-2">
+                        {editorMode === 'fix'
+                          ? 'Click any word the AI misheard (names especially) and type the correction. Timing is kept, so captions stay in sync.'
+                          : 'Click words to cross them out — a stumble, a tangent, a bad sentence. Crossed-out words are removed from the audio, video and captions of every clip you render after saving.'}
+                      </p>
+                      <div className="max-h-72 overflow-y-auto leading-7 text-sm border border-gray-100 rounded-lg p-2.5">
+                        {editWords.map((w, i) => {
+                          const isCut = wordCuts[i] !== undefined ? wordCuts[i] : !!w.cut;
+                          if (editorMode === 'fix' && editingIdx === i) {
+                            return (
+                              <input
+                                key={i} autoFocus defaultValue={wordEdits[i] ?? w.word.trim()}
+                                onBlur={(e) => {
+                                  const v = e.target.value.trim();
+                                  setWordEdits((prev) => {
+                                    const next = { ...prev };
+                                    if (v && v !== w.word.trim()) next[i] = v; else delete next[i];
+                                    return next;
+                                  });
+                                  setEditingIdx(null);
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
+                                className="inline-block w-28 border border-indigo-300 rounded px-1 py-0 text-sm mx-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                              />
+                            );
+                          }
+                          return (
+                            <span key={i}
+                              onClick={() => (editorMode === 'cut' ? toggleCut(i, w) : setEditingIdx(i))}
+                              className={`cursor-pointer rounded px-0.5 ${
+                                isCut ? 'bg-red-50 text-red-500 line-through decoration-red-400'
+                                : wordEdits[i] ? 'bg-amber-100 text-amber-900 font-medium'
+                                : editorMode === 'cut' ? 'hover:bg-red-50' : 'hover:bg-indigo-50'}`}
+                              title={isCut ? 'Crossed out — click to restore' : wordEdits[i] ? `was: ${w.word.trim()}` : editorMode === 'cut' ? 'Click to cut this word' : 'Click to correct'}>
+                              {(wordEdits[i] ?? w.word.trim()) + ' '}
+                            </span>
+                          );
+                        })}
+                      </div>
                       <div className="flex items-center gap-2 mt-2">
-                        <button onClick={saveCaptionEdits} disabled={savingWords || !Object.keys(wordEdits).length}
+                        <button onClick={saveCaptionEdits} disabled={savingWords || !(Object.keys(wordEdits).length + Object.keys(wordCuts).length)}
                           className={`${btn.accent} text-xs`}>
                           {savingWords ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                          Save {Object.keys(wordEdits).length ? `${Object.keys(wordEdits).length} fix${Object.keys(wordEdits).length === 1 ? '' : 'es'}` : 'corrections'}
+                          Save {Object.keys(wordEdits).length + Object.keys(wordCuts).length || ''} change{Object.keys(wordEdits).length + Object.keys(wordCuts).length === 1 ? '' : 's'}
                         </button>
-                        <button onClick={() => { setEditWords(null); setWordEdits({}); setEditingIdx(null); }} className={`${btn.ghost} text-xs`}>
+                        <button onClick={() => { setEditWords(null); setWordEdits({}); setWordCuts({}); setEditingIdx(null); }} className={`${btn.ghost} text-xs`}>
                           <X size={13} /> Cancel
                         </button>
                       </div>

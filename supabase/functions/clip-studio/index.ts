@@ -468,27 +468,34 @@ serve(async (req) => {
       return json({ success: true, words: proj.transcript?.words || [] });
     }
 
-    // Fix misheard words (names!) before rendering. Edits patch word TEXT
-    // only — timings stay untouched so caption sync is preserved. Rendered
-    // clips keep their old captions; every render after this uses the fix.
+    // Fix misheard words (names!) or CROSS WORDS OUT before rendering.
+    // Text edits patch word text only — timings stay untouched so caption
+    // sync is preserved. `cut: true` marks a word for removal from audio,
+    // video and captions of every clip rendered after the save. Rendered
+    // clips keep their old edit; every render after this uses the new state.
     if (action === 'update_transcript') {
       const { project_id, edits } = body;
       if (!project_id) throw new Error('Missing project_id');
       if (!Array.isArray(edits) || !edits.length) throw new Error('No edits given');
-      if (edits.length > 300) throw new Error('Too many edits in one save');
+      if (edits.length > 500) throw new Error('Too many edits in one save');
       const { data: proj } = await admin.from('clip_projects').select('transcript').eq('id', project_id).single();
       if (!proj?.transcript?.words) throw new Error('project has no transcript');
       const wordsArr = [...proj.transcript.words];
       let applied = 0;
       for (const e of edits) {
         const i = Number(e?.i);
+        if (!Number.isInteger(i) || i < 0 || i >= wordsArr.length) continue;
         const word = String(e?.word ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
-        if (!Number.isInteger(i) || i < 0 || i >= wordsArr.length || !word) continue;
-        wordsArr[i] = { ...wordsArr[i], word };
+        const hasCut = typeof e?.cut === 'boolean';
+        if (!word && !hasCut) continue;
+        const next: any = { ...wordsArr[i] };
+        if (word) next.word = word;
+        if (hasCut) { if (e.cut) next.cut = true; else delete next.cut; }
+        wordsArr[i] = next;
         applied++;
       }
       if (!applied) throw new Error('No valid edits to apply');
-      const text = wordsArr.map((w: any) => String(w.word).trim()).join(' ');
+      const text = wordsArr.filter((w: any) => !w.cut).map((w: any) => String(w.word).trim()).join(' ');
       const { error: te } = await admin.from('clip_projects').update({
         transcript: { ...proj.transcript, words: wordsArr, text },
         updated_at: nowIso(),

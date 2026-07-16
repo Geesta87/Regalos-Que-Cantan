@@ -117,6 +117,9 @@ export async function proposeClips(
   opts: { mode?: 'best' | 'teaser' | 'full'; recipient?: string | null } = {},
 ) {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+  // Words the owner crossed out in the transcript editor don't exist as far
+  // as clip picking is concerned.
+  words = words.filter((w) => !(w as any).cut);
   const mode = opts.mode || 'best';
   const system = mode === 'teaser' ? teaserSystemPrompt(opts.recipient ?? null)
     : mode === 'full' ? FULL_SEGMENT_PROMPT
@@ -193,6 +196,7 @@ export async function proposeClips(
 // spikes) so the renderer can paint them gold and bigger. Cheap + fast model;
 // failures degrade gracefully to no emphasis.
 export async function tagEmphasis(words: Array<{ word: string; start: number }>): Promise<number[]> {
+  words = words.filter((w) => !(w as any).cut);
   if (!ANTHROPIC_API_KEY || words.length < 6) return [];
   const listing = words.map((w) => `${w.start.toFixed(2)}|${w.word.trim()}`).join('\n');
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
