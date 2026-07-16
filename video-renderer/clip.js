@@ -750,7 +750,7 @@ async function renderClip(job, { dir, log }) {
     log(`music bed: ${job.music_url.slice(0, 100)}`);
     await download(job.music_url, path.join(dir, 'music.mp3'));
     if (hasAudio) {
-      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.16[mus]`);
+      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.22[mus]`);
       parts.push(`${speechLabel}asplit=2[spA][spB]`);
       parts.push(`[mus][spB]sidechaincompress=threshold=0.03:ratio=10:attack=40:release=500[duck]`);
       parts.push(`[spA][duck]amix=inputs=2:duration=first:normalize=0[aout]`);
