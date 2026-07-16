@@ -239,6 +239,7 @@ export async function tagEmoji(words: Array<{ word: string; start: number }>): P
       max_tokens: 500,
       system:
         'You add emoji to social-video captions. Pick the punchy moments — money, love, music, surprise, gifts — and give each ONE fitting emoji. ' +
+        'You may ONLY use these emoji (the renderer has exactly these): 🎁 🎶 🎵 ❤️ 😍 😭 🔥 🎉 👏 💯 ⭐ 🙌 💝 🌹 🎂 🥰 😱 🤯 💛 😊. ' +
         `Tag AT MOST ${Math.max(2, Math.ceil(words.length / 12))} words, never two within 3 seconds of each other. ` +
         'Call the tag tool with the exact start timestamps and the emoji.',
       messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],

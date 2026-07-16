@@ -181,11 +181,10 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const t = assEscape(w.word);
       return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp, emoji: w.emoji || null };
     });
-    // AI emoji lands after the last tagged word of the group. The font switch
-    // is explicit (\fn) — libass' automatic fallback gave tofu boxes; the
-    // monochrome Noto Emoji outlines match the caption look.
-    const emojiIdx = texts.map((x) => !!x.emoji).lastIndexOf(true);
-    const withEmoji = (x, j) => (j === emojiIdx ? `${x.txt} {\\fnNoto Emoji}${x.emoji}{\\fnDejaVu Sans}` : x.txt);
+    // Emoji do NOT go into the caption text — Cloud Run's libass draws tofu
+    // for them no matter which font we ship. They render as PNG bursts above
+    // the captions instead (see the emoji-burst overlays in renderClip).
+    const withEmoji = (x) => x.txt;
     if (!st.highlight) {
       // One dialogue per group, no per-word paint.
       const text = texts.map((x, j) => (x.emp ? `${empOpen}${withEmoji(x, j)}${empClose}` : withEmoji(x, j))).join(' ');
@@ -433,6 +432,20 @@ const POP = process.env.POP_PATH || path.join(__dirname, 'assets', 'pop.mp3');
 // Bundled monochrome Noto Emoji (OFL) — loaded via the subtitles filter's
 // fontsdir so {\fnNoto Emoji} resolves without any system font packages.
 const EMOJI_FONT = process.env.EMOJI_FONT_PATH || path.join(__dirname, 'assets', 'NotoEmoji-Regular.ttf');
+// Emoji bursts: full-color Noto PNGs (Apache-2.0) overlaid above the captions.
+// The AI is constrained to exactly this set (see tagEmoji in the edge fn).
+const EMOJI_DIR = process.env.EMOJI_DIR || path.join(__dirname, 'assets', 'emoji');
+const EMOJI_PNG = {
+  '🎁': 'u1f381', '🎶': 'u1f3b6', '🎵': 'u1f3b5', '❤': 'u2764', '❤️': 'u2764',
+  '😍': 'u1f60d', '😭': 'u1f62d', '🔥': 'u1f525', '🎉': 'u1f389', '👏': 'u1f44f',
+  '💯': 'u1f4af', '⭐': 'u2b50', '🙌': 'u1f64c', '💝': 'u1f49d', '🌹': 'u1f339',
+  '🎂': 'u1f382', '🥰': 'u1f970', '😱': 'u1f631', '🤯': 'u1f92f', '💛': 'u1f49b', '😊': 'u1f60a',
+};
+const emojiAsset = (e) => {
+  const key = String(e || '').replace(/️/g, '');
+  const file = EMOJI_PNG[key] || EMOJI_PNG[key + '️'];
+  return file ? path.join(EMOJI_DIR, `${file}.png`) : null;
+};
 
 // ---------------------------------------------------------------------------
 // Brand outro (options.outro): a 2.8s end-card — RQC logo + site on the brand
@@ -827,7 +840,8 @@ async function renderClip(job, { dir, log }) {
     parts.push(`[${vfinal}][pbar]overlay=x='-W+W*min(t/${outDur.toFixed(3)},1)':y=${geo.h - barH}:eof_action=pass[vpb]`);
     vfinal = 'vpb';
   }
-  parts.push(`[${vfinal}]null[vout]`);
+  // NOTE: [vout] is aliased AFTER the audio section — the emoji-burst overlays
+  // need input indices that depend on the audio inputs (sfx/whoosh/pops).
 
   // Music bed: looped track as a second input, volume-dropped and side-chain
   // ducked under the speech, then mixed back in (no re-normalizing).
@@ -894,6 +908,29 @@ async function renderClip(job, { dir, log }) {
     log(`key-word sounds: ${popTimes.length} pop(s)`);
   }
 
+  // Emoji bursts: a full-color emoji PNG pops in centered above the captions
+  // for ~1.1s on each AI-tagged word (post-cut timestamps on the words).
+  const bursts = [];
+  for (const w of words) {
+    if (!w.emoji || bursts.length >= 6) continue;
+    const asset = emojiAsset(w.emoji);
+    if (!asset || !fs.existsSync(asset)) continue;
+    if (w.start < 1.5 || w.start > outDur - 1.2) continue;
+    if (bursts.length && w.start - bursts[bursts.length - 1].T < 2.5) continue;
+    bursts.push({ T: Math.round(w.start * 100) / 100, asset });
+  }
+  const emSize = Math.round(geo.w * 0.15);
+  const emY = Math.max(40, geo.h - geo.marginV - Math.round(geo.fontsize * 1.7) - emSize);
+  const emBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+  bursts.forEach((b, i) => {
+    fs.copyFileSync(b.asset, path.join(dir, `em${i}.png`));
+    parts.push(`[${emBase + i}:v]format=rgba,scale=${emSize}:-1,fade=t=in:st=0:d=0.12:alpha=1,fade=t=out:st=0.85:d=0.25:alpha=1,setpts=PTS+${b.T.toFixed(3)}/TB[eb${i}]`);
+    parts.push(`[${vfinal}][eb${i}]overlay=(W-w)/2:${emY}:enable='between(t,${b.T.toFixed(3)},${(b.T + 1.1).toFixed(3)})':eof_action=pass[veb${i}]`);
+    vfinal = `veb${i}`;
+  });
+  if (bursts.length) log(`emoji bursts: ${bursts.length}`);
+  parts.push(`[${vfinal}]null[vout]`);
+
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
@@ -902,6 +939,7 @@ async function renderClip(job, { dir, log }) {
   if (withSfx) args.push('-i', 'sfx.mp3');
   if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
   if (withPops) args.push('-i', 'kw-pop.mp3');
+  bursts.forEach((_, i) => args.push('-loop', '1', '-framerate', '30', '-t', '1.15', '-i', `em${i}.png`));
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
