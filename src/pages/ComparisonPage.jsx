@@ -271,10 +271,18 @@ export default function ComparisonPage() {
   // Bundle intent from the /paquete ad ("Canción + Video Animado"). Read once and
   // clear. Drives auto-selection of the Animado video below so the buyer sees the
   // exact $58.99 total they were promised. Single source of truth = animadoCount.
-  const [bundleVideoIntent] = useState(() => {
+  // One-shot session flag, captured at mount. Fragile: it self-clears just below, so a
+  // remount/refresh loses it. Kept only as a fast path for the same-mount case.
+  const [sessionBundleFlag] = useState(() => {
     try { return sessionStorage.getItem('rqc_bundle_video') === '1'; } catch { return false; }
   });
   useEffect(() => { try { sessionStorage.removeItem('rqc_bundle_video'); } catch { /* ignore */ } }, []);
+  // Durable bundle intent — the real signal. `formData.wantsAnimadoVideo` is set by
+  // /paquete ("Canción + Video Animado") and persists in localStorage, so it survives
+  // the whole create→generate→compare journey AND any remount, unlike the session flag.
+  // Set ONLY by /paquete (true for bundle, false for song-only); absent for normal
+  // buyers → they stay at the plain song price. Either source true = bundle.
+  const bundleVideoIntent = sessionBundleFlag || formData?.wantsAnimadoVideo === true;
 
   // A 'video' extra preselected from the store (/tienda) now maps to the
   // standalone hero card (videoAddonCount) instead of a grid tile.
