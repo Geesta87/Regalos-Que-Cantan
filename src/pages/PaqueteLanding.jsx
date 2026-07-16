@@ -55,7 +55,7 @@ const faqs = [
   { question: '¿En qué estilos puedo pedir la canción?', answer: 'En el que quieras: corrido, banda, mariachi, bachata, balada romántica y muchos más. Tú eliges el género y el estilo, y nosotros lo hacemos sonar profesional.' },
   { question: '¿Cómo se hace el video animado?', answer: 'Subes unas fotos y las convertimos en una animación estilo Pixar que acompaña la canción. Un recuerdo único que van a querer compartir.' },
   { question: '¿Puedo escuchar antes de pagar?', answer: '¡Sí! Recibes un preview gratis de la canción. Solo pagas si te encanta.' },
-  { question: '¿Cuánto tarda?', answer: 'La canción está lista en ~3 minutos. El video animado toma un poco más y te lo entregamos digital apenas está listo.' },
+  { question: '¿Cuánto tarda?', answer: 'La canción está lista en ~3 minutos y la puedes descargar al instante después de pagar. El video animado se hace a mano con sus fotos y te lo entregamos en 1–2 días.' },
 ];
 
 function StarRating({ rating }) {
@@ -388,7 +388,7 @@ export default function PaqueteLanding() {
             {[
               { icon: '🎸', step: '1', title: 'Elige El Estilo', desc: 'Corrido, banda, mariachi, bachata, balada… el género que más le guste.' },
               { icon: '💌', step: '2', title: 'Cuéntanos Su Historia', desc: 'Su nombre, la ocasión y los detalles. Si quieres el video, subes sus fotos.' },
-              { icon: '🎁', step: '3', title: 'Recibe Su Regalo', desc: 'La canción en ~3 minutos y el video animado listo para sorprender.' },
+              { icon: '🎁', step: '3', title: 'Recibe Su Regalo', desc: 'La canción al instante — descárgala apenas pagues. El video animado llega en 1–2 días.' },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center text-4xl">{item.icon}</div>
