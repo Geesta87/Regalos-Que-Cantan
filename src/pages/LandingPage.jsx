@@ -74,7 +74,7 @@ export default function LandingPage() {
     // prior /paquete visit in the same browser. Clear it here so ONLY fresh /paquete
     // "Canción + Video" buyers ever get the $58.99 auto-select. /paquete never routes
     // through this page, so its intent is untouched.
-    setFormData((prev) => (prev?.wantsAnimadoVideo ? { ...prev, wantsAnimadoVideo: false } : prev));
+    setFormData((prev) => ((prev?.wantsAnimadoVideo || prev?.fromPaquete) ? { ...prev, wantsAnimadoVideo: false, fromPaquete: false } : prev));
   }, [setFormData]);
 
   return (

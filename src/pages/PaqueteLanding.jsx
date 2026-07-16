@@ -160,6 +160,7 @@ export default function PaqueteLanding() {
       subGenrePrompt: '',
       genreStyle: '',
       wantsAnimadoVideo: withVideo,
+      fromPaquete: true, // routes to the dedicated /paquete/checkout page after generation
     }));
     applyVideoPreselect();
     trackStep('paquete_start', { with_video: withVideo, value: withVideo ? SONG_PRICE + VIDEO_PRICE : SONG_PRICE, genre: genreId });
@@ -179,7 +180,7 @@ export default function PaqueteLanding() {
 
   // "Otro género" → full genre catalog (regular funnel), carrying the video choice.
   const startCreate = () => {
-    setFormData(prev => ({ ...prev, wantsAnimadoVideo: withVideo }));
+    setFormData(prev => ({ ...prev, wantsAnimadoVideo: withVideo, fromPaquete: true }));
     applyVideoPreselect();
     trackStep('paquete_start', { with_video: withVideo, value: withVideo ? SONG_PRICE + VIDEO_PRICE : SONG_PRICE, genre: 'other' });
     navigateTo('genre');

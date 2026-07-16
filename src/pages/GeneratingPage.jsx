@@ -435,7 +435,11 @@ export default function GeneratingPage() {
   // Navigate when songs are ready
   useEffect(() => {
     if (hasNavigated.current) return;
-    
+
+    // /paquete buyers get their own dedicated single-product checkout page instead
+    // of the shared /comparison (no unrelated upsells). Everyone else: comparison.
+    const checkoutPage = formData?.fromPaquete === true ? 'paqueteCheckout' : 'comparison';
+
     // FAST FUNNEL: Navigate as soon as Song 1 is ready, pass Song 2 ID for background polling
     if (isFastFunnel && song1Status === 'completed') {
       hasNavigated.current = true;
@@ -449,7 +453,7 @@ export default function GeneratingPage() {
         song2PendingId: song2Id || null, // Pass the ID so ComparisonPage can poll
         sessionId: apiSessionId
       });
-      setTimeout(() => navigateTo('comparison'), 400);
+      setTimeout(() => navigateTo(checkoutPage), 400);
     }
     // CONTROL FUNNEL: Wait for both songs
     else if (!isFastFunnel) {
@@ -464,7 +468,7 @@ export default function GeneratingPage() {
           song2: song2Data,
           sessionId: apiSessionId
         });
-        setTimeout(() => navigateTo('comparison'), 400);
+        setTimeout(() => navigateTo(checkoutPage), 400);
       }
       // Song 1 completed, Song 2 failed - go with single song
       else if (song1Status === 'completed' && song2Status === 'failed') {
@@ -477,7 +481,7 @@ export default function GeneratingPage() {
           song2: null,
           sessionId: apiSessionId
         });
-        setTimeout(() => navigateTo('comparison'), 400);
+        setTimeout(() => navigateTo(checkoutPage), 400);
       }
       // Both failed - show error
       else if (song1Status === 'failed' && song2Status === 'failed') {
