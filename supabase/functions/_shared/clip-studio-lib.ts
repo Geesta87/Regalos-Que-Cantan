@@ -97,6 +97,7 @@ const BEST_PICKS_PROMPT =
   'You receive a transcript where each line starts with its timestamp in seconds. Pick the 3-5 STRONGEST self-contained moments. ' +
   'Rules: each clip 10-45 seconds; must begin at a natural sentence start whose first line works as a hook; must end on a completed thought; ' +
   'never start mid-sentence; prefer emotional, surprising, persuasive or highly concrete moments over generic ones; do not overlap clips. ' +
+  'CRITICAL: end_sec must land AFTER the final word of the closing sentence — when unsure, end LATER, never earlier; cutting a thought off mid-sentence is the worst possible failure. ' +
   'Call the propose_clips tool with your picks.';
 
 // Auto-clip: walk the WHOLE video and pull out every complete, self-contained
@@ -107,6 +108,7 @@ const FULL_SEGMENT_PROMPT =
   'Rules: each clip 15-90 seconds; a clip must start at the natural beginning of a thought, story or point (NEVER mid-sentence) and must end only where that thought completely resolves — the viewer must never feel context was cut off; ' +
   'if a story needs 80 seconds to make sense, use 80 seconds — completeness beats brevity; skip weak, repetitive or filler stretches entirely (do not force clips out of them); clips must not overlap; ' +
   'return between 2 and 8 clips depending on how much genuinely strong material exists, each with a hook-style title in the language of the transcript. ' +
+  'CRITICAL: end_sec must land AFTER the final word of the closing sentence — when unsure, end LATER, never earlier; cutting a thought off mid-sentence is the worst possible failure. ' +
   'Call the propose_clips tool with your picks.';
 
 export async function proposeClips(
@@ -141,15 +143,33 @@ export async function proposeClips(
   if (!Array.isArray(raw) || raw.length === 0) throw new Error('AI returned no suggestions');
 
   // Snap to word boundaries so caption timing starts exactly on speech.
+  // The END walks FORWARD to the completed thought: the AI's end_sec often
+  // lands mid-sentence and the old backward snap cut the closing words off.
+  const extendMax = mode === 'teaser' ? 4 : 12; // teasers have a 45s render cap
   const snap = (s: any) => {
     let start = Number(s.start_sec), end = Number(s.end_sec);
     if (Number.isNaN(start) || Number.isNaN(end)) return null;
-    const first = words.find((w) => w.start >= start - 0.3);
-    const lastCandidates = words.filter((w) => w.end <= end + 0.3);
-    if (!first || !lastCandidates.length) return null;
-    start = Math.max(0, first.start - 0.25);
-    end = Math.min(durationSec, lastCandidates[lastCandidates.length - 1].end + 0.35);
-    if (end - start < 6 || end - start > 90) return null;
+    const firstIdx = words.findIndex((w) => w.start >= start - 0.3);
+    if (firstIdx < 0) return null;
+    let lastIdx = -1;
+    for (let i = firstIdx; i < words.length; i++) {
+      if (words[i].end <= end + 0.3) lastIdx = i; else break;
+    }
+    if (lastIdx < 0) return null;
+    // Finish the thought: continue to closing punctuation or a natural pause
+    // (>0.8s), up to extendMax seconds past the proposed end.
+    for (let i = lastIdx; i < words.length; i++) {
+      lastIdx = i;
+      const w = words[i];
+      const gapNext = i + 1 < words.length ? words[i + 1].start - w.end : 99;
+      if (/[.!?…]$/.test(String(w.word).trim()) || gapNext > 0.8) break;
+      if (w.end - end > extendMax) break;
+    }
+    start = Math.max(0, words[firstIdx].start - 0.25);
+    // Tail pad 0.6s: Whisper end-timestamps consistently run early, which was
+    // audibly clipping the last word.
+    end = Math.min(durationSec, words[lastIdx].end + 0.6);
+    if (end - start < 6 || end - start > 105) return null;
     return {
       start_sec: Math.round(start * 10) / 10,
       end_sec: Math.round(end * 10) / 10,
