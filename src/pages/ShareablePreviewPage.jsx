@@ -345,10 +345,14 @@ export default function ShareablePreviewPage() {
       const giftSms = (gGift && gGift.payload && typeof gGift.payload === 'object')
         ? { enabled: true, ...gGift.payload }
         : null;
+      // 3+ song carts don't take discount codes (bundle already discounted) —
+      // same rule as create-checkout; don't even send the code for those.
+      const couponAllowed = couponApplied
+        && !(idsArray.length >= 3 && !(couponApplied.free || couponApplied.discount >= 100));
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon: gVideoCount > 0, videoAddonCount: gVideoCount, karaokeAddon: gKaraoke, karaokeSongIds: gKaraokeIds, animadoCount: gAnimadoCount, animadoSongIds: gAnimadoIds, giftSms, lyricVideoAddon: gLyric, couponCode: couponApplied?.code || null })
+        body: JSON.stringify({ songIds: idsArray, email, purchaseBoth: idsArray.length >= 2, videoAddon: gVideoCount > 0, videoAddonCount: gVideoCount, karaokeAddon: gKaraoke, karaokeSongIds: gKaraokeIds, animadoCount: gAnimadoCount, animadoSongIds: gAnimadoIds, giftSms, lyricVideoAddon: gLyric, couponCode: couponAllowed ? couponApplied.code : null })
       });
       const data = await res.json();
       if (!data.success || !data.url) throw new Error(data.error || 'Error al crear checkout.');
@@ -365,10 +369,16 @@ export default function ShareablePreviewPage() {
   // additional song beyond 2).
   const isBundleSelectedNow = selectedCount >= DEFAULT_BUNDLE_SIZE;
   const rawPrice = priceForCount(selectedCount);
-  const discountedPrice = couponApplied
-    ? couponApplied.free ? 0
-    : couponApplied.type === 'percentage' ? parseFloat((rawPrice * (1 - couponApplied.discount / 100)).toFixed(2))
-    : couponApplied.type === 'fixed' ? Math.max(0, rawPrice - couponApplied.discount)
+  // Carts of 3+ songs already carry the bundle discount ($9.99 per extra song),
+  // so discount codes don't stack on top. Owner comps (free/100%) still apply.
+  // MUST mirror create-checkout's rule or the displayed total won't match Stripe.
+  const couponBlockedByBundle = !!couponApplied && selectedCount >= 3
+    && !(couponApplied.free || couponApplied.discount >= 100);
+  const effectiveCoupon = couponBlockedByBundle ? null : couponApplied;
+  const discountedPrice = effectiveCoupon
+    ? effectiveCoupon.free ? 0
+    : effectiveCoupon.type === 'percentage' ? parseFloat((rawPrice * (1 - effectiveCoupon.discount / 100)).toFixed(2))
+    : effectiveCoupon.type === 'fixed' ? Math.max(0, rawPrice - effectiveCoupon.discount)
     : rawPrice
     : rawPrice;
   const basePrice = discountedPrice;
@@ -1008,9 +1018,14 @@ export default function ShareablePreviewPage() {
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
                 ${currentPrice.toFixed(2)}
               </p>
-              {couponApplied && (
+              {couponApplied && !couponBlockedByBundle && (
                 <p style={{margin: 0, fontSize: '11px', color: '#4ade80'}}>
                   {couponApplied.code} aplicado
+                </p>
+              )}
+              {couponBlockedByBundle && (
+                <p style={{margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.55)'}}>
+                  {couponApplied.code} no aplica a paquetes de 3+ (ya incluyen descuento)
                 </p>
               )}
             </div>
@@ -1495,10 +1510,21 @@ export default function ShareablePreviewPage() {
                 <div style={{ marginBottom: '14px', background: 'rgba(74,222,128,0.08)', borderRadius: '14px', padding: '14px', border: '1px solid rgba(74,222,128,0.2)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#4ade80', margin: '0 0 2px' }}>✅ Código {couponApplied.code} aplicado</p>
-                      <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
-                        {couponApplied.free ? 'Canción gratis' : `${couponApplied.discount}% de descuento — Nuevo precio: $${discountedPrice.toFixed(2)}`}
-                      </p>
+                      {couponBlockedByBundle ? (
+                        <>
+                          <p style={{ fontSize: '14px', fontWeight: 700, color: 'rgba(255,255,255,0.7)', margin: '0 0 2px' }}>Código {couponApplied.code} no aplica</p>
+                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                            Los paquetes de 3+ canciones ya incluyen descuento ($9.99 por canción extra)
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: '14px', fontWeight: 700, color: '#4ade80', margin: '0 0 2px' }}>✅ Código {couponApplied.code} aplicado</p>
+                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                            {couponApplied.free ? 'Canción gratis' : `${couponApplied.discount}% de descuento — Nuevo precio: $${discountedPrice.toFixed(2)}`}
+                          </p>
+                        </>
+                      )}
                     </div>
                     <button onClick={() => { setCouponApplied(null); setCouponCode(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>✕</button>
                   </div>

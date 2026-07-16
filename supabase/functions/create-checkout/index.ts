@@ -203,7 +203,15 @@ serve(async (req) => {
           return jsonResp(400, { error: 'coupon_single_song', message: 'Este código es para una canción a la vez. Crea cada canción por separado y aplica el código en cada una.' });
         }
 
-        if (!isExpired && !isMaxedOut) {
+        // Carts of 3+ songs already carry the bundle discount ($9.99 per extra
+        // song vs $29.99 single), so discount codes do NOT stack on top.
+        // Silently skip (never 400) so an out-of-date frontend can't block a
+        // paying customer — Stripe Checkout shows the real total before they pay.
+        // Owner comps (type 'free' / 100%) still work on any cart size.
+        const isOwnerComp = coupon.type === 'free' || coupon.discount >= 100;
+        if (songCount >= 3 && !isOwnerComp) {
+          console.log('[create-checkout] coupon skipped on 3+ song cart', { couponCode: coupon.code, songCount });
+        } else if (!isExpired && !isMaxedOut) {
           appliedCoupon = coupon;
 
           // Apply discount
