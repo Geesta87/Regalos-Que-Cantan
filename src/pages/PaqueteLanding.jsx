@@ -40,6 +40,8 @@ const animadoSamples = [
   { src: `/videos/animado-sample-4.mp4?${V}`, poster: `/images/paquete/animado-poster-4.jpg?${V}`, label: 'Para tu pareja' },
   { src: `/videos/animado-sample-5.mp4?${V}`, poster: `/images/paquete/animado-poster-5.jpg?${V}`, label: 'Un momento feliz' },
   { src: `/videos/animado-sample-6.mp4?${V}`, poster: `/images/paquete/animado-poster-6.jpg?${V}`, label: 'Para mamá' },
+  { src: `/videos/animado-sample-7.mp4?${V}`, poster: `/images/paquete/animado-poster-7.jpg?${V}`, label: 'Padre e hija' },
+  { src: `/videos/animado-sample-8.mp4?${V}`, poster: `/images/paquete/animado-poster-8.jpg?${V}`, label: 'Una graduación' },
 ];
 
 const testimonials = [

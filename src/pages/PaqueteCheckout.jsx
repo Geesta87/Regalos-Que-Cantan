@@ -18,6 +18,10 @@ const VIDEO_PRICE = 29;
 
 const fmt = (n) => `$${n.toFixed(2)}`;
 
+// Same genre album art the regular comparison page shows (consistent brand look);
+// falls back to the AI-generated per-song cover, then a music note.
+const getGenreImagePath = (genre) => (genre ? `/images/album-art/${genre}.jpg` : null);
+
 export default function PaqueteCheckout() {
   const context = useContext(AppContext);
   const { formData = {}, songData = {}, navigateTo = () => {} } = context || {};
@@ -56,6 +60,7 @@ export default function PaqueteCheckout() {
       audioUrl: s.audio_url || s.audioUrl,
       previewUrl: s.preview_url || s.previewUrl || s.audio_url || s.audioUrl,
       imageUrl: s.image_url || s.imageUrl,
+      genre: s.genre,
     });
     try {
       const loaded = [];
@@ -249,9 +254,21 @@ export default function PaqueteCheckout() {
                 </span>
                 {isSel && <span className="text-amber-300 text-lg">✓</span>}
               </div>
-              {song.imageUrl && (
-                <img src={song.imageUrl} alt={`Versión ${song.version}`} className="w-full aspect-square object-cover rounded-xl mb-3" />
-              )}
+              {(() => {
+                const imgSrc = getGenreImagePath(song.genre || formData?.genre) || song.imageUrl;
+                return imgSrc ? (
+                  <img
+                    src={imgSrc}
+                    alt={`Versión ${song.version}`}
+                    className="w-full aspect-square object-cover rounded-xl mb-3"
+                    onError={(e) => {
+                      // static genre art missing → fall back to the song's AI cover
+                      if (song.imageUrl && e.target.src !== song.imageUrl) e.target.src = song.imageUrl;
+                      else e.target.style.display = 'none';
+                    }}
+                  />
+                ) : null;
+              })()}
               <audio
                 ref={(el) => { if (el) audioRefs.current[song.id] = el; }}
                 src={song.previewUrl || song.audioUrl}
