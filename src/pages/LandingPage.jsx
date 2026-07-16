@@ -66,11 +66,16 @@ function TestimonialVideo({ src }) {
 }
 
 export default function LandingPage() {
-  const { navigateTo } = useContext(AppContext);
+  const { navigateTo, setFormData } = useContext(AppContext);
 
   useEffect(() => {
     trackStep('landing');
-  }, []);
+    // A normal (non-/paquete) visitor must never inherit a stale bundle intent from a
+    // prior /paquete visit in the same browser. Clear it here so ONLY fresh /paquete
+    // "Canción + Video" buyers ever get the $58.99 auto-select. /paquete never routes
+    // through this page, so its intent is untouched.
+    setFormData((prev) => (prev?.wantsAnimadoVideo ? { ...prev, wantsAnimadoVideo: false } : prev));
+  }, [setFormData]);
 
   return (
     <div className="relative flex min-h-screen w-full flex-col bg-landing-bg text-white antialiased overflow-x-hidden">
