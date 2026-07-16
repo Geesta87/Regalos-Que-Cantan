@@ -181,9 +181,11 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const t = assEscape(w.word);
       return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp, emoji: w.emoji || null };
     });
-    // AI emoji lands after the last tagged word of the group.
+    // AI emoji lands after the last tagged word of the group. The font switch
+    // is explicit (\fn) — libass' automatic fallback gave tofu boxes; the
+    // monochrome Noto Emoji outlines match the caption look.
     const emojiIdx = texts.map((x) => !!x.emoji).lastIndexOf(true);
-    const withEmoji = (x, j) => (j === emojiIdx ? `${x.txt} ${x.emoji}` : x.txt);
+    const withEmoji = (x, j) => (j === emojiIdx ? `${x.txt} {\\fnNoto Emoji}${x.emoji}{\\fnDejaVu Sans}` : x.txt);
     if (!st.highlight) {
       // One dialogue per group, no per-word paint.
       const text = texts.map((x, j) => (x.emp ? `${empOpen}${withEmoji(x, j)}${empClose}` : withEmoji(x, j))).join(' ');
