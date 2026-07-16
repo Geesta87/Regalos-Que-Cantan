@@ -407,6 +407,12 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
       recipient: proj.meta?.recipient,
     });
 
+    // The owner's saved preset (chosen at upload) drives the look; the
+    // auto-edit essentials (silences, emphasis, hook title) stay forced on.
+    const pc = (proj.auto_pilot_config || {}) as Record<string, unknown>;
+    const pStyle = STYLES.includes(String(pc.style)) ? String(pc.style) : 'boldpop';
+    const pAspect = ASPECTS.includes(String(pc.aspect)) ? String(pc.aspect) : '9:16';
+
     let launched = 0;
     for (const s of suggestions) {
       const inRange = words.filter((w) => w.end > s.start_sec + 0.05 && w.start < s.end_sec - 0.05);
@@ -414,11 +420,20 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
       if (!isTeaser) {
         try { emphasis_starts = await tagEmphasis(inRange); } catch (e) { console.warn('auto-pilot emphasis failed:', (e as Error).message); }
       }
+      let emoji_starts: Array<{ t: number; e: string }> = [];
+      if (!isTeaser && pc.emoji) {
+        try { emoji_starts = await tagEmoji(inRange); } catch (e) { console.warn('auto-pilot emoji failed:', (e as Error).message); }
+      }
       const options = isTeaser
         ? { teaser: true, hook_title: !!s.title }
         : {
-            framing: 'auto', remove_silences: true, zoom: false, hook_title: true,
-            emphasis: true, music: false, broll: false, transitions: true, clean_audio: false,
+            framing: ['auto', 'wide', 'left', 'center', 'right'].includes(String(pc.framing)) ? pc.framing : 'auto',
+            remove_silences: true, hook_title: true, emphasis: true,
+            zoom: !!pc.zoom, music: false, broll: false,
+            transitions: pc.transitions !== false, clean_audio: !!pc.clean_audio,
+            outro: !!pc.outro, punch_zooms: !!pc.punch_zooms,
+            progress_bar: !!pc.progress_bar, watermark: !!pc.watermark,
+            emoji: !!pc.emoji, sfx_emphasis: !!pc.sfx_emphasis,
           };
       const render_job = isTeaser
         ? {
@@ -428,13 +443,13 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
           }
         : {
             source_url: proj.source_url,
-            start_sec: s.start_sec, end_sec: s.end_sec, aspect: '9:16', style: 'boldpop',
-            options: { ...options, hook_title_text: s.title || null, emphasis_starts },
+            start_sec: s.start_sec, end_sec: s.end_sec, aspect: pAspect, style: pStyle,
+            options: { ...options, hook_title_text: s.title || null, emphasis_starts, emoji_starts },
             music_url: null, broll: [], sfx_url: null,
           };
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id: projectId, start_sec: s.start_sec, end_sec: s.end_sec,
-        aspect: '9:16', style: 'boldpop', label: s.title || null,
+        aspect: isTeaser ? '9:16' : pAspect, style: isTeaser ? 'boldpop' : pStyle, label: s.title || null,
         ai_score: s.score ?? null, ai_reason: s.reason || null,
         status: 'rendering', options, render_job, dispatched_at: nowIso(),
       }).select().single();

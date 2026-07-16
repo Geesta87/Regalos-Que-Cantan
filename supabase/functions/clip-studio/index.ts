@@ -32,6 +32,7 @@ import {
   BUCKET, CALLBACK_URL, ASPECTS, STYLES,
   dispatchRenderer, dispatchClip, proposeClips, tagEmphasis, tagEmoji, translateCaptionGroups, nowIso,
 } from '../_shared/clip-studio-lib.ts';
+import { brandContext } from '../_shared/brand-brief.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -154,9 +155,15 @@ serve(async (req) => {
       const ext = String(body.ext || 'mp4').replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'mp4';
       // auto_pilot: once the transcript lands, segment the whole video into
       // complete clips and render them hands-free (callback + watchdog).
+      // auto_pilot_config carries the owner's preset so those renders wear it.
       const autoPilot = !!body.auto_pilot;
+      const apc = body.auto_pilot_config && typeof body.auto_pilot_config === 'object' ? body.auto_pilot_config : null;
       const { data: proj, error } = await admin.from('clip_projects')
-        .insert({ title, status: 'uploaded', auto_pilot: autoPilot, auto_pilot_state: autoPilot ? 'pending' : null }).select().single();
+        .insert({
+          title, status: 'uploaded', auto_pilot: autoPilot,
+          auto_pilot_state: autoPilot ? 'pending' : null,
+          auto_pilot_config: autoPilot ? apc : null,
+        }).select().single();
       if (error) throw new Error(error.message);
       const sourcePath = `${proj.id}/source.${ext}`;
       const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(sourcePath, { upsert: true });
@@ -523,6 +530,127 @@ serve(async (req) => {
       }).eq('id', project_id);
       if (te) throw new Error(te.message);
       return json({ success: true, applied });
+    }
+
+    // ---- presets: save / list / delete the owner's looks -----------------
+    if (action === 'preset_save') {
+      const name = String(body.name || '').trim().slice(0, 60);
+      const config = body.config && typeof body.config === 'object' ? body.config : null;
+      if (!name || !config) throw new Error('Preset needs a name and a config');
+      const { data, error } = await admin.from('clip_presets').insert({ name, config }).select('id, name').single();
+      if (error) throw new Error(error.message);
+      return json({ success: true, preset: data });
+    }
+    if (action === 'preset_list') {
+      const { data } = await admin.from('clip_presets').select('id, name, config').order('created_at', { ascending: true }).limit(20);
+      return json({ success: true, presets: data || [] });
+    }
+    if (action === 'preset_delete') {
+      if (!body.id) throw new Error('Missing id');
+      await admin.from('clip_presets').delete().eq('id', body.id);
+      return json({ success: true });
+    }
+
+    // ---- script studio: real customer questions + AI scripts -------------
+    // Top questions customers actually asked in the last 14 days, straight
+    // from the SMS/WhatsApp inbox.
+    if (action === 'week_questions') {
+      const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+      const { data: msgs } = await admin.from('sms_messages')
+        .select('body')
+        .eq('direction', 'inbound')
+        .gte('created_at', since)
+        .not('body', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(400);
+      const bodies = (msgs || []).map((m: any) => String(m.body).trim()).filter((b: string) => b.length > 8);
+      if (bodies.length < 5) return json({ success: true, questions: [] });
+      if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 800,
+          system:
+            'These are real inbound customer messages for a personalized-song gift business. ' +
+            'Extract the 5-8 most common QUESTIONS or DOUBTS customers have (in Spanish, phrased as a customer would ask them), with a rough count of how many messages touch each. ' +
+            'Ignore order-specific chatter (names, links, thanks). Call the tool.',
+          messages: [{ role: 'user', content: bodies.join('\n---\n').slice(0, 40000) }],
+          tools: [{
+            name: 'questions',
+            description: 'The common customer questions.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                questions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { q: { type: 'string' }, count: { type: 'number' } },
+                    required: ['q', 'count'],
+                  },
+                },
+              },
+              required: ['questions'],
+            },
+          }],
+          tool_choice: { type: 'tool', name: 'questions' },
+        }),
+      });
+      if (!resp.ok) throw new Error(`Anthropic ${resp.status}`);
+      const data = await resp.json();
+      const qs = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.questions;
+      return json({
+        success: true,
+        questions: (Array.isArray(qs) ? qs : [])
+          .map((x: any) => ({ q: String(x.q || '').slice(0, 200), count: Number(x.count) || 1 }))
+          .filter((x: any) => x.q).slice(0, 8),
+      });
+    }
+
+    // 60-second on-camera script in the brand voice, with 3 hook options.
+    if (action === 'write_script') {
+      const topic = String(body.topic || '').trim().slice(0, 300);
+      if (!topic) throw new Error('Missing topic');
+      if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: CLIP_AI_MODEL,
+          max_tokens: 1500,
+          system:
+            brandContext() + '\n\n' +
+            'You write 60-second ON-CAMERA scripts the OWNER reads to a phone camera for TikTok/Reels — warm, direct, natural spoken Spanish (not ad-speak). ' +
+            'Structure: hook (first line must stop the scroll), the answer/story in plain words, one soft call-to-action at the end. ' +
+            '140-170 words total so it reads in 55-70 seconds. Short sentences — this is read from a teleprompter. ' +
+            'Give 3 alternative HOOK first-lines plus the full script. The script MUST start with hook #1 on its own first line (so the app can swap hooks). Call the tool.',
+          messages: [{ role: 'user', content: `Topic / customer question: ${topic}` }],
+          tools: [{
+            name: 'script',
+            description: 'The hooks and the script.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                hooks: { type: 'array', items: { type: 'string' } },
+                script: { type: 'string' },
+              },
+              required: ['hooks', 'script'],
+            },
+          }],
+          tool_choice: { type: 'tool', name: 'script' },
+        }),
+      });
+      if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      const data = await resp.json();
+      const out = (data.content || []).find((b: any) => b.type === 'tool_use')?.input;
+      if (!out?.script) throw new Error('No script returned');
+      return json({
+        success: true,
+        hooks: (Array.isArray(out.hooks) ? out.hooks : []).map((h: unknown) => String(h).slice(0, 160)).slice(0, 3),
+        script: String(out.script).slice(0, 2500),
+      });
     }
 
     if (action === 'music_delete') {

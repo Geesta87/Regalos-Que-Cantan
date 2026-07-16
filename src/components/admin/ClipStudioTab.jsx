@@ -131,6 +131,20 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [songResults, setSongResults] = useState(null);
   const [songBusy, setSongBusy] = useState(false);
   const [autoClip, setAutoClip] = useState(true);       // auto-clip new uploads
+  const [presets, setPresets] = useState(null);         // saved looks
+  const [presetId, setPresetId] = useState('');         // selected preset (form + auto-clip)
+  const [scriptOpen, setScriptOpen] = useState(false);  // script studio card
+  const [questions, setQuestions] = useState(null);
+  const [qBusy, setQBusy] = useState(false);
+  const [topic, setTopic] = useState('');
+  const [scriptBusy, setScriptBusy] = useState(false);
+  const [hooks, setHooks] = useState([]);
+  const [script, setScript] = useState('');
+  const [prompter, setPrompter] = useState(false);      // fullscreen teleprompter
+  const [prompterPlay, setPrompterPlay] = useState(false);
+  const [prompterSpeed, setPrompterSpeed] = useState(40); // px per second
+  const [prompterFont, setPrompterFont] = useState(46);
+  const prompterRef = useRef(null);
   const [retryingClipId, setRetryingClipId] = useState(null);
   const [musicPanel, setMusicPanel] = useState(false);  // music library panel
   const [tracks, setTracks] = useState(null);
@@ -174,6 +188,105 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Saved looks (presets) — loaded once per session.
+  useEffect(() => {
+    if (!accessToken) return;
+    call({ action: 'preset_list' }).then((r) => setPresets(r.presets || [])).catch(() => setPresets([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords'];
+  const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
+  // What the server-side auto-clip needs (its option names differ from the form's).
+  const presetToAutoConfig = (cfg) => ({
+    style: cfg.style, aspect: cfg.aspect, framing: cfg.framing,
+    zoom: !!cfg.zoom, transitions: cfg.fx !== false, clean_audio: !!cfg.clean,
+    outro: !!cfg.outro, punch_zooms: !!cfg.punch, progress_bar: !!cfg.progress,
+    watermark: !!cfg.watermark, emoji: !!cfg.emoji, sfx_emphasis: !!cfg.sfxwords,
+  });
+
+  const applyPreset = (id) => {
+    setPresetId(id);
+    const p = (presets || []).find((x) => x.id === id);
+    if (!p) return;
+    setForm((f) => ({ ...f, ...Object.fromEntries(PRESET_KEYS.filter((k) => p.config[k] !== undefined).map((k) => [k, p.config[k]])) }));
+    showToast?.(`Look "${p.name}" applied`);
+  };
+
+  const savePreset = async () => {
+    const name = window.prompt('Name this look (e.g. "Mi look de anuncios"):');
+    if (!name?.trim()) return;
+    try {
+      const r = await call({ action: 'preset_save', name: name.trim(), config: presetConfigFromForm() });
+      setPresets((prev) => [...(prev || []), { id: r.preset.id, name: r.preset.name, config: presetConfigFromForm() }]);
+      setPresetId(r.preset.id);
+      showToast?.(`Saved "${r.preset.name}" — it now also appears in the Auto-clip look picker`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
+  const deletePreset = async () => {
+    const p = (presets || []).find((x) => x.id === presetId);
+    if (!p || !window.confirm(`Delete the look "${p.name}"?`)) return;
+    try {
+      await call({ action: 'preset_delete', id: p.id });
+      setPresets((prev) => (prev || []).filter((x) => x.id !== p.id));
+      setPresetId('');
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
+  // ---- script studio ----
+  const loadQuestions = async () => {
+    setQBusy(true);
+    try {
+      const r = await call({ action: 'week_questions' });
+      setQuestions(r.questions || []);
+      if (!(r.questions || []).length) showToast?.('Not enough recent customer messages to mine — type your own topic');
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setQBusy(false); }
+  };
+
+  const writeScript = async () => {
+    if (!topic.trim()) { showToast?.('Pick a question or type a topic first'); return; }
+    setScriptBusy(true);
+    try {
+      const r = await call({ action: 'write_script', topic: topic.trim() });
+      setHooks(r.hooks || []);
+      setScript(r.script || '');
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setScriptBusy(false); }
+  };
+
+  const useHook = (h) => {
+    setScript((s) => {
+      const idx = s.indexOf('\n');
+      return idx > 0 ? `${h}\n${s.slice(idx + 1)}` : `${h}\n${s}`;
+    });
+  };
+
+  // Teleprompter auto-scroll.
+  useEffect(() => {
+    if (!prompter || !prompterPlay) return;
+    let raf; let last = performance.now();
+    const tick = (now) => {
+      const el = prompterRef.current;
+      if (el) el.scrollTop += ((now - last) / 1000) * prompterSpeed;
+      last = now;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [prompter, prompterPlay, prompterSpeed]);
+
+  useEffect(() => {
+    if (!prompter) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setPrompter(false); setPrompterPlay(false); }
+      if (e.key === ' ') { e.preventDefault(); setPrompterPlay((v) => !v); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [prompter]);
+
   // Poll every 5s while anything is in flight (prepare / transcribe / render / auto-clip).
   const busy = projects.some((p) =>
     ['preparing', 'transcribing'].includes(p.status) ||
@@ -192,7 +305,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
     setUpload({ name: file.name, pct: 0, phase: 'Preparing upload…' });
     try {
-      const { project_id, signed_url, path } = await call({ action: 'create_project', title: file.name, ext, auto_pilot: autoClip });
+      const presetCfg = (presets || []).find((x) => x.id === presetId)?.config;
+      const { project_id, signed_url, path } = await call({
+        action: 'create_project', title: file.name, ext, auto_pilot: autoClip,
+        auto_pilot_config: autoClip && presetCfg ? presetToAutoConfig(presetCfg) : null,
+      });
       setUpload({ name: file.name, pct: 0, phase: 'Uploading…' });
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -776,6 +893,22 @@ export default function ClipStudioTab({ accessToken, showToast }) {
             {/* STEP 2 — choose the look */}
             <Card className="p-4">
               <StepHeader n={2} title="Choose the look" />
+
+              {/* saved looks */}
+              <div className="flex items-center gap-2 mb-3">
+                <select value={presetId} onChange={(e) => applyPreset(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  <option value="">Saved looks…</option>
+                  {(presets || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <button onClick={savePreset} className={`${btn.ghost} text-xs whitespace-nowrap`} title="Save the current format + style + extras as a one-click look">
+                  <Check size={13} /> Save look
+                </button>
+                {presetId && (
+                  <button onClick={deletePreset} className={btn.iconGhost} title="Delete the selected look"><Trash2 size={14} /></button>
+                )}
+              </div>
+
               <label className="text-xs text-gray-500 block mb-1">Format</label>
               <div className="flex gap-2 mb-3">
                 {Object.entries(ASPECT_META).map(([key, a]) => (
@@ -1045,13 +1178,118 @@ export default function ClipStudioTab({ accessToken, showToast }) {
             <div className="text-sm font-medium text-gray-700">Upload a video</div>
             <div className="text-xs text-gray-400 mt-1">MP4 / MOV up to 3GB — transcription starts automatically</div>
           </button>
-          <label className="flex items-start gap-2 cursor-pointer select-none mt-2 px-1">
-            <input type="checkbox" checked={autoClip} onChange={(e) => setAutoClip(e.target.checked)} className="mt-0.5 accent-indigo-600" />
-            <span className="text-sm text-gray-700">
-              <Zap size={13} className="inline -mt-0.5 text-indigo-500" /> Auto-clip
-              <span className="text-[11px] text-gray-400"> — after upload, the AI reads the whole video and renders every strong, complete moment on its own (nothing cut off mid-thought)</span>
-            </span>
-          </label>
+          <div className="flex items-center gap-3 mt-2 px-1 flex-wrap">
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={autoClip} onChange={(e) => setAutoClip(e.target.checked)} className="mt-0.5 accent-indigo-600" />
+              <span className="text-sm text-gray-700">
+                <Zap size={13} className="inline -mt-0.5 text-indigo-500" /> Auto-clip
+                <span className="text-[11px] text-gray-400"> — the AI renders every strong, complete moment on its own</span>
+              </span>
+            </label>
+            {autoClip && (presets || []).length > 0 && (
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                Look:
+                <select value={presetId} onChange={(e) => setPresetId(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                  <option value="">Standard</option>
+                  {(presets || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Script studio: real customer questions -> AI script -> teleprompter */}
+      <Card className="p-4 mb-6">
+        <button onClick={() => setScriptOpen((v) => !v)} className="w-full flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Pencil size={15} className="text-indigo-500" />
+            <span className="text-sm font-semibold text-gray-900">Script studio</span>
+            <span className="text-[11px] text-gray-400">— pick a real customer question, get a 60s script, read it off the teleprompter</span>
+          </div>
+          {scriptOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+        </button>
+        {scriptOpen && (
+          <div className="mt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={loadQuestions} disabled={qBusy} className={`${btn.ghost} text-xs`}>
+                {qBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} What customers asked this week
+              </button>
+            </div>
+            {(questions || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {questions.map((x, i) => (
+                  <button key={i} onClick={() => setTopic(x.q)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition ${topic === x.q ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {x.q} <span className="text-gray-400">×{x.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 mb-3">
+              <input value={topic} onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && writeScript()}
+                placeholder="…or type any topic (e.g. ¿Puedo escuchar antes de pagar?)"
+                className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+              <button onClick={writeScript} disabled={scriptBusy} className={btn.accent}>
+                {scriptBusy ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />} Write my script
+              </button>
+            </div>
+            {script && (
+              <>
+                {hooks.length > 0 && (
+                  <div className="mb-2">
+                    <span className="text-[11px] text-gray-500 block mb-1">Openers — click to swap the first line:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {hooks.map((h, i) => (
+                        <button key={i} onClick={() => useHook(h)}
+                          className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 transition text-left">
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={7}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-200 mb-2" />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setPrompter(true); setPrompterPlay(false); }} className={btn.primary}>
+                    <Play size={14} /> Start teleprompter
+                  </button>
+                  <span className="text-[11px] text-gray-400">Prop your phone next to the screen, press Space to scroll, read naturally. Upload the video here when you're done.</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Fullscreen teleprompter */}
+      {prompter && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPrompterPlay((v) => !v)}
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500">
+                {prompterPlay ? 'Pause (Space)' : 'Start (Space)'}
+              </button>
+              <button onClick={() => setPrompterSpeed((s) => Math.max(15, s - 8))} className="px-2.5 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-sm">Slower</button>
+              <button onClick={() => setPrompterSpeed((s) => Math.min(120, s + 8))} className="px-2.5 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-sm">Faster</button>
+              <button onClick={() => setPrompterFont((s) => Math.max(28, s - 6))} className="px-2.5 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-sm">A-</button>
+              <button onClick={() => setPrompterFont((s) => Math.min(80, s + 6))} className="px-2.5 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-sm">A+</button>
+            </div>
+            <button onClick={() => { setPrompter(false); setPrompterPlay(false); }} className="px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-sm">Close (Esc)</button>
+          </div>
+          <div ref={prompterRef} className="flex-1 overflow-y-auto px-8" style={{ scrollBehavior: 'auto' }}>
+            <div style={{ height: '38vh' }} />
+            <p className="text-white font-semibold mx-auto whitespace-pre-wrap"
+              style={{ fontSize: prompterFont, lineHeight: 1.55, maxWidth: 900 }}>
+              {script}
+            </p>
+            <div style={{ height: '60vh' }} />
+          </div>
+          <div className="pointer-events-none absolute left-0 right-0" style={{ top: '38vh', borderTop: '2px solid rgba(228,0,124,0.6)' }} />
         </div>
       )}
 
