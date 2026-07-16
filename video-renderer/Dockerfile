@@ -4,7 +4,7 @@ FROM node:20-slim
 # FFmpeg (with the filters we use: zoompan, xfade, drawtext, libass, freetype)
 # + Noto Color Emoji so the emoji-captions extra has glyphs to fall back to.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fonts-noto-color-emoji fonts-noto-emoji ca-certificates \
+  && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

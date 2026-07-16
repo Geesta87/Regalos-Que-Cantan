@@ -430,6 +430,9 @@ const SERIF = process.env.SERIF_PATH || path.join(__dirname, 'assets', 'serif.tt
 const LOGO = process.env.LOGO_PATH || path.join(__dirname, 'assets', 'logo.png');
 const WHOOSH = process.env.WHOOSH_PATH || path.join(__dirname, 'assets', 'whoosh.mp3');
 const POP = process.env.POP_PATH || path.join(__dirname, 'assets', 'pop.mp3');
+// Bundled monochrome Noto Emoji (OFL) — loaded via the subtitles filter's
+// fontsdir so {\fnNoto Emoji} resolves without any system font packages.
+const EMOJI_FONT = process.env.EMOJI_FONT_PATH || path.join(__dirname, 'assets', 'NotoEmoji-Regular.ttf');
 
 // ---------------------------------------------------------------------------
 // Brand outro (options.outro): a 2.8s end-card — RQC logo + site on the brand
@@ -710,7 +713,8 @@ async function renderClip(job, { dir, log }) {
     // one-frame-in-one-frame-out assumption exact.
     zoomStage = `fps=30,zoompan=z='min(${zterms.join('+')},1.25)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`;
   }
-  const post = [zoomStage, 'subtitles=captions.ass'].join(',');
+  fs.copyFileSync(EMOJI_FONT, path.join(dir, 'NotoEmoji-Regular.ttf'));
+  const post = [zoomStage, 'subtitles=captions.ass:fontsdir=.'].join(',');
 
   const hasAudio = (() => {
     try {
