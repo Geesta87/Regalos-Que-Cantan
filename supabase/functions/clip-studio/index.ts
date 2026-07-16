@@ -30,7 +30,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   BUCKET, CALLBACK_URL, ASPECTS, STYLES,
-  dispatchRenderer, dispatchClip, proposeClips, tagEmphasis, nowIso,
+  dispatchRenderer, dispatchClip, proposeClips, tagEmphasis, tagEmoji, translateCaptionGroups, nowIso,
 } from '../_shared/clip-studio-lib.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -356,6 +356,8 @@ serve(async (req) => {
         punch_zooms: !!rawOpts.punch_zooms,
         progress_bar: !!rawOpts.progress_bar,
         watermark: !!rawOpts.watermark,
+        emoji: !!rawOpts.emoji,
+        sfx_emphasis: !!rawOpts.sfx_emphasis,
         // Specific track from the music library ('' / null = random pick)
         music_track: typeof rawOpts.music_track === 'string' && rawOpts.music_track
           ? rawOpts.music_track.replace(/[^a-z0-9._-]/gi, '_').slice(0, 80) : null,
@@ -367,6 +369,21 @@ serve(async (req) => {
       if (options.emphasis) {
         const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
         try { emphasis_starts = await tagEmphasis(inRange); } catch (e) { console.warn('emphasis tagging failed:', (e as Error).message); }
+      }
+
+      // Emoji captions (best-effort).
+      let emoji_starts: Array<{ t: number; e: string }> = [];
+      if (options.emoji) {
+        const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
+        try { emoji_starts = await tagEmoji(inRange); } catch (e) { console.warn('emoji tagging failed:', (e as Error).message); }
+      }
+
+      // EN caption version: translate the clip's caption groups up front and
+      // hand the renderer pre-timed English lines instead of karaoke words.
+      let caption_groups: Array<{ start: number; end: number; text: string }> | null = null;
+      if (body.translate_to === 'en') {
+        const inRange = (words as any[]).filter((w) => w.end > start + 0.05 && w.start < end - 0.05);
+        caption_groups = await translateCaptionGroups(inRange, start, 'English');
       }
 
       // B-roll: Claude picks the moments + queries, Pexels supplies footage.
@@ -414,12 +431,16 @@ serve(async (req) => {
       const render_job = {
         source_url: proj.source_url,
         start_sec: start, end_sec: end, aspect, style,
-        options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts },
+        options: { ...options, hook_title_text: options.hook_title ? cleanLabel : null, emphasis_starts, emoji_starts },
         music_url, broll, sfx_url,
+        ...(caption_groups ? { caption_groups } : {}),
       };
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id, start_sec: start, end_sec: end, aspect, style,
-        label: cleanLabel, status: 'rendering', options,
+        label: caption_groups ? `EN — ${cleanLabel || 'clip'}` : cleanLabel,
+        ai_score: Number(body.ai_score) || null,
+        ai_reason: body.ai_reason ? String(body.ai_reason).slice(0, 300) : null,
+        status: 'rendering', options,
         render_job, dispatched_at: nowIso(),
       }).select().single();
       if (ce) throw new Error(ce.message);
@@ -593,6 +614,8 @@ serve(async (req) => {
         design: { source: 'clip-studio', clip_id: clip.id, aspect: clip.aspect },
       });
       if (qe) throw new Error(qe.message);
+      // Mark the clip so the UI shows it's already in the approval queue.
+      await admin.from('clips').update({ sent_to_creative_at: nowIso(), updated_at: nowIso() }).eq('id', clip_id);
       return json({ success: true });
     }
 

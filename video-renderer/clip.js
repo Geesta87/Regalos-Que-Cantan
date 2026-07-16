@@ -76,14 +76,20 @@ const ASPECTS = {
 const WHITE = '&H00FFFFFF';
 const YELLOW = '&H0000D4FF';  // #FFD400
 const GOLD = '&H000AB7F5';    // #F5B70A — matches the corrido ad gold
+const PINK = '&H007C00E4';    // #E4007C — the brand badge pink
 const BOX_BLACK = '&H66000000'; // ~60%-opaque black for the clean box style
 
 // Caption styles. wordsPerGroup controls the caption chunk size; highlight
-// paints the word being spoken; upper = shout-case like the viral templates.
+// paints the word being spoken; upper = shout-case like the viral templates;
+// pop = the active word lands with a quick scale-settle animation; scale
+// shrinks the whole caption track (minimal style).
 const STYLES = {
   boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline' },
   goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline' },
   cleanbox: { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box' },
+  popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true },
+  rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true },
+  minimal:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.72 },
 };
 
 function assEscape(text) {
@@ -118,19 +124,15 @@ function groupWords(words, perGroup) {
   return groups.filter((g) => g.length);
 }
 
-function buildAss(words, styleKey, aspectKey, opts = {}) {
-  const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
-  const st = STYLES[styleKey] || STYLES.boldpop;
-
+function assHeader(geo, st, fontsize) {
   const outline = st.border === 'box'
-    ? `3,${Math.round(geo.fontsize / 5)},0`   // BorderStyle=3 (box) — Outline acts as box padding
-    : `1,${Math.round(geo.fontsize / 11)},0`; // BorderStyle=1, thick outline
+    ? `3,${Math.round(fontsize / 5)},0`   // BorderStyle=3 (box) — Outline acts as box padding
+    : `1,${Math.round(fontsize / 11)},0`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const hookSize = Math.round(geo.fontsize * 0.6);
   const hookMarginTop = geo.h >= 1900 ? 170 : 100;
-
-  const header = [
+  return [
     '[Script Info]',
     'ScriptType: v4.00+',
     `PlayResX: ${geo.w}`,
@@ -140,36 +142,51 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Cap,DejaVu Sans,${geo.fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
+    `Style: Cap,DejaVu Sans,${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
     // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
+}
 
-  const lines = [];
-  if (opts.hookTitle) {
-    const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
-    // {\q0} = smart wrapping for this line only (WrapStyle 2 disables it
-    // globally so caption groups never wrap) — long hooks fold into 2 lines
-    // instead of running off both edges.
-    lines.push(`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,{\\q0}${assEscape(opts.hookTitle).toUpperCase()}`);
-  }
+function hookLine(opts) {
+  if (!opts.hookTitle) return [];
+  const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
+  // {\q0} = smart wrapping for this line only (WrapStyle 2 disables it
+  // globally so caption groups never wrap) — long hooks fold into 2 lines
+  // instead of running off both edges.
+  return [`Dialogue: 1,${toAssTime(0)},${toAssTime(hookEnd)},Hook,,0,0,0,,{\\q0}${assEscape(opts.hookTitle).toUpperCase()}`];
+}
+
+function buildAss(words, styleKey, aspectKey, opts = {}) {
+  const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
+  const st = STYLES[styleKey] || STYLES.boldpop;
+  const fontsize = Math.round(geo.fontsize * (st.scale || 1));
+  const header = assHeader(geo, st, fontsize);
+  const lines = hookLine(opts);
+
   // Emphasized (AI-tagged) words render gold and ~18% bigger at all times;
   // the active-word paint still walks across the non-emphasized ones.
-  const empSize = Math.round(geo.fontsize * 1.18);
+  const empSize = Math.round(fontsize * 1.18);
   const empOpen = `{\\c${GOLD}&\\fs${empSize}}`;
-  const empClose = `{\\c${WHITE}&\\fs${geo.fontsize}}`;
+  const empClose = `{\\c${WHITE}&\\fs${fontsize}}`;
+  // pop styles: the active word lands slightly oversized and settles in 120ms
+  const popOpen = `{\\fscx116\\fscy116\\t(0,120,\\fscx100\\fscy100)}`;
+  const popClose = `{\\fscx100\\fscy100}`;
   const groups = groupWords(words, st.wordsPerGroup);
   for (const group of groups) {
     const texts = group.map((w) => {
       const t = assEscape(w.word);
-      return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp };
+      return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp, emoji: w.emoji || null };
     });
+    // AI emoji lands after the last tagged word of the group.
+    const emojiIdx = texts.map((x) => !!x.emoji).lastIndexOf(true);
+    const withEmoji = (x, j) => (j === emojiIdx ? `${x.txt} ${x.emoji}` : x.txt);
     if (!st.highlight) {
       // One dialogue per group, no per-word paint.
-      const text = texts.map((x) => (x.emp ? `${empOpen}${x.txt}${empClose}` : x.txt)).join(' ');
+      const text = texts.map((x, j) => (x.emp ? `${empOpen}${withEmoji(x, j)}${empClose}` : withEmoji(x, j))).join(' ');
       lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${text}`);
       continue;
     }
@@ -180,15 +197,35 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       if (to - from < 0.01) continue;
       const text = texts
         .map((x, j) => {
-          if (x.emp) return `${empOpen}${x.txt}${empClose}`;
-          if (j === i) return `{\\c${st.highlight}&}${x.txt}{\\c${WHITE}&}`;
-          return x.txt;
+          const body = withEmoji(x, j);
+          if (x.emp) return `${empOpen}${body}${empClose}`;
+          if (j === i) {
+            const paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
+            return st.pop ? `${popOpen}${paint}${popClose}` : paint;
+          }
+          return body;
         })
         .join(' ');
       lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${text}`);
     }
   }
 
+  return header.concat(lines).join('\n') + '\n';
+}
+
+// Pre-translated caption groups (e.g. the EN version of a Spanish clip):
+// one dialogue per group, no per-word karaoke — timing comes from the group.
+function buildAssFromGroups(groups, styleKey, aspectKey, opts = {}) {
+  const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
+  const st = STYLES[styleKey] || STYLES.boldpop;
+  const fontsize = Math.round(geo.fontsize * (st.scale || 1));
+  const header = assHeader(geo, st, fontsize);
+  const lines = hookLine(opts);
+  for (const g of groups) {
+    if (!(g && typeof g.text === 'string' && g.text.trim())) continue;
+    const text = st.upper ? assEscape(g.text).toUpperCase() : assEscape(g.text);
+    lines.push(`Dialogue: 0,${toAssTime(g.start)},${toAssTime(g.end)},Cap,,0,0,0,,{\\q0}${text}`);
+  }
   return header.concat(lines).join('\n') + '\n';
 }
 
@@ -244,6 +281,7 @@ function remapWords(words, segs) {
         out.push({
           word: w.word,
           emp: !!w.emp,
+          emoji: w.emoji || null,
           start: acc + Math.max(0, w.start - seg.start),
           end: acc + Math.min(seg.end - seg.start, Math.max(0.05, w.end - seg.start)),
         });
@@ -389,6 +427,7 @@ function faceCropExpr(keyframes) {
 const SERIF = process.env.SERIF_PATH || path.join(__dirname, 'assets', 'serif.ttf');
 const LOGO = process.env.LOGO_PATH || path.join(__dirname, 'assets', 'logo.png');
 const WHOOSH = process.env.WHOOSH_PATH || path.join(__dirname, 'assets', 'whoosh.mp3');
+const POP = process.env.POP_PATH || path.join(__dirname, 'assets', 'pop.mp3');
 
 // ---------------------------------------------------------------------------
 // Brand outro (options.outro): a 2.8s end-card — RQC logo + site on the brand
@@ -529,11 +568,13 @@ async function renderClip(job, { dir, log }) {
   // the AI-tagged emphasis words (matched by their absolute start time);
   // `cut` marks words the owner crossed out in the transcript editor.
   const empStarts = new Set((opts.emphasis_starts || []).map((t) => Math.round(Number(t) * 100)));
+  const emojiByStart = new Map((opts.emoji_starts || []).map((x) => [Math.round(Number(x.t) * 100), String(x.e || '').slice(0, 8)]));
   let words = (job.words || [])
     .filter((w) => w.end > start + 0.05 && w.start < end - 0.05)
     .map((w) => ({
       word: w.word,
       emp: empStarts.has(Math.round(Number(w.start) * 100)),
+      emoji: emojiByStart.get(Math.round(Number(w.start) * 100)) || null,
       cut: !!w.cut,
       start: Math.max(0, w.start - start),
       end: Math.min(clipDur, w.end - start),
@@ -581,10 +622,24 @@ async function renderClip(job, { dir, log }) {
   }
   log(`${words.length} words, style=${job.style}, aspect=${job.aspect}, framing=${opts.framing || 'center'}, zoom=${!!opts.zoom}, hook=${!!opts.hook_title_text}`);
 
-  fs.writeFileSync(path.join(dir, 'captions.ass'), buildAss(words, job.style, job.aspect, {
-    hookTitle: opts.hook_title_text || null,
-    totalDur: outDur,
-  }));
+  // Pre-translated caption groups (EN version): group times arrive on the
+  // clip-local ORIGINAL timeline and get mapped through the cuts.
+  const mapCapT = (t) => {
+    let acc = 0;
+    for (const seg of segs) {
+      if (t < seg.start) return acc;
+      if (t <= seg.end) return acc + (t - seg.start);
+      acc += seg.end - seg.start;
+    }
+    return acc;
+  };
+  const capOpts = { hookTitle: opts.hook_title_text || null, totalDur: outDur };
+  const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
+    ? buildAssFromGroups(
+        job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),
+        job.style, job.aspect, capOpts)
+    : buildAss(words, job.style, job.aspect, capOpts);
+  fs.writeFileSync(path.join(dir, 'captions.ass'), assContent);
 
   const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
 
@@ -813,6 +868,26 @@ async function renderClip(job, { dir, log }) {
     audioLabel = '[ahw]';
   }
 
+  // Key-word sounds: a soft pop lands exactly on each gold emphasis word
+  // (post-cut timestamps — the remapped words carry emp).
+  const popTimes = (opts.sfx_emphasis && audioLabel)
+    ? words.filter((w) => w.emp && w.start > 0.2 && w.start < outDur - 0.4).map((w) => w.start).slice(0, 12)
+    : [];
+  const withPops = popTimes.length > 0;
+  if (withPops) {
+    fs.copyFileSync(POP, path.join(dir, 'kw-pop.mp3'));
+    const popIdx = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0);
+    parts.push(`[${popIdx}:a]asplit=${popTimes.length}${popTimes.map((_, i) => `[kp${i}]`).join('')}`);
+    const popRefs = popTimes.map((t, i) => {
+      const ms = Math.max(0, Math.round(t * 1000));
+      parts.push(`[kp${i}]adelay=${ms}|${ms},volume=0.3[kpd${i}]`);
+      return `[kpd${i}]`;
+    });
+    parts.push(`${audioLabel}${popRefs.join('')}amix=inputs=${1 + popTimes.length}:duration=first:normalize=0[akw]`);
+    audioLabel = '[akw]';
+    log(`key-word sounds: ${popTimes.length} pop(s)`);
+  }
+
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
   if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
@@ -820,6 +895,7 @@ async function renderClip(job, { dir, log }) {
   if (withWatermark) args.push('-i', 'wm.png'); // index = wmIdx (right after b-roll)
   if (withSfx) args.push('-i', 'sfx.mp3');
   if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
+  if (withPops) args.push('-i', 'kw-pop.mp3');
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
@@ -833,4 +909,4 @@ async function renderClip(job, { dir, log }) {
   return { finalPath: outPath, durationSec: outDur };
 }
 
-module.exports = { prepareClipSource, renderClip, buildAss, groupWords, buildKeepSegments, remapWords, decideFraming, appendBrandOutro };
+module.exports = { prepareClipSource, renderClip, buildAss, buildAssFromGroups, groupWords, buildKeepSegments, remapWords, decideFraming, appendBrandOutro };

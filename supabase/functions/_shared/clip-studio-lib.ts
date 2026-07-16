@@ -20,7 +20,7 @@ const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 export const BUCKET = 'clip-studio';
 export const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
 export const ASPECTS = ['9:16', '1:1', '16:9'];
-export const STYLES = ['boldpop', 'goldglow', 'cleanbox'];
+export const STYLES = ['boldpop', 'goldglow', 'cleanbox', 'popline', 'rosa', 'minimal'];
 
 export type Word = { word: string; start: number; end: number };
 
@@ -224,6 +224,114 @@ export async function tagEmphasis(words: Array<{ word: string; start: number }>)
   return Array.isArray(starts) ? starts.filter((s: unknown) => typeof s === 'number').slice(0, 20) : [];
 }
 
+// Emoji captions: Haiku tags a handful of caption moments with one fitting
+// emoji each (word start times, same matching contract as emphasis_starts).
+// Failures degrade to no emoji.
+export async function tagEmoji(words: Array<{ word: string; start: number }>): Promise<Array<{ t: number; e: string }>> {
+  words = words.filter((w) => !(w as any).cut);
+  if (!ANTHROPIC_API_KEY || words.length < 10) return [];
+  const listing = words.map((w) => `${w.start.toFixed(2)}|${w.word.trim()}`).join('\n');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      system:
+        'You add emoji to social-video captions. Pick the punchy moments — money, love, music, surprise, gifts — and give each ONE fitting emoji. ' +
+        `Tag AT MOST ${Math.max(2, Math.ceil(words.length / 12))} words, never two within 3 seconds of each other. ` +
+        'Call the tag tool with the exact start timestamps and the emoji.',
+      messages: [{ role: 'user', content: `Each line is "start|word":\n\n${listing.slice(0, 20000)}` }],
+      tools: [{
+        name: 'tag',
+        description: 'Tag emoji moments.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tags: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { start: { type: 'number' }, emoji: { type: 'string' } },
+                required: ['start', 'emoji'],
+              },
+            },
+          },
+          required: ['tags'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'tag' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`emoji ${resp.status}`);
+  const data = await resp.json();
+  const tags = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.tags;
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .map((x: any) => ({ t: Number(x.start), e: String(x.emoji || '').slice(0, 8) }))
+    .filter((x) => !Number.isNaN(x.t) && x.e)
+    .slice(0, 10);
+}
+
+// EN caption version: group the clip's Spanish words like the renderer will,
+// translate every group in ONE Claude call, return caption groups on the
+// clip-local (pre-cut) timeline for the renderer's caption_groups override.
+export async function translateCaptionGroups(
+  words: Word[], clipStart: number, targetLang = 'English',
+): Promise<Array<{ start: number; end: number; text: string }>> {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+  words = words.filter((w) => !(w as any).cut);
+  // group like the renderer: ~6 words, sentence end, or a pause
+  const groups: Word[][] = [];
+  let cur: Word[] = [];
+  for (let i = 0; i < words.length; i++) {
+    cur.push(words[i]);
+    const gap = i + 1 < words.length ? words[i + 1].start - words[i].end : 99;
+    const sentenceEnd = /[.!?…]$/.test(words[i].word.trim());
+    if (cur.length >= 6 || gap > 0.8 || sentenceEnd || words[i].end - cur[0].start > 3.5) {
+      groups.push(cur); cur = [];
+    }
+  }
+  if (cur.length) groups.push(cur);
+  if (!groups.length) throw new Error('no words to translate');
+
+  const texts = groups.map((g) => g.map((w) => w.word.trim()).join(' '));
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CLIP_AI_MODEL,
+      max_tokens: 3000,
+      system:
+        `You translate video caption lines to natural, punchy ${targetLang} for social media. ` +
+        'Translate EACH line as its own caption — same order, same count, roughly similar length so the timing still fits. ' +
+        'Keep names untranslated. Call the tool with the translated lines.',
+      messages: [{ role: 'user', content: texts.map((t, i) => `${i + 1}. ${t}`).join('\n').slice(0, 30000) }],
+      tools: [{
+        name: 'translated',
+        description: 'The translated caption lines, same order and count as input.',
+        input_schema: {
+          type: 'object',
+          properties: { lines: { type: 'array', items: { type: 'string' } } },
+          required: ['lines'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'translated' },
+    }),
+  });
+  if (!resp.ok) throw new Error(`translate ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const data = await resp.json();
+  const lines = (data.content || []).find((b: any) => b.type === 'tool_use')?.input?.lines;
+  if (!Array.isArray(lines) || lines.length !== groups.length) {
+    throw new Error(`translation returned ${Array.isArray(lines) ? lines.length : 0} lines for ${groups.length} groups`);
+  }
+  return groups.map((g, i) => ({
+    start: Math.max(0, g[0].start - clipStart),
+    end: Math.max(0, g[g.length - 1].end - clipStart + 0.15),
+    text: String(lines[i]).slice(0, 140),
+  }));
+}
+
 // Fresh pre-signed output slot for a clip render (Cloud Run holds no Supabase key).
 export async function mintClipOutput(admin: SupabaseClient, projectId: string, clipId: string) {
   const output_path = `${projectId}/clips/${clipId}.mp4`;
@@ -326,6 +434,7 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
       const { data: clip, error: ce } = await admin.from('clips').insert({
         project_id: projectId, start_sec: s.start_sec, end_sec: s.end_sec,
         aspect: '9:16', style: 'boldpop', label: s.title || null,
+        ai_score: s.score ?? null, ai_reason: s.reason || null,
         status: 'rendering', options, render_job, dispatched_at: nowIso(),
       }).select().single();
       if (ce) throw new Error(ce.message);

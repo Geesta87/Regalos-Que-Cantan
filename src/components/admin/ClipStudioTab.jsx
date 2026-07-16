@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -21,6 +21,9 @@ const STYLE_META = {
   boldpop:  { name: 'Bold Pop',  desc: 'Big white caps, yellow word highlight', sample: ['ESTE', 'REGALO', 'CAMBIA TODO'], hi: '#FFD400', upper: true, box: false },
   goldglow: { name: 'Gold',      desc: 'White caps, gold word highlight',       sample: ['UNA', 'CANCIÓN', 'PARA MAMÁ'],  hi: '#F5B70A', upper: true, box: false },
   cleanbox: { name: 'Clean Box', desc: 'Sentence case on a soft dark box',      sample: ['Una canción hecha', 'solo para ella'], hi: null, upper: false, box: true },
+  popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false },
+  rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false },
+  minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
@@ -112,7 +115,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
     framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
-    punch: false, progress: false, watermark: false,
+    punch: false, progress: false, watermark: false, emoji: false, sfxwords: false,
     musicTrack: '', // '' = random pick from the library
   });
   const [rendering, setRendering] = useState(false);
@@ -121,6 +124,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [manualOpen, setManualOpen] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
+  const [enBusyId, setEnBusyId] = useState(null);
   const [musicBusy, setMusicBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [songQ, setSongQ] = useState('');
@@ -238,6 +242,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
             hook_title: true, emphasis: true, music: form.music, music_track: form.musicTrack || null,
             broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro,
             punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark,
+            emoji: form.emoji, sfx_emphasis: form.sfxwords,
           },
         });
         n++;
@@ -297,7 +302,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -323,14 +328,38 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   };
 
   const sendToCreative = async (clip) => {
+    if (clip.sent_to_creative_at && !window.confirm('This clip was already sent to Creative Studio. Send it again?')) return;
     setSendingId(clip.id);
     try {
       await call({ action: 'send_to_creative', clip_id: clip.id });
-      showToast?.('Sent — waiting for your approval in Creative Studio');
+      showToast?.('Sent — waiting for your approval in Creative Studio (Review → Social)');
+      load(true);
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
     } finally {
       setSendingId(null);
+    }
+  };
+
+  // English caption version: same moment + settings, captions translated.
+  const makeEnglishVersion = async (clip) => {
+    setEnBusyId(clip.id);
+    try {
+      const o = clip.options || {};
+      await call({
+        action: 'render_clip', project_id: clip.project_id,
+        start_sec: clip.start_sec, end_sec: clip.end_sec,
+        aspect: clip.aspect, style: clip.style,
+        label: clip.label || 'clip', translate_to: 'en',
+        options: { ...o, hook_title: false },
+        ai_score: clip.ai_score || undefined, ai_reason: clip.ai_reason || undefined,
+      });
+      showToast?.('English version rendering — it will appear in the gallery');
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setEnBusyId(null);
     }
   };
 
@@ -412,6 +441,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       hook: !!o.hook_title, emphasis: o.emphasis !== false, music: !!o.music,
       broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio, outro: !!o.outro,
       punch: !!o.punch_zooms, progress: !!o.progress_bar, watermark: !!o.watermark,
+      emoji: !!o.emoji, sfxwords: !!o.sfx_emphasis,
       musicTrack: o.music_track || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -807,6 +837,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['punch', 'Hook zoom', 'exaggerated zoom-in with a whoosh in the first seconds — intro only'],
                       ['progress', 'Progress bar', 'thin gold bar fills along the bottom as the clip plays'],
                       ['watermark', 'Corner logo', 'small translucent RQC logo in the top corner the whole clip'],
+                      ['emoji', 'Emoji captions', 'AI drops a fitting emoji into the punchy caption moments'],
+                      ['sfxwords', 'Key-word sounds', 'a soft pop lands exactly on each gold key word'],
                     ].map(([key, name, desc]) => (
                       <React.Fragment key={key}>
                         <label className="flex items-start gap-2 cursor-pointer select-none">
@@ -882,14 +914,27 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge tone={cs.tone}>{c.status === 'rendering' && <Loader2 size={11} className="animate-spin mr-1" />}{cs.label}</Badge>
+                        {c.sent_to_creative_at && <Badge tone="green">Sent</Badge>}
+                        {c.ai_score != null && (
+                          <span className="flex-shrink-0 text-[11px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5" title={c.ai_reason || 'AI pick score'}>
+                            {Math.round(c.ai_score)}/10
+                          </span>
+                        )}
                         <span className="text-sm text-gray-800 truncate">{c.label || `${STYLE_META[c.style]?.name || c.style} · ${c.aspect}`}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {c.status === 'ready' && (
                           <>
-                            <button onClick={() => sendToCreative(c)} disabled={sendingId === c.id} className={btn.iconGhost} title="Send to Creative Studio (ads/social approval queue)">
-                              {sendingId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                            <button onClick={() => sendToCreative(c)} disabled={sendingId === c.id}
+                              className={btn.iconGhost}
+                              title={c.sent_to_creative_at ? 'Already sent to Creative Studio — click to send again' : 'Send to Creative Studio (Review → Social approval queue)'}>
+                              {sendingId === c.id ? <Loader2 size={15} className="animate-spin" /> : c.sent_to_creative_at ? <Check size={15} className="text-green-600" /> : <Send size={15} />}
                             </button>
+                            {!isTeaser && !(c.label || '').startsWith('EN — ') && (
+                              <button onClick={() => makeEnglishVersion(c)} disabled={enBusyId === c.id} className={btn.iconGhost} title="Make the English caption version of this clip">
+                                {enBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Languages size={15} />}
+                              </button>
+                            )}
                             <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
                           </>
                         )}
