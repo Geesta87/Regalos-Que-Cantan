@@ -1383,25 +1383,29 @@ async function renderClip(job, { dir, log }) {
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
 
-  // Depth mode, plain (non-template) styles: a big Anton slam-in title in the
-  // head/shoulder zone, applied in the second (matted) pass so it lands
-  // behind the person.
+  // Depth mode, plain (non-template) styles: a large luxury-serif title in
+  // the head/shoulder zone, applied in the second (matted) pass so it lands
+  // behind the person. Oversized + letter-spaced on purpose: the text must
+  // spread WIDER than the head so it stays readable around the silhouette.
   if (depthMode && !tpl) {
-    const size = Math.min(Math.round(geo.w * 0.115),
-      Math.floor((geo.w * 0.92) / Math.max(6, String(opts.hook_title_text).length * 0.58)));
+    const raw = String(opts.hook_title_text).toUpperCase();
+    const fsp = Math.round(geo.w * 0.009); // luxury tracking — also pushes text past the head
+    const size = Math.min(Math.round(geo.w * 0.15),
+      Math.floor((geo.w * 0.97) / Math.max(5, raw.length * 0.62 + raw.length * (fsp / (geo.w * 0.15)))));
     const cx = Math.round(geo.w / 2);
-    const y = Math.round(geo.h * 0.3);
-    const anim = `{\\pos(${cx},${y})\\fscx158\\fscy158\\blur7\\t(0,130,\\fscx100\\fscy100\\blur0)\\fad(30,300)}`;
+    const y = Math.round(geo.h * 0.26);
+    // tracking reveal: letters start wide-spread and translucent, settle in
+    const anim = `{\\pos(${cx},${y})\\fsp${fsp * 3}\\blur6\\alpha&H60&\\t(0,450,\\fsp${fsp}\\blur0\\alpha&H00&)\\fad(40,320)}`;
     fs.writeFileSync(path.join(dir, 'titles.ass'), [
       '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${geo.w}`, `PlayResY: ${geo.h}`,
       'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
       '[V4+ Styles]',
       'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-      `Style: DHook,Anton,${size},${WHITE},${WHITE},&H64000000,&H00000000,1,0,0,0,100,100,0,0,1,4,0,8,40,40,10,1`,
+      `Style: DHook,Prata,${size},${WHITE},${WHITE},&H50000000,&H00000000,0,0,0,0,100,100,${fsp},0,1,3,0,8,40,40,10,1`,
       '',
       '[Events]',
       'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-      `Dialogue: 2,0:00:00.00,0:00:02.85,DHook,,0,0,0,,${anim}${assEscape(opts.hook_title_text).toUpperCase()}`,
+      `Dialogue: 2,0:00:00.00,0:00:02.85,DHook,,0,0,0,,${anim}${assEscape(raw)}`,
     ].join('\n') + '\n');
   }
   ff(dir, args);
