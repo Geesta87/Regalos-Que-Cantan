@@ -20,7 +20,11 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const MODEL = Deno.env.get('RECRUITER_MODEL') || 'claude-sonnet-4-6';
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 
-const NICHES = (Deno.env.get('RECRUITER_NICHES') || 'canción personalizada,regalo personalizado,quinceañera,boda mexicana,música regional mexicana,familia latina').split(',').map((s) => s.trim()).filter(Boolean);
+// Target = HISPANIC / SPANISH-SPEAKING CONTENT CREATORS & INFLUENCERS (audience-
+// owners who take brand deals), NOT our own product category. Searching product
+// terms like "canción personalizada" only surfaces competitors, so those are gone.
+// These terms match how Latino creators label themselves in their name/bio.
+const NICHES = (Deno.env.get('RECRUITER_NICHES') || 'creadora de contenido,creador de contenido,influencer mexicana,influencer latina,mamá latina,contenido de parejas,comedia mexicana,vlog familiar').split(',').map((s) => s.trim()).filter(Boolean);
 const DO_TIKTOK = Deno.env.get('RECRUITER_TIKTOK') !== 'false';
 const DO_INSTAGRAM = Deno.env.get('RECRUITER_INSTAGRAM') !== 'false';
 const MIN_FOLLOWERS = Number(Deno.env.get('RECRUITER_MIN_FOLLOWERS') || '3000');
@@ -72,8 +76,8 @@ const SCORE_TOOL = {
           type: 'object',
           properties: {
             i: { type: 'integer' },
-            fit_score: { type: 'integer', description: '0-100: fit as an affiliate to promote personalized Spanish-song gifts to a Latino audience.' },
-            fit_reason: { type: 'string', description: 'One line: why they fit (or do not).' },
+            fit_score: { type: 'integer', description: '0-100 fit as an AFFILIATE: a real Spanish-speaking Hispanic content creator/influencer (a person with a face + engaged audience) who would promote a personalized-song gift to their followers. Competitors, faceless repost/aggregator pages, and pure product shops score low.' },
+            fit_reason: { type: 'string', description: 'One line: why they fit (or do not). For a disqualifier, start with the reason word: "Competitor", "Repost page", or "Shop/vendor".' },
             suggested_commission: { type: 'integer', description: 'The program pays a FLAT 20% commission — return 20. Do not invent a higher rate.' },
             outreach_draft: { type: 'string', description: 'A warm, personal Spanish DM to send them: compliment something specific, explain they can earn commission promoting a product their audience will love, low-pressure invite to reply. 3-5 sentences, no spammy vibe. Do NOT state a specific commission percentage or dollar figure in the message — that is discussed after they reply.' },
           },
@@ -92,7 +96,17 @@ async function score(cands: any[]): Promise<Record<number, any>> {
     method: 'POST', headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model: MODEL, max_tokens: 4000,
-      system: 'You recruit affiliates for "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30, flat 20% commission). Score each creator as a partner who could promote personalized song gifts to a Latino/family/música/gifting audience — micro-to-mid influencers with engaged, warm audiences convert best. Draft a warm, genuine Spanish outreach DM for each (no spam), and NEVER quote a commission rate in the DM. Score honestly. CRITICAL: an account that ITSELF sells personalized/custom songs (or is otherwise a direct competitor) is NOT a good affiliate — score it 20 or below and start fit_reason with "Direct competitor". We want creators with an audience who would promote US, not rival sellers.',
+      system: `You recruit affiliates for "Regalos Que Cantan", a US-Hispanic brand selling personalized Spanish songs as gifts (~$30, flat 20% commission). The ideal affiliate is a HISPANIC / SPANISH-SPEAKING CONTENT CREATOR or INFLUENCER: a real person with a face, personality and an engaged, warm audience (family, couples, motherhood, lifestyle, música, cultura, comedy) who takes brand collaborations and would recommend a heartfelt personalized-song gift to their followers.
+
+SCORE HIGH (70-95): genuine Spanish-language individual creators/influencers, micro-to-mid (a few thousand to a few hundred thousand followers), with real engagement and signs they do collabs (business email / "colaboraciones" / manager in bio).
+
+SCORE LOW and name the reason at the start of fit_reason:
+- "Competitor" (0-15): the account itself sells or makes personalized/custom songs or music.
+- "Repost page" (10-30): faceless meme/clip/song-repost or aggregator account with no personal creator behind it — followers don't trust a person, so they won't convert.
+- "Shop/vendor" (25-45): a business selling its own product (bakery, decor, dress shop, gift shop). They rarely promote someone else's product; deprioritize unless they're clearly a creator/influencer too.
+- Also score low anyone whose audience is not Spanish-speaking/Latino.
+
+Draft a warm, genuine Spanish outreach DM for each (no spam), and NEVER quote a commission rate or dollar figure in the DM. Score honestly — most accounts are a 40-70, reserve 80+ for standout creators.`,
       tools: [SCORE_TOOL], tool_choice: { type: 'tool', name: 'score_prospects' },
       messages: [{ role: 'user', content: `Score these ${cands.length} creators and draft outreach:\n\n${list}` }],
     }),
