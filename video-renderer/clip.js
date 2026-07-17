@@ -103,24 +103,26 @@ const STYLES = {
   // Caption-first looks — no template layer, the captions ARE the design.
   // All of these honor opts.accent (owner-picked color) via applyAccent.
   //   fsp: extra letter-spacing (ASS Spacing)   shadow: hard drop shadow depth
-  lujo:     { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.8,  font: 'Prata', fsp: 3, emphItalic: true },
-  grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.32, font: 'Anton', pop: true },
+  lujo:     { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.8,  font: 'Prata', fsp: 3, emphItalic: true, entrance: 'fade' },
+  grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.32, font: 'Anton', pop: true, entrance: 'slam' },
   resalta:  { wordsPerGroup: 3, highlight: null,   upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
-  brillo:   { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN, pop: true },
-  sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.18, font: 'Anton', shadow: true, pop: true },
+  brillo:   { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN, pop: true, entrance: 'flicker' },
+  sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.18, font: 'Anton', shadow: true, pop: true, entrance: 'slam' },
+  // fluido: the karaoke sweep — color fills across each word as it's spoken
+  fluido:   { wordsPerGroup: 4, highlight: GOLD,   upper: true,  border: 'outline', font: 'Anton', fill: true, entrance: 'fade' },
   // Template looks (caption layer — frame/title/stickers/grade in TEMPLATES):
   fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
-  editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true },
+  editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true, entrance: 'fade' },
   corrido:   { wordsPerGroup: 3, highlight: RED,    upper: true,  border: 'outline', font: 'Anton', pill: { bg: GOLD, fg: DARKTXT } },
-  craft:     { wordsPerGroup: 4, highlight: YELLOW, upper: false, border: 'outline', pop: true,  font: 'Patrick Hand', scale: 1.05 },
+  craft:     { wordsPerGroup: 4, highlight: YELLOW, upper: false, border: 'outline', pop: true,  font: 'Patrick Hand', scale: 1.05, entrance: 'wobble' },
   retro:     { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.82, pill: { bg: YELLOW, fg: DARKTXT } },
-  brasa:     { wordsPerGroup: 4, highlight: WARM,   upper: false, border: 'outline', scale: 0.95, font: 'Prata' },
-  impacto:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
-  neon:      { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN },
-  luxe:      { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box', scale: 0.6, font: 'Space Mono', marginV: 320 },
-  cine:      { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.85, font: 'Prata' },
+  brasa:     { wordsPerGroup: 4, highlight: WARM,   upper: false, border: 'outline', scale: 0.95, font: 'Prata', entrance: 'fade' },
+  impacto:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true, entrance: 'slam' },
+  neon:      { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN, entrance: 'flicker' },
+  luxe:      { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box', scale: 0.6, font: 'Space Mono', marginV: 320, entrance: 'fade' },
+  cine:      { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.85, font: 'Prata', entrance: 'fade' },
   grafica:   { wordsPerGroup: 4, highlight: null,   upper: true,  border: 'outline', scale: 0.9, pill: { bg: '&H00C85624', fg: '&H00FFFFFF' } },
-  revista:   { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.95, font: 'Prata', emphItalic: true },
+  revista:   { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.95, font: 'Prata', emphItalic: true, entrance: 'fade' },
   energia:   { wordsPerGroup: 3, highlight: ORANGE, upper: true,  border: 'outline', scale: 1.08, font: 'Anton', pill: { bg: ORANGE, fg: '&H00FFFFFF' } },
   historia:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'box', scale: 0.88 },
 };
@@ -367,11 +369,19 @@ function groupWords(words, perGroup) {
   return groups.filter((g) => g.length);
 }
 
-function assHeader(geo, st, fontsize) {
-  const shadowDepth = st.shadow ? Math.round(fontsize / 7) : 0; // hard 3D drop shadow
+function assHeader(geo, st, fontsize, contrast = 0) {
+  // contrast = auto-readability boost (0 none, 1 bright footage, 2 very
+  // bright): thicker outline + drop shadow so white captions never wash out
+  // on bright walls. Box styles already carry their own scrim.
+  const outlineW = contrast >= 2 ? Math.round(fontsize / 6.5)
+    : contrast === 1 ? Math.round(fontsize / 8.5)
+    : Math.round(fontsize / 11);
+  const shadowDepth = Math.max(
+    st.shadow ? Math.round(fontsize / 7) : 0, // hard 3D drop shadow (sombra)
+    contrast >= 2 ? Math.round(fontsize / 16) : contrast === 1 ? Math.round(fontsize / 24) : 0);
   const outline = st.border === 'box'
     ? `3,${Math.round(fontsize / 5)},0`   // BorderStyle=3 (box) — Outline acts as box padding
-    : `1,${Math.round(fontsize / 11)},${shadowDepth}`; // BorderStyle=1, thick outline
+    : `1,${outlineW},${shadowDepth}`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const hookSize = Math.round(geo.fontsize * 0.6);
@@ -393,6 +403,29 @@ function assHeader(geo, st, fontsize) {
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
+}
+
+// Auto-readability: measure how bright the footage is where the captions
+// will sit (center band at ~72-87% height — where 9:16 captions land with
+// marginV 460). Bright walls wash out white captions; the returned level
+// (0/1/2) thickens outlines + adds a drop shadow in assHeader.
+function measureCaptionBandLuma(dir, start, clipDur, log = () => {}) {
+  try {
+    const lumaFile = path.join(dir, 'luma.txt');
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-t', String(Math.min(clipDur, 30)),
+      '-i', 'source.mp4',
+      // format=gray pins the scale to 8-bit (0-255) — 10-bit sources (DJI)
+      // would otherwise report YAVG on a 0-1023 scale and always max the boost
+      '-vf', `fps=${Math.min(1, 6 / Math.min(clipDur, 30)).toFixed(3)},crop=iw*0.6:ih*0.15:iw*0.2:ih*0.72,format=gray,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=luma.txt`,
+      '-f', 'null', '-'], { cwd: dir });
+    const vals = fs.readFileSync(lumaFile, 'utf8').match(/YAVG=([\d.]+)/g)?.map((m) => Number(m.slice(5))) || [];
+    fs.rmSync(lumaFile, { force: true });
+    if (!vals.length) return 0;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const level = avg > 175 ? 2 : avg > 135 ? 1 : 0;
+    log(`caption-band luma ${avg.toFixed(0)} -> contrast boost ${level}`);
+    return level;
+  } catch { return 0; }
 }
 
 // Owner-picked accent color ("#RRGGBB" from the UI color picker) re-skins
@@ -430,7 +463,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.boldpop, opts.accent);
   const fontsize = Math.round(geo.fontsize * (st.scale || 1));
-  const header = assHeader(geo, st, fontsize);
+  const header = assHeader(geo, st, fontsize, opts.contrast || 0);
   const lines = hookLine(opts);
 
   // Emphasized (AI-tagged) words render gold+bigger (or italic+bigger for
@@ -439,6 +472,15 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const empSize = Math.round(fontsize * 1.18);
   const empOpen = st.emphItalic ? `{\\i1\\fs${empSize}}` : `{\\c${GOLD}&\\fs${empSize}}`;
   const empClose = st.emphItalic ? `{\\i0\\fs${fontsize}}` : `{\\c${WHITE}&\\fs${fontsize}}`;
+  // Per-style caption-group entrances: each personality arrives differently.
+  const ENTRANCES = {
+    rise: `{\\fscy82\\t(0,90,\\fscy100)}`,
+    slam: `{\\fscx128\\fscy128\\blur4\\t(0,100,\\fscx100\\fscy100\\blur0)}`,
+    fade: `{\\alpha&HFF&\\blur6\\t(0,160,\\alpha&H00&\\blur0)}`,
+    flicker: `{\\alpha&HFF&\\t(0,40,\\alpha&H00&)\\t(40,80,\\alpha&H90&)\\t(80,140,\\alpha&H00&)}`,
+    wobble: `{\\frz-4\\fscy85\\t(0,140,\\frz0\\fscy100)}`,
+  };
+  const entrance = ENTRANCES[st.entrance] || ENTRANCES.rise;
   // pop styles: the active word lands slightly oversized and settles in 120ms
   const popOpen = `{\\fscx116\\fscy116\\t(0,120,\\fscx100\\fscy100)}`;
   const popClose = `{\\fscx100\\fscy100}`;
@@ -450,21 +492,54 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     else paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
     return st.pop ? `${popOpen}${paint}${popClose}` : paint;
   };
+  // Word-kind treatments (standing, i.e. visible the whole group, active
+  // paint still takes over on the spoken beat): numbers bigger + colored,
+  // CTA words pilled (color-bolded instead on box styles — an inline \bord
+  // inside BorderStyle=3 would inflate the box).
+  const numSize = Math.round(fontsize * 1.3);
+  const kindColor = st.highlight || GOLD;
+  const ctaBg = (st.pill && st.pill.bg) || kindColor;
+  const ctaFg = (st.pill && st.pill.fg) || DARKTXT;
+  const numPaint = (body) => `{\\fs${numSize}\\c${kindColor}&}${body}{\\fs${fontsize}\\c${WHITE}&}`;
+  const ctaPaint = st.border === 'box'
+    ? (body) => `{\\c${kindColor}&}${body}{\\c${WHITE}&}`
+    : (body) => `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${ctaBg}&\\c${ctaFg}&}${body}{\\r}`;
+
   const perWord = !!(st.highlight || st.pill || st.glow);
   const groups = groupWords(words, st.wordsPerGroup);
   for (const group of groups) {
     const texts = group.map((w) => {
       const t = assEscape(w.word);
-      return { txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp, emoji: w.emoji || null };
+      return {
+        txt: st.upper ? t.toUpperCase() : t, emp: !!w.emp, emoji: w.emoji || null,
+        kind: isNumberWord(w.word) ? 'num' : isCtaWord(w.word) ? 'cta' : null,
+      };
     });
     // Emoji do NOT go into the caption text — Cloud Run's libass draws tofu
     // for them no matter which font we ship. They render as PNG bursts above
     // the captions instead (see the emoji-burst overlays in renderClip).
     const withEmoji = (x) => x.txt;
+    // Karaoke fill (fluido): one dialogue per group, color sweeps across each
+    // word for exactly its spoken duration (\kf in centiseconds; secondary
+    // colour = white pre-fill, primary = highlight post-fill).
+    if (st.fill) {
+      const kf = texts.map((x, idx) => {
+        const from = group[idx].start;
+        const to = idx < group.length - 1 ? group[idx + 1].start : group[idx].end;
+        return `{\\kf${Math.max(1, Math.round((to - from) * 100))}}${withEmoji(x, idx)}`;
+      }).join(' ');
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${entrance}{\\1c${st.highlight || GOLD}&\\2c&H00FFFFFF&}${kf}`);
+      continue;
+    }
     if (!perWord) {
       // One dialogue per group, no per-word paint.
-      const text = texts.map((x, j) => (x.emp ? `${empOpen}${withEmoji(x, j)}${empClose}` : withEmoji(x, j))).join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${text}`);
+      const text = texts.map((x, j) => {
+        const body = withEmoji(x, j);
+        if (x.kind === 'num') return numPaint(body);
+        if (x.kind === 'cta') return ctaPaint(body);
+        return x.emp ? `${empOpen}${body}${empClose}` : body;
+      }).join(' ');
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${entrance}${text}`);
       continue;
     }
     // One dialogue per word: full group shown, the spoken word painted. The
@@ -474,12 +549,14 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const from = i === 0 ? group[0].start : group[i].start;
       const to = i < group.length - 1 ? group[i + 1].start : group[group.length - 1].end;
       if (to - from < 0.01) continue;
-      const intro = i === 0 ? `{\\fscy82\\t(0,90,\\fscy100)}` : '';
+      const intro = i === 0 ? entrance : '';
       const text = texts
         .map((x, j) => {
           const body = withEmoji(x, j);
-          if (x.emp && j !== i) return `${empOpen}${body}${empClose}`;
-          if (j === i) return paintWord(body);
+          if (j === i) return paintWord(body); // spoken beat always wins
+          if (x.kind === 'num') return numPaint(body);
+          if (x.kind === 'cta') return ctaPaint(body);
+          if (x.emp) return `${empOpen}${body}${empClose}`;
           return body;
         })
         .join(' ');
@@ -496,7 +573,7 @@ function buildAssFromGroups(groups, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.boldpop, opts.accent);
   const fontsize = Math.round(geo.fontsize * (st.scale || 1));
-  const header = assHeader(geo, st, fontsize);
+  const header = assHeader(geo, st, fontsize, opts.contrast || 0);
   const lines = hookLine(opts);
   for (const g of groups) {
     if (!(g && typeof g.text === 'string' && g.text.trim())) continue;
@@ -509,6 +586,15 @@ function buildAssFromGroups(groups, styleKey, aspectKey, opts = {}) {
 // ---------------------------------------------------------------------------
 // silence removal: keep-segments from word gaps + caption remapping
 // ---------------------------------------------------------------------------
+
+// Word hierarchy: certain word KINDS get art direction beyond the spoken-word
+// paint — numbers/prices render bigger in the highlight color, and a small
+// CTA lexicon (deliberately conservative — high-frequency Spanish words like
+// "ya"/"solo" excluded) gets a standing pill so offers jump out.
+const CTA_WORDS = new Set(['gratis', 'hoy', 'ahora', 'nuevo', 'nueva', 'oferta', 'descuento', 'promo', 'link', 'bio', 'free', 'today', 'now', 'new']);
+const stripPunct = (w) => String(w).toLowerCase().replace(/[.,!?…¿¡:;"'()]+/g, '').trim();
+const isNumberWord = (w) => /[\d$%€]/.test(String(w));
+const isCtaWord = (w) => CTA_WORDS.has(stripPunct(w));
 
 // Pure vocal fillers safe to cut in EN + ES. Deliberately conservative:
 // words like "este"/"pues"/"like" carry real meaning too often.
@@ -953,7 +1039,11 @@ async function renderClip(job, { dir, log }) {
   // physical device that must stay in front.
   const depthMode = !!opts.depth_title && !!opts.hook_title_text
     && (!tpl || !['strip', 'titlebar'].includes(tpl.title?.mode || ''));
-  const capOpts = { hookTitle: tpl || depthMode ? null : (opts.hook_title_text || null), totalDur: outDur, accent: opts.accent_color || null };
+  const capOpts = {
+    hookTitle: tpl || depthMode ? null : (opts.hook_title_text || null), totalDur: outDur,
+    accent: opts.accent_color || null,
+    contrast: measureCaptionBandLuma(dir, start, clipDur, log),
+  };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(
         job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),

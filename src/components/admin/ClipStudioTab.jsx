@@ -18,35 +18,37 @@ import { Card, Badge, SectionLabel, btn } from './ui';
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clip-studio`;
 
 const STYLE_META = {
-  boldpop:  { name: 'Bold Pop',  desc: 'Big white caps, yellow word highlight', sample: ['ESTE', 'REGALO', 'CAMBIA TODO'], hi: '#FFD400', upper: true, box: false, accent: true },
-  goldglow: { name: 'Gold',      desc: 'White caps, gold word highlight',       sample: ['UNA', 'CANCIÓN', 'PARA MAMÁ'],  hi: '#F5B70A', upper: true, box: false, accent: true },
-  cleanbox: { name: 'Clean Box', desc: 'Sentence case on a soft dark box',      sample: ['Una canción hecha', 'solo para ella'], hi: null, upper: false, box: true },
-  popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false, accent: true },
-  rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false, accent: true },
-  minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
+  // group: sell = Para vender · story = Para historias · premium = Premium · fun = Divertido
+  boldpop:  { name: 'Bold Pop',  group: 'sell', desc: 'Big white caps, yellow word highlight', sample: ['ESTE', 'REGALO', 'CAMBIA TODO'], hi: '#FFD400', upper: true, box: false, accent: true },
+  goldglow: { name: 'Gold',      group: 'premium', desc: 'White caps, gold word highlight',       sample: ['UNA', 'CANCIÓN', 'PARA MAMÁ'],  hi: '#F5B70A', upper: true, box: false, accent: true },
+  cleanbox: { name: 'Clean Box', group: 'story', desc: 'Sentence case on a soft dark box',      sample: ['Una canción hecha', 'solo para ella'], hi: null, upper: false, box: true },
+  popline:  { name: 'Pop',       group: 'fun', desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  rosa:     { name: 'Rosa',      group: 'fun', desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false, accent: true },
+  minimal:  { name: 'Minimal',   group: 'story', desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
   // Caption-first premium looks — the captions ARE the design. Every `accent`
   // style honors the custom accent color picker.
-  lujo:    { name: 'Lujo',    desc: 'Luxury serif — refined, letter-spaced, gold accent', sample: ['solo lo esencial,', 'con clase'], hi: '#D4AF37', upper: false, box: false, accent: true, serif: true },
-  grande:  { name: 'Grande',  desc: 'Huge two-word captions — maximum presence', sample: ['MÁS', 'GRANDE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
-  resalta: { name: 'Resalta', desc: 'Marker pill lands on the spoken word', sample: ['CADA', 'PALABRA', 'MARCADA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
-  brillo:  { name: 'Brillo',  desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
-  sombra:  { name: 'Sombra',  desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
+  lujo:    { name: 'Lujo',    group: 'premium', desc: 'Luxury serif — refined, letter-spaced, gold accent', sample: ['solo lo esencial,', 'con clase'], hi: '#D4AF37', upper: false, box: false, accent: true, serif: true },
+  grande:  { name: 'Grande',  group: 'sell', desc: 'Huge two-word captions — maximum presence', sample: ['MÁS', 'GRANDE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
+  resalta: { name: 'Resalta', group: 'sell', desc: 'Marker pill lands on the spoken word', sample: ['CADA', 'PALABRA', 'MARCADA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
+  brillo:  { name: 'Brillo',  group: 'fun', desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
+  sombra:  { name: 'Sombra',  group: 'sell', desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
+  fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
   // Template looks: caption style + title design + stickers + color grade.
   // img = a real rendered frame so the card shows the ACTUAL look.
-  fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
-  editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
-  corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
-  craft:     { name: 'Craft',     desc: 'Paper page — tape, doodles, handwritten', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
-  retro:     { name: 'Retro',     desc: 'Y2K computer window, highlighter captions', sample: ['qué', 'recuerdos'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/retro.jpg' },
-  brasa:     { name: 'Brasa',     desc: 'Golden-hour warmth, soft serif', sample: ['con todo', 'el corazón'], hi: '#F0B427', upper: false, box: false, tpl: true, img: '/images/clip-templates/brasa.jpg' },
-  impacto:   { name: 'Impacto',   desc: 'Punchy black & electric yellow', sample: ['ESTO', 'CAMBIA', 'TODO'], hi: '#FFD400', upper: true, box: false, tpl: true, img: '/images/clip-templates/impacto.jpg' },
-  neon:      { name: 'Neón',      desc: 'Dark glow — cyan & pink electric', sample: ['BRILLA', 'ESTA', 'NOCHE'], hi: '#00E5FF', upper: true, box: false, tpl: true, img: '/images/clip-templates/neon.jpg' },
-  luxe:      { name: 'Luxe',      desc: 'Quiet luxury — tiny boxed captions', sample: ['solo lo', 'esencial'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/luxe.jpg' },
-  cine:      { name: 'Cine',      desc: 'Film look — letterbox, grain, serif', sample: ['una escena', 'de película'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/cine.jpg' },
-  grafica:   { name: 'Gráfica',   desc: 'Blueprint grid — design-tool frame', sample: ['PASO', 'POR PASO'], hi: null, upper: true, box: false, tpl: true, img: '/images/clip-templates/grafica.jpg' },
-  revista:   { name: 'Revista',   desc: 'Fashion magazine serif', sample: ['puro', 'estilo'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/revista.jpg' },
-  energia:   { name: 'Energía',   desc: 'Athletic orange stripes, condensed caps', sample: ['DALE', 'CON TODO'], hi: '#E85D10', upper: true, box: false, tpl: true, img: '/images/clip-templates/energia.jpg' },
-  historia:  { name: 'Historia',  desc: 'Minimal — nothing between you and the story', sample: ['solo tú', 'y tu voz'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/historia.jpg' },
+  fiesta:    { name: 'Fiesta',    group: 'fun', desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
+  editorial: { name: 'Editorial', group: 'story', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
+  corrido:   { name: 'Corrido',   group: 'premium', desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
+  craft:     { name: 'Craft',     group: 'fun', desc: 'Paper page — tape, doodles, handwritten', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
+  retro:     { name: 'Retro',     group: 'fun', desc: 'Y2K computer window, highlighter captions', sample: ['qué', 'recuerdos'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/retro.jpg' },
+  brasa:     { name: 'Brasa',     group: 'story', desc: 'Golden-hour warmth, soft serif', sample: ['con todo', 'el corazón'], hi: '#F0B427', upper: false, box: false, tpl: true, img: '/images/clip-templates/brasa.jpg' },
+  impacto:   { name: 'Impacto',   group: 'sell', desc: 'Punchy black & electric yellow', sample: ['ESTO', 'CAMBIA', 'TODO'], hi: '#FFD400', upper: true, box: false, tpl: true, img: '/images/clip-templates/impacto.jpg' },
+  neon:      { name: 'Neón',      group: 'fun', desc: 'Dark glow — cyan & pink electric', sample: ['BRILLA', 'ESTA', 'NOCHE'], hi: '#00E5FF', upper: true, box: false, tpl: true, img: '/images/clip-templates/neon.jpg' },
+  luxe:      { name: 'Luxe',      group: 'premium', desc: 'Quiet luxury — tiny boxed captions', sample: ['solo lo', 'esencial'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/luxe.jpg' },
+  cine:      { name: 'Cine',      group: 'story', desc: 'Film look — letterbox, grain, serif', sample: ['una escena', 'de película'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/cine.jpg' },
+  grafica:   { name: 'Gráfica',   group: 'fun', desc: 'Blueprint grid — design-tool frame', sample: ['PASO', 'POR PASO'], hi: null, upper: true, box: false, tpl: true, img: '/images/clip-templates/grafica.jpg' },
+  revista:   { name: 'Revista',   group: 'premium', desc: 'Fashion magazine serif', sample: ['puro', 'estilo'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/revista.jpg' },
+  energia:   { name: 'Energía',   group: 'sell', desc: 'Athletic orange stripes, condensed caps', sample: ['DALE', 'CON TODO'], hi: '#E85D10', upper: true, box: false, tpl: true, img: '/images/clip-templates/energia.jpg' },
+  historia:  { name: 'Historia',  group: 'story', desc: 'Minimal — nothing between you and the story', sample: ['solo tú', 'y tu voz'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/historia.jpg' },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
@@ -72,11 +74,25 @@ const fmtTime = (s) => {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-// Mini caption preview used on the style picker cards. Template looks show a
-// real rendered frame instead, so the full design (title treatment, stickers,
-// color grade) is visible before choosing — not just the caption font.
+// Mini caption preview used on the style picker cards. Every style has a
+// REAL rendered loop of the owner (public/videos/clip-style-previews/) that
+// plays on hover — choosing a style = watching yourself in it. Falls back to
+// the template frame / CSS mock if the loop is missing.
 function StylePreview({ styleKey, accent }) {
   const st = STYLE_META[styleKey];
+  const [vidOk, setVidOk] = React.useState(true);
+  if (vidOk) {
+    return (
+      <div className={`rounded-lg bg-gray-900 ${st.tpl ? 'h-28' : 'h-24'} overflow-hidden`}>
+        <video src={`/videos/clip-style-previews/${styleKey}.mp4`}
+          className="w-full h-full object-cover object-top" muted loop playsInline preload="metadata"
+          poster={st.img || undefined}
+          onError={() => setVidOk(false)}
+          onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+          onMouseLeave={(e) => { e.currentTarget.pause(); }} />
+      </div>
+    );
+  }
   if (st.img) {
     return (
       <div className="rounded-lg bg-gray-900 h-28 overflow-hidden">
@@ -982,33 +998,43 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 </>
               )}
 
-              <label className="text-xs text-gray-500 block mb-1">Caption style</label>
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {Object.entries(STYLE_META).map(([key, s]) => (
-                  <button key={key} onClick={() => setForm((f) => ({ ...f, style: key }))}
-                    className={`rounded-lg border p-1.5 text-left transition ${form.style === key ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <StylePreview styleKey={key} accent={form.accentColor || null} />
-                    <div className="text-xs font-medium text-gray-800 mt-1.5 flex items-center gap-1">
-                      {s.name}
-                      {s.tpl && <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1 py-px uppercase tracking-wide">Template</span>}
-                    </div>
-                    <div className="text-[10px] text-gray-400 leading-tight">{s.desc}</div>
-                  </button>
-                ))}
-              </div>
+              <label className="text-xs text-gray-500 block mb-1">Caption style <span className="text-gray-400">— hover a card to watch it on your footage</span></label>
+              {[['sell', 'Para vender'], ['story', 'Para historias'], ['premium', 'Premium'], ['fun', 'Divertido']].map(([gk, gname]) => (
+                <React.Fragment key={gk}>
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mt-2 mb-1">{gname}</div>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {Object.entries(STYLE_META).filter(([, s]) => (s.group || 'fun') === gk).map(([key, s]) => (
+                      <button key={key} onClick={() => setForm((f) => ({ ...f, style: key }))}
+                        className={`rounded-lg border p-1.5 text-left transition ${form.style === key ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <StylePreview styleKey={key} accent={form.accentColor || null} />
+                        <div className="text-xs font-medium text-gray-800 mt-1.5 flex items-center gap-1">
+                          {s.name}
+                          {s.tpl && <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1 py-px uppercase tracking-wide">Template</span>}
+                        </div>
+                        <div className="text-[10px] text-gray-400 leading-tight">{s.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </React.Fragment>
+              ))}
 
               {STYLE_META[form.style]?.accent && (
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <label className="text-xs text-gray-500">Accent color</label>
                   <input type="color" value={form.accentColor || STYLE_META[form.style].hi || '#FFD400'}
                     onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
                     className="h-7 w-10 rounded border border-gray-200 cursor-pointer bg-white p-0.5" />
+                  {/* one-tap brand colors */}
+                  <button onClick={() => setForm((f) => ({ ...f, accentColor: '#E4007C' }))} title="RQC pink"
+                    className={`h-7 w-7 rounded-full border-2 ${form.accentColor === '#E4007C' ? 'border-indigo-500' : 'border-white shadow'}`} style={{ background: '#E4007C' }} />
+                  <button onClick={() => setForm((f) => ({ ...f, accentColor: '#D4AF37' }))} title="RQC gold"
+                    className={`h-7 w-7 rounded-full border-2 ${form.accentColor === '#D4AF37' ? 'border-indigo-500' : 'border-white shadow'}`} style={{ background: '#D4AF37' }} />
                   {form.accentColor ? (
                     <button onClick={() => setForm((f) => ({ ...f, accentColor: '' }))} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
                       Reset to style default
                     </button>
                   ) : (
-                    <span className="text-[11px] text-gray-400">— the highlight / pill / glow renders in your color</span>
+                    <span className="text-[11px] text-gray-400">— your color on the highlight / pill / glow; circles = brand colors</span>
                   )}
                 </div>
               )}
