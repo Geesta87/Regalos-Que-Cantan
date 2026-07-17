@@ -4835,22 +4835,39 @@ export default function AdminDashboard() {
                                   could be removed and the Actions column gets more breathing room. */}
                               {(song.utm_source || song.affiliate_code) && (
                                 <div className="flex flex-wrap gap-1 mt-1">
-                                  {song.utm_source && (
-                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                      song.utm_source === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400' :
-                                      song.utm_source === 'fb' || song.utm_source === 'facebook' ? 'bg-blue-500/20 text-blue-400' :
-                                      song.utm_source === 'ig' || song.utm_source === 'instagram' ? 'bg-purple-500/20 text-purple-400' :
-                                      song.utm_source === 'email' ? 'bg-amber-500/20 text-amber-400' :
-                                      song.utm_source === 'google' ? 'bg-red-500/20 text-red-400' :
-                                      'bg-gray-500/20 text-gray-400'
-                                    }`}>
-                                      {song.utm_source === 'tiktok' ? '🎵' :
-                                       song.utm_source === 'fb' || song.utm_source === 'facebook' ? '📘' :
-                                       song.utm_source === 'ig' || song.utm_source === 'instagram' ? '📷' :
-                                       song.utm_source === 'email' ? '📧' :
-                                       song.utm_source === 'google' ? '🔍' : '🔗'} {song.utm_source}
-                                    </span>
-                                  )}
+                                  {song.utm_source && (() => {
+                                    // Normalize the raw utm_source so every TikTok sale — including
+                                    // messy variants ('TikTok', 'tikt', affiliate-mangled tags) — shows
+                                    // one clean canonical badge. Same buckets as the scoreboard.
+                                    const s = String(song.utm_source).toLowerCase().trim();
+                                    let key = 'other';
+                                    if (s.startsWith('tiktok') || s.startsWith('tikt') || s === 'tt') key = 'tiktok';
+                                    else if (s === 'fb' || s === 'facebook' || s === 'meta' || s.startsWith('fb-') || s.startsWith('facebook')) key = 'facebook';
+                                    else if (s === 'ig' || s.startsWith('instagram')) key = 'instagram';
+                                    else if (s.startsWith('google')) key = 'google';
+                                    else if (s === 'email') key = 'email';
+                                    const style = {
+                                      tiktok: 'bg-cyan-500/20 text-cyan-400',
+                                      facebook: 'bg-blue-500/20 text-blue-400',
+                                      instagram: 'bg-purple-500/20 text-purple-400',
+                                      email: 'bg-amber-500/20 text-amber-400',
+                                      google: 'bg-red-500/20 text-red-400',
+                                      other: 'bg-gray-500/20 text-gray-400',
+                                    }[key];
+                                    const [icon, label] = {
+                                      tiktok: ['🎵', 'TikTok'],
+                                      facebook: ['📘', 'Facebook'],
+                                      instagram: ['📷', 'Instagram'],
+                                      email: ['📧', 'Email'],
+                                      google: ['🔍', 'Google'],
+                                      other: ['🔗', song.utm_source],
+                                    }[key];
+                                    return (
+                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${style}`}>
+                                        {icon} {label}
+                                      </span>
+                                    );
+                                  })()}
                                   {song.affiliate_code && (
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-pink-500/20 text-pink-400">
                                       🤝 {song.affiliate_code}
