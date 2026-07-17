@@ -24,6 +24,22 @@ const STYLE_META = {
   popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false },
   rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false },
   minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
+  // Template looks: caption style + title design + stickers + color grade.
+  // img = a real rendered frame so the card shows the ACTUAL look.
+  fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
+  editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
+  corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
+  craft:     { name: 'Craft',     desc: 'Paper page — tape, doodles, handwritten', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
+  retro:     { name: 'Retro',     desc: 'Y2K computer window, highlighter captions', sample: ['qué', 'recuerdos'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/retro.jpg' },
+  brasa:     { name: 'Brasa',     desc: 'Golden-hour warmth, soft serif', sample: ['con todo', 'el corazón'], hi: '#F0B427', upper: false, box: false, tpl: true, img: '/images/clip-templates/brasa.jpg' },
+  impacto:   { name: 'Impacto',   desc: 'Punchy black & electric yellow', sample: ['ESTO', 'CAMBIA', 'TODO'], hi: '#FFD400', upper: true, box: false, tpl: true, img: '/images/clip-templates/impacto.jpg' },
+  neon:      { name: 'Neón',      desc: 'Dark glow — cyan & pink electric', sample: ['BRILLA', 'ESTA', 'NOCHE'], hi: '#00E5FF', upper: true, box: false, tpl: true, img: '/images/clip-templates/neon.jpg' },
+  luxe:      { name: 'Luxe',      desc: 'Quiet luxury — tiny boxed captions', sample: ['solo lo', 'esencial'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/luxe.jpg' },
+  cine:      { name: 'Cine',      desc: 'Film look — letterbox, grain, serif', sample: ['una escena', 'de película'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/cine.jpg' },
+  grafica:   { name: 'Gráfica',   desc: 'Blueprint grid — design-tool frame', sample: ['PASO', 'POR PASO'], hi: null, upper: true, box: false, tpl: true, img: '/images/clip-templates/grafica.jpg' },
+  revista:   { name: 'Revista',   desc: 'Fashion magazine serif', sample: ['puro', 'estilo'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/revista.jpg' },
+  energia:   { name: 'Energía',   desc: 'Athletic orange stripes, condensed caps', sample: ['DALE', 'CON TODO'], hi: '#E85D10', upper: true, box: false, tpl: true, img: '/images/clip-templates/energia.jpg' },
+  historia:  { name: 'Historia',  desc: 'Minimal — nothing between you and the story', sample: ['solo tú', 'y tu voz'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/historia.jpg' },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
@@ -49,9 +65,18 @@ const fmtTime = (s) => {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-// Mini caption preview used on the style picker cards.
+// Mini caption preview used on the style picker cards. Template looks show a
+// real rendered frame instead, so the full design (title treatment, stickers,
+// color grade) is visible before choosing — not just the caption font.
 function StylePreview({ styleKey }) {
   const st = STYLE_META[styleKey];
+  if (st.img) {
+    return (
+      <div className="rounded-lg bg-gray-900 h-28 overflow-hidden">
+        <img src={st.img} alt={`${st.name} template — real frame`} className="w-full h-full object-cover object-top" loading="lazy" />
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg bg-gray-900 h-20 flex items-end justify-center pb-3 overflow-hidden">
       <div className={st.box ? 'bg-black/60 rounded px-2 py-1' : ''}>
@@ -945,7 +970,10 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   <button key={key} onClick={() => setForm((f) => ({ ...f, style: key }))}
                     className={`rounded-lg border p-1.5 text-left transition ${form.style === key ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300'}`}>
                     <StylePreview styleKey={key} />
-                    <div className="text-xs font-medium text-gray-800 mt-1.5">{s.name}</div>
+                    <div className="text-xs font-medium text-gray-800 mt-1.5 flex items-center gap-1">
+                      {s.name}
+                      {s.tpl && <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1 py-px uppercase tracking-wide">Template</span>}
+                    </div>
                     <div className="text-[10px] text-gray-400 leading-tight">{s.desc}</div>
                   </button>
                 ))}
