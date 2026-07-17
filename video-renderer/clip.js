@@ -84,6 +84,15 @@ const BOX_BLACK = '&H66000000'; // ~60%-opaque black for the clean box style
 // pop = the active word lands with a quick scale-settle animation; scale
 // shrinks the whole caption track (minimal style).
 const RED = '&H001E1EC4';     // #C41E1E — corrido red
+const ORANGE = '&H00105DE8';  // #E85D10 — energia orange
+const WARM = '&H0027B4F0';    // #F0B427 — brasa warm gold
+const CYAN = '&H00FFE500';    // #00E5FF — neon cyan
+const DARKTXT = '&H00181818';
+// Caption personalities. New fields beyond v1:
+//   pill: {bg, fg}      active word gets a chunky colored surround (thick \bord)
+//   glow: color         active word gets a blurred neon halo
+//   emphItalic: true    emphasized words go italic+bigger instead of gold
+//   marginV, align      caption placement overrides
 const STYLES = {
   boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline' },
   goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline' },
@@ -91,11 +100,21 @@ const STYLES = {
   popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true },
   rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true },
   minimal:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.72 },
-  // Template looks (caption layer — grade/title/stickers live in TEMPLATES):
+  // Template looks (caption layer — frame/title/stickers/grade in TEMPLATES):
   fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
-  editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.9, font: 'Prata' },
-  corrido:   { wordsPerGroup: 3, highlight: RED,    upper: true,  border: 'outline', font: 'Anton' },
+  editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true },
+  corrido:   { wordsPerGroup: 3, highlight: RED,    upper: true,  border: 'outline', font: 'Anton', pill: { bg: GOLD, fg: DARKTXT } },
   craft:     { wordsPerGroup: 4, highlight: YELLOW, upper: false, border: 'outline', pop: true,  font: 'Patrick Hand', scale: 1.05 },
+  retro:     { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.82, pill: { bg: YELLOW, fg: DARKTXT } },
+  brasa:     { wordsPerGroup: 4, highlight: WARM,   upper: false, border: 'outline', scale: 0.95, font: 'Prata' },
+  impacto:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
+  neon:      { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN },
+  luxe:      { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box', scale: 0.6, font: 'Space Mono', marginV: 320 },
+  cine:      { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.85, font: 'Prata' },
+  grafica:   { wordsPerGroup: 4, highlight: null,   upper: true,  border: 'outline', scale: 0.9, pill: { bg: '&H00C85624', fg: '&H00FFFFFF' } },
+  revista:   { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.95, font: 'Prata', emphItalic: true },
+  energia:   { wordsPerGroup: 3, highlight: ORANGE, upper: true,  border: 'outline', scale: 1.08, font: 'Anton', pill: { bg: ORANGE, fg: '&H00FFFFFF' } },
+  historia:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'box', scale: 0.88 },
 };
 
 // Art direction per template: color grade (video-only, applied before
@@ -104,29 +123,102 @@ const STYLES = {
 // custom fonts), and sticker packs that ride the overlay engine.
 const FONTS_DIR = process.env.FONTS_DIR || path.join(__dirname, 'assets', 'fonts');
 const STICKERS_DIR = process.env.STICKERS_DIR || path.join(__dirname, 'assets', 'stickers');
+// Full template configs. New v2 fields:
+//   frame: { asset, panel:{x,y,w,h fractions}, canvasColor } — the video is
+//     scaled into `panel` over a canvas; `asset` is a full-frame PNG with a
+//     transparent window drawn to match the panel rect.
+//   letterbox: { top, bottom, color } — sugar for a full-width panel.
+//   title.mode: 'card' (accent+boxed main) | 'bleed' (huge, may echo) |
+//     'band' (in the letterbox bar, dark text) | 'titlebar' (retro window
+//     bar, persistent) | 'strip' (on the tape strip asset)
+//   grain / vignette: film texture applied over the FINISHED frame.
 const TEMPLATES = {
   fiesta: {
     grade: 'eq=saturation=1.12:brightness=0.02',
-    title: { accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Anton-Regular.ttf', accentColor: 'E4007C', mainColor: 'FFFFFF' },
+    frame: { asset: 'fiesta-frame', panel: { x: 0.05, y: 0.1302, w: 0.90, h: 0.7396 } },
+    title: { mode: 'card', accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Anton-Regular.ttf', accentColor: 'FFFFFF', mainColor: 'FFFFFF', y: 22, accentScale: 0.05, mainScale: 0.058, boxColor: 'black@0.35' },
     burst: ['fiesta-starburst', 'fiesta-confetti', 'fiesta-swirl'],
-    persistent: { file: 'fiesta-banner', pos: 'top' },
   },
   editorial: {
     grade: 'eq=saturation=0.92:contrast=0.99:brightness=0.015',
-    title: { accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Prata-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF' },
+    letterbox: { top: 0.115, bottom: 0.115, color: '0xF3EDDE' },
+    title: { mode: 'band', accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Prata-Regular.ttf', accentColor: 'B8912A', mainColor: '1B2653', y: 30, accentScale: 0.055, mainScale: 0.052 },
     burst: ['editorial-flourish', 'editorial-heart', 'editorial-underline'],
-    persistent: { file: 'editorial-corner', pos: 'topleft' },
+    vignette: true,
   },
   corrido: {
     grade: 'eq=contrast=1.08:saturation=0.88:brightness=-0.015',
-    title: { accentFont: 'GreatVibes-Regular.ttf', accentText: 'Regalos que Cantan', mainFont: 'Anton-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF' },
+    letterbox: { top: 0.10, bottom: 0.135, color: 'black' },
+    title: { mode: 'bleed', accentFont: 'GreatVibes-Regular.ttf', accentText: 'Regalos que Cantan', mainFont: 'Anton-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF', y: 36, mainScale: 0.135, accentScale: 0.05 },
     burst: ['corrido-star', 'corrido-underline', 'corrido-slash'],
-    persistent: { file: 'corrido-bars', pos: 'left' },
+    grain: true, vignette: true,
   },
   craft: {
     grade: 'eq=saturation=1.03:brightness=0.01',
-    title: { accentFont: 'PatrickHand-Regular.ttf', mainFont: 'PatrickHand-Regular.ttf', accentColor: 'FFD400', mainColor: 'FFFFFF' },
-    burst: ['craft-arrow', 'craft-bulb', 'craft-circle', 'craft-scribble'],
+    frame: { asset: 'craft-frame', panel: { x: 0.0556, y: 0.15625, w: 0.8889, h: 0.7083 } },
+    title: { mode: 'strip', stripAsset: 'craft-strip', mainFont: 'PatrickHand-Regular.ttf', mainColor: '4A4238', y: 96, mainScale: 0.052 },
+    burst: ['craft2-arrow', 'craft2-bulb', 'craft2-circle', 'craft2-scribble'],
+  },
+  retro: {
+    grade: 'eq=saturation=1.08:brightness=0.02',
+    frame: { asset: 'retro-frame', panel: { x: 0.0444, y: 0.2177, w: 0.9111, h: 0.6469 } },
+    title: { mode: 'titlebar', mainFont: 'SpaceMono-Regular.ttf', mainColor: 'FFFFFF', y: 352, mainScale: 0.036 },
+    burst: ['fiesta-starburst', 'craft-scribble'],
+  },
+  brasa: {
+    grade: 'colorbalance=rs=.12:gs=.02:bs=-.12,eq=saturation=1.06:brightness=0.02',
+    title: { mode: 'card', accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Prata-Regular.ttf', accentColor: 'F0B427', mainColor: 'FFFFFF', y: 140, accentScale: 0.055, mainScale: 0.06, boxColor: 'black@0.3' },
+    burst: ['editorial-flourish', 'editorial-heart'],
+    vignette: true,
+  },
+  impacto: {
+    grade: 'eq=contrast=1.15:saturation=1.1',
+    title: { mode: 'bleed', mainFont: 'Anton-Regular.ttf', mainColor: 'FFD400', y: 60, mainScale: 0.15 },
+    burst: ['corrido-slash', 'fiesta-starburst', 'corrido-underline'],
+    grain: true,
+  },
+  neon: {
+    grade: 'eq=contrast=1.12:saturation=1.22,colorbalance=rs=.06:bs=.12',
+    title: { mode: 'bleed', echo: true, mainFont: 'Anton-Regular.ttf', mainColor: 'FF3EAC', y: 70, mainScale: 0.13 },
+    burst: ['fiesta-swirl', 'fiesta-starburst'],
+    vignette: true,
+  },
+  luxe: {
+    grade: 'eq=contrast=1.05:saturation=0.75:brightness=-0.03',
+    title: { mode: 'card', mainFont: 'SpaceMono-Regular.ttf', mainColor: 'FFFFFF', y: 170, mainScale: 0.032, boxColor: 'black@0.55', rule: 'D4AF37' },
+    burst: [],
+    vignette: true,
+  },
+  cine: {
+    grade: 'eq=contrast=1.06:saturation=0.82',
+    letterbox: { top: 0.12, bottom: 0.12, color: 'black' },
+    title: { mode: 'band', accentFont: 'GreatVibes-Regular.ttf', accentText: 'Regalos que Cantan presenta', mainFont: 'Prata-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF', y: 40, accentScale: 0.045, mainScale: 0.05 },
+    burst: [],
+    grain: true, vignette: true,
+  },
+  grafica: {
+    grade: null,
+    frame: { asset: 'grafica-frame', panel: { x: 0.0833, y: 0.1719, w: 0.8333, h: 0.6927 } },
+    title: { mode: 'card', mainFont: 'Anton-Regular.ttf', mainColor: 'FFFFFF', y: 90, mainScale: 0.062, boxColor: '0x1B49C8@0.9' },
+    burst: ['craft-scribble'],
+  },
+  revista: {
+    grade: 'eq=saturation=0.88:brightness=0.02',
+    title: { mode: 'card', accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Prata-Regular.ttf', accentColor: 'B8912A', mainColor: 'FFFFFF', y: 110, accentScale: 0.06, mainScale: 0.075, boxColor: 'black@0.22' },
+    burst: ['editorial-underline', 'editorial-corner'],
+    vignette: true,
+  },
+  energia: {
+    grade: 'eq=contrast=1.12:saturation=1.05',
+    frame: { asset: 'energia-frame', panel: { x: 0.0426, y: 0.15625, w: 0.9148, h: 0.7135 } },
+    title: { mode: 'bleed', mainFont: 'Anton-Regular.ttf', mainColor: 'E85D10', y: 195, mainScale: 0.105 },
+    burst: ['corrido-slash', 'corrido-underline'],
+    grain: true,
+  },
+  historia: {
+    grade: 'eq=saturation=0.98',
+    title: { mode: 'card', mainFont: 'Prata-Regular.ttf', mainColor: 'FFFFFF', y: 140, mainScale: 0.05, boxColor: 'black@0.4' },
+    burst: [],
   },
 };
 const drawtextEscape = (s) => String(s).replace(/[\\:'";%{}\[\],]/g, '').replace(/\s+/g, ' ').trim();
@@ -181,7 +273,7 @@ function assHeader(geo, st, fontsize) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
+    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${st.marginV || geo.marginV},1`,
     // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
@@ -206,14 +298,24 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const header = assHeader(geo, st, fontsize);
   const lines = hookLine(opts);
 
-  // Emphasized (AI-tagged) words render gold and ~18% bigger at all times;
-  // the active-word paint still walks across the non-emphasized ones.
+  // Emphasized (AI-tagged) words render gold+bigger (or italic+bigger for
+  // emphItalic styles) at all times; the active-word paint walks across the
+  // non-emphasized ones.
   const empSize = Math.round(fontsize * 1.18);
-  const empOpen = `{\\c${GOLD}&\\fs${empSize}}`;
-  const empClose = `{\\c${WHITE}&\\fs${fontsize}}`;
+  const empOpen = st.emphItalic ? `{\\i1\\fs${empSize}}` : `{\\c${GOLD}&\\fs${empSize}}`;
+  const empClose = st.emphItalic ? `{\\i0\\fs${fontsize}}` : `{\\c${WHITE}&\\fs${fontsize}}`;
   // pop styles: the active word lands slightly oversized and settles in 120ms
   const popOpen = `{\\fscx116\\fscy116\\t(0,120,\\fscx100\\fscy100)}`;
   const popClose = `{\\fscx100\\fscy100}`;
+  // Active-word treatments: plain color paint, chunky pill, or neon glow.
+  const paintWord = (body) => {
+    let paint;
+    if (st.pill) paint = `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${st.pill.bg}&\\c${st.pill.fg}&}${body}{\\r}`;
+    else if (st.glow) paint = `{\\bord${Math.max(4, Math.round(fontsize / 8))}\\3c${st.glow}&\\blur7\\c&HFFFFFF&}${body}{\\r}`;
+    else paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
+    return st.pop ? `${popOpen}${paint}${popClose}` : paint;
+  };
+  const perWord = !!(st.highlight || st.pill || st.glow);
   const groups = groupWords(words, st.wordsPerGroup);
   for (const group of groups) {
     const texts = group.map((w) => {
@@ -224,7 +326,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     // for them no matter which font we ship. They render as PNG bursts above
     // the captions instead (see the emoji-burst overlays in renderClip).
     const withEmoji = (x) => x.txt;
-    if (!st.highlight) {
+    if (!perWord) {
       // One dialogue per group, no per-word paint.
       const text = texts.map((x, j) => (x.emp ? `${empOpen}${withEmoji(x, j)}${empClose}` : withEmoji(x, j))).join(' ');
       lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${text}`);
@@ -238,11 +340,8 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const text = texts
         .map((x, j) => {
           const body = withEmoji(x, j);
-          if (x.emp) return `${empOpen}${body}${empClose}`;
-          if (j === i) {
-            const paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
-            return st.pop ? `${popOpen}${paint}${popClose}` : paint;
-          }
+          if (x.emp && j !== i) return `${empOpen}${body}${empClose}`;
+          if (j === i) return paintWord(body);
           return body;
         })
         .join(' ');
@@ -773,24 +872,11 @@ async function renderClip(job, { dir, log }) {
   // up even if fontconfig doesn't, and drawtext references them by filename.
   for (const f of fs.readdirSync(FONTS_DIR)) fs.copyFileSync(path.join(FONTS_DIR, f), path.join(dir, f));
 
+  // Titles moved out of `post` in v2 — they draw on the full canvas after the
+  // frame stage (see the template stage after the audio section).
   const postParts = [];
   if (tpl && tpl.grade) postParts.push(tpl.grade);
   postParts.push(zoomStage, 'subtitles=captions.ass:fontsdir=.');
-  if (tpl && opts.hook_title_text) {
-    // Two-line title treatment: small script accent line over the big display
-    // line. drawtext + bundled fontfile — the path proven live by the outro.
-    const t = tpl.title;
-    const accent = drawtextEscape(t.accentText || 'Regalos que Cantan');
-    const main = drawtextEscape(opts.hook_title_text).toUpperCase();
-    const accentSize = Math.round(geo.w * 0.06);
-    const mainSize = Math.min(Math.round(geo.w * 0.075), Math.floor((geo.w * 0.9) / Math.max(6, main.length * 0.58)));
-    const yA = geo.h >= 1900 ? 150 : 70;
-    const alphaExpr = 'if(lt(t\\,0.25)\\,4*t\\,if(lt(t\\,2.45)\\,1\\,max(0\\,(2.8-t)/0.35)))';
-    postParts.push(
-      `drawtext=fontfile=${t.accentFont}:text='${accent}':fontcolor=0x${t.accentColor}:fontsize=${accentSize}:x=(w-text_w)/2:y=${yA}:alpha='${alphaExpr}':enable='lt(t,2.8)'`,
-      `drawtext=fontfile=${t.mainFont}:text='${main}':fontcolor=0x${t.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${yA + accentSize + 20}:box=1:boxcolor=black@0.42:boxborderw=16:alpha='${alphaExpr}':enable='lt(t,2.8)'`,
-    );
-  }
   const post = postParts.join(',');
 
   const hasAudio = (() => {
@@ -887,7 +973,10 @@ async function renderClip(job, { dir, log }) {
   // wm.png is pushed as an input right after the b-roll files (before sfx),
   // so its index never depends on the audio decisions made further down.
   const wmIdx = brollInputBase + broll.length;
-  let vfinal = 'vsub';
+  // [vt] is the template stage's output (frame device + titles), declared in
+  // the post-audio block — filter_complex chains are order-independent, so
+  // referencing it here is fine.
+  let vfinal = 'vt';
   parts.push(`[${vbase}]${post}[vsub]`);
   if (withWatermark) {
     fs.copyFileSync(LOGO, path.join(dir, 'wm.png'));
@@ -972,6 +1061,97 @@ async function renderClip(job, { dir, log }) {
     log(`key-word sounds: ${popTimes.length} pop(s)`);
   }
 
+  // ---- template stage: frame device + titles -> [vt] --------------------
+  // [vsub] (captioned video) is scaled into the template's panel over a
+  // canvas, the frame PNG (transparent window) goes on top, then the title
+  // treatment draws on the full canvas. Non-template renders pass through.
+  const tplImgs = []; // {name, dur} — image inputs owned by this stage
+  const tplBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+  const regTplImg = (srcPath, name, durSec) => {
+    fs.copyFileSync(srcPath, path.join(dir, name));
+    tplImgs.push({ name, dur: durSec });
+    return tplBase + tplImgs.length - 1;
+  };
+  let vcur = 'vsub';
+  const use916 = job.aspect === '9:16';
+  const frameCfg = tpl && use916
+    ? (tpl.frame || (tpl.letterbox
+        ? { panel: { x: 0, y: tpl.letterbox.top, w: 1, h: 1 - tpl.letterbox.top - tpl.letterbox.bottom }, canvasColor: tpl.letterbox.color }
+        : null))
+    : null;
+  if (frameCfg) {
+    const P = frameCfg.panel;
+    const pw = 2 * Math.round(geo.w * P.w / 2), ph = 2 * Math.round(geo.h * P.h / 2);
+    const px = Math.round(geo.w * P.x), py = Math.round(geo.h * P.y);
+    parts.push(`color=c=${frameCfg.canvasColor || 'black'}:s=${geo.w}x${geo.h}:r=30:d=${outDur.toFixed(3)}[tcanvas]`);
+    parts.push(`[${vcur}]scale=${pw}:${ph}[tpanel]`);
+    parts.push(`[tcanvas][tpanel]overlay=${px}:${py}:eof_action=pass[tframed]`);
+    vcur = 'tframed';
+    if (frameCfg.asset) {
+      const idx = regTplImg(path.join(STICKERS_DIR, `${frameCfg.asset}.png`), 'tframe.png', outDur + 0.1);
+      parts.push(`[${idx}:v]scale=${geo.w}:${geo.h}[tfa]`);
+      parts.push(`[${vcur}][tfa]overlay=0:0:eof_action=pass[tframed2]`);
+      vcur = 'tframed2';
+    }
+    log(`template frame: ${tpl.frame ? frameCfg.asset : 'letterbox'} (${job.style})`);
+  }
+  // Title treatment on the full canvas.
+  if (tpl && tpl.title) {
+    const T = tpl.title;
+    const scaleY = geo.h / 1920; // y values are authored for 9:16
+    const fade = "if(lt(t\\,0.25)\\,4*t\\,if(lt(t\\,2.45)\\,1\\,max(0\\,(2.8-t)/0.35)))";
+    const en = "enable='lt(t,2.8)'";
+    const mainRaw = drawtextEscape(opts.hook_title_text || '');
+    const tf = [];
+    if (T.mode === 'titlebar') {
+      // Retro window bar: persistent lowercase filename gag.
+      const txt = (mainRaw || 'regalos que cantan').toLowerCase().replace(/ /g, '-').slice(0, 30) + '.mp4';
+      tf.push(`drawtext=fontfile=${T.mainFont}:text='${txt}':fontcolor=0x${T.mainColor}:fontsize=${Math.round(geo.w * T.mainScale)}:x=(w-text_w)/2:y=${Math.round(T.y * scaleY)}`);
+    } else if (mainRaw) {
+      const y0 = Math.round((T.y || 100) * scaleY);
+      if (T.mode === 'bleed') {
+        const mainSize = Math.round(geo.w * (T.mainScale || 0.13)); // intentional overflow
+        const rows = T.echo ? [[-1.02, 0.14], [1.02, 0.3], [0, 1]] : [[0, 1]];
+        for (const [dy, a] of rows) {
+          const alpha = a === 1 ? fade : `(${fade})*${a}`;
+          tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw.toUpperCase()}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${y0 + Math.round(mainSize * dy)}:alpha='${alpha}':${en}`);
+        }
+        if (T.accentFont) {
+          tf.push(`drawtext=fontfile=${T.accentFont}:text='${drawtextEscape(T.accentText || 'Regalos que Cantan')}':fontcolor=0x${T.accentColor}:fontsize=${Math.round(geo.w * (T.accentScale || 0.05))}:x=(w-text_w)/2:y=${y0 + Math.round(geo.w * (T.mainScale || 0.13) * 1.15)}:alpha='${fade}':${en}`);
+        }
+      } else if (T.mode === 'strip') {
+        const stripW = Math.round(geo.w * 0.82);
+        const stripH = Math.round(stripW * 170 / 900);
+        const idx = regTplImg(path.join(STICKERS_DIR, `${T.stripAsset}.png`), 'tstrip.png', 2.9);
+        const mainSize = Math.min(Math.round(geo.w * (T.mainScale || 0.05)), Math.floor((stripW * 0.9) / Math.max(6, mainRaw.length * 0.52)));
+        parts.push(`[${idx}:v]format=rgba,scale=${stripW}:-1,fade=t=in:st=0:d=0.2:alpha=1,fade=t=out:st=2.45:d=0.35:alpha=1[tstripv]`);
+        parts.push(`[${vcur}][tstripv]overlay=(W-w)/2:${y0}:${en}:eof_action=pass[tstriped]`);
+        vcur = 'tstriped';
+        tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${y0 + Math.round((stripH - mainSize) / 2)}:alpha='${fade}':${en}`);
+      } else {
+        // card / band
+        const acc = T.accentFont ? drawtextEscape(T.accentText || 'Regalos que Cantan') : null;
+        const accSize = Math.round(geo.w * (T.accentScale || 0.055));
+        const mainSize = Math.min(Math.round(geo.w * (T.mainScale || 0.07)), Math.floor((geo.w * 0.92) / Math.max(6, mainRaw.length * 0.58)));
+        let yy = y0;
+        if (acc) {
+          tf.push(`drawtext=fontfile=${T.accentFont}:text='${acc}':fontcolor=0x${T.accentColor}:fontsize=${accSize}:x=(w-text_w)/2:y=${yy}:alpha='${fade}':${en}`);
+          yy += accSize + Math.round(14 * scaleY);
+        }
+        const box = T.mode === 'band' ? '' : `:box=1:boxcolor=${T.boxColor || 'black@0.42'}:boxborderw=16`;
+        tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw.toUpperCase()}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${yy}${box}:alpha='${fade}':${en}`);
+        if (T.rule) {
+          tf.push(`drawbox=x=iw/2-${Math.round(geo.w * 0.1)}:y=${yy + mainSize + Math.round(20 * scaleY)}:w=${Math.round(geo.w * 0.2)}:h=3:color=0x${T.rule}@0.9:t=fill:${en}`);
+        }
+      }
+    }
+    if (tf.length) {
+      parts.push(`[${vcur}]${tf.join(',')}[vtitled]`);
+      vcur = 'vtitled';
+    }
+  }
+  parts.push(`[${vcur}]null[vt]`);
+
   // Overlay engine: emoji bursts, template sticker bursts (on emphasized
   // words, alternating sides above the captions) and persistent template
   // decorations all flow through one loop.
@@ -1005,7 +1185,7 @@ async function renderClip(job, { dir, log }) {
       side++; burstCount++;
     };
     for (const w of words) {
-      if (!w.emp || burstCount >= 4) continue;
+      if (!tpl.burst.length || !w.emp || burstCount >= 4) continue;
       const T = w.start;
       if (T < 2.2 || T > outDur - 1.7 || T - prevT < 3) continue;
       pushBurst(T);
@@ -1034,7 +1214,7 @@ async function renderClip(job, { dir, log }) {
       }
     }
   }
-  const ovBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+  const ovBase = tplBase + tplImgs.length;
   overlayItems.forEach((o, i) => {
     fs.copyFileSync(o.asset, path.join(dir, `ov${i}.png`));
     const rel = (o.to - o.from).toFixed(3);
@@ -1046,7 +1226,11 @@ async function renderClip(job, { dir, log }) {
     vfinal = `vov${i}`;
   });
   if (overlayItems.length) log(`overlays: ${overlayItems.length} (template: ${tpl ? job.style : 'none'})`);
-  parts.push(`[${vfinal}]null[vout]`);
+  // Film texture over the FINISHED frame (canvas, titles, stickers included).
+  const tex = [];
+  if (tpl && tpl.grain) tex.push('noise=alls=7:allf=t');
+  if (tpl && tpl.vignette) tex.push('vignette=PI/4.6');
+  parts.push(`[${vfinal}]${tex.length ? tex.join(',') : 'null'}[vout]`);
 
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
@@ -1056,6 +1240,7 @@ async function renderClip(job, { dir, log }) {
   if (withSfx) args.push('-i', 'sfx.mp3');
   if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
   if (withPops) args.push('-i', 'kw-pop.mp3');
+  tplImgs.forEach((im) => args.push('-loop', '1', '-framerate', '30', '-t', im.dur.toFixed(3), '-i', im.name));
   overlayItems.forEach((o, i) => args.push('-loop', '1', '-framerate', '30', '-t', (o.to - o.from + 0.05).toFixed(3), '-i', `ov${i}.png`));
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');

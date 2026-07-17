@@ -29,7 +29,17 @@ const STYLE_META = {
   fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
   editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
   corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
-  craft:     { name: 'Craft',     desc: 'Handwritten template — chalk doodles & arrows', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
+  craft:     { name: 'Craft',     desc: 'Paper page — tape, doodles, handwritten', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
+  retro:     { name: 'Retro',     desc: 'Y2K computer window, highlighter captions', sample: ['qué', 'recuerdos'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/retro.jpg' },
+  brasa:     { name: 'Brasa',     desc: 'Golden-hour warmth, soft serif', sample: ['con todo', 'el corazón'], hi: '#F0B427', upper: false, box: false, tpl: true, img: '/images/clip-templates/brasa.jpg' },
+  impacto:   { name: 'Impacto',   desc: 'Punchy black & electric yellow', sample: ['ESTO', 'CAMBIA', 'TODO'], hi: '#FFD400', upper: true, box: false, tpl: true, img: '/images/clip-templates/impacto.jpg' },
+  neon:      { name: 'Neón',      desc: 'Dark glow — cyan & pink electric', sample: ['BRILLA', 'ESTA', 'NOCHE'], hi: '#00E5FF', upper: true, box: false, tpl: true, img: '/images/clip-templates/neon.jpg' },
+  luxe:      { name: 'Luxe',      desc: 'Quiet luxury — tiny boxed captions', sample: ['solo lo', 'esencial'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/luxe.jpg' },
+  cine:      { name: 'Cine',      desc: 'Film look — letterbox, grain, serif', sample: ['una escena', 'de película'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/cine.jpg' },
+  grafica:   { name: 'Gráfica',   desc: 'Blueprint grid — design-tool frame', sample: ['PASO', 'POR PASO'], hi: null, upper: true, box: false, tpl: true, img: '/images/clip-templates/grafica.jpg' },
+  revista:   { name: 'Revista',   desc: 'Fashion magazine serif', sample: ['puro', 'estilo'], hi: null, upper: false, box: false, tpl: true, img: '/images/clip-templates/revista.jpg' },
+  energia:   { name: 'Energía',   desc: 'Athletic orange stripes, condensed caps', sample: ['DALE', 'CON TODO'], hi: '#E85D10', upper: true, box: false, tpl: true, img: '/images/clip-templates/energia.jpg' },
+  historia:  { name: 'Historia',  desc: 'Minimal — nothing between you and the story', sample: ['solo tú', 'y tu voz'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/historia.jpg' },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },

@@ -352,7 +352,7 @@ serve(async (req) => {
       // Template looks: the designed title and the key-word stickers ARE the
       // template — force them on so a template never renders as "just a font"
       // (owner hit exactly that on 2026-07-17).
-      const isTemplate = ['fiesta', 'editorial', 'corrido', 'craft'].includes(style);
+      const isTemplate = ['fiesta', 'editorial', 'corrido', 'craft', 'retro', 'brasa', 'impacto', 'neon', 'luxe', 'cine', 'grafica', 'revista', 'energia', 'historia'].includes(style);
       const options = {
         framing: ['auto', 'wide', 'left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
         remove_silences: !!rawOpts.remove_silences,
