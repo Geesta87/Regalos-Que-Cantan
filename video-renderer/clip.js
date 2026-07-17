@@ -94,12 +94,20 @@ const DARKTXT = '&H00181818';
 //   emphItalic: true    emphasized words go italic+bigger instead of gold
 //   marginV, align      caption placement overrides
 const STYLES = {
-  boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline' },
-  goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline' },
+  boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', font: 'Anton' },
+  goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline', font: 'Anton' },
   cleanbox: { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box' },
-  popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true },
-  rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true },
+  popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true, font: 'Anton' },
+  rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true, font: 'Anton' },
   minimal:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.72 },
+  // Caption-first looks — no template layer, the captions ARE the design.
+  // All of these honor opts.accent (owner-picked color) via applyAccent.
+  //   fsp: extra letter-spacing (ASS Spacing)   shadow: hard drop shadow depth
+  lujo:     { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.8,  font: 'Prata', fsp: 3, emphItalic: true },
+  grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.32, font: 'Anton', pop: true },
+  resalta:  { wordsPerGroup: 3, highlight: null,   upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
+  brillo:   { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN, pop: true },
+  sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.18, font: 'Anton', shadow: true, pop: true },
   // Template looks (caption layer — frame/title/stickers/grade in TEMPLATES):
   fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
   editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true },
@@ -357,9 +365,10 @@ function groupWords(words, perGroup) {
 }
 
 function assHeader(geo, st, fontsize) {
+  const shadowDepth = st.shadow ? Math.round(fontsize / 7) : 0; // hard 3D drop shadow
   const outline = st.border === 'box'
     ? `3,${Math.round(fontsize / 5)},0`   // BorderStyle=3 (box) — Outline acts as box padding
-    : `1,${Math.round(fontsize / 11)},0`; // BorderStyle=1, thick outline
+    : `1,${Math.round(fontsize / 11)},${shadowDepth}`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const hookSize = Math.round(geo.fontsize * 0.6);
@@ -374,13 +383,35 @@ function assHeader(geo, st, fontsize) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${st.marginV || geo.marginV},1`,
+    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,${st.fsp || 0},0,${outline},2,60,60,${st.marginV || geo.marginV},1`,
     // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
+}
+
+// Owner-picked accent color ("#RRGGBB" from the UI color picker) re-skins
+// whatever active-word treatment the style has: highlight paint, pill
+// background (text flips dark/light by luminance), or glow halo.
+const hexToAssColor = (hex) => {
+  const h = hex.replace('#', '');
+  return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
+};
+const hexIsLight = (hex) => {
+  const h = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+};
+function applyAccent(st, accentHex) {
+  if (!accentHex || !/^#?[0-9a-fA-F]{6}$/.test(String(accentHex))) return st;
+  const c = hexToAssColor(String(accentHex));
+  const out = { ...st };
+  if (st.pill) out.pill = { bg: c, fg: hexIsLight(accentHex) ? DARKTXT : '&H00FFFFFF' };
+  if (st.glow) out.glow = c;
+  if (st.highlight) out.highlight = c;
+  return out;
 }
 
 function hookLine(opts) {
@@ -394,7 +425,7 @@ function hookLine(opts) {
 
 function buildAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
-  const st = STYLES[styleKey] || STYLES.boldpop;
+  const st = applyAccent(STYLES[styleKey] || STYLES.boldpop, opts.accent);
   const fontsize = Math.round(geo.fontsize * (st.scale || 1));
   const header = assHeader(geo, st, fontsize);
   const lines = hookLine(opts);
@@ -460,7 +491,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
 // one dialogue per group, no per-word karaoke — timing comes from the group.
 function buildAssFromGroups(groups, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
-  const st = STYLES[styleKey] || STYLES.boldpop;
+  const st = applyAccent(STYLES[styleKey] || STYLES.boldpop, opts.accent);
   const fontsize = Math.round(geo.fontsize * (st.scale || 1));
   const header = assHeader(geo, st, fontsize);
   const lines = hookLine(opts);
@@ -896,7 +927,7 @@ async function renderClip(job, { dir, log }) {
   // Template looks: color grade before the captions, a drawtext title
   // treatment instead of the ASS hook, and sticker packs on the overlays.
   const tpl = TEMPLATES[job.style] || null;
-  const capOpts = { hookTitle: tpl ? null : (opts.hook_title_text || null), totalDur: outDur };
+  const capOpts = { hookTitle: tpl ? null : (opts.hook_title_text || null), totalDur: outDur, accent: opts.accent_color || null };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(
         job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),

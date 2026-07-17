@@ -18,12 +18,19 @@ import { Card, Badge, SectionLabel, btn } from './ui';
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clip-studio`;
 
 const STYLE_META = {
-  boldpop:  { name: 'Bold Pop',  desc: 'Big white caps, yellow word highlight', sample: ['ESTE', 'REGALO', 'CAMBIA TODO'], hi: '#FFD400', upper: true, box: false },
-  goldglow: { name: 'Gold',      desc: 'White caps, gold word highlight',       sample: ['UNA', 'CANCIÓN', 'PARA MAMÁ'],  hi: '#F5B70A', upper: true, box: false },
+  boldpop:  { name: 'Bold Pop',  desc: 'Big white caps, yellow word highlight', sample: ['ESTE', 'REGALO', 'CAMBIA TODO'], hi: '#FFD400', upper: true, box: false, accent: true },
+  goldglow: { name: 'Gold',      desc: 'White caps, gold word highlight',       sample: ['UNA', 'CANCIÓN', 'PARA MAMÁ'],  hi: '#F5B70A', upper: true, box: false, accent: true },
   cleanbox: { name: 'Clean Box', desc: 'Sentence case on a soft dark box',      sample: ['Una canción hecha', 'solo para ella'], hi: null, upper: false, box: true },
-  popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false },
-  rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false },
+  popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false, accent: true },
   minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
+  // Caption-first premium looks — the captions ARE the design. Every `accent`
+  // style honors the custom accent color picker.
+  lujo:    { name: 'Lujo',    desc: 'Luxury serif — refined, letter-spaced, gold accent', sample: ['solo lo esencial,', 'con clase'], hi: '#D4AF37', upper: false, box: false, accent: true, serif: true },
+  grande:  { name: 'Grande',  desc: 'Huge two-word captions — maximum presence', sample: ['MÁS', 'GRANDE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
+  resalta: { name: 'Resalta', desc: 'Marker pill lands on the spoken word', sample: ['CADA', 'PALABRA', 'MARCADA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
+  brillo:  { name: 'Brillo',  desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
+  sombra:  { name: 'Sombra',  desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
   // Template looks: caption style + title design + stickers + color grade.
   // img = a real rendered frame so the card shows the ACTUAL look.
   fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
@@ -68,7 +75,7 @@ const fmtTime = (s) => {
 // Mini caption preview used on the style picker cards. Template looks show a
 // real rendered frame instead, so the full design (title treatment, stickers,
 // color grade) is visible before choosing — not just the caption font.
-function StylePreview({ styleKey }) {
+function StylePreview({ styleKey, accent }) {
   const st = STYLE_META[styleKey];
   if (st.img) {
     return (
@@ -77,17 +84,25 @@ function StylePreview({ styleKey }) {
       </div>
     );
   }
+  const hi = (st.accent && accent) || st.hi;
   return (
     <div className="rounded-lg bg-gray-900 h-20 flex items-end justify-center pb-3 overflow-hidden">
       <div className={st.box ? 'bg-black/60 rounded px-2 py-1' : ''}>
         {st.sample.map((line, i) => (
           <div key={i} className="text-center leading-tight" style={{
-            color: '#fff', fontWeight: 800, fontSize: st.upper ? 13 : 12,
-            textShadow: st.box ? 'none' : '0 0 4px #000, 1px 1px 0 #000, -1px -1px 0 #000',
+            color: '#fff', fontWeight: st.serif ? 500 : 800, fontSize: st.big ? 16 : st.upper ? 13 : 12,
+            fontFamily: st.serif ? 'Georgia, "Times New Roman", serif' : undefined,
+            letterSpacing: st.serif ? '0.08em' : undefined,
+            textShadow: st.box ? 'none' : st.shadow ? '3px 3px 0 #000' : '0 0 4px #000, 1px 1px 0 #000, -1px -1px 0 #000',
           }}>
-            {line.split(' ').map((w, j) => (
-              <span key={j} style={{ color: st.hi && i === 0 && j === 0 ? st.hi : '#fff' }}>{w} </span>
-            ))}
+            {line.split(' ').map((w, j) => {
+              const active = i === 0 && j === 0;
+              if (active && st.pill) return <span key={j} style={{ background: hi, color: '#181818', borderRadius: 3, padding: '0 3px' }}>{w} </span>;
+              return <span key={j} style={{
+                color: active && hi ? hi : '#fff',
+                textShadow: active && st.glow ? `0 0 8px ${hi}, 0 0 4px ${hi}` : undefined,
+              }}>{w} </span>;
+            })}
           </div>
         ))}
       </div>
@@ -142,6 +157,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
     punch: false, progress: false, watermark: false, emoji: false, sfxwords: false,
     musicTrack: '', // '' = random pick from the library
+    accentColor: '', // '' = the style's own default highlight color
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -220,7 +236,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords'];
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor'];
   const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
   // What the server-side auto-clip needs (its option names differ from the form's).
   const presetToAutoConfig = (cfg) => ({
@@ -228,6 +244,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     zoom: !!cfg.zoom, transitions: cfg.fx !== false, clean_audio: !!cfg.clean,
     outro: !!cfg.outro, punch_zooms: !!cfg.punch, progress_bar: !!cfg.progress,
     watermark: !!cfg.watermark, emoji: !!cfg.emoji, sfx_emphasis: !!cfg.sfxwords,
+    accent_color: cfg.accentColor || null,
   });
 
   const applyPreset = (id) => {
@@ -444,7 +461,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -969,7 +986,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 {Object.entries(STYLE_META).map(([key, s]) => (
                   <button key={key} onClick={() => setForm((f) => ({ ...f, style: key }))}
                     className={`rounded-lg border p-1.5 text-left transition ${form.style === key ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <StylePreview styleKey={key} />
+                    <StylePreview styleKey={key} accent={form.accentColor || null} />
                     <div className="text-xs font-medium text-gray-800 mt-1.5 flex items-center gap-1">
                       {s.name}
                       {s.tpl && <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1 py-px uppercase tracking-wide">Template</span>}
@@ -978,6 +995,22 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   </button>
                 ))}
               </div>
+
+              {STYLE_META[form.style]?.accent && (
+                <div className="flex items-center gap-2 mb-3">
+                  <label className="text-xs text-gray-500">Accent color</label>
+                  <input type="color" value={form.accentColor || STYLE_META[form.style].hi || '#FFD400'}
+                    onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
+                    className="h-7 w-10 rounded border border-gray-200 cursor-pointer bg-white p-0.5" />
+                  {form.accentColor ? (
+                    <button onClick={() => setForm((f) => ({ ...f, accentColor: '' }))} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
+                      Reset to style default
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-gray-400">— the highlight / pill / glow renders in your color</span>
+                  )}
+                </div>
+              )}
 
               {isTeaser ? (
                 <p className="text-[11px] text-gray-400">Teasers use the song's cover art with a slow cinematic push-in, karaoke captions, and a brand end-card — the extras for spoken video don't apply.</p>

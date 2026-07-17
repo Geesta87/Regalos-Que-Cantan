@@ -20,7 +20,7 @@ const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 export const BUCKET = 'clip-studio';
 export const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
 export const ASPECTS = ['9:16', '1:1', '16:9'];
-export const STYLES = ['boldpop', 'goldglow', 'cleanbox', 'popline', 'rosa', 'minimal', 'fiesta', 'editorial', 'corrido', 'craft', 'retro', 'brasa', 'impacto', 'neon', 'luxe', 'cine', 'grafica', 'revista', 'energia', 'historia'];
+export const STYLES = ['boldpop', 'goldglow', 'cleanbox', 'popline', 'rosa', 'minimal', 'lujo', 'grande', 'resalta', 'brillo', 'sombra', 'fiesta', 'editorial', 'corrido', 'craft', 'retro', 'brasa', 'impacto', 'neon', 'luxe', 'cine', 'grafica', 'revista', 'energia', 'historia'];
 
 export type Word = { word: string; start: number; end: number };
 
@@ -434,6 +434,7 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
             outro: !!pc.outro, punch_zooms: !!pc.punch_zooms,
             progress_bar: !!pc.progress_bar, watermark: !!pc.watermark,
             emoji: !!pc.emoji, sfx_emphasis: !!pc.sfx_emphasis,
+            accent_color: typeof pc.accent_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(pc.accent_color) ? pc.accent_color : null,
           };
       const render_job = isTeaser
         ? {
