@@ -438,7 +438,12 @@ export default function GeneratingPage() {
 
     // /paquete buyers get their own dedicated single-product checkout page instead
     // of the shared /comparison (no unrelated upsells). Everyone else: comparison.
-    const checkoutPage = formData?.fromPaquete === true ? 'paqueteCheckout' : 'comparison';
+    // fromPaquete must be FRESH (stamped within 6h) — a stale flag from a previous
+    // /paquete visit in the same browser must never route a regular buyer there.
+    const paqueteFresh = formData?.fromPaquete === true
+      && typeof formData?.fromPaqueteAt === 'number'
+      && (Date.now() - formData.fromPaqueteAt) < 6 * 60 * 60 * 1000;
+    const checkoutPage = paqueteFresh ? 'paqueteCheckout' : 'comparison';
 
     // FAST FUNNEL: Navigate as soon as Song 1 is ready, pass Song 2 ID for background polling
     if (isFastFunnel && song1Status === 'completed') {

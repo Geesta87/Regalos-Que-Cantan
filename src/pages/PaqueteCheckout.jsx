@@ -337,7 +337,7 @@ export default function PaqueteCheckout() {
             <span className="text-amber-300 text-2xl font-extrabold">{fmt(total)}</span>
           </div>
           {withVideo && (
-            <p className="text-white/40 text-[11px] mt-3">Después del pago subes sus fotos y creamos el video animado con su historia.</p>
+            <p className="text-white/40 text-[11px] mt-3">🎵 La canción es tuya al instante — descárgala apenas pagues. 🎬 Para el video, subes sus fotos después del pago y te lo entregamos en 1–2 días.</p>
           )}
         </div>
 
@@ -362,7 +362,9 @@ export default function PaqueteCheckout() {
           >
             {checkoutLoading ? 'Un momento…' : `💳 Pagar ${fmt(total)}`}
           </button>
-          <p className="text-center text-white/35 text-[11px] mt-2">🔒 Pago seguro con Stripe · Entrega digital inmediata</p>
+          <p className="text-center text-white/35 text-[11px] mt-2">
+            {withVideo ? '🔒 Pago seguro con Stripe · Canción al instante · Video en 1–2 días' : '🔒 Pago seguro con Stripe · Entrega digital inmediata'}
+          </p>
         </div>
       </div>
     </div>

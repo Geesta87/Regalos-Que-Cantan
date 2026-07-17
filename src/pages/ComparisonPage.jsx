@@ -268,21 +268,12 @@ export default function ComparisonPage() {
     return [];
   });
 
-  // Bundle intent from the /paquete ad ("Canción + Video Animado"). Read once and
-  // clear. Drives auto-selection of the Animado video below so the buyer sees the
-  // exact $58.99 total they were promised. Single source of truth = animadoCount.
-  // One-shot session flag, captured at mount. Fragile: it self-clears just below, so a
-  // remount/refresh loses it. Kept only as a fast path for the same-mount case.
-  const [sessionBundleFlag] = useState(() => {
-    try { return sessionStorage.getItem('rqc_bundle_video') === '1'; } catch { return false; }
-  });
+  // /paquete bundle buyers no longer land here — GeneratingPage routes them to the
+  // dedicated /paquete/checkout page. This page must NEVER auto-add the Animado
+  // video: a stale wantsAnimadoVideo flag from a prior /paquete visit was leaking
+  // the $29 video (and $58.99 total) into regular customers' orders. Clean up the
+  // legacy one-shot session flag if present.
   useEffect(() => { try { sessionStorage.removeItem('rqc_bundle_video'); } catch { /* ignore */ } }, []);
-  // Durable bundle intent — the real signal. `formData.wantsAnimadoVideo` is set by
-  // /paquete ("Canción + Video Animado") and persists in localStorage, so it survives
-  // the whole create→generate→compare journey AND any remount, unlike the session flag.
-  // Set ONLY by /paquete (true for bundle, false for song-only); absent for normal
-  // buyers → they stay at the plain song price. Either source true = bundle.
-  const bundleVideoIntent = sessionBundleFlag || formData?.wantsAnimadoVideo === true;
 
   // A 'video' extra preselected from the store (/tienda) now maps to the
   // standalone hero card (videoAddonCount) instead of a grid tile.
@@ -946,14 +937,10 @@ export default function ComparisonPage() {
 
   // Reset the Animado selection whenever the song selection changes, so the
   // offer never carries a stale "both" choice into a single-song purchase.
-  // Reset animado on selection change. For /paquete "Canción + Video" buyers, keep the
-  // video selected once the upsell is available, so the total here matches the $58.99
-  // bundle they chose. Single effect = no ordering race. Non-bundle checkout unchanged.
-  // Bundle buyers are decoupled from the availability cap — they paid for it, they get it.
   useEffect(() => {
     setAnimadoVideoSongId(null);
-    setAnimadoCount(bundleVideoIntent ? 1 : 0);
-  }, [selectedSongId, purchaseBoth, bundleVideoIntent]);
+    setAnimadoCount(0);
+  }, [selectedSongId, purchaseBoth]);
 
   const getSelectionLabel = () => {
     const videoLabel = videoAddon ? ' + Video' : '';
@@ -2048,27 +2035,6 @@ export default function ComparisonPage() {
               </span>
             </div>
           )}
-          {/* El regalo completo — bundle framing for /paquete "Canción + Video" buyers.
-              Purely presentational; the itemized "Tu pedido" below is the source of truth. */}
-          {hasSelection && bundleVideoIntent && animadoCount >= 1 && (
-            <div style={{ border: '1.5px solid #f5b942', background: 'rgba(245,185,66,0.06)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f5b942', color: '#3a2606', fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', padding: '4px 12px', borderRadius: '999px', marginBottom: '12px' }}>🎁 El regalo completo</div>
-              {[
-                { icon: '🎵', title: 'Canción personalizada', sub: 'Con su nombre y su historia' },
-                { icon: '🎬', title: 'Video animado', sub: 'Su historia, estilo Pixar' },
-              ].map((it, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: i ? '10px' : 0 }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: 'rgba(245,185,66,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>{it.icon}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#fff', fontSize: '14px', fontWeight: 700 }}>{it.title}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>{it.sub}</div>
-                  </div>
-                  <span style={{ color: '#7ee0a8', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>✓ Incluido</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Itemized order summary — "Tu pedido" (live, always reflects add-ons) */}
           {hasSelection && (() => {
             const rows = [];
