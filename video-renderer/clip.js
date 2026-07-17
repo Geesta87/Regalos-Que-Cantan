@@ -223,6 +223,107 @@ const TEMPLATES = {
 };
 const drawtextEscape = (s) => String(s).replace(/[\\:'";%{}\[\],]/g, '').replace(/\s+/g, ' ').trim();
 
+// ---------------------------------------------------------------------------
+// Animated title system (ASS). Titles render as a SECOND subtitle pass on the
+// full canvas after the frame stage — libass \t/\move/\fad/\clip transforms
+// give every template a real motion-design entrance instead of a static fade.
+// ---------------------------------------------------------------------------
+const FONT_FAMILY = {
+  'Anton-Regular.ttf': 'Anton', 'GreatVibes-Regular.ttf': 'Great Vibes',
+  'Prata-Regular.ttf': 'Prata', 'PatrickHand-Regular.ttf': 'Patrick Hand',
+  'SpaceMono-Regular.ttf': 'Space Mono',
+};
+const assColorHex = (hex) => `&H00${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase();
+// 'black@0.42' | '0x1B49C8@0.9' -> ASS back colour with alpha
+const assBoxColor = (spec) => {
+  if (!spec) return '&H94000000';
+  const [c, aRaw] = String(spec).split('@');
+  const a = Math.max(0, Math.min(255, Math.round((1 - (Number(aRaw) || 0.42)) * 255)));
+  const hex = c === 'black' ? '000000' : c.replace(/^0x/, '');
+  return `&H${a.toString(16).padStart(2, '0').toUpperCase()}${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase();
+};
+
+function buildTitlesAss(tpl, styleKey, geo, mainRaw, outDur) {
+  const T = tpl.title;
+  if (!T || (!mainRaw && T.mode !== 'titlebar')) return null;
+  const scaleY = geo.h / 1920;
+  const cx = Math.round(geo.w / 2);
+  const mainFam = FONT_FAMILY[T.mainFont] || 'DejaVu Sans';
+  const accFam = FONT_FAMILY[T.accentFont] || 'Great Vibes';
+  const mainC = assColorHex(T.mainColor || 'FFFFFF');
+  const accC = assColorHex(T.accentColor || 'D4AF37');
+  const y0 = Math.round((T.y || 100) * scaleY);
+  const accSize = Math.round(geo.w * (T.accentScale || 0.055));
+  const mainSizeFit = Math.min(Math.round(geo.w * (T.mainScale || 0.07)), Math.floor((geo.w * 0.92) / Math.max(6, mainRaw.length * 0.58)));
+  const END = '0:00:02.85';
+  const acc = T.accentFont ? assEscape(T.accentText || 'Regalos que Cantan') : null;
+  const main = assEscape(mainRaw).toUpperCase();
+  const boxBack = assBoxColor(T.boxColor);
+  const isBox = T.mode === 'card';
+
+  const styles = [
+    `Style: TMain,${mainFam},${T.mode === 'bleed' ? Math.round(geo.w * (T.mainScale || 0.13)) : mainSizeFit},${mainC},&HFF000000,${isBox ? boxBack : '&H00000000'},${isBox ? boxBack : '&H00000000'},1,0,0,0,100,100,0,0,${isBox ? `3,${Math.round(mainSizeFit / 4)}` : '1,3'},0,8,40,40,10,1`,
+    `Style: TAcc,${accFam},${accSize},${accC},${accC},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,8,40,40,10,1`,
+    // typewriter: secondary colour fully transparent so \k reveals chars
+    `Style: TType,${mainFam},${Math.round(geo.w * (T.mainScale || 0.036))},${mainC},&HFF000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,40,40,10,1`,
+    // neon glow: colored thick outline that blurs into a halo
+    `Style: TNeon,${mainFam},${Math.round(geo.w * (T.mainScale || 0.13))},${mainC},&HFF000000,${mainC},&H00000000,1,0,0,0,100,100,0,0,1,${Math.round(geo.w * 0.008)},0,8,40,40,10,1`,
+  ];
+  const ev = [];
+  const E = (start, end, style, text) => ev.push(`Dialogue: 2,${start},${end},${style},,0,0,0,,${text}`);
+
+  const yMain = acc && (T.mode === 'card' || T.mode === 'band') ? y0 + accSize + Math.round(16 * scaleY) : y0;
+  const anims = {
+    fiesta:  `{\\pos(${cx},${yMain})\\fscx24\\fscy24\\t(0,150,\\fscx115\\fscy115)\\t(150,290,\\fscx100\\fscy100)\\fad(50,320)}`,
+    craft:   `{\\pos(${cx},${yMain})\\frz-6\\fscx36\\fscy36\\t(0,180,\\frz1\\fscx105\\fscy105)\\t(180,300,\\frz0\\fscx100\\fscy100)\\fad(60,320)}`,
+    corrido: `{\\pos(${cx},${yMain})\\fscx158\\fscy158\\blur7\\t(0,130,\\fscx100\\fscy100\\blur0)\\fad(30,300)}`,
+    impacto: `{\\pos(${cx},${yMain})\\fscx158\\fscy158\\blur7\\t(0,110,\\fscx100\\fscy100\\blur0)\\fad(30,300)}`,
+    energia: `{\\pos(${cx},${yMain})\\frx35\\fscy140\\t(0,140,\\frx0\\fscy100)\\fad(40,300)}`,
+    editorial: `{\\pos(${cx},${yMain})\\blur13\\fsp16\\t(0,520,\\blur0\\fsp2)\\fad(160,380)}`,
+    revista: `{\\pos(${cx},${yMain})\\blur13\\fsp20\\t(0,560,\\blur0\\fsp3)\\fad(160,380)}`,
+    cine:    `{\\pos(${cx},${yMain})\\blur10\\fsp14\\t(0,600,\\blur0\\fsp2)\\fad(200,400)}`,
+    brasa:   `{\\pos(${cx},${yMain})\\blur10\\t(0,480,\\blur0)\\fad(150,380)}`,
+    historia:`{\\pos(${cx},${yMain})\\fad(220,380)}`,
+    luxe:    `{\\pos(${cx},${yMain})\\fsp34\\alpha&HFF&\\t(0,650,\\fsp5\\alpha&H00&)}`,
+    grafica: `{\\pos(${cx},${yMain})\\clip(${cx - 4},${yMain - 30},${cx + 4},${yMain + mainSizeFit * 2})\\t(0,380,\\clip(0,${yMain - 30},${geo.w},${yMain + mainSizeFit * 2}))\\fad(0,280)}`,
+    neon:    `{\\pos(${cx},${yMain})\\blur14\\t(0,220,\\blur3)\\t(900,1500,\\blur9)\\t(1500,2100,\\blur3)\\fad(60,320)}`,
+  };
+  const accAnim = `{\\pos(${cx},${y0})\\blur8\\t(120,560,\\blur0)\\fad(180,340)}`;
+
+  if (T.mode === 'titlebar') {
+    const txt = (mainRaw || 'regalos que cantan').toLowerCase().replace(/ /g, '-').slice(0, 30) + '.mp4';
+    const typed = txt.split('').map((ch) => `{\\k7}${ch === ' ' ? '\\h' : assEscape(ch)}`).join('');
+    const yBar = Math.round(T.y * scaleY);
+    const endAll = toAssTime(outDur);
+    E('0:00:00.00', endAll, 'TType', `{\\pos(${cx},${yBar})}${typed}`);
+  } else if (T.mode === 'bleed') {
+    const bigSize = Math.round(geo.w * (T.mainScale || 0.13));
+    const anim = anims[styleKey] || anims.corrido;
+    if (T.echo) {
+      E('0:00:00.05', END, 'TMain', `{\\pos(${cx},${yMain - Math.round(bigSize * 1.02)})\\alpha&HD8&\\fad(120,300)}${main}`);
+      E('0:00:00.05', END, 'TMain', `{\\pos(${cx},${yMain + Math.round(bigSize * 1.02)})\\alpha&HB8&\\fad(120,300)}${main}`);
+    }
+    E('0:00:00.00', END, styleKey === 'neon' ? 'TNeon' : 'TMain', `${anim}${main}`);
+    if (acc) E('0:00:00.15', END, 'TAcc', `{\\pos(${cx},${yMain + Math.round(bigSize * 1.12)})\\fad(200,320)}${acc}`);
+  } else {
+    // card / band / strip
+    if (acc) E('0:00:00.00', END, 'TAcc', `${accAnim}${acc}`);
+    const anim = anims[styleKey] || anims.historia;
+    E('0:00:00.00', END, 'TMain', `${anim}${main}`);
+  }
+
+  return [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${geo.w}`, `PlayResY: ${geo.h}`,
+    'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    ...styles, '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    ...ev,
+  ].join('\n') + '\n';
+}
+
 function assEscape(text) {
   return String(text).replace(/[{}\\]/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -332,11 +433,14 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${text}`);
       continue;
     }
-    // One dialogue per word: full group shown, the spoken word painted.
+    // One dialogue per word: full group shown, the spoken word painted. The
+    // first dialogue of each group rises in (90ms) so caption changes feel
+    // alive instead of teleporting.
     for (let i = 0; i < group.length; i++) {
       const from = i === 0 ? group[0].start : group[i].start;
       const to = i < group.length - 1 ? group[i + 1].start : group[group.length - 1].end;
       if (to - from < 0.01) continue;
+      const intro = i === 0 ? `{\\fscy82\\t(0,90,\\fscy100)}` : '';
       const text = texts
         .map((x, j) => {
           const body = withEmoji(x, j);
@@ -345,7 +449,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
           return body;
         })
         .join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${text}`);
+      lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${intro}${text}`);
     }
   }
 
@@ -1095,59 +1199,30 @@ async function renderClip(job, { dir, log }) {
     }
     log(`template frame: ${tpl.frame ? frameCfg.asset : 'letterbox'} (${job.style})`);
   }
-  // Title treatment on the full canvas.
+  // Title treatment on the full canvas — animated ASS pass (see buildTitlesAss).
   if (tpl && tpl.title) {
     const T = tpl.title;
-    const scaleY = geo.h / 1920; // y values are authored for 9:16
-    const fade = "if(lt(t\\,0.25)\\,4*t\\,if(lt(t\\,2.45)\\,1\\,max(0\\,(2.8-t)/0.35)))";
-    const en = "enable='lt(t,2.8)'";
+    const scaleY = geo.h / 1920;
     const mainRaw = drawtextEscape(opts.hook_title_text || '');
-    const tf = [];
-    if (T.mode === 'titlebar') {
-      // Retro window bar: persistent lowercase filename gag.
-      const txt = (mainRaw || 'regalos que cantan').toLowerCase().replace(/ /g, '-').slice(0, 30) + '.mp4';
-      tf.push(`drawtext=fontfile=${T.mainFont}:text='${txt}':fontcolor=0x${T.mainColor}:fontsize=${Math.round(geo.w * T.mainScale)}:x=(w-text_w)/2:y=${Math.round(T.y * scaleY)}`);
-    } else if (mainRaw) {
+    // The tape-strip backdrop still rides in as an image input under the text.
+    if (T.mode === 'strip' && mainRaw && T.stripAsset) {
+      const stripW = Math.round(geo.w * 0.82);
       const y0 = Math.round((T.y || 100) * scaleY);
-      if (T.mode === 'bleed') {
-        const mainSize = Math.round(geo.w * (T.mainScale || 0.13)); // intentional overflow
-        const rows = T.echo ? [[-1.02, 0.14], [1.02, 0.3], [0, 1]] : [[0, 1]];
-        for (const [dy, a] of rows) {
-          const alpha = a === 1 ? fade : `(${fade})*${a}`;
-          tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw.toUpperCase()}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${y0 + Math.round(mainSize * dy)}:alpha='${alpha}':${en}`);
-        }
-        if (T.accentFont) {
-          tf.push(`drawtext=fontfile=${T.accentFont}:text='${drawtextEscape(T.accentText || 'Regalos que Cantan')}':fontcolor=0x${T.accentColor}:fontsize=${Math.round(geo.w * (T.accentScale || 0.05))}:x=(w-text_w)/2:y=${y0 + Math.round(geo.w * (T.mainScale || 0.13) * 1.15)}:alpha='${fade}':${en}`);
-        }
-      } else if (T.mode === 'strip') {
-        const stripW = Math.round(geo.w * 0.82);
-        const stripH = Math.round(stripW * 170 / 900);
-        const idx = regTplImg(path.join(STICKERS_DIR, `${T.stripAsset}.png`), 'tstrip.png', 2.9);
-        const mainSize = Math.min(Math.round(geo.w * (T.mainScale || 0.05)), Math.floor((stripW * 0.9) / Math.max(6, mainRaw.length * 0.52)));
-        parts.push(`[${idx}:v]format=rgba,scale=${stripW}:-1,fade=t=in:st=0:d=0.2:alpha=1,fade=t=out:st=2.45:d=0.35:alpha=1[tstripv]`);
-        parts.push(`[${vcur}][tstripv]overlay=(W-w)/2:${y0}:${en}:eof_action=pass[tstriped]`);
-        vcur = 'tstriped';
-        tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${y0 + Math.round((stripH - mainSize) / 2)}:alpha='${fade}':${en}`);
-      } else {
-        // card / band
-        const acc = T.accentFont ? drawtextEscape(T.accentText || 'Regalos que Cantan') : null;
-        const accSize = Math.round(geo.w * (T.accentScale || 0.055));
-        const mainSize = Math.min(Math.round(geo.w * (T.mainScale || 0.07)), Math.floor((geo.w * 0.92) / Math.max(6, mainRaw.length * 0.58)));
-        let yy = y0;
-        if (acc) {
-          tf.push(`drawtext=fontfile=${T.accentFont}:text='${acc}':fontcolor=0x${T.accentColor}:fontsize=${accSize}:x=(w-text_w)/2:y=${yy}:alpha='${fade}':${en}`);
-          yy += accSize + Math.round(14 * scaleY);
-        }
-        const box = T.mode === 'band' ? '' : `:box=1:boxcolor=${T.boxColor || 'black@0.42'}:boxborderw=16`;
-        tf.push(`drawtext=fontfile=${T.mainFont}:text='${mainRaw.toUpperCase()}':fontcolor=0x${T.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${yy}${box}:alpha='${fade}':${en}`);
-        if (T.rule) {
-          tf.push(`drawbox=x=iw/2-${Math.round(geo.w * 0.1)}:y=${yy + mainSize + Math.round(20 * scaleY)}:w=${Math.round(geo.w * 0.2)}:h=3:color=0x${T.rule}@0.9:t=fill:${en}`);
-        }
-      }
+      const idx = regTplImg(path.join(STICKERS_DIR, `${T.stripAsset}.png`), 'tstrip.png', 2.9);
+      parts.push(`[${idx}:v]format=rgba,scale=${stripW}:-1,fade=t=in:st=0:d=0.2:alpha=1,fade=t=out:st=2.45:d=0.35:alpha=1[tstripv]`);
+      parts.push(`[${vcur}][tstripv]overlay=(W-w)/2:${y0 - Math.round(stripW * 170 / 900 * 0.22)}:enable='lt(t,2.85)':eof_action=pass[tstriped]`);
+      vcur = 'tstriped';
     }
-    if (tf.length) {
-      parts.push(`[${vcur}]${tf.join(',')}[vtitled]`);
+    const titlesAss = buildTitlesAss(tpl, job.style, geo, mainRaw, outDur);
+    if (titlesAss) {
+      fs.writeFileSync(path.join(dir, 'titles.ass'), titlesAss);
+      parts.push(`[${vcur}]subtitles=titles.ass:fontsdir=.[vtitled]`);
       vcur = 'vtitled';
+    }
+    if (T.rule && mainRaw) {
+      const yRule = Math.round((T.y || 100) * scaleY) + Math.round(geo.w * (T.mainScale || 0.05)) + Math.round(34 * scaleY);
+      parts.push(`[${vcur}]drawbox=x=iw/2-${Math.round(geo.w * 0.1)}:y=${yRule}:w=${Math.round(geo.w * 0.2)}:h=3:color=0x${T.rule}@0.9:t=fill:enable='lt(t,2.85)'[vruled]`);
+      vcur = 'vruled';
     }
   }
   parts.push(`[${vcur}]null[vt]`);
@@ -1222,7 +1297,9 @@ async function renderClip(job, { dir, log }) {
       ? `,fade=t=in:st=0:d=0.12:alpha=1,fade=t=out:st=${Math.max(0, o.to - o.from - 0.25).toFixed(3)}:d=0.25:alpha=1`
       : (o.dim ? ',colorchannelmixer=aa=0.92' : '');
     parts.push(`[${ovBase + i}:v]format=rgba,scale=${o.w}:-1${fx2},setpts=PTS+${o.from.toFixed(3)}/TB[ov${i}]`);
-    parts.push(`[${vfinal}][ov${i}]overlay=${o.x}:${o.y}:enable='between(t,${o.from.toFixed(3)},${o.to.toFixed(3)})':eof_action=pass[vov${i}]`);
+    // Fading bursts slide up ~34px with an ease-out as they appear.
+    const yExpr = o.fade ? `'${o.y}+34*pow(max(0\\,1-(t-${o.from.toFixed(3)})/0.3)\\,2)'` : o.y;
+    parts.push(`[${vfinal}][ov${i}]overlay=${o.x}:${yExpr}:enable='between(t,${o.from.toFixed(3)},${o.to.toFixed(3)})':eof_action=pass[vov${i}]`);
     vfinal = `vov${i}`;
   });
   if (overlayItems.length) log(`overlays: ${overlayItems.length} (template: ${tpl ? job.style : 'none'})`);
