@@ -24,11 +24,12 @@ const STYLE_META = {
   popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false },
   rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false },
   minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
-  // Template looks: caption style + title design + stickers + color grade
-  fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true },
-  editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true },
-  corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true },
-  craft:     { name: 'Craft',     desc: 'Handwritten template — chalk doodles & arrows', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true },
+  // Template looks: caption style + title design + stickers + color grade.
+  // img = a real rendered frame so the card shows the ACTUAL look.
+  fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
+  editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
+  corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
+  craft:     { name: 'Craft',     desc: 'Handwritten template — chalk doodles & arrows', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true, img: '/images/clip-templates/craft.jpg' },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
@@ -54,9 +55,18 @@ const fmtTime = (s) => {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-// Mini caption preview used on the style picker cards.
+// Mini caption preview used on the style picker cards. Template looks show a
+// real rendered frame instead, so the full design (title treatment, stickers,
+// color grade) is visible before choosing — not just the caption font.
 function StylePreview({ styleKey }) {
   const st = STYLE_META[styleKey];
+  if (st.img) {
+    return (
+      <div className="rounded-lg bg-gray-900 h-28 overflow-hidden">
+        <img src={st.img} alt={`${st.name} template — real frame`} className="w-full h-full object-cover object-top" loading="lazy" />
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg bg-gray-900 h-20 flex items-end justify-center pb-3 overflow-hidden">
       <div className={st.box ? 'bg-black/60 rounded px-2 py-1' : ''}>
