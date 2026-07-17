@@ -349,12 +349,16 @@ serve(async (req) => {
       // Phase 3 render options (all optional, validated here).
       const rawOpts = body.options || {};
       const cleanLabel = label ? String(label).slice(0, 120) : null;
+      // Template looks: the designed title and the key-word stickers ARE the
+      // template — force them on so a template never renders as "just a font"
+      // (owner hit exactly that on 2026-07-17).
+      const isTemplate = ['fiesta', 'editorial', 'corrido', 'craft'].includes(style);
       const options = {
         framing: ['auto', 'wide', 'left', 'center', 'right'].includes(rawOpts.framing) ? rawOpts.framing : 'center',
         remove_silences: !!rawOpts.remove_silences,
         zoom: !!rawOpts.zoom,
-        hook_title: !!rawOpts.hook_title,
-        emphasis: rawOpts.emphasis !== false,
+        hook_title: !!rawOpts.hook_title || (isTemplate && !!cleanLabel),
+        emphasis: rawOpts.emphasis !== false || isTemplate,
         music: !!rawOpts.music,
         broll: !!rawOpts.broll,
         transitions: rawOpts.transitions !== false,

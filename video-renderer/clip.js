@@ -991,21 +991,34 @@ async function renderClip(job, { dir, log }) {
   }
   if (tpl) {
     let side = 0, prevT = -9, burstCount = 0;
-    for (const w of words) {
-      if (!w.emp || burstCount >= 4) continue;
-      const T = w.start;
-      if (T < 2.2 || T > outDur - 1.5 || T - prevT < 3) continue;
+    const pushBurst = (T) => {
       const asset = path.join(STICKERS_DIR, `${tpl.burst[burstCount % tpl.burst.length]}.png`);
-      if (!fs.existsSync(asset)) continue;
+      if (!fs.existsSync(asset)) return;
       prevT = T;
-      const sz = Math.round(geo.w * 0.3);
+      const sz = Math.round(geo.w * 0.32);
       overlayItems.push({
         asset, w: sz,
         x: side % 2 === 0 ? Math.round(geo.w * 0.07) : `W-w-${Math.round(geo.w * 0.07)}`,
         y: Math.max(40, geo.h - geo.marginV - Math.round(geo.fontsize * 1.5) - Math.round(sz * 0.6)),
-        from: Math.round(T * 100) / 100, to: Math.round(T * 100) / 100 + 1.3, fade: true,
+        from: Math.round(T * 100) / 100, to: Math.round(T * 100) / 100 + 1.5, fade: true,
       });
       side++; burstCount++;
+    };
+    for (const w of words) {
+      if (!w.emp || burstCount >= 4) continue;
+      const T = w.start;
+      if (T < 2.2 || T > outDur - 1.7 || T - prevT < 3) continue;
+      pushBurst(T);
+    }
+    // Guarantee the look: if key words gave us fewer than 3 sticker moments,
+    // fill in at fixed points so a template NEVER renders bare.
+    if (burstCount < 3 && outDur > 8) {
+      for (const frac of [0.3, 0.55, 0.8]) {
+        if (burstCount >= 3) break;
+        const T = Math.round(outDur * frac * 100) / 100;
+        if (T < 2.2 || T > outDur - 1.7 || Math.abs(T - prevT) < 3) continue;
+        pushBurst(T);
+      }
     }
     if (tpl.persistent) {
       const asset = path.join(STICKERS_DIR, `${tpl.persistent.file}.png`);
@@ -1014,7 +1027,7 @@ async function renderClip(job, { dir, log }) {
           ? { w: Math.round(geo.w * 0.86), x: '(W-w)/2', y: 14 }
           : tpl.persistent.pos === 'topleft'
             ? { w: Math.round(geo.w * 0.2), x: 22, y: 22 }
-            : { w: Math.round(geo.w * 0.11), x: 20, y: Math.round(geo.h * 0.3) };
+            : { w: Math.round(geo.w * 0.15), x: 20, y: Math.round(geo.h * 0.28) };
         // reveal after the title card so the top of the frame never crowds
         const from = opts.hook_title_text && tpl.persistent.pos !== 'left' ? 2.8 : 0;
         overlayItems.push({ asset, ...pos, from, to: outDur, fade: false, dim: true });
