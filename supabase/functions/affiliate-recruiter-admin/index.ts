@@ -32,14 +32,17 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: roleRow } = await admin.from('admin_users').select('role').eq('user_id', ud.user.id).single();
     if (!roleRow) return json({ success: false, error: 'No dashboard access' }, 403);
-    if (roleRow.role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
+    // Recruiting is the assistant's job — allow role 'assistant' as well as 'admin'.
+    // (The convert path forwards this same session to create-affiliate, which also
+    // now accepts 'assistant'.)
+    if (!['admin', 'assistant'].includes(roleRow.role)) return json({ success: false, error: 'No recruiter access' }, 403);
 
     let body: any = {}; try { body = await req.json(); } catch { body = {} }
     const action = body.action || 'list';
 
     if (action === 'list') {
       const { data, error } = await admin.from('affiliate_prospects')
-        .select('id, platform, handle, display_name, profile_url, followers, videos, likes, verified, niche, fit_score, fit_reason, suggested_commission, outreach_draft, status, affiliate_code, scanned_at')
+        .select('id, platform, handle, display_name, profile_url, followers, videos, likes, verified, niche, fit_score, fit_reason, suggested_commission, outreach_draft, status, affiliate_code, scanned_at, contacted_at, bio, external_url, business_email')
         .neq('status', 'dismissed').order('fit_score', { ascending: false, nullsFirst: false }).order('followers', { ascending: false, nullsFirst: false }).limit(80);
       if (error) return json({ success: false, error: error.message }, 500);
       const { data: lastRun } = await admin.from('agent_runs').select('status, summary, started_at').eq('agent', 'affiliate-recruiter').order('started_at', { ascending: false }).limit(1).maybeSingle();
@@ -65,8 +68,12 @@ serve(async (req) => {
     if (action === 'status') {
       const next = ['new', 'contacted', 'responded', 'dismissed'].includes(body.status) ? body.status : null;
       if (!next) return json({ success: false, error: 'Bad status' }, 400);
-      await admin.from('affiliate_prospects').update({ status: next }).eq('id', p.id);
-      return json({ success: true, id: p.id, status: next });
+      // Stamp when they were first contacted so the tab can build a "follow up"
+      // list (contacted N+ days ago with no reply). Only set it once.
+      const patch: Record<string, unknown> = { status: next };
+      if (next === 'contacted' && !p.contacted_at) patch.contacted_at = new Date().toISOString();
+      await admin.from('affiliate_prospects').update(patch).eq('id', p.id);
+      return json({ success: true, id: p.id, status: next, contacted_at: patch.contacted_at ?? p.contacted_at ?? null });
     }
 
     if (action === 'convert') {

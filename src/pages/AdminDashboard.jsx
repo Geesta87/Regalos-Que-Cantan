@@ -3839,7 +3839,7 @@ export default function AdminDashboard() {
         <button onClick={() => { setActiveTab('affiliates'); if (!affiliatesLoaded) fetchAffiliates(); }} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'affiliates' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Users size={18} className={`flex-shrink-0 ${activeTab === 'affiliates' ? 'text-amber-400' : ''}`} /> Affiliates
         </button>
-        {userRole === 'admin' && (
+        {(userRole === 'admin' || userRole === 'assistant') && (
         <button onClick={() => setActiveTab('recruit')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'recruit' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <UserPlus size={18} className={`flex-shrink-0 ${activeTab === 'recruit' ? 'text-amber-400' : ''}`} /> Recruit Partners
         </button>
@@ -4566,7 +4566,7 @@ export default function AdminDashboard() {
               >
                 🤝 Affiliates ({affiliates.length})
               </button>
-              {userRole === 'admin' && (
+              {(userRole === 'admin' || userRole === 'assistant') && (
               <button
                 onClick={() => setActiveTab('recruit')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
@@ -6504,9 +6504,10 @@ export default function AdminDashboard() {
              hidden from the sidebar AND the route is guarded for assistants like
              Ivan. daily-briefing-admin edge function enforces it server-side too. */
           <DailyBriefingTab accessToken={accessToken} showToast={showToast} />
-        ) : (activeTab === 'recruit' && userRole === 'admin') ? (
+        ) : (activeTab === 'recruit' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Recruit Partners — Affiliate Recruiter agent (discover + score +
-             draft outreach + convert). Admin-only. */
+             draft outreach + convert). Open to admin + assistant (Ivan runs
+             outreach); the recruiter-admin edge function enforces the same. */
           <AffiliateRecruiterTab accessToken={accessToken} showToast={showToast} />
         ) : activeTab === 'creativestudio' ? (
           /* Creative Studio (Agent 2) — review the daily AI batch + approve/reject.

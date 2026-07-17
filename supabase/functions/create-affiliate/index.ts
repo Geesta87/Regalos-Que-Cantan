@@ -142,7 +142,10 @@ serve(async (req) => {
       .select('role')
       .eq('user_id', userData.user.id)
       .single();
-    if (roleErr || !roleRow || roleRow.role !== 'admin') {
+    // Admins and assistants (Ivan does recruiting) may create affiliates. This
+    // is reached both directly from the dashboard and via affiliate-recruiter-admin's
+    // "convert" action, which forwards the caller's session.
+    if (roleErr || !roleRow || !['admin', 'assistant'].includes(roleRow.role)) {
       return new Response(
         JSON.stringify({ success: false, error: 'Admin access required' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
