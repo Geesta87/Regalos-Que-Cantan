@@ -12,6 +12,7 @@ import EmailResultsSection from './EmailResultsSection';
 import EmailPerformanceSection from './EmailPerformanceSection';
 import CompetitorsSection from './CompetitorsSection';
 import FreeformLabSection from './FreeformLabSection';
+import ContentCalendarTab from './ContentCalendarTab';
 import { Card, Badge, btn } from './ui';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/creative-studio-admin`;
@@ -33,6 +34,7 @@ const FILTERS = [
 
 const GROUPS = [
   { key: 'review',    label: 'Review',    views: [['ads', 'Ads'], ['social', 'Social']] },
+  { key: 'calendar',  label: 'Calendario', views: [['calendar', 'Calendario']] },
   { key: 'create',    label: 'Create',    views: [['lab', 'Lab'], ['chat', 'Art director']] },
   { key: 'marketing', label: 'Marketing', views: [['performance', 'Performance'], ['emails', 'Emails'], ['emailstudio', 'Email Studio'], ['emailresults', 'Results'], ['competitors', 'Competitors']] },
 ];
@@ -212,7 +214,9 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
         ))}
       </div>
 
-      {currentGroup.key === 'create' ? (
+      {currentGroup.key === 'calendar' ? (
+        <ContentCalendarTab accessToken={accessToken} showToast={showToast} />
+      ) : currentGroup.key === 'create' ? (
         view === 'lab' ? <FreeformLabSection accessToken={accessToken} showToast={showToast} /> : <CreativeChatPanel accessToken={accessToken} showToast={showToast} />
       ) : currentGroup.key === 'marketing' ? (
         view === 'performance' ? <EmailPerformanceSection accessToken={accessToken} showToast={showToast} />
