@@ -83,6 +83,7 @@ const BOX_BLACK = '&H66000000'; // ~60%-opaque black for the clean box style
 // paints the word being spoken; upper = shout-case like the viral templates;
 // pop = the active word lands with a quick scale-settle animation; scale
 // shrinks the whole caption track (minimal style).
+const RED = '&H001E1EC4';     // #C41E1E — corrido red
 const STYLES = {
   boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline' },
   goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline' },
@@ -90,7 +91,45 @@ const STYLES = {
   popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true },
   rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true },
   minimal:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.72 },
+  // Template looks (caption layer — grade/title/stickers live in TEMPLATES):
+  fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
+  editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.9, font: 'Prata' },
+  corrido:   { wordsPerGroup: 3, highlight: RED,    upper: true,  border: 'outline', font: 'Anton' },
+  craft:     { wordsPerGroup: 4, highlight: YELLOW, upper: false, border: 'outline', pop: true,  font: 'Patrick Hand', scale: 1.05 },
 };
+
+// Art direction per template: color grade (video-only, applied before
+// captions), a two-line drawtext title treatment (script accent line + big
+// display line — drawtext because Cloud Run's libass is unreliable with
+// custom fonts), and sticker packs that ride the overlay engine.
+const FONTS_DIR = process.env.FONTS_DIR || path.join(__dirname, 'assets', 'fonts');
+const STICKERS_DIR = process.env.STICKERS_DIR || path.join(__dirname, 'assets', 'stickers');
+const TEMPLATES = {
+  fiesta: {
+    grade: 'eq=saturation=1.12:brightness=0.02',
+    title: { accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Anton-Regular.ttf', accentColor: 'E4007C', mainColor: 'FFFFFF' },
+    burst: ['fiesta-starburst', 'fiesta-confetti', 'fiesta-swirl'],
+    persistent: { file: 'fiesta-banner', pos: 'top' },
+  },
+  editorial: {
+    grade: 'eq=saturation=0.92:contrast=0.99:brightness=0.015',
+    title: { accentFont: 'GreatVibes-Regular.ttf', mainFont: 'Prata-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF' },
+    burst: ['editorial-flourish', 'editorial-heart', 'editorial-underline'],
+    persistent: { file: 'editorial-corner', pos: 'topleft' },
+  },
+  corrido: {
+    grade: 'eq=contrast=1.08:saturation=0.88:brightness=-0.015',
+    title: { accentFont: 'GreatVibes-Regular.ttf', accentText: 'Regalos que Cantan', mainFont: 'Anton-Regular.ttf', accentColor: 'D4AF37', mainColor: 'FFFFFF' },
+    burst: ['corrido-star', 'corrido-underline', 'corrido-slash'],
+    persistent: { file: 'corrido-bars', pos: 'left' },
+  },
+  craft: {
+    grade: 'eq=saturation=1.03:brightness=0.01',
+    title: { accentFont: 'PatrickHand-Regular.ttf', mainFont: 'PatrickHand-Regular.ttf', accentColor: 'FFD400', mainColor: 'FFFFFF' },
+    burst: ['craft-arrow', 'craft-bulb', 'craft-circle', 'craft-scribble'],
+  },
+};
+const drawtextEscape = (s) => String(s).replace(/[\\:'";%{}\[\],]/g, '').replace(/\s+/g, ' ').trim();
 
 function assEscape(text) {
   return String(text).replace(/[{}\\]/g, '').replace(/\s+/g, ' ').trim();
@@ -142,7 +181,7 @@ function assHeader(geo, st, fontsize) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Cap,DejaVu Sans,${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
+    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,0,0,${outline},2,60,60,${geo.marginV},1`,
     // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
@@ -651,7 +690,10 @@ async function renderClip(job, { dir, log }) {
     }
     return acc;
   };
-  const capOpts = { hookTitle: opts.hook_title_text || null, totalDur: outDur };
+  // Template looks: color grade before the captions, a drawtext title
+  // treatment instead of the ASS hook, and sticker packs on the overlays.
+  const tpl = TEMPLATES[job.style] || null;
+  const capOpts = { hookTitle: tpl ? null : (opts.hook_title_text || null), totalDur: outDur };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(
         job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),
@@ -727,7 +769,29 @@ async function renderClip(job, { dir, log }) {
     zoomStage = `fps=30,zoompan=z='min(${zterms.join('+')},1.25)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${geo.w}x${geo.h}:fps=30`;
   }
   fs.copyFileSync(EMOJI_FONT, path.join(dir, 'NotoEmoji-Regular.ttf'));
-  const post = [zoomStage, 'subtitles=captions.ass:fontsdir=.'].join(',');
+  // Template fonts ride along in the workdir: subtitles' fontsdir picks them
+  // up even if fontconfig doesn't, and drawtext references them by filename.
+  for (const f of fs.readdirSync(FONTS_DIR)) fs.copyFileSync(path.join(FONTS_DIR, f), path.join(dir, f));
+
+  const postParts = [];
+  if (tpl && tpl.grade) postParts.push(tpl.grade);
+  postParts.push(zoomStage, 'subtitles=captions.ass:fontsdir=.');
+  if (tpl && opts.hook_title_text) {
+    // Two-line title treatment: small script accent line over the big display
+    // line. drawtext + bundled fontfile — the path proven live by the outro.
+    const t = tpl.title;
+    const accent = drawtextEscape(t.accentText || 'Regalos que Cantan');
+    const main = drawtextEscape(opts.hook_title_text).toUpperCase();
+    const accentSize = Math.round(geo.w * 0.06);
+    const mainSize = Math.min(Math.round(geo.w * 0.075), Math.floor((geo.w * 0.9) / Math.max(6, main.length * 0.58)));
+    const yA = geo.h >= 1900 ? 150 : 70;
+    const alphaExpr = 'if(lt(t\\,0.25)\\,4*t\\,if(lt(t\\,2.45)\\,1\\,max(0\\,(2.8-t)/0.35)))';
+    postParts.push(
+      `drawtext=fontfile=${t.accentFont}:text='${accent}':fontcolor=0x${t.accentColor}:fontsize=${accentSize}:x=(w-text_w)/2:y=${yA}:alpha='${alphaExpr}':enable='lt(t,2.8)'`,
+      `drawtext=fontfile=${t.mainFont}:text='${main}':fontcolor=0x${t.mainColor}:fontsize=${mainSize}:x=(w-text_w)/2:y=${yA + accentSize + 20}:box=1:boxcolor=black@0.42:boxborderw=16:alpha='${alphaExpr}':enable='lt(t,2.8)'`,
+    );
+  }
+  const post = postParts.join(',');
 
   const hasAudio = (() => {
     try {
@@ -908,27 +972,67 @@ async function renderClip(job, { dir, log }) {
     log(`key-word sounds: ${popTimes.length} pop(s)`);
   }
 
-  // Emoji bursts: a full-color emoji PNG pops in centered above the captions
-  // for ~1.1s on each AI-tagged word (post-cut timestamps on the words).
-  const bursts = [];
+  // Overlay engine: emoji bursts, template sticker bursts (on emphasized
+  // words, alternating sides above the captions) and persistent template
+  // decorations all flow through one loop.
+  const overlayItems = [];
   for (const w of words) {
-    if (!w.emoji || bursts.length >= 6) continue;
+    if (!w.emoji || overlayItems.length >= 6) continue;
     const asset = emojiAsset(w.emoji);
     if (!asset || !fs.existsSync(asset)) continue;
     if (w.start < 1.5 || w.start > outDur - 1.2) continue;
-    if (bursts.length && w.start - bursts[bursts.length - 1].T < 2.5) continue;
-    bursts.push({ T: Math.round(w.start * 100) / 100, asset });
+    if (overlayItems.length && w.start - overlayItems[overlayItems.length - 1].from < 2.5) continue;
+    const sz = Math.round(geo.w * 0.15);
+    overlayItems.push({
+      asset, w: sz, x: '(W-w)/2',
+      y: Math.max(40, geo.h - geo.marginV - Math.round(geo.fontsize * 1.7) - sz),
+      from: Math.round(w.start * 100) / 100, to: Math.round(w.start * 100) / 100 + 1.1, fade: true,
+    });
   }
-  const emSize = Math.round(geo.w * 0.15);
-  const emY = Math.max(40, geo.h - geo.marginV - Math.round(geo.fontsize * 1.7) - emSize);
-  const emBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
-  bursts.forEach((b, i) => {
-    fs.copyFileSync(b.asset, path.join(dir, `em${i}.png`));
-    parts.push(`[${emBase + i}:v]format=rgba,scale=${emSize}:-1,fade=t=in:st=0:d=0.12:alpha=1,fade=t=out:st=0.85:d=0.25:alpha=1,setpts=PTS+${b.T.toFixed(3)}/TB[eb${i}]`);
-    parts.push(`[${vfinal}][eb${i}]overlay=(W-w)/2:${emY}:enable='between(t,${b.T.toFixed(3)},${(b.T + 1.1).toFixed(3)})':eof_action=pass[veb${i}]`);
-    vfinal = `veb${i}`;
+  if (tpl) {
+    let side = 0, prevT = -9, burstCount = 0;
+    for (const w of words) {
+      if (!w.emp || burstCount >= 4) continue;
+      const T = w.start;
+      if (T < 2.2 || T > outDur - 1.5 || T - prevT < 3) continue;
+      const asset = path.join(STICKERS_DIR, `${tpl.burst[burstCount % tpl.burst.length]}.png`);
+      if (!fs.existsSync(asset)) continue;
+      prevT = T;
+      const sz = Math.round(geo.w * 0.3);
+      overlayItems.push({
+        asset, w: sz,
+        x: side % 2 === 0 ? Math.round(geo.w * 0.07) : `W-w-${Math.round(geo.w * 0.07)}`,
+        y: Math.max(40, geo.h - geo.marginV - Math.round(geo.fontsize * 1.5) - Math.round(sz * 0.6)),
+        from: Math.round(T * 100) / 100, to: Math.round(T * 100) / 100 + 1.3, fade: true,
+      });
+      side++; burstCount++;
+    }
+    if (tpl.persistent) {
+      const asset = path.join(STICKERS_DIR, `${tpl.persistent.file}.png`);
+      if (fs.existsSync(asset)) {
+        const pos = tpl.persistent.pos === 'top'
+          ? { w: Math.round(geo.w * 0.86), x: '(W-w)/2', y: 14 }
+          : tpl.persistent.pos === 'topleft'
+            ? { w: Math.round(geo.w * 0.2), x: 22, y: 22 }
+            : { w: Math.round(geo.w * 0.11), x: 20, y: Math.round(geo.h * 0.3) };
+        // reveal after the title card so the top of the frame never crowds
+        const from = opts.hook_title_text && tpl.persistent.pos !== 'left' ? 2.8 : 0;
+        overlayItems.push({ asset, ...pos, from, to: outDur, fade: false, dim: true });
+      }
+    }
+  }
+  const ovBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+  overlayItems.forEach((o, i) => {
+    fs.copyFileSync(o.asset, path.join(dir, `ov${i}.png`));
+    const rel = (o.to - o.from).toFixed(3);
+    const fx2 = o.fade
+      ? `,fade=t=in:st=0:d=0.12:alpha=1,fade=t=out:st=${Math.max(0, o.to - o.from - 0.25).toFixed(3)}:d=0.25:alpha=1`
+      : (o.dim ? ',colorchannelmixer=aa=0.92' : '');
+    parts.push(`[${ovBase + i}:v]format=rgba,scale=${o.w}:-1${fx2},setpts=PTS+${o.from.toFixed(3)}/TB[ov${i}]`);
+    parts.push(`[${vfinal}][ov${i}]overlay=${o.x}:${o.y}:enable='between(t,${o.from.toFixed(3)},${o.to.toFixed(3)})':eof_action=pass[vov${i}]`);
+    vfinal = `vov${i}`;
   });
-  if (bursts.length) log(`emoji bursts: ${bursts.length}`);
+  if (overlayItems.length) log(`overlays: ${overlayItems.length} (template: ${tpl ? job.style : 'none'})`);
   parts.push(`[${vfinal}]null[vout]`);
 
   const outPath = path.join(dir, 'clip.mp4');
@@ -939,7 +1043,7 @@ async function renderClip(job, { dir, log }) {
   if (withSfx) args.push('-i', 'sfx.mp3');
   if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
   if (withPops) args.push('-i', 'kw-pop.mp3');
-  bursts.forEach((_, i) => args.push('-loop', '1', '-framerate', '30', '-t', '1.15', '-i', `em${i}.png`));
+  overlayItems.forEach((o, i) => args.push('-loop', '1', '-framerate', '30', '-t', (o.to - o.from + 0.05).toFixed(3), '-i', `ov${i}.png`));
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');

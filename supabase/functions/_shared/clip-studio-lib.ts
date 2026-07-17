@@ -20,7 +20,7 @@ const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 export const BUCKET = 'clip-studio';
 export const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/clip-studio-callback`;
 export const ASPECTS = ['9:16', '1:1', '16:9'];
-export const STYLES = ['boldpop', 'goldglow', 'cleanbox', 'popline', 'rosa', 'minimal'];
+export const STYLES = ['boldpop', 'goldglow', 'cleanbox', 'popline', 'rosa', 'minimal', 'fiesta', 'editorial', 'corrido', 'craft'];
 
 export type Word = { word: string; start: number; end: number };
 

@@ -24,6 +24,11 @@ const STYLE_META = {
   popline:  { name: 'Pop',       desc: 'Yellow highlight — each word pops in',  sample: ['CADA', 'PALABRA', 'SALTA'], hi: '#FFD400', upper: true, box: false },
   rosa:     { name: 'Rosa',      desc: 'Brand-pink highlight with word pop',    sample: ['HECHA', 'CON', 'AMOR'], hi: '#E4007C', upper: true, box: false },
   minimal:  { name: 'Minimal',   desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
+  // Template looks: caption style + title design + stickers + color grade
+  fiesta:    { name: 'Fiesta',    desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true },
+  editorial: { name: 'Editorial', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true },
+  corrido:   { name: 'Corrido',   desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true },
+  craft:     { name: 'Craft',     desc: 'Handwritten template — chalk doodles & arrows', sample: ['apunta', 'esta idea'], hi: '#FFD400', upper: false, box: false, tpl: true },
 };
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
@@ -945,7 +950,10 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   <button key={key} onClick={() => setForm((f) => ({ ...f, style: key }))}
                     className={`rounded-lg border p-1.5 text-left transition ${form.style === key ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-gray-200 hover:border-gray-300'}`}>
                     <StylePreview styleKey={key} />
-                    <div className="text-xs font-medium text-gray-800 mt-1.5">{s.name}</div>
+                    <div className="text-xs font-medium text-gray-800 mt-1.5 flex items-center gap-1">
+                      {s.name}
+                      {s.tpl && <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded px-1 py-px uppercase tracking-wide">Template</span>}
+                    </div>
                     <div className="text-[10px] text-gray-400 leading-tight">{s.desc}</div>
                   </button>
                 ))}
