@@ -1,0 +1,66 @@
+// Person matting (RobustVideoMatting, ONNX) for the depth-title effect:
+// alpha = where the person is, so titles can composite BEHIND them.
+// Runs on CPU. Only the intro window is ever matted (~3s at 15fps), so the
+// cost per clip is a few seconds, not minutes.
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const MODEL_PATH = process.env.RVM_MODEL || path.join(__dirname, 'assets', 'rvm.onnx');
+// Matting resolution: RVM is trained for this scale of input; the mask is
+// upscaled bilinearly at composite time and the soft edge survives fine.
+const MW = 432;
+const MH = 768;
+const FPS = 15;
+
+let ortModule = null; // lazy so the server still boots if the dep is absent
+function ort() {
+  if (!ortModule) ortModule = require('onnxruntime-node');
+  return ortModule;
+}
+
+// Matte `seconds` of `srcFile` (a finished, final-geometry video) into
+// dir/alpha.mp4 — a grayscale person mask video at the same timeline.
+async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}) {
+  const t0 = Date.now();
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-t', String(seconds), '-i', srcFile,
+    '-vf', `fps=${FPS},scale=${MW}:${MH}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'depth-frames.rgb'], { cwd: dir });
+  const raw = fs.readFileSync(path.join(dir, 'depth-frames.rgb'));
+  const frameBytes = MW * MH * 3;
+  const nFrames = Math.floor(raw.length / frameBytes);
+  if (!nFrames) throw new Error('no frames extracted for matting');
+
+  const O = ort();
+  const session = await O.InferenceSession.create(MODEL_PATH);
+  const zero = () => new O.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1]);
+  let r1 = zero(), r2 = zero(), r3 = zero(), r4 = zero();
+  const dsr = new O.Tensor('float32', new Float32Array([0.6]), [1]);
+  const plane = MH * MW;
+  const alpha = Buffer.allocUnsafe(nFrames * plane);
+  for (let i = 0; i < nFrames; i++) {
+    const off = i * frameBytes;
+    const chw = new Float32Array(3 * plane);
+    for (let p = 0; p < plane; p++) {
+      chw[p] = raw[off + p * 3] / 255;
+      chw[plane + p] = raw[off + p * 3 + 1] / 255;
+      chw[2 * plane + p] = raw[off + p * 3 + 2] / 255;
+    }
+    const out = await session.run({
+      src: new O.Tensor('float32', chw, [1, 3, MH, MW]),
+      r1i: r1, r2i: r2, r3i: r3, r4i: r4, downsample_ratio: dsr,
+    });
+    r1 = out.r1o; r2 = out.r2o; r3 = out.r3o; r4 = out.r4o;
+    const pha = out.pha.data;
+    for (let p = 0; p < plane; p++) alpha[i * plane + p] = Math.max(0, Math.min(255, Math.round(pha[p] * 255)));
+  }
+  fs.writeFileSync(path.join(dir, 'depth-alpha.gray'), alpha);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray',
+    '-s', `${MW}x${MH}`, '-r', String(FPS), '-i', 'depth-alpha.gray',
+    '-c:v', 'libx264', '-crf', '12', '-preset', 'fast', 'alpha.mp4'], { cwd: dir });
+  fs.rmSync(path.join(dir, 'depth-frames.rgb'), { force: true });
+  fs.rmSync(path.join(dir, 'depth-alpha.gray'), { force: true });
+  log(`depth matting: ${nFrames} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return path.join(dir, 'alpha.mp4');
+}
+
+module.exports = { buildPersonAlpha };

@@ -251,7 +251,7 @@ const assBoxColor = (spec) => {
   return `&H${a.toString(16).padStart(2, '0').toUpperCase()}${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase();
 };
 
-function buildTitlesAss(tpl, styleKey, geo, mainRaw, outDur) {
+function buildTitlesAss(tpl, styleKey, geo, mainRaw, outDur, depth = false) {
   const T = tpl.title;
   if (!T || (!mainRaw && T.mode !== 'titlebar')) return null;
   const scaleY = geo.h / 1920;
@@ -280,7 +280,10 @@ function buildTitlesAss(tpl, styleKey, geo, mainRaw, outDur) {
   const ev = [];
   const E = (start, end, style, text) => ev.push(`Dialogue: 2,${start},${end},${style},,0,0,0,,${text}`);
 
-  const yMain = acc && (T.mode === 'card' || T.mode === 'band') ? y0 + accSize + Math.round(16 * scaleY) : y0;
+  // Depth pass: drop the title into the head/shoulder zone so it actually
+  // intersects the person — that's what sells the behind-you effect.
+  const yMainNormal = acc && (T.mode === 'card' || T.mode === 'band') ? y0 + accSize + Math.round(16 * scaleY) : y0;
+  const yMain = depth ? Math.round(geo.h * 0.3) : yMainNormal;
   const anims = {
     fiesta:  `{\\pos(${cx},${yMain})\\fscx24\\fscy24\\t(0,150,\\fscx115\\fscy115)\\t(150,290,\\fscx100\\fscy100)\\fad(50,320)}`,
     craft:   `{\\pos(${cx},${yMain})\\frz-6\\fscx36\\fscy36\\t(0,180,\\frz1\\fscx105\\fscy105)\\t(180,300,\\frz0\\fscx100\\fscy100)\\fad(60,320)}`,
@@ -741,6 +744,24 @@ function probeAudio(dir, file) {
   } catch { return null; }
 }
 
+// Second pass for the depth title: draw the (animated) title on the finished
+// clip, then paste the person — cut out via the RVM alpha — back on top, so
+// the words live BEHIND them. alphamerge ends with the short alpha stream and
+// eof_action=pass leaves the rest of the clip untouched.
+function applyDepthTitle(dir, geo, log) {
+  fs.renameSync(path.join(dir, 'clip.mp4'), path.join(dir, 'pre-depth.mp4'));
+  const filter = [
+    '[0:v]subtitles=titles.ass:fontsdir=.[bg]',
+    `[1:v]scale=${geo.w}:${geo.h},format=gray[am]`,
+    '[0:v][am]alphamerge[pers]',
+    '[bg][pers]overlay=0:0:eof_action=pass[vout]',
+  ].join(';');
+  ff(dir, ['-i', 'pre-depth.mp4', '-i', 'alpha.mp4', '-filter_complex', filter,
+    '-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+    '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4']);
+  log('depth title composited behind the person');
+}
+
 function appendBrandOutro(dir, geo, log) {
   // Work with local copies so font/logo paths need no ffmpeg escaping.
   fs.copyFileSync(LOGO, path.join(dir, 'outro-logo.png'));
@@ -927,7 +948,12 @@ async function renderClip(job, { dir, log }) {
   // Template looks: color grade before the captions, a drawtext title
   // treatment instead of the ASS hook, and sticker packs on the overlays.
   const tpl = TEMPLATES[job.style] || null;
-  const capOpts = { hookTitle: tpl ? null : (opts.hook_title_text || null), totalDur: outDur, accent: opts.accent_color || null };
+  // Depth title: the intro title composites BEHIND the person (RVM matting,
+  // second pass). Not for strip/titlebar templates — their text sits on a
+  // physical device that must stay in front.
+  const depthMode = !!opts.depth_title && !!opts.hook_title_text
+    && (!tpl || !['strip', 'titlebar'].includes(tpl.title?.mode || ''));
+  const capOpts = { hookTitle: tpl || depthMode ? null : (opts.hook_title_text || null), totalDur: outDur, accent: opts.accent_color || null };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(
         job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),
@@ -1244,11 +1270,14 @@ async function renderClip(job, { dir, log }) {
       parts.push(`[${vcur}][tstripv]overlay=(W-w)/2:${y0 - Math.round(stripW * 170 / 900 * 0.22)}:enable='lt(t,2.85)':eof_action=pass[tstriped]`);
       vcur = 'tstriped';
     }
-    const titlesAss = buildTitlesAss(tpl, job.style, geo, mainRaw, outDur);
+    const titlesAss = buildTitlesAss(tpl, job.style, geo, mainRaw, outDur, depthMode);
     if (titlesAss) {
       fs.writeFileSync(path.join(dir, 'titles.ass'), titlesAss);
-      parts.push(`[${vcur}]subtitles=titles.ass:fontsdir=.[vtitled]`);
-      vcur = 'vtitled';
+      // depth mode: the title is applied in the second (matted) pass instead
+      if (!depthMode) {
+        parts.push(`[${vcur}]subtitles=titles.ass:fontsdir=.[vtitled]`);
+        vcur = 'vtitled';
+      }
     }
     if (T.rule && mainRaw) {
       const yRule = Math.round((T.y || 100) * scaleY) + Math.round(geo.w * (T.mainScale || 0.05)) + Math.round(34 * scaleY);
@@ -1353,7 +1382,44 @@ async function renderClip(job, { dir, log }) {
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audioLabel) args.push('-map', audioLabel, '-c:a', 'aac', '-b:a', '192k');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clip.mp4');
+
+  // Depth mode, plain (non-template) styles: a big Anton slam-in title in the
+  // head/shoulder zone, applied in the second (matted) pass so it lands
+  // behind the person.
+  if (depthMode && !tpl) {
+    const size = Math.min(Math.round(geo.w * 0.115),
+      Math.floor((geo.w * 0.92) / Math.max(6, String(opts.hook_title_text).length * 0.58)));
+    const cx = Math.round(geo.w / 2);
+    const y = Math.round(geo.h * 0.3);
+    const anim = `{\\pos(${cx},${y})\\fscx158\\fscy158\\blur7\\t(0,130,\\fscx100\\fscy100\\blur0)\\fad(30,300)}`;
+    fs.writeFileSync(path.join(dir, 'titles.ass'), [
+      '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${geo.w}`, `PlayResY: ${geo.h}`,
+      'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+      '[V4+ Styles]',
+      'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+      `Style: DHook,Anton,${size},${WHITE},${WHITE},&H64000000,&H00000000,1,0,0,0,100,100,0,0,1,4,0,8,40,40,10,1`,
+      '',
+      '[Events]',
+      'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+      `Dialogue: 2,0:00:00.00,0:00:02.85,DHook,,0,0,0,,${anim}${assEscape(opts.hook_title_text).toUpperCase()}`,
+    ].join('\n') + '\n');
+  }
   ff(dir, args);
+
+  if (depthMode) {
+    try {
+      const { buildPersonAlpha } = require('./segment');
+      await buildPersonAlpha(dir, path.join(dir, 'clip.mp4'), 3.2, log);
+      applyDepthTitle(dir, geo, log);
+    } catch (e) {
+      // Matting is best-effort: if it fails, the title still lands — in front.
+      log(`depth title failed (${e.message}) — applying title in front instead`);
+      fs.renameSync(path.join(dir, 'clip.mp4'), path.join(dir, 'pre-depth.mp4'));
+      ff(dir, ['-i', 'pre-depth.mp4', '-vf', 'subtitles=titles.ass:fontsdir=.',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p',
+        '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4']);
+    }
+  }
 
   if (opts.outro) {
     appendBrandOutro(dir, geo, log);

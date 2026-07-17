@@ -10,7 +10,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json ./
-# No external npm deps (uses Node built-ins + global fetch), so no npm install needed.
+# onnxruntime-node powers the depth-title person matting (segment.js)
+RUN npm install --omit=dev --no-fund --no-audit
 COPY . ./
 
 # Register the bundled template fonts (Anton, Great Vibes, Patrick Hand,
