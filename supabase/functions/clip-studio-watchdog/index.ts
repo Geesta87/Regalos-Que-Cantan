@@ -111,6 +111,35 @@ serve(async (req) => {
     report.retried = retried;
     report.timed_out = timedOut;
 
+    // ---- 1a2. browser-preview backfill ------------------------------------
+    // Projects ingested before the preview transcode existed (or whose
+    // transcode failed): produce the 720p H.264 dashboard copy. One per run —
+    // a long source can take a few minutes on the render queue.
+    const { data: noPreview } = await admin.from('clip_projects')
+      .select('id, source_url')
+      .eq('status', 'ready').is('preview_url', null).not('source_url', 'is', null)
+      .is('source_purged_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    const previewed: string[] = [];
+    for (const proj of noPreview || []) {
+      try {
+        const previewPath = `${proj.id}/preview.mp4`;
+        const { data: signedPrev, error: pe } = await admin.storage.from(BUCKET).createSignedUploadUrl(previewPath, { upsert: true });
+        if (pe) throw new Error(pe.message);
+        await dispatchRenderer('/clip-prepare', {
+          project_id: proj.id, source_url: proj.source_url, bucket: BUCKET, callback_url: CALLBACK_URL,
+          preview_only: true,
+          preview_upload_url: signedPrev.signedUrl, preview_path: previewPath,
+          preview_public_url: admin.storage.from(BUCKET).getPublicUrl(previewPath).data.publicUrl,
+        });
+        previewed.push(proj.id);
+      } catch (e) {
+        console.warn(`preview backfill dispatch failed for ${proj.id}: ${(e as Error).message}`);
+      }
+    }
+    report.preview_backfill = previewed;
+
     // ---- 1b. finished uploads whose ingest never fired --------------------
     // The browser calls 'ingest' right after the multi-GB PUT completes; if
     // the admin session expired during a long upload (or the tab closed),

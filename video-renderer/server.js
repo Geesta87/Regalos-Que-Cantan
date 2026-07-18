@@ -232,14 +232,56 @@ async function uploadToSignedUrl(localPath, signedUrl, contentType) {
   throw lastErr;
 }
 
+// Browsers can't decode many camera codecs (DJI H.265/10-bit plays audio
+// over a black frame). If the source isn't plain h264/yuv420p, transcode a
+// 720p H.264 preview for the dashboard player. Returns the public URL to
+// report, source_url when the original already plays, or null on failure.
+async function makeBrowserPreview(job, workDir, log) {
+  if (!job.preview_upload_url) return null;
+  try {
+    const probe = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name,pix_fmt', '-of', 'csv=p=0', 'source.mp4'], { cwd: workDir })
+      .toString().trim().toLowerCase();
+    // EXACT pix_fmt match — "yuv420p10le" (10-bit, plays black in Chrome)
+    // contains the substring "yuv420p", so includes() would wrongly skip.
+    const [codec, pix] = probe.split(',').map((s) => s.trim());
+    if (codec === 'h264' && pix === 'yuv420p') {
+      log('preview: source already browser-safe (h264/yuv420p) — skipping transcode');
+      return job.source_url || 'source';
+    }
+    log(`preview: transcoding browser-safe copy (source is ${probe})`);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'source.mp4',
+      '-vf', 'scale=-2:720', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26',
+      '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'preview.mp4'],
+      { cwd: workDir });
+    await uploadToSignedUrl(path.join(workDir, 'preview.mp4'), job.preview_upload_url, 'video/mp4');
+    log('preview: uploaded');
+    return job.preview_public_url;
+  } catch (e) {
+    log(`preview failed (${e.message}) — dashboard falls back to the original`);
+    return null;
+  }
+}
+
 async function runClipPrepare(job) {
   const id = job.project_id;
   const workDir = path.join(os.tmpdir(), `clip-prep-${id}-${Date.now()}`);
+  const log = (m) => console.log(`[clip:${id}] ${m}`);
   try {
+    if (job.preview_only) {
+      // Watchdog backfill: only produce the browser preview for an already-
+      // ingested project (no audio/transcript work). On transcode failure,
+      // report the source URL as the preview so the backfill doesn't re-loop.
+      await prepareClipSource(job, { dir: workDir, log });
+      const previewUrl = await makeBrowserPreview(job, workDir, log);
+      await postJobCallback(job, { kind: 'preview', success: true, project_id: id, preview_url: previewUrl || job.source_url });
+      return;
+    }
     if (!job.audio_upload_url) throw new Error('job missing audio_upload_url');
-    const { audioPath, durationSec } = await prepareClipSource(job, { dir: workDir, log: (m) => console.log(`[clip:${id}] ${m}`) });
+    const { audioPath, durationSec } = await prepareClipSource(job, { dir: workDir, log });
     await uploadToSignedUrl(audioPath, job.audio_upload_url, 'audio/mpeg');
-    await postJobCallback(job, { kind: 'prepare', success: true, project_id: id, duration_sec: durationSec, audio_path: job.audio_path, audio_url: job.audio_public_url });
+    const previewUrl = await makeBrowserPreview(job, workDir, log); // best-effort
+    await postJobCallback(job, { kind: 'prepare', success: true, project_id: id, duration_sec: durationSec, audio_path: job.audio_path, audio_url: job.audio_public_url, preview_url: previewUrl });
   } catch (err) {
     console.error(`[clip:${id}] prepare error:`, err.message);
     await postJobCallback(job, { kind: 'prepare', success: false, project_id: id, error: err.message });

@@ -88,13 +88,25 @@ serve(async (req) => {
         return json({ ok: true });
       }
       await supabase.from('clip_projects')
-        .update({ duration_sec: body.duration_sec ?? null, audio_path: body.audio_path ?? null, status: 'transcribing', updated_at: now() })
+        .update({ duration_sec: body.duration_sec ?? null, audio_path: body.audio_path ?? null, preview_url: body.preview_url ?? null, status: 'transcribing', updated_at: now() })
         .eq('id', project_id);
       // Whisper can take a while on long videos — reply to Cloud Run now,
       // transcribe in the background (same pattern as email-marketer-weekly).
       const run = () => transcribeProject(project_id, body.audio_url);
       // deno-lint-ignore no-explicit-any
       if (typeof (globalThis as any).EdgeRuntime !== 'undefined') (globalThis as any).EdgeRuntime.waitUntil(run()); else run();
+      return json({ ok: true });
+    }
+
+    // Watchdog backfill result: browser preview for an already-ready project.
+    if (body.kind === 'preview') {
+      const { project_id, success } = body;
+      if (!project_id) throw new Error('missing project_id');
+      if (success && body.preview_url) {
+        await supabase.from('clip_projects')
+          .update({ preview_url: body.preview_url, updated_at: now() })
+          .eq('id', project_id);
+      }
       return json({ ok: true });
     }
 

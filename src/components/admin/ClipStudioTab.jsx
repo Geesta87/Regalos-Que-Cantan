@@ -92,11 +92,13 @@ const fmtTime = (s) => {
 function StylePreview({ styleKey, accent }) {
   const st = STYLE_META[styleKey];
   const [vidOk, setVidOk] = React.useState(true);
+  // Full 9:16 cards (like the Captions.ai gallery) — cropping to a short
+  // strip hid the captions, which are the whole point of the preview.
   if (vidOk) {
     return (
-      <div className={`rounded-lg bg-gray-900 ${st.tpl ? 'h-28' : 'h-24'} overflow-hidden`}>
+      <div className="rounded-lg bg-gray-900 overflow-hidden" style={{ aspectRatio: '9 / 16' }}>
         <video src={`/videos/clip-style-previews/${styleKey}.mp4`}
-          className="w-full h-full object-cover object-top" muted loop playsInline preload="metadata"
+          className="w-full h-full object-cover" muted loop playsInline preload="metadata"
           poster={st.img || undefined}
           onError={() => setVidOk(false)}
           onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
@@ -106,8 +108,8 @@ function StylePreview({ styleKey, accent }) {
   }
   if (st.img) {
     return (
-      <div className="rounded-lg bg-gray-900 h-28 overflow-hidden">
-        <img src={st.img} alt={`${st.name} template — real frame`} className="w-full h-full object-cover object-top" loading="lazy" />
+      <div className="rounded-lg bg-gray-900 overflow-hidden" style={{ aspectRatio: '9 / 16' }}>
+        <img src={st.img} alt={`${st.name} template — real frame`} className="w-full h-full object-cover" loading="lazy" />
       </div>
     );
   }
@@ -796,7 +798,10 @@ export default function ClipStudioTab({ accessToken, showToast }) {
           <div className="lg:col-span-2">
             <div className="lg:sticky lg:top-4">
               {project.source_url && (
-                <video ref={videoRef} src={project.source_url} controls className="w-full rounded-xl bg-black mb-3" />
+                // preview_url = browser-safe H.264 copy (camera codecs like
+                // DJI H.265 play black in Chrome); falls back to the original.
+                <video ref={videoRef} src={project.preview_url || project.source_url} controls playsInline
+                  className="w-full rounded-xl bg-black mb-3" style={{ maxHeight: '60vh', minHeight: 200, objectFit: 'contain' }} />
               )}
               {project.transcript_text && (
                 <Card className="p-4">

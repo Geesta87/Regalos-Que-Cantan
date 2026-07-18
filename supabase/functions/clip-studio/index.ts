@@ -184,10 +184,16 @@ serve(async (req) => {
       const audioPath = `${project_id}/audio.mp3`;
       const { data: signed, error: se } = await admin.storage.from(BUCKET).createSignedUploadUrl(audioPath, { upsert: true });
       if (se) throw new Error(`sign audio: ${se.message}`);
+      // Browser-safe preview slot: camera codecs (DJI H.265) play black in
+      // Chrome, so the renderer transcodes a 720p H.264 copy when needed.
+      const previewPath = `${project_id}/preview.mp4`;
+      const { data: signedPrev } = await admin.storage.from(BUCKET).createSignedUploadUrl(previewPath, { upsert: true });
       await dispatchRenderer('/clip-prepare', {
         project_id, source_url, bucket: BUCKET, callback_url: CALLBACK_URL,
         audio_upload_url: signed.signedUrl, audio_path: audioPath,
         audio_public_url: admin.storage.from(BUCKET).getPublicUrl(audioPath).data.publicUrl,
+        preview_upload_url: signedPrev?.signedUrl || null, preview_path: previewPath,
+        preview_public_url: admin.storage.from(BUCKET).getPublicUrl(previewPath).data.publicUrl,
       });
       return json({ success: true, status: 'preparing' });
     }
