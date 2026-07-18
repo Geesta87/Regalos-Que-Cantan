@@ -33,6 +33,12 @@ const STYLE_META = {
   brillo:  { name: 'Brillo',  group: 'fun', desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
   sombra:  { name: 'Sombra',  group: 'sell', desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
   fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  // Kinetic looks — the word engine animates every word as its own object.
+  palabra:   { name: 'Palabra',   group: 'sell', desc: 'Words appear one by one as you speak — and stay', sample: ['PALABRA', 'POR', 'PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  pildora:   { name: 'Píldora',   group: 'sell', desc: 'A pill GLIDES from word to word on the beat', sample: ['LA', 'PÍLDORA', 'VIAJA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
+  heroe:     { name: 'Héroe',     group: 'sell', desc: 'The key word gets its own line — HUGE', sample: ['la palabra', 'GRANDE', 'manda'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
+  temblor:   { name: 'Temblor',   group: 'fun', desc: 'Key words vibrate with energy when you hit them', sample: ['ESTO', 'TIEMBLA', 'FUERTE'], hi: '#FF7A00', upper: true, box: false, accent: true },
+  escenario: { name: 'Escenario', group: 'story', desc: 'Big center-stage captions with a hand-made tilt — podcast style', sample: ['COMO', 'EN EL', 'ESCENARIO'], hi: '#D4AF37', upper: true, box: false, accent: true },
   // Template looks: caption style + title design + stickers + color grade.
   // img = a real rendered frame so the card shows the ACTUAL look.
   fiesta:    { name: 'Fiesta',    group: 'fun', desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },

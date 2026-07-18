@@ -103,6 +103,13 @@ const STYLES = {
   // Caption-first looks — no template layer, the captions ARE the design.
   // All of these honor opts.accent (owner-picked color) via applyAccent.
   //   fsp: extra letter-spacing (ASS Spacing)   shadow: hard drop shadow depth
+  // Kinetic looks — the word engine lays out and animates every word as its
+  // own object (fontkit metrics -> absolute \pos). See buildKineticAss.
+  palabra:   { wordsPerGroup: 4, highlight: YELLOW, upper: true, font: 'Anton', kinetic: 'reveal' },
+  pildora:   { wordsPerGroup: 4, highlight: null,   upper: true, font: 'Anton', kinetic: 'pill', pill: { bg: YELLOW, fg: DARKTXT } },
+  heroe:     { wordsPerGroup: 5, highlight: YELLOW, upper: true, font: 'Anton', kinetic: 'hero' },
+  temblor:   { wordsPerGroup: 3, highlight: ORANGE, upper: true, border: 'outline', font: 'Anton', pop: true, shake: true, entrance: 'slam' },
+  escenario: { wordsPerGroup: 3, highlight: GOLD,   upper: true, border: 'outline', font: 'Anton', scale: 1.12, center: true, entrance: 'fade' },
   lujo:     { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.8,  font: 'Prata', fsp: 3, emphItalic: true, entrance: 'fade' },
   grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.32, font: 'Anton', pop: true, entrance: 'slam' },
   resalta:  { wordsPerGroup: 3, highlight: null,   upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
@@ -384,6 +391,7 @@ function assHeader(geo, st, fontsize, contrast = 0) {
     : `1,${outlineW},${shadowDepth}`; // BorderStyle=1, thick outline
   const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
+  const align = st.center ? 5 : 2; // center-stage styles sit mid-screen
   const hookSize = Math.round(geo.fontsize * 0.6);
   const hookMarginTop = geo.h >= 1900 ? 170 : 100;
   return [
@@ -396,7 +404,7 @@ function assHeader(geo, st, fontsize, contrast = 0) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,${st.fsp || 0},0,${outline},2,60,60,${st.marginV || geo.marginV},1`,
+    `Style: Cap,${st.font || 'DejaVu Sans'},${fontsize},${WHITE},${WHITE},${outlineColour},${backColour},1,0,0,0,100,100,${st.fsp || 0},0,${outline},${align},60,60,${st.marginV || geo.marginV},1`,
     // Hook title: top-center (alignment 8), soft dark box so it reads on any footage.
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${hookMarginTop},1`,
     '',
@@ -450,6 +458,160 @@ function applyAccent(st, accentHex) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Kinetic caption engine (word-level typography). fontkit reads the exact
+// bundled TTFs, so every word gets a measured absolute position — that's what
+// unlocks cumulative reveals, a pill that travels between words, and
+// art-directed hero stacking. Measurements assume Bold=0 (synthetic bold
+// would widen glyphs past the measured advance).
+// ---------------------------------------------------------------------------
+const FONT_FILE = {
+  Anton: 'Anton-Regular.ttf', Prata: 'Prata-Regular.ttf', 'Patrick Hand': 'PatrickHand-Regular.ttf',
+  'Space Mono': 'SpaceMono-Regular.ttf', 'Great Vibes': 'GreatVibes-Regular.ttf',
+};
+const _fkFonts = {};
+function textW(fam, text, size) {
+  if (!_fkFonts[fam]) _fkFonts[fam] = require('fontkit').openSync(path.join(FONTS_DIR, FONT_FILE[fam] || FONT_FILE.Anton));
+  const f = _fkFonts[fam];
+  return (f.layout(String(text)).advanceWidth / f.unitsPerEm) * size;
+}
+
+// Center a group of tokens into 1-2 lines of measured words. Returns per-word
+// {x, y, w, size} where x/y are \an5 centers; shrinks as a last resort so a
+// long word never runs off screen.
+function layoutGroup(fam, tokens, baseSize, geo, bottomY) {
+  const maxW = geo.w * 0.86;
+  const gap = (s) => textW(fam, ' ', s) || s * 0.28;
+  let size = baseSize;
+  const wrap = (s) => {
+    const l = [[]];
+    let w = 0;
+    for (const t of tokens) {
+      const tw = textW(fam, t.txt, s) + (l[l.length - 1].length ? gap(s) : 0);
+      if (w + tw > maxW && l[l.length - 1].length) { l.push([]); w = 0; }
+      w += tw;
+      l[l.length - 1].push(t);
+    }
+    return l;
+  };
+  const lineW = (ln, s) => ln.reduce((a, t) => a + textW(fam, t.txt, s), 0) + gap(s) * (ln.length - 1);
+  let lines = lineW(tokens, size) <= maxW ? [tokens] : wrap(size);
+  while (size > baseSize * 0.55 && lines.some((ln) => lineW(ln, size) > maxW)) { size *= 0.94; lines = wrap(size); }
+  const lh = size * 1.24;
+  const y0 = bottomY - lh * (lines.length - 1);
+  const out = [];
+  lines.forEach((ln, li) => {
+    let x = (geo.w - lineW(ln, size)) / 2;
+    for (const t of ln) {
+      const w = textW(fam, t.txt, size);
+      out.push({ ...t, w, size, x: x + w / 2, y: y0 + li * lh });
+      x += w + gap(size);
+    }
+  });
+  return out;
+}
+
+function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
+  const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
+  const st = applyAccent(STYLES[styleKey] || STYLES.palabra, opts.accent);
+  const fam = st.font || 'Anton';
+  const baseSize = Math.round(geo.fontsize * (st.scale || 1) * 1.06);
+  const contrast = opts.contrast || 0;
+  const bord = contrast >= 2 ? Math.round(baseSize / 6.5) : contrast === 1 ? Math.round(baseSize / 8.5) : Math.round(baseSize / 10);
+  const shad = contrast ? Math.round(baseSize / 22) : 0;
+  const bottomY = geo.h - (st.marginV || geo.marginV) - Math.round(baseSize * 0.5);
+  const hookSize = Math.round(geo.fontsize * 0.6);
+  const header = [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${geo.w}`, `PlayResY: ${geo.h}`,
+    'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    // Bold=0 on purpose — the layout is measured on the real glyph advances
+    `Style: K,${fam},${baseSize},${WHITE},${WHITE},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,${bord},${shad},5,0,0,0,1`,
+    `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${geo.h >= 1900 ? 170 : 100},1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  ];
+  const lines = hookLine({ hookTitle: opts.hookTitle, totalDur: opts.totalDur });
+  const E = (layer, from, to, text) => lines.push(`Dialogue: ${layer},${toAssTime(from)},${toAssTime(to)},K,,0,0,0,,${text}`);
+  const wordColor = (w) => (w.emp || isNumberWord(w.word) || isCtaWord(w.word) ? (st.highlight || GOLD) : WHITE);
+  const groups = groupWords(words, st.wordsPerGroup);
+
+  for (const group of groups) {
+    const tokens = group.map((w) => ({ txt: st.upper ? String(w.word).toUpperCase() : String(w.word), w }));
+    const gEnd = group[group.length - 1].end + 0.1;
+
+    if (st.kinetic === 'reveal') {
+      // Words appear one by one as spoken — and stay. Each lands with a
+      // little overshoot bounce at its measured position.
+      const pos = layoutGroup(fam, tokens, baseSize, geo, bottomY);
+      pos.forEach((p, i) => {
+        const fsTag = Math.round(p.size) !== baseSize ? `\\fs${Math.round(p.size)}` : '';
+        const enter = `\\fscx30\\fscy30\\t(0,110,\\fscx112\\fscy112)\\t(110,190,\\fscx100\\fscy100)`;
+        E(1, group[i].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${fsTag}\\c${wordColor(group[i])}&${enter}}${assEscape(p.txt)}`);
+      });
+    } else if (st.kinetic === 'pill') {
+      // The whole phrase is visible; a pill GLIDES from word to word on the
+      // spoken beat (layer 0 = pill drawing, layer 1 = text).
+      const pos = layoutGroup(fam, tokens, baseSize, geo, bottomY);
+      const pillBg = (st.pill && st.pill.bg) || YELLOW;
+      const pillFg = (st.pill && st.pill.fg) || DARKTXT;
+      for (let i = 0; i < group.length; i++) {
+        const from = group[i].start;
+        const to = i < group.length - 1 ? group[i + 1].start : gEnd;
+        if (to - from < 0.01) continue;
+        const p = pos[i];
+        const w2 = Math.round(p.w / 2 + p.size * 0.18);
+        const h2 = Math.round(p.size * 0.6);
+        const posTag = i === 0
+          ? `\\pos(${Math.round(p.x)},${Math.round(p.y)})`
+          : `\\move(${Math.round(pos[i - 1].x)},${Math.round(pos[i - 1].y)},${Math.round(p.x)},${Math.round(p.y)},0,130)`;
+        // \bord on a drawing rounds the rect corners in the pill color.
+        // Coordinates MUST start at the origin — libass only centers (an5)
+        // drawings whose bbox is measured from (0,0); negative extents drift.
+        E(0, from, to, `{\\an5${posTag}\\1c${pillBg}&\\3c${pillBg}&\\bord${Math.round(p.size * 0.14)}\\shad0\\p1}m 0 0 l ${w2 * 2} 0 ${w2 * 2} ${h2 * 2} 0 ${h2 * 2}{\\p0}`);
+        pos.forEach((q, j) => {
+          const fsTag = Math.round(q.size) !== baseSize ? `\\fs${Math.round(q.size)}` : '';
+          const color = j === i ? pillFg : wordColor(group[j]);
+          // the word ON the pill drops its outline — dark-on-yellow reads clean
+          const flat = j === i ? `\\bord0\\shad0` : '';
+          const intro = i === 0 ? `\\fad(80,0)` : '';
+          E(1, from, to, `{\\an5\\pos(${Math.round(q.x)},${Math.round(q.y)})${fsTag}\\c${color}&${flat}${intro}}${assEscape(q.txt)}`);
+        });
+      }
+    } else if (st.kinetic === 'hero') {
+      // Art-directed stack: the most important word gets its own line, HUGE
+      // and in the highlight color; the rest sit small above/below it.
+      let heroIdx = group.findIndex((w) => w.emp);
+      if (heroIdx < 0) heroIdx = group.findIndex((w) => isNumberWord(w.word) || isCtaWord(w.word));
+      if (heroIdx < 0) heroIdx = group.reduce((bi, w, i) => (String(w.word).length > String(group[bi].word).length ? i : bi), 0);
+      const smallSize = Math.round(baseSize * 0.58);
+      const heroTok = tokens[heroIdx].txt;
+      let heroSize = Math.round(baseSize * 1.6);
+      const maxW = geo.w * 0.9;
+      if (textW(fam, heroTok, heroSize) > maxW) heroSize = Math.floor(heroSize * (maxW / textW(fam, heroTok, heroSize)));
+      const rows = [];
+      const joinTokens = (arr) => arr.map((t) => t.txt).join(' ');
+      if (heroIdx > 0) rows.push({ text: joinTokens(tokens.slice(0, heroIdx)), size: smallSize, color: WHITE });
+      rows.push({ text: heroTok, size: heroSize, color: st.highlight || GOLD, hero: true });
+      if (heroIdx < tokens.length - 1) rows.push({ text: joinTokens(tokens.slice(heroIdx + 1)), size: smallSize, color: WHITE });
+      let y = bottomY;
+      for (let r = rows.length - 1; r >= 0; r--) { rows[r].y = y; y -= Math.round(rows[r].size * 1.22); }
+      const cx = Math.round(geo.w / 2);
+      for (const row of rows) {
+        let sz = row.size;
+        if (textW(fam, row.text, sz) > geo.w * 0.9) sz = Math.floor(sz * ((geo.w * 0.9) / textW(fam, row.text, sz)));
+        const enter = row.hero
+          ? `\\fscx145\\fscy145\\blur5\\t(0,120,\\fscx100\\fscy100\\blur0)`
+          : `\\fad(110,0)`;
+        E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${row.y})\\fs${sz}\\c${row.color}&${enter}}${assEscape(row.text)}`);
+      }
+    }
+  }
+  return header.concat(lines).join('\n') + '\n';
+}
+
 function hookLine(opts) {
   if (!opts.hookTitle) return [];
   const hookEnd = Math.max(1.2, Math.min(2.8, (opts.totalDur || 2.8) - 0.2));
@@ -485,11 +647,15 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const popOpen = `{\\fscx116\\fscy116\\t(0,120,\\fscx100\\fscy100)}`;
   const popClose = `{\\fscx100\\fscy100}`;
   // Active-word treatments: plain color paint, chunky pill, or neon glow.
-  const paintWord = (body) => {
+  // temblor: the active emphasized word vibrates with a squash-stretch
+  // jitter for its beat (glyph-scale only — safe mid-line, unlike \frz).
+  const shakeOpen = `{\\t(0,45,\\fscx114\\fscy88)\\t(45,90,\\fscx90\\fscy112)\\t(90,140,\\fscx108\\fscy94)\\t(140,190,\\fscx100\\fscy100)}`;
+  const paintWord = (body, isEmp) => {
     let paint;
     if (st.pill) paint = `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${st.pill.bg}&\\c${st.pill.fg}&}${body}{\\r}`;
     else if (st.glow) paint = `{\\bord${Math.max(4, Math.round(fontsize / 8))}\\3c${st.glow}&\\blur7\\c&HFFFFFF&}${body}{\\r}`;
     else paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
+    if (st.shake && isEmp) return `${shakeOpen}${paint}{\\fscx100\\fscy100}`;
     return st.pop ? `${popOpen}${paint}${popClose}` : paint;
   };
   // Word-kind treatments (standing, i.e. visible the whole group, active
@@ -507,7 +673,11 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
 
   const perWord = !!(st.highlight || st.pill || st.glow);
   const groups = groupWords(words, st.wordsPerGroup);
+  let gi = -1;
   for (const group of groups) {
+    gi++;
+    // escenario: each phrase lands with a slight alternating hand-made tilt
+    const tilt = st.center ? `{\\frz${gi % 2 ? '-1.6' : '1.6'}}` : '';
     const texts = group.map((w) => {
       const t = assEscape(w.word);
       return {
@@ -528,7 +698,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
         const to = idx < group.length - 1 ? group[idx + 1].start : group[idx].end;
         return `{\\kf${Math.max(1, Math.round((to - from) * 100))}}${withEmoji(x, idx)}`;
       }).join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${entrance}{\\1c${st.highlight || GOLD}&\\2c&H00FFFFFF&}${kf}`);
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${tilt}${entrance}{\\1c${st.highlight || GOLD}&\\2c&H00FFFFFF&}${kf}`);
       continue;
     }
     if (!perWord) {
@@ -539,7 +709,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
         if (x.kind === 'cta') return ctaPaint(body);
         return x.emp ? `${empOpen}${body}${empClose}` : body;
       }).join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${entrance}${text}`);
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${tilt}${entrance}${text}`);
       continue;
     }
     // One dialogue per word: full group shown, the spoken word painted. The
@@ -549,11 +719,11 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const from = i === 0 ? group[0].start : group[i].start;
       const to = i < group.length - 1 ? group[i + 1].start : group[group.length - 1].end;
       if (to - from < 0.01) continue;
-      const intro = i === 0 ? entrance : '';
+      const intro = (i === 0 ? entrance : '') + tilt;
       const text = texts
         .map((x, j) => {
           const body = withEmoji(x, j);
-          if (j === i) return paintWord(body); // spoken beat always wins
+          if (j === i) return paintWord(body, x.emp); // spoken beat always wins
           if (x.kind === 'num') return numPaint(body);
           if (x.kind === 'cta') return ctaPaint(body);
           if (x.emp) return `${empOpen}${body}${empClose}`;
@@ -1119,7 +1289,9 @@ async function renderClip(job, { dir, log }) {
     ? buildAssFromGroups(
         job.caption_groups.map((g) => ({ start: mapCapT(Number(g.start)), end: mapCapT(Number(g.end)), text: g.text })),
         job.style, job.aspect, capOpts)
-    : buildAss(words, job.style, job.aspect, capOpts);
+    : (STYLES[job.style] && STYLES[job.style].kinetic)
+      ? buildKineticAss(words, job.style, job.aspect, capOpts)
+      : buildAss(words, job.style, job.aspect, capOpts);
   fs.writeFileSync(path.join(dir, 'captions.ass'), assContent);
 
   const geo = ASPECTS[job.aspect] || ASPECTS['9:16'];
