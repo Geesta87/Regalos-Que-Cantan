@@ -33,6 +33,18 @@ const STYLE_META = {
   brillo:  { name: 'Brillo',  group: 'fun', desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
   sombra:  { name: 'Sombra',  group: 'sell', desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
   fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  // Motion pack — hand-animated word behaviors with sound design; motion and
+  // SFX intensity follow how loudly each word was spoken.
+  cascada:  { name: 'Cascada',   group: 'story', desc: 'Words drop in with bouncy landings + soft thumps', sample: ['CAE', 'PALABRA', 'POR PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  resorte:  { name: 'Resorte',   group: 'fun', desc: 'Elastic spring-in; springy pops on the beat', sample: ['REBOTA', 'CON', 'VIDA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  maquina:  { name: 'Máquina',   group: 'story', desc: 'Typewriter at your real pace, blinking cursor, key clicks', sample: ['escribe', 'tu historia'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  ola:      { name: 'Ola',       group: 'story', desc: 'The line breathes in a wave that follows your voice', sample: ['FLUYE', 'COMO', 'EL MAR'], hi: '#00E5FF', upper: true, box: false, accent: true },
+  golpe:    { name: 'Golpe',     group: 'sell', desc: 'One HUGE word at a time with punch, shake & impact sound', sample: ['UNA', 'PALABRA', 'GIGANTE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
+  neonvivo: { name: 'Neón Vivo', group: 'fun', desc: 'Neon tubes ignite with flicker, buzz & floor reflection', sample: ['ENCIENDE', 'LA NOCHE'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
+  recorte:  { name: 'Recorte',   group: 'fun', desc: 'Sticker collage — words slap in with tilts & parallax shadows', sample: ['PEGA', 'CADA', 'PALABRA'], hi: '#E4007C', upper: true, box: false, accent: true },
+  cinta:    { name: 'Cinta',     group: 'sell', desc: 'News-ticker slide-ins with whoosh & a drawing rule', sample: ['ÚLTIMA', 'HORA'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  enfoque:  { name: 'Enfoque',   group: 'premium', desc: 'Focus pull from blur to crisp — lens-like, with a riser', sample: ['TODO', 'EN FOCO'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  gravedad: { name: 'Gravedad',  group: 'fun', desc: 'Words free-fall, squash & take a second hop — with thumps', sample: ['CAE', 'Y', 'REBOTA'], hi: '#FFD400', upper: true, box: false, accent: true },
   // Signature looks — the Captions.ai-gallery devices, with built-in grades.
   mixto:     { name: 'Mixto',     group: 'premium', desc: 'Heavy caps + the key word in elegant script — the signature mix', sample: ['UNA CANCIÓN', 'única'], hi: '#D4AF37', upper: true, box: false, accent: true, serif: true },
   contorno:  { name: 'Contorno',  group: 'sell', desc: 'Hollow outline letters — the spoken word fills in solid', sample: ['SOLO', 'CONTORNO'], hi: '#FFD400', upper: true, box: false, accent: true },

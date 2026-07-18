@@ -124,6 +124,18 @@ const STYLES = {
   // Signature looks — the captions.ai gallery devices: mixed typefaces,
   // hollow letters, tilted color blocks, marker underlines. Each carries a
   // subtle cinematic grade so the footage reads produced, not raw.
+  // Motion design pack — 10 hand-animated behaviors on real easing curves
+  // (kinetic: 'motion', see the motion branch in buildKineticAss).
+  cascada:  { wordsPerGroup: 4, highlight: YELLOW, upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'cascada', grade: 'eq=contrast=1.05:saturation=1.06' },
+  resorte:  { wordsPerGroup: 3, highlight: YELLOW, upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'resorte', grade: 'eq=contrast=1.05:saturation=1.06' },
+  maquina:  { wordsPerGroup: 4, highlight: GOLD,   upper: true, font: 'Space Mono', kinetic: 'motion', motion: 'maquina', grade: 'eq=contrast=1.06:saturation=0.94' },
+  ola:      { wordsPerGroup: 4, highlight: CYAN,   upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'ola', grade: 'eq=contrast=1.04:saturation=1.08' },
+  golpe:    { wordsPerGroup: 3, highlight: YELLOW, upper: true, font: 'Archivo Black', kinetic: 'motion', motion: 'golpe', grade: 'eq=contrast=1.1:saturation=1.05' },
+  neonvivo: { wordsPerGroup: 3, highlight: CYAN,   upper: true, font: 'Anton', kinetic: 'motion', motion: 'neonvivo', grade: 'eq=contrast=1.12:saturation=1.15,colorbalance=bs=.08' },
+  recorte:  { wordsPerGroup: 4, highlight: PINK,   upper: true, font: 'Archivo Black', kinetic: 'motion', motion: 'recorte', grade: 'eq=contrast=1.05:saturation=1.1' },
+  cinta:    { wordsPerGroup: 4, highlight: GOLD,   upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'cinta', grade: 'eq=contrast=1.04:saturation=1.02' },
+  enfoque:  { wordsPerGroup: 4, highlight: GOLD,   upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'enfoque', grade: 'eq=contrast=1.06:saturation=0.96' },
+  gravedad: { wordsPerGroup: 3, highlight: YELLOW, upper: true, font: 'Archivo Black', kinetic: 'motion', motion: 'gravedad', grade: 'eq=contrast=1.06:saturation=1.05' },
   mixto:     { wordsPerGroup: 4, highlight: GOLD,   upper: true, border: 'outline', font: 'Montserrat Black', mixFont: 'Great Vibes', grade: 'eq=contrast=1.06:saturation=1.1:brightness=0.01', entrance: 'fade' },
   contorno:  { wordsPerGroup: 3, highlight: YELLOW, upper: true, border: 'outline', font: 'Archivo Black', hollow: true, pop: true, grade: 'eq=contrast=1.09:saturation=0.9', entrance: 'slam' },
   bloque:    { wordsPerGroup: 3, upper: true, font: 'Montserrat Black', kinetic: 'block', palette: [{ bg: PINK, fg: WHITE }, { bg: YELLOW, fg: DARKTXT }, { bg: TEAL, fg: DARKTXT }], grade: 'eq=contrast=1.05:saturation=1.08' },
@@ -525,6 +537,33 @@ function layoutGroup(fam, tokens, baseSize, geo, bottomY) {
   return out;
 }
 
+// Real easing curves, approximated as multi-step \t chains — the difference
+// between motion that feels hand-animated and the stiff two-step transforms
+// that read "template". Back overshoots, expo snaps, elastic springs.
+const easeOutBack = (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const easeOutExpo = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const easeOutElastic = (t) => { const c4 = (2 * Math.PI) / 3; return t === 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1; };
+// Animate uniform scale s0 -> 100 over dur ms along `ease` (8 steps ≈ smooth).
+function scaleChain(s0, dur, ease, steps = 8) {
+  let out = `\\fscx${Math.round(s0)}\\fscy${Math.round(s0)}`;
+  for (let i = 1; i <= steps; i++) {
+    const t0 = Math.round((dur * (i - 1)) / steps), t1 = Math.round((dur * i) / steps);
+    const v = Math.max(1, Math.round(s0 + (100 - s0) * ease(i / steps)));
+    out += `\\t(${t0},${t1},\\fscx${v}\\fscy${v})`;
+  }
+  return out;
+}
+// Animate blur b0 -> bEnd over dur ms along `ease`.
+function blurChain(b0, bEnd, dur, ease, steps = 6) {
+  let out = `\\blur${b0}`;
+  for (let i = 1; i <= steps; i++) {
+    const t0 = Math.round((dur * (i - 1)) / steps), t1 = Math.round((dur * i) / steps);
+    const v = (b0 + (bEnd - b0) * ease(i / steps)).toFixed(1);
+    out += `\\t(${t0},${t1},\\blur${v})`;
+  }
+  return out;
+}
+
 function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.palabra, opts.accent);
@@ -604,6 +643,216 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
         for (const p of ln.items) {
           E(1, group[0].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${org}\\c${pal.fg}&\\bord0\\shad0${enter}}${assEscape(p.txt)}`);
         }
+      }
+    } else if (st.kinetic === 'motion') {
+      // ---- the motion design pack: 10 hand-animated behaviors --------------
+      const pos = st.motion === 'golpe' ? null : layoutGroup(fam, tokens, baseSize, geo, bottomY);
+      const hi = st.highlight || YELLOW;
+      const beats = group.map((w, i) => ({
+        from: w.start,
+        to: i < group.length - 1 ? group[i + 1].start : gEnd,
+      }));
+      // smart direction: per-word intensity (loudness + emphasis bonus)
+      const EN = (w) => Math.min(1.45, (w.energy ?? 0.8) + (w.emp ? 0.3 : 0));
+
+      if (st.motion === 'cascada') {
+        // Words drop from above one by one, land with a back-eased overshoot;
+        // a soft ground-shadow puff catches each landing, settled words dim
+        // and keep a subtle breath so the line never freezes.
+        pos.forEach((p, i) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const en = EN(group[i]);
+          const enter = `\\move(${x},${y - Math.round(70 + 60 * en)},${x},${y},0,170)${scaleChain(Math.round(86 - 18 * en), 260, easeOutBack)}\\frz-5\\t(60,240,\\frz0)`;
+          const to2 = i < group.length - 1 ? beats[i + 1].from : gEnd;
+          // landing shadow puff (appears at touchdown, spreads + fades)
+          const sw = Math.round(p.w * 0.45), sh = Math.round(p.size * 0.09);
+          E(0, group[i].start + 0.13, group[i].start + 0.5,
+            `{\\an5\\pos(${x},${y + Math.round(p.size * 0.62)})\\1c&H000000&\\alpha&H82&\\bord${sh}\\3c&H000000&\\blur6\\fscx60\\t(0,240,\\fscx130\\alpha&HFF&)\\p1}m 0 0 l ${sw} 0 ${sw} 2 0 2{\\p0}`);
+          E(1, group[i].start, to2, `{\\an5${enter}\\c${i === 0 ? WHITE : hi}&}${assEscape(p.txt)}`);
+          if (to2 < gEnd) E(1, to2, gEnd, `{\\an5\\pos(${x},${y})\\alpha&H46&\\c${WHITE}&\\t(300,1100,\\fscx101\\fscy101)\\t(1100,1900,\\fscx100\\fscy100)}${assEscape(p.txt)}`);
+        });
+      } else if (st.motion === 'resorte') {
+        // Elastic spring-in with ANTICIPATION: each beat the word dips 5%
+        // for a breath, then springs — and a ghost echo trails the pop.
+        pos.forEach((p, i) => {
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${scaleChain(38, 520, easeOutElastic, 10)}\\c${WHITE}&}${assEscape(p.txt)}`);
+        });
+        beats.forEach((b, i) => {
+          if (b.to - b.from < 0.05) return;
+          const p = pos[i];
+          const x = Math.round(p.x), y = Math.round(p.y);
+          // ghost echo: an oversized fading copy right behind the pop
+          E(2, b.from, Math.min(b.to, b.from + 0.28), `{\\an5\\pos(${x},${y})\\fscx150\\fscy150\\c${hi}&\\bord0\\blur4\\alpha&H78&\\t(0,260,\\fscx185\\fscy185\\alpha&HFF&)}${assEscape(p.txt)}`);
+          const anticipate = `\\fscx94\\fscy94\\t(0,55,\\fscx94\\fscy94)`;
+          E(3, b.from, b.to, `{\\an5\\pos(${x},${y})${anticipate}${scaleChain(Math.round(96 + 18 * EN(group[i])), 340, easeOutElastic, 8)}\\c${hi}&\\bord${Math.round(p.size / 8)}}${assEscape(p.txt)}`);
+        });
+      } else if (st.motion === 'maquina') {
+        // Typewriter: each word types out character by character on its real
+        // duration in a warm ink that settles to its final color — with a
+        // faint keystroke flutter while typing.
+        pos.forEach((p, i) => {
+          const w = group[i];
+          const typeMs = Math.round((beats[i].to - beats[i].from) * 0.7 * 1000);
+          const durCs = Math.max(6, Math.round(typeMs / 10 / Math.max(1, p.txt.length)));
+          const typed = p.txt.split('').map((ch) => `{\\k${durCs}}${assEscape(ch)}`).join('');
+          const finalC = i % 2 ? hi : WHITE;
+          const settle = `\\c${GOLD}&\\t(${typeMs},${typeMs + 220},\\c${finalC}&)`;
+          const flutter = `\\t(0,${Math.round(typeMs * 0.5)},\\fscy99)\\t(${Math.round(typeMs * 0.5)},${typeMs},\\fscy100)`;
+          E(1, w.start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${settle}${flutter}\\2a&HFF&}${typed}`);
+        });
+        beats.forEach((b, i) => {
+          if (b.to - b.from < 0.05) return;
+          const p = pos[i];
+          const cx = Math.round(p.x + p.w / 2 + p.size * 0.18);
+          const cw = Math.round(p.size * 0.42), ch = Math.round(p.size * 0.82);
+          const prevX = i > 0 ? Math.round(pos[i - 1].x + pos[i - 1].w / 2 + p.size * 0.18) : cx;
+          const posTag = i === 0 ? `\\pos(${cx},${Math.round(p.y)})` : `\\move(${prevX},${Math.round(pos[i - 1].y)},${cx},${Math.round(p.y)},0,90)`;
+          E(0, b.from, b.to, `{\\an5${posTag}\\1c${hi}&\\bord0\\shad0\\t(200,340,\\alpha&HFF&)\\t(340,480,\\alpha&H00&)\\p1}m 0 0 l ${cw} 0 ${cw} ${ch} 0 ${ch}{\\p0}`);
+        });
+      } else if (st.motion === 'ola') {
+        // A traveling two-harmonic wave; the crest (active word) rides
+        // slightly bigger with a soft glow, like it's catching light.
+        const waveOff = (j, i, size) => Math.round((Math.sin((j - i) * 1.1) * 0.14 + Math.sin((j - i) * 2.2) * 0.05) * size);
+        beats.forEach((b, i) => {
+          if (b.to - b.from < 0.05) return;
+          pos.forEach((p, j) => {
+            const off = waveOff(j, i, p.size);
+            const prevOff = waveOff(j, i - 1, p.size);
+            const x = Math.round(p.x);
+            const posTag = i === 0
+              ? `\\pos(${x},${Math.round(p.y + off)})`
+              : `\\move(${x},${Math.round(p.y + prevOff)},${x},${Math.round(p.y + off)},0,150)`;
+            const intro = i === 0 ? `\\fad(90,0)` : '';
+            const crest = j === i
+              ? `\\c${hi}&\\fscx106\\fscy106\\bord${Math.max(3, Math.round(p.size / 14))}\\3c${hi}&\\blur3`
+              : `\\c${WHITE}&`;
+            E(1, b.from, b.to, `{\\an5${posTag}${crest}${intro}}${assEscape(p.txt)}`);
+          });
+        });
+      } else if (st.motion === 'golpe') {
+        // One word at a time, HUGE — expo punch-in with a micro shake, an
+        // impact shockwave puff, and a ghost echo. Position drifts a little
+        // per word so the rhythm feels hand-cut.
+        group.forEach((w, i) => {
+          const b = beats[i];
+          if (b.to - b.from < 0.05) return;
+          const txt = tokens[i].txt;
+          const en = EN(w);
+          const size = Math.min(Math.round(geo.w * (0.16 + 0.05 * en)), Math.floor((geo.w * 0.9) / Math.max(3, txt.length * 0.62)));
+          const cx = Math.round(geo.w / 2 + (((i * 53) % 5) - 2) * 14);
+          const cy = Math.round(geo.h * 0.42 + (((i * 31) % 5) - 2) * 12);
+          const color = i % 3 === 2 ? hi : WHITE;
+          // shockwave puff behind the impact
+          E(0, b.from, Math.min(b.to, b.from + 0.24), `{\\an5\\pos(${cx},${cy})\\1c${color}&\\bord${Math.round(size * 0.3)}\\3c${color}&\\blur14\\alpha&H6E&\\fscx30\\fscy30\\t(0,220,\\fscx170\\fscy170\\alpha&HFF&)\\p1}m 0 0 l ${size} 0 ${size} ${Math.round(size * 0.4)} 0 ${Math.round(size * 0.4)}{\\p0}`);
+          // ghost echo trailing the punch
+          E(1, b.from, Math.min(b.to, b.from + 0.2), `{\\an5\\pos(${cx},${cy})\\fs${size}\\fscx135\\fscy135\\blur5\\alpha&H8C&\\c${color}&\\bord0\\t(0,180,\\fscx170\\fscy170\\alpha&HFF&)}${assEscape(txt)}`);
+          const sa = (1.1 * en).toFixed(1);
+          const shake = `\\t(0,40,\\frz${sa})\\t(40,80,\\frz-${sa})\\t(80,120,\\frz0)`;
+          E(2, b.from, b.to, `{\\an5\\pos(${cx},${cy})\\fs${size}${scaleChain(Math.round(135 + 28 * en), 190, easeOutExpo)}${shake}\\c${color}&}${assEscape(txt)}`);
+        });
+      } else if (st.motion === 'neonvivo') {
+        // Words ignite like neon tubes — stuttering flicker, then a slow
+        // glow pulse — with a faint mirrored FLOOR REFLECTION under the line.
+        const pal = [CYAN, PINK];
+        pos.forEach((p, i) => {
+          const d = i * 60 + (((i * 73) % 7) - 3) * 6; // staggered ignition, human jitter
+          const flicker = `\\alpha&HFF&\\t(${d},${d + 40},\\alpha&H00&)\\t(${d + 40},${d + 80},\\alpha&HB0&)\\t(${d + 80},${d + 130},\\alpha&H00&)`;
+          const glow = `\\bord${Math.max(3, Math.round(p.size / 12))}\\3c${pal[i % 2]}&\\blur5\\t(600,1400,\\blur9)\\t(1400,2200,\\blur5)`;
+          E(1, group[i].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${flicker}${glow}\\c&HFFFFFF&}${assEscape(p.txt)}`);
+          // reflection: vertically flipped, dim, blurred, hugging the baseline
+          const rf = `\\alpha&HFF&\\t(${d + 80},${d + 160},\\alpha&HCC&)`;
+          E(0, group[i].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y + p.size * 1.18)})\\fscy-92\\fscx100${rf}\\blur4\\bord2\\3c${pal[i % 2]}&\\c&HFFFFFF&}${assEscape(p.txt)}`);
+        });
+      } else if (st.motion === 'recorte') {
+        // Sticker collage: each word slaps in oversized with a back-ease,
+        // keeps a hand-placed tilt. Sticker = DARK ink on a thick white
+        // border (white-on-white reads as a blob).
+        pos.forEach((p, i) => {
+          const tilt = ((i * 37) % 7) - 3;
+          const enter = `${scaleChain(165, 240, easeOutBack)}\\frz${tilt + 10}\\t(0,220,\\frz${tilt})`;
+          // the sticker's shadow slaps down a beat late — parallax depth
+          E(0, group[i].start + 0.05, gEnd, `{\\an5\\pos(${Math.round(p.x + 7)},${Math.round(p.y + 9)})${scaleChain(150, 200, easeOutBack)}\\frz${tilt}\\c&H000000&\\alpha&H8C&\\bord${Math.round(p.size / 6)}\\3c&H000000&\\blur3}${assEscape(p.txt)}`);
+          E(1, group[i].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${enter}\\c${i % 3 === 1 ? hi : DARKTXT}&\\bord${Math.round(p.size / 6)}\\3c&HFFFFFF&\\shad0}${assEscape(p.txt)}`);
+        });
+      } else if (st.motion === 'cinta') {
+        // News-ticker: words slide in from the right edge to their measured
+        // spots, staggered, with a tiny arrival squash.
+        const lineY = Math.round(pos[pos.length - 1].y + pos[0].size * 0.72);
+        const minX2 = Math.round(Math.min(...pos.map((p) => p.x - p.w / 2)));
+        const maxX2 = Math.round(Math.max(...pos.map((p) => p.x + p.w / 2)));
+        pos.forEach((p, i) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const d = i * 70 + (((i * 73) % 7) - 3) * 5; // human jitter
+          // speed-stretch while sliding, squash on arrival
+          const arrive = `\\fscx132\\t(${d},${260 + d},\\fscx132)\\t(${260 + d},${320 + d},\\fscx98)\\t(${320 + d},${380 + d},\\fscx100)`;
+          E(1, group[0].start, gEnd, `{\\an5\\move(${geo.w + Math.round(p.w / 2)},${y},${x},${y},${d},${260 + d})${arrive}\\c${wordColor(group[i])}&}${assEscape(p.txt)}`);
+        });
+        // ticker rule draws itself under the line once the words settle
+        E(0, group[0].start + 0.3, gEnd, `{\\an5\\pos(${Math.round((minX2 + maxX2) / 2)},${lineY})\\1c${hi}&\\bord1\\3c${hi}&\\shad0\\p1\\clip(${minX2},${lineY - 20},${minX2},${lineY + 20})\\t(0,240,\\clip(${minX2},${lineY - 20},${maxX2},${lineY + 20}))}m 0 0 l ${maxX2 - minX2} 0 ${maxX2 - minX2} 5 0 5{\\p0}`);
+      } else if (st.motion === 'enfoque') {
+        // Focus pull: the phrase racks from big soft blur into crisp focus;
+        // on each beat the active word is sharp while the rest soften back.
+        // rack-focus with a fake chromatic fringe: warm and cool copies open
+        // slightly apart and converge as focus lands
+        pos.forEach((p) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          E(0, group[0].start, beats[0].to, `{\\an5\\move(${x - 5},${y},${x},${y},0,340)${blurChain(11, 2, 380, easeOutExpo)}\\alpha&H96&\\c&H4040FF&\\bord0\\t(300,380,\\alpha&HFF&)}${assEscape(p.txt)}`);
+          E(0, group[0].start, beats[0].to, `{\\an5\\move(${x + 5},${y},${x},${y},0,340)${blurChain(11, 2, 380, easeOutExpo)}\\alpha&H96&\\c&HFFB040&\\bord0\\t(300,380,\\alpha&HFF&)}${assEscape(p.txt)}`);
+          E(1, group[0].start, beats[0].to, `{\\an5\\pos(${x},${y})${blurChain(11, 0.8, 380, easeOutExpo)}${scaleChain(124, 380, easeOutExpo)}\\c${WHITE}&}${assEscape(p.txt)}`);
+        });
+        beats.slice(1).forEach((b, k) => {
+          const i = k + 1;
+          if (b.to - b.from < 0.05) return;
+          pos.forEach((p, j) => {
+            const soft = j === i ? `\\blur0.8\\c${hi}&` : `\\blur2.4\\alpha&H28&\\c${WHITE}&`;
+            E(1, b.from, b.to, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${soft}}${assEscape(p.txt)}`);
+          });
+        });
+      } else if (st.motion === 'gravedad') {
+        // Gravity: words free-fall, squash on impact, then take one small
+        // second hop before settling — real bounce physics, staggered.
+        pos.forEach((p, i) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const d = i * 90 + (((i * 73) % 7) - 3) * 5; // human jitter — never metronome-even
+          const t0 = group[0].start;
+          const landAt = t0 + (170 + d) / 1000;
+          const hopAt = landAt + 0.13;
+          const squash = `\\t(${170 + d},${215 + d},\\fscy74\\fscx120)\\t(${215 + d},${285 + d},\\fscy104\\fscx98)`;
+          // fall + impact squash
+          E(1, t0, hopAt, `{\\an5\\move(${x},${y - Math.round(120 + 90 * EN(group[i]))},${x},${y},${d},${170 + d})\\alpha&HFF&\\t(${d},${d + 30},\\alpha&H00&)${squash}\\c${wordColor(group[i])}&}${assEscape(p.txt)}`);
+          // small second hop up...
+          E(1, hopAt, hopAt + 0.09, `{\\an5\\move(${x},${y},${x},${y - 16},0,90)\\c${wordColor(group[i])}&}${assEscape(p.txt)}`);
+          // ...and down, tiny squash, rest
+          E(1, hopAt + 0.09, gEnd, `{\\an5\\move(${x},${y - 16},${x},${y},0,80)\\t(80,120,\\fscy94)\\t(120,180,\\fscy100)\\c${wordColor(group[i])}&}${assEscape(p.txt)}`);
+        });
+      }
+
+      // ---- exit choreography ---------------------------------------------
+      // Groups don't vanish — they LEAVE with their own physics while the
+      // next phrase enters (golpe excluded: hard cuts ARE that style).
+      const nextStart = groups[gi + 1] ? groups[gi + 1][0].start : null;
+      if (nextStart !== null && pos && st.motion !== 'golpe') {
+        const xEnd = gEnd + 0.22;
+        pos.forEach((p, i) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const dj = ((i * 73) % 7) * 6; // human-feel stagger (never metronome-even)
+          const txt = assEscape(p.txt);
+          if (st.motion === 'cascada' || st.motion === 'gravedad') {
+            E(1, gEnd, xEnd, `{\\an5\\move(${x},${y},${x},${y + 190},${dj},${dj + 190})\\t(0,200,\\frz${i % 2 ? 14 : -14})\\t(60,220,\\alpha&HFF&)\\c${WHITE}&}${txt}`);
+          } else if (st.motion === 'resorte') {
+            E(1, gEnd, xEnd, `{\\an5\\pos(${x},${y})\\t(0,90,\\fscx116\\fscy116)\\t(90,210,\\fscx4\\fscy4\\alpha&HFF&)\\c${WHITE}&}${txt}`);
+          } else if (st.motion === 'maquina' || st.motion === 'enfoque') {
+            E(1, gEnd, xEnd, `{\\an5\\pos(${x},${y})${blurChain(0.8, 10, 200, easeOutExpo, 4)}\\t(40,210,\\alpha&HFF&)\\c${WHITE}&}${txt}`);
+          } else if (st.motion === 'ola') {
+            E(1, gEnd, xEnd, `{\\an5\\move(${x},${y},${x},${y + 70},${dj},${dj + 180})\\t(40,200,\\alpha&HFF&)\\c${WHITE}&}${txt}`);
+          } else if (st.motion === 'neonvivo') {
+            E(1, gEnd, xEnd, `{\\an5\\pos(${x},${y})\\t(0,40,\\alpha&HB0&)\\t(40,80,\\alpha&H30&)\\t(80,150,\\alpha&HFF&)\\bord3\\3c${i % 2 ? PINK : CYAN}&\\blur4\\c&HFFFFFF&}${txt}`);
+          } else if (st.motion === 'recorte') {
+            E(1, gEnd, xEnd, `{\\an5\\move(${x},${y},${x + 40},${y - 60},${dj},${dj + 200})\\frz${((i * 37) % 7) - 3}\\t(0,200,\\frz${((i * 37) % 7) + 12})\\t(60,210,\\alpha&HFF&)\\c${DARKTXT}&\\bord${Math.round(p.size / 6)}\\3c&HFFFFFF&}${txt}`);
+          } else if (st.motion === 'cinta') {
+            E(1, gEnd, xEnd, `{\\an5\\move(${x},${y},${x - geo.w},${y},${dj},${dj + 230})\\c${WHITE}&}${txt}`);
+          }
+        });
       }
     } else if (st.kinetic === 'pill') {
       // The whole phrase is visible; a pill GLIDES from word to word on the
@@ -891,6 +1140,7 @@ function remapWords(words, segs) {
           word: w.word,
           emp: !!w.emp,
           emoji: w.emoji || null,
+          energy: w.energy,
           start: acc + Math.max(0, w.start - seg.start),
           end: acc + Math.min(seg.end - seg.start, Math.max(0.05, w.end - seg.start)),
         });
@@ -899,6 +1149,34 @@ function remapWords(words, segs) {
     acc += seg.end - seg.start;
   }
   return { words: out, totalDur: acc };
+}
+
+// Smart direction: how LOUD was each word actually said? Per-word RMS from
+// the source audio (8kHz mono PCM), normalized against the clip's 90th
+// percentile -> w.energy in [0.4, 1.3]. Motion styles scale their physics
+// with it — louder delivery hits harder, soft moments land softer.
+function computeWordEnergy(dir, start, clipDur, words, log = () => {}) {
+  try {
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-t', String(clipDur),
+      '-i', 'source.mp4', '-map', '0:a:0', '-ac', '1', '-ar', '8000', '-f', 's16le', 'loud.pcm'], { cwd: dir });
+    const buf = fs.readFileSync(path.join(dir, 'loud.pcm'));
+    const n = buf.length >> 1;
+    const rms = words.map((w) => {
+      const a = Math.max(0, Math.floor(w.start * 8000));
+      const b = Math.min(n, Math.ceil(w.end * 8000));
+      let s = 0, c = 0;
+      for (let i = a; i < b; i++) { const v = buf.readInt16LE(i * 2); s += v * v; c++; }
+      return c ? Math.sqrt(s / c) : 0;
+    });
+    const sorted = rms.filter((x) => x > 0).sort((x, y) => x - y);
+    const hi = sorted[Math.floor(sorted.length * 0.9)] || 1;
+    words.forEach((w, i) => { w.energy = Math.max(0.4, Math.min(1.3, rms[i] / hi)); });
+    fs.rmSync(path.join(dir, 'loud.pcm'), { force: true });
+    log('word energy: loudness-reactive motion enabled');
+  } catch (e) {
+    log(`word energy skipped (${e.message})`);
+    words.forEach((w) => { w.energy = 0.8; });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,6 +1572,8 @@ async function renderClip(job, { dir, log }) {
       start: Math.max(0, w.start - start),
       end: Math.min(clipDur, w.end - start),
     }));
+  // Smart direction: loudness per word (pre-cut timeline — source audio).
+  if (words.length && (STYLES[job.style] || {}).kinetic) computeWordEnergy(dir, start, clipDur, words, log);
 
   // Owner cuts: words crossed out in the transcript editor get removed from
   // audio, video AND captions — regardless of the remove_silences option.
@@ -1635,12 +1915,64 @@ async function renderClip(job, { dir, log }) {
     log(`key-word sounds: ${popTimes.length} pop(s)`);
   }
 
+  // ---- motion sound design ----------------------------------------------
+  // Every motion style has a matched, deliberately quiet sound: thumps on
+  // landings, keystrokes while typing, a buzz per neon ignition. Hit volume
+  // scales with the word's spoken energy (smart direction).
+  const MOTION_SFX = {
+    cascada:  { file: 'thump.mp3', vol: 0.2,  per: 'word', offset: 0.17 },
+    gravedad: { file: 'thump.mp3', vol: 0.24, per: 'word', offset: 0.17, stagger: 0.09 },
+    golpe:    { file: 'slap.mp3',  vol: 0.28, per: 'word', offset: 0.02 },
+    recorte:  { file: 'slap.mp3',  vol: 0.2,  per: 'word', offset: 0.06 },
+    maquina:  { file: 'key.mp3',   vol: 0.26, per: 'type' },
+    neonvivo: { file: 'buzz.mp3',  vol: 0.16, per: 'word', offset: 0.05, stagger: 0.06 },
+    resorte:  { file: 'boing.mp3', vol: 0.13, per: 'emp' },
+    cinta:    { file: 'slide.mp3', vol: 0.22, per: 'group' },
+    enfoque:  { file: 'riser.mp3', vol: 0.18, per: 'group' },
+  };
+  const stMo = STYLES[job.style] || {};
+  const msfxCfg = (audioLabel && stMo.kinetic === 'motion' && opts.sfx_motion !== false) ? MOTION_SFX[stMo.motion] : null;
+  let msfxEvents = [];
+  if (msfxCfg) {
+    const gs = groupWords(words, stMo.wordsPerGroup || 4);
+    if (msfxCfg.per === 'group') {
+      msfxEvents = gs.map((g) => ({ t: g[0].start, v: msfxCfg.vol }));
+    } else if (msfxCfg.per === 'emp') {
+      msfxEvents = words.filter((w) => w.emp).map((w) => ({ t: w.start, v: msfxCfg.vol }));
+    } else if (msfxCfg.per === 'type') {
+      for (const g of gs) for (const w of g) {
+        const dur = Math.max(0.12, (w.end - w.start) * 0.7);
+        for (let k = 0; k < 3; k++) msfxEvents.push({ t: w.start + (dur * k) / 3, v: msfxCfg.vol });
+      }
+    } else {
+      for (const g of gs) g.forEach((w, wi) => msfxEvents.push({
+        t: w.start + (msfxCfg.offset || 0) + (msfxCfg.stagger ? msfxCfg.stagger * wi : 0),
+        v: msfxCfg.vol * (0.7 + 0.5 * Math.min(1.3, w.energy ?? 0.8)),
+      }));
+    }
+    msfxEvents = msfxEvents.filter((e) => e.t > 0.05 && e.t < outDur - 0.2).slice(0, 48);
+  }
+  const withMotionSfx = msfxEvents.length > 0;
+  if (withMotionSfx) {
+    fs.copyFileSync(path.join(__dirname, 'assets', 'sfx-motion', msfxCfg.file), path.join(dir, 'msfx.mp3'));
+    const mIdx = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+    parts.push(`[${mIdx}:a]asplit=${msfxEvents.length}${msfxEvents.map((_, i) => `[ms${i}]`).join('')}`);
+    const refs = msfxEvents.map((e, i) => {
+      const ms = Math.max(0, Math.round(e.t * 1000));
+      parts.push(`[ms${i}]adelay=${ms}|${ms},volume=${e.v.toFixed(2)}[msd${i}]`);
+      return `[msd${i}]`;
+    });
+    parts.push(`${audioLabel}${refs.join('')}amix=inputs=${1 + msfxEvents.length}:duration=first:normalize=0[amx]`);
+    audioLabel = '[amx]';
+    log(`motion sfx: ${msfxEvents.length} ${msfxCfg.file} hit(s)`);
+  }
+
   // ---- template stage: frame device + titles -> [vt] --------------------
   // [vsub] (captioned video) is scaled into the template's panel over a
   // canvas, the frame PNG (transparent window) goes on top, then the title
   // treatment draws on the full canvas. Non-template renders pass through.
   const tplImgs = []; // {name, dur} — image inputs owned by this stage
-  const tplBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0);
+  const tplBase = brollInputBase + broll.length + (withWatermark ? 1 : 0) + (withSfx ? 1 : 0) + (withHookWhoosh ? 1 : 0) + (withPops ? 1 : 0) + (withMotionSfx ? 1 : 0);
   const regTplImg = (srcPath, name, durSec) => {
     fs.copyFileSync(srcPath, path.join(dir, name));
     tplImgs.push({ name, dur: durSec });
@@ -1790,6 +2122,7 @@ async function renderClip(job, { dir, log }) {
   if (withSfx) args.push('-i', 'sfx.mp3');
   if (withHookWhoosh) args.push('-i', 'hook-whoosh.mp3');
   if (withPops) args.push('-i', 'kw-pop.mp3');
+  if (withMotionSfx) args.push('-i', 'msfx.mp3');
   tplImgs.forEach((im) => args.push('-loop', '1', '-framerate', '30', '-t', im.dur.toFixed(3), '-i', im.name));
   overlayItems.forEach((o, i) => args.push('-loop', '1', '-framerate', '30', '-t', (o.to - o.from + 0.05).toFixed(3), '-i', `ov${i}.png`));
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
