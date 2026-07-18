@@ -87,6 +87,7 @@ const RED = '&H001E1EC4';     // #C41E1E — corrido red
 const ORANGE = '&H00105DE8';  // #E85D10 — energia orange
 const WARM = '&H0027B4F0';    // #F0B427 — brasa warm gold
 const CYAN = '&H00FFE500';    // #00E5FF — neon cyan
+const TEAL = '&H00A8C200';    // #00C2A8 — signature-pack teal
 const DARKTXT = '&H00181818';
 // Caption personalities. New fields beyond v1:
 //   pill: {bg, fg}      active word gets a chunky colored surround (thick \bord)
@@ -120,6 +121,13 @@ const STYLES = {
   sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.08, font: 'Archivo Black', shadow: true, pop: true, entrance: 'slam' },
   // fluido: the karaoke sweep — color fills across each word as it's spoken
   fluido:   { wordsPerGroup: 4, highlight: GOLD,   upper: true,  border: 'outline', font: 'Montserrat Black', fill: true, entrance: 'fade' },
+  // Signature looks — the captions.ai gallery devices: mixed typefaces,
+  // hollow letters, tilted color blocks, marker underlines. Each carries a
+  // subtle cinematic grade so the footage reads produced, not raw.
+  mixto:     { wordsPerGroup: 4, highlight: GOLD,   upper: true, border: 'outline', font: 'Montserrat Black', mixFont: 'Great Vibes', grade: 'eq=contrast=1.06:saturation=1.1:brightness=0.01', entrance: 'fade' },
+  contorno:  { wordsPerGroup: 3, highlight: YELLOW, upper: true, border: 'outline', font: 'Archivo Black', hollow: true, pop: true, grade: 'eq=contrast=1.09:saturation=0.9', entrance: 'slam' },
+  bloque:    { wordsPerGroup: 3, upper: true, font: 'Montserrat Black', kinetic: 'block', palette: [{ bg: PINK, fg: WHITE }, { bg: YELLOW, fg: DARKTXT }, { bg: TEAL, fg: DARKTXT }], grade: 'eq=contrast=1.05:saturation=1.08' },
+  subrayado: { wordsPerGroup: 4, highlight: YELLOW, upper: true, font: 'Montserrat Black', kinetic: 'reveal', underline: true, grade: 'eq=contrast=1.04:saturation=1.06' },
   // Template looks (caption layer — frame/title/stickers/grade in TEMPLATES):
   fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
   editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true, entrance: 'fade' },
@@ -545,20 +553,58 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
   const E = (layer, from, to, text) => lines.push(`Dialogue: ${layer},${toAssTime(from)},${toAssTime(to)},K,,0,0,0,,${text.replace('{', '{\\blur0.8')}`);
   const wordColor = (w) => (w.emp || isNumberWord(w.word) || isCtaWord(w.word) ? (st.highlight || GOLD) : WHITE);
   const groups = groupWords(words, st.wordsPerGroup);
+  let gi = -1;
 
   for (const group of groups) {
+    gi++;
     const tokens = group.map((w) => ({ txt: st.upper ? String(w.word).toUpperCase() : String(w.word), w }));
     const gEnd = group[group.length - 1].end + 0.1;
 
     if (st.kinetic === 'reveal') {
       // Words appear one by one as spoken — and stay. Each lands with a
-      // little overshoot bounce at its measured position.
+      // little overshoot bounce at its measured position. subrayado also
+      // wipes a thick marker line under key words as they land.
       const pos = layoutGroup(fam, tokens, baseSize, geo, bottomY);
       pos.forEach((p, i) => {
         const fsTag = Math.round(p.size) !== baseSize ? `\\fs${Math.round(p.size)}` : '';
         const enter = `\\fscx30\\fscy30\\t(0,110,\\fscx112\\fscy112)\\t(110,190,\\fscx100\\fscy100)`;
         E(1, group[i].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${fsTag}\\c${wordColor(group[i])}&${enter}}${assEscape(p.txt)}`);
+        const w = group[i];
+        if (st.underline && (w.emp || isNumberWord(w.word) || isCtaWord(w.word))) {
+          const uw = Math.round(p.w + p.size * 0.2);
+          const uh = Math.round(p.size * 0.12);
+          const ux = Math.round(p.x);
+          const uy = Math.round(p.y + p.size * 0.62);
+          const x0 = ux - Math.round(uw / 2), x1 = ux + Math.round(uw / 2);
+          E(0, w.start + 0.08, gEnd, `{\\an5\\pos(${ux},${uy})\\1c${st.highlight || YELLOW}&\\3c${st.highlight || YELLOW}&\\bord3\\shad0\\p1\\clip(${x0},${uy - 40},${x0},${uy + 40})\\t(0,160,\\clip(${x0},${uy - 40},${x1},${uy + 40}))}m 0 0 l ${uw} 0 ${uw} ${uh} 0 ${uh}{\\p0}`);
+        }
       });
+    } else if (st.kinetic === 'block') {
+      // The whole phrase sits on a tilted solid color block; block colors
+      // rotate through the palette per phrase, tilt alternates sides.
+      const pos = layoutGroup(fam, tokens, baseSize, geo, bottomY);
+      const pal = (st.palette && st.palette[gi % st.palette.length]) || { bg: YELLOW, fg: DARKTXT };
+      const tiltDeg = gi % 2 ? -2 : 2;
+      // group words by line (same y)
+      const lines2 = [];
+      for (const p of pos) {
+        let ln = lines2.find((l) => l.y === p.y);
+        if (!ln) { ln = { y: p.y, items: [] }; lines2.push(ln); }
+        ln.items.push(p);
+      }
+      const enter = `\\fscx90\\fscy90\\t(0,120,\\fscx100\\fscy100)\\fad(70,0)`;
+      for (const ln of lines2) {
+        const minX = Math.min(...ln.items.map((p) => p.x - p.w / 2));
+        const maxX = Math.max(...ln.items.map((p) => p.x + p.w / 2));
+        const cx = Math.round((minX + maxX) / 2);
+        const bw = Math.round(maxX - minX + ln.items[0].size * 0.7);
+        const bh = Math.round(ln.items[0].size * 1.42);
+        const org = `\\org(${cx},${Math.round(ln.y)})\\frz${tiltDeg}`;
+        E(0, group[0].start, gEnd, `{\\an5\\pos(${cx},${Math.round(ln.y)})${org}\\1c${pal.bg}&\\3c${pal.bg}&\\bord${Math.round(ln.items[0].size * 0.16)}\\shad2\\4c&H96000000&${enter}\\p1}m 0 0 l ${bw} 0 ${bw} ${bh} 0 ${bh}{\\p0}`);
+        for (const p of ln.items) {
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${org}\\c${pal.fg}&\\bord0\\shad0${enter}}${assEscape(p.txt)}`);
+        }
+      }
     } else if (st.kinetic === 'pill') {
       // The whole phrase is visible; a pill GLIDES from word to word on the
       // spoken beat (layer 0 = pill drawing, layer 1 = text).
@@ -682,6 +728,15 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     ? (body) => `{\\c${kindColor}&}${body}{\\c${WHITE}&}`
     : (body) => `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${ctaBg}&\\c${ctaFg}&}${body}{\\r\\blur0.8}`;
 
+  // mixto: ONE word per group renders in the script face — lowercase, bigger,
+  // in the highlight color — inline with the heavy caps (the mixed-typeface
+  // signature). contorno: words are hollow (transparent fill, white outline)
+  // until spoken, then fill solid in the highlight color.
+  const mixSize = Math.round(fontsize * 1.8); // script faces run small — oversize so it reads elegant, not timid
+  const mixPaint = (raw) => `{\\fn${st.mixFont}\\fs${mixSize}\\c${st.highlight || GOLD}&\\bord${Math.max(3, Math.round(fontsize / 22))}}${assEscape(String(raw).toLowerCase())}{\\fn${st.font}\\fs${fontsize}\\c${WHITE}&\\bord${Math.round(fontsize / 8.5)}}`;
+  const hollowWrap = (body) => `{\\1a&HFF&\\3c&HFFFFFF&}${body}{\\1a&H00&\\3c&H000000&}`;
+  const solidFill = (body) => `{\\c${st.highlight || YELLOW}&\\3c&H000000&}${body}{\\c${WHITE}&}`;
+
   const perWord = !!(st.highlight || st.pill || st.glow);
   const groups = groupWords(words, st.wordsPerGroup);
   let gi = -1;
@@ -689,6 +744,13 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
     gi++;
     // escenario: each phrase lands with a slight alternating hand-made tilt
     const tilt = st.center ? `{\\frz${gi % 2 ? '-1.6' : '1.6'}}` : '';
+    // mixto: pick this group's script word (emphasis > number/CTA > longest)
+    let mixIdx = -1;
+    if (st.mixFont) {
+      mixIdx = group.findIndex((w) => w.emp);
+      if (mixIdx < 0) mixIdx = group.findIndex((w) => isNumberWord(w.word) || isCtaWord(w.word));
+      if (mixIdx < 0) mixIdx = group.reduce((bi, w, i) => (String(w.word).length > String(group[bi].word).length ? i : bi), 0);
+    }
     const texts = group.map((w) => {
       const t = assEscape(w.word);
       return {
@@ -734,6 +796,9 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
       const text = texts
         .map((x, j) => {
           const body = withEmoji(x, j);
+          // mixto's script word keeps its treatment even on the spoken beat
+          if (st.mixFont && j === mixIdx) return mixPaint(group[j].word);
+          if (st.hollow) return j === i ? solidFill(body) : hollowWrap(body);
           if (j === i) return paintWord(body, x.emp); // spoken beat always wins
           if (x.kind === 'num') return numPaint(body);
           if (x.kind === 'cta') return ctaPaint(body);
@@ -1380,7 +1445,11 @@ async function renderClip(job, { dir, log }) {
   // Titles moved out of `post` in v2 — they draw on the full canvas after the
   // frame stage (see the template stage after the audio section).
   const postParts = [];
+  // Caption-first signature styles carry their own subtle cinematic grade —
+  // raw office footage is half of what reads "amateur" next to the big tools.
+  const styleGrade = !tpl && (STYLES[job.style] || {}).grade;
   if (tpl && tpl.grade) postParts.push(tpl.grade);
+  else if (styleGrade) postParts.push(styleGrade);
   postParts.push(zoomStage, 'subtitles=captions.ass:fontsdir=.');
   const post = postParts.join(',');
 

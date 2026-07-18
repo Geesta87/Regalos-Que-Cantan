@@ -33,6 +33,11 @@ const STYLE_META = {
   brillo:  { name: 'Brillo',  group: 'fun', desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
   sombra:  { name: 'Sombra',  group: 'sell', desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
   fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  // Signature looks — the Captions.ai-gallery devices, with built-in grades.
+  mixto:     { name: 'Mixto',     group: 'premium', desc: 'Heavy caps + the key word in elegant script — the signature mix', sample: ['UNA CANCIÓN', 'única'], hi: '#D4AF37', upper: true, box: false, accent: true, serif: true },
+  contorno:  { name: 'Contorno',  group: 'sell', desc: 'Hollow outline letters — the spoken word fills in solid', sample: ['SOLO', 'CONTORNO'], hi: '#FFD400', upper: true, box: false, accent: true },
+  bloque:    { name: 'Bloque',    group: 'fun', desc: 'Each phrase on a tilted color block — colors rotate', sample: ['BLOQUE', 'DE COLOR'], hi: '#E4007C', upper: true, box: false, pill: true },
+  subrayado: { name: 'Subrayado', group: 'sell', desc: 'Key words get a marker underline that wipes in', sample: ['ESTO', 'IMPORTA'], hi: '#FFD400', upper: true, box: false, accent: true },
   // Kinetic looks — the word engine animates every word as its own object.
   palabra:   { name: 'Palabra',   group: 'sell', desc: 'Words appear one by one as you speak — and stay', sample: ['PALABRA', 'POR', 'PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
   pildora:   { name: 'Píldora',   group: 'sell', desc: 'A pill GLIDES from word to word on the beat', sample: ['LA', 'PÍLDORA', 'VIAJA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
