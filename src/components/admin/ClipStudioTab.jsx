@@ -171,7 +171,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
     framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
-    punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false,
+    punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false, depthwords: false,
     musicTrack: '', // '' = random pick from the library
     accentColor: '', // '' = the style's own default highlight color
   });
@@ -252,7 +252,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth'];
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords'];
   const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
   // What the server-side auto-clip needs (its option names differ from the form's).
   const presetToAutoConfig = (cfg) => ({
@@ -262,6 +262,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     watermark: !!cfg.watermark, emoji: !!cfg.emoji, sfx_emphasis: !!cfg.sfxwords,
     accent_color: cfg.accentColor || null,
     depth_title: !!cfg.depth,
+    depth_words: !!cfg.depthwords,
   });
 
   const applyPreset = (id) => {
@@ -478,7 +479,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -1051,6 +1052,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
                       ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
                       ['depth', 'Title behind you', 'the intro title renders BEHIND your body — needs Title overlay (or a template) on'],
+                      ['depthwords', 'Key words behind you', 'the gold key words also pop up big BEHIND you as you say them — needs Highlight key words on'],
                       ['music', 'Background music', 'a track from your music library, ducked under speech'],
                       ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
                       ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],

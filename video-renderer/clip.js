@@ -848,6 +848,72 @@ function applyDepthTitle(dir, geo, log) {
   log('depth title composited behind the person');
 }
 
+// Key words behind the person: pick up to 5 well-spaced AI-emphasized words
+// (skipping the intro title zone), matte a ~1.2s window around each, and pop
+// the word BIG behind the speaker exactly as it's said.
+function pickDepthWords(words) {
+  const out = [];
+  let lastT = -99;
+  for (const w of words) {
+    if (!w.emp || w.cut) continue;
+    if (w.start < 3.5) continue;             // the intro belongs to the title
+    if (w.start - lastT < 2.5) continue;     // breathing room between pops
+    const clean = String(w.word).replace(/[.,!?…¿¡:;"'()]+/g, '');
+    if (clean.length < 3) continue;
+    out.push({ t: w.start, word: clean });
+    lastT = w.start;
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+function buildDepthWordsAss(geo, st, windows) {
+  const fam = st.font || 'Anton';
+  const color = st.highlight || YELLOW;
+  const cx = Math.round(geo.w / 2);
+  const y = Math.round(geo.h * 0.3);
+  const ev = windows.map((w) => {
+    const size = Math.min(Math.round(geo.w * 0.17), Math.floor((geo.w * 0.94) / Math.max(4, w.word.length * 0.6)));
+    const anim = `{\\pos(${cx},${y})\\fs${size}\\fscx150\\fscy150\\blur6\\t(0,110,\\fscx100\\fscy100\\blur0)\\fad(0,200)}`;
+    return `Dialogue: 2,${toAssTime(w.from)},${toAssTime(w.to)},DWord,,0,0,0,,${anim}${assEscape(w.word).toUpperCase()}`;
+  });
+  return [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${geo.w}`, `PlayResY: ${geo.h}`,
+    'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: DWord,${fam},100,${color},${color},&H78000000,&H00000000,1,0,0,0,100,100,0,0,1,5,0,8,40,40,10,1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    ...ev,
+  ].join('\n') + '\n';
+}
+
+// Composite pass: draw the pop words on the clip, then paste windowed person
+// cutouts (one small alpha video per word) back on top so each word lands
+// behind the speaker. setpts shifts each cutout to its window; overlay only
+// fires inside the window (enable + eof_action=pass).
+function applyDepthWords(dir, geo, windows, log) {
+  fs.renameSync(path.join(dir, 'clip.mp4'), path.join(dir, 'pre-words.mp4'));
+  const parts = [`[0:v]subtitles=depthwords.ass:fontsdir=.[bg]`];
+  let cur = 'bg';
+  windows.forEach((w, i) => {
+    parts.push(`[0:v]trim=${w.from.toFixed(3)}:${w.to.toFixed(3)},setpts=PTS-STARTPTS[sg${i}]`);
+    parts.push(`[${i + 1}:v]scale=${geo.w}:${geo.h},format=gray[am${i}]`);
+    parts.push(`[sg${i}][am${i}]alphamerge,setpts=PTS+${w.from.toFixed(3)}/TB[p${i}]`);
+    parts.push(`[${cur}][p${i}]overlay=0:0:enable='between(t,${w.from.toFixed(3)},${w.to.toFixed(3)})':eof_action=pass[c${i}]`);
+    cur = `c${i}`;
+  });
+  const args = ['-i', 'pre-words.mp4'];
+  windows.forEach((_, i) => args.push('-i', `alpha-w${i}.mp4`));
+  args.push('-filter_complex', parts.join(';'), '-map', `[${cur}]`, '-map', '0:a?',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p',
+    '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4');
+  ff(dir, args);
+  log(`depth words: ${windows.length} key word(s) popped behind the person`);
+}
+
 function appendBrandOutro(dir, geo, log) {
   // Work with local copies so font/logo paths need no ffmpeg escaping.
   fs.copyFileSync(LOGO, path.join(dir, 'outro-logo.png'));
@@ -1512,6 +1578,35 @@ async function renderClip(job, { dir, log }) {
       ff(dir, ['-i', 'pre-depth.mp4', '-vf', 'subtitles=titles.ass:fontsdir=.',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p',
         '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4']);
+    }
+  }
+
+  // Key words behind the person (depth_words extra): each picked emphasis
+  // word gets its own ~1.2s matte window and pops big behind the speaker.
+  if (opts.depth_words) {
+    const picked = pickDepthWords(words);
+    if (picked.length) {
+      try {
+        const windows = picked.map((p) => ({
+          word: p.word,
+          from: Math.max(0, p.t - 0.12),
+          to: Math.min(outDur, p.t + 1.15),
+        })).filter((w) => w.to - w.from > 0.4);
+        const { buildPersonAlpha } = require('./segment');
+        for (let i = 0; i < windows.length; i++) {
+          await buildPersonAlpha(dir, path.join(dir, 'clip.mp4'), windows[i].to - windows[i].from, log,
+            { start: windows[i].from, out: `alpha-w${i}.mp4` });
+        }
+        const stDW = applyAccent(STYLES[job.style] || STYLES.boldpop, opts.accent_color);
+        fs.writeFileSync(path.join(dir, 'depthwords.ass'), buildDepthWordsAss(geo, stDW, windows));
+        applyDepthWords(dir, geo, windows, log);
+      } catch (e) {
+        log(`depth words failed (${e.message}) — clip keeps rendering without them`);
+        const pre = path.join(dir, 'pre-words.mp4');
+        if (fs.existsSync(pre) && !fs.existsSync(path.join(dir, 'clip.mp4'))) fs.renameSync(pre, path.join(dir, 'clip.mp4'));
+      }
+    } else {
+      log('depth words: no eligible emphasis words (need Highlight key words on)');
     }
   }
 

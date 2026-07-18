@@ -20,10 +20,11 @@ function ort() {
 }
 
 // Matte `seconds` of `srcFile` (a finished, final-geometry video) into
-// dir/alpha.mp4 — a grayscale person mask video at the same timeline.
-async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}) {
+// dir/<out> — a grayscale person mask video. `start` offsets into the source
+// (used for mid-clip key-word windows).
+async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}, { start = 0, out = 'alpha.mp4' } = {}) {
   const t0 = Date.now();
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-t', String(seconds), '-i', srcFile,
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-t', String(seconds), '-i', srcFile,
     '-vf', `fps=${FPS},scale=${MW}:${MH}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'depth-frames.rgb'], { cwd: dir });
   const raw = fs.readFileSync(path.join(dir, 'depth-frames.rgb'));
   const frameBytes = MW * MH * 3;
@@ -56,11 +57,11 @@ async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}) {
   fs.writeFileSync(path.join(dir, 'depth-alpha.gray'), alpha);
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray',
     '-s', `${MW}x${MH}`, '-r', String(FPS), '-i', 'depth-alpha.gray',
-    '-c:v', 'libx264', '-crf', '12', '-preset', 'fast', 'alpha.mp4'], { cwd: dir });
+    '-c:v', 'libx264', '-crf', '12', '-preset', 'fast', out], { cwd: dir });
   fs.rmSync(path.join(dir, 'depth-frames.rgb'), { force: true });
   fs.rmSync(path.join(dir, 'depth-alpha.gray'), { force: true });
-  log(`depth matting: ${nFrames} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return path.join(dir, 'alpha.mp4');
+  log(`depth matting: ${nFrames} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out})`);
+  return path.join(dir, out);
 }
 
 module.exports = { buildPersonAlpha };

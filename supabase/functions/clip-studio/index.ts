@@ -375,6 +375,7 @@ serve(async (req) => {
         accent_color: typeof rawOpts.accent_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(rawOpts.accent_color)
           ? rawOpts.accent_color : null,
         depth_title: !!rawOpts.depth_title,
+        depth_words: !!rawOpts.depth_words,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
