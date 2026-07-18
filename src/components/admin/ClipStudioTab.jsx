@@ -800,7 +800,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
               {project.source_url && (
                 // preview_url = browser-safe H.264 copy (camera codecs like
                 // DJI H.265 play black in Chrome); falls back to the original.
-                <video ref={videoRef} src={project.preview_url || project.source_url} controls playsInline
+                <video ref={videoRef} controls playsInline
+                  src={project.preview_url?.startsWith('http') ? project.preview_url : project.source_url}
                   className="w-full rounded-xl bg-black mb-3" style={{ maxHeight: '60vh', minHeight: 200, objectFit: 'contain' }} />
               )}
               {project.transcript_text && (

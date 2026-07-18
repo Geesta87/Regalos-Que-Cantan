@@ -115,18 +115,29 @@ serve(async (req) => {
     // Projects ingested before the preview transcode existed (or whose
     // transcode failed): produce the 720p H.264 dashboard copy. One per run —
     // a long source can take a few minutes on the render queue.
-    const { data: noPreview } = await admin.from('clip_projects')
+    // 'pending' marks an in-flight dispatch so the sweep never re-queues a
+    // multi-GB transcode every 5 minutes; stale pendings (>45 min — a
+    // renderer deploy can kill the job) get re-dispatched.
+    let { data: noPreview } = await admin.from('clip_projects')
       .select('id, source_url')
       .eq('status', 'ready').is('preview_url', null).not('source_url', 'is', null)
       .is('source_purged_at', null)
       .order('updated_at', { ascending: false })
       .limit(1);
+    if (!noPreview?.length) {
+      ({ data: noPreview } = await admin.from('clip_projects')
+        .select('id, source_url')
+        .eq('preview_url', 'pending').lt('updated_at', minutesAgo(45))
+        .is('source_purged_at', null)
+        .limit(1));
+    }
     const previewed: string[] = [];
     for (const proj of noPreview || []) {
       try {
         const previewPath = `${proj.id}/preview.mp4`;
         const { data: signedPrev, error: pe } = await admin.storage.from(BUCKET).createSignedUploadUrl(previewPath, { upsert: true });
         if (pe) throw new Error(pe.message);
+        await admin.from('clip_projects').update({ preview_url: 'pending', updated_at: nowIso() }).eq('id', proj.id);
         await dispatchRenderer('/clip-prepare', {
           project_id: proj.id, source_url: proj.source_url, bucket: BUCKET, callback_url: CALLBACK_URL,
           preview_only: true,
