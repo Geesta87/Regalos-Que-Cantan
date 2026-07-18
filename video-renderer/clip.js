@@ -67,9 +67,9 @@ async function prepareClipSource(job, { dir, log }) {
 // Output geometry per aspect ratio. MarginV keeps captions above the
 // TikTok/Reels UI band on vertical, comfortable on the others.
 const ASPECTS = {
-  '9:16': { w: 1080, h: 1920, fontsize: 76, marginV: 460 },
-  '1:1':  { w: 1080, h: 1080, fontsize: 64, marginV: 140 },
-  '16:9': { w: 1920, h: 1080, fontsize: 60, marginV: 110 },
+  '9:16': { w: 1080, h: 1920, fontsize: 82, marginV: 460 },
+  '1:1':  { w: 1080, h: 1080, fontsize: 68, marginV: 140 },
+  '16:9': { w: 1920, h: 1080, fontsize: 63, marginV: 110 },
 };
 
 // ASS colors are &HAABBGGRR (alpha, blue, green, red).
@@ -94,29 +94,32 @@ const DARKTXT = '&H00181818';
 //   emphItalic: true    emphasized words go italic+bigger instead of gold
 //   marginV, align      caption placement overrides
 const STYLES = {
-  boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', font: 'Anton' },
-  goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline', font: 'Anton' },
+  // Flagship caption styles run on Montserrat Black / Archivo Black — the
+  // heavy geometric faces the premium tools use. Anton stays only where a
+  // template's identity calls for condensed display type.
+  boldpop:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', font: 'Montserrat Black' },
+  goldglow: { wordsPerGroup: 3, highlight: GOLD,   upper: true,  border: 'outline', font: 'Montserrat Black' },
   cleanbox: { wordsPerGroup: 5, highlight: null,   upper: false, border: 'box' },
-  popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true, font: 'Anton' },
-  rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true, font: 'Anton' },
+  popline:  { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', pop: true, font: 'Montserrat Black' },
+  rosa:     { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true, font: 'Montserrat Black' },
   minimal:  { wordsPerGroup: 4, highlight: null,   upper: false, border: 'outline', scale: 0.72 },
   // Caption-first looks — no template layer, the captions ARE the design.
   // All of these honor opts.accent (owner-picked color) via applyAccent.
   //   fsp: extra letter-spacing (ASS Spacing)   shadow: hard drop shadow depth
   // Kinetic looks — the word engine lays out and animates every word as its
   // own object (fontkit metrics -> absolute \pos). See buildKineticAss.
-  palabra:   { wordsPerGroup: 4, highlight: YELLOW, upper: true, font: 'Anton', kinetic: 'reveal' },
-  pildora:   { wordsPerGroup: 4, highlight: null,   upper: true, font: 'Anton', kinetic: 'pill', pill: { bg: YELLOW, fg: DARKTXT } },
-  heroe:     { wordsPerGroup: 5, highlight: YELLOW, upper: true, font: 'Anton', kinetic: 'hero' },
-  temblor:   { wordsPerGroup: 3, highlight: ORANGE, upper: true, border: 'outline', font: 'Anton', pop: true, shake: true, entrance: 'slam' },
-  escenario: { wordsPerGroup: 3, highlight: GOLD,   upper: true, border: 'outline', font: 'Anton', scale: 1.12, center: true, entrance: 'fade' },
+  palabra:   { wordsPerGroup: 4, highlight: YELLOW, upper: true, font: 'Montserrat Black', kinetic: 'reveal' },
+  pildora:   { wordsPerGroup: 4, highlight: null,   upper: true, font: 'Montserrat Black', kinetic: 'pill', pill: { bg: YELLOW, fg: DARKTXT } },
+  heroe:     { wordsPerGroup: 5, highlight: YELLOW, upper: true, font: 'Montserrat Black', kinetic: 'hero' },
+  temblor:   { wordsPerGroup: 3, highlight: ORANGE, upper: true, border: 'outline', font: 'Montserrat Black', pop: true, shake: true, entrance: 'slam' },
+  escenario: { wordsPerGroup: 3, highlight: GOLD,   upper: true, border: 'outline', font: 'Montserrat Black', scale: 1.08, center: true, entrance: 'fade' },
   lujo:     { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.8,  font: 'Prata', fsp: 3, emphItalic: true, entrance: 'fade' },
-  grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.32, font: 'Anton', pop: true, entrance: 'slam' },
-  resalta:  { wordsPerGroup: 3, highlight: null,   upper: true,  border: 'outline', scale: 1.05, font: 'Anton', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
-  brillo:   { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Anton', glow: CYAN, pop: true, entrance: 'flicker' },
-  sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.18, font: 'Anton', shadow: true, pop: true, entrance: 'slam' },
+  grande:   { wordsPerGroup: 2, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.18, font: 'Archivo Black', pop: true, entrance: 'slam' },
+  resalta:  { wordsPerGroup: 3, highlight: null,   upper: true,  border: 'outline', scale: 1.0, font: 'Montserrat Black', pill: { bg: YELLOW, fg: DARKTXT }, pop: true },
+  brillo:   { wordsPerGroup: 3, highlight: CYAN,   upper: true,  border: 'outline', font: 'Montserrat Black', glow: CYAN, pop: true, entrance: 'flicker' },
+  sombra:   { wordsPerGroup: 3, highlight: YELLOW, upper: true,  border: 'outline', scale: 1.08, font: 'Archivo Black', shadow: true, pop: true, entrance: 'slam' },
   // fluido: the karaoke sweep — color fills across each word as it's spoken
-  fluido:   { wordsPerGroup: 4, highlight: GOLD,   upper: true,  border: 'outline', font: 'Anton', fill: true, entrance: 'fade' },
+  fluido:   { wordsPerGroup: 4, highlight: GOLD,   upper: true,  border: 'outline', font: 'Montserrat Black', fill: true, entrance: 'fade' },
   // Template looks (caption layer — frame/title/stickers/grade in TEMPLATES):
   fiesta:    { wordsPerGroup: 3, highlight: PINK,   upper: true,  border: 'outline', pop: true,  font: 'Anton' },
   editorial: { wordsPerGroup: 4, highlight: GOLD,   upper: false, border: 'outline', scale: 0.92, font: 'Prata', emphItalic: true, entrance: 'fade' },
@@ -377,19 +380,21 @@ function groupWords(words, perGroup) {
 }
 
 function assHeader(geo, st, fontsize, contrast = 0) {
-  // contrast = auto-readability boost (0 none, 1 bright footage, 2 very
-  // bright): thicker outline + drop shadow so white captions never wash out
-  // on bright walls. Box styles already carry their own scrim.
-  const outlineW = contrast >= 2 ? Math.round(fontsize / 6.5)
-    : contrast === 1 ? Math.round(fontsize / 8.5)
-    : Math.round(fontsize / 11);
+  // Premium stroke system: a FAT outline (the thin default stroke is what
+  // makes captions read "stock") + an always-on soft translucent drop shadow
+  // for depth. contrast = auto-readability boost (bright footage) thickens
+  // further. Box styles carry their own scrim instead.
+  const outlineW = contrast >= 2 ? Math.round(fontsize / 6)
+    : contrast === 1 ? Math.round(fontsize / 7)
+    : Math.round(fontsize / 8.5);
   const shadowDepth = Math.max(
-    st.shadow ? Math.round(fontsize / 7) : 0, // hard 3D drop shadow (sombra)
-    contrast >= 2 ? Math.round(fontsize / 16) : contrast === 1 ? Math.round(fontsize / 24) : 0);
+    st.shadow ? Math.round(fontsize / 7) : Math.round(fontsize / 20), // hard 3D (sombra) vs soft depth
+    contrast >= 2 ? Math.round(fontsize / 14) : contrast === 1 ? Math.round(fontsize / 18) : 0);
   const outline = st.border === 'box'
     ? `3,${Math.round(fontsize / 5)},0`   // BorderStyle=3 (box) — Outline acts as box padding
     : `1,${outlineW},${shadowDepth}`; // BorderStyle=1, thick outline
-  const backColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
+  const backColour = st.border === 'box' ? BOX_BLACK
+    : st.shadow ? '&H00000000' : '&H6E000000'; // shadow colour: hard for sombra, soft translucent otherwise
   const outlineColour = st.border === 'box' ? BOX_BLACK : '&H00000000';
   const align = st.center ? 5 : 2; // center-stage styles sit mid-screen
   const hookSize = Math.round(geo.fontsize * 0.6);
@@ -468,6 +473,7 @@ function applyAccent(st, accentHex) {
 const FONT_FILE = {
   Anton: 'Anton-Regular.ttf', Prata: 'Prata-Regular.ttf', 'Patrick Hand': 'PatrickHand-Regular.ttf',
   'Space Mono': 'SpaceMono-Regular.ttf', 'Great Vibes': 'GreatVibes-Regular.ttf',
+  'Montserrat Black': 'Montserrat-Black.ttf', 'Archivo Black': 'ArchivoBlack-Regular.ttf',
 };
 const _fkFonts = {};
 function textW(fam, text, size) {
@@ -515,10 +521,10 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.palabra, opts.accent);
   const fam = st.font || 'Anton';
-  const baseSize = Math.round(geo.fontsize * (st.scale || 1) * 1.06);
+  const baseSize = Math.round(geo.fontsize * (st.scale || 1) * 1.08);
   const contrast = opts.contrast || 0;
-  const bord = contrast >= 2 ? Math.round(baseSize / 6.5) : contrast === 1 ? Math.round(baseSize / 8.5) : Math.round(baseSize / 10);
-  const shad = contrast ? Math.round(baseSize / 22) : 0;
+  const bord = contrast >= 2 ? Math.round(baseSize / 6) : contrast === 1 ? Math.round(baseSize / 7) : Math.round(baseSize / 8.5);
+  const shad = Math.round(baseSize / (contrast ? 16 : 22));
   const bottomY = geo.h - (st.marginV || geo.marginV) - Math.round(baseSize * 0.5);
   const hookSize = Math.round(geo.fontsize * 0.6);
   const header = [
@@ -527,14 +533,16 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     // Bold=0 on purpose — the layout is measured on the real glyph advances
-    `Style: K,${fam},${baseSize},${WHITE},${WHITE},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,${bord},${shad},5,0,0,0,1`,
+    `Style: K,${fam},${baseSize},${WHITE},${WHITE},&H00000000,&H6E000000,0,0,0,0,100,100,0,0,1,${bord},${shad},5,0,0,0,1`,
     `Style: Hook,DejaVu Sans,${hookSize},${WHITE},${WHITE},${BOX_BLACK},${BOX_BLACK},1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,60,60,${geo.h >= 1900 ? 170 : 100},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
   const lines = hookLine({ hookTitle: opts.hookTitle, totalDur: opts.totalDur });
-  const E = (layer, from, to, text) => lines.push(`Dialogue: ${layer},${toAssTime(from)},${toAssTime(to)},K,,0,0,0,,${text}`);
+  // \blur0.8 softens the stroke edge — the difference between a harsh burned
+  // stroke and the smooth pro one. Injected into the first tag block.
+  const E = (layer, from, to, text) => lines.push(`Dialogue: ${layer},${toAssTime(from)},${toAssTime(to)},K,,0,0,0,,${text.replace('{', '{\\blur0.8')}`);
   const wordColor = (w) => (w.emp || isNumberWord(w.word) || isCtaWord(w.word) ? (st.highlight || GOLD) : WHITE);
   const groups = groupWords(words, st.wordsPerGroup);
 
@@ -570,7 +578,7 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
         // \bord on a drawing rounds the rect corners in the pill color.
         // Coordinates MUST start at the origin — libass only centers (an5)
         // drawings whose bbox is measured from (0,0); negative extents drift.
-        E(0, from, to, `{\\an5${posTag}\\1c${pillBg}&\\3c${pillBg}&\\bord${Math.round(p.size * 0.14)}\\shad0\\p1}m 0 0 l ${w2 * 2} 0 ${w2 * 2} ${h2 * 2} 0 ${h2 * 2}{\\p0}`);
+        E(0, from, to, `{\\an5${posTag}\\1c${pillBg}&\\3c${pillBg}&\\bord${Math.round(p.size * 0.18)}\\shad0\\p1}m 0 0 l ${w2 * 2} 0 ${w2 * 2} ${h2 * 2} 0 ${h2 * 2}{\\p0}`);
         pos.forEach((q, j) => {
           const fsTag = Math.round(q.size) !== baseSize ? `\\fs${Math.round(q.size)}` : '';
           const color = j === i ? pillFg : wordColor(group[j]);
@@ -634,11 +642,14 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const empSize = Math.round(fontsize * 1.18);
   const empOpen = st.emphItalic ? `{\\i1\\fs${empSize}}` : `{\\c${GOLD}&\\fs${empSize}}`;
   const empClose = st.emphItalic ? `{\\i0\\fs${fontsize}}` : `{\\c${WHITE}&\\fs${fontsize}}`;
+  // Soft stroke edge on every caption (harsh burned strokes read "stock").
+  const SOFT = `{\\blur0.8}`;
   // Per-style caption-group entrances: each personality arrives differently.
+  // Blur transitions settle at 0.8 (not 0) so the soft edge survives them.
   const ENTRANCES = {
     rise: `{\\fscy82\\t(0,90,\\fscy100)}`,
-    slam: `{\\fscx128\\fscy128\\blur4\\t(0,100,\\fscx100\\fscy100\\blur0)}`,
-    fade: `{\\alpha&HFF&\\blur6\\t(0,160,\\alpha&H00&\\blur0)}`,
+    slam: `{\\fscx128\\fscy128\\blur4\\t(0,100,\\fscx100\\fscy100\\blur0.8)}`,
+    fade: `{\\alpha&HFF&\\blur6\\t(0,160,\\alpha&H00&\\blur0.8)}`,
     flicker: `{\\alpha&HFF&\\t(0,40,\\alpha&H00&)\\t(40,80,\\alpha&H90&)\\t(80,140,\\alpha&H00&)}`,
     wobble: `{\\frz-4\\fscy85\\t(0,140,\\frz0\\fscy100)}`,
   };
@@ -652,8 +663,8 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const shakeOpen = `{\\t(0,45,\\fscx114\\fscy88)\\t(45,90,\\fscx90\\fscy112)\\t(90,140,\\fscx108\\fscy94)\\t(140,190,\\fscx100\\fscy100)}`;
   const paintWord = (body, isEmp) => {
     let paint;
-    if (st.pill) paint = `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${st.pill.bg}&\\c${st.pill.fg}&}${body}{\\r}`;
-    else if (st.glow) paint = `{\\bord${Math.max(4, Math.round(fontsize / 8))}\\3c${st.glow}&\\blur7\\c&HFFFFFF&}${body}{\\r}`;
+    if (st.pill) paint = `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${st.pill.bg}&\\c${st.pill.fg}&}${body}{\\r\\blur0.8}`;
+    else if (st.glow) paint = `{\\bord${Math.max(4, Math.round(fontsize / 8))}\\3c${st.glow}&\\blur7\\c&HFFFFFF&}${body}{\\r\\blur0.8}`;
     else paint = `{\\c${st.highlight}&}${body}{\\c${WHITE}&}`;
     if (st.shake && isEmp) return `${shakeOpen}${paint}{\\fscx100\\fscy100}`;
     return st.pop ? `${popOpen}${paint}${popClose}` : paint;
@@ -669,7 +680,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
   const numPaint = (body) => `{\\fs${numSize}\\c${kindColor}&}${body}{\\fs${fontsize}\\c${WHITE}&}`;
   const ctaPaint = st.border === 'box'
     ? (body) => `{\\c${kindColor}&}${body}{\\c${WHITE}&}`
-    : (body) => `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${ctaBg}&\\c${ctaFg}&}${body}{\\r}`;
+    : (body) => `{\\bord${Math.max(8, Math.round(fontsize / 3.4))}\\3c${ctaBg}&\\c${ctaFg}&}${body}{\\r\\blur0.8}`;
 
   const perWord = !!(st.highlight || st.pill || st.glow);
   const groups = groupWords(words, st.wordsPerGroup);
@@ -698,7 +709,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
         const to = idx < group.length - 1 ? group[idx + 1].start : group[idx].end;
         return `{\\kf${Math.max(1, Math.round((to - from) * 100))}}${withEmoji(x, idx)}`;
       }).join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${tilt}${entrance}{\\1c${st.highlight || GOLD}&\\2c&H00FFFFFF&}${kf}`);
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${SOFT}${tilt}${entrance}{\\1c${st.highlight || GOLD}&\\2c&H00FFFFFF&}${kf}`);
       continue;
     }
     if (!perWord) {
@@ -709,7 +720,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
         if (x.kind === 'cta') return ctaPaint(body);
         return x.emp ? `${empOpen}${body}${empClose}` : body;
       }).join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${tilt}${entrance}${text}`);
+      lines.push(`Dialogue: 0,${toAssTime(group[0].start)},${toAssTime(group[group.length - 1].end)},Cap,,0,0,0,,${SOFT}${tilt}${entrance}${text}`);
       continue;
     }
     // One dialogue per word: full group shown, the spoken word painted. The
@@ -730,7 +741,7 @@ function buildAss(words, styleKey, aspectKey, opts = {}) {
           return body;
         })
         .join(' ');
-      lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${intro}${text}`);
+      lines.push(`Dialogue: 0,${toAssTime(from)},${toAssTime(to)},Cap,,0,0,0,,${SOFT}${intro}${text}`);
     }
   }
 
@@ -748,7 +759,7 @@ function buildAssFromGroups(groups, styleKey, aspectKey, opts = {}) {
   for (const g of groups) {
     if (!(g && typeof g.text === 'string' && g.text.trim())) continue;
     const text = st.upper ? assEscape(g.text).toUpperCase() : assEscape(g.text);
-    lines.push(`Dialogue: 0,${toAssTime(g.start)},${toAssTime(g.end)},Cap,,0,0,0,,{\\q0}${text}`);
+    lines.push(`Dialogue: 0,${toAssTime(g.start)},${toAssTime(g.end)},Cap,,0,0,0,,{\\q0\\blur0.8}${text}`);
   }
   return header.concat(lines).join('\n') + '\n';
 }
