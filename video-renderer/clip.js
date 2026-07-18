@@ -871,9 +871,14 @@ function buildDepthWordsAss(geo, st, windows) {
   const fam = st.font || 'Anton';
   const color = st.highlight || YELLOW;
   const cx = Math.round(geo.w / 2);
-  const y = Math.round(geo.h * 0.3);
   const ev = windows.map((w) => {
-    const size = Math.min(Math.round(geo.w * 0.17), Math.floor((geo.w * 0.94) / Math.max(4, w.word.length * 0.6)));
+    const size = Math.min(Math.round(geo.w * 0.19), Math.floor((geo.w * 0.94) / Math.max(4, w.word.length * 0.6)));
+    // Anchor the word to THIS window's detected head-top: most of the word
+    // sits above the head, only the bottom ~20% tucks behind it (the way
+    // Captions.ai places depth text). No head found -> a high default.
+    const headY = w.headTopFrac !== null && w.headTopFrac !== undefined
+      ? Math.round(w.headTopFrac * geo.h) : Math.round(geo.h * 0.3);
+    const y = Math.max(Math.round(geo.h * 0.05), headY - Math.round(size * 0.8));
     const anim = `{\\pos(${cx},${y})\\fs${size}\\fscx150\\fscy150\\blur6\\t(0,110,\\fscx100\\fscy100\\blur0)\\fad(0,200)}`;
     return `Dialogue: 2,${toAssTime(w.from)},${toAssTime(w.to)},DWord,,0,0,0,,${anim}${assEscape(w.word).toUpperCase()}`;
   });
@@ -1594,8 +1599,9 @@ async function renderClip(job, { dir, log }) {
         })).filter((w) => w.to - w.from > 0.4);
         const { buildPersonAlpha } = require('./segment');
         for (let i = 0; i < windows.length; i++) {
-          await buildPersonAlpha(dir, path.join(dir, 'clip.mp4'), windows[i].to - windows[i].from, log,
+          const res = await buildPersonAlpha(dir, path.join(dir, 'clip.mp4'), windows[i].to - windows[i].from, log,
             { start: windows[i].from, out: `alpha-w${i}.mp4` });
+          windows[i].headTopFrac = res && typeof res === 'object' ? res.headTopFrac : null;
         }
         const stDW = applyAccent(STYLES[job.style] || STYLES.boldpop, opts.accent_color);
         fs.writeFileSync(path.join(dir, 'depthwords.ass'), buildDepthWordsAss(geo, stDW, windows));

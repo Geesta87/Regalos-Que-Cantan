@@ -38,6 +38,10 @@ async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}, { start =
   const dsr = new O.Tensor('float32', new Float32Array([0.6]), [1]);
   const plane = MH * MW;
   const alpha = Buffer.allocUnsafe(nFrames * plane);
+  // Track the highest point of the person (usually the head top) across the
+  // window — depth text is placed just above it so it stays visible.
+  let headTopRow = MH;
+  const col0 = Math.round(MW * 0.2), col1 = Math.round(MW * 0.8);
   for (let i = 0; i < nFrames; i++) {
     const off = i * frameBytes;
     const chw = new Float32Array(3 * plane);
@@ -53,6 +57,13 @@ async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}, { start =
     r1 = out.r1o; r2 = out.r2o; r3 = out.r3o; r4 = out.r4o;
     const pha = out.pha.data;
     for (let p = 0; p < plane; p++) alpha[i * plane + p] = Math.max(0, Math.min(255, Math.round(pha[p] * 255)));
+    // head-top scan: first row (top-down, upper 70%) whose center band is
+    // meaningfully covered by the person
+    for (let row = 0; row < Math.round(MH * 0.7); row++) {
+      let sum = 0, n = 0;
+      for (let c = col0; c < col1; c += 4) { sum += pha[row * MW + c]; n++; }
+      if (sum / n > 0.3) { if (row < headTopRow) headTopRow = row; break; }
+    }
   }
   fs.writeFileSync(path.join(dir, 'depth-alpha.gray'), alpha);
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray',
@@ -60,8 +71,9 @@ async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}, { start =
     '-c:v', 'libx264', '-crf', '12', '-preset', 'fast', out], { cwd: dir });
   fs.rmSync(path.join(dir, 'depth-frames.rgb'), { force: true });
   fs.rmSync(path.join(dir, 'depth-alpha.gray'), { force: true });
-  log(`depth matting: ${nFrames} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out})`);
-  return path.join(dir, out);
+  const headTopFrac = headTopRow >= MH ? null : headTopRow / MH;
+  log(`depth matting: ${nFrames} frames in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out}, headTop ${headTopFrac === null ? 'n/a' : headTopFrac.toFixed(2)})`);
+  return { file: path.join(dir, out), headTopFrac };
 }
 
 module.exports = { buildPersonAlpha };
