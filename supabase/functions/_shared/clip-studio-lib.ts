@@ -437,6 +437,8 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
             accent_color: typeof pc.accent_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(pc.accent_color) ? pc.accent_color : null,
             depth_title: !!pc.depth_title,
             depth_words: !!pc.depth_words,
+            punch_cuts: !!pc.punch_cuts,
+            beat_sync: !!pc.beat_sync,
           };
       const render_job = isTeaser
         ? {

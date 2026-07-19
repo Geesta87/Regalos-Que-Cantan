@@ -196,7 +196,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
     framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
-    punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false, depthwords: false,
+    punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false, depthwords: false, puncher: false, beatsync: false,
     musicTrack: '', // '' = random pick from the library
     accentColor: '', // '' = the style's own default highlight color
   });
@@ -207,6 +207,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [enBusyId, setEnBusyId] = useState(null);
+  const [hookBusyId, setHookBusyId] = useState(null);
   const [musicBusy, setMusicBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [songQ, setSongQ] = useState('');
@@ -277,7 +278,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords'];
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords', 'puncher', 'beatsync'];
   const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
   // What the server-side auto-clip needs (its option names differ from the form's).
   const presetToAutoConfig = (cfg) => ({
@@ -288,6 +289,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     accent_color: cfg.accentColor || null,
     depth_title: !!cfg.depth,
     depth_words: !!cfg.depthwords,
+    punch_cuts: !!cfg.puncher,
+    beat_sync: !!cfg.beatsync,
   });
 
   const applyPreset = (id) => {
@@ -504,7 +507,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -544,6 +547,20 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   };
 
   // English caption version: same moment + settings, captions translated.
+  // AI writes 3 alternative opening hooks; each renders as its own clip.
+  const makeHookVariants = async (clip) => {
+    setHookBusyId(clip.id);
+    try {
+      const r = await call({ action: 'hook_variants', clip_id: clip.id });
+      showToast?.(`Rendering 3 hook versions: ${(r.hooks || []).join(' · ')}`);
+      load(true);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setHookBusyId(null);
+    }
+  };
+
   const makeEnglishVersion = async (clip) => {
     setEnBusyId(clip.id);
     try {
@@ -1082,6 +1099,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],
                       ['depth', 'Title behind you', 'the intro title renders BEHIND your body — needs Title overlay (or a template) on'],
                       ['depthwords', 'Key words behind you', 'the gold key words also pop up big BEHIND you as you say them — needs Highlight key words on'],
+                      ['puncher', 'Auto punch-in cuts', 'the framing jumps between normal and 114% zoom on phrase boundaries — the pro talking-head edit'],
+                      ['beatsync', 'Beat-sync cuts', 'punch cuts snap to the music beat and the track starts on a downbeat — needs Background music + Auto punch-in on'],
                       ['music', 'Background music', 'a track from your music library, ducked under speech'],
                       ['broll', 'AI B-roll', 'cuts to matching stock footage while the voice continues'],
                       ['fx', 'Transitions & effects', 'soft fades on cuts and b-roll'],
@@ -1186,6 +1205,12 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                             {!isTeaser && !(c.label || '').startsWith('EN — ') && (
                               <button onClick={() => makeEnglishVersion(c)} disabled={enBusyId === c.id} className={btn.iconGhost} title="Make the English caption version of this clip">
                                 {enBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Languages size={15} />}
+                              </button>
+                            )}
+                            {!isTeaser && !(c.label || '').startsWith('Hook: ') && (
+                              <button onClick={() => makeHookVariants(c)} disabled={hookBusyId === c.id} className={btn.iconGhost}
+                                title="AI writes 3 alternative opening hooks and renders each as its own clip — pick the strongest">
+                                {hookBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                               </button>
                             )}
                             <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>

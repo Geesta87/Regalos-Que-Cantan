@@ -1695,6 +1695,76 @@ async function renderClip(job, { dir, log }) {
     }
   }
 
+  // Beat detection (in-house, no deps): onset-energy envelope at 8kHz ->
+  // autocorrelation over 60-180 BPM lags -> {period, phase} in seconds.
+  // Used to snap punch-cuts to the music grid and start the track on a beat.
+  function detectBeats(file) {
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-t', '60', '-i', file,
+      '-ac', '1', '-ar', '8000', '-f', 's16le', 'beat.pcm'], { cwd: dir });
+    const buf = fs.readFileSync(path.join(dir, 'beat.pcm'));
+    fs.rmSync(path.join(dir, 'beat.pcm'), { force: true });
+    const n = buf.length >> 1, hop = 256;
+    const frames = Math.floor(n / hop) - 1;
+    if (frames < 40) return null;
+    const env = new Float64Array(frames);
+    let prev = 0;
+    for (let f = 0; f < frames; f++) {
+      let e = 0;
+      for (let i = f * hop; i < (f + 1) * hop; i++) { const v = buf.readInt16LE(i * 2); e += v * v; }
+      env[f] = Math.max(0, e - prev); // positive energy flux = onsets
+      prev = e;
+    }
+    const secPerFrame = hop / 8000;
+    let bestLag = 0, bestScore = -1;
+    const minLag = Math.round(0.333 / secPerFrame), maxLag = Math.round(1.0 / secPerFrame);
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let s = 0;
+      for (let f = 0; f + lag < frames; f++) s += env[f] * env[f + lag];
+      if (s > bestScore) { bestScore = s; bestLag = lag; }
+    }
+    if (!bestLag) return null;
+    let bestPhase = 0, bestPs = -1;
+    for (let p = 0; p < bestLag; p++) {
+      let s = 0;
+      for (let f = p; f < frames; f += bestLag) s += env[f];
+      if (s > bestPs) { bestPs = s; bestPhase = p; }
+    }
+    return { period: bestLag * secPerFrame, phase: bestPhase * secPerFrame };
+  }
+
+  // Auto punch-in cuts: alternate caption groups render at a hard 114% zoom
+  // so the framing never sits still — the #1 pro talking-head edit pattern.
+  // With beat-sync on (and music), cut boundaries snap to the beat grid and
+  // the music itself starts on a downbeat.
+  let punchWindows = [];
+  let musicSeek = 0;
+  let beatGrid = null;
+  if (opts.punch_cuts && words.length) {
+    if (opts.beat_sync && job.music_url) {
+      try {
+        // music normally downloads later — pull it early for beat analysis
+        if (!fs.existsSync(path.join(dir, 'music.mp3'))) await download(job.music_url, path.join(dir, 'music.mp3'));
+        beatGrid = detectBeats('music.mp3');
+        if (beatGrid) {
+          musicSeek = beatGrid.phase; // downbeat lands at t=0
+          log(`beat-sync: ~${Math.round(60 / beatGrid.period)} BPM, phase ${beatGrid.phase.toFixed(2)}s`);
+        }
+      } catch (e) { log(`beat-sync skipped (${e.message})`); }
+    }
+    const snapBeat = (t) => {
+      if (!beatGrid) return t;
+      const k = Math.round(t / beatGrid.period);
+      const bt = k * beatGrid.period;
+      return Math.abs(bt - t) <= 0.3 ? Math.max(0, bt) : t;
+    };
+    const pGroups = groupWords(words, (STYLES[job.style] || {}).wordsPerGroup || 3);
+    punchWindows = pGroups
+      .map((g, i) => ({ i, a: snapBeat(g[0].start), b: snapBeat(g[g.length - 1].end + 0.05) }))
+      .filter((w) => w.i % 2 === 1 && w.b - w.a > 0.4)
+      .slice(0, 30);
+    if (punchWindows.length) log(`punch cuts: ${punchWindows.length} zoom window(s)${beatGrid ? ' on the beat grid' : ''}`);
+  }
+
   // Zoom layer: the subtle push-in and/or the hook zoom share one zoompan pass.
   // Hook zoom (opts.punch_zooms) = an exaggerated 15% zoom-in over the first
   // 0.3s that eases back out by ~1.8s, INTRO ONLY (owner: no hits later in
@@ -1702,13 +1772,18 @@ async function renderClip(job, { dir, log }) {
   // t = on/30 (zoompan emits 30fps itself).
   const punch = !!opts.punch_zooms;
   let zoomStage = 'fps=30';
-  if (opts.zoom || punch) {
+  if (opts.zoom || punch || punchWindows.length) {
     const t = '(on/30)';
     const zterms = [];
     zterms.push(opts.zoom ? 'min(1+0.0008*on,1.12)' : '1');
     if (punch) {
       zterms.push(`0.15*(min(max(${t}/0.3,0),1)-min(max((${t}-0.9)/0.9,0),1))`);
       log('hook zoom: 15% intro punch');
+    }
+    // punch cuts: hard 14% zoom steps on alternating caption groups — the
+    // step (no easing) IS the cut
+    if (punchWindows.length) {
+      zterms.push(`0.14*(${punchWindows.map((w) => `between(${t},${w.a.toFixed(2)},${w.b.toFixed(2)})`).join('+')})`);
     }
     // fps=30 FIRST: zoompan stamps its output at fps regardless of input
     // timing, so a non-30fps source (DJI shoots 25!) would play 30/25 too
@@ -1855,7 +1930,7 @@ async function renderClip(job, { dir, log }) {
   let audioLabel = speechLabel;
   if (withMusic) {
     log(`music bed: ${job.music_url.slice(0, 100)}`);
-    await download(job.music_url, path.join(dir, 'music.mp3'));
+    if (!fs.existsSync(path.join(dir, 'music.mp3'))) await download(job.music_url, path.join(dir, 'music.mp3'));
     if (hasAudio) {
       parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.22[mus]`);
       parts.push(`${speechLabel}asplit=2[spA][spB]`);
@@ -2116,7 +2191,10 @@ async function renderClip(job, { dir, log }) {
 
   const outPath = path.join(dir, 'clip.mp4');
   const args = ['-ss', String(start), '-t', String(clipDur), '-i', 'source.mp4'];
-  if (withMusic) args.push('-stream_loop', '-1', '-i', 'music.mp3');
+  if (withMusic) {
+    if (musicSeek > 0.02) args.push('-ss', musicSeek.toFixed(3)); // downbeat at t=0 (beat-sync)
+    args.push('-stream_loop', '-1', '-i', 'music.mp3');
+  }
   broll.forEach((_, i) => args.push('-i', `broll${i}.mp4`));
   if (withWatermark) args.push('-i', 'wm.png'); // index = wmIdx (right after b-roll)
   if (withSfx) args.push('-i', 'sfx.mp3');

@@ -382,6 +382,8 @@ serve(async (req) => {
           ? rawOpts.accent_color : null,
         depth_title: !!rawOpts.depth_title,
         depth_words: !!rawOpts.depth_words,
+        punch_cuts: !!rawOpts.punch_cuts,
+        beat_sync: !!rawOpts.beat_sync,
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
@@ -499,6 +501,61 @@ serve(async (req) => {
         throw e;
       }
       return json({ success: true });
+    }
+
+    // Hook variants: Claude writes 3 alternative punchy openings for a ready
+    // clip; each renders as its own copy so the owner can pick (or A/B) the
+    // strongest first 3 seconds.
+    if (action === 'hook_variants') {
+      const { clip_id } = body;
+      if (!clip_id) throw new Error('Missing clip_id');
+      if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+      const { data: clip } = await admin.from('clips').select('*').eq('id', clip_id).single();
+      if (!clip || clip.status !== 'ready') throw new Error('Clip must be rendered first');
+      const { data: proj } = await admin.from('clip_projects').select('*').eq('id', clip.project_id).single();
+      if (!proj) throw new Error('project not found');
+      if (proj.source_purged_at || !proj.source_url) throw new Error('Source video was cleaned up — upload it again');
+      const words = (proj.transcript?.words || []).filter((w: Word) =>
+        w.end > Number(clip.start_sec) + 0.05 && w.start < Number(clip.end_sec) - 0.05);
+      const slice = words.map((w: Word) => w.word.trim()).join(' ').slice(0, 3000);
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: CLIP_AI_MODEL, max_tokens: 300,
+          system: 'Escribe 3 GANCHOS alternativos (títulos de apertura) para un clip vertical de redes sociales, basados en su transcripción. Cada gancho: español, máx 40 caracteres, punchy, que detenga el scroll — curiosidad, beneficio o tensión. NO uses comillas ni emojis. Llama a la herramienta.',
+          messages: [{ role: 'user', content: `Transcripción del clip:\n\n${slice}` }],
+          tools: [{
+            name: 'hooks', description: 'Los 3 ganchos.',
+            input_schema: { type: 'object', properties: { hooks: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 3 } }, required: ['hooks'] },
+          }],
+          tool_choice: { type: 'tool', name: 'hooks' },
+        }),
+      });
+      if (!resp.ok) throw new Error(`hook gen ${resp.status}`);
+      const data = await resp.json();
+      const hooks: string[] = ((data.content || []).find((b: any) => b.type === 'tool_use')?.input?.hooks || [])
+        .map((h: string) => String(h).replace(/["“”]/g, '').slice(0, 48)).filter(Boolean).slice(0, 3);
+      if (!hooks.length) throw new Error('no hooks generated');
+      const launched: string[] = [];
+      for (const hook of hooks) {
+        const rj = JSON.parse(JSON.stringify(clip.render_job || {}));
+        rj.options = { ...(rj.options || {}), hook_title: true, hook_title_text: hook };
+        const { data: nc, error: ne } = await admin.from('clips').insert({
+          project_id: clip.project_id, start_sec: clip.start_sec, end_sec: clip.end_sec,
+          aspect: clip.aspect, style: clip.style, label: `Hook: ${hook}`,
+          status: 'rendering', options: { ...(clip.options || {}), hook_title: true }, render_job: rj,
+          dispatched_at: nowIso(),
+        }).select().single();
+        if (ne) throw new Error(ne.message);
+        try {
+          await dispatchClip(admin, proj, nc);
+          launched.push(hook);
+        } catch (e) {
+          await admin.from('clips').update({ status: 'failed', error_message: (e as Error).message, updated_at: nowIso() }).eq('id', nc.id);
+        }
+      }
+      return json({ success: true, hooks: launched });
     }
 
     // Word-timed transcript for the caption editor.
