@@ -14,6 +14,7 @@
 //   GET                                   → { success, role, conversations: [...] }
 //   POST { action: 'send', conversation_id, body }   → { success, message }
 //   POST { action: 'mark-read', conversation_id }     → { success }
+//   POST { action: 'set-pinned', conversation_id, pinned }  → { success, pinned_at }
 //   POST { action: 'save-push-subscription', subscription }  → { success }
 //       (stores the device's web-push subscription + fires a confirmation
 //        push so the admin instantly sees notifications working)
@@ -21,7 +22,8 @@
 //
 // Each conversation in the list carries its full message history:
 //   { id, customer_name, phone, order_id, unread, opted_out,
-//     last_message_at, messages: [ { id, direction, body, status, created_at } ] }
+//     last_message_at, pinned_at,
+//     messages: [ { id, direction, body, status, created_at } ] }
 //
 // Deploy with: supabase functions deploy sms-admin --project-ref yzbvajungshqcpusfiia
 
@@ -263,6 +265,7 @@ serve(async (req) => {
       out_of_office_message?: string;
       media_data_url?: string; // "data:image/png;base64,…" for an image attachment
       phone?: string;           // start-conversation: the recipient's number
+      pinned?: boolean;         // set-pinned: true = pin to top, false = unpin
     } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
@@ -273,7 +276,10 @@ serve(async (req) => {
     if (action === 'list') {
       const { data: convos, error: cErr } = await admin
         .from('sms_conversations')
-        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at, channel')
+        .select('id, customer_name, phone, order_id, unread, opted_out, last_message_at, channel, pinned_at')
+        // Pinned conversations first so they always make it under the row cap,
+        // no matter how old their last message is.
+        .order('pinned_at', { ascending: false, nullsFirst: false })
         .order('last_message_at', { ascending: false })
         .limit(CONVERSATION_LIMIT);
       if (cErr) return json({ success: false, error: cErr.message }, 500);
@@ -660,6 +666,22 @@ serve(async (req) => {
         return json({ success: false, error: result.error || 'Send failed', conversation_id: conversationId, message: inserted }, 502);
       }
       return json({ success: true, conversation_id: conversationId, channel_used: sendCh, fell_back: fellBack, message: inserted });
+    }
+
+    // ─── action: set-pinned ──────────────────────────────────────────────
+    // Pin/unpin a conversation. Pinned chats stay at the top of the inbox so
+    // an important follow-up can't scroll out of sight under newer messages.
+    if (action === 'set-pinned') {
+      if (!body.conversation_id) {
+        return json({ success: false, error: 'conversation_id required' }, 400);
+      }
+      const pinnedAt = body.pinned ? new Date().toISOString() : null;
+      const { error: pinErr } = await admin
+        .from('sms_conversations')
+        .update({ pinned_at: pinnedAt })
+        .eq('id', body.conversation_id);
+      if (pinErr) return json({ success: false, error: pinErr.message }, 500);
+      return json({ success: true, pinned_at: pinnedAt });
     }
 
     // ─── action: mark-read ───────────────────────────────────────────────

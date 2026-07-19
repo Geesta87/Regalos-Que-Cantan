@@ -20,7 +20,7 @@ import {
 // Data shape this component expects from the backend (per conversation):
 //   {
 //     id, customer_name, phone, order_id (nullable), unread (int),
-//     opted_out (bool), last_message_at (ISO), messages: [
+//     opted_out (bool), last_message_at (ISO), pinned_at (ISO | null), messages: [
 //       { id, direction: 'inbound'|'outbound', body, created_at (ISO),
 //         status: 'queued'|'sent'|'delivered'|'failed'|'received' }
 //     ]
@@ -121,6 +121,8 @@ const DEMO_CONVERSATIONS = [
     order_id: 'ord_demo_8830',
     unread: 1,
     opted_out: false,
+    // Pinned — shows the 📌-to-top behavior in the demo inbox.
+    pinned_at: '2026-06-09T18:00:00Z',
     last_message_at: '2026-06-09T15:06:00Z',
     // MIXED thread (like Francisco): SMS confirmation, then the customer replies
     // on WhatsApp. Shows in BOTH tabs; each shows the other channel as context.
@@ -398,9 +400,14 @@ export default function SmsInboxTab({ accessToken }) {
     const inChannel = channelTab === 'unread'
       ? conversations.filter((c) => (c.unread || 0) > 0)
       : conversations.filter((c) => convChannels(c).has(channelTab));
-    const sorted = [...inChannel].sort(
-      (a, b) => new Date(b.last_message_at) - new Date(a.last_message_at)
-    );
+    // Pinned chats float to the top (so a follow-up can't get buried by newer
+    // messages); within each group, most recent activity first.
+    const sorted = [...inChannel].sort((a, b) => {
+      const aPinned = a.pinned_at ? 1 : 0;
+      const bPinned = b.pinned_at ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return new Date(b.last_message_at) - new Date(a.last_message_at);
+    });
     if (!q) return sorted;
     return sorted.filter((c) =>
       (c.customer_name || '').toLowerCase().includes(q) ||
@@ -763,6 +770,36 @@ export default function SmsInboxTab({ accessToken }) {
     return res.json();
   };
 
+  // Pin/unpin a conversation to the top of the list. Optimistic — the chat
+  // jumps immediately; rolled back if the save fails.
+  const togglePin = async (conv) => {
+    if (!conv) return;
+    const nextPinned = !conv.pinned_at;
+    const prevPinnedAt = conv.pinned_at || null;
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conv.id
+          ? { ...c, pinned_at: nextPinned ? new Date().toISOString() : null }
+          : c
+      )
+    );
+    if (isDemo) return; // Demo mode has no backend — the local flip is enough.
+    try {
+      const data = await postToSmsAdmin({
+        action: 'set-pinned',
+        conversation_id: conv.id,
+        pinned: nextPinned,
+      });
+      if (!data?.success) throw new Error(data?.error || 'set-pinned failed');
+    } catch (e) {
+      // Roll back.
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, pinned_at: prevPinnedAt } : c))
+      );
+      alert(`Could not ${nextPinned ? 'pin' : 'unpin'} this chat: ${e.message}`);
+    }
+  };
+
   // Approve an AI draft (optionally edited) → it gets sent to the customer.
   const handleApproveDraft = async (msg) => {
     if (!selected || draftBusy) return;
@@ -1118,7 +1155,10 @@ export default function SmsInboxTab({ accessToken }) {
                         <span className="text-sm font-semibold text-white truncate">
                           {c.customer_name || formatPhone(c.phone)}
                         </span>
-                        <span className="text-[10px] text-gray-500 flex-shrink-0">
+                        <span className="text-[10px] text-gray-500 flex-shrink-0 flex items-center gap-1">
+                          {c.pinned_at && (
+                            <span title="Pinned to the top" className="text-amber-300">📌</span>
+                          )}
                           {formatTime(c.last_message_at)}
                         </span>
                       </div>
@@ -1182,6 +1222,21 @@ export default function SmsInboxTab({ accessToken }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Pin/unpin — keeps this chat at the top of the list so a
+                      pending follow-up can't get buried by newer messages. */}
+                  <button
+                    onClick={() => togglePin(selected)}
+                    className={`text-xs font-semibold rounded-lg px-2.5 py-1.5 transition border ${
+                      selected.pinned_at
+                        ? 'bg-amber-400/20 text-amber-200 border-amber-400/40 hover:bg-amber-400/30'
+                        : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                    }`}
+                    title={selected.pinned_at
+                      ? 'Pinned to the top — click to unpin'
+                      : 'Pin this chat to the top of the list so you don’t forget to follow up'}
+                  >
+                    📌 <span className="hidden sm:inline">{selected.pinned_at ? 'Pinned' : 'Pin'}</span>
+                  </button>
                   <button
                     onClick={() => setCopilotOpen(true)}
                     className="text-xs font-semibold bg-indigo-500/15 text-indigo-200 border border-indigo-400/30 rounded-lg px-2.5 py-1.5 hover:bg-indigo-500/25 transition"
