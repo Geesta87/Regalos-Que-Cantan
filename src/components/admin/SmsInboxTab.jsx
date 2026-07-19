@@ -397,8 +397,11 @@ export default function SmsInboxTab({ accessToken }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     // "Unread" pools both channels: any conversation with unread messages.
+    // "Pinned" pools both channels too: every chat the owner pinned.
     const inChannel = channelTab === 'unread'
       ? conversations.filter((c) => (c.unread || 0) > 0)
+      : channelTab === 'pinned'
+      ? conversations.filter((c) => !!c.pinned_at)
       : conversations.filter((c) => convChannels(c).has(channelTab));
     // Pinned chats float to the top (so a follow-up can't get buried by newer
     // messages); within each group, most recent activity first.
@@ -436,10 +439,10 @@ export default function SmsInboxTab({ accessToken }) {
   );
 
   // Which channel the OPEN thread is on. On the SMS/WhatsApp tabs it's the tab
-  // itself; on the "Unread" tab (which mixes both) it's the channel of the
-  // conversation's most recent message — so replies go out on the right rail.
+  // itself; on the "Unread" and "Pinned" tabs (which mix both) it's the channel
+  // of the conversation's most recent message — so replies go out on the right rail.
   const threadChannel = useMemo(() => {
-    if (channelTab !== 'unread') return channelTab;
+    if (channelTab === 'sms' || channelTab === 'whatsapp') return channelTab;
     if (!selected) return 'sms';
     const msgs = selected.messages || [];
     const last = msgs.length ? msgs[msgs.length - 1] : null;
@@ -448,6 +451,12 @@ export default function SmsInboxTab({ accessToken }) {
 
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unread || 0), 0),
+    [conversations]
+  );
+
+  // Pinned chats — for the Pinned tab badge.
+  const totalPinned = useMemo(
+    () => conversations.reduce((n, c) => n + (c.pinned_at ? 1 : 0), 0),
     [conversations]
   );
 
@@ -992,9 +1001,12 @@ export default function SmsInboxTab({ accessToken }) {
           { key: 'unread', label: '📬 Unread' },
           { key: 'sms', label: '💬 SMS' },
           { key: 'whatsapp', label: '🟢 WhatsApp' },
+          { key: 'pinned', label: '📌 Pinned' },
         ].map((t) => {
           const stats = t.key === 'unread'
             ? { unread: totalUnread, drafts: totalDrafts }
+            : t.key === 'pinned'
+            ? { unread: 0, drafts: 0, pinned: totalPinned }
             : (channelStats[t.key] || { unread: 0, drafts: 0 });
           const activeTab = channelTab === t.key;
           return (
@@ -1008,6 +1020,13 @@ export default function SmsInboxTab({ accessToken }) {
               }`}
             >
               {t.label}
+              {(stats.pinned || 0) > 0 && (
+                <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
+                  activeTab ? 'bg-black/20 text-black' : 'bg-amber-400/25 text-amber-200'
+                }`}>
+                  {stats.pinned}
+                </span>
+              )}
               {stats.drafts > 0 && (
                 <span className={`text-[10px] font-bold rounded-full px-1.5 h-4 flex items-center ${
                   activeTab ? 'bg-black/20 text-black' : 'bg-purple-500/30 text-purple-200'
@@ -1120,18 +1139,23 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
             ) : filtered.length === 0 ? (
               <div className="p-6 text-center text-gray-500 text-sm">
-                {channelTab === 'unread' ? '✅ All caught up — no unread messages.' : 'No conversations yet.'}
+                {channelTab === 'unread'
+                  ? '✅ All caught up — no unread messages.'
+                  : channelTab === 'pinned'
+                  ? '📌 No pinned chats. Open a conversation and tap "Pin" to keep it here.'
+                  : 'No conversations yet.'}
               </div>
             ) : (
               filtered.map((c) => {
                 const msgs = c.messages || [];
-                // Preview the last message ON THIS TAB's channel. On the Unread
-                // tab (mixed channels) just preview the overall last message.
-                const last = channelTab === 'unread'
+                // Preview the last message ON THIS TAB's channel. On the mixed
+                // tabs (Unread, Pinned) just preview the overall last message.
+                const mixedTab = channelTab === 'unread' || channelTab === 'pinned';
+                const last = mixedTab
                   ? msgs[msgs.length - 1]
                   : ([...msgs].reverse().find((m) => msgChannel(m) === channelTab)
                     || msgs[msgs.length - 1]);
-                const hasDraft = channelTab === 'unread'
+                const hasDraft = mixedTab
                   ? msgs.some((m) => m.status === 'draft')
                   : hasPendingDraftInChannel(c, channelTab);
                 const lastIsAudio = (last?.media_type || '').startsWith('audio/');
