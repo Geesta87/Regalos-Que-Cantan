@@ -27,37 +27,43 @@ const STYLE_META = {
   minimal:  { name: 'Minimal',   group: 'story', desc: 'Small, clean, quiet captions',          sample: ['una canción', 'para ti'], hi: null, upper: false, box: false },
   // Caption-first premium looks — the captions ARE the design. Every `accent`
   // style honors the custom accent color picker.
-  lujo:    { name: 'Lujo',    group: 'premium', desc: 'Luxury serif — refined, letter-spaced, gold accent', sample: ['solo lo esencial,', 'con clase'], hi: '#D4AF37', upper: false, box: false, accent: true, serif: true },
   grande:  { name: 'Grande',  group: 'sell', desc: 'Huge two-word captions — maximum presence', sample: ['MÁS', 'GRANDE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
   resalta: { name: 'Resalta', group: 'sell', desc: 'Marker pill lands on the spoken word', sample: ['CADA', 'PALABRA', 'MARCADA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
   brillo:  { name: 'Brillo',  group: 'fun', desc: 'Neon glow halo on the spoken word', sample: ['PURO', 'BRILLO'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
   sombra:  { name: 'Sombra',  group: 'sell', desc: 'Big bold type with a hard 3D shadow', sample: ['CON', 'FUERZA'], hi: '#FFD400', upper: true, box: false, accent: true, shadow: true },
-  fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
   // Motion pack — hand-animated word behaviors with sound design; motion and
   // SFX intensity follow how loudly each word was spoken.
-  cascada:  { name: 'Cascada',   group: 'story', desc: 'Words drop in with bouncy landings + soft thumps', sample: ['CAE', 'PALABRA', 'POR PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
-  resorte:  { name: 'Resorte',   group: 'fun', desc: 'Elastic spring-in; springy pops on the beat', sample: ['REBOTA', 'CON', 'VIDA'], hi: '#FFD400', upper: true, box: false, accent: true },
-  maquina:  { name: 'Máquina',   group: 'story', desc: 'Typewriter at your real pace, blinking cursor, key clicks', sample: ['escribe', 'tu historia'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  cascada:  { name: 'Cascada',   group: 'story', desc: 'Words drop in one by one with bouncy landings', sample: ['CAE', 'PALABRA', 'POR PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
   ola:      { name: 'Ola',       group: 'story', desc: 'The line breathes in a wave that follows your voice', sample: ['FLUYE', 'COMO', 'EL MAR'], hi: '#00E5FF', upper: true, box: false, accent: true },
-  golpe:    { name: 'Golpe',     group: 'sell', desc: 'One HUGE word at a time with punch, shake & impact sound', sample: ['UNA', 'PALABRA', 'GIGANTE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
-  neonvivo: { name: 'Neón Vivo', group: 'fun', desc: 'Neon tubes ignite with flicker, buzz & floor reflection', sample: ['ENCIENDE', 'LA NOCHE'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
+  golpe:    { name: 'Golpe',     group: 'sell', desc: 'One HUGE word at a time with a punch and shake', sample: ['UNA', 'PALABRA', 'GIGANTE'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
   recorte:  { name: 'Recorte',   group: 'fun', desc: 'Sticker collage — words slap in with tilts & parallax shadows', sample: ['PEGA', 'CADA', 'PALABRA'], hi: '#E4007C', upper: true, box: false, accent: true },
-  cinta:    { name: 'Cinta',     group: 'sell', desc: 'News-ticker slide-ins with whoosh & a drawing rule', sample: ['ÚLTIMA', 'HORA'], hi: '#D4AF37', upper: true, box: false, accent: true },
-  enfoque:  { name: 'Enfoque',   group: 'premium', desc: 'Focus pull from blur to crisp — lens-like, with a riser', sample: ['TODO', 'EN FOCO'], hi: '#D4AF37', upper: true, box: false, accent: true },
-  gravedad: { name: 'Gravedad',  group: 'fun', desc: 'Words free-fall, squash & take a second hop — with thumps', sample: ['CAE', 'Y', 'REBOTA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  gravedad: { name: 'Gravedad',  group: 'fun', desc: 'Words free-fall, squash and take a second hop', sample: ['CAE', 'Y', 'REBOTA'], hi: '#FFD400', upper: true, box: false, accent: true },
   // Signature looks — the Captions.ai-gallery devices, with built-in grades.
   mixto:     { name: 'Mixto',     group: 'premium', desc: 'Heavy caps + the key word in elegant script — the signature mix', sample: ['UNA CANCIÓN', 'única'], hi: '#D4AF37', upper: true, box: false, accent: true, serif: true },
   contorno:  { name: 'Contorno',  group: 'sell', desc: 'Hollow outline letters — the spoken word fills in solid', sample: ['SOLO', 'CONTORNO'], hi: '#FFD400', upper: true, box: false, accent: true },
   bloque:    { name: 'Bloque',    group: 'fun', desc: 'Each phrase on a tilted color block — colors rotate', sample: ['BLOQUE', 'DE COLOR'], hi: '#E4007C', upper: true, box: false, pill: true },
-  subrayado: { name: 'Subrayado', group: 'sell', desc: 'Key words get a marker underline that wipes in', sample: ['ESTO', 'IMPORTA'], hi: '#FFD400', upper: true, box: false, accent: true },
   // Kinetic looks — the word engine animates every word as its own object.
   palabra:   { name: 'Palabra',   group: 'sell', desc: 'Words appear one by one as you speak — and stay', sample: ['PALABRA', 'POR', 'PALABRA'], hi: '#FFD400', upper: true, box: false, accent: true },
-  pildora:   { name: 'Píldora',   group: 'sell', desc: 'A pill GLIDES from word to word on the beat', sample: ['LA', 'PÍLDORA', 'VIAJA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
   heroe:     { name: 'Héroe',     group: 'sell', desc: 'The key word gets its own line — HUGE', sample: ['la palabra', 'GRANDE', 'manda'], hi: '#FFD400', upper: true, box: false, accent: true, big: true },
   temblor:   { name: 'Temblor',   group: 'fun', desc: 'Key words vibrate with energy when you hit them', sample: ['ESTO', 'TIEMBLA', 'FUERTE'], hi: '#FF7A00', upper: true, box: false, accent: true },
   escenario: { name: 'Escenario', group: 'story', desc: 'Big center-stage captions with a hand-made tilt — podcast style', sample: ['COMO', 'EN EL', 'ESCENARIO'], hi: '#D4AF37', upper: true, box: false, accent: true },
   // Template looks: caption style + title design + stickers + color grade.
   // img = a real rendered frame so the card shows the ACTUAL look.
+};
+
+// Retired from the picker on the owner's call (2026-07-20) — kept here so
+// old presets, saved clips and retries still resolve their names, and so a
+// style can be restored by moving one line back up.
+const HIDDEN_STYLE_META = {
+  lujo:    { name: 'Lujo',    group: 'premium', desc: 'Luxury serif — refined, letter-spaced, gold accent', sample: ['solo lo esencial,', 'con clase'], hi: '#D4AF37', upper: false, box: false, accent: true, serif: true },
+  fluido:  { name: 'Fluido',  group: 'premium', desc: 'Karaoke sweep — color fills each word as you say it', sample: ['CADA', 'PALABRA', 'FLUYE'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  resorte:  { name: 'Resorte',   group: 'fun', desc: 'Elastic spring-in; springy pops on the beat', sample: ['REBOTA', 'CON', 'VIDA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  maquina:  { name: 'Máquina',   group: 'story', desc: 'Typewriter at your real pace, blinking cursor, key clicks', sample: ['escribe', 'tu historia'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  neonvivo: { name: 'Neón Vivo', group: 'fun', desc: 'Neon tubes ignite with flicker, buzz & floor reflection', sample: ['ENCIENDE', 'LA NOCHE'], hi: '#00E5FF', upper: true, box: false, accent: true, glow: true },
+  cinta:    { name: 'Cinta',     group: 'sell', desc: 'News-ticker slide-ins with whoosh & a drawing rule', sample: ['ÚLTIMA', 'HORA'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  enfoque:  { name: 'Enfoque',   group: 'premium', desc: 'Focus pull from blur to crisp — lens-like, with a riser', sample: ['TODO', 'EN FOCO'], hi: '#D4AF37', upper: true, box: false, accent: true },
+  subrayado: { name: 'Subrayado', group: 'sell', desc: 'Key words get a marker underline that wipes in', sample: ['ESTO', 'IMPORTA'], hi: '#FFD400', upper: true, box: false, accent: true },
+  pildora:   { name: 'Píldora',   group: 'sell', desc: 'A pill GLIDES from word to word on the beat', sample: ['LA', 'PÍLDORA', 'VIAJA'], hi: '#FFD400', upper: true, box: false, accent: true, pill: true },
   fiesta:    { name: 'Fiesta',    group: 'fun', desc: 'Party template — banner, confetti, brand pink', sample: ['QUÉ', 'FIESTA', 'TAN BONITA'], hi: '#E4007C', upper: true, box: false, tpl: true, img: '/images/clip-templates/fiesta.jpg' },
   editorial: { name: 'Editorial', group: 'story', desc: 'Elegant serif template — gold flourishes',      sample: ['Una historia', 'de amor'], hi: '#D4AF37', upper: false, box: false, tpl: true, img: '/images/clip-templates/editorial.jpg' },
   corrido:   { name: 'Corrido',   group: 'premium', desc: 'Black, red & gold template — heavy type',       sample: ['PURO', 'CORRIDO', 'PESADO'], hi: '#C41E1E', upper: true, box: false, tpl: true, img: '/images/clip-templates/corrido.jpg' },
@@ -73,6 +79,8 @@ const STYLE_META = {
   energia:   { name: 'Energía',   group: 'sell', desc: 'Athletic orange stripes, condensed caps', sample: ['DALE', 'CON TODO'], hi: '#E85D10', upper: true, box: false, tpl: true, img: '/images/clip-templates/energia.jpg' },
   historia:  { name: 'Historia',  group: 'story', desc: 'Minimal — nothing between you and the story', sample: ['solo tú', 'y tu voz'], hi: null, upper: false, box: true, tpl: true, img: '/images/clip-templates/historia.jpg' },
 };
+const ALL_STYLE_META = { ...STYLE_META, ...HIDDEN_STYLE_META };
+
 const ASPECT_META = {
   '9:16': { name: 'Vertical',  desc: 'Reels / TikTok / Shorts' },
   '1:1':  { name: 'Square',    desc: 'Feed ads' },
@@ -102,7 +110,7 @@ const fmtTime = (s) => {
 // plays on hover — choosing a style = watching yourself in it. Falls back to
 // the template frame / CSS mock if the loop is missing.
 function StylePreview({ styleKey, accent }) {
-  const st = STYLE_META[styleKey];
+  const st = ALL_STYLE_META[styleKey];
   const [vidOk, setVidOk] = React.useState(true);
   // Full 9:16 cards (like the Captions.ai gallery) — cropping to a short
   // strip hid the captions, which are the whole point of the preview.
@@ -1099,10 +1107,10 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 </React.Fragment>
               ))}
 
-              {STYLE_META[form.style]?.accent && (
+              {ALL_STYLE_META[form.style]?.accent && (
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <label className="text-xs text-gray-500">Accent color</label>
-                  <input type="color" value={form.accentColor || STYLE_META[form.style].hi || '#FFD400'}
+                  <input type="color" value={form.accentColor || ALL_STYLE_META[form.style]?.hi || '#FFD400'}
                     onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
                     className="h-7 w-10 rounded border border-gray-200 cursor-pointer bg-white p-0.5" />
                   {/* one-tap brand colors */}
@@ -1193,7 +1201,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
               <p className="text-[11px] text-gray-400 mb-3">
-                {ASPECT_META[form.aspect].name} · {STYLE_META[form.style].name} · {fmtTime(selStart)}–{fmtTime(selEnd)} ({Math.round(selDur)}s)
+                {ASPECT_META[form.aspect].name} · {ALL_STYLE_META[form.style]?.name || form.style} · {fmtTime(selStart)}–{fmtTime(selEnd)} ({Math.round(selDur)}s)
                 {extrasOn.length ? ` · ${extrasOn.join(' + ')}` : ''}
               </p>
               <button onClick={() => renderClip(project)} disabled={rendering || !ready} className={`${btn.accent} w-full`}>
@@ -1226,7 +1234,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                             {Math.round(c.ai_score)}/10
                           </span>
                         )}
-                        <span className="text-sm text-gray-800 truncate">{c.label || `${STYLE_META[c.style]?.name || c.style} · ${c.aspect}`}</span>
+                        <span className="text-sm text-gray-800 truncate">{c.label || `${ALL_STYLE_META[c.style]?.name || c.style} · ${c.aspect}`}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {c.status === 'ready' && (
@@ -1259,7 +1267,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       </div>
                     </div>
                     <div className="text-[11px] text-gray-400 mb-2">
-                      {fmtTime(c.start_sec)}–{fmtTime(c.end_sec)} · {ASPECT_META[c.aspect]?.name || c.aspect} · {STYLE_META[c.style]?.name || c.style}
+                      {fmtTime(c.start_sec)}–{fmtTime(c.end_sec)} · {ASPECT_META[c.aspect]?.name || c.aspect} · {ALL_STYLE_META[c.style]?.name || c.style}
                       {c.render_seconds ? ` · ${c.render_seconds}s render` : ''}
                     </div>
                     {c.status === 'rendering' && (
