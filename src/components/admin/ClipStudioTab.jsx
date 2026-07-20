@@ -207,6 +207,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false, depthwords: false, puncher: false, beatsync: false,
     musicTrack: '', // '' = random pick from the library
     accentColor: '', // '' = the style's own default highlight color
+    captionSize: 1,  // caption scale: 0.85 S / 1 M / 1.2 L / 1.45 XL
   });
   const [rendering, setRendering] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -288,7 +289,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords', 'puncher', 'beatsync'];
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords', 'puncher', 'beatsync', 'captionSize'];
   const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
   // What the server-side auto-clip needs (its option names differ from the form's).
   const presetToAutoConfig = (cfg) => ({
@@ -301,6 +302,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     depth_words: !!cfg.depthwords,
     punch_cuts: !!cfg.puncher,
     beat_sync: !!cfg.beatsync,
+    caption_size: cfg.captionSize || 1,
   });
 
   const applyPreset = (id) => {
@@ -549,7 +551,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync, caption_size: form.captionSize || 1 },
       });
       showToast?.('Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -1107,26 +1109,37 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 </React.Fragment>
               ))}
 
-              {ALL_STYLE_META[form.style]?.accent && (
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <label className="text-xs text-gray-500">Accent color</label>
-                  <input type="color" value={form.accentColor || ALL_STYLE_META[form.style]?.hi || '#FFD400'}
-                    onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
-                    className="h-7 w-10 rounded border border-gray-200 cursor-pointer bg-white p-0.5" />
-                  {/* one-tap brand colors */}
-                  <button onClick={() => setForm((f) => ({ ...f, accentColor: '#E4007C' }))} title="RQC pink"
-                    className={`h-7 w-7 rounded-full border-2 ${form.accentColor === '#E4007C' ? 'border-indigo-500' : 'border-white shadow'}`} style={{ background: '#E4007C' }} />
-                  <button onClick={() => setForm((f) => ({ ...f, accentColor: '#D4AF37' }))} title="RQC gold"
-                    className={`h-7 w-7 rounded-full border-2 ${form.accentColor === '#D4AF37' ? 'border-indigo-500' : 'border-white shadow'}`} style={{ background: '#D4AF37' }} />
-                  {form.accentColor ? (
-                    <button onClick={() => setForm((f) => ({ ...f, accentColor: '' }))} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
-                      Reset to style default
+              {/* Colour + size apply to EVERY style — pick the look, then tune it. */}
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <label className="text-xs text-gray-500 w-20">Caption color</label>
+                <input type="color" value={form.accentColor || ALL_STYLE_META[form.style]?.hi || '#FFD400'}
+                  onChange={(e) => setForm((f) => ({ ...f, accentColor: e.target.value }))}
+                  className="h-7 w-10 rounded border border-gray-200 cursor-pointer bg-white p-0.5" />
+                {[['#E4007C', 'RQC pink'], ['#D4AF37', 'RQC gold'], ['#FFD400', 'Yellow'], ['#00E5FF', 'Cyan'], ['#FFFFFF', 'White']].map(([hex, title]) => (
+                  <button key={hex} onClick={() => setForm((f) => ({ ...f, accentColor: hex }))} title={title}
+                    className={`h-7 w-7 rounded-full border-2 ${form.accentColor === hex ? 'border-indigo-500' : 'border-white shadow'}`} style={{ background: hex }} />
+                ))}
+                {form.accentColor ? (
+                  <button onClick={() => setForm((f) => ({ ...f, accentColor: '' }))} className="text-[11px] text-gray-400 hover:text-gray-600 underline">
+                    Reset
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-gray-400">— colors the spoken word / pill / glow</span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <label className="text-xs text-gray-500 w-20">Caption size</label>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                  {[['S', 0.85], ['M', 1], ['L', 1.2], ['XL', 1.45]].map(([lbl, val]) => (
+                    <button key={lbl} onClick={() => setForm((f) => ({ ...f, captionSize: val }))}
+                      className={`px-3 py-1 text-xs font-medium transition ${(form.captionSize || 1) === val ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      {lbl}
                     </button>
-                  ) : (
-                    <span className="text-[11px] text-gray-400">— your color on the highlight / pill / glow; circles = brand colors</span>
-                  )}
+                  ))}
                 </div>
-              )}
+                <span className="text-[11px] text-gray-400">— M is the default; XL is nearly half again as big</span>
+              </div>
 
               {isTeaser ? (
                 <p className="text-[11px] text-gray-400">Teasers use the song's cover art with a slow cinematic push-in, karaoke captions, and a brand end-card — the extras for spoken video don't apply.</p>

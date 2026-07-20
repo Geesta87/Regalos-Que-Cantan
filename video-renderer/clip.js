@@ -479,7 +479,14 @@ function applyAccent(st, accentHex) {
   const out = { ...st };
   if (st.pill) out.pill = { bg: c, fg: hexIsLight(accentHex) ? DARKTXT : '&H00FFFFFF' };
   if (st.glow) out.glow = c;
-  if (st.highlight) out.highlight = c;
+  // Picking a color ALWAYS colors the spoken word — on quiet styles that had
+  // no highlight (cleanbox/minimal) this turns the word paint on, which is
+  // what choosing a color is asking for.
+  out.highlight = c;
+  // block styles carry a rotating palette — the picked color leads it
+  if (Array.isArray(st.palette)) {
+    out.palette = [{ bg: c, fg: hexIsLight(accentHex) ? DARKTXT : '&H00FFFFFF' }, ...st.palette.slice(1)];
+  }
   return out;
 }
 
@@ -568,7 +575,7 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.palabra, opts.accent);
   const fam = st.font || 'Anton';
-  const baseSize = Math.round(geo.fontsize * (st.scale || 1) * 1.08);
+  const baseSize = Math.round(geo.fontsize * (st.scale || 1) * 1.08 * (opts.sizeScale || 1));
   const contrast = opts.contrast || 0;
   const bord = contrast >= 2 ? Math.round(baseSize / 6) : contrast === 1 ? Math.round(baseSize / 7) : Math.round(baseSize / 8.5);
   const shad = Math.round(baseSize / (contrast ? 16 : 22));
@@ -738,9 +745,9 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
           if (b.to - b.from < 0.05) return;
           const txt = tokens[i].txt;
           const en = EN(w);
-          const size = Math.min(Math.round(geo.w * (0.16 + 0.05 * en)), Math.floor((geo.w * 0.9) / Math.max(3, txt.length * 0.62)));
+          const size = Math.min(Math.round(geo.w * (0.16 + 0.05 * en) * (opts.sizeScale || 1)), Math.floor((geo.w * 0.9) / Math.max(3, txt.length * 0.62)));
           const cx = Math.round(geo.w / 2 + (((i * 53) % 5) - 2) * 14);
-          const cy = Math.round(geo.h * 0.42 + (((i * 31) % 5) - 2) * 12);
+          const cy = Math.round(geo.h * 0.6 + (((i * 31) % 5) - 2) * 12);
           const color = i % 3 === 2 ? hi : WHITE;
           // shockwave puff behind the impact
           E(0, b.from, Math.min(b.to, b.from + 0.24), `{\\an5\\pos(${cx},${cy})\\1c${color}&\\bord${Math.round(size * 0.3)}\\3c${color}&\\blur14\\alpha&H6E&\\fscx30\\fscy30\\t(0,220,\\fscx170\\fscy170\\alpha&HFF&)\\p1}m 0 0 l ${size} 0 ${size} ${Math.round(size * 0.4)} 0 ${Math.round(size * 0.4)}{\\p0}`);
@@ -927,7 +934,7 @@ function hookLine(opts) {
 function buildAss(words, styleKey, aspectKey, opts = {}) {
   const geo = ASPECTS[aspectKey] || ASPECTS['9:16'];
   const st = applyAccent(STYLES[styleKey] || STYLES.boldpop, opts.accent);
-  const fontsize = Math.round(geo.fontsize * (st.scale || 1));
+  const fontsize = Math.round(geo.fontsize * (st.scale || 1) * (opts.sizeScale || 1));
   const header = assHeader(geo, st, fontsize, opts.contrast || 0);
   const lines = hookLine(opts);
 
@@ -1636,6 +1643,7 @@ async function renderClip(job, { dir, log }) {
     hookTitle: tpl || depthMode ? null : (opts.hook_title_text || null), totalDur: outDur,
     accent: opts.accent_color || null,
     contrast: measureCaptionBandLuma(dir, start, clipDur, log),
+    sizeScale: Math.max(0.7, Math.min(1.6, Number(opts.caption_size) || 1)),
   };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(

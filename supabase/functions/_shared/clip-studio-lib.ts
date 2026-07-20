@@ -439,6 +439,7 @@ export async function autoPilotRun(admin: SupabaseClient, projectId: string) {
             depth_words: !!pc.depth_words,
             punch_cuts: !!pc.punch_cuts,
             beat_sync: !!pc.beat_sync,
+            caption_size: Math.max(0.7, Math.min(1.6, Number(pc.caption_size) || 1)),
           };
       const render_job = isTeaser
         ? {

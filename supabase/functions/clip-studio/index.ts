@@ -384,6 +384,7 @@ serve(async (req) => {
         depth_words: !!rawOpts.depth_words,
         punch_cuts: !!rawOpts.punch_cuts,
         beat_sync: !!rawOpts.beat_sync,
+        caption_size: Math.max(0.7, Math.min(1.6, Number(rawOpts.caption_size) || 1)),
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 
