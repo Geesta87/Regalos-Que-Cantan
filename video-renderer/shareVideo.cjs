@@ -31,8 +31,28 @@ function ff(args, cwd) {
   // (junk frames in the mp3, odd jpegs) make ffmpeg emit warnings PER FRAME
   // even at -loglevel error — enough to overflow execFileSync's 1MB pipe
   // buffer and kill the render with ENOBUFS (seen live 2026-07-20).
+  // Hard 15-min ceiling: a poisoned input (e.g. HTML masquerading as a jpeg)
+  // once made ffmpeg error per frame indefinitely, pinning the instance.
   return execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args],
-    { cwd, stdio: ['ignore', 'ignore', 'inherit'] });
+    { cwd, stdio: ['ignore', 'ignore', 'inherit'], timeout: 15 * 60 * 1000, killSignal: 'SIGKILL' });
+}
+
+// The site answers MISSING album art with the SPA's index.html and HTTP 200
+// (Vercel rewrite) — a status check can't catch it. Sniff magic bytes so we
+// only ever hand ffmpeg a real JPEG/PNG/WebP.
+function looksLikeImage(file) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(12);
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    if (buf[0] === 0xff && buf[1] === 0xd8) return true;                          // JPEG
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e) return true;       // PNG
+    if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 async function download(url, dest) {
@@ -82,7 +102,8 @@ async function renderShareVideo(job, { dir, log }) {
   for (const artUrl of artUrls) {
     try {
       await download(artUrl, artPath);
-      if (fs.statSync(artPath).size > 1000) { hasArt = true; break; }
+      if (fs.statSync(artPath).size > 1000 && looksLikeImage(artPath)) { hasArt = true; break; }
+      log(`art from ${artUrl.slice(0, 60)} is not a real image — trying next source`);
     } catch (e) {
       log(`art download failed (${e.message}) — trying next source`);
     }
