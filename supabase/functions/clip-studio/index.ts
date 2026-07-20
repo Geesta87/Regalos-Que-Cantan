@@ -717,11 +717,42 @@ serve(async (req) => {
       const data = await resp.json();
       const out = (data.content || []).find((b: any) => b.type === 'tool_use')?.input;
       if (!out?.script) throw new Error('No script returned');
+      const cleanHooks = (Array.isArray(out.hooks) ? out.hooks : []).map((h: unknown) => String(h).slice(0, 160)).slice(0, 3);
+      const cleanScript = String(out.script).slice(0, 2500);
+      // Every generated script saves automatically — survives refreshes.
+      const { data: saved } = await admin.from('clip_scripts')
+        .insert({ topic, script: cleanScript, hooks: cleanHooks }).select('id').single();
       return json({
         success: true,
-        hooks: (Array.isArray(out.hooks) ? out.hooks : []).map((h: unknown) => String(h).slice(0, 160)).slice(0, 3),
-        script: String(out.script).slice(0, 2500),
+        script_id: saved?.id || null,
+        hooks: cleanHooks,
+        script: cleanScript,
       });
+    }
+
+    // Saved teleprompter scripts (auto-saved on write_script).
+    if (action === 'script_list') {
+      const { data, error } = await admin.from('clip_scripts')
+        .select('id, topic, script, hooks, created_at, updated_at')
+        .order('created_at', { ascending: false }).limit(50);
+      if (error) throw new Error(error.message);
+      return json({ success: true, scripts: data || [] });
+    }
+    if (action === 'script_update') {
+      const { script_id, script } = body;
+      if (!script_id || typeof script !== 'string' || !script.trim()) throw new Error('Missing script_id or script');
+      const { error } = await admin.from('clip_scripts')
+        .update({ script: script.slice(0, 2500), updated_at: new Date().toISOString() })
+        .eq('id', script_id);
+      if (error) throw new Error(error.message);
+      return json({ success: true });
+    }
+    if (action === 'script_delete') {
+      const { script_id } = body;
+      if (!script_id) throw new Error('Missing script_id');
+      const { error } = await admin.from('clip_scripts').delete().eq('id', script_id);
+      if (error) throw new Error(error.message);
+      return json({ success: true });
     }
 
     if (action === 'music_delete') {

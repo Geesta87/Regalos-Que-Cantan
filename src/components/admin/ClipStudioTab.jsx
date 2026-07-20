@@ -223,6 +223,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [scriptBusy, setScriptBusy] = useState(false);
   const [hooks, setHooks] = useState([]);
   const [script, setScript] = useState('');
+  const [scriptId, setScriptId] = useState(null);        // saved row for the open script
+  const [savedScripts, setSavedScripts] = useState(null); // null = not loaded yet
   const [prompter, setPrompter] = useState(false);      // fullscreen teleprompter
   const [prompterPlay, setPrompterPlay] = useState(false);
   const [prompterSpeed, setPrompterSpeed] = useState(40); // px per second
@@ -340,8 +342,40 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       const r = await call({ action: 'write_script', topic: topic.trim() });
       setHooks(r.hooks || []);
       setScript(r.script || '');
+      setScriptId(r.script_id || null);
+      if (r.script_id) loadSavedScripts(); // auto-saved — refresh the list
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setScriptBusy(false); }
+  };
+
+  // ---- saved scripts (auto-saved on generate; survive refreshes) ----
+  const loadSavedScripts = async () => {
+    try {
+      const r = await call({ action: 'script_list' });
+      setSavedScripts(r.scripts || []);
+    } catch { /* list is non-critical */ }
+  };
+  const openSavedScript = (s) => {
+    setTopic(s.topic);
+    setScript(s.script);
+    setHooks(Array.isArray(s.hooks) ? s.hooks : []);
+    setScriptId(s.id);
+  };
+  const saveScriptEdits = async () => {
+    if (!scriptId || !script.trim()) return;
+    try {
+      await call({ action: 'script_update', script_id: scriptId, script });
+      showToast?.('Script saved');
+      loadSavedScripts();
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+  const deleteSavedScript = async (s) => {
+    if (!window.confirm(`Delete the script "${s.topic.slice(0, 60)}"?`)) return;
+    try {
+      await call({ action: 'script_delete', script_id: s.id });
+      if (scriptId === s.id) setScriptId(null);
+      loadSavedScripts();
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
   };
 
   const useHook = (h) => {
@@ -1347,7 +1381,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
 
       {/* Script studio: real customer questions -> AI script -> teleprompter */}
       <Card className="p-4 mb-6">
-        <button onClick={() => setScriptOpen((v) => !v)} className="w-full flex items-center justify-between">
+        <button onClick={() => { setScriptOpen((v) => !v); if (!scriptOpen && savedScripts === null) loadSavedScripts(); }} className="w-full flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Pencil size={15} className="text-indigo-500" />
             <span className="text-sm font-semibold text-gray-900">Script studio</span>
@@ -1402,9 +1436,34 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   <button onClick={() => { setPrompter(true); setPrompterPlay(false); }} className={btn.primary}>
                     <Play size={14} /> Start teleprompter
                   </button>
+                  {scriptId && (
+                    <button onClick={saveScriptEdits} className={`${btn.ghost} text-xs`} title="Save your edits to this script">
+                      <Check size={13} /> Save changes
+                    </button>
+                  )}
                   <span className="text-[11px] text-gray-400">Prop your phone next to the screen, press Space to scroll, read naturally. Upload the video here when you're done.</span>
                 </div>
               </>
+            )}
+
+            {/* Saved scripts — auto-saved on every generate, survive refreshes */}
+            {(savedScripts || []).length > 0 && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-2">Saved scripts</span>
+                <div className="space-y-1.5">
+                  {savedScripts.map((s) => (
+                    <div key={s.id} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${scriptId === s.id ? 'border-indigo-400 bg-indigo-50/50' : 'border-gray-200'}`}>
+                      <button onClick={() => openSavedScript(s)} className="flex-1 text-left">
+                        <span className="text-xs text-gray-800">{s.topic.slice(0, 90)}</span>
+                        <span className="text-[10px] text-gray-400 block">{new Date(s.created_at).toLocaleDateString()} · {s.script.split(/\s+/).length} words</span>
+                      </button>
+                      <button onClick={() => deleteSavedScript(s)} className="text-gray-300 hover:text-red-500" title="Delete script">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
