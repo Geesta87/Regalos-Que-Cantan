@@ -27,7 +27,12 @@ const BRAND_TAGLINE = 'Regala una canción única';
 const BRAND_SUB = 'Hecha especialmente para esa persona especial';
 
 function ff(args, cwd) {
-  return execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args], { cwd });
+  // stderr streams to the instance log instead of a pipe: some source files
+  // (junk frames in the mp3, odd jpegs) make ffmpeg emit warnings PER FRAME
+  // even at -loglevel error — enough to overflow execFileSync's 1MB pipe
+  // buffer and kill the render with ENOBUFS (seen live 2026-07-20).
+  return execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args],
+    { cwd, stdio: ['ignore', 'ignore', 'inherit'] });
 }
 
 async function download(url, dest) {
@@ -37,7 +42,7 @@ async function download(url, dest) {
 }
 
 function probeDuration(file, cwd) {
-  const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { cwd });
+  const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { cwd, maxBuffer: 16 * 1024 * 1024 });
   const d = parseFloat(out.toString().trim());
   if (!d || !isFinite(d)) throw new Error('could not probe audio duration');
   return d;
