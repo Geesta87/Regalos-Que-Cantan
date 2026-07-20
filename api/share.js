@@ -72,7 +72,7 @@ async function fetchSongs(ids) {
   if (!ids.length) return [];
   const inList = ids.map(encodeURIComponent).join(',');
   const url = `${SUPABASE_URL}/rest/v1/songs`
-    + `?select=id,recipient_name,sender_name,genre,occasion`
+    + `?select=id,recipient_name,sender_name,genre,occasion,share_video_url`
     + `&id=in.(${inList})`;
   const res = await fetch(url, {
     headers: {
@@ -87,11 +87,21 @@ async function fetchSongs(ids) {
   return ids.map(id => map.get(id)).filter(Boolean);
 }
 
-function renderHtml({ songIdsCsv, title, description, canonical }) {
+function renderHtml({ songIdsCsv, title, description, canonical, videoUrl }) {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const safeCanonical = escapeHtml(canonical);
   const songPath = `/song/${escapeHtml(songIdsCsv)}`;
+
+  // When the song has an auto-rendered share video, announce it in OG so the
+  // WhatsApp/Facebook preview card carries a play button — the link *looks*
+  // like a video before it's even tapped.
+  const videoTags = videoUrl ? `
+<meta property="og:video" content="${escapeHtml(videoUrl)}" />
+<meta property="og:video:secure_url" content="${escapeHtml(videoUrl)}" />
+<meta property="og:video:type" content="video/mp4" />
+<meta property="og:video:width" content="1280" />
+<meta property="og:video:height" content="720" />` : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -102,7 +112,7 @@ function renderHtml({ songIdsCsv, title, description, canonical }) {
 <link rel="canonical" href="${safeCanonical}" />
 
 <!-- Open Graph / Facebook -->
-<meta property="og:type" content="music.song" />
+<meta property="og:type" content="${videoUrl ? 'video.other' : 'music.song'}" />
 <meta property="og:url" content="${safeCanonical}" />
 <meta property="og:title" content="${safeTitle}" />
 <meta property="og:description" content="${safeDesc}" />
@@ -110,7 +120,7 @@ function renderHtml({ songIdsCsv, title, description, canonical }) {
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:locale" content="es_MX" />
-<meta property="og:site_name" content="RegalosQueCantan" />
+<meta property="og:site_name" content="RegalosQueCantan" />${videoTags}
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
@@ -154,7 +164,8 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // Allow Facebook/edge caches to keep the OG card warm; humans don't see this anyway.
     res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
-    res.status(200).send(renderHtml({ songIdsCsv, title, description, canonical }));
+    const videoUrl = songs.find(s => s.share_video_url)?.share_video_url || null;
+    res.status(200).send(renderHtml({ songIdsCsv, title, description, canonical, videoUrl }));
   } catch (err) {
     // On failure, fall back to redirecting to the song page so the user still lands somewhere useful.
     const fallback = `/song/${sanitizeIds(req.query.ids).join(',')}`;

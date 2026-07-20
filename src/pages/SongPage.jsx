@@ -207,7 +207,7 @@ export default function SongPage({ songId: propSongId }) {
       countdown1: '🎵 ¡Aquí viene!',
       unaCanciones: (combo) => combo ? '2 canciones' : 'Una canción',
       compartir: 'Compartir',
-      descargar: 'Descargar',
+      descargar: 'Descargar Canción',
       linkCopiado: '¡Link copiado!',
       shareText: (combo, name) => `🎵 ¡Escucha ${combo ? 'estas canciones' : 'esta canción'} que hicieron para ${name || 'ti'}! 🎁`,
       shareTitle: (combo, name) => `🎵 ${combo ? '2 canciones' : 'Canción'} para ${name}`,
@@ -243,7 +243,7 @@ export default function SongPage({ songId: propSongId }) {
       countdown1: '🎵 Here it comes!',
       unaCanciones: (combo) => combo ? '2 songs' : 'A song',
       compartir: 'Share',
-      descargar: 'Download',
+      descargar: 'Download Song',
       linkCopiado: 'Link copied!',
       shareText: (combo, name) => `🎵 Listen to ${combo ? 'these songs' : 'this song'} made for ${name || 'you'}! 🎁`,
       shareTitle: (combo, name) => `🎵 ${combo ? '2 songs' : 'Song'} for ${name}`,
@@ -299,12 +299,20 @@ export default function SongPage({ songId: propSongId }) {
           .in('song_id', allSongIds)
           .eq('status', 'completed')
           .order('updated_at', { ascending: false });
+        // Build a map keyed by song_id so each song shows its own video
+        const map = {};
         if (videoOrders?.length > 0) {
-          // Build a map keyed by song_id so each song shows its own video
-          const map = {};
           videoOrders.forEach(vo => { if (vo.video_url) map[vo.song_id] = vo; });
-          setVideoDataMap(map);
         }
+        // Auto-rendered share video (songs.share_video_url — every paid song
+        // since the 2026-07 launch). The $9.99 addon video is the customer's
+        // own photos, so it wins when both exist.
+        ordered.forEach(s => {
+          if (s.share_video_url && !map[s.id]) {
+            map[s.id] = { video_url: s.share_video_url, status: 'completed', song_id: s.id };
+          }
+        });
+        if (Object.keys(map).length > 0) setVideoDataMap(map);
 
         setLoading(false);
         setPhase('mystery');

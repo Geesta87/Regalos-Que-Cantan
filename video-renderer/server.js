@@ -21,6 +21,7 @@ const { renderOrder } = require('./render');
 const { execFileSync } = require('child_process');
 const { spliceLine, spliceSection } = require('./spliceAudio.cjs');
 const { prepareClipSource, renderClip } = require('./clip');
+const { renderShareVideo } = require('./shareVideo.cjs');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -315,6 +316,28 @@ function enqueueClipJob(fn, job, id) {
     .catch((e) => console.error(`[clip:${id}] background job crashed:`, e?.message || e));
 }
 
+// Share video (per-song branded gift video — replaces the audio player on the
+// /song/:id share page). Same 202-then-background contract; result is persisted
+// by POSTing to job.callback_url (share-video-callback edge fn).
+async function runShareVideoJob(job) {
+  const id = job.song_id;
+  const started = Date.now();
+  const workDir = path.join(os.tmpdir(), `share-${id}-${started}`);
+  try {
+    if (!job.output_upload_url) throw new Error('job missing output_upload_url');
+    const result = await renderShareVideo(job, { dir: workDir, log: (m) => console.log(`[share:${id}] ${m}`) });
+    await uploadToSignedUrl(result.finalPath, job.output_upload_url, 'video/mp4');
+    const renderSeconds = Math.round((Date.now() - started) / 1000);
+    console.log(`[share:${id}] uploaded ${job.output_path} in ${renderSeconds}s`);
+    await postJobCallback(job, { kind: 'share_video', success: true, song_id: id, storage_path: job.output_path, video_url: job.output_public_url, duration_sec: result.durationSec, render_seconds: renderSeconds });
+  } catch (err) {
+    console.error(`[share:${id}] render error:`, err.message);
+    await postJobCallback(job, { kind: 'share_video', success: false, song_id: id, error: err.message });
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const send = (code, obj) => {
     res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -364,6 +387,25 @@ const server = http.createServer(async (req, res) => {
     const id = job.clip_id || job.project_id;
     send(202, { accepted: true, id });
     enqueueClipJob(req.url === '/clip-prepare' ? runClipPrepare : runClipRender, job, id);
+    return;
+  }
+
+  // Per-song branded share video for the /song/:id gift page
+  if (req.method === 'POST' && req.url === '/share-video') {
+    if (RENDER_TOKEN && req.headers['x-render-token'] !== RENDER_TOKEN) return send(401, { error: 'unauthorized' });
+    let job;
+    try {
+      job = JSON.parse(await readBody(req));
+      if (!job.song_id || !job.audio_url || !job.output_upload_url || !job.callback_url) {
+        throw new Error('missing song_id, audio_url, output_upload_url, or callback_url');
+      }
+    } catch (err) {
+      return send(400, { success: false, error: err.message });
+    }
+    send(202, { accepted: true, song_id: job.song_id });
+    renderChain = renderChain
+      .then(() => runShareVideoJob(job))
+      .catch((e) => console.error(`[share:${job.song_id}] background job crashed:`, e?.message || e));
     return;
   }
 
