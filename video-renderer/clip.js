@@ -1425,21 +1425,17 @@ function buildDepthWordsAss(geo, st, windows) {
 // fires inside the window (enable + eof_action=pass).
 function applyDepthWords(dir, geo, windows, log) {
   fs.renameSync(path.join(dir, 'clip.mp4'), path.join(dir, 'pre-words.mp4'));
-  const parts = [`[0:v]subtitles=depthwords.ass:fontsdir=.[bg]`];
-  let cur = 'bg';
-  windows.forEach((w, i) => {
-    parts.push(`[0:v]trim=${w.from.toFixed(3)}:${w.to.toFixed(3)},setpts=PTS-STARTPTS[sg${i}]`);
-    parts.push(`[${i + 1}:v]scale=${geo.w}:${geo.h},format=gray[am${i}]`);
-    parts.push(`[sg${i}][am${i}]alphamerge,setpts=PTS+${w.from.toFixed(3)}/TB[p${i}]`);
-    parts.push(`[${cur}][p${i}]overlay=0:0:enable='between(t,${w.from.toFixed(3)},${w.to.toFixed(3)})':eof_action=pass[c${i}]`);
-    cur = `c${i}`;
-  });
-  const args = ['-i', 'pre-words.mp4'];
-  windows.forEach((_, i) => args.push('-i', `alpha-w${i}.mp4`));
-  args.push('-filter_complex', parts.join(';'), '-map', `[${cur}]`, '-map', '0:a?',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p',
-    '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4');
-  ff(dir, args);
+  // Single full-length mask (transparent between windows) — the person layer
+  // always has frames, so overlay never buffers waiting for a late window.
+  const filter = [
+    '[0:v]subtitles=depthwords.ass:fontsdir=.[bg]',
+    `[1:v]scale=${geo.w}:${geo.h},format=gray[am]`,
+    '[0:v][am]alphamerge[pers]',
+    '[bg][pers]overlay=0:0:eof_action=pass[vout]',
+  ].join(';');
+  ff(dir, ['-i', 'pre-words.mp4', '-i', 'alpha-words.mp4', '-filter_complex', filter,
+    '-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19',
+    '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', 'clip.mp4']);
   log(`depth words: ${windows.length} key word(s) popped behind the person`);
 }
 
@@ -2260,12 +2256,11 @@ async function renderClip(job, { dir, log }) {
           from: Math.max(0, p.t - 0.12),
           to: Math.min(outDur, p.t + 1.15),
         })).filter((w) => w.to - w.from > 0.4);
-        const { buildPersonAlpha } = require('./segment');
-        for (let i = 0; i < windows.length; i++) {
-          const res = await buildPersonAlpha(dir, path.join(dir, 'clip.mp4'), windows[i].to - windows[i].from, log,
-            { start: windows[i].from, out: `alpha-w${i}.mp4` });
-          windows[i].headTopFrac = res && typeof res === 'object' ? res.headTopFrac : null;
-        }
+        // ONE continuous mask for the whole clip — per-window alpha inputs
+        // made overlay buffer unboundedly until a late window (OOM).
+        const { buildWindowedAlpha } = require('./segment');
+        const wa = await buildWindowedAlpha(dir, path.join(dir, 'clip.mp4'), windows, outDur, log);
+        windows.forEach((w, i) => { w.headTopFrac = wa.heads[i]; });
         const stDW = applyAccent(STYLES[job.style] || STYLES.boldpop, opts.accent_color);
         fs.writeFileSync(path.join(dir, 'depthwords.ass'), buildDepthWordsAss(geo, stDW, windows));
         applyDepthWords(dir, geo, windows, log);

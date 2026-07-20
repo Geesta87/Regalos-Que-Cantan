@@ -76,4 +76,66 @@ async function buildPersonAlpha(dir, srcFile, seconds, log = () => {}, { start =
   return { file: path.join(dir, out), headTopFrac };
 }
 
-module.exports = { buildPersonAlpha };
+// One CONTINUOUS person-mask video for the whole clip: transparent (black)
+// between windows, matted person inside them. Critical for the depth-words
+// composite — per-window alpha inputs made ffmpeg's overlay buffer every
+// frame until a late window began (~5GB on a 60s gap -> OOM-killed, the
+// silent stuck-at-rendering bug). With a full-length mask the overlay always
+// has frames and memory stays flat.
+async function buildWindowedAlpha(dir, srcFile, windows, totalDur, log = () => {}) {
+  const t0 = Date.now();
+  const O = ort();
+  const session = await O.InferenceSession.create(MODEL_PATH);
+  const plane = MH * MW;
+  const outStream = fs.createWriteStream(path.join(dir, 'alpha-words.gray'));
+  const zeroFrame = Buffer.alloc(plane);
+  const targetFrame = (t) => Math.round(t * FPS);
+  let framesWritten = 0;
+  const heads = [];
+  const col0 = Math.round(MW * 0.2), col1 = Math.round(MW * 0.8);
+  for (const w of windows) {
+    while (framesWritten < targetFrame(w.from)) { outStream.write(zeroFrame); framesWritten++; }
+    const dur = Math.max(0.1, w.to - w.from);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(w.from), '-t', String(dur), '-i', srcFile,
+      '-vf', `fps=${FPS},scale=${MW}:${MH}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'depth-frames.rgb'], { cwd: dir });
+    const raw = fs.readFileSync(path.join(dir, 'depth-frames.rgb'));
+    const nFrames = Math.floor(raw.length / (plane * 3));
+    const zero = () => new O.Tensor('float32', new Float32Array([0]), [1, 1, 1, 1]);
+    let r1 = zero(), r2 = zero(), r3 = zero(), r4 = zero();
+    const dsr = new O.Tensor('float32', new Float32Array([0.6]), [1]);
+    let headTopRow = MH;
+    for (let i = 0; i < nFrames; i++) {
+      const off = i * plane * 3;
+      const chw = new Float32Array(3 * plane);
+      for (let p = 0; p < plane; p++) {
+        chw[p] = raw[off + p * 3] / 255;
+        chw[plane + p] = raw[off + p * 3 + 1] / 255;
+        chw[2 * plane + p] = raw[off + p * 3 + 2] / 255;
+      }
+      const res = await session.run({ src: new O.Tensor('float32', chw, [1, 3, MH, MW]), r1i: r1, r2i: r2, r3i: r3, r4i: r4, downsample_ratio: dsr });
+      r1 = res.r1o; r2 = res.r2o; r3 = res.r3o; r4 = res.r4o;
+      const pha = res.pha.data;
+      const buf = Buffer.allocUnsafe(plane);
+      for (let p = 0; p < plane; p++) buf[p] = Math.max(0, Math.min(255, Math.round(pha[p] * 255)));
+      outStream.write(buf);
+      framesWritten++;
+      for (let row = 0; row < Math.round(MH * 0.7); row++) {
+        let s = 0, c = 0;
+        for (let cx = col0; cx < col1; cx += 4) { s += pha[row * MW + cx]; c++; }
+        if (s / c > 0.3) { if (row < headTopRow) headTopRow = row; break; }
+      }
+    }
+    heads.push(headTopRow >= MH ? null : headTopRow / MH);
+    fs.rmSync(path.join(dir, 'depth-frames.rgb'), { force: true });
+  }
+  while (framesWritten < targetFrame(totalDur)) { outStream.write(zeroFrame); framesWritten++; }
+  await new Promise((res) => outStream.end(res));
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray',
+    '-s', `${MW}x${MH}`, '-r', String(FPS), '-i', 'alpha-words.gray',
+    '-c:v', 'libx264', '-crf', '12', '-preset', 'fast', 'alpha-words.mp4'], { cwd: dir });
+  fs.rmSync(path.join(dir, 'alpha-words.gray'), { force: true });
+  log(`depth matting: ${windows.length} window(s) into one ${totalDur.toFixed(1)}s mask in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return { file: path.join(dir, 'alpha-words.mp4'), heads };
+}
+
+module.exports = { buildPersonAlpha, buildWindowedAlpha };

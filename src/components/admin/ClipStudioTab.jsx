@@ -1230,7 +1230,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     </div>
                     {c.status === 'rendering' && (
                       <div className="rounded-lg bg-gray-50 text-gray-400 text-xs flex items-center justify-center h-40">
-                        <Loader2 size={14} className="animate-spin mr-1.5" /> Rendering — usually under a minute for short clips
+                        <Loader2 size={14} className="animate-spin mr-1.5" /> Rendering — 1-3 min typical; long clips with many extras (depth, music, auto-framing) can take 5-8 min
                       </div>
                     )}
                     {c.status === 'ready' && c.video_url && (
