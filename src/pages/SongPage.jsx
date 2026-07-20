@@ -225,6 +225,9 @@ export default function SongPage({ songId: propSongId }) {
       conAmor: 'con amor,',
       conCarino: 'Con todo el cariño de...',
       conAmorCap: 'Con amor,',
+      ctaTitle: '¿Quieres dedicar una canción así?',
+      ctaSub: 'Crea una canción única para esa persona especial — lista en minutos.',
+      ctaBtn: 'Crear Mi Canción',
     },
     en: {
       preparando: 'Preparing your song...',
@@ -261,6 +264,9 @@ export default function SongPage({ songId: propSongId }) {
       conAmor: 'with love,',
       conCarino: 'With all the love from...',
       conAmorCap: 'With love,',
+      ctaTitle: 'Want to dedicate a song like this?',
+      ctaSub: 'Create a one-of-a-kind song for someone special — ready in minutes.',
+      ctaBtn: 'Create My Song',
     }
   };
 
@@ -1388,9 +1394,22 @@ export default function SongPage({ songId: propSongId }) {
                 <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, fontStyle: 'italic', paddingLeft: 32 }}>{dedication}</p>
               </div>
             </div>
-            {/* No upsells here: /song/:id is the link shared with the recipient,
-                so it stays purely the gift. The buyer's offers (one-tap Animado /
-                instrumental + the $5 gift text) live on the buyer-only /success page. */}
+            {/* Viewer CTA (owner decision 2026-07-19): the ONE invitation on the
+                gift page — viewers (family/friends who just heard the song) can
+                create their own. BUYER upsells stay off this page; those live on
+                the buyer-only /success page. */}
+            <div className="t1-anim5" style={{ padding: '8px 24px 24px', display: 'flex', justifyContent: 'center' }}>
+              <div className="t1-glass" style={{ width: '100%', maxWidth: 420, borderRadius: 20, padding: '24px 20px', textAlign: 'center', border: '1px solid rgba(244,192,37,0.25)' }}>
+                <p style={{ fontSize: 17, fontWeight: 800, marginBottom: 6 }}>🎁 {t.ctaTitle}</p>
+                <p style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.65)', marginBottom: 16, lineHeight: 1.5 }}>{t.ctaSub}</p>
+                <a
+                  href="/?utm_source=song_share&utm_medium=referral&utm_campaign=share_page_cta"
+                  style={{ display: 'inline-block', padding: '13px 30px', borderRadius: 999, textDecoration: 'none', background: 'linear-gradient(135deg, #f4c025 0%, #e8a810 100%)', color: '#1a1408', fontSize: 15, fontWeight: 800, boxShadow: '0 6px 24px rgba(244,192,37,0.3)' }}
+                >
+                  {t.ctaBtn} 🎵
+                </a>
+              </div>
+            </div>
             {brandFooter('rgba(244,192,37,0.3)', 'rgba(255,255,255,0.15)')}
           </main>
         </div>
