@@ -132,11 +132,20 @@ function buildStyleAndNegatives(styleUsedRaw: string, voiceType: string): { tags
 type WhisperWord = { word: string; start: number; end: number };
 type WhisperResult = { words: WhisperWord[]; duration: number; language: string };
 
+// Why the LAST transcription failed, in owner-readable Spanish. The old code
+// swallowed every Whisper failure into a generic "no se pudo acceder al audio"
+// message — which sent us chasing phantom audio problems when the real cause
+// was OpenAI billing (2026-07-19: key out of credit looked like broken songs).
+let lastWhisperError: string | null = null;
+
 async function transcribeAudio(audioUrl: string): Promise<WhisperResult | null> {
-  if (!OPENAI_API_KEY) return null;
+  if (!OPENAI_API_KEY) { lastWhisperError = 'OPENAI_API_KEY no está configurada en Supabase'; return null; }
   try {
     const audioRes = await fetch(audioUrl);
-    if (!audioRes.ok) throw new Error(`audio fetch failed: ${audioRes.status}`);
+    if (!audioRes.ok) {
+      lastWhisperError = `no se pudo descargar el audio (HTTP ${audioRes.status})`;
+      throw new Error(`audio fetch failed: ${audioRes.status}`);
+    }
     const audioBlob = await audioRes.blob();
 
     const form = new FormData();
@@ -152,16 +161,25 @@ async function transcribeAudio(audioUrl: string): Promise<WhisperResult | null> 
       body: form,
     });
     if (!resp.ok) {
-      console.error(`[whisper] API error ${resp.status}: ${(await resp.text()).substring(0, 300)}`);
+      const bodyTxt = (await resp.text()).substring(0, 300);
+      console.error(`[whisper] API error ${resp.status}: ${bodyTxt}`);
+      lastWhisperError =
+        resp.status === 401 ? 'OpenAI rechazó la API key (inválida o revocada) — revisa platform.openai.com' :
+        (resp.status === 429 && bodyTxt.includes('insufficient_quota')) ? 'OpenAI SIN CRÉDITO (billing agotado) — recarga en platform.openai.com/billing' :
+        resp.status === 429 ? 'OpenAI rate-limit (HTTP 429) — espera unos minutos y reintenta' :
+        resp.status >= 500 ? `OpenAI caído (HTTP ${resp.status}) — reintenta en unos minutos` :
+        `OpenAI Whisper devolvió HTTP ${resp.status}`;
       return null;
     }
     const data = await resp.json();
     const words: WhisperWord[] = (data.words || [])
       .map((w: any) => ({ word: String(w.word || ''), start: Number(w.start), end: Number(w.end) }))
       .filter((w: WhisperWord) => w.word && !Number.isNaN(w.start) && !Number.isNaN(w.end));
+    lastWhisperError = null;
     return { words, duration: Number(data.duration) || 0, language: String(data.language || 'spanish') };
   } catch (e: any) {
     console.error('[whisper] error:', e.message);
+    if (!lastWhisperError) lastWhisperError = `error de red al transcribir: ${e.message}`;
     return null;
   }
 }
@@ -1062,7 +1080,7 @@ Deno.serve(async (req) => {
         w = await transcribeAudio(audioUrl);
         if (w && w.words.length && songId && !directUrl) await supabase.from('songs').update({ lyrics_timestamps: w }).eq('id', songId);
       }
-      if (!w || !w.words.length) return json({ ok: false, error: 'transcription failed' });
+      if (!w || !w.words.length) return json({ ok: false, error: `transcription failed: ${lastWhisperError || 'causa desconocida'}` });
       return json({
         ok: true,
         duration: w.duration,
@@ -1422,8 +1440,15 @@ Deno.serve(async (req) => {
       if (w2 && w2.words.length) { whisper = w2; pristineForSplice = song.audio_url; }
     }
     if (!whisper || whisper.words.length === 0) {
-      return json({ ok: false, eligible: false,
-        reason: 'No se pudo acceder al audio original para transcribirlo. Usa "Rehacer la canción completa" (mismo estilo y voz).' });
+      // Tell the owner the REAL cause. Only a true audio-download failure means
+      // the source is gone (→ suggest full re-roll); an OpenAI billing/key/rate
+      // problem is on OUR side and the song is fine — retry after fixing it.
+      const cause = lastWhisperError || 'causa desconocida';
+      const audioGone = cause.startsWith('no se pudo descargar el audio');
+      return json({ ok: false, eligible: false, whisperError: cause,
+        reason: audioGone
+          ? `No se pudo descargar el audio original (${cause}). Usa "Rehacer la canción completa" (mismo estilo y voz).`
+          : `⚠ La transcripción falló, pero NO es problema de la canción: ${cause}. Corrige eso y vuelve a intentar el arreglo normal.` });
     }
 
     const duration = whisper.duration || (whisper.words.length ? whisper.words[whisper.words.length - 1].end : 0);
