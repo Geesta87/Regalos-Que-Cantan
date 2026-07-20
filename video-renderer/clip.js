@@ -904,9 +904,32 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
         // and the script row underneath never moves.
         const lineH = Math.round(bs * 1.22);
         const anchor = keyRaw ? yBold : yWhiteOnly;
+        // Body-text treatment. Owner picked 'glowline' (2026-07-20): the white
+        // body carries a soft halo in the SAME colour as the script accent, so
+        // the two typefaces read as one designed system rather than a bold
+        // font sitting next to an unrelated cursive. 'plain' is the literal
+        // reference reproduction; 'punch' and 'caps' are the alternates that
+        // were rendered alongside it. (A 'plate' variant was cut — a border
+        // that thick renders as a slab that swallows the text.)
+        const bodyLook = opts.primeBody || st.bodyLook || 'glowline';
+        const accent = st.highlight || AQUA;
+        const bodyTags = (size) => {
+          switch (bodyLook) {
+            case 'punch':   // heavy dark outline, tight — the TikTok bold look
+              return `\\c&HFFFFFF&\\3c&H00000000&\\bord${Math.round(size / 11)}\\4c&HA0000000&\\shad${Math.round(size / 30)}\\blur1\\fsp-1`;
+            case 'caps':    // spaced caps — editorial, quieter
+              return `\\c&HFFFFFF&\\3c&H70000000&\\bord${Math.max(2, Math.round(size / 40))}\\4c&H8C000000&\\shad${Math.round(size / 26)}\\fsp${Math.round(size / 22)}\\blur1.2`;
+            case 'plain':
+              return `\\c&HFFFFFF&${edge(size)}`;
+            default:        // glowline
+              return `\\c&HFFFFFF&\\3c${accent}\\bord${Math.round(size / 16)}\\blur6\\4c&H8C000000&\\shad${Math.round(size / 28)}`;
+          }
+        };
+        const upperBody = bodyLook === 'caps';
         white.lines.forEach((ln, i) => {
           const y = anchor - (white.lines.length - 1 - i) * lineH;
-          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${y})\\fn${boldFam}\\fs${bs}\\b0\\c&HFFFFFF&${edge(bs)}${fade}}${assEscape(ln)}`);
+          const txt = upperBody ? assEscape(ln).toUpperCase() : assEscape(ln);
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${y})\\fn${boldFam}\\fs${bs}\\b0${bodyTags(bs)}${fade}}${txt}`);
         });
         // script row — the cyan key word, sitting just under the bold line.
         // scy86: the reference script is wider-and-shorter than any free
@@ -1777,6 +1800,7 @@ async function renderClip(job, { dir, log }) {
     accent: opts.accent_color || null,
     contrast: measureCaptionBandLuma(dir, start, clipDur, log),
     sizeScale: Math.max(0.7, Math.min(1.6, Number(opts.caption_size) || 1)),
+    primeBody: opts.prime_body || null,
   };
   const assContent = Array.isArray(job.caption_groups) && job.caption_groups.length
     ? buildAssFromGroups(
