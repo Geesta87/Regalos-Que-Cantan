@@ -88,6 +88,7 @@ const ORANGE = '&H00105DE8';  // #E85D10 — energia orange
 const WARM = '&H0027B4F0';    // #F0B427 — brasa warm gold
 const CYAN = '&H00FFE500';    // #00E5FF — neon cyan
 const TEAL = '&H00A8C200';    // #00C2A8 — signature-pack teal
+const AQUA = '&H00E2DE7D';    // #7DDEE2 — sampled from the Prime reference
 const DARKTXT = '&H00181818';
 // Caption personalities. New fields beyond v1:
 //   pill: {bg, fg}      active word gets a chunky colored surround (thick \bord)
@@ -139,6 +140,10 @@ const STYLES = {
   // Premium luminous type: stacked halo + inner glow + crisp core, so the
   // words read as lit from within rather than outlined.
   resplandor: { wordsPerGroup: 4, highlight: GOLD, upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'glow', grade: 'eq=contrast=1.07:saturation=1.02:brightness=-0.02' },
+  // "Prime" — rebuilt from a measured reference: sentence-case Poppins Bold
+  // in white with the key word beneath it in cyan Sacramento script. The
+  // reference holds each caption completely still, so this one does too.
+  prime: { wordsPerGroup: 4, highlight: AQUA, upper: false, font: 'Poppins', scriptFont: 'Satisfy', kinetic: 'motion', motion: 'prime', grade: 'eq=contrast=1.05:saturation=1.03' },
   mixto:     { wordsPerGroup: 4, highlight: GOLD,   upper: true, border: 'outline', font: 'Montserrat Black', mixFont: 'Great Vibes', grade: 'eq=contrast=1.06:saturation=1.1:brightness=0.01', entrance: 'fade' },
   contorno:  { wordsPerGroup: 3, highlight: YELLOW, upper: true, border: 'outline', font: 'Archivo Black', hollow: true, pop: true, grade: 'eq=contrast=1.09:saturation=0.9', entrance: 'slam' },
   bloque:    { wordsPerGroup: 3, upper: true, font: 'Montserrat Black', kinetic: 'block', palette: [{ bg: PINK, fg: WHITE }, { bg: YELLOW, fg: DARKTXT }, { bg: TEAL, fg: DARKTXT }], grade: 'eq=contrast=1.05:saturation=1.08' },
@@ -504,6 +509,7 @@ const FONT_FILE = {
   Anton: 'Anton-Regular.ttf', Prata: 'Prata-Regular.ttf', 'Patrick Hand': 'PatrickHand-Regular.ttf',
   'Space Mono': 'SpaceMono-Regular.ttf', 'Great Vibes': 'GreatVibes-Regular.ttf',
   'Montserrat Black': 'Montserrat-Black.ttf', 'Archivo Black': 'ArchivoBlack-Regular.ttf',
+  Poppins: 'Poppins-Bold.ttf', Sacramento: 'Sacramento-Regular.ttf', Satisfy: 'Satisfy-Regular.ttf',
 };
 const _fkFonts = {};
 function textW(fam, text, size) {
@@ -818,6 +824,64 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
             E(1, b.from, b.to, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${soft}}${assEscape(p.txt)}`);
           });
         });
+      } else if (st.motion === 'prime') {
+        // Measured from the reference capture (fractions of frame height):
+        //   bold line centre 0.677 · script line centre 0.727
+        //   bold em 0.0505 · script em 0.062 (script x-heights run small)
+        // Captions hold perfectly still — the reference has zero caption
+        // motion, so a soft fade is the only concession.
+        const boldFam = st.font || 'Poppins';
+        const scriptFam = st.scriptFont || 'Sacramento';
+        const sizeK = opts.sizeScale || 1;
+        // Sizes solved against the reference by WIDTH, not height: at the
+        // capture's resolution the caption is ~95px wide but only ~12px tall,
+        // so width carries ~8x the measurable signal. Reference "know this"
+        // spans 53.4% of frame width, "one tip" 54.5%.
+        // NOTE libass does not map \fs 1:1 onto the em, and the error differs
+        // per face — measured on this renderer: Poppins draws ~1.21x wider
+        // than fontkit's advance predicts, Sacramento ~0.70x. RF corrects
+        // both the calibrated sizes and the shrink-to-fit test.
+        const RF = { Poppins: 0.553, Sacramento: 0.697, Satisfy: 0.640 };
+        const boldSize = Math.round(geo.h * 0.1099 * sizeK);
+        const scriptSize = Math.round(geo.h * 0.1674 * sizeK);
+        const cx = Math.round(geo.w / 2);
+        // \an5 centres the LAYOUT box, not the ink, so the anchors are
+        // nudged by each face's ink offset to land the ink where measured.
+        const yBold = Math.round(geo.h * 0.6856);
+        const yScript = Math.round(geo.h * 0.7350);
+        const maxW = geo.w * 0.88;
+
+        let kIdx = group.findIndex((w) => w.emp);
+        if (kIdx < 0) kIdx = group.findIndex((w) => isNumberWord(w.word) || isCtaWord(w.word));
+        if (kIdx < 0) kIdx = group.reduce((bi, w, i) => (String(w.word).length > String(group[bi].word).length ? i : bi), 0);
+
+        // The reference NEVER reorders speech: the key word and everything
+        // after it drop to the script line ("know this" / "one tip").
+        const restRaw = group.slice(0, kIdx).map((w) => String(w.word)).join(' ').trim();
+        const keyRaw = group.slice(kIdx).map((w) => String(w.word)).join(' ').replace(/[.,!?…¿¡]+$/, '').trim();
+        const fit = (fam, text, size) => {
+          const rf = RF[fam] || 1;
+          let s = size;
+          while (s > size * 0.5 && textW(fam, text, s) * rf > maxW) s = Math.floor(s * 0.94);
+          return s;
+        };
+        const bs = restRaw ? fit(boldFam, restRaw, boldSize) : boldSize;
+        const ss = fit(scriptFam, keyRaw, scriptSize);
+        const fade = `\\fad(90,60)`;
+        // The reference carries almost no outline — legibility comes from a
+        // soft drop shadow, not a hard stroke. A heavy \bord was the biggest
+        // visual difference in the first comparison passes.
+        const edge = (size) => `\\3c&H70000000&\\bord${Math.max(2, Math.round(size / 42))}\\4c&H8C000000&\\shad${Math.max(2, Math.round(size / 26))}\\blur1.2`;
+        // bold row
+        if (restRaw) {
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${yBold})\\fn${boldFam}\\fs${bs}\\b0\\c&HFFFFFF&${edge(bs)}${fade}}${assEscape(restRaw)}`);
+        }
+        // script row — the cyan key word, sitting just under the bold line.
+        // scy86: the reference script is wider-and-shorter than any free
+        // connected script (measured h/w 0.320 vs Satisfy's 0.439); a light
+        // vertical squeeze lands the proportion without visible distortion
+        // and stops the ascenders colliding with the bold row.
+        E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${restRaw ? yScript : yBold})\\fn${scriptFam}\\fs${ss}\\fscy86\\b0\\c${st.highlight || AQUA}&${edge(ss * 0.55)}${fade}}${assEscape(keyRaw)}`);
       } else if (st.motion === 'glow') {
         // Three stacked passes per word — wide ambient halo, tight inner
         // glow, crisp core — then the spoken word re-lights brighter. The
