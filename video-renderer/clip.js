@@ -853,35 +853,69 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
 
         let kIdx = group.findIndex((w) => w.emp);
         if (kIdx < 0) kIdx = group.findIndex((w) => isNumberWord(w.word) || isCtaWord(w.word));
-        if (kIdx < 0) kIdx = group.reduce((bi, w, i) => (String(w.word).length > String(group[bi].word).length ? i : bi), 0);
 
-        // The reference NEVER reorders speech: the key word and everything
-        // after it drop to the script line ("know this" / "one tip").
-        const restRaw = group.slice(0, kIdx).map((w) => String(w.word)).join(' ').trim();
-        const keyRaw = group.slice(kIdx).map((w) => String(w.word)).join(' ').replace(/[.,!?…¿¡]+$/, '').trim();
+        // Script is an ACCENT, never the body text. It only appears when a
+        // real key word lands in the last two positions, so the cursive tail
+        // is at most two words and always ends the phrase ("know this" /
+        // "one tip"). Everything else stays white and readable — the
+        // reference is full of all-white captions ("We're taught", "means").
+        const useScript = kIdx >= 0 && kIdx >= group.length - 2;
+        const splitAt = useScript ? kIdx : group.length;
+        const restRaw = group.slice(0, splitAt).map((w) => String(w.word)).join(' ').trim();
+        const keyRaw = group.slice(splitAt).map((w) => String(w.word)).join(' ').replace(/[.,!?…¿¡]+$/, '').trim();
         const fit = (fam, text, size) => {
           const rf = RF[fam] || 1;
           let s = size;
           while (s > size * 0.5 && textW(fam, text, s) * rf > maxW) s = Math.floor(s * 0.94);
           return s;
         };
-        const bs = restRaw ? fit(boldFam, restRaw, boldSize) : boldSize;
-        const ss = fit(scriptFam, keyRaw, scriptSize);
+        // A white-only caption is one balanced line, not a line pinned to the
+        // top of an empty two-line block.
+        const yWhiteOnly = Math.round((yBold + yScript) / 2);
+        // Long body text WRAPS (the reference stacks "starts to look"); it
+        // must never shrink itself off the frame — four long Spanish words
+        // hit the shrink floor and still overflowed at 1060px.
+        const renderW = (fam, t, s) => textW(fam, t, s) * (RF[fam] || 1);
+        const wrapWhite = (text, size) => {
+          if (!text) return { lines: [], size };
+          if (renderW(boldFam, text, size) <= maxW) return { lines: [text], size };
+          const ws = text.split(' ');
+          let best = null;
+          for (let i = 1; i < ws.length; i++) {
+            const a = ws.slice(0, i).join(' '), b = ws.slice(i).join(' ');
+            const wide = Math.max(renderW(boldFam, a, size), renderW(boldFam, b, size));
+            if (!best || wide < best.wide) best = { a, b, wide };
+          }
+          if (!best) return { lines: [text], size: fit(boldFam, text, size) };
+          let s = size;
+          while (s > size * 0.6 && Math.max(renderW(boldFam, best.a, s), renderW(boldFam, best.b, s)) > maxW) s = Math.floor(s * 0.95);
+          return { lines: [best.a, best.b], size: s };
+        };
+        const white = wrapWhite(restRaw, boldSize);
+        const bs = white.size;
+        const ss = keyRaw ? fit(scriptFam, keyRaw, scriptSize) : scriptSize;
         const fade = `\\fad(90,60)`;
         // The reference carries almost no outline — legibility comes from a
         // soft drop shadow, not a hard stroke. A heavy \bord was the biggest
         // visual difference in the first comparison passes.
         const edge = (size) => `\\3c&H70000000&\\bord${Math.max(2, Math.round(size / 42))}\\4c&H8C000000&\\shad${Math.max(2, Math.round(size / 26))}\\blur1.2`;
-        // bold row
-        if (restRaw) {
-          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${yBold})\\fn${boldFam}\\fs${bs}\\b0\\c&HFFFFFF&${edge(bs)}${fade}}${assEscape(restRaw)}`);
-        }
+        // bold rows — the readable body text, always white, never cursive.
+        // Multi-line white stacks UPWARD so the last line keeps its anchor
+        // and the script row underneath never moves.
+        const lineH = Math.round(bs * 1.22);
+        const anchor = keyRaw ? yBold : yWhiteOnly;
+        white.lines.forEach((ln, i) => {
+          const y = anchor - (white.lines.length - 1 - i) * lineH;
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${y})\\fn${boldFam}\\fs${bs}\\b0\\c&HFFFFFF&${edge(bs)}${fade}}${assEscape(ln)}`);
+        });
         // script row — the cyan key word, sitting just under the bold line.
         // scy86: the reference script is wider-and-shorter than any free
         // connected script (measured h/w 0.320 vs Satisfy's 0.439); a light
         // vertical squeeze lands the proportion without visible distortion
         // and stops the ascenders colliding with the bold row.
-        E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${restRaw ? yScript : yBold})\\fn${scriptFam}\\fs${ss}\\fscy86\\b0\\c${st.highlight || AQUA}&${edge(ss * 0.55)}${fade}}${assEscape(keyRaw)}`);
+        if (keyRaw) {
+          E(1, group[0].start, gEnd, `{\\an5\\pos(${cx},${restRaw ? yScript : yWhiteOnly})\\fn${scriptFam}\\fs${ss}\\fscy86\\b0\\c${st.highlight || AQUA}&${edge(ss * 0.55)}${fade}}${assEscape(keyRaw)}`);
+        }
       } else if (st.motion === 'glow') {
         // Three stacked passes per word — wide ambient halo, tight inner
         // glow, crisp core — then the spoken word re-lights brighter. The
