@@ -39,6 +39,7 @@ const STYLE_META = {
   recorte:  { name: 'Recorte',   group: 'fun', desc: 'Sticker collage — words slap in with tilts & parallax shadows', sample: ['PEGA', 'CADA', 'PALABRA'], hi: '#E4007C', upper: true, box: false, accent: true },
   gravedad: { name: 'Gravedad',  group: 'fun', desc: 'Words free-fall, squash and take a second hop', sample: ['CAE', 'Y', 'REBOTA'], hi: '#FFD400', upper: true, box: false, accent: true },
   // Signature looks — the Captions.ai-gallery devices, with built-in grades.
+  resplandor:{ name: 'Resplandor', group: 'premium', desc: 'Glowing type — lit from within, halo + crisp core', sample: ['LUZ', 'PROPIA'], hi: '#D4AF37', upper: true, box: false, accent: true, glow: true },
   mixto:     { name: 'Mixto',     group: 'premium', desc: 'Heavy caps + the key word in elegant script — the signature mix', sample: ['UNA CANCIÓN', 'única'], hi: '#D4AF37', upper: true, box: false, accent: true, serif: true },
   contorno:  { name: 'Contorno',  group: 'sell', desc: 'Hollow outline letters — the spoken word fills in solid', sample: ['SOLO', 'CONTORNO'], hi: '#FFD400', upper: true, box: false, accent: true },
   bloque:    { name: 'Bloque',    group: 'fun', desc: 'Each phrase on a tilted color block — colors rotate', sample: ['BLOQUE', 'DE COLOR'], hi: '#E4007C', upper: true, box: false, pill: true },

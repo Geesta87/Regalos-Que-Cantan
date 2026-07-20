@@ -136,6 +136,9 @@ const STYLES = {
   cinta:    { wordsPerGroup: 4, highlight: GOLD,   upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'cinta', grade: 'eq=contrast=1.04:saturation=1.02' },
   enfoque:  { wordsPerGroup: 4, highlight: GOLD,   upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'enfoque', grade: 'eq=contrast=1.06:saturation=0.96' },
   gravedad: { wordsPerGroup: 3, highlight: YELLOW, upper: true, font: 'Archivo Black', kinetic: 'motion', motion: 'gravedad', grade: 'eq=contrast=1.06:saturation=1.05' },
+  // Premium luminous type: stacked halo + inner glow + crisp core, so the
+  // words read as lit from within rather than outlined.
+  resplandor: { wordsPerGroup: 4, highlight: GOLD, upper: true, font: 'Montserrat Black', kinetic: 'motion', motion: 'glow', grade: 'eq=contrast=1.07:saturation=1.02:brightness=-0.02' },
   mixto:     { wordsPerGroup: 4, highlight: GOLD,   upper: true, border: 'outline', font: 'Montserrat Black', mixFont: 'Great Vibes', grade: 'eq=contrast=1.06:saturation=1.1:brightness=0.01', entrance: 'fade' },
   contorno:  { wordsPerGroup: 3, highlight: YELLOW, upper: true, border: 'outline', font: 'Archivo Black', hollow: true, pop: true, grade: 'eq=contrast=1.09:saturation=0.9', entrance: 'slam' },
   bloque:    { wordsPerGroup: 3, upper: true, font: 'Montserrat Black', kinetic: 'block', palette: [{ bg: PINK, fg: WHITE }, { bg: YELLOW, fg: DARKTXT }, { bg: TEAL, fg: DARKTXT }], grade: 'eq=contrast=1.05:saturation=1.08' },
@@ -814,6 +817,38 @@ function buildKineticAss(words, styleKey, aspectKey, opts = {}) {
             const soft = j === i ? `\\blur0.8\\c${hi}&` : `\\blur2.4\\alpha&H28&\\c${WHITE}&`;
             E(1, b.from, b.to, `{\\an5\\pos(${Math.round(p.x)},${Math.round(p.y)})${soft}}${assEscape(p.txt)}`);
           });
+        });
+      } else if (st.motion === 'glow') {
+        // Three stacked passes per word — wide ambient halo, tight inner
+        // glow, crisp core — then the spoken word re-lights brighter. The
+        // halo carries the legibility, so the core needs only a hairline
+        // dark edge instead of the usual heavy outline.
+        const pos = layoutGroup(fam, tokens, baseSize, geo, bottomY);
+        // Hard handoff: this group must be gone the instant the next one
+        // starts. gEnd's 0.1s tail would leave both layouts on screen (they
+        // sit at different line heights, so it reads as doubled text).
+        const gOut = groups[gi + 1] ? Math.min(gEnd, groups[gi + 1][0].start) : gEnd;
+        pos.forEach((p, i) => {
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const fsTag = Math.round(p.size) !== baseSize ? `\\fs${Math.round(p.size)}` : '';
+          const t = assEscape(p.txt);
+          const halo = Math.max(6, Math.round(p.size * 0.2));
+          const inner = Math.max(3, Math.round(p.size * 0.085));
+          const fade = `\\fad(220,140)`;
+          E(0, group[0].start, gOut, `{\\an5\\pos(${x},${y})${fsTag}\\1c${hi}&\\3c${hi}&\\bord${halo}\\blur${Math.round(p.size * 0.16)}\\alpha&H86&\\shad0${fade}}${t}`);
+          E(1, group[0].start, gOut, `{\\an5\\pos(${x},${y})${fsTag}\\1c${hi}&\\3c${hi}&\\bord${inner}\\blur${Math.round(p.size * 0.06)}\\alpha&H3C&\\shad0${fade}}${t}`);
+          E(2, group[0].start, gOut, `{\\an5\\pos(${x},${y})${fsTag}\\c&HFFFFFF&\\3c&H50000000&\\bord${Math.max(2, Math.round(p.size / 26))}\\blur1.2\\shad0${fade}${scaleChain(94, 300, easeOutExpo, 5)}}${t}`);
+        });
+        beats.forEach((b, i) => {
+          b = { from: b.from, to: Math.min(b.to, gOut) };
+          if (b.to - b.from < 0.05) return;
+          const p = pos[i];
+          const x = Math.round(p.x), y = Math.round(p.y);
+          const fsTag = Math.round(p.size) !== baseSize ? `\\fs${Math.round(p.size)}` : '';
+          const t = assEscape(p.txt);
+          const flare = Math.max(8, Math.round(p.size * 0.3));
+          E(3, b.from, b.to, `{\\an5\\pos(${x},${y})${fsTag}\\1c${hi}&\\3c${hi}&\\bord${flare}\\blur${Math.round(p.size * 0.22)}\\alpha&H5A&\\shad0\\t(0,180,\\alpha&H74&)}${t}`);
+          E(4, b.from, b.to, `{\\an5\\pos(${x},${y})${fsTag}\\c&HFFFFFF&\\3c${hi}&\\bord${Math.max(3, Math.round(p.size / 14))}\\blur3\\shad0\\fscx104\\fscy104\\t(0,150,\\fscx100\\fscy100)}${t}`);
         });
       } else if (st.motion === 'gravedad') {
         // Gravity: words free-fall, squash on impact, then take one small
