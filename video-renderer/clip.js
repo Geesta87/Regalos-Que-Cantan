@@ -2002,7 +2002,10 @@ async function renderClip(job, { dir, log }) {
     enfoque:  { file: 'riser.mp3', vol: 0.18, per: 'group' },
   };
   const stMo = STYLES[job.style] || {};
-  const msfxCfg = (audioLabel && stMo.kinetic === 'motion' && opts.sfx_motion !== false) ? MOTION_SFX[stMo.motion] : null;
+  // Owner call 2026-07-20: per-word motion sounds REMOVED (read as noise
+  // against speech + music). Machinery stays; opt-in only if a job
+  // explicitly sends sfx_motion:true — nothing does today.
+  const msfxCfg = (audioLabel && stMo.kinetic === 'motion' && opts.sfx_motion === true) ? MOTION_SFX[stMo.motion] : null;
   let msfxEvents = [];
   if (msfxCfg) {
     const gs = groupWords(words, stMo.wordsPerGroup || 4);
