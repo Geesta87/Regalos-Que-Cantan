@@ -13,8 +13,9 @@ import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import ClipStudioTab from '../components/admin/ClipStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
+import AdsCoachTab from '../components/admin/AdsCoachTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target } from 'lucide-react';
 import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -3867,6 +3868,11 @@ export default function AdminDashboard() {
           <Newspaper size={18} className={`flex-shrink-0 ${activeTab === 'dailybriefing' ? 'text-amber-400' : ''}`} /> Daily Briefing
         </button>
         )}
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('adscoach')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'adscoach' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Target size={18} className={`flex-shrink-0 ${activeTab === 'adscoach' ? 'text-amber-400' : ''}`} /> Ads Coach
+        </button>
+        )}
         <button onClick={() => setActiveTab('creativestudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'creativestudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Sparkles size={18} className={`flex-shrink-0 ${activeTab === 'creativestudio' ? 'text-amber-400' : ''}`} /> Creative Studio
         </button>
@@ -4653,6 +4659,18 @@ export default function AdminDashboard() {
                 }`}
               >
                 📰 Daily Briefing
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('adscoach')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'adscoach'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎯 Ads Coach
               </button>
               )}
               <button
@@ -6504,6 +6522,12 @@ export default function AdminDashboard() {
              hidden from the sidebar AND the route is guarded for assistants like
              Ivan. daily-briefing-admin edge function enforces it server-side too. */
           <DailyBriefingTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'adscoach' && userRole === 'admin') ? (
+          /* Ads Coach — interactive, advice-only Meta ads specialist. Reads live
+             account numbers + real orders, sees your ad creatives, reasons with the
+             Meta Algorithm Brain, remembers past chats, never touches the account.
+             ads-coach edge function enforces admin server-side. Admin-only. */
+          <AdsCoachTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'recruit' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Recruit Partners — Affiliate Recruiter agent (discover + score +
              draft outreach + convert). Open to admin + assistant (Ivan runs
