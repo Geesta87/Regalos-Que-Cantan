@@ -2542,6 +2542,47 @@ export default function SuccessPage() {
               animation: 'shimmerAccent 3s linear infinite',
             }} />
 
+            {/* ===== SONG IS ALWAYS DOWNLOADABLE =====
+                The main download & share section (above) is hidden for video-addon
+                buyers, so without this card they'd have NO way to get the MP3 until
+                the video is finished. Show it in every not-yet-done state (pending /
+                photos_uploaded / processing) so the song is available even before any
+                photos are uploaded. The 'completed' state has its own MP3 button. */}
+            {currentSong?.audio_url && videoOrder
+              && videoOrder.status !== 'completed' && videoOrder.status !== 'failed' && (
+              <div style={{
+                background: isLight ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.10)',
+                border: `1.5px solid ${isLight ? 'rgba(34,197,94,0.28)' : 'rgba(34,197,94,0.4)'}`,
+                borderRadius: '16px', padding: '16px', marginBottom: '20px',
+              }}>
+                <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 800, color: isLight ? '#166534' : '#4ade80' }}>
+                  ✅ Tu canción ya está lista
+                </p>
+                <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: ts.textSecondary, lineHeight: 1.45 }}>
+                  Puedes descargarla ahora mismo — no necesitas esperar al video. Tu video se generará abajo cuando subas tus fotos.
+                </p>
+                <button onClick={() => handleDownload(currentSong)} disabled={downloading}
+                  style={{
+                    width: '100%', padding: '15px',
+                    background: downloadComplete[currentSong?.id]
+                      ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                      : 'linear-gradient(135deg, #22c55e, #16a34a)',
+                    color: 'white', fontWeight: 800, fontSize: '16px',
+                    border: 'none', borderRadius: '14px', cursor: downloading ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    boxShadow: '0 8px 24px rgba(34,197,94,0.3)',
+                    opacity: downloading ? 0.7 : 1, transition: 'all 0.3s', fontFamily: ts.font,
+                  }}>
+                  {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de nuevo' : '⬇️ Descargar tu canción (MP3)'}
+                </button>
+                {isInAppBrowser() && (
+                  <p style={{ fontSize: '11.5px', color: ts.textSecondary, margin: '10px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
+                    💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* STATE: No video order yet — Show upsell CTA */}
             {!videoOrder && (
               <>
