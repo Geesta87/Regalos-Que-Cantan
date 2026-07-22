@@ -293,10 +293,28 @@ function _lev(a, b) {
   for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
   return d[m][n];
 }
+// Collapse spelled-out years in a transcript to their digit form, so a token
+// group like ['2002'] (buildTokenGroups digitizes years) matches audio that
+// Whisper wrote SPELLED — "dos mil dos", "mil novecientos ochenta". Without this,
+// every year/date correction where Whisper spells the year fails validation and
+// the fix tool re-submits forever ("still generating"). Uses the same _parseYear
+// as buildTokenGroups so both sides normalize identically.
+function collapseSpelledYears(atoms) {
+  const t = atoms.map((a) => a.n);
+  const out = [];
+  for (let i = 0; i < atoms.length;) {
+    const y = _parseYear(t, i);
+    if (y && y.next > i + 1) {
+      out.push({ n: String(y.year), s: atoms[i].s, e: atoms[Math.min(y.next, atoms.length) - 1].e });
+      i = y.next;
+    } else { out.push(atoms[i]); i++; }
+  }
+  return out;
+}
 export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } = {}) {
   if (!words?.length) return { ok: false, reason: 'no transcription' };
   if (!tokenGroups?.length) return { ok: true, reason: 'no check' };
-  const atoms = words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }));
+  const atoms = collapseSpelledYears(words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e })));
   // Fuzzy word equality — tolerant of Whisper spelling noise (mezquite≈mesquite),
   // prefixes, and single-character edits on longer words.
   const grpEq = (n, group) => group.some((g) => n === g
@@ -333,7 +351,7 @@ export function validateTake(words, tokenGroups, { maxGapS = 6, maxSpanS = 32 } 
 // no clean run exists (the line was truly skipped/garbled in this take).
 export function findCleanLine(words, tokenGroups, { nearS = null, maxGapS = 3.2 } = {}) {
   if (!words?.length || !tokenGroups?.length) return null;
-  const atoms = words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e }));
+  const atoms = collapseSpelledYears(words.map((w) => ({ n: norm(w.word ?? w.w), s: w.start ?? w.s, e: w.end ?? w.e })));
   const grpEq = (n, group) => group.some((g) => n === g
     || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n)))
     || (Math.max(n.length, g.length) >= 5 && Math.abs(n.length - g.length) <= 1 && _lev(n, g) <= 1));
