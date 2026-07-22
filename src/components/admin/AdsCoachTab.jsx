@@ -7,7 +7,7 @@
 // apply its suggestions in Meta Ads Manager. Admin-only. Talks to the ads-coach
 // edge function.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X } from 'lucide-react';
+import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2 } from 'lucide-react';
 import { btn, Badge } from './ui';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-coach`;
@@ -28,6 +28,11 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showImg, setShowImg] = useState(false);
+  const [imgConcept, setImgConcept] = useState('');
+  const [imgVariation, setImgVariation] = useState(false);
+  const [imgCount, setImgCount] = useState(1);
+  const [generating, setGenerating] = useState(false);
   const scrollRef = useRef(null);
 
   const call = useCallback(async (payload) => {
@@ -82,6 +87,25 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       const body = await call({ action: 'resolve_call', id, verdict });
       if (body.success) setCalls(body.calls || []);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
+  const generateImage = async () => {
+    const concept = imgConcept.trim();
+    if (!concept || generating) return;
+    setGenerating(true);
+    setMessages((p) => [...p, { role: 'user', content: `🎨 Create ad image: ${concept}${imgVariation ? ' (variation of my best ad)' : ''}` }]);
+    try {
+      const body = await call({ action: 'generate_image', concept, variation: imgVariation, count: imgCount });
+      if (body.success) {
+        const n = body.images.length;
+        const winner = body.based_on_winner ? ` (a fresh take on your top ad${typeof body.based_on_winner === 'string' ? ` "${body.based_on_winner}"` : ''})` : '';
+        setMessages((p) => [...p, { role: 'assistant', images: body.images, content: `Here ${n > 1 ? `are ${n} text-free ad concepts` : 'is your text-free ad concept'}${winner}. These are the photo/idea — add your headline, price and CTA in Creative Studio to finish the ad.` }]);
+        setImgConcept('');
+      } else {
+        showToast?.(`Image: ${body.error || 'failed'}`);
+      }
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setGenerating(false); }
   };
 
   const openCalls = calls.filter((c) => c.status === 'open');
@@ -164,6 +188,15 @@ export default function AdsCoachTab({ accessToken, showToast }) {
             {m.role !== 'user' && <AvatarSm />}
             <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap max-w-[80%] ${m.role === 'user' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-800'}`}>
               {m.content}
+              {m.images && m.images.length > 0 && (
+                <div className={`mt-2 grid gap-2 ${m.images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {m.images.map((u, k) => (
+                    <a key={k} href={u} target="_blank" rel="noreferrer" title="Open / download full size" className="block">
+                      <img src={u} alt="Generated ad concept" className="rounded-lg border border-gray-200 w-full hover:opacity-90 transition" />
+                    </a>
+                  ))}
+                </div>
+              )}
               {m.role === 'assistant' && m.live === false && (
                 <span className="block mt-1.5 text-[11px] text-amber-600">⚠ answered on principle — couldn't pull fresh account numbers this turn</span>
               )}
@@ -171,6 +204,32 @@ export default function AdsCoachTab({ accessToken, showToast }) {
           </div>
         ))}
         {sending && <div className="flex gap-2.5"><AvatarSm /><div className="bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Reading your account…</div></div>}
+      </div>
+
+      {/* Ad image generator */}
+      <div className="mt-3">
+        <button onClick={() => setShowImg((s) => !s)} className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+          <ImagePlus size={14} /> {showImg ? 'Hide image creator' : 'Create an ad image'}
+        </button>
+        {showImg && (
+          <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+            <textarea value={imgConcept} onChange={(e) => setImgConcept(e.target.value)} rows={2} disabled={generating}
+              placeholder="Describe the ad image… (e.g. a father and daughter smiling as they listen to a song on a phone, warm sunset light)"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-1.5 text-xs text-gray-600"><input type="checkbox" checked={imgVariation} onChange={(e) => setImgVariation(e.target.checked)} disabled={generating} /> Make a variation of my best ad</label>
+              <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">How many:
+                <select value={imgCount} onChange={(e) => setImgCount(Number(e.target.value))} disabled={generating} className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white">
+                  <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
+                </select>
+              </label>
+              <button onClick={generateImage} disabled={generating || !imgConcept.trim()} className={btn.accent + ' !px-3 !py-1.5 !text-xs ml-auto'}>
+                {generating ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Generate {imgCount > 1 ? `${imgCount} images` : 'image'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400">Text-free concept photos (~2–3¢ each, ~30–60s). Add your headline, price and CTA in Creative Studio to finish the ad.</p>
+          </div>
+        )}
       </div>
 
       {/* Composer */}
