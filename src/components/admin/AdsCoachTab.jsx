@@ -70,7 +70,7 @@ export default function AdsCoachTab({ accessToken, showToast }) {
     try {
       const body = await call({ messages: next });
       if (body.success) {
-        setMessages((p) => [...p, { role: 'assistant', content: body.reply, live: body.had_live_data, saw: body.saw_creatives }]);
+        setMessages((p) => [...p, { role: 'assistant', content: body.reply, images: body.images, live: body.had_live_data, saw: body.saw_creatives }]);
         if (body.calls) setCalls(body.calls);
       } else {
         showToast?.(`Coach: ${body.error || 'something went wrong'}`);
