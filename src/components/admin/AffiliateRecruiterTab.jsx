@@ -39,6 +39,9 @@ const fmtPhone = (d) => {
 const waNumber = (d) => (String(d || '').length === 10 ? `1${d}` : String(d || ''));
 const callDateLabel = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const isPastCall = (b) => new Date(`${b.preferred_date}T23:59:59`) < new Date();
+// Availability panel: which days/slots the /partners calendar offers
+const CANDIDATE_TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM'];
+const DAY_OPTS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']];
 
 export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const [prospects, setProspects] = useState([]);
@@ -107,6 +110,42 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setCallBusyId(null); }
   };
+
+  // Availability panel (drives what the /partners calendar offers)
+  const [showAvail, setShowAvail] = useState(false);
+  const [avail, setAvail] = useState(null); // { days, slots, blocked_dates }
+  const [availSaving, setAvailSaving] = useState(false);
+  const [blockDate, setBlockDate] = useState('');
+
+  const toggleAvailPanel = async () => {
+    setShowAvail((s) => !s);
+    if (!avail) {
+      try {
+        const r = await call({ action: 'settings_get' });
+        if (r.success) setAvail(r.settings);
+        else showToast?.(`Error: ${r.error}`);
+      } catch (e) { showToast?.(`Error: ${e.message}`); }
+    }
+  };
+
+  const saveAvail = async () => {
+    setAvailSaving(true);
+    try {
+      const r = await call({ action: 'settings_save', ...avail });
+      if (r.success) { showToast?.('Availability saved — the /partners calendar updates instantly.'); setShowAvail(false); }
+      else showToast?.(`Error: ${r.error}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setAvailSaving(false); }
+  };
+
+  const toggleAvailDay = (d) => setAvail((a) => ({ ...a, days: a.days.includes(d) ? a.days.filter((x) => x !== d) : [...a.days, d] }));
+  const toggleAvailSlot = (t) => setAvail((a) => ({ ...a, slots: a.slots.includes(t) ? a.slots.filter((x) => x !== t) : [...a.slots, t] }));
+  const addBlockedDate = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(blockDate)) return;
+    setAvail((a) => a.blocked_dates.includes(blockDate) ? a : { ...a, blocked_dates: [...a.blocked_dates, blockDate].sort() });
+    setBlockDate('');
+  };
+  const removeBlockedDate = (d) => setAvail((a) => ({ ...a, blocked_dates: a.blocked_dates.filter((x) => x !== d) }));
 
   // While a scan is landing, poll every 8s (max ~2.5 min) so results surface even
   // if the owner navigated away and came back. Results themselves persist in the DB.
@@ -230,7 +269,68 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
 
       {section === 'calls' ? (
         /* ---- Scheduled Calls: no-commitment intro calls booked on /partners ---- */
-        callsLoading ? (
+        <>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <p className="text-sm text-gray-500">No-commitment intro calls booked on the /partners page.</p>
+          <button onClick={toggleAvailPanel} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${showAvail ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+            <SlidersHorizontal size={15} /> Availability
+          </button>
+        </div>
+
+        {showAvail && (
+          <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3.5 space-y-3">
+            {!avail ? (
+              <div className="flex items-center gap-2 text-gray-500 py-4 justify-center"><Loader2 size={16} className="animate-spin" /> Loading…</div>
+            ) : (
+              <>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Days you take calls</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAY_OPTS.map(([d, label]) => (
+                      <button key={d} onClick={() => toggleAvailDay(d)}
+                        className={`px-3 py-1.5 text-xs rounded-lg border transition ${avail.days.includes(d) ? 'bg-indigo-600 text-white border-transparent' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Time slots offered <span className="text-gray-400 font-normal">(California time)</span></h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CANDIDATE_TIMES.map((t) => (
+                      <button key={t} onClick={() => toggleAvailSlot(t)}
+                        className={`px-3 py-1.5 text-xs rounded-lg border transition ${avail.slots.includes(t) ? 'bg-indigo-600 text-white border-transparent' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Blocked dates <span className="text-gray-400 font-normal">(vacation, busy days)</span></h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white" />
+                    <button onClick={addBlockedDate} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-100">Block date</button>
+                    {avail.blocked_dates.map((d) => (
+                      <span key={d} className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+                        {callDateLabel(d)}
+                        <button onClick={() => removeBlockedDate(d)} className="text-amber-500 hover:text-amber-800" title="Unblock"><X size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-[11px] text-gray-400">Changes apply to the /partners calendar the moment you save.</p>
+                  <button onClick={saveAvail} disabled={availSaving} className={btn.primary}>
+                    {availSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Save availability
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {callsLoading ? (
           <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
         ) : calls.length === 0 ? (
           <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
@@ -288,7 +388,8 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
               </div>
             ))}
           </div>
-        )
+        )}
+        </>
       ) : (
       <>
       {/* Scoreboard — where the pipeline stands right now */}

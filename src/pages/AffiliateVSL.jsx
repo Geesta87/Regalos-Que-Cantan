@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { AppContext } from '../App';
 
 export default function AffiliateVSL() {
@@ -30,10 +30,40 @@ export default function AffiliateVSL() {
 
   const canPrevMonth = viewMonth.getTime() > new Date(todayStart.getFullYear(), todayStart.getMonth(), 1).getTime();
   const canNextMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1).getTime() <= maxDay.getTime();
-  const isSelectable = (d) => !!d && d >= minDay && d <= maxDay && d.getDay() !== 0 && d.getDay() !== 6;
   const isSameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  const callTimes = ['10:00 AM', '11:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '5:00 PM', '6:00 PM'];
+  // Live availability from the owner's dashboard settings (days of week,
+  // offered time slots, blocked dates) + slots already taken by others.
+  const DEFAULT_SLOTS = ['10:00 AM', '11:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '5:00 PM', '6:00 PM'];
+  const [avail, setAvail] = useState({ days: [1, 2, 3, 4, 5], slots: DEFAULT_SLOTS, blocked_dates: [], booked: [] });
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/book-partner-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ action: 'availability' }),
+    }).then((r) => r.json()).then((j) => {
+      if (j.success) setAvail({ days: j.days || [1, 2, 3, 4, 5], slots: j.slots?.length ? j.slots : DEFAULT_SLOTS, blocked_dates: j.blocked_dates || [], booked: j.booked || [] });
+    }).catch(() => {});
+  }, []);
+
+  const blockedSet = useMemo(() => new Set(avail.blocked_dates), [avail]);
+  const bookedSet = useMemo(() => new Set(avail.booked.map((b) => `${b.preferred_date}|${b.preferred_time}`)), [avail]);
+  const isSelectable = (d) => {
+    if (!d || d < minDay || d > maxDay) return false;
+    const iso = d.getDay() === 0 ? 7 : d.getDay();
+    return avail.days.includes(iso) && !blockedSet.has(ymd(d));
+  };
+  const isSlotTaken = (time) => !!selectedDate && bookedSet.has(`${ymd(selectedDate)}|${time}`);
+  const callTimes = avail.slots;
+
+  // If availability arrives (or the date changes) and the current selection is
+  // no longer offered/taken, clear it so a stale pick can't be submitted.
+  useEffect(() => {
+    if (selectedDate && !isSelectable(selectedDate)) { setSelectedDate(null); setSelectedTime(null); return; }
+    if (selectedTime && (!avail.slots.includes(selectedTime) || isSlotTaken(selectedTime))) setSelectedTime(null);
+  }, [avail, selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedDateLabel = selectedDate
     ? selectedDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -57,6 +87,7 @@ export default function AffiliateVSL() {
     const digits = leadPhone.replace(/\D/g, '');
     if (leadName.trim().length < 2) { setFormError('Escribe tu nombre'); return; }
     if (digits.length < 10) { setFormError('Escribe tu número de WhatsApp (10 dígitos)'); return; }
+    if (isSlotTaken(selectedTime)) { setFormError('Ese horario ya se apartó. Elige otra hora, porfa.'); setSelectedTime(null); return; }
     setFormError('');
     const yyyy = selectedDate.getFullYear();
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
@@ -443,17 +474,22 @@ export default function AffiliateVSL() {
                     Hora <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(California)</span>
                   </p>
                   <div className="vsl-time-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                    {callTimes.map((time) => (
-                      <button
-                        key={time}
-                        type="button"
-                        className={`vsl-time-pill${selectedTime === time ? ' vsl-time-selected' : ''}`}
-                        disabled={!selectedDate}
-                        onClick={() => setSelectedTime(time)}
-                      >
-                        {time}
-                      </button>
-                    ))}
+                    {callTimes.map((time) => {
+                      const taken = isSlotTaken(time);
+                      return (
+                        <button
+                          key={time}
+                          type="button"
+                          className={`vsl-time-pill${selectedTime === time ? ' vsl-time-selected' : ''}`}
+                          disabled={!selectedDate || taken}
+                          style={taken ? { textDecoration: 'line-through' } : undefined}
+                          title={taken ? 'Ocupado' : undefined}
+                          onClick={() => setSelectedTime(time)}
+                        >
+                          {time}
+                        </button>
+                      );
+                    })}
                   </div>
                   {!selectedDate && (
                     <p style={{ fontSize: '11.5px', color: '#a8a29e', marginTop: '10px', fontStyle: 'italic' }}>Primero elige un día en el calendario</p>
