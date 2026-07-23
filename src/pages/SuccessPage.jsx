@@ -1038,42 +1038,91 @@ export default function SuccessPage() {
   };
 
   // ------ VIDEO UPSELL: Photo upload handler ------
+  // Downscale/compress a selected image in-browser. iPhone photos routinely
+  // top 20MB once Safari converts HEIC→JPEG; shrinking them here means big
+  // photos are no longer rejected AND uploads stay fast. Falls back to the
+  // original file if the browser can't decode it (caller re-checks size).
+  const compressVideoPhoto = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const MAX = 1920; // longest edge — plenty for a 9:16 cinematic video
+        let { width, height } = img;
+        if (Math.max(width, height) > MAX) {
+          const scale = MAX / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          if (!blob) return resolve(file); // fallback to original
+          const newName = (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg';
+          resolve(new File([blob], newName, { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.85);
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(file); // fallback to original
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+
   const handleVideoPhotoSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
+    const input = e.target;
+    const files = Array.from(input.files || []);
     if (!files.length) return;
-
-    // Limit to 15 photos total
-    const totalPhotos = videoPhotos.length + files.length;
-    if (totalPhotos > 15) {
-      setVideoError(`Máximo 15 fotos. Ya tienes ${videoPhotos.length}, seleccionadas ${files.length}.`);
-      return;
-    }
-
-    // Validate each file (max 20MB, images only)
-    const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i;
-    for (const file of files) {
-      if (file.size > 20 * 1024 * 1024) {
-        setVideoError(`"${file.name}" es mayor a 20MB.`);
-        return;
-      }
-      const mimeOk = file.type.startsWith('image/');
-      const extOk = IMAGE_EXTENSIONS.test(file.name);
-      if (!mimeOk && !extOk) {
-        setVideoError(`"${file.name}" no es una imagen válida.`);
-        return;
-      }
-    }
-
     setVideoError(null);
 
-    // Create previews
-    const newPhotos = files.map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
-      name: file.name,
-    }));
+    const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i;
+    const availableSlots = Math.max(0, 15 - videoPhotos.length);
+    const skippedOverflow = Math.max(0, files.length - availableSlots);
 
-    setVideoPhotos(prev => [...prev, ...newPhotos]);
+    // Validate & compress each file INDIVIDUALLY. A single bad/oversized photo
+    // must never discard the whole batch (the old bug that left customers with
+    // only the ~3 photos they'd added earlier).
+    let skippedType = 0;
+    let skippedBig = 0;
+    const accepted = [];
+
+    for (const file of files.slice(0, availableSlots)) {
+      const mimeOk = (file.type || '').startsWith('image/');
+      const extOk = IMAGE_EXTENSIONS.test(file.name || '');
+      if (!mimeOk && !extOk) { skippedType++; continue; }
+
+      const processed = await compressVideoPhoto(file);
+      if (!processed || processed.size > 20 * 1024 * 1024) { skippedBig++; continue; }
+
+      accepted.push({
+        file: processed,
+        preview: URL.createObjectURL(processed),
+        name: file.name || 'foto',
+      });
+    }
+
+    if (accepted.length) {
+      setVideoPhotos(prev => [...prev, ...accepted]);
+    }
+
+    // Tell the customer exactly what was skipped — no more silent losses.
+    const notes = [];
+    if (skippedBig) notes.push(`${skippedBig} no se pudo${skippedBig > 1 ? 'ieron' : ''} procesar`);
+    if (skippedType) notes.push(`${skippedType} no ${skippedType > 1 ? 'eran imágenes' : 'era una imagen'}`);
+    if (skippedOverflow) notes.push(`${skippedOverflow} sobre el máximo de 15`);
+    if (notes.length) {
+      setVideoError(
+        `Se agregaron ${accepted.length} foto${accepted.length === 1 ? '' : 's'}. ` +
+        `Omitidas: ${notes.join(', ')}.`
+      );
+    }
+
+    // Reset so re-selecting the same file(s) fires onChange again.
+    input.value = '';
   };
 
   const removeVideoPhoto = (index) => {
@@ -1206,6 +1255,17 @@ export default function SuccessPage() {
     if (videoPhotos.length < 3) {
       setVideoError('Necesitas al menos 3 fotos para generar el video.');
       return;
+    }
+    // Safety net: if the customer is at the bare minimum, they may have lost
+    // photos to a silent phone/picker hiccup. Give them a chance to add more
+    // before the video is built (they can't add photos once it starts).
+    if (videoPhotos.length <= 4) {
+      const proceed = window.confirm(
+        `Solo tienes ${videoPhotos.length} foto${videoPhotos.length === 1 ? '' : 's'}. ` +
+        `Puedes agregar hasta 15 para un video más completo.\n\n` +
+        `¿Generar el video con estas ${videoPhotos.length}?`
+      );
+      if (!proceed) return;
     }
     // Lazily create the video_order now that we know which song the customer
     // selected for the video. This is the only path that creates a video_order.
