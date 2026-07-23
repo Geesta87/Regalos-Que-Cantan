@@ -61,6 +61,26 @@ serve(async (req) => {
       return json({ success: true, started: true });
     }
 
+    // --- Scheduled Calls sub-tab (partner_call_bookings, written by the
+    // public book-partner-call function from /partners) ---
+    if (action === 'calls_list') {
+      const { data, error } = await admin.from('partner_call_bookings')
+        .select('id, created_at, name, phone, preferred_date, preferred_time, status, notes')
+        .neq('status', 'cancelled')
+        .order('preferred_date', { ascending: true }).order('created_at', { ascending: true }).limit(200);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, calls: data || [] });
+    }
+
+    if (action === 'call_update') {
+      if (!body.call_id) return json({ success: false, error: 'Missing call_id' }, 400);
+      const next = ['pending', 'confirmed', 'done', 'no_show', 'cancelled'].includes(body.status) ? body.status : null;
+      if (!next) return json({ success: false, error: 'Bad status' }, 400);
+      const { error } = await admin.from('partner_call_bookings').update({ status: next }).eq('id', body.call_id);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, id: body.call_id, status: next });
+    }
+
     if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
     const { data: p } = await admin.from('affiliate_prospects').select('*').eq('id', body.id).single();
     if (!p) return json({ success: false, error: 'Prospect not found' }, 404);

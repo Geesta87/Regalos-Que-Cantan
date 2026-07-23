@@ -368,6 +368,14 @@ verify_jwt = false
 # Recruit Partners tab API. Admin JWT → verify_jwt = true; admin-only. Lists
 # ranked prospects, triggers a scan, tracks outreach status, and converts a
 # prospect into an affiliate by forwarding the admin session to create-affiliate.
+# Also serves the "Scheduled Calls" sub-tab (partner_call_bookings list/update).
+verify_jwt = true
+
+[functions.book-partner-call]
+# Public booking endpoint for the /partners "schedule a call" calendar. Called
+# from the frontend with the Supabase anon key (a valid JWT), same pattern as
+# create-checkout / recover-song → verify_jwt = true (default, explicit).
+# Writes partner_call_bookings via service role; validated + rate-limited inside.
 verify_jwt = true
 
 [functions.ad-templates]

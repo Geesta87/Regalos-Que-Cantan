@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../App';
 
 export default function AffiliateVSL() {
@@ -6,6 +6,69 @@ export default function AffiliateVSL() {
   const font = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   const phoneNumber = '8183065193';
   const whatsappLink = `https://wa.me/1${phoneNumber}?text=Hola%20Gerardo%2C%20vi%20tu%20video%20y%20quiero%20saber%20mas%20sobre%20el%20programa%20de%20partners`;
+
+  // Schedule-a-call state — bookable window: tomorrow through +21 days, weekdays only
+  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const minDay = useMemo(() => { const d = new Date(todayStart); d.setDate(d.getDate() + 1); return d; }, [todayStart]);
+  const maxDay = useMemo(() => { const d = new Date(todayStart); d.setDate(d.getDate() + 21); return d; }, [todayStart]);
+  const [viewMonth, setViewMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
+
+  const monthCells = useMemo(() => {
+    const cells = [];
+    const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    const offset = (first.getDay() + 6) % 7; // Monday-first grid
+    for (let i = 0; i < offset; i++) cells.push(null);
+    const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), d));
+    return cells;
+  }, [viewMonth]);
+
+  const canPrevMonth = viewMonth.getTime() > new Date(todayStart.getFullYear(), todayStart.getMonth(), 1).getTime();
+  const canNextMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1).getTime() <= maxDay.getTime();
+  const isSelectable = (d) => !!d && d >= minDay && d <= maxDay && d.getDay() !== 0 && d.getDay() !== 6;
+  const isSameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  const callTimes = ['10:00 AM', '11:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '5:00 PM', '6:00 PM'];
+
+  const selectedDateLabel = selectedDate
+    ? selectedDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
+    : null;
+  const ready = !!(selectedDate && selectedTime);
+
+  // Booking form (saved to partner_call_bookings via book-partner-call, then
+  // opens WhatsApp with the request so the owner gets it both ways)
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [formError, setFormError] = useState('');
+  const [booked, setBooked] = useState(false);
+
+  const buildWaLink = () => {
+    const msg = `Hola Gerardo, soy ${leadName.trim()}. Quiero agendar la llamada sin compromiso para conocer el programa de partners. Me funciona el ${selectedDateLabel} a las ${selectedTime}. ¿Te queda bien?`;
+    return `https://wa.me/1${phoneNumber}?text=${encodeURIComponent(msg)}`;
+  };
+
+  const submitBooking = () => {
+    if (!ready) return;
+    const digits = leadPhone.replace(/\D/g, '');
+    if (leadName.trim().length < 2) { setFormError('Escribe tu nombre'); return; }
+    if (digits.length < 10) { setFormError('Escribe tu número de WhatsApp (10 dígitos)'); return; }
+    setFormError('');
+    const yyyy = selectedDate.getFullYear();
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(selectedDate.getDate()).padStart(2, '0');
+    // Fire-and-forget so the WhatsApp tab opens synchronously (popup blockers);
+    // the booking lands in the admin dashboard either way.
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/book-partner-call`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ name: leadName.trim(), phone: digits, date: `${yyyy}-${mm}-${dd}`, time: selectedTime }),
+    }).catch(() => {});
+    window.open(buildWaLink(), '_blank', 'noopener,noreferrer');
+    setBooked(true);
+  };
 
   return (
     <>
@@ -37,6 +100,99 @@ export default function AffiliateVSL() {
           box-shadow: 0 12px 32px rgba(0,0,0,0.12) !important;
         }
 
+        /* --- Schedule-a-call calendar --- */
+        .vsl-cal-day {
+          aspect-ratio: 1;
+          width: 100%;
+          border-radius: 12px;
+          border: 1.5px solid transparent;
+          background: transparent;
+          font-family: inherit;
+          font-size: 13.5px;
+          font-weight: 600;
+          color: #1c1917;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+        }
+        .vsl-cal-day:hover:not(:disabled):not(.vsl-cal-selected) {
+          background: #fff1f2;
+          border-color: #fecdd3;
+        }
+        .vsl-cal-day:disabled {
+          color: #d6d3d1;
+          cursor: default;
+          font-weight: 500;
+        }
+        .vsl-cal-selected {
+          background: linear-gradient(135deg, #e11d48, #f43f5e) !important;
+          color: #fff !important;
+          box-shadow: 0 6px 16px rgba(225,29,72,0.35);
+        }
+        .vsl-cal-nav {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          border: 1px solid #fde8d4;
+          background: #fff;
+          color: #1c1917;
+          font-size: 16px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+          padding: 0;
+        }
+        .vsl-cal-nav:hover:not(:disabled) { background: #fff1f2; border-color: #fecdd3; }
+        .vsl-cal-nav:disabled { opacity: 0.3; cursor: default; }
+        .vsl-time-pill {
+          padding: 12px 8px;
+          border-radius: 12px;
+          border: 1.5px solid #fde8d4;
+          background: #fff;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          color: #1c1917;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .vsl-time-pill:hover:not(:disabled):not(.vsl-time-selected) {
+          background: #fff1f2;
+          border-color: #fecdd3;
+        }
+        .vsl-time-pill:disabled { opacity: 0.45; cursor: default; }
+        .vsl-time-selected {
+          background: linear-gradient(135deg, #e11d48, #f43f5e) !important;
+          color: #fff !important;
+          border-color: transparent !important;
+          box-shadow: 0 6px 16px rgba(225,29,72,0.35);
+        }
+        .vsl-input {
+          display: block;
+          width: 100%;
+          margin-top: 6px;
+          padding: 13px 14px;
+          border-radius: 12px;
+          border: 1.5px solid #fde8d4;
+          background: #fff;
+          font-family: inherit;
+          font-size: 15px;
+          font-weight: 600;
+          color: #1c1917;
+          outline: none;
+          transition: border-color 0.15s ease;
+          letter-spacing: normal;
+          text-transform: none;
+        }
+        .vsl-input:focus { border-color: #e11d48; }
+        .vsl-input::placeholder { color: #d6d3d1; font-weight: 500; }
+
         @media (max-width: 640px) {
           .vsl-hero-title { font-size: 1.6rem !important; }
           .vsl-contact-grid { grid-template-columns: 1fr !important; }
@@ -54,6 +210,10 @@ export default function AffiliateVSL() {
           .vsl-rewards-total { font-size: 20px !important; }
           .vsl-heading { font-size: 19px !important; }
           .vsl-subheading { font-size: 18px !important; }
+          .vsl-schedule-card { padding: 18px 14px !important; }
+          .vsl-sched-body { grid-template-columns: 1fr !important; }
+          .vsl-time-grid { grid-template-columns: repeat(3, 1fr) !important; }
+          .vsl-lead-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 380px) {
           .vsl-section { padding: 20px 14px 50px !important; }
@@ -203,6 +363,166 @@ export default function AffiliateVSL() {
               <p style={{ fontSize: '13px', color: '#78716c', marginTop: '6px' }}>
                 Disponible de lunes a viernes
               </p>
+            </div>
+
+            {/* ============ SCHEDULE A CALL ============ */}
+            <div className="vsl-schedule-card" style={{
+              background: '#fff',
+              borderRadius: '20px',
+              padding: '24px',
+              border: '1px solid #fde8d4',
+              boxShadow: '0 4px 24px rgba(225,110,73,0.06)',
+              marginBottom: '36px',
+              textAlign: 'center',
+            }}>
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '999px', padding: '6px 14px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '13px' }}>🤝</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#e11d48', letterSpacing: '0.3px' }}>15 minutos · Cero compromiso</span>
+                </div>
+                <h3 className="vsl-subheading" style={{ fontFamily: font, fontSize: '20px', fontWeight: 800, color: '#1c1917', marginBottom: '6px', letterSpacing: '-0.01em' }}>
+                  Agenda una llamada conmigo
+                </h3>
+                <p style={{ fontSize: '13.5px', color: '#78716c', lineHeight: 1.6, maxWidth: '440px', margin: '0 auto' }}>
+                  Una llamada corta para ver si esto es para ti. Si no te convence, no pasa nada.
+                </p>
+              </div>
+
+              {/* Calendar + time slots */}
+              <div className="vsl-sched-body" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', marginBottom: '18px', textAlign: 'left' }}>
+                {/* Month calendar */}
+                <div style={{ background: '#fffaf5', border: '1px solid #fde8d4', borderRadius: '16px', padding: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <button type="button" className="vsl-cal-nav" disabled={!canPrevMonth} onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))} aria-label="Mes anterior">‹</button>
+                    <span style={{ fontFamily: font, fontSize: '14px', fontWeight: 800, color: '#1c1917', textTransform: 'capitalize' }}>
+                      {viewMonth.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button type="button" className="vsl-cal-nav" disabled={!canNextMonth} onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))} aria-label="Mes siguiente">›</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
+                    {['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].map((d) => (
+                      <div key={d} style={{ fontSize: '10px', fontWeight: 700, color: '#a8a29e', textTransform: 'uppercase', textAlign: 'center', letterSpacing: '0.5px', padding: '4px 0' }}>{d}</div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+                    {monthCells.map((d, i) => d ? (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`vsl-cal-day${isSameDay(d, selectedDate) ? ' vsl-cal-selected' : ''}`}
+                        disabled={!isSelectable(d)}
+                        onClick={() => setSelectedDate(d)}
+                      >
+                        {d.getDate()}
+                      </button>
+                    ) : <div key={i} />)}
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#a8a29e', marginTop: '10px', textAlign: 'center' }}>Disponible de lunes a viernes</p>
+                </div>
+
+                {/* Time slots */}
+                <div style={{ background: '#fffaf5', border: '1px solid #fde8d4', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+                  <p style={{ fontSize: '11px', color: '#a8a29e', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '10px' }}>
+                    Hora <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(California)</span>
+                  </p>
+                  <div className="vsl-time-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    {callTimes.map((time) => (
+                      <button
+                        key={time}
+                        type="button"
+                        className={`vsl-time-pill${selectedTime === time ? ' vsl-time-selected' : ''}`}
+                        disabled={!selectedDate}
+                        onClick={() => setSelectedTime(time)}
+                      >
+                        {time}
+                      </button>
+                    ))}
+                  </div>
+                  {!selectedDate && (
+                    <p style={{ fontSize: '11.5px', color: '#a8a29e', marginTop: '10px', fontStyle: 'italic' }}>Primero elige un día en el calendario</p>
+                  )}
+                </div>
+              </div>
+
+              {booked ? (
+                /* Success state */
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '16px', padding: '22px 18px' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>✅</div>
+                  <p style={{ fontFamily: font, fontSize: '16px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>
+                    ¡Listo, {leadName.trim().split(' ')[0]}! Tu llamada quedó solicitada.
+                  </p>
+                  <p style={{ fontSize: '13.5px', color: '#047857', lineHeight: 1.6, textTransform: 'none' }}>
+                    <span style={{ textTransform: 'capitalize' }}>{selectedDateLabel}</span> · {selectedTime} (hora de California).<br />
+                    Te confirmo por WhatsApp. Si no se abrió WhatsApp,{' '}
+                    <a href={buildWaLink()} target="_blank" rel="noopener noreferrer" style={{ color: '#047857', fontWeight: 700 }}>toca aquí</a>.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Selection summary */}
+                  {ready && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '8px 16px', marginBottom: '14px' }}>
+                      <span style={{ fontSize: '13px' }}>📅</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#059669', textTransform: 'capitalize' }}>{selectedDateLabel} · {selectedTime}</span>
+                    </div>
+                  )}
+
+                  {/* Contact details — appear once a slot is picked */}
+                  {ready && (
+                    <div className="vsl-lead-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px', textAlign: 'left' }}>
+                      <label style={{ fontSize: '11px', color: '#a8a29e', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                        Tu nombre
+                        <input
+                          type="text"
+                          value={leadName}
+                          onChange={(e) => setLeadName(e.target.value)}
+                          placeholder="María González"
+                          className="vsl-input"
+                        />
+                      </label>
+                      <label style={{ fontSize: '11px', color: '#a8a29e', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                        Tu WhatsApp
+                        <input
+                          type="tel"
+                          value={leadPhone}
+                          onChange={(e) => setLeadPhone(e.target.value)}
+                          placeholder="(818) 555-1234"
+                          className="vsl-input"
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {formError && (
+                    <p style={{ fontSize: '13px', color: '#e11d48', fontWeight: 600, marginBottom: '10px' }}>{formError}</p>
+                  )}
+
+                  {/* Confirm button */}
+                  <button
+                    type="button"
+                    onClick={submitBooking}
+                    className="vsl-contact-btn"
+                    style={{
+                      width: '100%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                      background: ready ? 'linear-gradient(135deg, #e11d48, #f43f5e)' : '#f5f5f4',
+                      color: ready ? '#fff' : '#a8a29e',
+                      padding: '18px 20px',
+                      borderRadius: '16px',
+                      border: 'none',
+                      fontWeight: 700, fontSize: '15px', fontFamily: font,
+                      boxShadow: ready ? '0 8px 24px rgba(225,29,72,0.25)' : 'none',
+                      cursor: ready ? 'pointer' : 'not-allowed',
+                      animation: ready ? 'pulse-soft 2s infinite' : 'none',
+                    }}
+                  >
+                    {ready ? 'Agendar mi llamada →' : 'Elige día y hora para continuar'}
+                  </button>
+                  <p style={{ fontSize: '12px', color: '#a8a29e', marginTop: '12px' }}>
+                    Te llega la confirmación por WhatsApp. Sin compromiso, sin presión.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* ============ STRONG SELLING POINTS ============ */}
