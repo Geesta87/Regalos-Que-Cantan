@@ -4,8 +4,11 @@ import { AppContext } from '../App';
 export default function AffiliateVSL() {
   const { navigateTo } = useContext(AppContext);
   const font = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  const phoneNumber = '8183065193';
+  // Direct line to Gerardo — used for WhatsApp + SMS links but never displayed.
+  const phoneNumber = '8182885001';
   const whatsappLink = `https://wa.me/1${phoneNumber}?text=Hola%20Gerardo%2C%20vi%20tu%20video%20y%20quiero%20saber%20mas%20sobre%20el%20programa%20de%20partners`;
+  const smsLink = `sms:+1${phoneNumber}?&body=${encodeURIComponent('Hola Gerardo, vi tu video y quiero saber más sobre el programa de partners')}`;
+  const scrollToCalendar = () => document.getElementById('agendar-llamada')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Schedule-a-call state — bookable window: tomorrow through +21 days, weekdays only
   const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -285,15 +288,15 @@ export default function AffiliateVSL() {
               ¿Te interesa? Contáctame directamente
             </h2>
             <p style={{ fontSize: '14px', color: '#78716c', marginBottom: '28px' }}>
-              Escríbenos por WhatsApp o llámanos. Te contestamos personalmente.
+              Escríbeme por WhatsApp, mándame un texto o agenda una llamada. Te contesto personalmente.
             </p>
 
             {/* Contact buttons */}
             <div className="vsl-contact-grid" style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: '1fr 1fr 1fr',
               gap: '14px',
-              marginBottom: '28px',
+              marginBottom: '36px',
             }}>
               {/* WhatsApp */}
               <a
@@ -321,9 +324,37 @@ export default function AffiliateVSL() {
                 </div>
               </a>
 
-              {/* Phone */}
+              {/* SMS */}
               <a
-                href={`tel:+1${phoneNumber}`}
+                href={smsLink}
+                className="vsl-contact-btn"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
+                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                  color: '#fff',
+                  padding: '22px 20px',
+                  borderRadius: '18px',
+                  textDecoration: 'none',
+                  fontWeight: 700, fontSize: '16px', fontFamily: font,
+                  boxShadow: '0 8px 24px rgba(59,130,246,0.25)',
+                }}
+              >
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  <line x1="8" y1="9" x2="16" y2="9"/>
+                  <line x1="8" y1="13" x2="13" y2="13"/>
+                </svg>
+                <div style={{ textAlign: 'left' }}>
+                  <div className="vsl-phone-label" style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Mensaje de texto</div>
+                  <div className="vsl-phone-value" style={{ fontSize: '15px', fontWeight: 700 }}>Mándame un texto</div>
+                </div>
+              </a>
+
+              {/* Schedule a call — native anchor to the calendar below (html has
+                  scroll-behavior: smooth, so this scrolls smoothly with no JS) */}
+              <a
+                href="#agendar-llamada"
+                onClick={scrollToCalendar}
                 className="vsl-contact-btn"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
@@ -332,41 +363,27 @@ export default function AffiliateVSL() {
                   padding: '22px 20px',
                   borderRadius: '18px',
                   textDecoration: 'none',
+                  cursor: 'pointer',
                   fontWeight: 700, fontSize: '16px', fontFamily: font,
                   boxShadow: '0 8px 24px rgba(225,29,72,0.25)',
                 }}
               >
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
                 <div style={{ textAlign: 'left' }}>
-                  <div className="vsl-phone-label" style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Llámame</div>
-                  <div className="vsl-phone-value" style={{ fontSize: '15px', fontWeight: 700 }}>(213) 666-6619</div>
+                  <div className="vsl-phone-label" style={{ fontSize: '11px', opacity: 0.9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sin compromiso</div>
+                  <div className="vsl-phone-value" style={{ fontSize: '15px', fontWeight: 700 }}>Agenda una llamada</div>
                 </div>
               </a>
             </div>
 
-            {/* Direct phone number display */}
-            <div style={{
-              background: '#fff',
-              borderRadius: '16px',
-              padding: '20px',
-              border: '1px dashed #fde8d4',
-              marginBottom: '36px',
-            }}>
-              <p style={{ fontSize: '12px', color: '#a8a29e', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
-                📞 Mi número directo
-              </p>
-              <a href={`tel:+1${phoneNumber}`} className="vsl-phone-display" style={{ fontFamily: font, fontSize: '26px', fontWeight: 800, color: '#1c1917', textDecoration: 'none', letterSpacing: '-0.5px' }}>
-                (213) 666-6619
-              </a>
-              <p style={{ fontSize: '13px', color: '#78716c', marginTop: '6px' }}>
-                Disponible de lunes a viernes
-              </p>
-            </div>
-
             {/* ============ SCHEDULE A CALL ============ */}
-            <div className="vsl-schedule-card" style={{
+            <div id="agendar-llamada" className="vsl-schedule-card" style={{
+              scrollMarginTop: '20px',
               background: '#fff',
               borderRadius: '20px',
               padding: '24px',
