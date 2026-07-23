@@ -81,6 +81,37 @@ serve(async (req) => {
       return json({ success: true, id: body.call_id, status: next });
     }
 
+    // Availability panel (partner_call_settings row id=1)
+    const CANDIDATE_TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM'];
+
+    if (action === 'settings_get') {
+      const { data } = await admin.from('partner_call_settings')
+        .select('days, slots, blocked_dates').eq('id', 1).maybeSingle();
+      return json({
+        success: true,
+        settings: {
+          days: data?.days?.length ? data.days : [1, 2, 3, 4, 5],
+          slots: data?.slots?.length ? data.slots : ['10:00 AM', '11:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '5:00 PM', '6:00 PM'],
+          blocked_dates: (data?.blocked_dates || []).map(String),
+        },
+        candidate_times: CANDIDATE_TIMES,
+      });
+    }
+
+    if (action === 'settings_save') {
+      const days = Array.isArray(body.days) ? [...new Set(body.days.map(Number).filter((n: number) => n >= 1 && n <= 7))] : [];
+      const slots = CANDIDATE_TIMES.filter((t) => Array.isArray(body.slots) && body.slots.includes(t));
+      const blocked = Array.isArray(body.blocked_dates)
+        ? [...new Set(body.blocked_dates.map(String).filter((d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)))]
+        : [];
+      if (!days.length) return json({ success: false, error: 'Pick at least one day of the week' }, 400);
+      if (!slots.length) return json({ success: false, error: 'Pick at least one time slot' }, 400);
+      const { error } = await admin.from('partner_call_settings')
+        .upsert({ id: 1, days, slots, blocked_dates: blocked, updated_at: new Date().toISOString() });
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true });
+    }
+
     if (!body.id) return json({ success: false, error: 'Missing id' }, 400);
     const { data: p } = await admin.from('affiliate_prospects').select('*').eq('id', body.id).single();
     if (!p) return json({ success: false, error: 'Prospect not found' }, 404);
