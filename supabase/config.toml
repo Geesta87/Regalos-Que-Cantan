@@ -938,3 +938,7 @@ verify_jwt = true
 # proposals (owner approves in Bot Training), so an unauthenticated call is safe.
 [functions.cs-distill-knowledge]
 verify_jwt = false
+
+# SEO Coach - called by our own admin frontend with a user JWT; default gate stays on.
+[functions.seo-coach]
+verify_jwt = true
