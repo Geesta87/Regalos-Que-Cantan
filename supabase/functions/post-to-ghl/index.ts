@@ -160,14 +160,26 @@ Lista en 3 minutos. Desde $29.99 USD.
   );
 }
 
+// YouTube is a SEARCH engine (the #2 after Google) and, per the SEO brain,
+// YouTube mentions are the single strongest measured predictor of appearing in
+// AI answers. So unlike the social platforms, the YouTube text is written for
+// SEARCH: a keyword-led first line (YouTube uses it as the title/hook) built from
+// real Spanish search phrases we see in Search Console ("canción personalizada",
+// "para regalar", genre + "personalizado"), then a description with searchable
+// terms and occasions — not emoji/hashtag social copy. No keyword stuffing.
 function buildYouTubeFeed(song: SongContext): string {
   const g = getGenreMeta(song.genre);
+  const label = g.label; // e.g. "Corrido", "Bachata"
   return (
-`${g.emoji} ${g.label.toUpperCase()} Personalizada — canción única hecha a medida en 3 minutos.
+`${label} personalizado para regalar | Canción con su nombre 🎁
 
-👉 ${SITE_URL}
+Una ${label} personalizada, hecha a medida con el nombre de esa persona y su historia. El regalo perfecto para cumpleaños, aniversarios, bodas, el Día de las Madres o para decir "te quiero". Escucha cómo suena una canción personalizada de verdad.
 
-#Shorts #RegalosPersonalizados #${g.hashtag} #RegalosQueCantan`
+Crea la tuya en minutos 👉 ${SITE_URL}
+
+Canción personalizada · Regalo musical · ${label} para regalar
+
+#${g.hashtag} #CancionPersonalizada #RegalosQueCantan #Shorts`
   );
 }
 
