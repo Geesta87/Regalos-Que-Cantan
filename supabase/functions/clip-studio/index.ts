@@ -385,6 +385,15 @@ serve(async (req) => {
         punch_cuts: !!rawOpts.punch_cuts,
         beat_sync: !!rawOpts.beat_sync,
         caption_size: Math.max(0.7, Math.min(1.6, Number(rawOpts.caption_size) || 1)),
+        // Time-range cuts marked on the player (SOURCE seconds). Well-formed
+        // {start,end} spans only; the renderer clamps them to the clip window.
+        cut_ranges: Array.isArray(rawOpts.cut_ranges)
+          ? (rawOpts.cut_ranges as any[])
+              .map((r) => ({ start: Number(r?.start), end: Number(r?.end) }))
+              .filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start && r.start >= 0)
+              .sort((a, b) => a.start - b.start)
+              .slice(0, 30)
+          : [],
       };
       if (options.hook_title && !cleanLabel) throw new Error('Give the clip a name to use as the title overlay');
 

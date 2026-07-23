@@ -1292,6 +1292,29 @@ function buildKeepSegments(words, clipDur, { pad = 0.22, maxGap = 1.0, breaks = 
   return out.filter((g) => g.end - g.start > 0.05);
 }
 
+// Remove a set of cut intervals from a set of keep segments (all clip-local
+// seconds). Unlike buildKeepSegments' word-anchored `breaks`, this cuts the
+// EXACT span even when it lands mid-sentence or in dead air Whisper never
+// split — which is what a time-range trim on the player needs.
+function subtractCuts(segs, cuts) {
+  if (!cuts.length) return segs;
+  const out = [];
+  for (const seg of segs) {
+    let pieces = [{ start: seg.start, end: seg.end }];
+    for (const c of cuts) {
+      const next = [];
+      for (const p of pieces) {
+        if (c.end <= p.start || c.start >= p.end) { next.push(p); continue; }
+        if (c.start > p.start) next.push({ start: p.start, end: c.start });
+        if (c.end < p.end) next.push({ start: c.end, end: p.end });
+      }
+      pieces = next;
+    }
+    out.push(...pieces);
+  }
+  return out.filter((g) => g.end - g.start > 0.05);
+}
+
 // Shift word timestamps onto the post-cut timeline so captions stay in sync.
 function remapWords(words, segs) {
   const out = [];
@@ -1734,24 +1757,42 @@ async function renderClip(job, { dir, log }) {
   // Smart direction: loudness per word (pre-cut timeline — source audio).
   if (words.length && (STYLES[job.style] || {}).kinetic) computeWordEnergy(dir, start, clipDur, words, log);
 
-  // Owner cuts: words crossed out in the transcript editor get removed from
-  // audio, video AND captions — regardless of the remove_silences option.
-  // Adjacent cut words merge into one span so the jump is a single cut.
-  const cutSpans = [];
+  // Owner cuts come from two places, both removed from audio, video AND
+  // captions regardless of the remove_silences option:
+  //   (a) words crossed out in the transcript editor  (w.cut)
+  //   (b) time ranges the owner marked on the player   (opts.cut_ranges,
+  //       given in SOURCE seconds -> shifted to clip-local here)
+  // Collected into one span list, sorted + merged so the segment math is clean.
+  let cutSpans = [];
   for (const w of words) {
     if (!w.cut) continue;
     const prev = cutSpans[cutSpans.length - 1];
     if (prev && w.start - prev.end < 0.15) prev.end = Math.max(prev.end, w.end);
     else cutSpans.push({ start: w.start, end: w.end });
   }
+  if (Array.isArray(opts.cut_ranges)) {
+    for (const r of opts.cut_ranges) {
+      const s = Math.max(0, Number(r.start) - start);
+      const e = Math.min(clipDur, Number(r.end) - start);
+      if (e > s + 0.05) cutSpans.push({ start: s, end: e });
+    }
+  }
   if (cutSpans.length) {
-    words = words.filter((w) => !w.cut);
-    log(`owner cuts: removing ${cutSpans.length} crossed-out span(s)`);
+    cutSpans.sort((a, b) => a.start - b.start);
+    const merged = [];
+    for (const sp of cutSpans) {
+      const last = merged[merged.length - 1];
+      if (last && sp.start <= last.end + 0.05) last.end = Math.max(last.end, sp.end);
+      else merged.push({ ...sp });
+    }
+    cutSpans = merged;
+    words = words.filter((w) => !w.cut); // crossed-out words never caption
+    log(`owner cuts: ${cutSpans.length} span(s) to remove`);
   }
 
-  // Jump cuts: keep only speech segments (dropping filler words entirely —
-  // they get cut from the audio AND never appear in the captions), then
-  // remap caption timing onto the post-cut timeline.
+  // Jump cuts: build the KEEP segments, remap caption timing onto the post-cut
+  // timeline. remove_silences drops speech gaps + filler words (word-anchored);
+  // owner cuts are then subtracted as exact spans (works mid-sentence too).
   let segs = [{ start: 0, end: clipDur }];
   let outDur = clipDur;
   if (opts.remove_silences && words.length) {
@@ -1760,19 +1801,15 @@ async function renderClip(job, { dir, log }) {
       words = words.filter((w) => !isFiller(w.word));
       log(`filler removal: cutting ${fillerSpans.length} filler word(s)`);
     }
-    segs = buildKeepSegments(words, clipDur, { breaks: [...fillerSpans, ...cutSpans] });
+    segs = buildKeepSegments(words, clipDur, { breaks: fillerSpans });
+  }
+  if (cutSpans.length) segs = subtractCuts(segs, cutSpans);
+  if ((opts.remove_silences && words.length) || cutSpans.length) {
+    if (!segs.length) segs = [{ start: 0, end: Math.min(0.1, clipDur) }]; // never empty
     const remapped = remapWords(words, segs);
     words = remapped.words;
     outDur = remapped.totalDur;
-    log(`silence removal: ${segs.length} segments, ${clipDur.toFixed(1)}s -> ${outDur.toFixed(1)}s`);
-  } else if (cutSpans.length && words.length) {
-    // No silence removal, but the crossed-out words still have to go:
-    // maxGap=Infinity means ONLY the owner's cuts create segment breaks.
-    segs = buildKeepSegments(words, clipDur, { breaks: cutSpans, maxGap: Infinity });
-    const remapped = remapWords(words, segs);
-    words = remapped.words;
-    outDur = remapped.totalDur;
-    log(`owner cuts: ${segs.length} segments, ${clipDur.toFixed(1)}s -> ${outDur.toFixed(1)}s`);
+    log(`cuts: ${segs.length} segment(s), ${clipDur.toFixed(1)}s -> ${outDur.toFixed(1)}s`);
   }
   log(`${words.length} words, style=${job.style}, aspect=${job.aspect}, framing=${opts.framing || 'center'}, zoom=${!!opts.zoom}, hook=${!!opts.hook_title_text}`);
 

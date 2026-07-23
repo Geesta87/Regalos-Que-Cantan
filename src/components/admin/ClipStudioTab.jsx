@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages, Scissors,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -215,6 +215,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [retrying, setRetrying] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [cutRanges, setCutRanges] = useState([]);       // [{start,end}] source-seconds spans to REMOVE before rendering
+  const [pendingCut, setPendingCut] = useState(null);   // start time captured, waiting for the end
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [enBusyId, setEnBusyId] = useState(null);
@@ -545,6 +547,22 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     setForm((f) => ({ ...f, [field]: (Math.round(t * 10) / 10).toString() }));
   };
 
+  // Remove-parts: mark a span on the player to cut from the finished clip.
+  const markCutStart = () => {
+    const t = videoRef.current?.currentTime;
+    if (t == null) return;
+    setPendingCut(Math.round(t * 10) / 10);
+  };
+  const markCutEnd = () => {
+    const t = videoRef.current?.currentTime;
+    if (t == null || pendingCut == null) return;
+    const end = Math.round(t * 10) / 10;
+    if (end <= pendingCut + 0.2) { showToast?.('Play forward past the start, then press “to here”'); return; }
+    setCutRanges((r) => [...r, { start: pendingCut, end }].sort((a, b) => a.start - b.start));
+    setPendingCut(null);
+  };
+  const removeCutRange = (i) => setCutRanges((r) => r.filter((_, j) => j !== i));
+
   const renderClip = async (project) => {
     const start = parseFloat(form.start) || 0;
     const end = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
@@ -553,9 +571,9 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync, caption_size: form.captionSize || 1 },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync, caption_size: form.captionSize || 1, cut_ranges: cutRanges.length ? cutRanges : undefined },
       });
-      showToast?.('Clip rendering — it will appear in "Your clips" below');
+      showToast?.(cutRanges.length ? `Clip rendering with ${cutRanges.length} part${cutRanges.length === 1 ? '' : 's'} removed — it will appear below` : 'Clip rendering — it will appear in "Your clips" below');
       load(true);
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
@@ -799,6 +817,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     const selEnd = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
     const selDur = Math.max(0, selEnd - selStart);
     const hasSelection = form.start !== '' || form.end !== '';
+    const cutTotal = cutRanges.reduce((a, r) => a + (r.end - r.start), 0);
     const extrasOn = [form.silences && 'no silences', form.zoom && 'zoom', form.hook && 'title'].filter(Boolean);
 
     return (
@@ -1039,6 +1058,36 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                 {hasSelection
                   ? <>Selected: <strong>{fmtTime(selStart)}–{fmtTime(selEnd)}</strong> ({Math.round(selDur)}s)</>
                   : 'Nothing selected yet — the whole video will be used.'}
+              </div>
+
+              {/* remove parts: mark spans on the player to cut before rendering */}
+              <div className="mt-3 border border-gray-200 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700 mb-2">
+                  <Scissors size={13} className="text-indigo-500" /> Remove parts of the video
+                </div>
+                {pendingCut == null ? (
+                  <button onClick={markCutStart} className="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                    <Scissors size={11} className="inline -mt-0.5" /> Cut from here
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-red-600">Cutting from <strong>{fmtTime(pendingCut)}</strong> —</span>
+                    <button onClick={markCutEnd} className="text-[11px] px-2.5 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600">to here</button>
+                    <button onClick={() => setPendingCut(null)} className="text-[11px] px-1.5 py-1.5 text-gray-400 hover:text-gray-700" title="Cancel"><X size={12} /></button>
+                  </div>
+                )}
+                {cutRanges.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {cutRanges.map((r, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] bg-red-50 text-red-700 rounded px-2 py-1">
+                        <span>Remove <strong>{fmtTime(r.start)}–{fmtTime(r.end)}</strong> ({Math.round((r.end - r.start) * 10) / 10}s)</span>
+                        <button onClick={() => removeCutRange(i)} className="text-red-400 hover:text-red-700" title="Undo this cut"><X size={12} /></button>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-gray-500">{cutRanges.length} cut{cutRanges.length === 1 ? '' : 's'} · {Math.round(cutTotal * 10) / 10}s removed → final ≈ {fmtTime(Math.max(0, selDur - cutTotal))}</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-400 mt-2">Pause on a part you don't want, press “Cut from here”, then play to its end and press “to here”. Works on silence, mistakes — anything.</p>
               </div>
             </Card>
 
