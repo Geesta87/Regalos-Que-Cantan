@@ -27,6 +27,10 @@ const SENDER_NAME = 'Regalos Que Cantan';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
 
+// Valid audience segments — must match the CASE in enqueue_marketing_recipients
+// and the SEGMENTS list in the Email Studio + Emails UI.
+const VALID_SEGMENTS = ['all', 'buyers_7d', 'buyers_30d', 'recent', 'winback', 'video_buyers', 'no_video', 'nonbuyers', 'everyone_all'];
+
 async function sendOne(to: string, subject: string, html: string, preheader = '') {
   if (!SENDGRID_API_KEY) throw new Error('SENDGRID_API_KEY not set');
   const resolved = html.replace(/\{\{UNSUB_URL\}\}/g, await buildUnsubscribeUrl(to));
@@ -199,6 +203,16 @@ serve(async (req) => {
       return json({ success: true, id: em.id, status: 'rejected' });
     }
 
+    // Change the target list of a draft WITHOUT sending — lets the owner pick the
+    // audience (buyers, non-buyers, last-7-days, etc.) right on the Emails screen.
+    if (action === 'set_segment') {
+      if (em.status !== 'pending_approval') return json({ success: false, error: `Not editable (status=${em.status})` }, 409);
+      const segment = (body.segment || '').toString();
+      if (!VALID_SEGMENTS.includes(segment)) return json({ success: false, error: `Unknown segment ${segment}` }, 400);
+      await admin.from('email_queue').update({ segment, updated_at: new Date().toISOString() }).eq('id', em.id);
+      return json({ success: true, id: em.id, segment });
+    }
+
     if (action === 'approve') {
       if (em.status !== 'pending_approval') return json({ success: false, error: `Not approvable (status=${em.status})` }, 409);
       // Stamp a unique campaign key + UTM tags on the CTA links so purchases
@@ -206,8 +220,11 @@ serve(async (req) => {
       const key = em.campaign_key
         || `em_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${em.id.replace(/-/g, '').slice(0, 6)}`;
       const taggedHtml = addUtm(em.body_html, key);
-      const segment = (em.segment || 'all').toString();
-      await admin.from('email_queue').update({ body_html: taggedHtml, campaign_key: key, updated_at: new Date().toISOString() }).eq('id', em.id);
+      // The owner can retarget the list at approval time; fall back to the draft's
+      // stored segment. Validate before it reaches the enqueue RPC.
+      const requested = (body.segment ?? em.segment ?? 'all').toString();
+      const segment = VALID_SEGMENTS.includes(requested) ? requested : 'all';
+      await admin.from('email_queue').update({ body_html: taggedHtml, campaign_key: key, segment, updated_at: new Date().toISOString() }).eq('id', em.id);
       const { data: count, error: rpcErr } = await admin.rpc('enqueue_marketing_recipients', { qid: em.id, seg: segment });
       if (rpcErr) return json({ success: false, error: rpcErr.message }, 500);
       const now = new Date().toISOString();

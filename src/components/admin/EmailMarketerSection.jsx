@@ -17,11 +17,20 @@ const STATUS = {
   failed:           { label: 'Failed',    tone: 'red' },
 };
 
-const SEGMENT_LABELS = {
-  all: 'Everyone', recent: 'Recent buyers', winback: 'Win-back',
-  video_buyers: 'Video-addon buyers', no_video: 'Bought song, never video',
-  nonbuyers: 'Non-buyers',
-};
+// Ordered list for the picker; labels reused for badges. Must match the enum in
+// email-marketer-admin + enqueue_marketing_recipients.
+const SEGMENTS = [
+  { id: 'all',          label: 'All buyers' },
+  { id: 'buyers_7d',    label: 'Bought last 7 days' },
+  { id: 'buyers_30d',   label: 'Bought last 30 days' },
+  { id: 'recent',       label: 'Recent buyers (≤90 days)' },
+  { id: 'winback',      label: 'Win-back (>90 days)' },
+  { id: 'video_buyers', label: 'Video-addon buyers' },
+  { id: 'no_video',     label: 'Bought song, never video' },
+  { id: 'nonbuyers',    label: 'Non-buyers (started, never paid)' },
+  { id: 'everyone_all', label: 'Everyone incl. non-buyers' },
+];
+const SEGMENT_LABELS = Object.fromEntries(SEGMENTS.map((s) => [s.id, s.label]));
 const pct = (num, den) => (den ? `${Math.round((100 * num) / den)}%` : '—');
 
 export default function EmailMarketerSection({ accessToken, showToast, onEditInStudio }) {
@@ -74,6 +83,18 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
     else setStats(null);
   }, [selectedId, sel?.status, sel?.campaign_key, loadStats]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Retarget a draft's audience right here (persists via the admin fn so the
+  // count + approve button update immediately). Only for not-yet-sent emails.
+  const changeSegment = async (id, segment) => {
+    setBusy(true);
+    try {
+      const r = await call({ action: 'set_segment', id, segment });
+      if (r.success) setEmails((prev) => prev.map((e) => (e.id === id ? { ...e, segment } : e)));
+      else showToast?.(`Error: ${r.error || 'failed'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setBusy(false); }
+  };
+
   const act = async (id, action) => {
     if (action === 'approve') {
       const seg = sel?.segment || 'all';
@@ -100,7 +121,7 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
         <button onClick={() => setSelectedId(null)} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4"><ArrowLeft size={16} /> All emails</button>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <Badge tone={sm.tone}>{sm.label}</Badge>
-          <Badge tone="gray"><Users size={11} className="mr-1" /> {SEGMENT_LABELS[sel.segment] || 'Everyone'}</Badge>
+          <Badge tone="gray"><Users size={11} className="mr-1" /> {SEGMENT_LABELS[sel.segment] || 'All buyers'} · {segCountFor(sel.segment).toLocaleString()}</Badge>
           {sel.subject_b && <Badge tone="accent"><FlaskConical size={11} className="mr-1" /> A/B</Badge>}
           {sel.reason && <span className="text-xs text-gray-400">{sel.reason}</span>}
         </div>
@@ -139,7 +160,20 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
             ) : null}
           </div>
         ) : sel.status === 'pending_approval' ? (
-          <div className="flex flex-wrap items-center gap-2 mt-4">
+          <>
+          <div className="flex items-center gap-2 mt-4 mb-1">
+            <label className="flex items-center gap-1.5 text-sm text-gray-600">
+              <Users size={14} className="text-gray-400" /> Send to
+              <select value={sel.segment || 'all'} onChange={(e) => changeSegment(sel.id, e.target.value)} disabled={busy}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
+                {SEGMENTS.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label} · {segCountFor(s.id).toLocaleString()}</option>
+                ))}
+              </select>
+            </label>
+            <span className="text-[11px] text-gray-400">Change the list before approving. Suppression &amp; unsubscribes are always excluded.</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <button onClick={() => act(sel.id, 'test')} disabled={busy} className={btn.ghost}>
               {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send test to me
             </button>
@@ -156,6 +190,7 @@ export default function EmailMarketerSection({ accessToken, showToast, onEditInS
               </button>
             )}
           </div>
+          </>
         ) : null}
       </div>
     );

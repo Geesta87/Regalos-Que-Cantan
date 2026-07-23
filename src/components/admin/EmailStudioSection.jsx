@@ -77,12 +77,15 @@ const DEVICE_WIDTHS = { desktop: '100%', mobile: 390 };
 // Audience segments — must match the enum in email-studio + the SQL filters in
 // enqueue_marketing_recipients. "Everyone" is the default.
 const SEGMENTS = [
-  { id: 'all',          label: 'Everyone (paying buyers)' },
+  { id: 'all',          label: 'All buyers' },
+  { id: 'buyers_7d',    label: 'Bought last 7 days' },
+  { id: 'buyers_30d',   label: 'Bought last 30 days' },
   { id: 'recent',       label: 'Recent buyers (≤90 days)' },
   { id: 'winback',      label: 'Win-back (>90 days)' },
   { id: 'video_buyers', label: 'Video-addon buyers' },
   { id: 'no_video',     label: 'Bought song, never video' },
-  { id: 'nonbuyers',    label: 'Non-buyers (made a song, never paid)' },
+  { id: 'nonbuyers',    label: 'Non-buyers (started, never paid)' },
+  { id: 'everyone_all', label: 'Everyone incl. non-buyers' },
 ];
 
 export default function EmailStudioSection({ accessToken, showToast, initialDraft, onDraftConsumed }) {
