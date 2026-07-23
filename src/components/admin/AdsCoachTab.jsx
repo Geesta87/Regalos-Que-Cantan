@@ -88,8 +88,12 @@ export default function AdsCoachTab({ accessToken, showToast }) {
         if (body.calls?.length) setCalls(body.calls);
         if (body.ads) setAds(body.ads);
       } else {
-        showToast?.(`Coach: ${body.error || 'something went wrong'}`);
-        setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: `I couldn't do that just now — ${body.error || 'please try again'}.` }] }));
+        // Surface the REAL failure: our own error field, or the platform's
+        // message/code (e.g. execution-limit errors return {code, message}
+        // without our shape) — never a blind "try again".
+        const why = body.error || body.message || (body.code ? `platform error ${body.code}` : 'the request didn\'t complete — likely it ran too long; try again');
+        showToast?.(`Coach: ${why}`);
+        setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: `I couldn't do that just now — ${why}.` }] }));
       }
     } catch (e) {
       showToast?.(`Error: ${e.message}`);
