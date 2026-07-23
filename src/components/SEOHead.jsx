@@ -102,12 +102,10 @@ export function generateGenreStructuredData(genre) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": "Música Personalizada",
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": genre.reviewCount || 50
-    }
+    "category": "Música Personalizada"
+    // NOTE: no aggregateRating here on purpose. Review markup must reflect REAL
+    // collected reviews — invented counts are a Google manual-action risk.
+    // Re-add only when wired to a genuine review system.
   };
 }
 
@@ -130,12 +128,8 @@ export function generateOccasionStructuredData(occasion) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": `Regalo para ${occasion.name}`,
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": occasion.reviewCount || 75
-    }
+    "category": `Regalo para ${occasion.name}`
+    // NOTE: no aggregateRating here on purpose — same integrity rule as above.
   };
 }
 
