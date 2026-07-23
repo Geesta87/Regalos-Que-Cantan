@@ -14,6 +14,7 @@ import ClipStudioTab from '../components/admin/ClipStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
+import SeoCoachTab from '../components/admin/SeoCoachTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target } from 'lucide-react';
 import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
@@ -3932,6 +3933,11 @@ export default function AdminDashboard() {
           <Target size={18} className={`flex-shrink-0 ${activeTab === 'adscoach' ? 'text-amber-400' : ''}`} /> Ads Coach
         </button>
         )}
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('seocoach')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'seocoach' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Search size={18} className={`flex-shrink-0 ${activeTab === 'seocoach' ? 'text-amber-400' : ''}`} /> SEO Coach
+        </button>
+        )}
         <button onClick={() => setActiveTab('creativestudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'creativestudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Sparkles size={18} className={`flex-shrink-0 ${activeTab === 'creativestudio' ? 'text-amber-400' : ''}`} /> Creative Studio
         </button>
@@ -4730,6 +4736,18 @@ export default function AdminDashboard() {
                 }`}
               >
                 🎯 Ads Coach
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('seocoach')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'seocoach'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🔎 SEO Coach
               </button>
               )}
               <button
@@ -6587,6 +6605,12 @@ export default function AdminDashboard() {
              Meta Algorithm Brain, remembers past chats, never touches the account.
              ads-coach edge function enforces admin server-side. Admin-only. */
           <AdsCoachTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'seocoach' && userRole === 'admin') ? (
+          /* SEO Coach — interactive, advice-only search specialist. Reads live
+             Search Console data, fetches real pages (ours + competitors), reasons
+             with the verified SEO Brain, remembers past chats, never touches the
+             site. seo-coach edge function enforces admin server-side. Admin-only. */
+          <SeoCoachTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'recruit' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Recruit Partners — Affiliate Recruiter agent (discover + score +
              draft outreach + convert). Open to admin + assistant (Ivan runs
