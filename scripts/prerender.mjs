@@ -88,12 +88,10 @@ function genreProductSchema(genre) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": "Música Personalizada",
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": genre.reviewCount || 50
-    }
+    "category": "Música Personalizada"
+    // No aggregateRating: review markup must reflect real collected reviews.
+    // Invented counts are a Google manual-action risk. Re-add when wired to a
+    // genuine review system.
   };
 }
 
@@ -110,12 +108,8 @@ function occasionProductSchema(occasion) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": `Regalo para ${occasion.name}`,
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": occasion.reviewCount || 75
-    }
+    "category": `Regalo para ${occasion.name}`
+    // No aggregateRating — same integrity rule as genreProductSchema above.
   };
 }
 
@@ -284,6 +278,7 @@ function ocasionesHubBodyHtml() {
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Ocasiones</nav>
       <h1>Ocasiones para Canciones Personalizadas</h1>
       <p>Crea canciones personalizadas para cualquier ocasión especial — cumpleaños, Día de las Madres, aniversarios, bodas, quinceañeras y más.</p>
+      <p>¿Buscas ideas? Mira todas las <a href="/canciones-para-regalar">canciones para regalar</a> y encuentra el regalo musical perfecto.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <ul>${allOccasions.map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a> — ${esc(o.description)}</li>`).join('')}</ul>
       <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
@@ -472,6 +467,76 @@ function buildRouteConfigs() {
     bodyHtml: ocasionesHubBodyHtml()
   });
 
+  // Canciones para Regalar — canonical home for the head gifting cluster
+  // ("canciones para regalar", "regalar una canción", etc.), our largest
+  // non-branded search demand per Search Console. Its own page (not an occasion
+  // template) so the copy reads naturally for a category, not an occasion noun.
+  {
+    const cprGenres = ['corridos-tumbados', 'cumbia', 'norteno', 'banda-sinaloense', 'bachata', 'mariachi'].map(s => GENRES_SEO[s]).filter(Boolean);
+    routes.push({
+      path: '/canciones-para-regalar',
+      title: 'Canciones para Regalar: el Regalo Musical Personalizado | RegalosQueCantan',
+      description: '¿Buscas canciones para regalar? Creamos una canción personalizada con el nombre de esa persona y su historia, en corridos, cumbia, bachata y más. Lista en minutos desde $29.99.',
+      keywords: 'canciones para regalar, canción para regalar, regalar una canción, regalar canción personalizada, canciones personalizadas para regalar, canciones de regalo, canciones por encargo, regalo musical personalizado',
+      structuredData: [
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "Canción Personalizada para Regalar",
+          "description": "Una canción personalizada hecha para regalar: con el nombre de esa persona y su historia, en más de 20 géneros de música latina. Lista en minutos.",
+          "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
+          "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock", "url": "https://regalosquecantan.com/canciones-para-regalar" }
+        },
+        breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Canciones para Regalar', path: '/canciones-para-regalar' }]),
+        faqSchema([
+          { question: '¿Cuánto cuesta una canción personalizada para regalar?', answer: 'Una canción personalizada cuesta $29.99 USD. Es un pago único, sin suscripción, e incluye dos versiones para que elijas tu favorita. Está lista para descargar y regalar en minutos.' },
+          { question: '¿A quién le puedo regalar una canción?', answer: 'A quien quieras sorprender: tu pareja, tu mamá o papá, un amigo, tus hijos, tus abuelos. Funciona para aniversarios, cumpleaños, bodas, el Día de las Madres, o simplemente para decir te quiero sin ocasión.' },
+          { question: '¿Puedo regalar una canción para una pareja o aniversario?', answer: 'Sí. Es uno de los regalos más pedidos. Incluimos los nombres de los dos, cómo se conocieron y los detalles de su historia, en el género que más les guste.' },
+          { question: '¿Cómo entrego la canción de regalo?', answer: 'Recibes un archivo MP3 de alta calidad al instante. Lo puedes enviar por WhatsApp, ponerlo en una tarjeta con un código QR, reproducirlo en la fiesta o compartirlo por redes sociales.' },
+          { question: '¿Cuánto tarda en estar lista?', answer: 'Entre 2 y 4 minutos. Escuchas un preview gratis de cada versión antes de pagar.' }
+        ])
+      ].filter(Boolean),
+      bodyHtml: `
+      <div id="prerender-content">
+        <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Canciones para Regalar</nav>
+        <h1>Canciones para Regalar — el Regalo Musical Personalizado</h1>
+        <p>Una canción para regalar es una canción personalizada creada exclusivamente para alguien especial: incluye su nombre, tu mensaje y los detalles de su historia, en el género latino que elijas —corridos, cumbia, bachata, mariachi y más—. Está lista en minutos y se entrega en MP3 para compartir por WhatsApp. Desde $29.99 USD, pago único.</p>
+        <p><em>Actualizado: ${BUILD_DATE}</em></p>
+        <a href="/create/occasion">Crear una Canción para Regalar — Desde $29.99</a>
+        <section>
+          <h2>¿Por qué regalar una canción?</h2>
+          <p>Los regalos comunes se olvidan. Una canción con el nombre de esa persona, que cuenta su historia y dice lo que sientes, se guarda para siempre y se escucha una y otra vez.</p>
+          <p>No hace falta una fecha especial. Puedes regalar una canción para un cumpleaños o un aniversario, para el Día de las Madres o del Padre, para una boda o una quinceañera — o simplemente porque quieres decir te quiero de una forma que nadie olvida.</p>
+        </section>
+        <section>
+          <h2>Elige el género para tu regalo</h2>
+          <ul>${cprGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
+          <a href="/generos">Ver los 20+ géneros disponibles</a>
+        </section>
+        <section>
+          <h2>¿Para qué ocasión lo vas a regalar?</h2>
+          <ul>${allOccasions.slice(0, 8).map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a></li>`).join('')}</ul>
+          <a href="/ocasiones">Ver todas las ocasiones</a>
+        </section>
+        <section>
+          <h2>Cómo regalar una canción en minutos</h2>
+          <ol>
+            <li>Elige el género que más le guste a esa persona.</li>
+            <li>Cuenta su historia: nombre, relación y los detalles que la hacen única.</li>
+            <li>Se crean 2 versiones únicas en minutos.</li>
+            <li>Descarga el MP3 y regálalo por WhatsApp.</li>
+          </ol>
+        </section>
+        <section>
+          <h2>Preguntas Frecuentes</h2>
+          <h3>¿Cuánto cuesta una canción personalizada para regalar?</h3><p>$29.99 USD, pago único, con dos versiones incluidas.</p>
+          <h3>¿A quién le puedo regalar una canción?</h3><p>A tu pareja, mamá, papá, amigos, hijos o abuelos — para cualquier ocasión o sin ocasión.</p>
+          <h3>¿Cuánto tarda en estar lista?</h3><p>Entre 2 y 4 minutos, con preview gratis antes de pagar.</p>
+        </section>
+      </div>`
+    });
+  }
+
   // Individual Genre Pages
   for (const genre of allGenres) {
     const faqs = genre.faqs || DEFAULT_GENRE_FAQS;
@@ -523,8 +588,7 @@ function buildRouteConfigs() {
         "name": "Cancion Personalizada para el Dia de las Madres",
         "description": "Cancion personalizada para mama con su nombre en mariachi, bolero, ranchera y mas generos latinos.",
         "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
-        "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
-        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 312 }
+        "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
       },
       breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia de las Madres', path: '/dia-de-las-madres' }]),
       faqSchema([
@@ -595,8 +659,7 @@ function buildRouteConfigs() {
         "name": "Cancion Personalizada para el Dia del Padre",
         "description": "Cancion personalizada para papa con su nombre en corrido, norteño, banda, ranchera y mas generos latinos.",
         "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
-        "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
-        "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": 156 }
+        "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
       },
       breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia del Padre', path: '/dia-del-padre' }]),
       faqSchema([
