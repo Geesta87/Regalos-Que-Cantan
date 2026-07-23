@@ -6,7 +6,7 @@
 // leads from "Follow up", and convert them into a real affiliate on reply
 // (reuses create-affiliate). Open to admin + assistant roles.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink, SlidersHorizontal, Users, Heart, Film, ChevronLeft, ChevronRight, Send, Mail, Clock, Globe } from 'lucide-react';
+import { UserPlus, RefreshCw, Loader2, Copy, Check, X, ExternalLink, SlidersHorizontal, Users, Heart, Film, ChevronLeft, ChevronRight, Send, Mail, Clock, Globe, Phone, CalendarDays, MessageCircle } from 'lucide-react';
 import { Card, Badge, btn } from './ui';
 
 const PAGE_SIZE = 15;
@@ -22,6 +22,23 @@ const STATUS = {
 const fmt = (n) => (n == null ? '—' : Intl.NumberFormat('en', { notation: 'compact' }).format(n));
 const daysAgo = (iso) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null);
 const isFollowup = (p) => p.status === 'contacted' && p.contacted_at && daysAgo(p.contacted_at) >= FOLLOWUP_DAYS;
+
+// Scheduled intro calls booked on /partners (partner_call_bookings)
+const CALL_STATUS = {
+  pending: { label: 'New request', tone: 'amber' },
+  confirmed: { label: 'Confirmed', tone: 'accent' },
+  done: { label: 'Done', tone: 'green' },
+  no_show: { label: 'No-show', tone: 'gray' },
+};
+const fmtPhone = (d) => {
+  const s = String(d || '');
+  if (s.length === 10) return `(${s.slice(0, 3)}) ${s.slice(3, 6)}-${s.slice(6)}`;
+  if (s.length === 11 && s.startsWith('1')) return `(${s.slice(1, 4)}) ${s.slice(4, 7)}-${s.slice(7)}`;
+  return s;
+};
+const waNumber = (d) => (String(d || '').length === 10 ? `1${d}` : String(d || ''));
+const callDateLabel = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const isPastCall = (b) => new Date(`${b.preferred_date}T23:59:59`) < new Date();
 
 export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const [prospects, setProspects] = useState([]);
@@ -39,6 +56,11 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const [terms, setTerms] = useState('');
   const [page, setPage] = useState(1);
   const [scanActive, setScanActive] = useState(false); // polling while a scan is landing
+  // Scheduled Calls sub-tab
+  const [section, setSection] = useState('prospects'); // prospects | calls
+  const [calls, setCalls] = useState([]);
+  const [callsLoading, setCallsLoading] = useState(true);
+  const [callBusyId, setCallBusyId] = useState(null);
 
   const call = useCallback(async (payload) => {
     const res = await fetch(FN, {
@@ -62,6 +84,29 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   }, [call, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadCalls = useCallback(async () => {
+    try {
+      const r = await call({ action: 'calls_list' });
+      if (r.success) setCalls(r.calls || []);
+      else showToast?.(`Error: ${r.error || 'could not load calls'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setCallsLoading(false); }
+  }, [call, showToast]);
+
+  useEffect(() => { loadCalls(); }, [loadCalls]);
+
+  const updateCall = async (id, status) => {
+    setCallBusyId(id);
+    try {
+      const r = await call({ action: 'call_update', call_id: id, status });
+      if (r.success) {
+        if (status === 'cancelled') setCalls((c) => c.filter((x) => x.id !== id));
+        else setCalls((c) => c.map((x) => x.id === id ? { ...x, status } : x));
+      } else showToast?.(`Error: ${r.error}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setCallBusyId(null); }
+  };
 
   // While a scan is landing, poll every 8s (max ~2.5 min) so results surface even
   // if the owner navigated away and came back. Results themselves persist in the DB.
@@ -141,6 +186,11 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
   const safePage = Math.min(page, totalPages);
   const pageItems = shown.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  const upcomingCallCount = useMemo(
+    () => calls.filter((b) => !isPastCall(b) && (b.status === 'pending' || b.status === 'confirmed')).length,
+    [calls],
+  );
+
   const VIEWS = [
     ['queue', `To contact${counts.new ? ` · ${counts.new}` : ''}`],
     ['followup', `Follow up${counts.followup ? ` · ${counts.followup}` : ''}`],
@@ -154,16 +204,93 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
           <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2"><UserPlus size={22} className="text-gray-700" /> Recruit Partners</h2>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">Latino creators who'd make great affiliates, ranked by fit. Work the <b>To contact</b> queue top-down: one click opens their profile and copies the Spanish DM — paste, send, mark it sent. Convert them when they reply. (We never auto-DM.)</p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={() => setShowFilters((s) => !s)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${showFilters ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-            <SlidersHorizontal size={15} /> Filters
-          </button>
-          <button onClick={scan} disabled={scanning} className={btn.primary}>
-            {scanning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Scan now
-          </button>
-        </div>
+        {section === 'prospects' && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={() => setShowFilters((s) => !s)} className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${showFilters ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+              <SlidersHorizontal size={15} /> Filters
+            </button>
+            <button onClick={scan} disabled={scanning} className={btn.primary}>
+              {scanning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Scan now
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Section switcher: creator prospects vs scheduled intro calls */}
+      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
+        {[
+          ['prospects', 'Prospects'],
+          ['calls', `Scheduled Calls${upcomingCallCount ? ` · ${upcomingCallCount}` : ''}`],
+        ].map(([k, label]) => (
+          <button key={k} onClick={() => setSection(k)} className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition ${section === k ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+            {k === 'calls' && <CalendarDays size={14} />}{label}
+          </button>
+        ))}
+      </div>
+
+      {section === 'calls' ? (
+        /* ---- Scheduled Calls: no-commitment intro calls booked on /partners ---- */
+        callsLoading ? (
+          <div className="flex items-center gap-2 text-gray-500 py-16 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
+        ) : calls.length === 0 ? (
+          <div className="text-center text-gray-400 py-16 border border-dashed border-gray-200 rounded-xl">
+            No calls booked yet. When someone schedules a call on the /partners page, it shows up here.
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {[
+              ['Upcoming', calls.filter((b) => !isPastCall(b))],
+              ['Past', calls.filter(isPastCall).reverse()],
+            ].map(([groupLabel, group]) => group.length > 0 && (
+              <div key={groupLabel}>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">{groupLabel} <span className="text-gray-400 font-normal">· {group.length}</span></h3>
+                <div className="space-y-3">
+                  {group.map((b) => {
+                    const cs = CALL_STATUS[b.status] || { label: b.status, tone: 'gray' };
+                    return (
+                      <Card key={b.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-gray-900">{b.name}</span>
+                              <Badge tone={cs.tone}>{cs.label}</Badge>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 text-[13px] text-gray-600 flex-wrap">
+                              <span className="flex items-center gap-1 font-medium"><CalendarDays size={13} /> {callDateLabel(b.preferred_date)} · {b.preferred_time} <span className="text-gray-400 font-normal">PT</span></span>
+                              <span className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(b.phone)}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-1">Requested {new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 items-center flex-shrink-0">
+                            <a href={`https://wa.me/${waNumber(b.phone)}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-gray-900 text-white hover:bg-black">
+                              <MessageCircle size={13} /> WhatsApp
+                            </a>
+                            {b.status === 'pending' && (
+                              <button onClick={() => updateCall(b.id, 'confirmed')} disabled={callBusyId === b.id} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+                                <Check size={12} /> Confirm
+                              </button>
+                            )}
+                            {(b.status === 'pending' || b.status === 'confirmed') && (
+                              <>
+                                <button onClick={() => updateCall(b.id, 'done')} disabled={callBusyId === b.id} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50">Done</button>
+                                <button onClick={() => updateCall(b.id, 'no_show')} disabled={callBusyId === b.id} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">No-show</button>
+                              </>
+                            )}
+                            <button onClick={() => updateCall(b.id, 'cancelled')} disabled={callBusyId === b.id} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 flex items-center gap-1" title="Remove">
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+      <>
       {/* Scoreboard — where the pipeline stands right now */}
       <div className="grid grid-cols-4 gap-2 mb-4">
         {[['To contact', counts.new, 'text-amber-600'], ['Contacted', counts.contacted, 'text-gray-900'], ['Replied', counts.responded, 'text-indigo-600'], ['Affiliates', counts.converted, 'text-green-600']].map(([label, n, cls]) => (
@@ -330,6 +457,8 @@ export default function AffiliateRecruiterTab({ accessToken, showToast }) {
           </div>
         )}
         </>
+      )}
+      </>
       )}
     </div>
   );
