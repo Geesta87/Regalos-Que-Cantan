@@ -41,7 +41,93 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CLIP_AI_MODEL = Deno.env.get('CLIP_AI_MODEL') || 'claude-sonnet-5';
 const PEXELS_API_KEY = Deno.env.get('PEXELS_API_KEY');
 
+// GHL (GoHighLevel) social posting — reused for the manual "Post to YouTube"
+// action only. Same secrets as post-to-ghl / creative-studio-admin.
+const GHL_API_TOKEN = Deno.env.get('GHL_API_TOKEN');
+const GHL_LOCATION_ID = Deno.env.get('GHL_LOCATION_ID');
+const GHL_USER_ID = Deno.env.get('GHL_USER_ID') || 'FzWeDSE9qm2dyrKmh1hn';
+const GHL_API_BASE = 'https://services.leadconnectorhq.com';
+const GHL_API_VERSION = '2021-07-28';
+const SITE_URL = 'https://regalosquecantan.com/canciones-para-regalar';
+
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
+
+// ---------------------------------------------------------------------------
+// GHL helpers (mirror creative-studio-admin / post-to-ghl). Kept self-contained
+// so the manual YouTube path never depends on the auto pipeline's code.
+// ---------------------------------------------------------------------------
+type GhlAccount = { id: string; platform: string; name: string; isExpired?: boolean; deleted?: boolean };
+
+async function ghlFetch(path: string, init: RequestInit = {}) {
+  return fetch(`${GHL_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${GHL_API_TOKEN}`, Version: GHL_API_VERSION,
+      Accept: 'application/json', 'Content-Type': 'application/json', ...(init.headers || {}),
+    },
+  });
+}
+
+async function ghlYouTubeAccount(): Promise<GhlAccount | null> {
+  const resp = await ghlFetch(`/social-media-posting/${GHL_LOCATION_ID}/accounts`, { method: 'GET' });
+  if (!resp.ok) throw new Error(`GHL accounts ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const data = await resp.json();
+  const accounts = (data?.results?.accounts || []) as GhlAccount[];
+  return accounts.find((a) => a.platform === 'youtube' && !a.isExpired && !a.deleted) || null;
+}
+
+function extractGhlPostId(d: any): string | null {
+  return d?.results?.post?._id || d?.results?.post?.id || d?.results?.posts?.[0]?._id || d?.results?._id || d?.post?._id || d?._id || d?.id || null;
+}
+
+async function ghlPostYouTube(accountId: string, caption: string, mediaUrl: string, scheduleDate: string): Promise<{ id: string | null; error: string | null }> {
+  const payload = {
+    accountIds: [accountId], userId: GHL_USER_ID,
+    media: [{ url: mediaUrl, type: 'video/mp4' }],
+    summary: caption, scheduleDate, type: 'post', status: 'scheduled',
+  };
+  const resp = await ghlFetch(`/social-media-posting/${GHL_LOCATION_ID}/posts`, { method: 'POST', body: JSON.stringify(payload) });
+  if (!resp.ok) return { id: null, error: `youtube_${resp.status}: ${(await resp.text()).slice(0, 300)}` };
+  return { id: extractGhlPostId(await resp.json()), error: null };
+}
+
+// Write a YouTube-SEARCH-optimized caption (title-led, keyword-rich) from what
+// is actually said in the clip. YouTube is the #2 search engine and, per the SEO
+// brain, YouTube mentions are the strongest measured predictor of AI-answer
+// visibility — so this reads for search, not social. Falls back to a solid
+// brand default if the transcript or API is unavailable.
+async function youtubeSeoCaption(clipLabel: string, saidText: string): Promise<string> {
+  const fallback =
+`Canción personalizada para regalar | Regalos Que Cantan
+
+Una canción personalizada hecha a la medida, con el nombre de esa persona y su historia. El regalo perfecto para cumpleaños, aniversarios, bodas o el Día de las Madres.
+
+Crea la tuya en minutos 👉 ${SITE_URL}
+
+#CancionPersonalizada #RegalosQueCantan #Shorts`;
+  if (!ANTHROPIC_API_KEY || saidText.trim().length < 30) return fallback;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        system:
+          'You write YouTube metadata for Regalos Que Cantan (personalized Spanish-language song gifts). YouTube is a SEARCH engine, so write for search, in Spanish. Output MUST be exactly:\n' +
+          'Line 1: a searchable title (<=90 chars) using real search phrases people type — e.g. "canción personalizada", "para regalar", the genre if clear, "con su nombre". No emoji spam (one 🎁 ok).\n' +
+          'Blank line, then 1-2 short sentences describing the gift with searchable words (canción personalizada, regalo, ocasión).\n' +
+          `Blank line, then: Crea la tuya en minutos 👉 ${SITE_URL}\n` +
+          'Blank line, then 3-4 hashtags (include #CancionPersonalizada #RegalosQueCantan). Return ONLY this text, no preamble.',
+        messages: [{ role: 'user', content: `Clip title: ${clipLabel}\nWhat is said in the clip:\n${saidText.slice(0, 2000)}` }],
+      }),
+    });
+    if (!resp.ok) return fallback;
+    const data = await resp.json();
+    const text = (data.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim();
+    return text && text.length > 20 ? text.slice(0, 1200) : fallback;
+  } catch { return fallback; }
+}
 
 // B-roll: Claude reads the clip's transcript and proposes 2-4 short visual
 // moments with a stock-footage search query each; Pexels supplies the videos.
@@ -857,6 +943,47 @@ serve(async (req) => {
       // Mark the clip so the UI shows it's already in the approval queue.
       await admin.from('clips').update({ sent_to_creative_at: nowIso(), updated_at: nowIso() }).eq('id', clip_id);
       return json({ success: true });
+    }
+
+    // Manual, reviewed "Post to YouTube" — the owner has watched the clip and
+    // clicks once. Posts to the connected YouTube account ONLY, with a
+    // search-optimized caption. Deliberately NOT gated by the auto-pipeline
+    // pause switch (social_pipeline_state): this is a manual, per-clip, explicit
+    // action, so it works while the per-song auto pipeline stays off. Still
+    // honors the SOCIAL_CLIPS_ENABLED emergency kill switch. Requires admin.
+    if (action === 'post_clip_youtube') {
+      if (!roleRow || roleRow.role !== 'admin') return json({ success: false, error: 'Admins only' }, 403);
+      if (Deno.env.get('SOCIAL_CLIPS_ENABLED') === 'false') return json({ success: false, error: 'Social posting is disabled by the emergency kill switch.' }, 200);
+      if (!GHL_API_TOKEN || !GHL_LOCATION_ID) return json({ success: false, error: 'GHL is not configured (GHL_API_TOKEN / GHL_LOCATION_ID).' }, 500);
+      const { clip_id } = body;
+      if (!clip_id) throw new Error('Missing clip_id');
+      const { data: clip } = await admin.from('clips').select('id, project_id, label, video_url, status, start_sec, end_sec, youtube_post_id').eq('id', clip_id).single();
+      if (!clip) throw new Error('clip not found');
+      if (clip.status !== 'ready' || !clip.video_url) throw new Error('Clip is not ready yet');
+      if (clip.youtube_post_id) return json({ success: false, error: 'This clip was already posted to YouTube.' }, 200);
+
+      const acct = await ghlYouTubeAccount();
+      if (!acct) return json({ success: false, error: 'No connected YouTube account found in GHL. Connect YouTube in GoHighLevel first.' }, 200);
+
+      const { data: proj } = await admin.from('clip_projects').select('title, transcript').eq('id', clip.project_id).single();
+      const words = (proj?.transcript?.words || []) as Array<{ word: string; start: number; end: number }>;
+      const said = words
+        .filter((w) => w.end > Number(clip.start_sec) && w.start < (clip.end_sec != null ? Number(clip.end_sec) : Infinity))
+        .map((w) => w.word.trim()).join(' ');
+      const caption = await youtubeSeoCaption(clip.label || proj?.title || 'Clip', said);
+
+      // GHL needs a future schedule time; floor ~2 min out.
+      const scheduleDate = new Date(Date.now() + 150_000).toISOString();
+      const { id: ghlId, error: postErr } = await ghlPostYouTube(acct.id, caption, clip.video_url, scheduleDate);
+      if (!ghlId) return json({ success: false, error: postErr || 'YouTube post failed' }, 502);
+
+      await admin.from('clips').update({ youtube_post_id: ghlId, youtube_posted_at: nowIso(), updated_at: nowIso() }).eq('id', clip_id);
+      await admin.from('agent_runs').insert({
+        agent: 'clip-studio', status: 'ok', ok: true,
+        summary: `Posted clip ${clip_id} to YouTube`, payload: { clip_id, ghl_post_id: ghlId },
+        finished_at: new Date().toISOString(),
+      }).then(() => {}, () => {});
+      return json({ success: true, ghl_post_id: ghlId, caption, scheduled_for: scheduleDate });
     }
 
     if (action === 'delete_clip') {

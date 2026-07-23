@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages, Scissors,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages, Scissors, Youtube,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -221,6 +221,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [sendingId, setSendingId] = useState(null);
   const [enBusyId, setEnBusyId] = useState(null);
   const [hookBusyId, setHookBusyId] = useState(null);
+  const [ytBusyId, setYtBusyId] = useState(null);
   const [musicBusy, setMusicBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [songQ, setSongQ] = useState('');
@@ -607,6 +608,24 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       showToast?.(`Error: ${e.message}`);
     } finally {
       setSendingId(null);
+    }
+  };
+
+  // Manual, reviewed "Post to YouTube" — you've watched the clip, one click
+  // posts it to your connected YouTube account via GHL with a search-optimized
+  // caption. YouTube only; the per-song auto pipeline stays off.
+  const postToYouTube = async (clip) => {
+    if (clip.youtube_post_id) { showToast?.('Already posted to YouTube.'); return; }
+    if (!window.confirm('Post this clip to YouTube now?\n\nIt schedules on your connected YouTube account (via GoHighLevel) with a search-optimized title and description. Only publish clips cleared for marketing.')) return;
+    setYtBusyId(clip.id);
+    try {
+      const r = await call({ action: 'post_clip_youtube', clip_id: clip.id });
+      if (r?.success) { showToast?.('Scheduled on YouTube ✓ (posts in ~2 min via GHL)'); load(true); }
+      else showToast?.(`YouTube: ${r?.error || 'failed'}`);
+    } catch (e) {
+      showToast?.(`Error: ${e.message}`);
+    } finally {
+      setYtBusyId(null);
     }
   };
 
@@ -1319,6 +1338,11 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                                 {hookBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                               </button>
                             )}
+                            <button onClick={() => postToYouTube(c)} disabled={ytBusyId === c.id}
+                              className={btn.iconGhost}
+                              title={c.youtube_post_id ? 'Already posted to YouTube' : 'Post to YouTube (reviewed, one click — via GHL, SEO title + description)'}>
+                              {ytBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} className={c.youtube_post_id ? 'text-green-600' : 'text-red-600'} />}
+                            </button>
                             <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
                           </>
                         )}
