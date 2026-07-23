@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Clapperboard, UploadCloud, RefreshCw, Loader2, ArrowLeft, Trash2,
   Download, Play, AlertTriangle, ChevronRight, ChevronDown, ChevronUp,
-  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages, Scissors, Youtube,
+  Captions, Clock, Sparkles, Check, Send, Music, Zap, Copy, Pencil, X, Languages, Scissors,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -1341,7 +1341,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                             <button onClick={() => postToYouTube(c)} disabled={ytBusyId === c.id}
                               className={btn.iconGhost}
                               title={c.youtube_post_id ? 'Already posted to YouTube' : 'Post to YouTube (reviewed, one click — via GHL, SEO title + description)'}>
-                              {ytBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} className={c.youtube_post_id ? 'text-green-600' : 'text-red-600'} />}
+                              {ytBusyId === c.id ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} className={c.youtube_post_id ? 'text-green-600' : 'text-red-600'} />}
                             </button>
                             <button onClick={() => downloadClip(c)} className={btn.iconGhost} title="Download MP4"><Download size={15} /></button>
                           </>
