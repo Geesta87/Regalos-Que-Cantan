@@ -158,11 +158,17 @@ async function attachMediaUrls(admin: any, messages: any[]): Promise<void> {
 // 25s background poll quietly backfills the rest over the next few refreshes.
 const TRANSLATE_CAP = 80;    // max messages translated per list load
 const TRANSLATE_CHUNK = 20;  // messages per Anthropic call (keeps each call small)
+// FUTURE-ONLY: only translate messages from the feature's launch onward — we do
+// NOT spend money translating the old backlog. Messages older than this are left
+// in Spanish (they're never auto-translated). Override with CS_TRANSLATE_SINCE.
+const TRANSLATE_SINCE = Deno.env.get('CS_TRANSLATE_SINCE') || '2026-07-27T20:15:00Z';
 
 // deno-lint-ignore no-explicit-any
 async function backfillTranslations(admin: any, messages: any[]): Promise<void> {
   const candidates = messages
-    .filter((m) => m && typeof m.body === 'string' && m.body.trim() && !m.body_en)
+    .filter((m) =>
+      m && typeof m.body === 'string' && m.body.trim() && !m.body_en &&
+      String(m.created_at) >= TRANSLATE_SINCE)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
     .slice(0, TRANSLATE_CAP);
   if (!candidates.length) return;
