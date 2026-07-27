@@ -1,0 +1,524 @@
+// supabase/functions/fix-song-auto/index.ts
+//
+// Fix Song AUTO-WORKER (Phase 1) — turns customer fix requests into STAGED,
+// human-approved-only candidates without the owner babysitting generation.
+//
+// Pipeline per request (state in song_fix_requests.auto_status):
+//   linking       → auto-attach the customer's song (phone/recipient match)
+//   understanding → Claude builds a FixSpec; ambiguity ⇒ needs_human, NEVER guess
+//   planning      → fix-song-section {action:'plan'} → approved lyrics + changes
+//   generating    → {action:'section-submit'} (or 'full-submit' if not eligible)
+//   polling       → {action:'diag'} until Kie SUCCESS / terminal error
+//   validating    → transcribe each take; require EVERY correction sung
+//                   (findCleanLine port), length in 0.80–1.30× band, or the
+//                   end-trim rescue (duplicated-tail); pick best; rehost; STAGE
+//   staged        → status='awaiting_approval' + WhatsApp ping to owner/Ivan
+//   needs_human / failed → card left in the queue with the reason
+//
+// HARD SAFETY RULES:
+//   - fix_auto_state.enabled=false ⇒ exit immediately (kill switch, default OFF)
+//   - the worker only ever STAGES; release stays a human action in song-fix-queue
+//   - it never touches requests a person claimed (status='in_progress')
+//   - max_rounds per request + daily_cap Kie generations per day
+//   - every ambiguity ⇒ needs_human with a plain-English reason
+//
+// Invoked by pg_cron every 2 min ({action:'tick'}); also callable manually with
+// {action:'status'} for a health snapshot. verify_jwt=false (pg_cron) — pinned
+// in supabase/config.toml in the same commit that adds this function.
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO') || '';
+const ADMIN_FIX_URL = 'https://regalosquecantan.com/admin'; // queue lives in the Fix Song tab
+
+const CLAUDE_MODEL = 'claude-opus-4-8';
+const CLAUDE_FALLBACK = 'claude-sonnet-4-6';
+
+const FN_BASE = `${SUPABASE_URL}/functions/v1`;
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+// Call a sibling edge function server-to-server (service key as bearer).
+async function callFn(name: string, body: Record<string, unknown>): Promise<any> {
+  const resp = await fetch(`${FN_BASE}/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_KEY}` },
+    body: JSON.stringify(body),
+  });
+  return await resp.json().catch(() => ({ ok: false, error: `bad json from ${name}` }));
+}
+
+// ---------------------------------------------------------------------------
+// Validation helpers — ports of the PROVEN browser logic (src/utils/audioSplice.js).
+// Kept behaviorally identical so the auto path accepts exactly what the manual
+// path accepts. Word shape: {word,start,end} from fix-song-section 'transcribe'
+// (parse of its "word[start-end]" timed string).
+// ---------------------------------------------------------------------------
+type W = { word: string; start: number; end: number };
+
+function parseTimed(timed: string): W[] {
+  if (!timed) return [];
+  return timed.split(' ').map((tok) => {
+    const m = tok.match(/^(.*)\[([0-9.]+)-([0-9.]+)\]$/);
+    return m ? { word: m[1], start: +m[2], end: +m[3] } : null;
+  }).filter(Boolean) as W[];
+}
+
+function norm(w: string): string {
+  return String(w || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+
+const UNITS: Record<string, number> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+const TEENS: Record<string, number> = { diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19 };
+const TENS: Record<string, number> = { veinte: 20, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+const COMPOUND: Record<string, number> = { veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
+const FILLER = new Set(['de', 'del', 'la', 'el', 'y', 'a', 'en', 'que', 'lo', 'los', 'las', 'un', 'una', 'mi', 'me', 'te', 'su', 'con', 'por', 'dos', 'mil', 'has']);
+
+function parseUnder100(t: string[], i: number): { val: number; next: number } | null {
+  const w = t[i];
+  if (COMPOUND[w] != null) return { val: COMPOUND[w], next: i + 1 };
+  if (TEENS[w] != null) return { val: TEENS[w], next: i + 1 };
+  if (TENS[w] != null) {
+    if (t[i + 1] === 'y' && UNITS[t[i + 2]] != null) return { val: TENS[w] + UNITS[t[i + 2]], next: i + 3 };
+    return { val: TENS[w], next: i + 1 };
+  }
+  if (UNITS[w] != null) return { val: UNITS[w], next: i + 1 };
+  return null;
+}
+function parseYear(t: string[], i: number): { year: number; next: number } | null {
+  if (t[i] === 'mil' && t[i + 1] === 'novecientos') { const p = parseUnder100(t, i + 2); return { year: 1900 + (p ? p.val : 0), next: p ? p.next : i + 2 }; }
+  if (t[i] === 'dos' && t[i + 1] === 'mil') { const p = parseUnder100(t, i + 2); return { year: 2000 + (p ? p.val : 0), next: p ? p.next : i + 2 }; }
+  return null;
+}
+function buildTokenGroups(line: string): string[][] {
+  const t = String(line || '').split(/\s+/).map(norm).filter(Boolean);
+  const groups: string[][] = [];
+  for (let i = 0; i < t.length;) {
+    const y = parseYear(t, i);
+    if (y) { groups.push([String(y.year)]); i = y.next; continue; }
+    const w = t[i]; i++;
+    if (w.length < 2 || FILLER.has(w)) continue;
+    const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
+    if (numVal != null) { groups.push([w, String(numVal)]); continue; }
+    groups.push([w]);
+  }
+  return groups;
+}
+type Atom = { n: string; s: number; e: number };
+function collapseSpelledYears(atoms: Atom[]): Atom[] {
+  const t = atoms.map((a) => a.n);
+  const out: Atom[] = [];
+  for (let i = 0; i < atoms.length;) {
+    const y = parseYear(t, i);
+    if (y && y.next > i + 1) { out.push({ n: String(y.year), s: atoms[i].s, e: atoms[Math.min(y.next, atoms.length) - 1].e }); i = y.next; }
+    else { out.push(atoms[i]); i++; }
+  }
+  return out;
+}
+function grpEq(n: string, group: string[]): boolean {
+  return group.some((g) => n === g
+    || (n.length > 3 && g.length > 3 && (n.startsWith(g) || g.startsWith(n)))
+    || (Math.max(n.length, g.length) >= 5 && Math.abs(n.length - g.length) <= 1 && lev(n, g) <= 1));
+}
+// Tight in-order run of the corrected words (gibberish-tolerant). Port of
+// audioSplice.findCleanLine.
+function findCleanLine(words: W[], tokenGroups: string[][], maxGapS = 3.5): { startS: number; endS: number } | null {
+  if (!words?.length || !tokenGroups?.length) return null;
+  const atoms = collapseSpelledYears(words.map((w) => ({ n: norm(w.word), s: w.start, e: w.end })));
+  for (let start = 0; start < atoms.length; start++) {
+    if (!grpEq(atoms[start].n, tokenGroups[0])) continue;
+    let gi = 0, ai = start, ok = true, prevE = atoms[start].s;
+    const hit: Atom[] = [];
+    while (gi < tokenGroups.length && ai < atoms.length) {
+      if (grpEq(atoms[ai].n, tokenGroups[gi])) { if (atoms[ai].s - prevE > maxGapS) { ok = false; break; } prevE = atoms[ai].e; hit.push(atoms[ai]); gi++; }
+      ai++;
+    }
+    if (gi === tokenGroups.length && ok) return { startS: hit[0].s, endS: hit[hit.length - 1].e };
+  }
+  return null;
+}
+// End of the final lyric line, preferring the occurrence nearest `nearS` — the
+// disambiguator for Suno's duplicated-tail over-extension. Port of findLastLineEnd.
+function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number | null {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  if (!lines.length || !words.length) return null;
+  const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
+  if (!tokens.length) return null;
+  const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const fulls: number[] = [];
+  for (let i = 0; i + tokens.length <= atoms.length; i++) {
+    let ok = true;
+    for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
+    if (ok) fulls.push(atoms[i + tokens.length - 1].end);
+  }
+  const pick = (c: number[]) => c.length ? c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b)) : null;
+  if (fulls.length) return pick(fulls);
+  const last = tokens[tokens.length - 1];
+  const singles: number[] = [];
+  for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
+  return pick(singles);
+}
+
+// ---------------------------------------------------------------------------
+// Understanding agent — the "never guess" gate. Produces a FixSpec or a list of
+// open questions. Ambiguity/low confidence ⇒ needs_human (a person decides).
+// ---------------------------------------------------------------------------
+const SPEC_TOOL = {
+  name: 'submit_fix_spec',
+  description: 'Return the structured spec of exactly what to change in the song, or the open questions that must be answered first.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      changes: {
+        type: 'array',
+        description: 'Cada cambio puntual. before = la línea EXACTA actual (cópiala de la letra); after = la línea corregida EXACTA. Para type=add, before="" y after = la línea nueva.',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['replace', 'remove_word', 'add_line', 'pronunciation'] },
+            before: { type: 'string' },
+            after: { type: 'string' },
+          },
+          required: ['type', 'before', 'after'],
+          additionalProperties: false,
+        },
+      },
+      verify_phrases: { type: 'array', items: { type: 'string' }, description: '1-3 frases EXACTAS que deben escucharse en la versión corregida.' },
+      confidence: { type: 'number', description: '0-1: qué tan seguro estás de que esto es EXACTAMENTE lo que el cliente pidió, sin inventar nada.' },
+      open_questions: { type: 'array', items: { type: 'string' }, description: 'Preguntas en ESPAÑOL que habría que hacerle al cliente si algo es ambiguo (cómo se escribe/pronuncia un nombre, qué debe decir en lugar de la palabra quitada, etc). VACÍO solo si todo está claro.' },
+      summary: { type: 'string', description: 'One short sentence in ENGLISH describing the fix (lyric quotes stay in Spanish).' },
+    },
+    required: ['changes', 'verify_phrases', 'confidence', 'open_questions', 'summary'],
+    additionalProperties: false,
+  },
+} as const;
+
+const SPEC_SYSTEM = `Eres el agente de admisión de arreglos de canciones personalizadas en español. Te dan la LETRA actual de la canción del cliente y su PETICIÓN (sus propios mensajes). Tu único trabajo: producir la especificación EXACTA del cambio — nunca adivinar.
+
+Reglas:
+- "before" debe ser una línea COPIADA VERBATIM de la letra (la línea completa donde está el error). "after" = esa misma línea ya corregida, cambiando SOLO lo pedido.
+- Si el cliente pide QUITAR una palabra, "after" debe ser una redacción natural de la línea sin esa palabra (mantén métrica/rima) — no dejes huecos.
+- Si pide AGREGAR una línea nueva, type=add_line, before="", after=la línea exacta.
+- Si pide corregir PRONUNCIACIÓN de un nombre, type=pronunciation y "after" = la línea con el nombre reescrito fonéticamente en español.
+- verify_phrases: las palabras/frases nuevas que DEBEN oírse (p.ej. el nombre corregido).
+- Si CUALQUIER cosa es ambigua (no sabes cómo se escribe el nombre, no sabes qué poner en lugar de lo quitado, la petición menciona una línea que no existe en la letra, hay varias líneas candidatas), NO adivines: pon confidence bajo y llena open_questions.
+- Si la petición no es un arreglo de canción, confidence=0 y explica en open_questions.
+Responde SIEMPRE llamando a submit_fix_spec.`;
+
+async function buildFixSpec(lyrics: string, request: string, extraContext: string): Promise<any | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  const user = `LETRA ACTUAL:\n${lyrics}\n\nPETICIÓN DEL CLIENTE:\n${request}${extraContext ? `\n\nCONTEXTO ADICIONAL (conversación):\n${extraContext}` : ''}\n\nDevuelve la especificación llamando a submit_fix_spec.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: attempt === 2 ? CLAUDE_FALLBACK : CLAUDE_MODEL,
+          max_tokens: 1500,
+          system: SPEC_SYSTEM,
+          tools: [SPEC_TOOL],
+          tool_choice: { type: 'tool', name: 'submit_fix_spec' },
+          messages: [{ role: 'user', content: user }],
+        }),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const block = (data?.content || []).find((b: any) => b?.type === 'tool_use' && b.name === 'submit_fix_spec');
+      if (block?.input && Array.isArray(block.input.changes)) return block.input;
+    } catch { /* retry */ }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Worker steps
+// ---------------------------------------------------------------------------
+async function setAuto(admin: any, id: string, patch: Record<string, unknown>) {
+  await admin.from('song_fix_requests').update({ ...patch, auto_updated_at: new Date().toISOString() }).eq('id', id);
+}
+
+// Auto-link: phone → recent songs → prefer paid + recipient-name mention.
+async function stepLink(admin: any, r: any): Promise<void> {
+  if (r.song_id) { await setAuto(admin, r.id, { auto_status: 'understanding' }); return; }
+  const phoneRaw = r.context?.phone || '';
+  const digits = String(phoneRaw).replace(/\D/g, '').slice(-10);
+  if (!digits) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: 'No phone on the request — link the song manually.' }); return; }
+  // songs.phone / whatsapp-style columns vary; match on the widest net we have.
+  const { data: cands } = await admin
+    .from('songs')
+    .select('id, recipient_name, paid, created_at, phone')
+    .ilike('phone', `%${digits}%`)
+    .gt('created_at', new Date(Date.now() - 60 * 86400000).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(10);
+  const list = (cands || []).filter((s: any) => s.paid);
+  if (!list.length) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: 'No paid song found for this phone — link the song manually.' }); return; }
+  const reqText = norm(String(r.customer_request || ''));
+  const byName = list.filter((s: any) => s.recipient_name && reqText.includes(norm(s.recipient_name)));
+  const pick = byName.length === 1 ? byName[0] : (list.length === 1 ? list[0] : null);
+  if (!pick) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `Multiple candidate songs (${list.length}) — pick the right one manually.` }); return; }
+  await admin.from('song_fix_requests').update({ song_id: pick.id }).eq('id', r.id);
+  await setAuto(admin, r.id, { auto_status: 'understanding' });
+}
+
+async function stepUnderstand(admin: any, r: any): Promise<void> {
+  const { data: song } = await admin.from('songs').select('lyrics').eq('id', r.song_id).single();
+  if (!song?.lyrics) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: 'Linked song has no lyrics stored.' }); return; }
+  let convoText = '';
+  if (r.conversation_id) {
+    const { data: msgs } = await admin.from('sms_messages')
+      .select('direction, body').eq('conversation_id', r.conversation_id)
+      .order('created_at', { ascending: false }).limit(12);
+    convoText = (msgs || []).reverse().map((m: any) => `${m.direction === 'inbound' ? 'Cliente' : 'Equipo'}: ${m.body}`).join('\n');
+  }
+  const spec = await buildFixSpec(song.lyrics, String(r.customer_request || ''), convoText);
+  if (!spec) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: 'Understanding agent did not answer — run this one manually.' }); return; }
+  if (spec.confidence < 0.75 || (spec.open_questions || []).length || !spec.changes.length) {
+    const qs = (spec.open_questions || []).join(' | ') || 'low confidence';
+    await setAuto(admin, r.id, { fix_spec: spec, auto_status: 'needs_human', auto_error: `Needs clarification before auto-fixing: ${qs}`.slice(0, 480) });
+    return;
+  }
+  await setAuto(admin, r.id, { fix_spec: spec, auto_status: 'planning' });
+}
+
+async function stepPlan(admin: any, r: any): Promise<void> {
+  const spec = r.fix_spec;
+  const note = spec.changes.map((c: any) =>
+    c.type === 'add_line'
+      ? `AGREGA esta línea nueva al final: "${c.after}"`
+      : `La línea "${c.before}" debe decir exactamente "${c.after}"`).join('. ');
+  const plan = await callFn('fix-song-section', { action: 'plan', songId: r.song_id, note });
+  if (!plan?.ok || !plan.approvedLyrics) {
+    await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `Plan step failed: ${plan?.error || 'no lyrics returned'}`.slice(0, 480) });
+    return;
+  }
+  const verify = [...new Set([...(spec.verify_phrases || []), ...(plan.verifyPhrases || [])])].slice(0, 3);
+  await setAuto(admin, r.id, {
+    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: 'section', summary: plan.changeSummary || spec.summary },
+    auto_status: 'generating',
+  });
+}
+
+async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
+  const plan = r.auto_plan;
+  if ((r.auto_round || 0) >= (state.max_rounds || 3)) {
+    await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `No clean take after ${r.auto_round} rounds — try manually or full re-roll.` });
+    return;
+  }
+  const action = plan.mode === 'full' ? 'full-submit' : 'section-submit';
+  const sub = await callFn('fix-song-section', {
+    action, mode: plan.mode, songId: r.song_id,
+    note: (plan.changes || []).map((c: any) => `"${c.before}" → "${c.after}"`).join('; '),
+    approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
+  });
+  if (!sub?.ok) {
+    // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
+    if (plan.mode !== 'full' && (sub?.eligible === false || sub?.canFix === false || sub?.tooOld)) {
+      await setAuto(admin, r.id, { auto_plan: { ...plan, mode: 'full' }, auto_status: 'generating' });
+      return;
+    }
+    await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `Generation submit failed: ${sub?.reason || sub?.error || 'unknown'}`.slice(0, 480) });
+    return;
+  }
+  await setAuto(admin, r.id, {
+    auto_task_id: sub.fixTaskId,
+    auto_round: (r.auto_round || 0) + 1,
+    auto_plan: { ...plan, window: sub.window || null, sectionText: sub.sectionText || null, originalAudioUrl: sub.originalAudioUrl || null, fullLyrics: sub.fullLyrics || plan.approvedLyrics },
+    auto_status: 'polling',
+  });
+}
+
+async function stepPoll(admin: any, r: any): Promise<void> {
+  const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
+  if (d?.status === 'SUCCESS' && (d.trackList || []).some((t: any) => t.audioUrl)) {
+    await setAuto(admin, r.id, { auto_status: 'validating' });
+    return;
+  }
+  if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d?.status)) {
+    // Terminal Kie failure → next round (stepGenerate enforces the cap).
+    await setAuto(admin, r.id, { auto_status: 'generating', auto_error: `Kie ${d.status} on round ${r.auto_round}`.slice(0, 480) });
+    return;
+  }
+  // still running — 25-min stall guard
+  const age = Date.now() - new Date(r.auto_updated_at || r.updated_at).getTime();
+  if (age > 25 * 60000) await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'poll timeout — retrying round' });
+}
+
+async function stepValidate(admin: any, r: any, state: any): Promise<void> {
+  const plan = r.auto_plan;
+  const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
+  const urls: string[] = (d?.trackList || []).map((t: any) => t.audioUrl).filter(Boolean);
+  if (!urls.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
+
+  // Pristine duration (once) — the length yardstick for whole takes.
+  let origDur: number | null = plan.origDur || null;
+  if (!origDur && plan.originalAudioUrl) {
+    const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: plan.originalAudioUrl });
+    const pw = parseTimed(pt?.timed || '');
+    origDur = pw.length ? pw[pw.length - 1].end : null;
+    if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+  }
+
+  const requireAll: string[] = (plan.changes || []).map((c: any) => c.after).filter(Boolean);
+  const groupsList = requireAll.map((p: string) => buildTokenGroups(p)).filter((g: string[][]) => g.length);
+  const diags: any[] = Array.isArray(r.auto_takes) ? r.auto_takes : [];
+  type Cand = { url: string; drift: number; trimAtS: number | null };
+  const cands: Cand[] = [];
+
+  for (const url of urls) {
+    const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
+    const words = parseTimed(tr?.timed || '');
+    if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
+    const sang = groupsList.length ? groupsList.every((g) => !!findCleanLine(words, g)) : true;
+    if (!sang) { diags.push({ url, verdict: 'reject', reason: 'no cantó todas las correcciones', text: words.map((w) => w.word).join(' ').slice(0, 400) }); continue; }
+    const takeEnd = words[words.length - 1].end;
+    if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
+    if (takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.30) {
+      cands.push({ url, drift: Math.abs(takeEnd - origDur), trimAtS: null });
+      diags.push({ url, verdict: 'clean', reason: 'in-band whole take' });
+    } else if (takeEnd > origDur * 1.30) {
+      // End-trim rescue: duplicated tail after the true ending.
+      const trueEnd = findLastLineEnd(words, plan.fullLyrics || plan.approvedLyrics || '', origDur);
+      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.30) {
+        cands.push({ url, drift: Math.abs(trueEnd - origDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
+        diags.push({ url, verdict: 'clean-trimmed', reason: `over-long, true end at ${trueEnd.toFixed(1)}s` });
+      } else {
+        diags.push({ url, verdict: 'reject', reason: 'demasiado larga, no true-end found' });
+      }
+    } else {
+      diags.push({ url, verdict: 'reject', reason: 'demasiado corta' });
+    }
+  }
+
+  if (!cands.length) {
+    await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'generating', auto_error: 'no clean take this round' });
+    return;
+  }
+
+  // Winner: in-band beats trimmed; then least drift.
+  cands.sort((a, b) => ((a.trimAtS ? 1 : 0) - (b.trimAtS ? 1 : 0)) || (a.drift - b.drift));
+  const win = cands[0];
+
+  // Host the winner permanently. Trim via the renderer when needed.
+  let hosted: string | null = null;
+  if (win.trimAtS) {
+    const t = await callFn('fix-song-section', { action: 'splice', mode: 'trim', pristineUrl: win.url, trimAtS: win.trimAtS });
+    hosted = t?.ok ? t.url : null;
+    if (!hosted) { await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'needs_human', auto_error: 'Winner needs an end-trim but the trim service failed — finish manually.' }); return; }
+  } else {
+    const t = await callFn('fix-song-section', { action: 'splice', mode: 'rehost', pristineUrl: win.url });
+    hosted = t?.ok ? t.url : win.url;
+  }
+
+  // STAGE — human release gate unchanged.
+  const scorecard = {
+    corrections_sung: true,
+    length_ok: true,
+    trimmed: !!win.trimAtS,
+    round: r.auto_round,
+    takes_seen: diags.length,
+    auto: true,
+  };
+  await admin.from('song_fix_requests').update({
+    candidate_audio_url: hosted,
+    candidate_lyrics: plan.fullLyrics || plan.approvedLyrics || null,
+    candidate_summary: plan.summary || 'Automated fix (pending your approval)',
+    candidate_meta: { mode: plan.mode, corrections: plan.changes || [], scorecard },
+    status: 'awaiting_approval',
+    worked_by: 'fix-song-auto',
+    staged_at: new Date().toISOString(),
+    auto_status: 'staged',
+    auto_takes: diags.slice(-12),
+    auto_error: null,
+    auto_updated_at: new Date().toISOString(),
+  }).eq('id', r.id);
+
+  // Ping the approvers (owner + Ivan) on WhatsApp.
+  const numbers = String(state.notify_numbers || ALERT_WHATSAPP_TO || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+  const who = r.context?.customer_name || r.context?.phone || 'customer';
+  for (const n of numbers) {
+    try {
+      await sendWhatsApp(n, `🔧 Song fix ready for ${who} — ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
+    } catch { /* best effort */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+Deno.serve(async (req) => {
+  try {
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    const body = await req.json().catch(() => ({}));
+    const action = body?.action || 'tick';
+
+    const { data: state } = await admin.from('fix_auto_state').select('*').eq('id', 1).single();
+
+    if (action === 'status') {
+      const { data: counts } = await admin.from('song_fix_requests')
+        .select('auto_status').not('auto_status', 'is', null);
+      const byState: Record<string, number> = {};
+      for (const c of counts || []) byState[c.auto_status] = (byState[c.auto_status] || 0) + 1;
+      return json({ ok: true, enabled: !!state?.enabled, byState });
+    }
+
+    if (!state?.enabled) return json({ ok: true, disabled: true });
+
+    // Daily budget guard: count today's generations (rounds started).
+    const { count: todayRounds } = await admin.from('song_fix_attempts')
+      .select('id', { count: 'exact', head: true })
+      .in('action', ['section-submit', 'full-submit'])
+      .gt('created_at', new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString());
+    if ((todayRounds || 0) >= (state.daily_cap || 40)) {
+      return json({ ok: true, skipped: 'daily cap reached', todayRounds });
+    }
+
+    // Pick up work: pending requests not claimed by a human, or mid-pipeline ones.
+    // NOTE: never touch status='in_progress' (a person owns those).
+    const { data: fresh } = await admin.from('song_fix_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .is('auto_status', null)
+      .order('created_at', { ascending: true })
+      .limit(2);
+    const { data: mid } = await admin.from('song_fix_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .in('auto_status', ['linking', 'understanding', 'planning', 'generating', 'polling', 'validating'])
+      .order('auto_updated_at', { ascending: true })
+      .limit(3);
+
+    const work = [...(fresh || []).map((r: any) => ({ ...r, auto_status: r.auto_status || 'linking' })), ...(mid || [])];
+    const done: Record<string, string> = {};
+    for (const r of work.slice(0, 3)) {
+      try {
+        if (r.auto_status === 'linking') await stepLink(admin, r);
+        else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);
+        else if (r.auto_status === 'planning') await stepPlan(admin, r);
+        else if (r.auto_status === 'generating') await stepGenerate(admin, r, state);
+        else if (r.auto_status === 'polling') await stepPoll(admin, r);
+        else if (r.auto_status === 'validating') await stepValidate(admin, r, state);
+        done[r.id] = r.auto_status;
+      } catch (e) {
+        await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `worker error: ${e instanceof Error ? e.message : e}`.slice(0, 480) });
+        done[r.id] = 'error';
+      }
+    }
+    return json({ ok: true, processed: done });
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});

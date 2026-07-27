@@ -1226,7 +1226,7 @@ Deno.serve(async (req) => {
     // browser splice on the frontend if this errors.
     if (action === 'splice') {
       if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
-      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : 'line';
+      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : 'line';
       const spec: Record<string, unknown> = {
         mode,
         pristine_url: body?.pristineUrl,
@@ -1234,8 +1234,10 @@ Deno.serve(async (req) => {
       };
       if (mode === 'section') { spec.origCut = body?.origCut; spec.resungCut = body?.resungCut; }
       else if (mode === 'line') { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; spec.noStretch = !!body?.noStretch; }
+      else if (mode === 'trim') { spec.trimAtS = body?.trimAtS; spec.fadeS = body?.fadeS ?? 1.8; } // end-cut + fade (auto-worker's server-side trimTake)
       if (!spec.pristine_url) return json({ ok: false, error: 'pristineUrl required' });
-      if (mode !== 'rehost' && !spec.resung_url) return json({ ok: false, error: 'resungUrl required' });
+      if (mode !== 'rehost' && mode !== 'trim' && !spec.resung_url) return json({ ok: false, error: 'resungUrl required' });
+      if (mode === 'trim' && !(Number(spec.trimAtS) > 0)) return json({ ok: false, error: 'trimAtS required' });
       try {
         const r = await fetch(`${INHOUSE_RENDERER_URL}/splice-audio`, {
           method: 'POST',

@@ -950,3 +950,10 @@ verify_jwt = false
 # SEO Coach - called by our own admin frontend with a user JWT; default gate stays on.
 [functions.seo-coach]
 verify_jwt = true
+
+[functions.fix-song-auto]
+# Fix Song auto-worker (Phase 1): pg_cron tick walks song_fix_requests through
+# link → understand → plan → generate → validate → STAGE (human release gate
+# unchanged). Called by pg_cron (no JWT) → verify_jwt = false. Kill switch:
+# fix_auto_state.enabled (default false).
+verify_jwt = false
