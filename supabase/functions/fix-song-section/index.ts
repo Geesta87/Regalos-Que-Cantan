@@ -1194,6 +1194,30 @@ Deno.serve(async (req) => {
       return json({ ok: true, summary });
     }
 
+    // -----------------------------------------------------------------
+    // REPORT-OUTCOME — the async section-fix runs its poll + take-validation in
+    // the BROWSER (so it can't 504), which meant the FINAL verdict of a fix (did a
+    // clean take land, how many rounds it took, or why it failed) was never
+    // written server-side — only the initial 'submitted' row was. That left us
+    // blind to the real success rate. The frontend now calls this at the end of
+    // every surgical attempt so song_fix_attempts holds the true outcome. Best-
+    // effort, never blocks the UI. Reuses existing columns (no migration).
+    // -----------------------------------------------------------------
+    if (action === 'report-outcome') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId required' });
+      await logAttempt(supabase, {
+        song_id: songId,
+        action: 'client-outcome',
+        mode: (body?.mode === 'full' ? 'full' : 'section'),
+        outcome: String(body?.outcome || 'unknown').slice(0, 40),   // clean | failed | not-eligible | submit-failed
+        verified: typeof body?.verified === 'boolean' ? body.verified : null,
+        kie_task_id: body?.kieTaskId ? String(body.kieTaskId).slice(0, 120) : null,
+        detail: String(body?.detail || '').slice(0, 500),           // rounds used, fail reason, take type
+      });
+      return json({ ok: true });
+    }
+
     // Seamless splice — proxy to the in-house ffmpeg Cloud Run, which stitches the
     // re-sung line into the pristine song with duration-match + equal-power
     // crossfade + gain-match, and returns a hosted MP3 URL. The browser plays that
