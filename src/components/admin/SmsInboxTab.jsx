@@ -513,11 +513,23 @@ export default function SmsInboxTab({ accessToken }) {
     turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
 
   // Open the confirmation modal and kick off the AI summary in the background.
+  // INTAKE QUESTIONNAIRE (owner spec 2026-07-27): the modal now REQUIRES tying
+  // the request to the exact song(s) — email/phone → paid filter → pick 1-2 from
+  // a most-recent-first list — plus the confirmed fix text, before it can be
+  // sent. Fully-confirmed requests (intake_complete) are what the auto-fix
+  // worker is allowed to pick up.
   const openFixModal = async () => {
     if (!selected) return;
     const turns = buildTurns(selected);
     const exchange = turnsToText(turns);
-    setFixModal({ turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false });
+    setFixModal({
+      turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false,
+      // intake fields
+      phone: selected.phone || '', email: '', paid: true,
+      songs: null, searching: false, selectedSongs: [],
+    });
+    // Auto-search right away when we already have the phone from the thread.
+    if (!isDemo && selected.phone) searchIntakeSongs({ phone: selected.phone, email: '', paid: true });
     if (isDemo) {
       setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
       return;
@@ -544,12 +556,57 @@ export default function SmsInboxTab({ accessToken }) {
     }
   };
 
-  // Queue the (owner-confirmed) request into the Fix-Song pending list.
+  // Look up the customer's songs by email/phone + paid filter (recent first).
+  const searchIntakeSongs = async ({ phone, email, paid }) => {
+    if (!phone?.trim() && !email?.trim()) {
+      setFixModal((m) => (m ? { ...m, error: 'Enter the email or phone tied to the song first.' } : m));
+      return;
+    }
+    setFixModal((m) => (m ? { ...m, searching: true, error: '' } : m));
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'song-search', phone: phone || null, email: email || null, paid: paid !== false }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `song-search ${res.status}`);
+      setFixModal((m) => (m ? { ...m, searching: false, songs: data.songs || [], selectedSongs: [] } : m));
+    } catch (e) {
+      setFixModal((m) => (m ? { ...m, searching: false, songs: [], error: `Song search failed: ${e.message}` } : m));
+    }
+  };
+
+  // Toggle a song in the 1-2 selection.
+  const toggleIntakeSong = (id) => {
+    setFixModal((m) => {
+      if (!m) return m;
+      const cur = m.selectedSongs || [];
+      if (cur.includes(id)) return { ...m, selectedSongs: cur.filter((x) => x !== id) };
+      if (cur.length >= 2) return { ...m, error: 'Max 2 songs (a bundle). Deselect one first.' };
+      return { ...m, selectedSongs: [...cur, id], error: '' };
+    });
+  };
+
+  // Queue the fully-confirmed request(s) — one per selected song. The intake
+  // (song tied + paid confirmed + request confirmed) is what authorizes the
+  // auto-fix worker to run it; a human still releases at the end.
   const submitFixRequest = async () => {
     if (!fixModal || !selected) return;
     const customerRequest = (fixModal.summary || '').trim();
     if (!customerRequest) {
       setFixModal((m) => (m ? { ...m, error: 'Add a short note of what to fix first.' } : m));
+      return;
+    }
+    if (!(fixModal.selectedSongs || []).length) {
+      setFixModal((m) => (m ? { ...m, error: 'Select the song (or both bundle versions) to fix — search by email or phone above.' } : m));
       return;
     }
     if (isDemo) {
@@ -568,13 +625,15 @@ export default function SmsInboxTab({ accessToken }) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'create',
+            action: 'create-intake',
+            songs: fixModal.selectedSongs,
+            email: (fixModal.email || '').trim() || null,
+            phone: (fixModal.phone || '').trim() || null,
+            paid: fixModal.paid !== false,
+            confirmed_request: customerRequest,      // AI summary, human-confirmed
             conversation_id: selected.id || null,
-            customer_request: customerRequest,      // AI summary, owner-confirmed
             source_message: fixModal.exchange,       // full chat exchange, for review
-            phone: selected.phone || null,
             customer_name: selected.customer_name || null,
-            song_id: selected.song_id || null,       // usually null → owner links it in Fix Song
           }),
         }
       );
@@ -1954,7 +2013,7 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
                 <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
-                <p className="text-xs text-gray-400 mb-4">Open the <strong>Fix Song</strong> tab to find the customer's song and make the correction.</p>
+                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When automation is on, the fix runs by itself and you'll get a WhatsApp when it's ready to approve — otherwise it's waiting in the <strong>Fix Song</strong> tab.</p>
                 <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
               </div>
             ) : (
@@ -1995,9 +2054,85 @@ export default function SmsInboxTab({ accessToken }) {
                   )}
                 </div>
 
+                {/* ── INTAKE: tie the request to the exact song(s) ─────────────
+                    1) email/phone (required) → 2) paid? → 3) pick 1-2 songs from
+                    the most-recent-first list. Required before sending. */}
+                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">1 · Find the customer's song (email or phone required)</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    value={fixModal.phone || ''}
+                    onChange={(e) => setFixModal((m) => (m ? { ...m, phone: e.target.value } : m))}
+                    placeholder="Phone"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-xs focus:outline-none focus:border-amber-400/50"
+                  />
+                  <input
+                    value={fixModal.email || ''}
+                    onChange={(e) => setFixModal((m) => (m ? { ...m, email: e.target.value } : m))}
+                    placeholder="Email"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-xs focus:outline-none focus:border-amber-400/50"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] text-gray-500">Paid order?</span>
+                  {[true, false].map((v) => (
+                    <button
+                      key={String(v)}
+                      onClick={() => { setFixModal((m) => (m ? { ...m, paid: v } : m)); searchIntakeSongs({ phone: fixModal.phone, email: fixModal.email, paid: v }); }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${((fixModal.paid !== false) === v) ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+                    >
+                      {v ? '✅ Paid' : 'Not paid'}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => searchIntakeSongs({ phone: fixModal.phone, email: fixModal.email, paid: fixModal.paid })}
+                    disabled={fixModal.searching}
+                    className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold bg-indigo-500 text-white hover:bg-indigo-400 transition disabled:opacity-50"
+                  >
+                    {fixModal.searching ? 'Searching…' : '🔍 Find songs'}
+                  </button>
+                </div>
+                {Array.isArray(fixModal.songs) && (
+                  <div className="mb-3">
+                    <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+                      2 · Select the song to fix (1, or both bundle versions) — {fixModal.selectedSongs.length}/2 selected
+                    </label>
+                    {fixModal.songs.length === 0 ? (
+                      <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                        No {fixModal.paid !== false ? 'paid' : 'unpaid'} songs found for that email/phone. Check the info or flip the Paid filter.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                        {fixModal.songs.map((s) => {
+                          const sel = fixModal.selectedSongs.includes(s.id);
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => toggleIntakeSong(s.id)}
+                              className={`w-full text-left rounded-xl px-3 py-2 border transition ${sel ? 'bg-amber-500/15 border-amber-400/60' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-white font-medium truncate">
+                                  {sel ? '☑' : '☐'} {s.recipient_name || '(no name)'}
+                                  {s.version != null && <span className="text-gray-500 font-normal"> · v{s.version}</span>}
+                                </p>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.paid ? 'bg-green-500/15 text-green-300' : 'bg-white/10 text-gray-400'}`}>{s.paid ? 'PAID' : 'unpaid'}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-500">
+                                {(s.genre_name || s.genre || '').toString().replace(/_/g, ' ')} · {s.created_at ? new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                                {s.email ? ` · ${s.email}` : ''}
+                              </p>
+                              {sel && s.audio_url && <audio controls className="w-full mt-1 h-8" src={s.audio_url} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* AI summary of what to fix — editable */}
                 <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1 flex items-center gap-2">
-                  What to fix (AI summary — edit if needed)
+                  3 · What to fix (AI summary — confirm or edit)
                   {fixModal.loading && <span className="text-indigo-300 normal-case tracking-normal">✨ summarizing…</span>}
                 </label>
                 <textarea
@@ -2015,7 +2150,7 @@ export default function SmsInboxTab({ accessToken }) {
                   <button onClick={() => setFixModal(null)} disabled={fixModal.submitting} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition disabled:opacity-40">Cancel</button>
                   <button
                     onClick={submitFixRequest}
-                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim()}
+                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim() || !(fixModal.selectedSongs || []).length}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
