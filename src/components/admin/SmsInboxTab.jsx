@@ -1448,7 +1448,7 @@ export default function SmsInboxTab({ accessToken }) {
                           </div>
                           <p className="text-xs whitespace-pre-wrap break-words text-gray-300">{m.body}</p>
                           {m.body_en && m.body_en !== m.body && (
-                            <p className="text-xs mt-1 pt-1 border-t border-white/10 whitespace-pre-wrap break-words text-gray-200">{m.body_en}</p>
+                            <p className="text-xs mt-1 whitespace-pre-wrap break-words text-sky-200/90">🇬🇧 {m.body_en}</p>
                           )}
                         </div>
                       </div>
@@ -1489,11 +1489,11 @@ export default function SmsInboxTab({ accessToken }) {
                               before approving. The customer still receives the
                               Spanish above. */}
                           {m.body_en && m.body_en !== m.body && (
-                            <div className="mt-2 rounded-lg border border-purple-300/30 bg-black/25 px-3 py-2">
-                              <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-200 mb-1">
-                                🇬🇧 In English — what this says
+                            <div className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-sky-300 mb-1">
+                                🇬🇧 English — what this says (not the sent text)
                               </div>
-                              <p className="text-sm whitespace-pre-wrap break-words leading-snug text-gray-50">{m.body_en}</p>
+                              <p className="text-sm whitespace-pre-wrap break-words leading-snug text-sky-50">{m.body_en}</p>
                             </div>
                           )}
 
@@ -1652,13 +1652,18 @@ export default function SmsInboxTab({ accessToken }) {
                             <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                           )
                         )}
-                        {/* English gloss under the Spanish (reading aid) — same
-                            size as the Spanish, high contrast, with a divider so
-                            it reads as its own clear line. */}
+                        {/* English gloss — its OWN blue-tinted, labeled panel so
+                            it's visually separate from the Spanish (the Spanish is
+                            what's sent; the English is a reading aid only). */}
                         {m.body && m.body_en && m.body_en !== m.body && (
-                          <p className={`text-sm mt-1.5 pt-1.5 border-t whitespace-pre-wrap break-words leading-snug ${out ? 'text-black/80 border-black/20' : 'text-gray-100 border-white/15'}`}>
-                            {m.body_en}
-                          </p>
+                          <div className={`mt-2 rounded-lg px-2.5 py-1.5 border ${out ? 'bg-sky-50/85 border-sky-700/30' : 'bg-sky-500/10 border-sky-400/25'}`}>
+                            <div className={`text-[10px] font-semibold uppercase tracking-wide mb-0.5 ${out ? 'text-sky-800' : 'text-sky-300'}`}>
+                              🇬🇧 English · not sent
+                            </div>
+                            <p className={`text-sm whitespace-pre-wrap break-words leading-snug ${out ? 'text-sky-950' : 'text-sky-50'}`}>
+                              {m.body_en}
+                            </p>
+                          </div>
                         )}
                         {isAudio && !out && (
                           <div className={`text-[9px] mt-0.5 text-gray-500`}>
