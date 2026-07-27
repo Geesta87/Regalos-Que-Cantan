@@ -92,9 +92,14 @@ export interface AdSpec {
   headlineLines: string[];   // 1-3 short lines (≤ ~16 chars each)
   accent?: string;           // word inside the headline to render gold + italic
   cta?: string;              // gold pill text (elegant) / red CTA bar (poster)
-  template?: string;         // 'poster' = bold red/white/black promo; else elegant
-  price?: string;            // poster price badge, e.g. "$29"
+  template?: string;         // 'poster' = bold red/white/black; 'song' = personalized-song look; else elegant
+  price?: string;            // poster/song price badge, e.g. "$29" / "Solo $29"
   palette?: string;          // elegant accent palette key (gold|rose|cream|coral|sky)
+  // --- 'song' template only ---
+  sub?: string;              // emotional subheadline (italic serif, under headline)
+  player?: { title: string; dur?: string }; // "now playing" chip: song title + duration
+  feats?: string[];          // 3 tiny feature checks at the bottom (defaults to the standard 3)
+  web?: string;              // website shown on the CTA line (defaults to regalosquecantan.com)
 }
 
 function headlineLine(line: string, baseline: number, accent: string | undefined, accentColor: string): string {
@@ -198,17 +203,195 @@ ${logoUri ? `<circle cx="${W - 92}" cy="${H - 86}" r="50" fill="${WHITE}"/><imag
 </svg>`;
 }
 
+// ---------------------------------------------------------------------------
+// SONG template — the approved "personalized song" look. Warm photo + a
+// now-playing player chip (▶ + waveform + song title/duration) + DM Serif
+// headline with a gold-italic accent + an emotional subhead + a gold CTA pill
+// with the price + website, and 3 tiny feature checks, over a dark bottom fade.
+// Mirrors the design signed off in the design explorer (Style B).
+// ---------------------------------------------------------------------------
+const SG_GOLD = '#DBB56B', SG_INK = '#F5EEE0', SG_SUB = '#EADFCB';
+const SONG_FEATS = ['Con su nombre', 'Escúchala antes de pagar', 'Lista en 3 minutos'];
+function songPlay(cx: number, cy: number, r: number): string {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${SG_GOLD}" stroke-width="2.5"/>`
+    + `<path d="M ${cx - r * 0.28} ${cy - r * 0.42} L ${cx + r * 0.46} ${cy} L ${cx - r * 0.28} ${cy + r * 0.42} Z" fill="${SG_GOLD}"/>`;
+}
+function songWave(x: number, y: number, w: number): string {
+  const bw = 5, g = 7, n = Math.floor(w / (bw + g));
+  const hs = [8, 16, 26, 12, 22, 30, 18, 10, 24, 14, 28, 20, 12, 26, 16, 22, 30, 14, 18, 10, 24, 13, 28, 17, 22, 11, 26, 19];
+  let b = '';
+  for (let i = 0; i < n; i++) {
+    const bh = hs[i % hs.length];
+    b += `<rect x="${x + i * (bw + g)}" y="${y + 30 - bh}" width="${bw}" height="${bh}" rx="2.5" fill="${SG_GOLD}" fill-opacity="${i < n * 0.4 ? 1 : 0.32}"/>`;
+  }
+  return b;
+}
+function songCheck(x: number, y: number, r: number): string {
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${SG_GOLD}"/>`
+    + `<path d="M ${x - r * 0.45} ${y} l ${r * 0.32} ${r * 0.42} l ${r * 0.66} -${r * 0.72}" stroke="#141414" stroke-width="${r * 0.3}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+function songFeatRow(x: number, y: number, feats: string[]): string {
+  let out = ''; let cx = x; const size = 23;
+  for (const f of feats) {
+    out += songCheck(cx + 9, y - 7, 10); cx += 24;
+    out += `<text x="${cx}" y="${y}" font-family="Montserrat" font-weight="600" font-size="${size}" fill="${SG_INK}" fill-opacity="0.92">${esc(f)}</text>`;
+    cx += f.length * size * 0.53 + 28;
+  }
+  return out;
+}
+function songHead(line: string, baseline: number, accent: string | undefined, mL: number, size: number): string {
+  const fam = `font-family="DM Serif Display" font-size="${size}"`;
+  if (accent) {
+    const idx = line.toLowerCase().indexOf(accent.toLowerCase());
+    if (idx >= 0) {
+      const before = line.slice(0, idx), word = line.slice(idx, idx + accent.length), after = line.slice(idx + accent.length);
+      return `<text x="${mL}" y="${baseline}" ${fam} fill="${SG_INK}">${before ? esc(before) : ''}`
+        + `<tspan font-style="italic" fill="${SG_GOLD}">${esc(word)}</tspan>${after ? esc(after) : ''}</text>`;
+    }
+  }
+  return `<text x="${mL}" y="${baseline}" ${fam} fill="${SG_INK}">${esc(line)}</text>`;
+}
+function buildSongSvg(photoUri: string, spec: AdSpec, H: number): string {
+  const mL = 70, hSize = 80, subSize = 34, headGap = Math.round(hSize * 0.98);
+  const lines = (spec.headlineLines || []).slice(0, 2);
+  const two = lines.length > 1;
+  const botPad = Math.round(H * 0.05);
+  const featY = H - botPad;
+  const ctaH = 62, ctaY = featY - 52 - ctaH;
+  const subY = ctaY - 36;
+  const h2Y = subY - 54;
+  const h1Y = two ? h2Y - headGap : h2Y;
+  const playY = (two ? h1Y : h2Y) - hSize - 38;
+  const topY = playY - 44;
+  const feats = (spec.feats && spec.feats.length ? spec.feats : SONG_FEATS).slice(0, 3);
+  const web = spec.web || 'regalosquecantan.com';
+  const price = spec.price || 'Solo $29';
+  const cta = spec.cta || 'Créala ahora';
+  const pt = spec.player?.title || '';
+  const pd = spec.player?.dur || '';
+  const player = songPlay(mL + 21, playY - 22, 21)
+    + `<text x="${mL + 56}" y="${playY - 30}" font-family="Montserrat" font-weight="700" font-size="23" fill="${SG_INK}" fill-opacity="0.92">${esc(pt)}</text>`
+    + (pd ? `<text x="${W - mL}" y="${playY - 30}" text-anchor="end" font-family="Montserrat" font-weight="600" font-size="21" fill="${SG_INK}" fill-opacity="0.6">${esc(pd)}</text>` : '')
+    + songWave(mL + 56, playY - 22, W - mL * 2 - 150);
+  const ctaW = 258;
+  const ctaEl = `<rect x="${mL}" y="${ctaY}" width="${ctaW}" height="${ctaH}" rx="${ctaH / 2}" fill="${SG_GOLD}"/>`
+    + `<text x="${mL + 34}" y="${ctaY + ctaH / 2 + 8}" font-family="Montserrat" font-weight="700" font-size="24" fill="#141414">${esc(cta)}</text>`
+    + `<path d="M ${mL + ctaW - 34} ${ctaY + ctaH / 2 - 8} l 12 8 l -12 8 M ${mL + ctaW - 40} ${ctaY + ctaH / 2} h 17" stroke="#141414" stroke-width="4.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+    + `<text x="${mL + ctaW + 26}" y="${ctaY + ctaH / 2 + 11}" font-family="DM Serif Display" font-size="38" fill="${SG_INK}">${esc(price)}</text>`
+    + `<text x="${W - mL}" y="${ctaY + ctaH / 2 + 8}" text-anchor="end" font-family="Montserrat" font-weight="600" font-size="22" fill="${SG_SUB}" fill-opacity="0.85">${esc(web)}</text>`;
+  const heads = two
+    ? songHead(lines[0], h1Y, spec.accent, mL, hSize) + songHead(lines[1], h2Y, spec.accent, mL, hSize)
+    : songHead(lines[0] || '', h2Y, spec.accent, mL, hSize);
+  // Auto-shrink the subhead so a long line never clips off the right edge.
+  const subFit = spec.sub ? Math.max(24, Math.min(subSize, Math.floor((W - mL * 2) / (spec.sub.length * 0.5)))) : subSize;
+  const sub = spec.sub ? `<text x="${mL}" y="${subY}" font-family="DM Serif Display" font-style="italic" font-size="${subFit}" fill="${SG_SUB}">${esc(spec.sub)}</text>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#0a0806" stop-opacity="0"/><stop offset="0.5" stop-color="#0a0806" stop-opacity="0.8"/><stop offset="1" stop-color="#0a0806" stop-opacity="0.97"/></linearGradient></defs>
+<image x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" href="${photoUri}"/>
+<rect x="0" y="${topY - 50}" width="${W}" height="${H - (topY - 50)}" fill="url(#sg)"/>
+${player}
+${heads}
+${sub}
+${ctaEl}
+${songFeatRow(mL, featY, feats)}
+</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// NATIVE template — the verified lo-fi/caption look (Motion: 42% of top-spending
+// ads are lo-fi; head-to-head "ugly beats polished" w/ +30% action intent). The
+// photo reads as ORGANIC content; the only design is stacked caption chips —
+// short bold lines on solid blocks, like a creator's story caption. NO logo
+// (profile logo already shows beside the ad), NO gradients, NO ornament.
+// ---------------------------------------------------------------------------
+function chipRow(x: number, y: number, text: string, size: number, fg: string, bg: string, pad = 18): string {
+  const w = Math.round(text.length * size * 0.62) + pad * 2;
+  const h = Math.round(size * 1.42);
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${bg}"/>`
+    + `<text x="${x + pad}" y="${y + Math.round(h * 0.72)}" font-family="Montserrat" font-weight="700" font-size="${size}" fill="${fg}">${esc(text)}</text>`;
+}
+function buildNativeSvg(photoUri: string, spec: AdSpec, H: number): string {
+  const lines = (spec.headlineLines || []).slice(0, 3);
+  const x = 56, size = 62, gap = 12;
+  let y = Math.round(H * 0.10);
+  let chips = '';
+  for (const l of lines) { chips += chipRow(x, y, l, size, '#FFFFFF', '#111111'); y += Math.round(size * 1.42) + gap; }
+  if (spec.sub) { chips += chipRow(x, y + 4, spec.sub, 34, '#111111', '#FFFFFF'); }
+  // Single small offer chip bottom-left: price + CTA, nothing else.
+  const offer = [spec.price, spec.cta].filter(Boolean).join(' · ');
+  const bottom = offer ? chipRow(x, H - Math.round(H * 0.06) - 64, offer, 36, '#FFFFFF', '#C1121F') : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<image x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" href="${photoUri}"/>
+${chips}
+${bottom}
+</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// BIGTYPE template — the verified text-forward editorial static (Motion $1.3B:
+// text-forward assets over-index as winners; Denney/BFCM text-heavy statics).
+// Split layout: a solid block with ONE huge short headline (Anton, ≤3 benefit
+// lines below per the verified typography spec) over the photo. No logo.
+// ---------------------------------------------------------------------------
+function buildBigTypeSvg(photoUri: string, spec: AdSpec, H: number): string {
+  const lines = (spec.headlineLines || []).slice(0, 2);
+  const x = 60;
+  const blockH = Math.round(H * 0.40);
+  const size = lines.some((l) => l.length > 12) ? 96 : 118;
+  const step = Math.round(size * 1.06);
+  const topY = 120;
+  const heads = lines.map((l, i) => {
+    const line = l.toUpperCase();
+    const acc = (spec.accent || '').toUpperCase();
+    if (acc && line.includes(acc)) {
+      const idx = line.indexOf(acc);
+      return `<text x="${x}" y="${topY + i * step}" font-family="Anton" font-size="${size}" fill="#FFFFFF">${esc(line.slice(0, idx))}<tspan fill="${GOLD}">${esc(acc)}</tspan>${esc(line.slice(idx + acc.length))}</text>`;
+    }
+    return `<text x="${x}" y="${topY + i * step}" font-family="Anton" font-size="${size}" fill="#FFFFFF">${esc(line)}</text>`;
+  }).join('\n');
+  const feats = (spec.feats || []).slice(0, 3);
+  let featSvg = ''; let fy = topY + lines.length * step + 8;
+  for (const f of feats) {
+    featSvg += `<circle cx="${x + 12}" cy="${fy - 10}" r="11" fill="${GOLD}"/><path d="M ${x + 6} ${fy - 10} l 4 5 l 8 -9" stroke="#141414" stroke-width="3.2" fill="none" stroke-linecap="round"/>`
+      + `<text x="${x + 34}" y="${fy}" font-family="Montserrat" font-weight="600" font-size="29" fill="#EDE6DA">${esc(f)}</text>`;
+    fy += 44;
+  }
+  const price = (spec.price || '').trim();
+  const badge = price
+    ? `<circle cx="${W - 150}" cy="${blockH}" r="104" fill="${GOLD}"/>`
+      + `<text x="${W - 150}" y="${blockH - 18}" text-anchor="middle" font-family="Anton" font-size="30" fill="#141414">${esc(price.toLowerCase().startsWith('solo') ? 'SOLO' : '')}</text>`
+      + `<text x="${W - 150}" y="${blockH + 58}" text-anchor="middle" font-family="Anton" font-size="82" fill="#141414">${esc(price.replace(/solo/i, '').trim())}</text>`
+    : '';
+  const cta = (spec.cta || '').toUpperCase();
+  const ctaSvg = cta
+    ? `<rect x="${x}" y="${H - 148}" width="${Math.min(720, cta.length * 30 + 70)}" height="84" fill="#C1121F"/><text x="${x + 32}" y="${H - 92}" font-family="Anton" font-size="40" fill="#FFFFFF">${esc(cta)}</text>`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<rect width="${W}" height="${H}" fill="#0E0B08"/>
+<image x="0" y="${blockH}" width="${W}" height="${H - blockH}" preserveAspectRatio="xMidYMid slice" href="${photoUri}"/>
+<rect x="0" y="${blockH}" width="${W}" height="${Math.round(H * 0.06)}" fill="url(#btf)"/>
+<defs><linearGradient id="btf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0E0B08" stop-opacity="0.9"/><stop offset="1" stop-color="#0E0B08" stop-opacity="0"/></linearGradient></defs>
+${heads}
+${featSvg}
+${badge}
+${ctaSvg}
+</svg>`;
+}
+
 // Returns a finished branded PNG, or null on any failure (caller falls back).
 export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
   try {
     await ensureWasm();
-    const [photoFetched, logo, mont, pf, pfi, anton] = await Promise.all([
+    const [photoFetched, logo, mont, pf, pfi, anton, dms, dmsi] = await Promise.all([
       spec.imageBytes ? Promise.resolve(spec.imageBytes) : getBytes(`photo:${spec.imageUrl}`, spec.imageUrl || ''),
       getBytes('logo', LOGO_URL),
       getBytes('f:mont', `${FONT_BASE}/Montserrat.ttf`),
       getBytes('f:pf', `${FONT_BASE}/PlayfairDisplay.ttf`),
       getBytes('f:pfi', `${FONT_BASE}/PlayfairDisplay-Italic.ttf`),
       getBytes('f:anton', `${FONT_BASE}/Anton.ttf`),  // heavy display font for the poster template
+      getBytes('f:dms', `${FONT_BASE}/DMSerifDisplay.ttf`),          // song template headline
+      getBytes('f:dmsi', `${FONT_BASE}/DMSerifDisplay-Italic.ttf`),  // song template accent/subhead
     ]);
     const photo = photoFetched;
     if (!photo) return null;
@@ -225,9 +408,15 @@ export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
     const logoUri = logo ? `data:image/png;base64,${b64(logo)}` : null;
     const svg = spec.template === 'poster'
       ? buildPosterSvg(photoUri, logoUri, spec, H)
+      : spec.template === 'song'
+      ? buildSongSvg(photoUri, spec, H)
+      : spec.template === 'native'
+      ? buildNativeSvg(photoUri, spec, H)
+      : spec.template === 'bigtype'
+      ? buildBigTypeSvg(photoUri, spec, H)
       : buildSvg(photoUri, logoUri, spec, H);
 
-    const fontBuffers = [mont, pf, pfi, anton].filter(Boolean) as Uint8Array[];
+    const fontBuffers = [mont, pf, pfi, anton, dms, dmsi].filter(Boolean) as Uint8Array[];
     const resvg = new Resvg(svg, {
       font: { fontBuffers, loadSystemFonts: false, defaultFontFamily: 'Montserrat' },
       fitTo: { mode: 'width', value: W },

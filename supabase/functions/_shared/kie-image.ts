@@ -46,8 +46,9 @@ async function kiePoll(taskId: string): Promise<Uint8Array | null> {
 }
 
 // Text-to-image (text-free photo). Null on failure → caller falls back to OpenAI.
-export async function kiePhotoBytes(prompt: string): Promise<Uint8Array | null> {
-  const id = await kieCreate('gpt-image-2-text-to-image', { prompt: (prompt || '').slice(0, 3800), aspect_ratio: ASPECT });
+// aspect defaults to the ad portrait (2:3); pass e.g. '3:2' for a landscape hero.
+export async function kiePhotoBytes(prompt: string, aspect: string = ASPECT): Promise<Uint8Array | null> {
+  const id = await kieCreate('gpt-image-2-text-to-image', { prompt: (prompt || '').slice(0, 3800), aspect_ratio: aspect });
   return id ? await kiePoll(id) : null;
 }
 

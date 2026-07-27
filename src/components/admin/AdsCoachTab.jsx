@@ -9,7 +9,7 @@
 // Both talk to the ads-coach edge function (thread: 'coach' | 'factory').
 // Admin-only. It never changes the ad account.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2 } from 'lucide-react';
+import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText } from 'lucide-react';
 import { btn, Badge } from './ui';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-coach`;
@@ -26,7 +26,7 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move.";
+const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach a document (📎) — a PDF or text file, like an agency proposal or a strategy doc — and I'll read it and tell you what it means for your ads. (For a Google Doc, download it as a PDF first, or paste its text here.)";
 const FACTORY_GREETING = "This is the Ad Factory — where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
@@ -41,7 +41,9 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const [imgConcept, setImgConcept] = useState('');
   const [imgVariation, setImgVariation] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [attached, setAttached] = useState(null); // { name, kind:'pdf'|'text', data } — Coach thread only
   const scrollRef = useRef(null);
+  const fileRef = useRef(null);
 
   const call = useCallback(async (payload) => {
     const res = await fetch(COACH, {
@@ -74,15 +76,21 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, sending, tab]);
 
   const submit = useCallback(async (text) => {
-    const msg = (text ?? input).trim();
-    if (!msg || sending) return;
+    const typed = (text ?? input).trim();
+    const doc = tab === 'coach' ? attached : null; // documents are a Coach-thread feature
+    if ((!typed && !doc) || sending) return;
     setInput('');
     const thread = tab;
-    const next = [...msgs[thread], { role: 'user', content: msg }];
+    // What shows in the chat log: keep a visible 📎 marker so the conversation
+    // reads coherently. The backend also gets the file as its own `document`
+    // field and reads it natively; if no question was typed it summarizes.
+    const shown = doc ? (typed ? `📎 ${doc.name}\n${typed}` : `📎 ${doc.name}`) : typed;
+    const next = [...msgs[thread], { role: 'user', content: shown }];
     setMsgs((p) => ({ ...p, [thread]: next }));
     setSending(true);
+    if (doc) setAttached(null);
     try {
-      const body = await call({ messages: next, thread });
+      const body = await call({ messages: next, thread, document: doc ? { name: doc.name, kind: doc.kind, data: doc.data } : undefined });
       if (body.success) {
         setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: body.reply, images: body.images, live: body.had_live_data }] }));
         if (body.calls?.length) setCalls(body.calls);
@@ -99,7 +107,36 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       showToast?.(`Error: ${e.message}`);
       setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: `Connection problem — ${e.message}. Try again in a moment.` }] }));
     } finally { setSending(false); }
-  }, [input, sending, msgs, tab, call, showToast]);
+  }, [input, sending, msgs, tab, call, showToast, attached]);
+
+  // Attach a document (PDF or text) for the coach to read. PDFs go up as base64
+  // (Claude reads them natively — text + layout); text files go up as plain text.
+  // For a Google Doc: File → Download → PDF, then attach that (or paste its text).
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = ''; // let the same file be re-picked later
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast?.('That file is over 10 MB — attach a smaller PDF, or paste the text into the box instead.');
+      return;
+    }
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    try {
+      if (isPdf) {
+        const data = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).split(',')[1] || ''); // strip the data: prefix
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        if (!data) { showToast?.("Couldn't read that PDF — try another file."); return; }
+        setAttached({ name: file.name, kind: 'pdf', data });
+      } else {
+        const data = await file.text();
+        setAttached({ name: file.name, kind: 'text', data });
+      }
+    } catch { showToast?.("Couldn't read that file — try another one."); }
+  };
 
   const resolve = async (id, verdict) => {
     try {
@@ -271,11 +308,27 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       )}
 
       {/* Composer */}
+      {tab === 'coach' && attached && (
+        <div className="mt-3 -mb-1 flex items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-2.5 pr-1.5 py-1 max-w-full">
+            <FileText size={12} className="flex-shrink-0" />
+            <span className="truncate max-w-[220px]">{attached.name}</span>
+            <button onClick={() => setAttached(null)} title="Remove" className="p-0.5 rounded-full hover:bg-indigo-100 text-indigo-500"><X size={12} /></button>
+          </span>
+          <span className="text-gray-400">attached — ask a question or just send to have it analyzed</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 mt-3">
+        {tab === 'coach' && (
+          <>
+            <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach a PDF or text document" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
+          </>
+        )}
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
           placeholder={tab === 'coach' ? 'Ask your ads coach… (e.g. "which of my ads should I kill?")' : 'Tell the factory what you need… (e.g. "build me an ad for mamá\'s birthday")'}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
-        <button onClick={() => submit()} disabled={sending || loading || !input.trim()} className={btn.accent + ' !px-4'}><Send size={15} /></button>
+        <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attached))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
       </div>
     </div>
   );

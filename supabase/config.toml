@@ -950,3 +950,9 @@ verify_jwt = false
 # SEO Coach - called by our own admin frontend with a user JWT; default gate stays on.
 [functions.seo-coach]
 verify_jwt = true
+
+# Ads Coach - advice-only Meta ads specialist. Called by the admin frontend with
+# the owner's Supabase JWT (admin_users gate inside), so keep JWT verification ON.
+# Never invoked by an external webhook or pg_cron.
+[functions.ads-coach]
+verify_jwt = true
