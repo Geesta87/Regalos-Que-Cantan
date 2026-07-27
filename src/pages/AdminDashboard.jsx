@@ -261,8 +261,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // Returns the chosen take + splice points, or throws (err.offerFull = fall back
   // to a full re-roll). This is the piece the old "pick the tightest take" logic
   // was missing (it silently accepted takes that skipped the corrected line).
-  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true }, onMsg) {
-    const ROUNDS = 5;
+  // wholeOnly (owner rule): NEVER splice — accept the whole Suno take as long as it
+  // sings the correction, and if none does after a short retry, throw offerFull so the
+  // caller offers a full re-roll. No atempo/stretch, no line/section splice, no 5×
+  // loop that hides good takes and burns Kie credits.
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false }, onMsg) {
+    const ROUNDS = wholeOnly ? 2 : 5;
     let lastReason = '';
     const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
     let origLine = null; // pristine {startS,endS} of the line being changed (line-replace mode)
@@ -323,17 +327,25 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       for (const url of takeUrls) {
         const tr = await postFn({ action: 'transcribe', audioUrl: url });
         const words = parseTimed(tr.timed);
-        // WHOLE-TAKE preference (owner rule: ship Suno's whole re-sing, never splice).
-        // If the entire take cleanly sang the corrected line AND its total length is
-        // within ~15% of the original, we send it as-is — no stitching, no tempo/pitch
-        // artifacts. Only when NO whole take qualifies do we fall back to a splice.
+        // WHOLE-TAKE (owner rule: ship Suno's whole re-sing, NEVER splice). Accept the
+        // entire take whenever it sang the corrected line and its length is in a sane
+        // band of the original (0.80–1.30×). This is deliberately generous: a corrido
+        // that comes back a little long is still a good WHOLE take, and rejecting it
+        // (as the old ±15% did) is exactly what hid good Kie songs and forced retries.
+        // Over that ceiling ⇒ genuine over-extension ⇒ fall through to a full re-roll.
         if (allowWhole && !addLine && origFullDur && words.length) {
           const vw = validateTake(words, groups, { maxGapS: 8, maxSpanS: maxSpanS + 60 });
           const takeEnd = words[words.length - 1].end;
-          if (vw.ok && takeEnd >= origFullDur * 0.85 && takeEnd <= origFullDur * 1.15) {
+          if (vw.ok && takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30) {
             wholeCands.push({ url, drift: Math.abs(takeEnd - origFullDur) });
+          } else if (wholeOnly) {
+            lastReason = !vw.ok ? (vw.reason || 'no cantó lo corregido')
+              : (takeEnd > origFullDur * 1.30 ? 'la toma salió demasiado larga' : 'la toma salió demasiado corta');
+            lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
           }
         }
+        // In whole-only mode we never splice, so skip all line/section splice scoring.
+        if (wholeOnly) continue;
         // LINE-REPLACE: if the CLEAN corrected line is present in this take (even
         // surrounded by gibberish), we can swap just that line — preferred, since
         // it cuts the junk. Only when its length ~matches the original line's slot.
@@ -399,6 +411,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     }
     const err = new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
     err.takes = lastTakesSeen.slice(-4); // the last round's takes, for the diagnostic
+    if (wholeOnly) err.offerFull = true; // no splice fallback — offer a full re-roll instead
     throw err;
   }
 
@@ -433,46 +446,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setSectionParams({ approvedLyrics, verifyPhrases });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
-      // A SINGLE within-line word change ⇒ line-replace mode: swap just that line
-      // (cuts any gibberish Kie pads around it, keeps the exact voice everywhere).
       const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
       const lineReplace = one && one.before && one.after ? { before: one.before, after: one.after } : null;
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace }, setSurgicalMsg);
-      // WHOLE-TAKE path (preferred): Suno's re-sing matched the original length, so we
-      // ship it as-is — just pin it to permanent storage, no splicing.
-      if (r.wholeTake) {
-        setSurgicalMsg('Saving the corrected version…');
-        const rh = await postFn({ action: 'splice', mode: 'rehost', pristineUrl: r.resungUrl });
-        const url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
-        let blob = null;
-        try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
-        setResult({
-          surgical: true,
-          wholeTake: true,
-          splicedBlob: blob,
-          changeSummary: r.changeSummary || '',
-          fullLyrics: r.fullLyrics,
-          corrections: null,
-          originalAudioUrl: song.original_audio_url || song.audio_url,
-          changeMarks: r.startS > 0 ? [r.startS] : [],
-          takes: [{ audioUrl: url, verified: true, lyrics: r.fullLyrics }],
-        });
-        setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
-        return;
-      }
-      setSurgicalMsg('Stitching with the original recording…');
-      const spliced = r.lineReplace
-        ? await doSplice('line', { pristineUrl: r.originalAudioUrl, pStart: r.pStart, pEnd: r.pEnd, resungUrl: r.resungUrl, rStart: r.rStart, rEnd: r.rEnd })
-        : await doSplice('section', { resungUrl: r.resungUrl, resungCut: r.resungCut, originalUrl: r.originalAudioUrl, origCut: r.origCut });
+      // WHOLE-TAKE ONLY (owner rule). Never splice/stretch: take Suno's whole re-sing
+      // if it sang the correction, else offer a full re-roll. No atempo speed-fit.
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace, wholeOnly: true }, setSurgicalMsg);
+      setSurgicalMsg('Saving the corrected version…');
+      // Pin Suno's whole take to permanent storage (rehost = plain re-encode, no tempo
+      // or pitch change) and present it as-is.
+      const rh = await postFn({ action: 'splice', mode: 'rehost', pristineUrl: r.resungUrl });
+      const url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
+      let blob = null;
+      try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
       setResult({
         surgical: true,
-        splicedBlob: spliced.blob,
+        wholeTake: true,
+        splicedBlob: blob,
         changeSummary: r.changeSummary || '',
         fullLyrics: r.fullLyrics,
         corrections: null,
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: r.startS > 0 ? [r.startS] : [],
-        takes: [{ audioUrl: spliced.url, verified: true, lyrics: r.fullLyrics }],
+        takes: [{ audioUrl: url, verified: true, lyrics: r.fullLyrics }],
       });
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
     } catch (e) {
@@ -541,39 +536,27 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // and chain the splices (latest spot first). Returns the finished blob, a
   // preview URL, and each change's start-time (for the "jump to change" marker).
   async function fixOneSong(songId, { changes, combinedLyrics }, onMsg) {
-    const done = [];
-    // Whole-take shipping only makes sense for a SINGLE change (it replaces the entire
-    // song); with multiple spots we must splice each in, so disable it then.
-    const allowWhole = changes.length === 1;
-    for (let i = 0; i < changes.length; i++) {
-      const c = changes[i];
-      const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
-      const lineReplace = c.before && c.after ? { before: c.before, after: c.after } : null;
-      const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after, lineReplace, allowWhole }, (m) => onMsg?.(`(${i + 1}/${changes.length}) ${m}`));
-      // WHOLE-TAKE path: Suno's re-sing already matches the original length — pin it to
-      // permanent storage and return it as the finished song, no splice chain.
-      if (r.wholeTake) {
-        onMsg?.('Guardando la versión corregida…');
-        const rh = await postFn({ action: 'splice', mode: 'rehost', pristineUrl: r.resungUrl });
-        const url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
-        let blob = null;
-        try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
-        return { splicedBlob: blob, correctedUrl: url, fullLyrics: combinedLyrics, changeMarks: r.startS > 0 ? [r.startS] : [], wholeTake: true };
-      }
-      done.push(r);
+    // WHOLE-TAKE ONLY (owner rule). A single change re-sings the section and ships
+    // Suno's whole take — no splice. MULTIPLE changes can't be one section re-sing, so
+    // instead of chaining splices (the old atempo path), we bubble up offerFull and let
+    // the owner run a full re-roll (fresh whole song with every correction, choose the
+    // take). Never stitch/stretch a customer's song.
+    if (changes.length !== 1) {
+      const e = new Error('Varias correcciones: mejor rehacer la canción completa (sin empalmes).');
+      e.offerFull = true;
+      throw e;
     }
-    const changeMarks = done.map((d) => d.startS).filter((n) => n > 0).sort((a, b) => a - b);
-    done.sort((a, b) => b.startS - a.startS); // latest-first (earlier lines' timing stays valid)
-    let baseUrl = done[0].originalAudioUrl; // pristine original
+    const c = changes[0];
+    const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
+    const lineReplace = c.before && c.after ? { before: c.before, after: c.after } : null;
+    const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after, lineReplace, wholeOnly: true }, onMsg);
+    onMsg?.('Guardando la versión corregida…');
+    // rehost = plain re-encode (no tempo/pitch change) → permanent URL.
+    const rh = await postFn({ action: 'splice', mode: 'rehost', pristineUrl: r.resungUrl });
+    const url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
     let blob = null;
-    for (const c of done) {
-      onMsg?.('Uniendo con la grabación original…');
-      const sp = c.lineReplace
-        ? await doSplice('line', { pristineUrl: baseUrl, pStart: c.pStart, pEnd: c.pEnd, resungUrl: c.resungUrl, rStart: c.rStart, rEnd: c.rEnd })
-        : await doSplice('section', { resungUrl: c.resungUrl, resungCut: c.resungCut, originalUrl: baseUrl, origCut: c.origCut });
-      baseUrl = sp.url; blob = sp.blob;
-    }
-    return { splicedBlob: blob, correctedUrl: baseUrl, fullLyrics: combinedLyrics, changeMarks };
+    try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
+    return { splicedBlob: blob, correctedUrl: url, fullLyrics: combinedLyrics, changeMarks: r.startS > 0 ? [r.startS] : [], wholeTake: true };
   }
 
   // Multi-part surgical fix on the CURRENT song.
