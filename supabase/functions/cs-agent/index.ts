@@ -39,6 +39,7 @@ import { OFFERS } from '../_shared/brand-brief.ts';
 import { embedText, embedTexts } from '../_shared/embed.ts';
 import { sendSms } from '../_shared/send-sms.ts';
 import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
+import { translateOne } from '../_shared/translate.ts';
 
 // Topics that can NEVER auto-send, even if added to the allowlist (belt & braces
 // with needs_human). Money, complaints, and edits to finished songs always go to
@@ -696,6 +697,12 @@ serve(async (req) => {
       escalateReason = `safety: ${safety.reason}`;
     }
 
+    // English gloss of the draft, so a non-Spanish-speaking assistant can read
+    // what this reply says BEFORE approving it. Best-effort (null on failure —
+    // sms-admin backfills it on the next inbox load either way). Customer-facing
+    // text is unaffected: only `body` is ever sent.
+    const bodyEn = await translateOne(finalText);
+
     const nowIso = new Date().toISOString();
 
     // #2 AUTO-SEND (default OFF). Send WITHOUT owner approval only when the master
@@ -721,6 +728,7 @@ serve(async (req) => {
           conversation_id: conversationId,
           direction: 'outbound',
           body: finalText,
+          body_en: bodyEn,
           status: result.ok ? (result.status || 'sent') : 'failed',
           twilio_sid: result.sid || null,
           channel: sendCh,
@@ -756,6 +764,7 @@ serve(async (req) => {
         conversation_id: conversationId,
         direction: 'outbound',
         body: finalText,
+        body_en: bodyEn,
         status: 'draft',
         channel: convo.channel || 'sms',
         ai_generated: true,
@@ -763,7 +772,7 @@ serve(async (req) => {
         proposed_action: proposedAction,
         category,
       })
-      .select('id, body, status, needs_human, created_at')
+      .select('id, body, body_en, status, needs_human, created_at')
       .single();
     if (insErr) {
       console.error('cs-agent: draft insert failed', insErr);

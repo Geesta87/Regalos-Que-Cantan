@@ -39,6 +39,7 @@ import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { sendPush } from '../_shared/web-push.ts';
 import { redactPII } from '../_shared/cs-redact.ts';
 import { DEFAULT_OO_MESSAGE } from '../_shared/out-of-office.ts';
+import { translateBatch, translateOne } from '../_shared/translate.ts';
 
 // Deliver an outbound message on the conversation's channel, optionally with an
 // image (mediaUrl must be a publicly-fetchable URL — we pass a short-lived
@@ -144,6 +145,62 @@ async function attachMediaUrls(admin: any, messages: any[]): Promise<void> {
     for (const m of withMedia) m.media_url = byPath[m.media_path] || null;
   } catch (e) {
     console.warn('attachMediaUrls failed', e);
+  }
+}
+
+// ── English translations (reading aid for a non-Spanish-speaking assistant) ──
+// Fill body_en for any messages that have text but haven't been translated yet,
+// then patch the in-memory rows so the inbox shows English on this load. Cached
+// forever after (body_en persists), so each message is translated only ONCE.
+//
+// Capped + newest-first so the very first load (whole historical backlog) stays
+// fast: it translates the CAP newest untranslated messages now, and the inbox's
+// 25s background poll quietly backfills the rest over the next few refreshes.
+const TRANSLATE_CAP = 80;    // max messages translated per list load
+const TRANSLATE_CHUNK = 20;  // messages per Anthropic call (keeps each call small)
+
+// deno-lint-ignore no-explicit-any
+async function backfillTranslations(admin: any, messages: any[]): Promise<void> {
+  const candidates = messages
+    .filter((m) => m && typeof m.body === 'string' && m.body.trim() && !m.body_en)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .slice(0, TRANSLATE_CAP);
+  if (!candidates.length) return;
+
+  try {
+    // Translate in small chunks (in parallel) so one big backlog load doesn't
+    // ride on a single oversized model call.
+    const chunks: any[][] = [];
+    for (let i = 0; i < candidates.length; i += TRANSLATE_CHUNK) {
+      chunks.push(candidates.slice(i, i + TRANSLATE_CHUNK));
+    }
+    const results = await Promise.all(
+      chunks.map((chunk) => translateBatch(chunk.map((m) => m.body as string))),
+    );
+
+    const updates: { id: string; body_en: string }[] = [];
+    chunks.forEach((chunk, ci) => {
+      const out = results[ci];
+      if (!out) return; // this chunk failed — leave it for the next load
+      chunk.forEach((m, mi) => {
+        const en = out[mi];
+        if (en) {
+          m.body_en = en;                 // patch the row we're about to return
+          updates.push({ id: m.id, body_en: en });
+        }
+      });
+    });
+
+    // Persist so we never pay to translate the same message twice.
+    if (updates.length) {
+      await Promise.all(
+        updates.map((u) =>
+          admin.from('sms_messages').update({ body_en: u.body_en }).eq('id', u.id),
+        ),
+      );
+    }
+  } catch (e) {
+    console.warn('backfillTranslations failed', e);
   }
 }
 
@@ -268,6 +325,67 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+// Same default as cs-agent — a wording rewrite wants the same voice/quality.
+const REVISE_MODEL = Deno.env.get('CS_REVISE_MODEL') || 'claude-sonnet-4-6';
+
+// Rewrite a Spanish draft applying a reviewer's plain-English instruction, so an
+// assistant who doesn't write Spanish can still change a reply before it's sent.
+// Returns the new Spanish text (ready to send). Best-effort: an error just leaves
+// the draft as-is for the caller to report.
+async function reviseDraftText(opts: {
+  draft: string;
+  instruction: string;
+  history: { direction: string; body: string }[];
+}): Promise<{ ok: boolean; text?: string; error?: string }> {
+  if (!ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not set' };
+  const convo = opts.history
+    .map((m) => `${m.direction === 'inbound' ? 'Cliente' : 'Equipo'}: ${m.body}`)
+    .join('\n');
+  const system =
+    'Eres el agente de servicio al cliente de Regalos Que Cantan y escribes en ESPAÑOL, cálido, ' +
+    'humano y BREVE (es un chat). Un revisor del equipo (que habla inglés) quiere ajustar un ' +
+    'borrador de respuesta. Reescribe el borrador en español aplicando EXACTAMENTE el cambio que ' +
+    'pide el revisor.\n' +
+    'REGLAS:\n' +
+    '- Aplica solo el cambio pedido; conserva el resto del sentido y el tono cálido.\n' +
+    '- NO inventes enlaces, precios, fechas ni datos del pedido. Conserva los enlaces y datos que ' +
+    'ya estén en el borrador.\n' +
+    '- NUNCA reveles ni insinúes que eres IA, bot, automático o una máquina.\n' +
+    '- Responde SOLO con el nuevo texto en español, listo para enviar (sin comillas ni notas).';
+  const user =
+    `CONVERSACIÓN RECIENTE:\n${convo || '(sin contexto)'}\n\n` +
+    `BORRADOR ACTUAL (español):\n${opts.draft}\n\n` +
+    `CAMBIO QUE PIDE EL REVISOR (en inglés):\n${opts.instruction}`;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: REVISE_MODEL,
+        max_tokens: 700,
+        system,
+        messages: [{ role: 'user', content: user }],
+      }),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text().catch(() => '');
+      console.error('reviseDraftText: anthropic', res.status, errTxt);
+      return { ok: false, error: `anthropic ${res.status}` };
+    }
+    const data = await res.json();
+    const text = (data?.content?.[0]?.text || '').trim();
+    if (!text) return { ok: false, error: 'empty rewrite' };
+    return { ok: true, text };
+  } catch (e) {
+    console.error('reviseDraftText error', e);
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 // How many conversations the inbox loads at once. The SMS tables are small
 // (one row per customer phone), so a flat cap is fine — no pagination yet.
@@ -330,6 +448,7 @@ serve(async (req) => {
       size?: number;            // media-upload-url: byte size, so we reject before uploading
       phone?: string;           // start-conversation: the recipient's number
       pinned?: boolean;         // set-pinned: true = pin to top, false = unpin
+      instruction?: string;     // revise-draft: the reviewer's plain-English change request
     } = {};
     if (req.method === 'POST') {
       try { body = await req.json(); } catch { body = {}; }
@@ -353,12 +472,14 @@ serve(async (req) => {
       if (ids.length > 0) {
         const { data: msgs, error: mErr } = await admin
           .from('sms_messages')
-          .select('id, conversation_id, direction, body, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
+          .select('id, conversation_id, direction, body, body_en, status, created_at, channel, ai_generated, needs_human, media_path, media_type')
           .in('conversation_id', ids)
           .order('created_at', { ascending: true });
         if (mErr) return json({ success: false, error: mErr.message }, 500);
         // Sign media URLs for any image attachments so the thread can show them.
         await attachMediaUrls(admin, msgs || []);
+        // Fill English translations for the inbox reading aid (cached; capped).
+        await backfillTranslations(admin, msgs || []);
         messagesByConvo = (msgs || []).reduce((acc: Record<string, unknown[]>, m) => {
           (acc[m.conversation_id] ||= []).push(m);
           return acc;
@@ -719,6 +840,59 @@ serve(async (req) => {
       }
 
       return json({ success: true, message: updated, side_action: sideAction });
+    }
+
+    // ─── action: revise-draft ────────────────────────────────────────────
+    // Let a reviewer who doesn't write Spanish change an AI draft: they describe
+    // the change in ENGLISH, we rewrite the Spanish reply accordingly and refresh
+    // its English gloss. The row STAYS a draft — nothing is sent until approved.
+    if (action === 'revise-draft') {
+      const convoId = body.conversation_id;
+      const messageId = body.message_id;
+      const instruction = (body.instruction || '').trim();
+      if (!convoId || !messageId || !instruction) {
+        return json({ success: false, error: 'conversation_id, message_id and instruction required' }, 400);
+      }
+
+      const { data: draft, error: dErr } = await admin
+        .from('sms_messages')
+        .select('id, conversation_id, body, status, direction')
+        .eq('id', messageId)
+        .single();
+      if (dErr || !draft) return json({ success: false, error: 'Draft not found' }, 404);
+      if (draft.conversation_id !== convoId || draft.status !== 'draft' || draft.direction !== 'outbound') {
+        return json({ success: false, error: 'Not an editable draft' }, 409);
+      }
+
+      // Recent thread context (exclude drafts/discarded), oldest → newest.
+      const { data: hist } = await admin
+        .from('sms_messages')
+        .select('direction, body, status, created_at')
+        .eq('conversation_id', convoId)
+        .order('created_at', { ascending: false })
+        .limit(8);
+      const history = (hist || [])
+        .filter((m) => m.status !== 'draft' && m.status !== 'discarded' && (m.body || '').trim())
+        .reverse()
+        .map((m) => ({ direction: m.direction as string, body: m.body as string }));
+
+      const revised = await reviseDraftText({ draft: draft.body, instruction, history });
+      if (!revised.ok || !revised.text) {
+        return json({ success: false, error: revised.error || 'Could not revise draft' }, 502);
+      }
+
+      // Refresh the English gloss for the new Spanish text.
+      const bodyEn = await translateOne(revised.text);
+
+      const { data: updated, error: uErr } = await admin
+        .from('sms_messages')
+        .update({ body: revised.text, body_en: bodyEn })
+        .eq('id', messageId)
+        .eq('status', 'draft')
+        .select('id, direction, body, body_en, status, created_at, channel, ai_generated, needs_human')
+        .single();
+      if (uErr) return json({ success: false, error: uErr.message }, 500);
+      return json({ success: true, message: updated });
     }
 
     // ─── action: discard-draft ───────────────────────────────────────────

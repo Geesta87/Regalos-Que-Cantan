@@ -96,18 +96,22 @@ const DEMO_CONVERSATIONS = [
     last_message_at: '2026-06-09T17:43:00Z',
     messages: [
       { id: 'm1', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T16:10:00Z',
-        body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821' },
+        body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821',
+        body_en: 'Hi María! 🎵 Your song for Roberto is ready. Listen to it here: https://regalosquecantan.com/c/8821' },
       { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:40:00Z',
-        body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?' },
+        body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?',
+        body_en: 'It came out beautiful! But I want it a little more romantic — can it be changed?' },
       // A WhatsApp VOICE NOTE — stored audio + Whisper auto-transcript. media_type
       // starting with 'audio/' is what flags it as a voice message in the UI.
       { id: 'm3', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:42:00Z',
         media_type: 'audio/ogg', media_url: '/sounds/jarvis/new-sale-1.mp3',
-        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏' },
+        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏',
+        body_en: "It's for our anniversary on Saturday — please make it say that I love her with all my heart 🙏" },
       // AI draft that escalates (a change to a finished song → needs a human).
       { id: 'm4', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: true,
         created_at: '2026-06-09T17:43:00Z',
-        body: '¡Gracias María! ❤️ Con mucho gusto revisamos cómo hacerla más romántica para su aniversario. Un compañero del equipo te ayudará con el ajuste enseguida. 🙏' },
+        body: '¡Gracias María! ❤️ Con mucho gusto revisamos cómo hacerla más romántica para su aniversario. Un compañero del equipo te ayudará con el ajuste enseguida. 🙏',
+        body_en: 'Thank you, María! ❤️ We would be glad to look at making it more romantic for your anniversary. A teammate will help you with the adjustment right away. 🙏' },
     ],
   },
   {
@@ -130,11 +134,13 @@ const DEMO_CONVERSATIONS = [
       { id: 'm1', channel: 'sms', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T14:50:00Z',
         body: 'Confirmamos tu pedido en Regalos Que Cantan ✅ Tu canción se está creando y te enviaremos el enlace por aquí en unos minutos.' },
       { id: 'm2', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T15:05:00Z',
-        body: '¿Cuánto tiempo tarda en estar lista?' },
+        body: '¿Cuánto tiempo tarda en estar lista?',
+        body_en: 'How long does it take to be ready?' },
       // AI draft on WhatsApp (the channel she just used) — ready to approve.
       { id: 'm3', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T15:06:00Z',
-        body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊' },
+        body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊',
+        body_en: 'Hi Ana! 🎵 Your song is usually ready in about 3 minutes. We\'ll send the link right here as soon as it\'s ready. 😊' },
     ],
   },
   {
@@ -166,11 +172,13 @@ const DEMO_CONVERSATIONS = [
     last_message_at: '2026-06-09T18:12:00Z',
     messages: [
       { id: 'm1', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T18:10:00Z',
-        body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕' },
+        body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕',
+        body_en: "Hi, I already paid for my song but I can't find the link to download it 😕" },
       // AI draft — would look up the order by this number and share the link.
       { id: 'm2', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T18:12:00Z',
-        body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️' },
+        body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️',
+        body_en: 'Hi Luis! 🎵 Here is your song to download whenever you like: https://regalosquecantan.com/s/ab7kq9 Thank you for your purchase! ❤️' },
     ],
   },
   {
@@ -205,6 +213,11 @@ export default function SmsInboxTab({ accessToken }) {
   const [editingDraftId, setEditingDraftId] = useState(null);
   const [draftEdit, setDraftEdit] = useState('');
   const [draftBusy, setDraftBusy] = useState(false);
+  // "Revise in English" — a reviewer who doesn't write Spanish describes the
+  // change in English and the AI rewrites the Spanish draft.
+  const [revisingId, setRevisingId] = useState(null);
+  const [reviseText, setReviseText] = useState('');
+  const [reviseBusy, setReviseBusy] = useState(false);
   // Admin "Ask AI" copilot (private — about the open order).
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotMsgs, setCopilotMsgs] = useState([]); // { role, content }
@@ -961,10 +974,54 @@ export default function SmsInboxTab({ accessToken }) {
     }
   };
 
+  // Revise an AI draft from a plain-English instruction → the AI rewrites the
+  // Spanish and we refresh the English gloss in place. Stays a draft.
+  const handleReviseDraft = async (msg) => {
+    const instruction = reviseText.trim();
+    if (!selected || reviseBusy || !instruction) return;
+    setReviseBusy(true);
+    try {
+      if (isDemo) {
+        // No backend in demo mode — show it works without a real rewrite.
+        await new Promise((r) => setTimeout(r, 300));
+        alert('“Revise in English” rewrites the draft once the feature is deployed. This is a demo thread.');
+        return;
+      }
+      const data = await postToSmsAdmin({
+        action: 'revise-draft',
+        conversation_id: selected.id,
+        message_id: msg.id,
+        instruction,
+      });
+      const updated = data?.message;
+      if (updated) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selected.id
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === msg.id ? { ...m, body: updated.body, body_en: updated.body_en } : m
+                  ),
+                }
+              : c
+          )
+        );
+        setRevisingId(null);
+        setReviseText('');
+      }
+    } catch (e) {
+      alert(`Could not revise: ${e.message}`);
+    } finally {
+      setReviseBusy(false);
+    }
+  };
+
   const switchChannel = (ch) => {
     setChannelTab(ch);
     setSelectedId(null);
     setEditingDraftId(null);
+    setRevisingId(null);
   };
 
   // Private admin copilot — ask the AI about the open order.
@@ -1247,11 +1304,14 @@ export default function SmsInboxTab({ accessToken }) {
                   : hasPendingDraftInChannel(c, channelTab);
                 const lastIsAudio = (last?.media_type || '').startsWith('audio/');
                 const lastOutbound = last?.direction === 'outbound';
+                // Prefer the English translation in the compact preview so an
+                // assistant who doesn't read Spanish can still triage the list.
+                const lastText = last?.body_en || last?.body || '';
                 const preview = lastIsAudio
                   ? (lastOutbound
-                      ? `🎵 ${last?.body || 'Audio'}`
-                      : `🎤 ${last?.body || 'Voice message'}`)
-                  : (last?.body || '');
+                      ? `🎵 ${lastText || 'Audio'}`
+                      : `🎤 ${lastText || 'Voice message'}`)
+                  : lastText;
                 const active = c.id === selectedId;
                 return (
                   <button
@@ -1387,6 +1447,9 @@ export default function SmsInboxTab({ accessToken }) {
                             {mCh === 'whatsapp' ? '🟢 vía WhatsApp' : '💬 vía SMS'} · {outX ? 'enviado' : 'recibido'} {formatTime(m.created_at)}
                           </div>
                           <p className="text-xs whitespace-pre-wrap break-words text-gray-300">{m.body}</p>
+                          {m.body_en && m.body_en !== m.body && (
+                            <p className="text-[11px] mt-0.5 whitespace-pre-wrap break-words italic text-gray-500">{m.body_en}</p>
+                          )}
                         </div>
                       </div>
                     );
@@ -1421,6 +1484,19 @@ export default function SmsInboxTab({ accessToken }) {
                             <p className="text-sm whitespace-pre-wrap break-words text-white">{m.body}</p>
                           )}
 
+                          {/* English meaning of the draft, so an assistant who
+                              doesn't read Spanish knows exactly what will be sent
+                              before approving. The customer still receives the
+                              Spanish above. */}
+                          {m.body_en && m.body_en !== m.body && (
+                            <div className="mt-2 rounded-lg border border-purple-300/25 bg-black/20 px-2.5 py-1.5">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-purple-200/80 mb-0.5">
+                                🇬🇧 In English — what this says
+                              </div>
+                              <p className="text-xs whitespace-pre-wrap break-words italic text-gray-200">{m.body_en}</p>
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                             <button
                               onClick={() => handleApproveDraft(m)}
@@ -1439,11 +1515,26 @@ export default function SmsInboxTab({ accessToken }) {
                               </button>
                             ) : (
                               <button
-                                onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); }}
+                                onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); setRevisingId(null); }}
                                 disabled={draftBusy}
                                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                                title="Edit the Spanish directly"
                               >
                                 ✏️ Edit
+                              </button>
+                            )}
+                            {!editing && (
+                              <button
+                                onClick={() => { setRevisingId(revisingId === m.id ? null : m.id); setReviseText(''); }}
+                                disabled={draftBusy}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                  revisingId === m.id
+                                    ? 'bg-purple-500/40 text-white'
+                                    : 'bg-purple-500/20 text-purple-100 hover:bg-purple-500/30'
+                                }`}
+                                title="Describe a change in English — the AI rewrites the Spanish"
+                              >
+                                🇬🇧 Revise in English
                               </button>
                             )}
                             <button
@@ -1454,6 +1545,40 @@ export default function SmsInboxTab({ accessToken }) {
                               Discard
                             </button>
                           </div>
+
+                          {/* Revise from a plain-English instruction. Ivan types
+                              what to change; the AI rewrites the Spanish above and
+                              refreshes the English. The reply stays a draft. */}
+                          {revisingId === m.id && (
+                            <div className="mt-2.5 rounded-lg border border-purple-400/30 bg-black/20 p-2.5">
+                              <label className="block text-[11px] font-semibold text-purple-100 mb-1">
+                                Tell the AI what to change (in English)
+                              </label>
+                              <textarea
+                                value={reviseText}
+                                onChange={(e) => setReviseText(e.target.value)}
+                                rows={2}
+                                placeholder="e.g. Make it warmer and mention the anniversary is Saturday"
+                                className="w-full resize-none px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-purple-400/50"
+                              />
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  onClick={() => handleReviseDraft(m)}
+                                  disabled={reviseBusy || !reviseText.trim()}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500 text-white hover:bg-purple-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  {reviseBusy ? 'Rewriting…' : '↻ Rewrite in Spanish'}
+                                </button>
+                                <button
+                                  onClick={() => { setRevisingId(null); setReviseText(''); }}
+                                  disabled={reviseBusy}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {selected.opted_out && (
                             <p className="text-[10px] text-red-300 mt-1.5">
                               Customer opted out — this draft can't be sent.
@@ -1526,6 +1651,12 @@ export default function SmsInboxTab({ accessToken }) {
                           ) : (
                             <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                           )
+                        )}
+                        {/* English gloss under the Spanish (reading aid). */}
+                        {m.body && m.body_en && m.body_en !== m.body && (
+                          <p className={`text-xs mt-1 whitespace-pre-wrap break-words italic ${out ? 'text-black/55' : 'text-gray-400'}`}>
+                            {m.body_en}
+                          </p>
                         )}
                         {isAudio && !out && (
                           <div className={`text-[9px] mt-0.5 text-gray-500`}>
