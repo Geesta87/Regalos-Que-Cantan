@@ -265,7 +265,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // sings the correction, and if none does after a short retry, throw offerFull so the
   // caller offers a full re-roll. No atempo/stretch, no line/section splice, no 5×
   // loop that hides good takes and burns Kie credits.
-  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false }, onMsg) {
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false, requireAll = null }, onMsg) {
     const ROUNDS = wholeOnly ? 2 : 5;
     let lastReason = '';
     const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
@@ -334,12 +334,18 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // (as the old ±15% did) is exactly what hid good Kie songs and forced retries.
         // Over that ceiling ⇒ genuine over-extension ⇒ fall through to a full re-roll.
         if (allowWhole && !addLine && origFullDur && words.length) {
-          const vw = validateTake(words, groups, { maxGapS: 8, maxSpanS: maxSpanS + 60 });
           const takeEnd = words[words.length - 1].end;
-          if (vw.ok && takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30) {
+          // Multi-change: the take must sing EVERY correction (each requireAll phrase),
+          // so two edits in the same verse land in ONE whole take. Single-change: the
+          // normal corrected-line check.
+          const sang = (requireAll && requireAll.length)
+            ? requireAll.every((p) => !!findCleanLine(words, buildTokenGroups(p), { maxGapS: 3.5 }))
+            : validateTake(words, groups, { maxGapS: 8, maxSpanS: maxSpanS + 60 }).ok;
+          const lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30;
+          if (sang && lenOk) {
             wholeCands.push({ url, drift: Math.abs(takeEnd - origFullDur) });
           } else if (wholeOnly) {
-            lastReason = !vw.ok ? (vw.reason || 'no cantó lo corregido')
+            lastReason = !sang ? 'no cantó todas las correcciones'
               : (takeEnd > origFullDur * 1.30 ? 'la toma salió demasiado larga' : 'la toma salió demasiado corta');
             lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
           }
@@ -536,20 +542,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // and chain the splices (latest spot first). Returns the finished blob, a
   // preview URL, and each change's start-time (for the "jump to change" marker).
   async function fixOneSong(songId, { changes, combinedLyrics }, onMsg) {
-    // WHOLE-TAKE ONLY (owner rule). A single change re-sings the section and ships
-    // Suno's whole take — no splice. MULTIPLE changes can't be one section re-sing, so
-    // instead of chaining splices (the old atempo path), we bubble up offerFull and let
-    // the owner run a full re-roll (fresh whole song with every correction, choose the
-    // take). Never stitch/stretch a customer's song.
-    if (changes.length !== 1) {
-      const e = new Error('Varias correcciones: mejor rehacer la canción completa (sin empalmes).');
-      e.offerFull = true;
-      throw e;
-    }
-    const c = changes[0];
-    const note = `En la letra, la línea "${c.before}" debe cantar exactamente "${c.after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`;
-    const lineReplace = c.before && c.after ? { before: c.before, after: c.after } : null;
-    const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: c.after, lineReplace, wholeOnly: true }, onMsg);
+    // WHOLE-TAKE ONLY (owner rule). Re-sing and ship Suno's WHOLE take — never splice.
+    // One change OR several in the same area both work: we require the take to sing
+    // EVERY correction (requireAll). If Kie can't land them all in one take (e.g. edits
+    // scattered across the song), resingOne throws offerFull and the owner runs a full
+    // re-roll (fresh whole song with every correction — choose the take). No atempo.
+    const requireAll = changes.map((c) => c.after).filter(Boolean);
+    const note = changes.length === 1
+      ? `En la letra, la línea "${changes[0].before}" debe cantar exactamente "${changes[0].after}". Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa línea.`
+      : `Corrige estas líneas en la letra (cambia SOLO estas líneas y re-canta las estrofas afectadas como bloques continuos, en orden, sin repetir ni saltar): ${changes.map((c) => `"${c.before}" → "${c.after}"`).join('; ')}.`;
+    const r = await resingOne({ songId, note, approvedLyrics: combinedLyrics, verifyPhrases: [], correctedText: requireAll.join('\n'), requireAll, wholeOnly: true }, onMsg);
     onMsg?.('Guardando la versión corregida…');
     // rehost = plain re-encode (no tempo/pitch change) → permanent URL.
     const rh = await postFn({ action: 'splice', mode: 'rehost', pristineUrl: r.resungUrl });
@@ -928,8 +930,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       <>
           <p className="text-[11px] text-gray-400 mb-2">
             Paste the customer's WhatsApp screenshot or type what to fix — you can list <strong>several corrections at once</strong>
-            (e.g. the date <em>and</em> a wrong name). Each spot is re-sung separately and stitched into one file with the
-            <strong> same voice</strong>. Or <strong>redo the full song</strong> with the corrections.
+            (e.g. the date <em>and</em> a wrong name). They're re-sung into <strong>one whole take</strong> in the
+            <strong> same voice</strong> (no splicing). If they can't all land in one take, <strong>redo the full song</strong> with the corrections.
           </p>
           {!eligible && (
             <p className="text-[11px] text-amber-300 mb-2">
@@ -1075,13 +1077,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 : plan.addLine
                   ? 'The new line will be sung into the ending and grafted onto the original — same voice. Takes 1-3 min.'
                   : (Array.isArray(plan.changes) && plan.changes.length > 1
-                    ? `${plan.changes.length} parts will be re-sung separately and stitched into one file — same voice. Takes ~${plan.changes.length * 2}-${plan.changes.length * 3} min.`
-                    : 'Only the affected part will be regenerated. Takes 1-3 min.')}</p>
+                    ? `All ${plan.changes.length} corrections will be re-sung into ONE whole take (same voice, no splicing). If Suno can't fit them all in one take, it'll offer a full re-roll. Takes 1-3 min.`
+                    : 'Only the affected part will be regenerated as a whole take (no splicing). Takes 1-3 min.')}</p>
               {pendingMode === 'section' && plan.addLine && (
                 <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". This is newer — listen to the preview end-to-end before applying.</p>
               )}
               {offerFullReroll && pendingMode === 'section' && (
-                <p className="text-[11px] text-amber-300 mb-2">⚠️ This change is spread across several parts of the song, so a one-part fix can't cover it. Redo the full song to apply all the corrections at once (same voice & style).</p>
+                <p className="text-[11px] text-amber-300 mb-2">⚠️ Suno couldn't land every correction in one clean whole take (edits too far apart, or the take came back too long). Redo the full song to apply all the corrections at once — same voice & style, no splicing.</p>
               )}
               <div className="flex gap-2">
                 {offerFullReroll && pendingMode === 'section' ? (
