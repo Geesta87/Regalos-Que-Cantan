@@ -451,6 +451,18 @@ export default function SmsInboxTab({ accessToken }) {
     [conversations, selectedId]
   );
 
+  // Render order for the open thread: pending AI drafts ALWAYS float to the
+  // bottom (right above the composer), no matter when they were created. Without
+  // this, a draft written before the customer's later messages gets buried in
+  // the middle of the thread and is easy to miss.
+  const orderedMessages = useMemo(() => {
+    const msgs = selected?.messages || [];
+    const drafts = msgs.filter((m) => m.status === 'draft');
+    if (!drafts.length) return msgs;
+    const rest = msgs.filter((m) => m.status !== 'draft');
+    return [...rest, ...drafts];
+  }, [selected?.messages]);
+
   // Which channel the OPEN thread is on. On the SMS/WhatsApp tabs it's the tab
   // itself; on the "Unread" and "Pinned" tabs (which mix both) it's the channel
   // of the conversation's most recent message — so replies go out on the right rail.
@@ -1428,7 +1440,7 @@ export default function SmsInboxTab({ accessToken }) {
 
               {/* Messages */}
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
-                {selected.messages.map((m) => {
+                {orderedMessages.map((m) => {
                   // Discarded drafts are hidden from the thread.
                   if (m.status === 'discarded') return null;
 

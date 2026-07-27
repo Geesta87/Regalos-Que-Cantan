@@ -416,7 +416,7 @@ serve(async (req) => {
     // Load recent history (oldest → newest).
     const { data: msgs } = await admin
       .from('sms_messages')
-      .select('direction, body, status, created_at, media_path, media_type')
+      .select('id, direction, body, status, created_at, media_path, media_type')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT);
@@ -427,9 +427,22 @@ serve(async (req) => {
     if (!last || last.direction !== 'inbound') {
       return json({ ok: true, skipped: 'latest message is not inbound' });
     }
-    // Don't stack drafts: if an unapproved draft already exists, leave it.
-    if (history.some((m) => m.status === 'draft')) {
-      return json({ ok: true, skipped: 'draft already pending' });
+    // If an unapproved draft already exists, only REPLACE it when the customer
+    // has messaged AGAIN since it was written (i.e. the draft is now stale and
+    // doesn't reflect what they just said). If nothing newer came in, leave the
+    // pending draft alone. `staleDraftId` is discarded right before we write the
+    // fresh draft below.
+    let staleDraftId: string | null = null;
+    const existingDraft = history.find((m) => m.status === 'draft');
+    if (existingDraft) {
+      const draftTime = new Date(String(existingDraft.created_at)).getTime();
+      const newerInbound = history.some(
+        (m) => m.direction === 'inbound' && new Date(String(m.created_at)).getTime() > draftTime,
+      );
+      if (!newerInbound) {
+        return json({ ok: true, skipped: 'draft already pending' });
+      }
+      staleDraftId = existingDraft.id as string;
     }
 
     const phoneLast10 = String(convo.phone || '').replace(/\D/g, '').slice(-10);
@@ -704,6 +717,17 @@ serve(async (req) => {
     const bodyEn = await translateOne(finalText);
 
     const nowIso = new Date().toISOString();
+
+    // Retire the now-stale draft (the customer messaged again after it was
+    // written) just before we write the fresh one, so the inbox shows a single
+    // up-to-date draft instead of an outdated one.
+    if (staleDraftId) {
+      await admin
+        .from('sms_messages')
+        .update({ status: 'discarded', needs_human: false })
+        .eq('id', staleDraftId)
+        .eq('status', 'draft');
+    }
 
     // #2 AUTO-SEND (default OFF). Send WITHOUT owner approval only when the master
     // switch is on, this category is on the allowlist (and not a never-auto one),
