@@ -40,6 +40,7 @@ import { sendPush } from '../_shared/web-push.ts';
 import { redactPII } from '../_shared/cs-redact.ts';
 import { DEFAULT_OO_MESSAGE } from '../_shared/out-of-office.ts';
 import { translateBatch, translateOne } from '../_shared/translate.ts';
+import { runInBackground } from '../_shared/trigger-cs-agent.ts';
 
 // Deliver an outbound message on the conversation's channel, optionally with an
 // image (mediaUrl must be a publicly-fetchable URL — we pass a short-lived
@@ -484,8 +485,11 @@ serve(async (req) => {
         if (mErr) return json({ success: false, error: mErr.message }, 500);
         // Sign media URLs for any image attachments so the thread can show them.
         await attachMediaUrls(admin, msgs || []);
-        // Fill English translations for the inbox reading aid (cached; capped).
-        await backfillTranslations(admin, msgs || []);
+        // Fill English translations for the inbox reading aid, but in the
+        // BACKGROUND so the inbox returns instantly — the results are cached in
+        // the DB and show up on the next refresh (25s poll). Awaiting this here
+        // was what made the inbox slow to load.
+        runInBackground(backfillTranslations(admin, msgs || []));
         messagesByConvo = (msgs || []).reduce((acc: Record<string, unknown[]>, m) => {
           (acc[m.conversation_id] ||= []).push(m);
           return acc;

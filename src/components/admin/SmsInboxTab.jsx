@@ -1448,7 +1448,7 @@ export default function SmsInboxTab({ accessToken }) {
                           </div>
                           <p className="text-xs whitespace-pre-wrap break-words text-gray-300">{m.body}</p>
                           {m.body_en && m.body_en !== m.body && (
-                            <p className="text-[11px] mt-0.5 whitespace-pre-wrap break-words italic text-gray-500">{m.body_en}</p>
+                            <p className="text-xs mt-1 pt-1 border-t border-white/10 whitespace-pre-wrap break-words text-gray-200">{m.body_en}</p>
                           )}
                         </div>
                       </div>
@@ -1489,11 +1489,11 @@ export default function SmsInboxTab({ accessToken }) {
                               before approving. The customer still receives the
                               Spanish above. */}
                           {m.body_en && m.body_en !== m.body && (
-                            <div className="mt-2 rounded-lg border border-purple-300/25 bg-black/20 px-2.5 py-1.5">
-                              <div className="text-[10px] font-semibold uppercase tracking-wide text-purple-200/80 mb-0.5">
+                            <div className="mt-2 rounded-lg border border-purple-300/30 bg-black/25 px-3 py-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-purple-200 mb-1">
                                 🇬🇧 In English — what this says
                               </div>
-                              <p className="text-xs whitespace-pre-wrap break-words italic text-gray-200">{m.body_en}</p>
+                              <p className="text-sm whitespace-pre-wrap break-words leading-snug text-gray-50">{m.body_en}</p>
                             </div>
                           )}
 
@@ -1652,9 +1652,11 @@ export default function SmsInboxTab({ accessToken }) {
                             <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                           )
                         )}
-                        {/* English gloss under the Spanish (reading aid). */}
+                        {/* English gloss under the Spanish (reading aid) — same
+                            size as the Spanish, high contrast, with a divider so
+                            it reads as its own clear line. */}
                         {m.body && m.body_en && m.body_en !== m.body && (
-                          <p className={`text-xs mt-1 whitespace-pre-wrap break-words italic ${out ? 'text-black/55' : 'text-gray-400'}`}>
+                          <p className={`text-sm mt-1.5 pt-1.5 border-t whitespace-pre-wrap break-words leading-snug ${out ? 'text-black/80 border-black/20' : 'text-gray-100 border-white/15'}`}>
                             {m.body_en}
                           </p>
                         )}
