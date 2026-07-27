@@ -266,8 +266,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // caller offers a full re-roll. No atempo/stretch, no line/section splice, no 5×
   // loop that hides good takes and burns Kie credits.
   async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false, requireAll = null }, onMsg) {
-    const ROUNDS = wholeOnly ? 2 : 5;
+    // Best-of-6: each round is one Kie generation (~2 takes), so 3 rounds surfaces
+    // up to ~6 whole takes — we early-exit the moment one verifies clean, so the
+    // extra rounds only run when the first didn't land. (Was 2 → too few chances,
+    // which is what made fixes "come back with an error" so often.)
+    const ROUNDS = wholeOnly ? 3 : 5;
     let lastReason = '';
+    // Log the TRUE final outcome server-side (song_fix_attempts) — the async flow
+    // validates takes in the browser, so without this the DB only ever saw the
+    // initial 'submitted' row and we were blind to the real success rate.
+    // Fire-and-forget: never blocks or breaks the fix.
+    const reportOutcome = (outcome, detail, verified = null, kieTaskId = null) => {
+      try { postFn({ action: 'report-outcome', songId, mode: 'section', outcome, detail: String(detail || '').slice(0, 500), verified, kieTaskId }); } catch { /* non-blocking */ }
+    };
     const lastTakesSeen = []; // what Kie sang each round (for the failure diagnostic)
     let origLine = null; // pristine {startS,endS} of the line being changed (line-replace mode)
     let origFullDur = null; // pristine song's full length (whole-take length check)
@@ -277,6 +288,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (!sub.ok) {
         const e = new Error(sub.reason || sub.error || 'Could not generate the fix.');
         if (sub.canFix === false || sub.eligible === false) e.offerFull = true;
+        reportOutcome(sub.canFix === false || sub.eligible === false ? 'not-eligible' : 'submit-failed', (sub.reason || sub.error || '').slice(0, 200));
         throw e;
       }
       const { fixTaskId, sectionText, originalAudioUrl, fullLyrics, changeSummary } = sub;
@@ -396,25 +408,30 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // Owner rule: prefer the WHOLE Suno take (closest to the original length) over
         // any splice — it keeps one continuous voice/tempo with no seam.
         wholeCands.sort((a, b) => a.drift - b.drift);
+        reportOutcome('clean', `whole-take · round ${round}/${ROUNDS}`, true, fixTaskId);
         return { wholeTake: true, resungUrl: wholeCands[0].url, originalAudioUrl, fullLyrics, changeSummary, startS };
       }
       if (lineCands.length) {
         // Prefer the take whose corrected line starts nearest the original slot.
         lineCands.sort((a, b) => Math.abs(a.rStart - origLine.startS) - Math.abs(b.rStart - origLine.startS));
         const c = lineCands[0];
+        reportOutcome('clean', `line-replace · round ${round}/${ROUNDS}`, true, fixTaskId);
         return { lineReplace: true, resungUrl: c.url, pStart: origLine.startS, pEnd: origLine.endS, rStart: c.rStart, rEnd: c.rEnd, originalAudioUrl, fullLyrics, changeSummary, startS };
       }
       if (cands.length && addLine) {
         cands.sort((a, b) => a.maxGap - b.maxGap); // most continuous clean pass
         const c = cands[0];
+        reportOutcome('clean', `add-line · round ${round}/${ROUNDS}`, true, fixTaskId);
         return { addLine: true, resungUrl: c.url, resungWords: c.words, anchorEnd: c.anchorEnd, origCut, startS, originalAudioUrl, fullLyrics, changeSummary, sectionText };
       }
       if (cands.length) {
         cands.sort((a, b) => a.cut - b.cut); // tightest (least padded) clean take
+        reportOutcome('clean', `section-splice · round ${round}/${ROUNDS}`, true, fixTaskId);
         return { resungUrl: cands[0].url, resungCut: cands[0].cut, origCut, startS, originalAudioUrl, fullLyrics, changeSummary, sectionText };
       }
       // none clean → next round (fresh takes)
     }
+    reportOutcome('failed', `${lastReason || 'no clean take'} · ${ROUNDS} rounds`, false);
     const err = new Error(`Couldn't get a clean take after ${ROUNDS} tries (${lastReason}). Try again or use "Redo full song".`);
     err.takes = lastTakesSeen.slice(-4); // the last round's takes, for the diagnostic
     if (wholeOnly) err.offerFull = true; // no splice fallback — offer a full re-roll instead
