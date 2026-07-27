@@ -13,6 +13,11 @@
 // Contract with the frontend (SmsInboxTab.jsx):
 //   GET                                   → { success, role, conversations: [...] }
 //   POST { action: 'send', conversation_id, body }   → { success, message }
+//       optional media: `media_data_url` (small pasted image) OR `media_path`
+//       (from 'media-upload-url' — used for video and anything large)
+//   POST { action: 'media-upload-url', conversation_id, content_type, size, channel }
+//       → { success, path, signed_url, token }  — browser PUTs the bytes
+//         straight to Storage, so video never passes through this function
 //   POST { action: 'mark-read', conversation_id }     → { success }
 //   POST { action: 'set-pinned', conversation_id, pinned }  → { success, pinned_at }
 //   POST { action: 'save-push-subscription', subscription }  → { success }
@@ -50,12 +55,68 @@ async function deliver(channel: string, to: string, body: string, mediaUrl?: str
 const MEDIA_BUCKET = 'cs-media';
 const MEDIA_SIGN_TTL = 3600; // seconds
 
+// What the composer may attach. Kept in sync with the cs-media bucket's
+// allowed_mime_types — an upload whose type isn't on the bucket allowlist fails
+// at the Storage layer with a confusing error, so we reject it up front.
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/3gpp', 'video/webm'];
+// Audio (e.g. delivering a finished song MP3 into the chat). Like video, this is
+// WhatsApp-only — MMS carriers reject audio. All of these are on the cs-media
+// bucket allowlist.
+const ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/amr', 'audio/3gpp', 'audio/webm'];
+
+// MIME → storage file extension. Twilio infers the media type from the URL it
+// fetches, so a wrong/missing extension can make WhatsApp show the clip as an
+// undownloadable file.
+const MEDIA_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/3gpp': '3gp', 'video/webm': 'webm',
+  'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg',
+  'audio/wav': 'wav', 'audio/amr': 'amr', 'audio/3gpp': '3gp', 'audio/webm': 'weba',
+};
+
+// Size ceilings, by kind and channel:
+//   • WhatsApp accepts media up to 16MB (Twilio's documented ceiling).
+//   • SMS becomes MMS, where US A2P carriers realistically cap ~600KB and
+//     reject video/audio outright — so video and audio are WhatsApp-only and
+//     images stay at 5MB.
+const MAX_IMAGE_BYTES = 5_242_880;   // 5MB
+const MAX_VIDEO_BYTES = 16_777_216;  // 16MB — matches the bucket's file_size_limit
+const MAX_AUDIO_BYTES = 16_777_216;  // 16MB — WhatsApp's ceiling; a song MP3 fits easily
+
+function mediaKind(contentType: string): 'image' | 'video' | 'audio' | null {
+  const t = (contentType || '').split(';')[0].trim().toLowerCase();
+  if (ALLOWED_IMAGE_TYPES.includes(t)) return 'image';
+  if (ALLOWED_VIDEO_TYPES.includes(t)) return 'video';
+  if (ALLOWED_AUDIO_TYPES.includes(t)) return 'audio';
+  return null;
+}
+
+// Validate a proposed attachment against kind/channel/size rules. Returns an
+// error string when it must be rejected, or null when it's good to go.
+function validateMedia(contentType: string, bytes: number, channel: string): string | null {
+  const kind = mediaKind(contentType);
+  if (!kind) {
+    return `Unsupported attachment type "${contentType}". Allowed: ${[...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES, ...ALLOWED_AUDIO_TYPES].join(', ')}`;
+  }
+  if ((kind === 'video' || kind === 'audio') && channel !== 'whatsapp') {
+    return `${kind === 'video' ? 'Video' : 'Audio'} can only be sent over WhatsApp — SMS/MMS carriers reject it.`;
+  }
+  const max = kind === 'video' ? MAX_VIDEO_BYTES : kind === 'audio' ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
+  if (bytes > max) {
+    return `Attachment too large (max ${Math.round(max / 1_048_576)}MB for ${kind}).`;
+  }
+  return null;
+}
+
 // Decode a base64 data URL ("data:image/png;base64,AAAA…") to bytes + mime.
+// Still used for small pasted/dragged screenshots; larger files (and all video)
+// go through the direct-to-Storage upload path instead — see 'media-upload-url'.
 function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; contentType: string } | null {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || '');
   if (!m) return null;
-  const contentType = m[1];
-  if (!contentType.startsWith('image/')) return null;
+  const contentType = m[1].split(';')[0].trim().toLowerCase();
+  if (!mediaKind(contentType)) return null;
   try {
     const bin = atob(m[2]);
     const bytes = new Uint8Array(bin.length);
@@ -263,7 +324,10 @@ serve(async (req) => {
       endpoint?: string;
       out_of_office?: boolean;
       out_of_office_message?: string;
-      media_data_url?: string; // "data:image/png;base64,…" for an image attachment
+      media_data_url?: string; // "data:image/png;base64,…" — small pasted images
+      media_path?: string;      // storage path from a prior 'media-upload-url' (video / large files)
+      content_type?: string;    // media-upload-url: MIME of the file about to be uploaded
+      size?: number;            // media-upload-url: byte size, so we reject before uploading
       phone?: string;           // start-conversation: the recipient's number
       pinned?: boolean;         // set-pinned: true = pin to top, false = unpin
     } = {};
@@ -351,13 +415,61 @@ serve(async (req) => {
       });
     }
 
+    // ─── action: media-upload-url ────────────────────────────────────────
+    // Hand the browser a short-lived signed URL so it can PUT the file straight
+    // into the private cs-media bucket. Video would be ~16MB, and base64'ing
+    // that through this function as JSON (~21MB) risks a memory/body blowout —
+    // so the bytes never touch the edge function at all. The composer then
+    // sends the returned `path` with action:'send'.
+    if (action === 'media-upload-url') {
+      const convoId = body.conversation_id;
+      const contentType = (body.content_type || '').split(';')[0].trim().toLowerCase();
+      const size = Number(body.size) || 0;
+      if (!convoId || !contentType) {
+        return json({ success: false, error: 'conversation_id and content_type required' }, 400);
+      }
+
+      const { data: convo, error: convoErr } = await admin
+        .from('sms_conversations')
+        .select('id, opted_out, channel')
+        .eq('id', convoId)
+        .single();
+      if (convoErr || !convo) return json({ success: false, error: 'Conversation not found' }, 404);
+      if (convo.opted_out) {
+        return json({ success: false, error: 'Customer has opted out (STOP) — cannot send' }, 409);
+      }
+
+      const uploadCh = body.channel || convo.channel || 'sms';
+      const invalid = validateMedia(contentType, size, uploadCh);
+      if (invalid) return json({ success: false, error: invalid }, 400);
+
+      // Path is namespaced by conversation — the send action re-checks this
+      // prefix so a caller can't point a send at another thread's object.
+      const ext = MEDIA_EXT[contentType] || 'bin';
+      const path = `${convoId}/${crypto.randomUUID()}.${ext}`;
+      const { data: signed, error: signErr } = await admin.storage
+        .from(MEDIA_BUCKET)
+        .createSignedUploadUrl(path);
+      if (signErr || !signed?.signedUrl) {
+        return json({ success: false, error: `Could not create upload URL: ${signErr?.message || 'unknown'}` }, 500);
+      }
+      return json({
+        success: true,
+        path,
+        signed_url: signed.signedUrl,
+        token: signed.token,
+        content_type: contentType,
+      });
+    }
+
     // ─── action: send ────────────────────────────────────────────────────
     if (action === 'send') {
       const convoId = body.conversation_id;
       const text = (body.body || '').trim();
       const hasMedia = typeof body.media_data_url === 'string' && body.media_data_url.length > 0;
-      // A message needs SOMETHING to send — text or an image.
-      if (!convoId || (!text && !hasMedia)) {
+      const hasUploaded = typeof body.media_path === 'string' && body.media_path.length > 0;
+      // A message needs SOMETHING to send — text, an image, or a video.
+      if (!convoId || (!text && !hasMedia && !hasUploaded)) {
         return json({ success: false, error: 'conversation_id and body or media required' }, 400);
       }
 
@@ -382,15 +494,43 @@ serve(async (req) => {
       let mediaPath: string | null = null;
       let mediaType: string | null = null;
       let mediaSignedUrl: string | undefined;
-      if (hasMedia) {
+      if (hasUploaded) {
+        // The browser already PUT the bytes via 'media-upload-url'. Confirm the
+        // object really exists (and belongs to THIS conversation) before we send
+        // Twilio a link to it.
+        const path = body.media_path!;
+        if (!path.startsWith(`${convoId}/`)) {
+          return json({ success: false, error: 'media_path does not belong to this conversation' }, 400);
+        }
+        const slash = path.lastIndexOf('/');
+        const { data: listed, error: listErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .list(path.slice(0, slash), { search: path.slice(slash + 1), limit: 1 });
+        const obj = listed?.[0];
+        if (listErr || !obj) {
+          return json({ success: false, error: 'Uploaded attachment not found — please re-attach' }, 400);
+        }
+        const uploadedType = (obj.metadata?.mimetype || '').split(';')[0].trim().toLowerCase();
+        const uploadedSize = Number(obj.metadata?.size) || 0;
+        const invalid = validateMedia(uploadedType, uploadedSize, sendCh);
+        if (invalid) return json({ success: false, error: invalid }, 400);
+        mediaPath = path;
+        mediaType = uploadedType;
+        const { data: signed, error: signErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .createSignedUrl(mediaPath, MEDIA_SIGN_TTL);
+        if (signErr || !signed?.signedUrl) {
+          return json({ success: false, error: 'Could not sign media URL' }, 500);
+        }
+        mediaSignedUrl = signed.signedUrl;
+      } else if (hasMedia) {
         const decoded = decodeDataUrl(body.media_data_url!);
         if (!decoded) {
-          return json({ success: false, error: 'Attachment must be a base64 image data URL' }, 400);
+          return json({ success: false, error: 'Attachment must be a base64 image or video data URL' }, 400);
         }
-        if (decoded.bytes.length > 5_242_880) {
-          return json({ success: false, error: 'Attachment too large (max 5MB)' }, 413);
-        }
-        const ext = (decoded.contentType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const invalid = validateMedia(decoded.contentType, decoded.bytes.length, sendCh);
+        if (invalid) return json({ success: false, error: invalid }, 413);
+        const ext = MEDIA_EXT[decoded.contentType] || 'bin';
         mediaPath = `${convoId}/${crypto.randomUUID()}.${ext}`;
         mediaType = decoded.contentType;
         const { error: upErr } = await admin.storage
