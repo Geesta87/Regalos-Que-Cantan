@@ -488,9 +488,15 @@ Deno.serve(async (req) => {
 
     // Pick up work: pending requests not claimed by a human, or mid-pipeline ones.
     // NOTE: never touch status='in_progress' (a person owns those).
+    // FUTURE-ONLY + INTAKE GATE (owner spec 2026-07-27): only requests that went
+    // through the guided intake questionnaire (intake_complete=true) AND were
+    // created after active_since enter the pipeline. The old backlog stays manual.
+    const cutoff = state.active_since || new Date().toISOString();
     const { data: fresh } = await admin.from('song_fix_requests')
       .select('*')
       .eq('status', 'pending')
+      .eq('intake_complete', true)
+      .gt('created_at', cutoff)
       .is('auto_status', null)
       .order('created_at', { ascending: true })
       .limit(2);
