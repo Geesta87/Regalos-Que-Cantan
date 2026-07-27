@@ -633,8 +633,12 @@ export default function SmsInboxTab({ accessToken }) {
   // reject video from outright.
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;   // 5MB
   const MAX_VIDEO_BYTES = 16 * 1024 * 1024;  // 16MB — WhatsApp's ceiling
+  const MAX_AUDIO_BYTES = 16 * 1024 * 1024;  // 16MB — WhatsApp's ceiling; a song MP3 fits
   const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/3gpp', 'video/webm'];
+  // Audio (e.g. sending a finished song MP3 into the chat). WhatsApp-only, like
+  // video. Mirrors the backend allowlist + the cs-media bucket allowed_mime_types.
+  const ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/wav', 'audio/amr', 'audio/3gpp', 'audio/webm'];
   // Anything at/over this goes straight to Storage instead of being base64'd
   // through the edge function.
   const DIRECT_UPLOAD_OVER_BYTES = 1024 * 1024; // 1MB
@@ -643,6 +647,7 @@ export default function SmsInboxTab({ accessToken }) {
     const t = (type || '').split(';')[0].trim().toLowerCase();
     if (ALLOWED_IMAGE_TYPES.includes(t)) return 'image';
     if (ALLOWED_VIDEO_TYPES.includes(t)) return 'video';
+    if (ALLOWED_AUDIO_TYPES.includes(t)) return 'audio';
     return null;
   };
 
@@ -652,19 +657,19 @@ export default function SmsInboxTab({ accessToken }) {
     if (!file) return;
     const kind = kindOf(file.type);
     if (!kind) {
-      setAttachError('Only images (JPG, PNG, GIF, WebP) and videos (MP4, MOV, 3GP, WebM) can be attached.');
+      setAttachError('Only images (JPG, PNG, GIF, WebP), videos (MP4, MOV, 3GP, WebM), and audio (MP3, M4A, OGG, WAV) can be attached.');
       return;
     }
-    if (kind === 'video' && threadChannel !== 'whatsapp') {
-      setAttachError('Video can only be sent over WhatsApp — SMS carriers reject it.');
+    if ((kind === 'video' || kind === 'audio') && threadChannel !== 'whatsapp') {
+      setAttachError(`${kind === 'video' ? 'Video' : 'Audio'} can only be sent over WhatsApp — SMS carriers reject it.`);
       return;
     }
-    const max = kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    const max = kind === 'video' ? MAX_VIDEO_BYTES : kind === 'audio' ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
     if (file.size > max) {
       setAttachError(
-        kind === 'video'
-          ? `Video is too large (${(file.size / 1048576).toFixed(1)}MB — WhatsApp's limit is 16MB). Trim it or send a link instead.`
-          : 'Image is too large (max 5MB).'
+        kind === 'image'
+          ? 'Image is too large (max 5MB).'
+          : `${kind === 'video' ? 'Video' : 'Audio'} is too large (${(file.size / 1048576).toFixed(1)}MB — WhatsApp's limit is 16MB). Trim it or send a link instead.`
       );
       return;
     }
@@ -674,7 +679,7 @@ export default function SmsInboxTab({ accessToken }) {
       file,
       kind,
       url: URL.createObjectURL(file),
-      name: file.name || (kind === 'video' ? 'clip.mp4' : 'screenshot.png'),
+      name: file.name || (kind === 'video' ? 'clip.mp4' : kind === 'audio' ? 'song.mp3' : 'screenshot.png'),
     });
   };
 
@@ -795,9 +800,10 @@ export default function SmsInboxTab({ accessToken }) {
       } else {
         const payload = { action: 'send', conversation_id: selected.id, body, channel: threadChannel };
         if (fileToSend) {
-          // Video (and anything big) bypasses the function and goes straight to
-          // Storage; small pasted screenshots stay on the simpler inline path.
-          if (kindOf(fileToSend.type) === 'video' || fileToSend.size > DIRECT_UPLOAD_OVER_BYTES) {
+          // Video/audio (and anything big) bypasses the function and goes straight
+          // to Storage; small pasted screenshots stay on the simpler inline path.
+          const k = kindOf(fileToSend.type);
+          if (k === 'video' || k === 'audio' || fileToSend.size > DIRECT_UPLOAD_OVER_BYTES) {
             payload.media_path = await uploadDirect(selected.id, fileToSend);
           } else {
             payload.media_data_url = await fileToDataUrl(fileToSend);
@@ -1240,8 +1246,11 @@ export default function SmsInboxTab({ accessToken }) {
                   ? msgs.some((m) => m.status === 'draft')
                   : hasPendingDraftInChannel(c, channelTab);
                 const lastIsAudio = (last?.media_type || '').startsWith('audio/');
+                const lastOutbound = last?.direction === 'outbound';
                 const preview = lastIsAudio
-                  ? `🎤 ${last?.body || 'Voice message'}`
+                  ? (lastOutbound
+                      ? `🎵 ${last?.body || 'Audio'}`
+                      : `🎤 ${last?.body || 'Voice message'}`)
                   : (last?.body || '');
                 const active = c.id === selectedId;
                 return (
@@ -1468,11 +1477,11 @@ export default function SmsInboxTab({ accessToken }) {
                         }`}
                       >
                         {isAudio ? (
-                          // Voice message — clearly badged, with a play button and
-                          // the auto-transcript underneath.
+                          // Inbound = a customer voice note (auto-transcribed).
+                          // Outbound = an audio file we sent (e.g. a song MP3).
                           <div className="mb-1">
                             <div className={`text-[11px] font-semibold mb-1 flex items-center gap-1 ${out ? 'text-black/60' : 'text-amber-300'}`}>
-                              🎤 Voice message
+                              {out ? '🎵 Audio' : '🎤 Voice message'}
                             </div>
                             {m.media_url ? (
                               <audio controls src={m.media_url} className="w-56 max-w-full h-9" />
@@ -1510,16 +1519,16 @@ export default function SmsInboxTab({ accessToken }) {
                           </a>
                         ) : null}
                         {m.body && (
-                          isAudio ? (
-                            <p className={`text-sm whitespace-pre-wrap break-words italic ${out ? 'text-black/80' : 'text-gray-200'}`}>
+                          isAudio && !out ? (
+                            <p className={`text-sm whitespace-pre-wrap break-words italic text-gray-200`}>
                               “{m.body}”
                             </p>
                           ) : (
                             <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                           )
                         )}
-                        {isAudio && (
-                          <div className={`text-[9px] mt-0.5 ${out ? 'text-black/40' : 'text-gray-500'}`}>
+                        {isAudio && !out && (
+                          <div className={`text-[9px] mt-0.5 text-gray-500`}>
                             {m.body ? 'transcribed automatically' : 'transcribing…'}
                           </div>
                         )}
@@ -1595,11 +1604,13 @@ export default function SmsInboxTab({ accessToken }) {
                           playsInline
                           preload="metadata"
                         />
+                      ) : attachment.kind === 'audio' ? (
+                        <span className="h-14 w-14 flex items-center justify-center rounded-lg bg-black/40 text-2xl flex-shrink-0">🎵</span>
                       ) : (
                         <img src={attachment.url} alt="preview" className="h-14 w-14 object-cover rounded-lg" />
                       )}
                       <span className="text-xs text-gray-300 truncate max-w-[160px]">{attachment.name}</span>
-                      {attachment.kind === 'video' && (
+                      {(attachment.kind === 'video' || attachment.kind === 'audio') && (
                         <span className="text-[10px] text-gray-500 flex-shrink-0">
                           {attachment.file.size >= 1048576
                             ? `${(attachment.file.size / 1048576).toFixed(1)}MB`
@@ -1623,10 +1634,10 @@ export default function SmsInboxTab({ accessToken }) {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      // Video only offered on WhatsApp — SMS/MMS carriers reject it.
+                      // Video/audio only offered on WhatsApp — SMS/MMS carriers reject it.
                       accept={
                         threadChannel === 'whatsapp'
-                          ? 'image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/3gpp,video/webm'
+                          ? 'image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/3gpp,video/webm,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/amr,audio/3gpp,audio/webm'
                           : 'image/jpeg,image/png,image/gif,image/webp'
                       }
                       className="hidden"
@@ -1636,8 +1647,8 @@ export default function SmsInboxTab({ accessToken }) {
                       onClick={() => fileInputRef.current?.click()}
                       title={
                         threadChannel === 'whatsapp'
-                          ? 'Attach an image or video, up to 16MB (or paste/drag one in)'
-                          : 'Attach an image (or paste/drag one in) — video needs WhatsApp'
+                          ? 'Attach an image, video, or audio (e.g. a song MP3), up to 16MB (or paste/drag one in)'
+                          : 'Attach an image (or paste/drag one in) — video and audio need WhatsApp'
                       }
                       className="px-3 py-2.5 rounded-xl text-lg bg-white/5 text-gray-300 hover:bg-white/10 transition flex-shrink-0"
                     >
@@ -1677,9 +1688,9 @@ export default function SmsInboxTab({ accessToken }) {
                       Images send reliably over WhatsApp. Over SMS they go as MMS and may not be delivered by the carrier.
                     </div>
                   )}
-                  {attachment?.kind === 'video' && (
+                  {(attachment?.kind === 'video' || attachment?.kind === 'audio') && (
                     <div className="mt-1.5 text-[11px] text-gray-500">
-                      Sending as a WhatsApp video · uploads before it sends, so give it a moment.
+                      Sending as a WhatsApp {attachment.kind === 'video' ? 'video' : 'audio file'} · uploads before it sends, so give it a moment.
                     </div>
                   )}
                   {/* Cost / encoding hint — reinforces the Spanish-accent cost gotcha */}
