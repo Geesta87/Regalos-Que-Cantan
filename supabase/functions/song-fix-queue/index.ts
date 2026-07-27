@@ -37,10 +37,13 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
+const EMAIL_SENDER = 'hola@regalosquecantan.com';
 
 const AUDIO_BUCKET = 'audio';
 const OPEN_STATUSES = ['pending', 'in_progress', 'awaiting_approval'];
@@ -287,8 +290,9 @@ serve(async (req) => {
     }
 
     if (action === 'release') {
-      // OWNER-ONLY gate. Assistants can prepare fixes but never push them live.
-      if (role !== 'admin') return json({ success: false, error: 'Only the owner can release a fix to the customer.' }, 403);
+      // Release gate: owner OR Ivan (assistant) — owner decision 2026-07-27.
+      // Any admin_users row already passed the auth check above; both roles may
+      // listen to the staged candidate and push it live.
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);
       const { data: reqRow } = await admin.from('song_fix_requests').select('*').eq('id', id).single();
@@ -298,7 +302,70 @@ serve(async (req) => {
       }
       try {
         const out = await releaseCandidate(admin, reqRow, actor);
-        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id });
+        // ── Notify the customer (owner decision 2026-07-27): email + a WhatsApp
+        // message INTO their existing chat thread. Best-effort — a notify failure
+        // never rolls back the release; it's reported in the response instead.
+        const notified: Record<string, unknown> = { email: false, whatsapp: false };
+        try {
+          const songLink = `https://regalosquecantan.com/song/${reqRow.song_id}`;
+          const { data: song } = await admin.from('songs')
+            .select('email, recipient_name').eq('id', reqRow.song_id).single();
+          const recipient = song?.recipient_name || 'tu ser querido';
+
+          // Email (SendGrid, same pattern as notify-upsell-ready).
+          if (song?.email && SENDGRID_API_KEY) {
+            const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px">
+              <h2 style="color:#4f46e5">🎵 ¡Tu canción ya está corregida!</h2>
+              <p>Hicimos el cambio que nos pediste en la canción para <strong>${recipient}</strong>. Ya puedes escucharla aquí:</p>
+              <p style="text-align:center;margin:24px 0"><a href="${songLink}" style="background:#4f46e5;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold">Escuchar mi canción</a></p>
+              <p style="color:#666;font-size:13px">Gracias por tu paciencia — Regalos Que Cantan 🎶</p></div>`;
+            const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SENDGRID_API_KEY}` },
+              body: JSON.stringify({
+                personalizations: [{ to: [{ email: song.email }] }],
+                from: { email: EMAIL_SENDER, name: 'Regalos Que Cantan' },
+                subject: `✅ Tu canción para ${recipient} ya está corregida`,
+                content: [{ type: 'text/html', value: html }],
+                categories: ['song_fix_released'],
+              }),
+            });
+            notified.email = resp.ok;
+          }
+
+          // WhatsApp into the existing conversation thread (phone from the
+          // request's conversation, falling back to context.phone).
+          let phone: string | null = null;
+          let convId: string | null = reqRow.conversation_id || null;
+          if (convId) {
+            const { data: conv } = await admin.from('sms_conversations')
+              .select('id, phone').eq('id', convId).single();
+            phone = conv?.phone || null;
+          }
+          if (!phone && reqRow.context?.phone) phone = String(reqRow.context.phone);
+          if (phone) {
+            const waBody = `✅ ¡Listo! Ya corregimos tu canción para ${recipient}. Escúchala aquí: ${songLink} 🎶`;
+            const wa = await sendWhatsApp(phone, waBody);
+            notified.whatsapp = wa.ok;
+            // Log it in the inbox thread so the team sees it in the chat.
+            if (wa.ok && convId) {
+              try {
+                await admin.from('sms_messages').insert({
+                  conversation_id: convId,
+                  direction: 'outbound',
+                  body: waBody,
+                  status: wa.status || 'sent',
+                  twilio_sid: wa.sid || null,
+                  channel: 'whatsapp',
+                  ai_generated: true,
+                });
+              } catch { /* inbox log is best-effort */ }
+            }
+          }
+        } catch (notifyErr) {
+          console.error('release notify failed:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
+        }
+        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified });
       } catch (e) {
         return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
       }
@@ -336,6 +403,59 @@ serve(async (req) => {
       }).select('id').single();
       if (error) return json({ success: false, error: error.message }, 500);
       return json({ success: true, id: inserted?.id });
+    }
+
+    // ── INTAKE (owner spec 2026-07-27): guided questionnaire before automation ──
+    // Find the customer's songs by email or phone, filtered by paid, recent first.
+    if (action === 'song-search') {
+      const email = String(body.email || '').trim().toLowerCase();
+      const digits = String(body.phone || '').replace(/\D/g, '').slice(-10);
+      if (!email && !digits) return json({ success: false, error: 'email or phone required' }, 400);
+      const paid = body.paid !== false; // default: paid songs
+      let q = admin.from('songs')
+        .select('id, recipient_name, sender_name, genre, genre_name, created_at, paid, version, audio_url, email, phone')
+        .eq('paid', paid)
+        .order('created_at', { ascending: false })
+        .limit(15);
+      if (email && digits) q = q.or(`email.ilike.%${email}%,phone.ilike.%${digits}%`);
+      else if (email) q = q.ilike('email', `%${email}%`);
+      else q = q.ilike('phone', `%${digits}%`);
+      const { data: songs, error } = await q;
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, songs: songs || [] });
+    }
+
+    // Create fully-confirmed request(s) — one per selected song (1 or 2 for a
+    // bundle), marked intake_complete so the auto-worker may pick them up.
+    if (action === 'create-intake') {
+      const songIds: string[] = Array.isArray(body.songs) ? body.songs.filter(Boolean).slice(0, 2) : [];
+      const confirmed = String(body.confirmed_request || '').trim();
+      const email = String(body.email || '').trim() || null;
+      const phone = String(body.phone || '').trim() || null;
+      if (!songIds.length) return json({ success: false, error: 'Select at least one song.' }, 400);
+      if (!confirmed) return json({ success: false, error: 'Confirm what the customer wants fixed.' }, 400);
+      if (!email && !phone) return json({ success: false, error: 'email or phone required' }, 400);
+      const siblingGroup = crypto.randomUUID();
+      const ids: string[] = [];
+      for (const songId of songIds) {
+        const { data: inserted, error } = await admin.from('song_fix_requests').insert({
+          song_id: songId,
+          conversation_id: body.conversation_id || null,
+          customer_request: confirmed,
+          context: {
+            source: 'intake', created_by_email: actor,
+            source_message: body.source_message ? String(body.source_message) : null,
+            phone, customer_name: body.customer_name ? String(body.customer_name) : null,
+          },
+          intake: { email, phone, paid: body.paid !== false, confirmed_request: confirmed, sibling_group: songIds.length > 1 ? siblingGroup : null },
+          intake_complete: true,
+          status: 'pending',
+          created_by: actor,
+        }).select('id').single();
+        if (error) return json({ success: false, error: error.message }, 500);
+        ids.push(inserted!.id);
+      }
+      return json({ success: true, ids });
     }
 
     return json({ success: false, error: `Unknown action: ${action}` }, 400);

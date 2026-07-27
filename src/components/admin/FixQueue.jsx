@@ -144,17 +144,15 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
 
         {req.status === 'awaiting_approval' && (
           <>
-            {isAdmin ? (
-              <button
-                onClick={() => onRelease(req)}
-                disabled={busy}
-                className="py-1.5 px-3 bg-green-500 text-black rounded-lg text-xs font-semibold hover:bg-green-400 transition disabled:opacity-60"
-              >
-                {busy ? '⏳ Releasing…' : '✅ Confirm & replace the customer\'s song'}
-              </button>
-            ) : (
-              <span className="text-[11px] text-gray-400 italic">Waiting for the owner to confirm & release.</span>
-            )}
+            {/* Owner OR Ivan can release (owner decision 2026-07-27). Release
+                also auto-notifies the customer: email + WhatsApp in their thread. */}
+            <button
+              onClick={() => onRelease(req)}
+              disabled={busy}
+              className="py-1.5 px-3 bg-green-500 text-black rounded-lg text-xs font-semibold hover:bg-green-400 transition disabled:opacity-60"
+            >
+              {busy ? '⏳ Releasing…' : '✅ Confirm & replace the customer\'s song'}
+            </button>
             <button
               onClick={() => onWork(req)}
               disabled={busy}

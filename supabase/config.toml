@@ -956,3 +956,10 @@ verify_jwt = true
 # Never invoked by an external webhook or pg_cron.
 [functions.ads-coach]
 verify_jwt = true
+
+[functions.fix-song-auto]
+# Fix Song auto-worker (Phase 1): pg_cron tick walks song_fix_requests through
+# link → understand → plan → generate → validate → STAGE (human release gate
+# unchanged). Called by pg_cron (no JWT) → verify_jwt = false. Kill switch:
+# fix_auto_state.enabled (default false).
+verify_jwt = false

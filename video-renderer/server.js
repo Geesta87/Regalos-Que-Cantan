@@ -106,6 +106,22 @@ async function runSplice(spec) {
       const url = await uploadAudioToSupabase(outMp3, `songs/rehost-${id}.mp3`);
       return { url };
     }
+    // trim — END-CUT a whole take at trimAtS with a fade-out. NOT a splice: one
+    // continuous performance, just ended where the song actually ends. Rescues
+    // Suno replace-section takes that append a duplicated puente/final chorus.
+    if (spec.mode === 'trim') {
+      const src = path.join(dir, 'src.mp3');
+      await download(spec.pristine_url, src);
+      const cut = Math.max(1, +spec.trimAtS || 0);
+      const fade = Math.min(Math.max(+spec.fadeS || 1.8, 0.2), 5);
+      const outMp3 = path.join(dir, 'out.mp3');
+      execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', src,
+        '-t', String(cut),
+        '-af', `afade=t=out:st=${Math.max(0, cut - fade)}:d=${fade}`,
+        '-c:a', 'libmp3lame', '-b:a', '192k', outMp3], { stdio: ['ignore', 'ignore', 'inherit'] });
+      const url = await uploadAudioToSupabase(outMp3, `songs/trim-${id}.mp3`);
+      return { url };
+    }
     const pristine = path.join(dir, 'pristine.mp3');
     const resung = path.join(dir, 'resung.mp3');
     await download(spec.pristine_url, pristine);

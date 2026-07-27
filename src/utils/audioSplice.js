@@ -224,6 +224,31 @@ export async function spliceLineReplace({ pristineUrl, pStart, pEnd, resungUrl, 
   return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
 }
 
+// END-TRIM — cut a whole take at `endS` with a short fade-out. NOT a splice: no
+// seam, no stretching, no second audio source — it's one continuous Suno
+// performance, just ended where the song actually ends. Rescues replace-section
+// takes whose ONLY defect is a duplicated puente/final-chorus appended after the
+// true ending (Suno over-extension, observed 2026-07-27 on Luis Moreno's
+// corrido: takes sang both corrections perfectly, then repeated the ending and
+// got rejected as "demasiado larga").
+export async function trimTake({ url, endS, fadeS = 1.8 }) {
+  const ctx = getCtx();
+  let buf;
+  try { buf = await decode(url, ctx); } finally { if (ctx.close) ctx.close(); }
+  const sr = buf.sampleRate;
+  const len = Math.max(0.5, Math.min(endS, buf.duration));
+  const off = new OfflineAudioContext(buf.numberOfChannels >= 2 ? 2 : 1, Math.ceil(len * sr), sr);
+  const src = off.createBufferSource(); src.buffer = buf;
+  const g = off.createGain(); src.connect(g).connect(off.destination);
+  const xf = Math.max(0, Math.min(fadeS, len - 0.1));
+  g.gain.setValueAtTime(1, 0);
+  if (xf > 0) { g.gain.setValueAtTime(1, len - xf); g.gain.linearRampToValueAtTime(0, len); }
+  src.start(0, 0, len);
+  const rendered = await off.startRendering();
+  const blob = audioBufferToMp3Blob(rendered, 192);
+  return { blob, url: URL.createObjectURL(blob), durationS: rendered.duration };
+}
+
 // --- Pure detection helpers for the add-a-line recipe (unit-testable in Node) ---
 
 // Biggest instrumental gap (silence between sung words) inside [fromS, toS].

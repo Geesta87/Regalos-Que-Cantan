@@ -1194,6 +1194,30 @@ Deno.serve(async (req) => {
       return json({ ok: true, summary });
     }
 
+    // -----------------------------------------------------------------
+    // REPORT-OUTCOME — the async section-fix runs its poll + take-validation in
+    // the BROWSER (so it can't 504), which meant the FINAL verdict of a fix (did a
+    // clean take land, how many rounds it took, or why it failed) was never
+    // written server-side — only the initial 'submitted' row was. That left us
+    // blind to the real success rate. The frontend now calls this at the end of
+    // every surgical attempt so song_fix_attempts holds the true outcome. Best-
+    // effort, never blocks the UI. Reuses existing columns (no migration).
+    // -----------------------------------------------------------------
+    if (action === 'report-outcome') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId required' });
+      await logAttempt(supabase, {
+        song_id: songId,
+        action: 'client-outcome',
+        mode: (body?.mode === 'full' ? 'full' : 'section'),
+        outcome: String(body?.outcome || 'unknown').slice(0, 40),   // clean | failed | not-eligible | submit-failed
+        verified: typeof body?.verified === 'boolean' ? body.verified : null,
+        kie_task_id: body?.kieTaskId ? String(body.kieTaskId).slice(0, 120) : null,
+        detail: String(body?.detail || '').slice(0, 500),           // rounds used, fail reason, take type
+      });
+      return json({ ok: true });
+    }
+
     // Seamless splice — proxy to the in-house ffmpeg Cloud Run, which stitches the
     // re-sung line into the pristine song with duration-match + equal-power
     // crossfade + gain-match, and returns a hosted MP3 URL. The browser plays that
@@ -1202,7 +1226,7 @@ Deno.serve(async (req) => {
     // browser splice on the frontend if this errors.
     if (action === 'splice') {
       if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
-      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : 'line';
+      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : 'line';
       const spec: Record<string, unknown> = {
         mode,
         pristine_url: body?.pristineUrl,
@@ -1210,8 +1234,10 @@ Deno.serve(async (req) => {
       };
       if (mode === 'section') { spec.origCut = body?.origCut; spec.resungCut = body?.resungCut; }
       else if (mode === 'line') { spec.pStart = body?.pStart; spec.pEnd = body?.pEnd; spec.rStart = body?.rStart; spec.rEnd = body?.rEnd; spec.noStretch = !!body?.noStretch; }
+      else if (mode === 'trim') { spec.trimAtS = body?.trimAtS; spec.fadeS = body?.fadeS ?? 1.8; } // end-cut + fade (auto-worker's server-side trimTake)
       if (!spec.pristine_url) return json({ ok: false, error: 'pristineUrl required' });
-      if (mode !== 'rehost' && !spec.resung_url) return json({ ok: false, error: 'resungUrl required' });
+      if (mode !== 'rehost' && mode !== 'trim' && !spec.resung_url) return json({ ok: false, error: 'resungUrl required' });
+      if (mode === 'trim' && !(Number(spec.trimAtS) > 0)) return json({ ok: false, error: 'trimAtS required' });
       try {
         const r = await fetch(`${INHOUSE_RENDERER_URL}/splice-audio`, {
           method: 'POST',

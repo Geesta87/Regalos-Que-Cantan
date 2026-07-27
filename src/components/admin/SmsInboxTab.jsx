@@ -96,18 +96,22 @@ const DEMO_CONVERSATIONS = [
     last_message_at: '2026-06-09T17:43:00Z',
     messages: [
       { id: 'm1', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T16:10:00Z',
-        body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821' },
+        body: '¡Hola María! 🎵 Tu canción para Roberto ya está lista. Escúchala aquí: https://regalosquecantan.com/c/8821',
+        body_en: 'Hi María! 🎵 Your song for Roberto is ready. Listen to it here: https://regalosquecantan.com/c/8821' },
       { id: 'm2', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:40:00Z',
-        body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?' },
+        body: '¡Quedó hermosa! Pero la quiero un poco más romántica, ¿se puede cambiar?',
+        body_en: 'It came out beautiful! But I want it a little more romantic — can it be changed?' },
       // A WhatsApp VOICE NOTE — stored audio + Whisper auto-transcript. media_type
       // starting with 'audio/' is what flags it as a voice message in the UI.
       { id: 'm3', direction: 'inbound', status: 'received', created_at: '2026-06-09T17:42:00Z',
         media_type: 'audio/ogg', media_url: '/sounds/jarvis/new-sale-1.mp3',
-        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏' },
+        body: 'Es para nuestro aniversario el sábado, por favor que diga que la amo con todo mi corazón 🙏',
+        body_en: "It's for our anniversary on Saturday — please make it say that I love her with all my heart 🙏" },
       // AI draft that escalates (a change to a finished song → needs a human).
       { id: 'm4', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: true,
         created_at: '2026-06-09T17:43:00Z',
-        body: '¡Gracias María! ❤️ Con mucho gusto revisamos cómo hacerla más romántica para su aniversario. Un compañero del equipo te ayudará con el ajuste enseguida. 🙏' },
+        body: '¡Gracias María! ❤️ Con mucho gusto revisamos cómo hacerla más romántica para su aniversario. Un compañero del equipo te ayudará con el ajuste enseguida. 🙏',
+        body_en: 'Thank you, María! ❤️ We would be glad to look at making it more romantic for your anniversary. A teammate will help you with the adjustment right away. 🙏' },
     ],
   },
   {
@@ -130,11 +134,13 @@ const DEMO_CONVERSATIONS = [
       { id: 'm1', channel: 'sms', direction: 'outbound', status: 'delivered', created_at: '2026-06-09T14:50:00Z',
         body: 'Confirmamos tu pedido en Regalos Que Cantan ✅ Tu canción se está creando y te enviaremos el enlace por aquí en unos minutos.' },
       { id: 'm2', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T15:05:00Z',
-        body: '¿Cuánto tiempo tarda en estar lista?' },
+        body: '¿Cuánto tiempo tarda en estar lista?',
+        body_en: 'How long does it take to be ready?' },
       // AI draft on WhatsApp (the channel she just used) — ready to approve.
       { id: 'm3', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T15:06:00Z',
-        body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊' },
+        body: '¡Hola Ana! 🎵 Normalmente tu canción está lista en unos 3 minutos. Te enviamos el enlace por aquí en cuanto esté lista. 😊',
+        body_en: 'Hi Ana! 🎵 Your song is usually ready in about 3 minutes. We\'ll send the link right here as soon as it\'s ready. 😊' },
     ],
   },
   {
@@ -166,11 +172,13 @@ const DEMO_CONVERSATIONS = [
     last_message_at: '2026-06-09T18:12:00Z',
     messages: [
       { id: 'm1', channel: 'whatsapp', direction: 'inbound', status: 'received', created_at: '2026-06-09T18:10:00Z',
-        body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕' },
+        body: 'Hola, ya pagué mi canción pero no encuentro el enlace para descargarla 😕',
+        body_en: "Hi, I already paid for my song but I can't find the link to download it 😕" },
       // AI draft — would look up the order by this number and share the link.
       { id: 'm2', channel: 'whatsapp', direction: 'outbound', status: 'draft', ai_generated: true, needs_human: false,
         created_at: '2026-06-09T18:12:00Z',
-        body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️' },
+        body: '¡Hola Luis! 🎵 Aquí está tu canción para descargarla cuando quieras: https://regalosquecantan.com/s/ab7kq9 ¡Gracias por tu compra! ❤️',
+        body_en: 'Hi Luis! 🎵 Here is your song to download whenever you like: https://regalosquecantan.com/s/ab7kq9 Thank you for your purchase! ❤️' },
     ],
   },
   {
@@ -205,6 +213,11 @@ export default function SmsInboxTab({ accessToken }) {
   const [editingDraftId, setEditingDraftId] = useState(null);
   const [draftEdit, setDraftEdit] = useState('');
   const [draftBusy, setDraftBusy] = useState(false);
+  // "Revise in English" — a reviewer who doesn't write Spanish describes the
+  // change in English and the AI rewrites the Spanish draft.
+  const [revisingId, setRevisingId] = useState(null);
+  const [reviseText, setReviseText] = useState('');
+  const [reviseBusy, setReviseBusy] = useState(false);
   // Admin "Ask AI" copilot (private — about the open order).
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotMsgs, setCopilotMsgs] = useState([]); // { role, content }
@@ -438,6 +451,18 @@ export default function SmsInboxTab({ accessToken }) {
     [conversations, selectedId]
   );
 
+  // Render order for the open thread: pending AI drafts ALWAYS float to the
+  // bottom (right above the composer), no matter when they were created. Without
+  // this, a draft written before the customer's later messages gets buried in
+  // the middle of the thread and is easy to miss.
+  const orderedMessages = useMemo(() => {
+    const msgs = selected?.messages || [];
+    const drafts = msgs.filter((m) => m.status === 'draft');
+    if (!drafts.length) return msgs;
+    const rest = msgs.filter((m) => m.status !== 'draft');
+    return [...rest, ...drafts];
+  }, [selected?.messages]);
+
   // Which channel the OPEN thread is on. On the SMS/WhatsApp tabs it's the tab
   // itself; on the "Unread" and "Pinned" tabs (which mix both) it's the channel
   // of the conversation's most recent message — so replies go out on the right rail.
@@ -488,11 +513,23 @@ export default function SmsInboxTab({ accessToken }) {
     turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
 
   // Open the confirmation modal and kick off the AI summary in the background.
+  // INTAKE QUESTIONNAIRE (owner spec 2026-07-27): the modal now REQUIRES tying
+  // the request to the exact song(s) — email/phone → paid filter → pick 1-2 from
+  // a most-recent-first list — plus the confirmed fix text, before it can be
+  // sent. Fully-confirmed requests (intake_complete) are what the auto-fix
+  // worker is allowed to pick up.
   const openFixModal = async () => {
     if (!selected) return;
     const turns = buildTurns(selected);
     const exchange = turnsToText(turns);
-    setFixModal({ turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false });
+    setFixModal({
+      turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false,
+      // intake fields
+      phone: selected.phone || '', email: '', paid: true,
+      songs: null, searching: false, selectedSongs: [],
+    });
+    // Auto-search right away when we already have the phone from the thread.
+    if (!isDemo && selected.phone) searchIntakeSongs({ phone: selected.phone, email: '', paid: true });
     if (isDemo) {
       setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
       return;
@@ -519,12 +556,57 @@ export default function SmsInboxTab({ accessToken }) {
     }
   };
 
-  // Queue the (owner-confirmed) request into the Fix-Song pending list.
+  // Look up the customer's songs by email/phone + paid filter (recent first).
+  const searchIntakeSongs = async ({ phone, email, paid }) => {
+    if (!phone?.trim() && !email?.trim()) {
+      setFixModal((m) => (m ? { ...m, error: 'Enter the email or phone tied to the song first.' } : m));
+      return;
+    }
+    setFixModal((m) => (m ? { ...m, searching: true, error: '' } : m));
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'song-search', phone: phone || null, email: email || null, paid: paid !== false }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `song-search ${res.status}`);
+      setFixModal((m) => (m ? { ...m, searching: false, songs: data.songs || [], selectedSongs: [] } : m));
+    } catch (e) {
+      setFixModal((m) => (m ? { ...m, searching: false, songs: [], error: `Song search failed: ${e.message}` } : m));
+    }
+  };
+
+  // Toggle a song in the 1-2 selection.
+  const toggleIntakeSong = (id) => {
+    setFixModal((m) => {
+      if (!m) return m;
+      const cur = m.selectedSongs || [];
+      if (cur.includes(id)) return { ...m, selectedSongs: cur.filter((x) => x !== id) };
+      if (cur.length >= 2) return { ...m, error: 'Max 2 songs (a bundle). Deselect one first.' };
+      return { ...m, selectedSongs: [...cur, id], error: '' };
+    });
+  };
+
+  // Queue the fully-confirmed request(s) — one per selected song. The intake
+  // (song tied + paid confirmed + request confirmed) is what authorizes the
+  // auto-fix worker to run it; a human still releases at the end.
   const submitFixRequest = async () => {
     if (!fixModal || !selected) return;
     const customerRequest = (fixModal.summary || '').trim();
     if (!customerRequest) {
       setFixModal((m) => (m ? { ...m, error: 'Add a short note of what to fix first.' } : m));
+      return;
+    }
+    if (!(fixModal.selectedSongs || []).length) {
+      setFixModal((m) => (m ? { ...m, error: 'Select the song (or both bundle versions) to fix — search by email or phone above.' } : m));
       return;
     }
     if (isDemo) {
@@ -543,13 +625,15 @@ export default function SmsInboxTab({ accessToken }) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'create',
+            action: 'create-intake',
+            songs: fixModal.selectedSongs,
+            email: (fixModal.email || '').trim() || null,
+            phone: (fixModal.phone || '').trim() || null,
+            paid: fixModal.paid !== false,
+            confirmed_request: customerRequest,      // AI summary, human-confirmed
             conversation_id: selected.id || null,
-            customer_request: customerRequest,      // AI summary, owner-confirmed
             source_message: fixModal.exchange,       // full chat exchange, for review
-            phone: selected.phone || null,
             customer_name: selected.customer_name || null,
-            song_id: selected.song_id || null,       // usually null → owner links it in Fix Song
           }),
         }
       );
@@ -961,10 +1045,54 @@ export default function SmsInboxTab({ accessToken }) {
     }
   };
 
+  // Revise an AI draft from a plain-English instruction → the AI rewrites the
+  // Spanish and we refresh the English gloss in place. Stays a draft.
+  const handleReviseDraft = async (msg) => {
+    const instruction = reviseText.trim();
+    if (!selected || reviseBusy || !instruction) return;
+    setReviseBusy(true);
+    try {
+      if (isDemo) {
+        // No backend in demo mode — show it works without a real rewrite.
+        await new Promise((r) => setTimeout(r, 300));
+        alert('“Revise in English” rewrites the draft once the feature is deployed. This is a demo thread.');
+        return;
+      }
+      const data = await postToSmsAdmin({
+        action: 'revise-draft',
+        conversation_id: selected.id,
+        message_id: msg.id,
+        instruction,
+      });
+      const updated = data?.message;
+      if (updated) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selected.id
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) =>
+                    m.id === msg.id ? { ...m, body: updated.body, body_en: updated.body_en } : m
+                  ),
+                }
+              : c
+          )
+        );
+        setRevisingId(null);
+        setReviseText('');
+      }
+    } catch (e) {
+      alert(`Could not revise: ${e.message}`);
+    } finally {
+      setReviseBusy(false);
+    }
+  };
+
   const switchChannel = (ch) => {
     setChannelTab(ch);
     setSelectedId(null);
     setEditingDraftId(null);
+    setRevisingId(null);
   };
 
   // Private admin copilot — ask the AI about the open order.
@@ -1247,11 +1375,14 @@ export default function SmsInboxTab({ accessToken }) {
                   : hasPendingDraftInChannel(c, channelTab);
                 const lastIsAudio = (last?.media_type || '').startsWith('audio/');
                 const lastOutbound = last?.direction === 'outbound';
+                // Prefer the English translation in the compact preview so an
+                // assistant who doesn't read Spanish can still triage the list.
+                const lastText = last?.body_en || last?.body || '';
                 const preview = lastIsAudio
                   ? (lastOutbound
-                      ? `🎵 ${last?.body || 'Audio'}`
-                      : `🎤 ${last?.body || 'Voice message'}`)
-                  : (last?.body || '');
+                      ? `🎵 ${lastText || 'Audio'}`
+                      : `🎤 ${lastText || 'Voice message'}`)
+                  : lastText;
                 const active = c.id === selectedId;
                 return (
                   <button
@@ -1368,7 +1499,7 @@ export default function SmsInboxTab({ accessToken }) {
 
               {/* Messages */}
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
-                {selected.messages.map((m) => {
+                {orderedMessages.map((m) => {
                   // Discarded drafts are hidden from the thread.
                   if (m.status === 'discarded') return null;
 
@@ -1387,6 +1518,9 @@ export default function SmsInboxTab({ accessToken }) {
                             {mCh === 'whatsapp' ? '🟢 vía WhatsApp' : '💬 vía SMS'} · {outX ? 'enviado' : 'recibido'} {formatTime(m.created_at)}
                           </div>
                           <p className="text-xs whitespace-pre-wrap break-words text-gray-300">{m.body}</p>
+                          {m.body_en && m.body_en !== m.body && (
+                            <p className="text-xs mt-1 whitespace-pre-wrap break-words text-sky-200/90">🇬🇧 {m.body_en}</p>
+                          )}
                         </div>
                       </div>
                     );
@@ -1421,6 +1555,29 @@ export default function SmsInboxTab({ accessToken }) {
                             <p className="text-sm whitespace-pre-wrap break-words text-white">{m.body}</p>
                           )}
 
+                          {/* English meaning of the draft, so an assistant who
+                              doesn't read Spanish knows exactly what will be sent
+                              before approving. The customer still receives the
+                              Spanish above. */}
+                          {m.body_en && m.body_en !== m.body && (
+                            <div className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-300">
+                                  🇬🇧 English — what this says (not the sent text)
+                                </span>
+                                <button
+                                  onClick={() => { setEditingDraftId(null); setDraftEdit(''); setRevisingId(m.id); setReviseText(''); }}
+                                  disabled={draftBusy}
+                                  className="shrink-0 text-[11px] font-semibold text-purple-100 bg-purple-500/30 hover:bg-purple-500/50 rounded px-2 py-0.5 transition whitespace-nowrap"
+                                  title="Type a change in English — the AI rewrites the Spanish"
+                                >
+                                  ✏️ Change in English
+                                </button>
+                              </div>
+                              <p className="text-sm whitespace-pre-wrap break-words leading-snug text-sky-50">{m.body_en}</p>
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                             <button
                               onClick={() => handleApproveDraft(m)}
@@ -1439,11 +1596,26 @@ export default function SmsInboxTab({ accessToken }) {
                               </button>
                             ) : (
                               <button
-                                onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); }}
+                                onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); setRevisingId(null); }}
                                 disabled={draftBusy}
                                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                                title="Edit the Spanish text directly (for Spanish speakers)"
                               >
-                                ✏️ Edit
+                                ✏️ Edit Spanish
+                              </button>
+                            )}
+                            {!editing && (
+                              <button
+                                onClick={() => { setRevisingId(revisingId === m.id ? null : m.id); setReviseText(''); }}
+                                disabled={draftBusy}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                  revisingId === m.id
+                                    ? 'bg-purple-500/50 text-white'
+                                    : 'bg-purple-500/30 text-purple-50 hover:bg-purple-500/45'
+                                }`}
+                                title="Type a change in English — the AI rewrites the Spanish"
+                              >
+                                🇬🇧 Change in English
                               </button>
                             )}
                             <button
@@ -1454,6 +1626,40 @@ export default function SmsInboxTab({ accessToken }) {
                               Discard
                             </button>
                           </div>
+
+                          {/* Revise from a plain-English instruction. Ivan types
+                              what to change; the AI rewrites the Spanish above and
+                              refreshes the English. The reply stays a draft. */}
+                          {revisingId === m.id && (
+                            <div className="mt-2.5 rounded-lg border border-purple-400/30 bg-black/20 p-2.5">
+                              <label className="block text-[11px] font-semibold text-purple-100 mb-1">
+                                Tell the AI what to change (in English)
+                              </label>
+                              <textarea
+                                value={reviseText}
+                                onChange={(e) => setReviseText(e.target.value)}
+                                rows={2}
+                                placeholder="e.g. Make it warmer and mention the anniversary is Saturday"
+                                className="w-full resize-none px-3 py-2 bg-white/5 border border-white/15 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-purple-400/50"
+                              />
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  onClick={() => handleReviseDraft(m)}
+                                  disabled={reviseBusy || !reviseText.trim()}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-500 text-white hover:bg-purple-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  {reviseBusy ? 'Rewriting…' : '↻ Rewrite in Spanish'}
+                                </button>
+                                <button
+                                  onClick={() => { setRevisingId(null); setReviseText(''); }}
+                                  disabled={reviseBusy}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {selected.opted_out && (
                             <p className="text-[10px] text-red-300 mt-1.5">
                               Customer opted out — this draft can't be sent.
@@ -1526,6 +1732,19 @@ export default function SmsInboxTab({ accessToken }) {
                           ) : (
                             <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
                           )
+                        )}
+                        {/* English gloss — its OWN blue-tinted, labeled panel so
+                            it's visually separate from the Spanish (the Spanish is
+                            what's sent; the English is a reading aid only). */}
+                        {m.body && m.body_en && m.body_en !== m.body && (
+                          <div className={`mt-2 rounded-lg px-2.5 py-1.5 border ${out ? 'bg-sky-50/85 border-sky-700/30' : 'bg-sky-500/10 border-sky-400/25'}`}>
+                            <div className={`text-[10px] font-semibold uppercase tracking-wide mb-0.5 ${out ? 'text-sky-800' : 'text-sky-300'}`}>
+                              🇬🇧 English · not sent
+                            </div>
+                            <p className={`text-sm whitespace-pre-wrap break-words leading-snug ${out ? 'text-sky-950' : 'text-sky-50'}`}>
+                              {m.body_en}
+                            </p>
+                          </div>
                         )}
                         {isAudio && !out && (
                           <div className={`text-[9px] mt-0.5 text-gray-500`}>
@@ -1794,7 +2013,7 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
                 <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
-                <p className="text-xs text-gray-400 mb-4">Open the <strong>Fix Song</strong> tab to find the customer's song and make the correction.</p>
+                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When automation is on, the fix runs by itself and you'll get a WhatsApp when it's ready to approve — otherwise it's waiting in the <strong>Fix Song</strong> tab.</p>
                 <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
               </div>
             ) : (
@@ -1835,9 +2054,85 @@ export default function SmsInboxTab({ accessToken }) {
                   )}
                 </div>
 
+                {/* ── INTAKE: tie the request to the exact song(s) ─────────────
+                    1) email/phone (required) → 2) paid? → 3) pick 1-2 songs from
+                    the most-recent-first list. Required before sending. */}
+                <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">1 · Find the customer's song (email or phone required)</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    value={fixModal.phone || ''}
+                    onChange={(e) => setFixModal((m) => (m ? { ...m, phone: e.target.value } : m))}
+                    placeholder="Phone"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-xs focus:outline-none focus:border-amber-400/50"
+                  />
+                  <input
+                    value={fixModal.email || ''}
+                    onChange={(e) => setFixModal((m) => (m ? { ...m, email: e.target.value } : m))}
+                    placeholder="Email"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 text-xs focus:outline-none focus:border-amber-400/50"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] text-gray-500">Paid order?</span>
+                  {[true, false].map((v) => (
+                    <button
+                      key={String(v)}
+                      onClick={() => { setFixModal((m) => (m ? { ...m, paid: v } : m)); searchIntakeSongs({ phone: fixModal.phone, email: fixModal.email, paid: v }); }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${((fixModal.paid !== false) === v) ? 'bg-amber-400 text-black' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+                    >
+                      {v ? '✅ Paid' : 'Not paid'}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => searchIntakeSongs({ phone: fixModal.phone, email: fixModal.email, paid: fixModal.paid })}
+                    disabled={fixModal.searching}
+                    className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold bg-indigo-500 text-white hover:bg-indigo-400 transition disabled:opacity-50"
+                  >
+                    {fixModal.searching ? 'Searching…' : '🔍 Find songs'}
+                  </button>
+                </div>
+                {Array.isArray(fixModal.songs) && (
+                  <div className="mb-3">
+                    <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+                      2 · Select the song to fix (1, or both bundle versions) — {fixModal.selectedSongs.length}/2 selected
+                    </label>
+                    {fixModal.songs.length === 0 ? (
+                      <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                        No {fixModal.paid !== false ? 'paid' : 'unpaid'} songs found for that email/phone. Check the info or flip the Paid filter.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                        {fixModal.songs.map((s) => {
+                          const sel = fixModal.selectedSongs.includes(s.id);
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => toggleIntakeSong(s.id)}
+                              className={`w-full text-left rounded-xl px-3 py-2 border transition ${sel ? 'bg-amber-500/15 border-amber-400/60' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-white font-medium truncate">
+                                  {sel ? '☑' : '☐'} {s.recipient_name || '(no name)'}
+                                  {s.version != null && <span className="text-gray-500 font-normal"> · v{s.version}</span>}
+                                </p>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.paid ? 'bg-green-500/15 text-green-300' : 'bg-white/10 text-gray-400'}`}>{s.paid ? 'PAID' : 'unpaid'}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-500">
+                                {(s.genre_name || s.genre || '').toString().replace(/_/g, ' ')} · {s.created_at ? new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                                {s.email ? ` · ${s.email}` : ''}
+                              </p>
+                              {sel && s.audio_url && <audio controls className="w-full mt-1 h-8" src={s.audio_url} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* AI summary of what to fix — editable */}
                 <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1 flex items-center gap-2">
-                  What to fix (AI summary — edit if needed)
+                  3 · What to fix (AI summary — confirm or edit)
                   {fixModal.loading && <span className="text-indigo-300 normal-case tracking-normal">✨ summarizing…</span>}
                 </label>
                 <textarea
@@ -1855,7 +2150,7 @@ export default function SmsInboxTab({ accessToken }) {
                   <button onClick={() => setFixModal(null)} disabled={fixModal.submitting} className="px-3 py-2 rounded-xl text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 transition disabled:opacity-40">Cancel</button>
                   <button
                     onClick={submitFixRequest}
-                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim()}
+                    disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim() || !(fixModal.selectedSongs || []).length}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
