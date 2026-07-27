@@ -1490,8 +1490,18 @@ export default function SmsInboxTab({ accessToken }) {
                               Spanish above. */}
                           {m.body_en && m.body_en !== m.body && (
                             <div className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2">
-                              <div className="text-[11px] font-semibold uppercase tracking-wide text-sky-300 mb-1">
-                                🇬🇧 English — what this says (not the sent text)
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-300">
+                                  🇬🇧 English — what this says (not the sent text)
+                                </span>
+                                <button
+                                  onClick={() => { setEditingDraftId(null); setDraftEdit(''); setRevisingId(m.id); setReviseText(''); }}
+                                  disabled={draftBusy}
+                                  className="shrink-0 text-[11px] font-semibold text-purple-100 bg-purple-500/30 hover:bg-purple-500/50 rounded px-2 py-0.5 transition whitespace-nowrap"
+                                  title="Type a change in English — the AI rewrites the Spanish"
+                                >
+                                  ✏️ Change in English
+                                </button>
                               </div>
                               <p className="text-sm whitespace-pre-wrap break-words leading-snug text-sky-50">{m.body_en}</p>
                             </div>
@@ -1518,23 +1528,23 @@ export default function SmsInboxTab({ accessToken }) {
                                 onClick={() => { setEditingDraftId(m.id); setDraftEdit(m.body); setRevisingId(null); }}
                                 disabled={draftBusy}
                                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 text-gray-200 hover:bg-white/15 transition"
-                                title="Edit the Spanish directly"
+                                title="Edit the Spanish text directly (for Spanish speakers)"
                               >
-                                ✏️ Edit
+                                ✏️ Edit Spanish
                               </button>
                             )}
                             {!editing && (
                               <button
                                 onClick={() => { setRevisingId(revisingId === m.id ? null : m.id); setReviseText(''); }}
                                 disabled={draftBusy}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                                   revisingId === m.id
-                                    ? 'bg-purple-500/40 text-white'
-                                    : 'bg-purple-500/20 text-purple-100 hover:bg-purple-500/30'
+                                    ? 'bg-purple-500/50 text-white'
+                                    : 'bg-purple-500/30 text-purple-50 hover:bg-purple-500/45'
                                 }`}
-                                title="Describe a change in English — the AI rewrites the Spanish"
+                                title="Type a change in English — the AI rewrites the Spanish"
                               >
-                                🇬🇧 Revise in English
+                                🇬🇧 Change in English
                               </button>
                             )}
                             <button
