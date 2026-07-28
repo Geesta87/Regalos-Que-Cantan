@@ -459,14 +459,9 @@ function buildEmailHeroSvg(photoUri: string, logoUri: string | null, spec: AdSpe
   const blockTop = y;
   let out = '';
 
-  // The hosted Montserrat.ttf is a VARIABLE font and resvg renders its default
-  // (Thin) instance — font-weight="700" alone comes out hairline and vanishes on
-  // a photo. Painting a matching stroke around the glyphs fakes the weight back.
-  const faux = (color: string, size: number) => `stroke="${color}" stroke-width="${(size * 0.05).toFixed(2)}" paint-order="stroke"`;
-
   if (kicker) {
     y += kickSize;
-    out += `<text x="${x}" y="${y}"${anchor} font-family="Montserrat" font-weight="700" font-size="${kickSize}" letter-spacing="${Math.round(kickSize * 0.28)}" fill="${accent}" ${faux(accent, kickSize)}>${esc(kicker.toUpperCase())}</text>`;
+    out += `<text x="${x}" y="${y}"${anchor} font-family="Montserrat" font-weight="700" font-size="${kickSize}" letter-spacing="${Math.round(kickSize * 0.28)}" fill="${accent}">${esc(kicker.toUpperCase())}</text>`;
     y += gapK;
   }
   for (const line of lines) {
@@ -485,7 +480,7 @@ function buildEmailHeroSvg(photoUri: string, logoUri: string | null, spec: AdSpe
     const ctaW = Math.round(cta.length * ctaFont * 0.64) + ctaFont * 3;
     const ctaX = center ? Math.round((CW - ctaW) / 2) : mX;
     out += `<rect x="${ctaX}" y="${y}" width="${ctaW}" height="${ctaH}" rx="${Math.round(ctaH / 2)}" fill="${accent}"/>`
-      + `<text x="${ctaX + Math.round(ctaW / 2)}" y="${y + Math.round(ctaH * 0.66)}" text-anchor="middle" font-family="Montserrat" font-weight="700" font-size="${ctaFont}" letter-spacing="1" fill="${ink}" ${faux(ink, ctaFont)}>${esc(cta)}</text>`;
+      + `<text x="${ctaX + Math.round(ctaW / 2)}" y="${y + Math.round(ctaH * 0.66)}" text-anchor="middle" font-family="Montserrat" font-weight="700" font-size="${ctaFont}" letter-spacing="1" fill="${ink}">${esc(cta)}</text>`;
   }
 
   // Legibility plate: a soft dark band behind the TEXT BLOCK ONLY. Without it a
@@ -561,10 +556,15 @@ export async function cropPhoto(
 export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
   try {
     await ensureWasm();
-    const [photoFetched, logo, mont, pf, pfi, anton, dms, dmsi] = await Promise.all([
+    const [photoFetched, logo, mont, montB, pf, pfi, anton, dms, dmsi] = await Promise.all([
       spec.imageBytes ? Promise.resolve(spec.imageBytes) : getBytes(`photo:${spec.imageUrl}`, spec.imageUrl || ''),
       getBytes('logo', LOGO_URL),
       getBytes('f:mont', `${FONT_BASE}/Montserrat.ttf`),
+      // Static Montserrat Bold (weight 700). REQUIRED: Montserrat.ttf is a
+      // VARIABLE font and resvg only renders its default (Thin) instance, so
+      // every font-weight="700" label — kickers, CTA pills, feature rows, on
+      // ads as well as email banners — came out hairline until this was added.
+      getBytes('f:montb', `${FONT_BASE}/MontserratBold.ttf`),
       getBytes('f:pf', `${FONT_BASE}/PlayfairDisplay.ttf`),
       getBytes('f:pfi', `${FONT_BASE}/PlayfairDisplay-Italic.ttf`),
       getBytes('f:anton', `${FONT_BASE}/Anton.ttf`),  // heavy display font for the poster template
@@ -603,7 +603,7 @@ export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
       ? buildEmailHeroSvg(photoUri, logoUri, spec, CW, H)
       : buildSvg(photoUri, logoUri, spec, H);
 
-    const fontBuffers = [mont, pf, pfi, anton, dms, dmsi].filter(Boolean) as Uint8Array[];
+    const fontBuffers = [mont, montB, pf, pfi, anton, dms, dmsi].filter(Boolean) as Uint8Array[];
     const resvg = new Resvg(svg, {
       font: { fontBuffers, loadSystemFonts: false, defaultFontFamily: 'Montserrat' },
       fitTo: { mode: 'width', value: CW },
