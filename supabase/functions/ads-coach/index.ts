@@ -545,24 +545,36 @@ async function runChatWithTools(system: string, convo: any[], admin: any): Promi
           toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Build limit: ONE finished ad per message (each build is expensive and slow). Present the ad you already built, describe this second concept in words, and tell the owner to say "build it" to get it next.', is_error: true });
           continue;
         }
-        built++;
         const inp = tu.input || {};
         let refUrl = '';
         if (inp.variation_of_winner) { const top = await topAdImageUrl(); refUrl = top.url || ''; }
         const { url, qcNote } = await generateAdImage(admin, String(inp.image_prompt || '').slice(0, 3800), refUrl, inp, startedAt);
         if (url) {
+          // Only a SUCCESSFUL build consumes the one-ad-per-turn budget. (A failed
+          // attempt used to count too, so the retry was blocked and the owner got a
+          // "build limit" apology with zero ads — the 2026-07-27 failure.)
+          built++;
           images.push(url);
           made.push({ url, concept: String(inp.concept_label || '').slice(0, 200), why_it_wins: String(inp.why_it_wins || '').slice(0, 500), distinct_from: String(inp.distinct_from || '').slice(0, 300), ad_copy: { template: inp.template, headline_lines: inp.headline_lines, accent_word: inp.accent_word, subhead: inp.subhead, cta: inp.cta, price: inp.price, song_title: inp.song_title }, qc_note: qcNote });
           toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Generated the finished ad "${inp.concept_label || 'concept'}" (headline + copy typeset) and showed it to the owner. Vision QC result: ${qcNote}. If QC flagged a remaining concern, tell the owner honestly in one line.` });
+        } else {
+          // Failed attempt: leave the budget intact and let the model retry once if
+          // there's wall-clock room (a full build can take ~100s; past ~2 min we
+          // stop so the request never dies mid-turn with nothing to show).
+          const canRetry = (Date.now() - startedAt) < 120_000;
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: canRetry
+            ? `Image generation failed (${qcNote}). This did NOT count against the build limit — retry ONCE now with a simpler, shorter image prompt.`
+            : `Image generation failed (${qcNote}) and there is no time left to retry this turn. Tell the owner plainly the build failed and that asking again next message retries fresh.`, is_error: true });
         }
-        else toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Image generation failed this time (${qcNote}).`, is_error: true });
       } else {
         toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: KIE_IMAGE_ENABLED ? 'Unknown tool.' : 'Image generation is not configured.', is_error: true });
       }
     }
     messages.push({ role: 'user', content: toolResults });
   }
-  return { text: 'I created the image(s) above.', images, made };
+  // Round cap reached without a final text turn — say what actually happened
+  // instead of claiming an image exists when the build failed.
+  return { text: images.length ? 'I created the image(s) above.' : 'The ad build did not complete this turn — say "build it" and I will retry fresh next message.', images, made };
 }
 
 // Pull the single most concrete recommendation out of a coach reply, cheaply,
@@ -696,10 +708,14 @@ serve(async (req: Request) => {
     if (!META_ACCESS_TOKEN) return json({ success: false, error: 'META_ACCESS_TOKEN not set — the coach needs the Meta token to read your account.' }, 200);
     // Accept the browser-held conversation. Keep the last 20 turns to bound tokens.
     const incoming = Array.isArray(body.messages) ? body.messages : [];
+    // Older turns stay tight (4k) to bound tokens, but the LATEST message gets a
+    // much higher cap: the owner pastes whole proposals/audits into chat, and the
+    // old uniform 4k cap silently cut one mid-document (2026-07-27) — the coach
+    // analyzed ~2/3 of it and nobody knew.
     const convo = incoming
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
       .slice(-20)
-      .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+      .map((m: any, i: number, arr: any[]) => ({ role: m.role, content: String(m.content).slice(0, i === arr.length - 1 ? 30000 : 4000) }));
     if (!convo.length || convo[convo.length - 1].role !== 'user') {
       return json({ success: false, error: 'Ask the coach a question.' }, 400);
     }
@@ -749,12 +765,28 @@ serve(async (req: Request) => {
       promoNotes = cfg?.promo_notes || '';
     } catch (_e) { /* optional */ }
 
+    // TRACK-RECORD FEEDBACK LOOP: the coach sees its own past recommendations
+    // and the owner's grades, so it builds on wins and never blindly repeats a
+    // call already marked wrong. (Before this, grades were stored but never fed
+    // back — grading had zero effect on the advice.) Fail-soft.
+    let trackBlock = '';
+    try {
+      const { data: pastCalls } = await admin.from('ads_coach_calls')
+        .select('recommendation, status, created_at')
+        .neq('status', 'dismissed')
+        .order('created_at', { ascending: false }).limit(20);
+      if (pastCalls?.length) {
+        const graded = pastCalls.filter((c: any) => c.status === 'correct' || c.status === 'wrong').length;
+        trackBlock = `\n\nYOUR TRACK RECORD — recommendations you already made; the owner grades each one correct/wrong in the panel ("open" = not graded yet):\n${pastCalls.map((c: any) => `- [${c.status}] ${String(c.created_at).slice(0, 10)}: ${c.recommendation}`).join('\n')}\nUse it: build on calls marked correct; never repeat a call marked wrong unless you name what changed; don't re-pitch an open call as if it were a new idea.${graded === 0 ? ' Every call is still ungraded — when it fits naturally (NOT every turn), remind the owner in one short line that grading past calls makes your advice sharper.' : ''}`;
+      }
+    } catch (_e) { /* optional */ }
+
     const system = `${COACH_SYSTEM}
 
 WHAT THIS BUSINESS SELLS (so your creative + strategy advice fits the real product, not generic DTC):
 ${brandContext(promoNotes)}
 
-${contextBlock}
+${contextBlock}${trackBlock}
 
 ${metaBrainContext('HOW META DELIVERS — reason with these mechanics (respect the confidence tags):')}
 
@@ -805,7 +837,8 @@ AD FACTORY MODE — you are in the dedicated ad-building workspace. This OVERRID
     // frontend re-sends prior turns each call, so saving only the latest avoids dupes.
     try {
       await admin.from('ads_coach_messages').insert([
-        { role: 'user', content: userQuestion.slice(0, 8000), thread },
+        // 30k (not 8k) so a pasted document survives into history intact
+        { role: 'user', content: userQuestion.slice(0, 30000), thread },
         { role: 'assistant', content: reply.slice(0, 8000), thread },
       ]);
     } catch (_e) { /* memory is best-effort — never lose the answer over a write */ }
