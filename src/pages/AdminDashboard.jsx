@@ -5948,14 +5948,21 @@ export default function AdminDashboard() {
                             </div>
                           )}
 
-                          {/* Combined link for song pairs (same email + recipient) */}
+                          {/* Combined link for song pairs (same email + recipient).
+                              Pair against the rendered list (server search covers the
+                              whole DB) AND the local cache — `songs` only holds the
+                              recent working set, so older bundles lost their Both
+                              buttons once they aged out of it. */}
                           {hasAudio && (() => {
-                            const pairSongs = songs.filter(s => 
-                              s.id !== song.id && 
-                              s.audio_url && 
-                              s.email === song.email && 
-                              s.recipient_name === song.recipient_name
-                            );
+                            const isPair = s =>
+                              s.id !== song.id &&
+                              s.audio_url &&
+                              s.email === song.email &&
+                              s.recipient_name === song.recipient_name;
+                            const pairMap = new Map();
+                            [...lookupFiltered.filter(isPair), ...songs.filter(isPair)]
+                              .forEach(s => { if (!pairMap.has(s.id)) pairMap.set(s.id, s); });
+                            const pairSongs = [...pairMap.values()];
                             if (pairSongs.length === 0) return null;
                             const combinedIds = [song.id, ...pairSongs.map(s => s.id)].join(',');
                             const combinedPreviewLink = `${window.location.origin}/listen?song_ids=${combinedIds}`;
