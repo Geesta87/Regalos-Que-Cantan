@@ -29,6 +29,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { brandContext, OFFERS } from '../_shared/brand-brief.ts';
 import { kiePhotoBytes, KIE_IMAGE_ENABLED } from '../_shared/kie-image.ts';
+import { renderAd, cropPhoto } from '../_shared/render-ad.ts';
 import { buildUnsubscribeHeaders, buildUnsubscribeUrl } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 
@@ -159,7 +160,21 @@ const DESIGN_PHILOSOPHY = `DESIGN PHILOSOPHY — Regalos Que Cantan is a PREMIUM
 - EMOJI: at most ONE small, tasteful glyph in the entire email (or none). Prefer typographic flourishes (a small ♪, ✦, a short rule).
 - TYPOGRAPHY does the heavy lifting: confident scale (headline ~38–46px), generous line-height (~1.7 body), letter-spacing on small-caps labels, italic for emotional emphasis. Make ONE word or line the hero.
 - TRUTHFUL ONLY: real proof points (escúchala GRATIS antes de pagar · lista en ~3 min · hecha solo para esa persona · tuya para siempre). NEVER invent review counts, star ratings, testimonials or customer numbers.
-- Every decorative element must earn its place. If anything looks like clip-art or a default template, delete it.`;
+- Every decorative element must earn its place. If anything looks like clip-art or a default template, delete it.
+
+STRUCTURE — this is what separates a PREMIUM email from a basic one. A basic email is one block: headline, paragraph, button, footer. A premium DTC email is MODULAR and STACKED — 6 to 9 distinct sections, each with its own job, its own background surface, and its own visual rhythm. Build that.
+- Compose from the COMPONENT LIBRARY below. Pick 6-9 modules and STACK them. Never ship a 3-section email.
+- A strong default running order (adapt it, don't recite it): announcement bar → brand header → hero → price + risk-reversal → proof strip → how-it-works or collection tiles → a second emotional beat → final CTA → footer.
+- ALTERNATE THE SURFACES. Consecutive sections must not share the same background. Go dark → light → dark, or full-bleed image → padded cream card. That alternation IS the premium feel; a single flat background for 800px is what makes an email look cheap.
+- VARY THE WIDTH. Mix full-bleed edge-to-edge bands with inset padded cards. Never let every section have identical 28px padding.
+- Give the email VERTICAL LENGTH. These emails are meant to be scrolled. Short is not the same as premium — RESTRAINED is. Density of craft, not density of words.
+- ONE hero moment only. Exactly one 40px+ headline. Every other heading steps down hard (28px, then 18px). Flat type scale = amateur.
+
+IMAGE DISCIPLINE — when images are supplied, they are STRUCTURE, not decoration.
+- Use every image you are given. A supplied image that goes unused is a wasted asset.
+- Full-bleed the hero to the email's edge (no side padding, no rounded corners on a true full-bleed band) — that edge-to-edge photo is the single strongest "premium brand" signal in an inbox.
+- EVERY <img> needs width, height and real alt text, and the email must still fully sell with images OFF. Roughly a third of inboxes block images by default. Never put the price, the offer, the headline, or the only CTA exclusively inside an image — always repeat them as live HTML text.
+- Never stretch an image to a wrong aspect. Never use an image as a background behind critical text.`;
 
 // ===========================================================================
 // EMAIL-SAFE RULES — the weekly engine's rules PLUS the production polish
@@ -248,7 +263,138 @@ const COMPONENT_LIBRARY = `PREMIUM COMPONENT REFERENCE LIBRARY — structural pa
 <tr><td align="center" style="padding:8px 28px 30px;">
   <p style="margin:0 0 6px;font-size:26px;font-weight:700;color:#INK;">Desde $29.99</p>
   <p style="margin:0;font-size:13px;color:#SUB;">GRATIS antes de pagar · Lista en ~3 min · Tuya para siempre</p>
+</td></tr>
+
+── ANNOUNCEMENT BAR (very top, above the brand header — sets a premium retail tone instantly) ──
+<tr><td align="center" bgcolor="#ACCENT" style="padding:11px 20px;">
+  <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#INK_ON_ACCENT;">Escúchala gratis antes de pagar · Lista en 3 minutos</p>
+</td></tr>
+
+── FULL-BLEED DESIGNED BANNER HERO (use when a BANNER image is supplied — the headline is already typeset INTO that image) ──
+Place it edge-to-edge as the FIRST thing under the header: no side padding, no rounded corners, no border.
+The alt text MUST repeat the banner's headline verbatim, and a live HTML headline + button MUST follow underneath so the email still sells with images blocked.
+<tr><td align="center" bgcolor="#BG" style="padding:0;font-size:0;line-height:0;">
+  <a href="BUTTON_URL" style="display:block;text-decoration:none;">
+    <img src="BANNER_URL" width="600" height="375" alt="[repeat the banner headline here, word for word]" style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+  </a>
+</td></tr>
+
+── FULL-BLEED PHOTO BAND (an undesigned photo — let it run edge to edge, then typeset over/under it in HTML) ──
+<tr><td align="center" bgcolor="#BG" style="padding:0;font-size:0;line-height:0;">
+  <img src="IMG_URL" width="600" height="340" alt="[describe the scene]" style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+</td></tr>
+
+── PHOTO TILE GRID — "explora por estilo / por ocasión" (2-up; the module that reads most like a premium shop email) ──
+Give each tile a real photo, a short label and its own link. On mobile the two tiles stack (class="stack" + the media query below).
+<tr><td style="padding:34px 24px 10px;">
+  <p style="margin:0 0 18px;text-align:center;font-size:11px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#ACCENT;">EXPLORA POR ESTILO</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+    <td class="stack" width="50%" valign="top" style="padding:0 7px 14px 0;">
+      <a href="BUTTON_URL" style="text-decoration:none;">
+        <img src="IMG_URL" width="276" height="200" alt="[estilo]" style="display:block;width:100%;height:auto;border-radius:12px 12px 0 0;border:0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="#SURFACE" style="padding:13px 16px;border-radius:0 0 12px 12px;">
+          <p style="margin:0;font-size:15px;font-weight:700;color:#INK;">Corrido</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#SUB;">Para el que se la rifa</p>
+        </td></tr></table>
+      </a>
+    </td>
+    <td class="stack" width="50%" valign="top" style="padding:0 0 14px 7px;">[second tile, same structure]</td>
+  </tr></table>
+</td></tr>
+Mobile stacking rule for the <style> block: @media (max-width:620px){ .stack{display:block!important;width:100%!important;padding:0 0 14px 0!important} }
+
+── COUPON / CODE CHIP (only when the brief actually gives a real code — never invent one) ──
+<tr><td align="center" style="padding:6px 28px 26px;">
+  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+    <td align="center" style="border:2px dashed #ACCENT;border-radius:10px;padding:14px 30px;background:#ACCENT0F;">
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#SUB;">CÓDIGO</p>
+      <p style="margin:0;font-size:24px;font-weight:700;letter-spacing:0.18em;color:#INK;font-family:'Courier New',Courier,monospace;">CODIGO25</p>
+    </td>
+  </tr></table>
+</td></tr>
+
+── VIDEO / GIF BLOCK (a linked still or animated GIF with the play glyph baked into the image) ──
+Outlook shows only the FIRST frame of a GIF — that frame must stand alone.
+<tr><td align="center" style="padding:8px 24px 30px;">
+  <a href="BUTTON_URL" style="display:block;text-decoration:none;">
+    <img src="IMG_URL" width="552" height="310" alt="Escucha un ejemplo — reproducir" style="display:block;width:100%;max-width:552px;height:auto;border-radius:14px;border:0;">
+  </a>
+  <p style="margin:12px 0 0;font-size:13px;color:#SUB;">Escucha un ejemplo de 30 segundos</p>
+</td></tr>
+
+── NOW-PLAYING CARD (our product IS a song — this is the closest thing we have to a product shot; use it often) ──
+<tr><td style="padding:6px 24px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td bgcolor="#SURFACE" style="border:1px solid #ACCENT33;border-radius:16px;padding:20px 22px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td width="46" valign="middle">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="42" height="42" align="center" valign="middle" bgcolor="#ACCENT" style="border-radius:21px;font-size:16px;color:#INK_ON_ACCENT;">&#9654;</td></tr></table>
+      </td>
+      <td valign="middle" style="padding-left:14px;">
+        <p style="margin:0;font-size:15px;font-weight:700;color:#INK;">Para mi mamá, Rosa</p>
+        <p style="margin:3px 0 0;font-size:12px;color:#SUB;">Corrido · 2:58</p>
+      </td>
+      <td align="right" valign="middle" style="font-size:0;line-height:0;">
+        <!-- waveform: tiny colored cells, no image needed -->
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td width="3" height="10" bgcolor="#ACCENT" style="font-size:0;line-height:0;">&nbsp;</td><td width="4">&nbsp;</td>
+          <td width="3" height="22" bgcolor="#ACCENT" style="font-size:0;line-height:0;">&nbsp;</td><td width="4">&nbsp;</td>
+          <td width="3" height="16" bgcolor="#ACCENT" style="font-size:0;line-height:0;">&nbsp;</td><td width="4">&nbsp;</td>
+          <td width="3" height="28" bgcolor="#ACCENT" style="font-size:0;line-height:0;">&nbsp;</td><td width="4">&nbsp;</td>
+          <td width="3" height="13" bgcolor="#ACCENT" style="font-size:0;line-height:0;">&nbsp;</td>
+        </tr></table>
+      </td>
+    </tr></table>
+  </td></tr>
+</table></td></tr>
+
+── NUMBERED HOW-IT-WORKS ROWS (3 steps — the module that kills "is this legit?" hesitation) ──
+<tr><td style="padding:30px 30px 12px;">
+  <p style="margin:0 0 20px;font-size:11px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#ACCENT;">CÓMO FUNCIONA</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td width="44" valign="top">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr><td width="34" height="34" align="center" valign="middle" bgcolor="#ACCENT" style="border-radius:17px;font-size:15px;font-weight:700;color:#INK_ON_ACCENT;">1</td></tr></table>
+      </td>
+      <td valign="top" style="padding:4px 0 22px;">
+        <p style="margin:0 0 3px;font-size:16px;font-weight:700;color:#INK;">Cuéntanos de esa persona</p>
+        <p style="margin:0;font-size:14px;line-height:1.65;color:#SUB;">Su nombre, su historia, lo que la hace única.</p>
+      </td>
+    </tr>
+    [repeat rows 2 and 3]
+  </table>
+</td></tr>
+
+── FULL-WIDTH OFFER BAR (mid-email accent band — breaks up two light sections and re-states the offer) ──
+<tr><td align="center" bgcolor="#ACCENT" style="padding:18px 26px;">
+  <p style="margin:0;font-size:15px;font-weight:700;color:#INK_ON_ACCENT;">2 canciones por $39.99 &nbsp;·&nbsp; <a href="BUTTON_URL" style="color:#INK_ON_ACCENT;text-decoration:underline;">Aprovecha</a></p>
 </td></tr>`;
+
+// ===========================================================================
+// WORKED EXAMPLE — the composition of an email the owner reviewed and approved
+// (July 2026, Dark Luxury). Describing "premium structure" in the abstract is
+// not enough; showing one real running order is what makes it repeatable.
+// Deliberately a SKELETON, not markup — the component library above already
+// holds the HTML, and pasting a full email here would only invite cloning.
+// ===========================================================================
+const EXEMPLAR = `APPROVED COMPOSITION — study the RHYTHM, then compose your own. Never copy its wording, colors or headline.
+
+  #   SECTION                SURFACE     WHAT IT DOES
+  1   announcement bar       ACCENT      one 11px uppercase promise line, letterspaced
+  2   brand header           BG          wordmark only, 0.34em tracking, nothing else
+  3   designed banner        BG          full-bleed 600x375, zero padding, zero radius
+  4   headline + CTA         BG          42px serif over 2 lines, accent italic on line 2, 16px sub, pill button
+  5   price + trust strip    BG          30px price, then one 13px middot-separated trust line
+  6   now-playing card       BG          card sits on SURFACE with a 1px accent border
+  7   ornamental divider     BG          hairline rule with a single small glyph
+  8   how it works           SURFACE     <- first surface flip; 3 numbered rows
+  9   offer bar              ACCENT      <- saturated full-width band, one line + inline link
+ 10   editorial split        BG          52/48 text beside a cropped photo
+ 11   final CTA              SURFACE     <- flips again; restates the risk reversal
+ 12   footer                 BG          wordmark, compliance line, unsubscribe
+
+The lesson is the RHYTHM: a long BG run, then SURFACE, then a saturated ACCENT band, then BG, then SURFACE again. Three surface changes in the back half are what make an email read as designed rather than merely long. Twelve sections, and only ONE headline above 40px.
+
+Vary it. A different email might open on the brand header with no announcement bar, put the tile grid where the how-it-works sits, or end on a full accent band instead of SURFACE. What must not vary: 6-9+ sections, no two consecutive sections sharing a background, and exactly one hero headline.`;
 
 // ===========================================================================
 // ANTHROPIC
@@ -317,6 +463,8 @@ ${DESIGN_PHILOSOPHY}
 
 ${COMPONENT_LIBRARY}
 
+${EXEMPLAR}
+
 ${EMAIL_SAFE_RULES}
 
 You will receive a BRIEF from the owner plus a STYLE. Follow the brief for content and intent; follow the style for look; follow the rules above for craft. After composing, silently re-check your HTML against everything above — delete anything that looks like clip-art, a party flyer, emoji spam, or a default template — then emit via the tool.`;
@@ -330,9 +478,13 @@ function improveSystem(style: Style, note?: string): string {
     : 'keep the same style and palette';
   return `You are a world-class email ART DIRECTOR with impeccable, restrained taste, reviewing a PREMIUM but SALES-DRIVEN email for "Regalos Que Cantan". Silently critique it HARSHLY across: visual hierarchy, typography scale/contrast, hero impact, CTA desirability (top AND bottom), whitespace rhythm, copy economy, color restraint, component refinement, dark-mode classes, and the Outlook VML button fallback. Then emit ONE improved HTML email that fixes every issue.
 
-HARD CONSTRAINTS: keep it email-safe (table-based, inline styles); ${paletteRule}; keep ALL Spanish copy wording and every link href unchanged; keep the literal {{UNSUB_URL}} unsubscribe link in the footer; if there is a hero <img>, KEEP it and its exact src; do not add emoji.
+HARD CONSTRAINTS: keep it email-safe (table-based, inline styles); ${paletteRule}; keep ALL Spanish copy wording and every link href unchanged; keep the literal {{UNSUB_URL}} unsubscribe link in the footer; KEEP EVERY <img> and its exact src — never drop, swap or invent an image URL; a full-bleed banner stays full-bleed (do not add padding or rounded corners to it); do not add emoji.
+
+Push the STRUCTURE hard in this pass: if the email is only 3 or 4 flat sections on one background, that is the main defect — rebuild it as 6-9 stacked modules with alternating surfaces and a real type hierarchy.
 
 ${DESIGN_PHILOSOPHY}
+
+${EXEMPLAR}
 
 ${EMAIL_SAFE_RULES}
 
@@ -406,6 +558,27 @@ async function sendTest(to: string, subject: string, html: string, preheader = '
   if (!res.ok) throw new Error(`SendGrid ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
+// Art direction for every photo we generate for an email. Text-free on purpose —
+// the design layer (render-ad.ts) typesets the headline, and baked AI text is the
+// #1 "AI slop" tell. Casting is explicit: our customers are US-Hispanic families.
+const PHOTO_RULES = 'Photoreal, warm, cinematic, wholesome, tasteful. The people must be authentically Mexican/Latino — real US-Hispanic families, couples and friends, including adults 30-45 — never generic stock casting. Natural light, real homes and real celebrations. Leave calm negative space across the middle of the frame so a headline can sit over it. Absolutely NO text, words, letters, captions, watermarks or logos anywhere in the image.';
+
+// Pick black or white for text sitting ON the accent color, so a pale accent
+// (blush, cream) doesn't end up with unreadable white type on the banner pill.
+function inkOnAccent(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+  if (!m) return '#141414';
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  // Relative luminance (sRGB coefficients) — >0.6 means a light accent.
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#141414' : '#FFFFFF';
+}
+
+// Email photo tiles: 270x196 CSS px at 2x retina.
+const TILE_W = 540, TILE_H = 392;
+const tileFocus = (f: unknown): 'top' | 'center' | 'bottom' =>
+  (f === 'top' || f === 'bottom') ? f : 'center';
+
 // Store image bytes in the public creative-studio bucket and return the URL.
 async function storeImage(admin: any, bytes: Uint8Array, contentType: string): Promise<string> {
   const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
@@ -439,9 +612,27 @@ Deno.serve(async (req: Request) => {
     if (action === 'generate') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
-      const imageBlock = body.image_url
-        ? `HERO IMAGE (hosted — place near the top, full card width, with width/height ≈600x400, rounded corners, alt text; the email must still fully sell if it never loads): <img src="${body.image_url}">`
-        : 'NO hero image — design a clean, premium text + type layout.';
+      // Image supply: a designed banner (headline already typeset in), a plain
+      // hero photo, and/or a gallery for the tile grid + editorial splits.
+      const tiles: string[] = (Array.isArray(body.image_urls) ? body.image_urls : [])
+        .filter((u: unknown) => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 6);
+      const bannerUrl = (body.banner_url || '').toString().trim();
+      const blocks: string[] = [];
+      if (bannerUrl) {
+        blocks.push(`DESIGNED BANNER HERO (hosted, 600x375 — the headline is ALREADY typeset INTO this image): ${bannerUrl}
+Use the FULL-BLEED DESIGNED BANNER HERO module: place it edge-to-edge as the first element under the brand header, with NO side padding, NO rounded corners and NO border. Repeat the banner's headline verbatim in its alt text, and put a live HTML headline + CTA button directly beneath it so the email still sells when images are blocked.`);
+      }
+      if (body.image_url) {
+        blocks.push(`HERO PHOTO (hosted): ${body.image_url}
+${bannerUrl ? 'The banner above is the hero — use this photo further down instead, in an editorial split or a full-bleed band.' : 'Run it FULL-BLEED edge-to-edge near the top (or in an editorial split), with width/height and real alt text.'}`);
+      }
+      if (tiles.length) {
+        blocks.push(`GALLERY IMAGES (hosted) — use EVERY one of these, in the PHOTO TILE GRID and/or editorial splits. Do not leave any unused:
+${tiles.map((u, i) => `  ${i + 1}. ${u}`).join('\n')}`);
+      }
+      const imageBlock = blocks.length
+        ? `${blocks.join('\n\n')}\n\nUse ONLY these hosted URLs. Never invent an image URL, and never use a base64 data URI.`
+        : 'NO images supplied — design a clean, premium type-led layout. Compensate for the missing imagery with stronger typographic structure: alternating surfaces, an announcement bar, the now-playing card, and the how-it-works rows.';
       const noteBlock = styleNoteBlock(body.style_note);
       const ctaUrl = (body.cta_url || SITE).toString();
       // The owner's live "This week's push" (same box that steers ads & social)
@@ -543,18 +734,94 @@ Deno.serve(async (req: Request) => {
       if (!m) return json({ success: false, error: 'image must be a png/jpeg/webp data URL' }, 400);
       const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
       if (bytes.length > 4 * 1024 * 1024) return json({ success: false, error: 'Image too large (max 4MB)' }, 400);
+      // Tiles must be pre-cropped to landscape — Outlook ignores object-fit, so
+      // an uncropped portrait photo arrives squashed.
+      if (body.role === 'tile') {
+        const cropped = await cropPhoto({ imageBytes: bytes }, TILE_W, TILE_H, tileFocus(body.focus));
+        if (cropped) return json({ success: true, url: await storeImage(admin, cropped, 'image/png'), cropped: true });
+      }
       const url = await storeImage(admin, bytes, m[1]);
       return json({ success: true, url });
+    }
+
+    // ---- The house photo library (creative-studio/photo-lab) ----
+    // These are the text-free, art-directed shots the ad lab already produced
+    // and the owner already approved. Picking one costs nothing; generating a
+    // fresh photo spends image credits — so the picker is the default path.
+    if (action === 'list_photos') {
+      const folder = ['photo-lab', 'email-studio'].includes(body.folder) ? body.folder : 'photo-lab';
+      const { data, error } = await admin.storage.from('creative-studio')
+        .list(folder, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
+      if (error) return json({ success: false, error: error.message }, 500);
+      const photos = (data || [])
+        .filter((o: any) => /\.(png|jpe?g|webp)$/i.test(o.name || ''))
+        .map((o: any) => ({
+          name: (o.name || '').replace(/\.[a-z0-9]+$/i, '').replace(/^[a-z]\d+-/i, '').replace(/-/g, ' '),
+          url: admin.storage.from('creative-studio').getPublicUrl(`${folder}/${o.name}`).data.publicUrl,
+        }));
+      return json({ success: true, folder, photos });
+    }
+
+    // Adopt a library photo. A hero is used as-is (already hosted); a tile gets
+    // cropped to landscape first and re-hosted.
+    if (action === 'use_photo') {
+      const url = (body.url || '').toString().trim();
+      if (!/^https?:\/\//.test(url)) return json({ success: false, error: 'A photo url is required' }, 400);
+      if (body.role !== 'tile') return json({ success: true, url });
+      const cropped = await cropPhoto({ imageUrl: url }, TILE_W, TILE_H, tileFocus(body.focus));
+      if (!cropped) return json({ success: false, error: 'Could not crop that photo' }, 502);
+      return json({ success: true, url: await storeImage(admin, cropped, 'image/png'), cropped: true });
     }
 
     if (action === 'gen_image') {
       if (!KIE_IMAGE_ENABLED) return json({ success: false, error: 'Image generation is not enabled (KIE_IMAGE_ENABLED)' }, 400);
       const prompt = (body.prompt || '').toString().trim();
       if (!prompt) return json({ success: false, error: 'prompt is required' }, 400);
-      const bytes = await kiePhotoBytes(`${prompt}. Photoreal, warm, cinematic, wholesome, tasteful. Absolutely NO text, words, letters, captions or logos anywhere in the image.`, '3:2');
+      const bytes = await kiePhotoBytes(`${prompt}. ${PHOTO_RULES}`, '3:2');
       if (!bytes) return json({ success: false, error: 'Image generation failed' }, 502);
       const url = await storeImage(admin, bytes, 'image/png');
       return json({ success: true, url });
+    }
+
+    // ---- Designed banner hero — the "premium DTC" look ----
+    // Same two-layer technique as our Meta ads (text-free photo + a real typeset
+    // design layer rendered with resvg), but on a WIDE 1200x750 email canvas and
+    // in the chosen email style's accent color, so banner and email match.
+    // Source photo: an existing hosted URL, or generated from a prompt.
+    if (action === 'banner_hero') {
+      const headline = (body.headline || '').toString().trim();
+      if (!headline) return json({ success: false, error: 'headline is required' }, 400);
+      let bytes: Uint8Array | null = null;
+      const photoUrl = (body.photo_url || '').toString().trim();
+      if (photoUrl) {
+        const r = await fetch(photoUrl);
+        if (!r.ok) return json({ success: false, error: `Could not fetch that photo (${r.status})` }, 400);
+        bytes = new Uint8Array(await r.arrayBuffer());
+      } else {
+        const prompt = (body.prompt || '').toString().trim();
+        if (!prompt) return json({ success: false, error: 'photo_url or prompt is required' }, 400);
+        if (!KIE_IMAGE_ENABLED) return json({ success: false, error: 'Image generation is not enabled (KIE_IMAGE_ENABLED) — upload a photo instead' }, 400);
+        bytes = await kiePhotoBytes(`${prompt}. ${PHOTO_RULES}`, '3:2');
+        if (!bytes) return json({ success: false, error: 'Image generation failed' }, 502);
+      }
+      // "Line one | line two" or newlines → up to 3 typeset lines.
+      const lines = headline.split(/\n|\s*\|\s*/).map((s: string) => s.trim()).filter(Boolean).slice(0, 3);
+      const png = await renderAd({
+        template: 'emailhero',
+        imageBytes: bytes,
+        headlineLines: lines,
+        kicker: (body.kicker || '').toString().trim() || undefined,
+        accent: (body.accent || '').toString().trim() || undefined,
+        sub: (body.sub || '').toString().trim() || undefined,
+        cta: (body.cta || '').toString().trim() || undefined,
+        accentHex: style.palette.accent,
+        inkHex: inkOnAccent(style.palette.accent),
+        align: body.align === 'left' ? 'left' : 'center',
+        focus: ['top', 'bottom'].includes(body.focus) ? body.focus : 'center',
+      });
+      if (!png) return json({ success: false, error: 'Banner render failed' }, 502);
+      const url = await storeImage(admin, png, 'image/png');
+      return json({ success: true, url, headline_lines: lines });
     }
 
     return json({ success: false, error: `Unknown action ${action}` }, 400);

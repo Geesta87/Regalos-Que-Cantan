@@ -7,7 +7,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Palette, Loader2, Sparkles, Wand2, Send, Inbox, Copy, Download, Check,
-  Monitor, Smartphone, Image as ImageIcon, X, Code, Eye, History,
+  Monitor, Smartphone, Image as ImageIcon, X, Code, Eye, History, Layers, Images,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -104,6 +104,20 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [imageBusy, setImageBusy] = useState(false);
   const fileRef = useRef(null);
 
+  // Designed banner hero (text-free photo + our typeset design layer) and the
+  // gallery that feeds the photo-tile grid.
+  const [bannerUrl, setBannerUrl] = useState('');
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const [bh, setBh] = useState({ headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' });
+  const [gallery, setGallery] = useState([]);
+  const galleryRef = useRef(null);
+
+  // The house photo library (creative-studio/photo-lab) — text-free shots the
+  // ad lab already produced. Free to reuse; generating a new photo costs credits.
+  const [library, setLibrary] = useState([]);
+  const [libRole, setLibRole] = useState('');   // '' | 'hero' | 'tile'
+  const [libBusy, setLibBusy] = useState(false);
+
   const [html, setHtml] = useState('');
   const [subject, setSubject] = useState('');
   const [previewText, setPreviewText] = useState('');
@@ -157,7 +171,13 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setEditingId(null); // a fresh generate is a NEW email, not the queued draft
     setError(''); setStage('design'); setTab('preview');
     try {
-      const r = await call({ action: 'generate', brief, style_id: styleId, style_note: styleNote || undefined, image_url: imageUrl || undefined, cta_url: ctaUrl });
+      const r = await call({
+        action: 'generate', brief, style_id: styleId, style_note: styleNote || undefined,
+        image_url: imageUrl || undefined,
+        banner_url: bannerUrl || undefined,
+        image_urls: gallery.length ? gallery : undefined,
+        cta_url: ctaUrl,
+      });
       if (!r.success) throw new Error(r.error || 'Generation failed');
       let out = r.html;
       setHtml(out); setSubject(r.subject || ''); setPreviewText(r.preview_text || '');
@@ -228,16 +248,18 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     finally { setStage(''); }
   };
 
+  const readDataUrl = (file) => new Promise((res, rej) => {
+    const rd = new FileReader();
+    rd.onload = () => res(rd.result); rd.onerror = rej;
+    rd.readAsDataURL(file);
+  });
+
   const uploadImage = async (fileList) => {
     const f = Array.from(fileList || []).find((x) => x.type.startsWith('image/'));
     if (!f) return;
     setImageBusy(true);
     try {
-      const dataUrl = await new Promise((res, rej) => {
-        const rd = new FileReader();
-        rd.onload = () => res(rd.result); rd.onerror = rej;
-        rd.readAsDataURL(f);
-      });
+      const dataUrl = await readDataUrl(f);
       const r = await call({ action: 'upload_image', image: dataUrl });
       if (!r.success) throw new Error(r.error || 'Upload failed');
       setImageUrl(r.url);
@@ -258,6 +280,94 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       await applyHeroToEmail(r.url);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setImageBusy(false); }
+  };
+
+  // A designed banner is the hero — it goes FULL-BLEED at the very top, edge to
+  // edge, exactly like a premium DTC email. The live headline + button stay
+  // underneath it so the email still sells when the inbox blocks images.
+  const applyBannerToEmail = async (url) => {
+    if (!url || !html) return;
+    setError(''); setStage('refine');
+    try {
+      const r = await call({
+        action: 'refine', html, style_id: styleId,
+        instruction: `Place this hosted DESIGNED BANNER as the very first element under the brand header, FULL-BLEED: edge to edge, no side padding, no rounded corners, no border, wrapped in a link to the main CTA URL, as <img width="600" height="375" style="display:block;width:100%;max-width:600px;height:auto;border:0;">. Its alt text must repeat the banner headline: "${bh.headline.replace(/\|/g, ' ')}". If a hero image or banner already sits at the top, REPLACE it with this one. Keep a live HTML headline and a real CTA button directly beneath the banner. Change nothing else. Use EXACTLY this URL: ${url}`,
+      });
+      if (!r.success) throw new Error(r.error || 'Could not apply the banner');
+      setHtml(r.html); pushHistory(r.html, subject);
+      showToast?.('Banner placed at the top of the email.');
+    } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
+    finally { setStage(''); }
+  };
+
+  const makeBanner = async () => {
+    if (!bh.headline.trim()) { showToast?.('Write the banner headline first'); return; }
+    if (!imageUrl && !bh.prompt.trim()) { showToast?.('Add a hero photo above, or describe the photo for the banner'); return; }
+    setBannerBusy(true);
+    try {
+      const r = await call({
+        action: 'banner_hero', style_id: styleId,
+        photo_url: imageUrl || undefined,
+        prompt: imageUrl ? undefined : bh.prompt,
+        headline: bh.headline, kicker: bh.kicker, accent: bh.accent, sub: bh.sub, cta: bh.cta, align: bh.align,
+      });
+      if (!r.success) throw new Error(r.error || 'Banner failed');
+      setBannerUrl(r.url);
+      showToast?.(html ? 'Banner made — placing it in the email…' : 'Banner made — it becomes the hero when you Generate email.');
+      await applyBannerToEmail(r.url);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setBannerBusy(false); }
+  };
+
+  // Extra photos for the tile grid / editorial splits. Uploaded one at a time so
+  // a single oversized file can't fail the whole batch.
+  const uploadGallery = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/')).slice(0, 6);
+    if (!files.length) return;
+    setImageBusy(true);
+    let ok = 0, failed = 0;
+    try {
+      for (const f of files) {
+        try {
+          const r = await call({ action: 'upload_image', image: await readDataUrl(f), role: 'tile' });
+          if (r.success) { setGallery((prev) => [...prev, r.url].slice(0, 6)); ok++; } else failed++;
+        } catch { failed++; }
+      }
+      showToast?.(failed
+        ? `${ok} image(s) added, ${failed} failed (max 4MB each).`
+        : `${ok} image(s) added — they'll become photo tiles when you Generate email.`);
+    } finally { setImageBusy(false); if (galleryRef.current) galleryRef.current.value = ''; }
+  };
+
+  const openLibrary = async (role) => {
+    setLibRole(role);
+    if (library.length) return;
+    setLibBusy(true);
+    try {
+      const r = await call({ action: 'list_photos', folder: 'photo-lab' });
+      if (!r.success) throw new Error(r.error || 'Could not load the library');
+      setLibrary(r.photos || []);
+    } catch (e) { showToast?.(`Error: ${e.message}`); setLibRole(''); }
+    finally { setLibBusy(false); }
+  };
+
+  const pickPhoto = async (url) => {
+    const role = libRole;
+    setLibBusy(true);
+    try {
+      const r = await call({ action: 'use_photo', url, role });
+      if (!r.success) throw new Error(r.error || 'Could not use that photo');
+      setLibRole('');
+      if (role === 'tile') {
+        setGallery((g) => [...g, r.url].slice(0, 6));
+        showToast?.('Cropped to landscape and added as a tile.');
+      } else {
+        setImageUrl(r.url);
+        showToast?.(html ? 'Hero photo set — applying it…' : 'Hero photo set.');
+        await applyHeroToEmail(r.url);
+      }
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setLibBusy(false); }
   };
 
   const copyHtml = () => {
@@ -353,6 +463,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
             ) : (
               <>
                 <div className="flex gap-2">
+                  <button onClick={() => openLibrary('hero')} disabled={imageBusy || libBusy} className={btn.ghost + ' flex-1'}>
+                    {libBusy && libRole === 'hero' ? <Loader2 size={15} className="animate-spin" /> : <Images size={15} />} Photo library
+                  </button>
                   <button onClick={() => fileRef.current?.click()} disabled={imageBusy} className={btn.ghost + ' flex-1'}>
                     {imageBusy ? <Loader2 size={15} className="animate-spin" /> : <ImageIcon size={15} />} Upload
                   </button>
@@ -369,6 +482,121 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               </>
             )}
           </Card>
+
+          {/* Designed banner: a text-free photo + our own typeset layer, in the
+              chosen style's accent color. This is the full-bleed premium hero. */}
+          <Card className="p-4">
+            <SectionLabel className="mb-2 flex items-center gap-1.5"><Layers size={12} /> Designed banner hero</SectionLabel>
+            {bannerUrl ? (
+              <>
+                <div className="relative">
+                  <img src={bannerUrl} alt="designed banner" className="w-full rounded-lg border border-gray-200" />
+                  <button onClick={() => setBannerUrl('')} className="absolute top-1.5 right-1.5 bg-white/90 rounded-full p-1 text-gray-500 hover:text-gray-800">
+                    <X size={14} />
+                  </button>
+                </div>
+                {html ? (
+                  <button onClick={() => applyBannerToEmail(bannerUrl)} disabled={!!stage || bannerBusy} className={btn.ghost + ' w-full mt-2'}>
+                    {stage === 'refine' ? <Loader2 size={15} className="animate-spin" /> : <ImageIcon size={15} />} Place at top of email
+                  </button>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-2">Becomes the full-bleed hero when you Generate email.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <input value={bh.headline} onChange={(e) => setBh({ ...bh, headline: e.target.value })}
+                  placeholder='Banner headline — use "|" for a line break'
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400" />
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <input value={bh.kicker} onChange={(e) => setBh({ ...bh, kicker: e.target.value })} placeholder="Kicker (small caps)"
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400" />
+                  <input value={bh.accent} onChange={(e) => setBh({ ...bh, accent: e.target.value })} placeholder="Word to accent"
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400" />
+                </div>
+                <input value={bh.sub} onChange={(e) => setBh({ ...bh, sub: e.target.value })} placeholder="Small line under the headline (optional)"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400 mt-2" />
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <input value={bh.cta} onChange={(e) => setBh({ ...bh, cta: e.target.value })} placeholder="Pill text (optional)"
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400" />
+                  <select value={bh.align} onChange={(e) => setBh({ ...bh, align: e.target.value })}
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400">
+                    <option value="center">Centered</option>
+                    <option value="left">Left-aligned</option>
+                  </select>
+                </div>
+                {!imageUrl && (
+                  <input value={bh.prompt} onChange={(e) => setBh({ ...bh, prompt: e.target.value })}
+                    placeholder="Describe the photo (uses image credits)"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400 mt-2" />
+                )}
+                <p className="text-[11px] text-gray-400 mt-2">
+                  {imageUrl
+                    ? 'Uses the hero image above as the photo, with the headline typeset on top in your style’s accent color.'
+                    : 'No hero image staged — describe the photo and we generate a text-free one, then typeset the headline on it.'}
+                </p>
+                <button onClick={makeBanner} disabled={bannerBusy || !!stage || !bh.headline.trim()} className={btn.ghost + ' w-full mt-2'}>
+                  {bannerBusy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Make designed banner
+                </button>
+              </>
+            )}
+          </Card>
+
+          {/* Extra photos → the "explora por estilo" tile grid. */}
+          <Card className="p-4">
+            <SectionLabel className="mb-2">Photo tiles (optional)</SectionLabel>
+            {gallery.length > 0 && (
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                {gallery.map((u, i) => (
+                  <div key={u} className="relative">
+                    <img src={u} alt={`tile ${i + 1}`} className="w-full h-16 object-cover rounded-md border border-gray-200" />
+                    <button onClick={() => setGallery((g) => g.filter((x) => x !== u))}
+                      className="absolute top-0.5 right-0.5 bg-white/90 rounded-full p-0.5 text-gray-500 hover:text-gray-800">
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => openLibrary('tile')} disabled={imageBusy || libBusy || gallery.length >= 6} className={btn.ghost + ' flex-1'}>
+                {libBusy && libRole === 'tile' ? <Loader2 size={15} className="animate-spin" /> : <Images size={15} />} Library
+              </button>
+              <button onClick={() => galleryRef.current?.click()} disabled={imageBusy || gallery.length >= 6} className={btn.ghost + ' flex-1'}>
+                {imageBusy ? <Loader2 size={15} className="animate-spin" /> : <ImageIcon size={15} />} Upload ({gallery.length}/6)
+              </button>
+            </div>
+            <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => uploadGallery(e.target.files)} />
+            <p className="text-[11px] text-gray-400 mt-2">Become the "explora por estilo" photo grid and editorial splits. Cropped to landscape automatically — Outlook squashes uncropped portraits.</p>
+          </Card>
+
+          {/* House photo library — free to reuse, already art-directed. */}
+          {libRole && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <SectionLabel className="flex items-center gap-1.5"><Images size={12} /> Photo library</SectionLabel>
+                <span className="text-[11px] text-gray-400">{libRole === 'tile' ? '— adds a cropped tile' : '— sets the hero'}</span>
+                <button onClick={() => setLibRole('')} className="ml-auto text-gray-400 hover:text-gray-700"><X size={14} /></button>
+              </div>
+              {libBusy && !library.length ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
+                  <Loader2 size={15} className="animate-spin" /> Loading the library…
+                </div>
+              ) : library.length ? (
+                <div className="grid grid-cols-3 gap-1.5 max-h-72 overflow-y-auto">
+                  {library.map((p) => (
+                    <button key={p.url} onClick={() => pickPhoto(p.url)} disabled={libBusy} title={p.name}
+                      className="relative group rounded-md overflow-hidden border border-gray-200 hover:border-indigo-400 focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+                      <img src={p.url} alt={p.name} loading="lazy" className="w-full h-20 object-cover" />
+                      <span className="block text-[10px] text-gray-500 truncate px-1 py-0.5 bg-white">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400 py-4 text-center">No photos found in the library.</p>
+              )}
+            </Card>
+          )}
 
           <button onClick={generate} disabled={generating || !brief.trim()} className={btn.accent + ' w-full !py-2.5'}>
             {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}

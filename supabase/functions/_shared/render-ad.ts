@@ -92,7 +92,7 @@ export interface AdSpec {
   headlineLines: string[];   // 1-3 short lines (≤ ~16 chars each)
   accent?: string;           // word inside the headline to render gold + italic
   cta?: string;              // gold pill text (elegant) / red CTA bar (poster)
-  template?: string;         // 'poster' = bold red/white/black; 'song' = personalized-song look; else elegant
+  template?: string;         // 'poster' = bold red/white/black; 'song' = personalized-song look; 'emailhero' = wide email banner; else elegant
   price?: string;            // poster/song price badge, e.g. "$29" / "Solo $29"
   palette?: string;          // elegant accent palette key (gold|rose|cream|coral|sky)
   // --- 'song' template only ---
@@ -100,6 +100,14 @@ export interface AdSpec {
   player?: { title: string; dur?: string }; // "now playing" chip: song title + duration
   feats?: string[];          // 3 tiny feature checks at the bottom (defaults to the standard 3)
   web?: string;              // website shown on the CTA line (defaults to regalosquecantan.com)
+  // --- 'emailhero' template only ---
+  width?: number;            // canvas width (default 1200 = 600 CSS px @2x)
+  ratio?: number;            // height / width (default 0.625 → 1200x750)
+  accentHex?: string;        // exact accent color, taken from the EMAIL's style palette
+  inkHex?: string;           // text color sitting on the accent pill
+  align?: 'left' | 'center'; // headline alignment (default center)
+  showLogo?: boolean;        // logo badge (off by default — the email header already brands it)
+  focus?: 'top' | 'center' | 'bottom'; // which band of a tall photo survives the wide crop (default center)
 }
 
 function headlineLine(line: string, baseline: number, accent: string | undefined, accentColor: string): string {
@@ -379,6 +387,176 @@ ${ctaSvg}
 </svg>`;
 }
 
+// ---------------------------------------------------------------------------
+// EMAILHERO template — a LANDSCAPE designed banner for the top of a marketing
+// email. This is the "premium DTC / Klaviyo" hero look: full-bleed photo, a
+// legibility scrim, a letterspaced kicker, a big serif headline with one italic
+// accent word, an optional subline and an optional baked CTA pill.
+//
+// Two things make it different from the ad templates above:
+//   1. It is WIDE — 1200x750 by default, i.e. 600x375 CSS px at 2x retina.
+//   2. Its accent color comes from the EMAIL's chosen style palette (accentHex),
+//      so the banner and the HTML beneath it read as one continuous design
+//      instead of a gold ad pasted onto a blush email.
+//
+// The baked CTA is decoration ONLY. The email must always carry a real <a>
+// button underneath it — roughly a third of inboxes block images by default,
+// and a banner-only CTA is an unclickable dead end for those readers.
+// ---------------------------------------------------------------------------
+function fitSize(lines: string[], usableW: number, max: number, min: number): number {
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
+  return Math.max(min, Math.min(max, Math.floor(usableW / (longest * 0.53))));
+}
+
+function heroHeadline(line: string, y: number, size: number, accent: string | undefined, accentColor: string, x: number, center: boolean): string {
+  const anchor = center ? ' text-anchor="middle"' : '';
+  const fam = `font-family="Playfair Display" font-weight="600" font-size="${size}"`;
+  if (accent) {
+    const idx = line.toLowerCase().indexOf(accent.toLowerCase());
+    if (idx >= 0) {
+      const before = line.slice(0, idx), word = line.slice(idx, idx + accent.length), after = line.slice(idx + accent.length);
+      return `<text x="${x}" y="${y}"${anchor} ${fam} fill="${WHITE}">`
+        + (before ? `<tspan>${esc(before)}</tspan>` : '')
+        + `<tspan font-style="italic" fill="${accentColor}">${esc(word)}</tspan>`
+        + (after ? `<tspan>${esc(after)}</tspan>` : '')
+        + `</text>`;
+    }
+  }
+  return `<text x="${x}" y="${y}"${anchor} ${fam} fill="${WHITE}">${esc(line)}</text>`;
+}
+
+function buildEmailHeroSvg(photoUri: string, logoUri: string | null, spec: AdSpec, CW: number, H: number): string {
+  const accent = spec.accentHex || GOLD;
+  const ink = spec.inkHex || INK;
+  const center = (spec.align || 'center') === 'center';
+  const mX = Math.round(CW * 0.075);
+  const usableW = CW - mX * 2;
+  const x = center ? Math.round(CW / 2) : mX;
+  const anchor = center ? ' text-anchor="middle"' : '';
+
+  const lines = (spec.headlineLines || []).filter(Boolean).slice(0, 3);
+  const hSize = fitSize(lines, usableW, Math.round(CW * 0.085), 40);
+  const step = Math.round(hSize * 1.16);
+  const kickSize = Math.max(17, Math.round(CW * 0.0185));
+  const subSize = Math.max(21, Math.round(CW * 0.027));
+  const ctaFont = Math.max(20, Math.round(CW * 0.026));
+  const ctaH = Math.round(ctaFont * 2.5);
+
+  const kicker = (spec.kicker || '').trim();
+  const sub = (spec.sub || '').trim();
+  const cta = (spec.cta || '').trim();
+  const gapK = Math.round(hSize * 0.5);
+  const gapS = Math.round(hSize * 0.34);
+  const gapC = Math.round(hSize * 0.46);
+
+  // Measure the whole stack first so it sits optically centered at any height.
+  let blockH = lines.length * step;
+  if (kicker) blockH += kickSize + gapK;
+  if (sub) blockH += subSize + gapS;
+  if (cta) blockH += ctaH + gapC;
+
+  let y = Math.round((H - blockH) / 2);
+  const blockTop = y;
+  let out = '';
+
+  // The hosted Montserrat.ttf is a VARIABLE font and resvg renders its default
+  // (Thin) instance — font-weight="700" alone comes out hairline and vanishes on
+  // a photo. Painting a matching stroke around the glyphs fakes the weight back.
+  const faux = (color: string, size: number) => `stroke="${color}" stroke-width="${(size * 0.05).toFixed(2)}" paint-order="stroke"`;
+
+  if (kicker) {
+    y += kickSize;
+    out += `<text x="${x}" y="${y}"${anchor} font-family="Montserrat" font-weight="700" font-size="${kickSize}" letter-spacing="${Math.round(kickSize * 0.28)}" fill="${accent}" ${faux(accent, kickSize)}>${esc(kicker.toUpperCase())}</text>`;
+    y += gapK;
+  }
+  for (const line of lines) {
+    y += hSize;
+    out += heroHeadline(line, y, hSize, spec.accent, accent, x, center);
+    y += step - hSize;
+  }
+  if (sub) {
+    y += gapS + subSize;
+    // Shrink a long subline rather than letting it run off the canvas.
+    const subFit = Math.max(18, Math.min(subSize, Math.floor(usableW / (sub.length * 0.5))));
+    out += `<text x="${x}" y="${y}"${anchor} font-family="Playfair Display" font-style="italic" font-size="${subFit}" fill="#FFFFFF" fill-opacity="0.82">${esc(sub)}</text>`;
+  }
+  if (cta) {
+    y += gapC;
+    const ctaW = Math.round(cta.length * ctaFont * 0.64) + ctaFont * 3;
+    const ctaX = center ? Math.round((CW - ctaW) / 2) : mX;
+    out += `<rect x="${ctaX}" y="${y}" width="${ctaW}" height="${ctaH}" rx="${Math.round(ctaH / 2)}" fill="${accent}"/>`
+      + `<text x="${ctaX + Math.round(ctaW / 2)}" y="${y + Math.round(ctaH * 0.66)}" text-anchor="middle" font-family="Montserrat" font-weight="700" font-size="${ctaFont}" letter-spacing="1" fill="${ink}" ${faux(ink, ctaFont)}>${esc(cta)}</text>`;
+  }
+
+  // Legibility plate: a soft dark band behind the TEXT BLOCK ONLY. Without it a
+  // bright photo (a yellow studio backdrop) either eats the type or forces a
+  // heavy global scrim that turns the whole photo muddy. This keeps the photo
+  // vivid at the edges and readable under the words.
+  const platePad = Math.round(H * 0.13);
+  const plateY = Math.max(0, blockTop - platePad);
+  const plateH = Math.min(H - plateY, blockH + platePad * 2);
+
+  // Our source photos are portrait; a wide banner crops them hard. Anchor the
+  // crop so the faces survive instead of defaulting to the middle band.
+  const crop = spec.focus === 'top' ? 'xMidYMin' : spec.focus === 'bottom' ? 'xMidYMax' : 'xMidYMid';
+
+  const logo = spec.showLogo && logoUri
+    ? `<circle cx="${mX + 34}" cy="${Math.round(H * 0.11)}" r="34" fill="${WHITE}"/><image x="${mX + 11}" y="${Math.round(H * 0.11) - 23}" width="46" height="46" preserveAspectRatio="xMidYMid meet" href="${logoUri}"/>`
+    : '';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${H}" viewBox="0 0 ${CW} ${H}">
+<defs>
+<linearGradient id="eh" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#0B0805" stop-opacity="0.5"/>
+<stop offset="0.45" stop-color="#0B0805" stop-opacity="0.16"/>
+<stop offset="1" stop-color="#0B0805" stop-opacity="0.6"/>
+</linearGradient>
+<linearGradient id="ehp" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#0B0805" stop-opacity="0"/>
+<stop offset="0.5" stop-color="#0B0805" stop-opacity="0.62"/>
+<stop offset="1" stop-color="#0B0805" stop-opacity="0"/>
+</linearGradient>
+</defs>
+<rect width="${CW}" height="${H}" fill="#0B0805"/>
+<image x="0" y="0" width="${CW}" height="${H}" preserveAspectRatio="${crop} slice" href="${photoUri}"/>
+<rect width="${CW}" height="${H}" fill="url(#eh)"/>
+<rect x="0" y="${plateY}" width="${CW}" height="${plateH}" fill="url(#ehp)"/>
+<rect width="${CW}" height="${H}" fill="#0B0805" fill-opacity="0.08"/>
+${logo}
+${out}
+</svg>`;
+}
+
+/**
+ * Crop a photo to an exact box without distorting it — the email equivalent of
+ * CSS object-fit:cover, which Outlook ignores. Our source photos are portrait
+ * and email tiles are landscape, so the crop has to be baked into the file or
+ * the picture arrives squashed. `focus` picks which band survives.
+ * Returns a PNG, or null on any failure (caller falls back to the original).
+ */
+export async function cropPhoto(
+  src: { imageBytes?: Uint8Array; imageUrl?: string },
+  width: number,
+  height: number,
+  focus: 'top' | 'center' | 'bottom' = 'center',
+): Promise<Uint8Array | null> {
+  try {
+    await ensureWasm();
+    const photo = src.imageBytes || (await getBytes(`crop:${src.imageUrl}`, src.imageUrl || ''));
+    if (!photo) return null;
+    if (src.imageUrl) _cache.delete(`crop:${src.imageUrl}`);
+    const isPng = photo[0] === 0x89 && photo[1] === 0x50;
+    const uri = `data:image/${isPng ? 'png' : 'jpeg'};base64,${b64(photo)}`;
+    const crop = focus === 'top' ? 'xMidYMin' : focus === 'bottom' ? 'xMidYMax' : 'xMidYMid';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
+      + `<image x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="${crop} slice" href="${uri}"/></svg>`;
+    return new Resvg(svg, { fitTo: { mode: 'width', value: width } }).render().asPng();
+  } catch (e) {
+    console.warn('[render-ad] cropPhoto failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
 // Returns a finished branded PNG, or null on any failure (caller falls back).
 export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
   try {
@@ -397,11 +575,18 @@ export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
     if (!photo) return null;
     if (spec.imageUrl) _cache.delete(`photo:${spec.imageUrl}`); // don't cache photos (one-shot)
 
+    // Email heroes are WIDE and fixed-ratio (the banner sits in a 600px email
+    // column); ad templates stay portrait and follow the photo's own aspect.
+    const isEmailHero = spec.template === 'emailhero';
+    const CW = isEmailHero ? Math.round(Math.min(Math.max(spec.width || 1200, 600), 1600)) : W;
+
     // Canvas height follows the photo's aspect (portrait, clamped) so the layout
     // fits 2:3, 4:5, 9:16 etc. without distortion or excess cropping.
     const sz = imageSize(photo);
     const ratio = sz && sz.w > 0 ? sz.h / sz.w : 1.5;
-    const H = Math.round(W * Math.min(Math.max(ratio, 1.1), 1.85));
+    const H = isEmailHero
+      ? Math.round(CW * Math.min(Math.max(spec.ratio || 0.625, 0.4), 1.2))
+      : Math.round(W * Math.min(Math.max(ratio, 1.1), 1.85));
 
     const isPng = photo[0] === 0x89 && photo[1] === 0x50;
     const photoUri = `data:image/${isPng ? 'png' : 'jpeg'};base64,${b64(photo)}`;
@@ -414,12 +599,14 @@ export async function renderAd(spec: AdSpec): Promise<Uint8Array | null> {
       ? buildNativeSvg(photoUri, spec, H)
       : spec.template === 'bigtype'
       ? buildBigTypeSvg(photoUri, spec, H)
+      : isEmailHero
+      ? buildEmailHeroSvg(photoUri, logoUri, spec, CW, H)
       : buildSvg(photoUri, logoUri, spec, H);
 
     const fontBuffers = [mont, pf, pfi, anton, dms, dmsi].filter(Boolean) as Uint8Array[];
     const resvg = new Resvg(svg, {
       font: { fontBuffers, loadSystemFonts: false, defaultFontFamily: 'Montserrat' },
-      fitTo: { mode: 'width', value: W },
+      fitTo: { mode: 'width', value: CW },
     });
     return resvg.render().asPng();
   } catch (e) {
