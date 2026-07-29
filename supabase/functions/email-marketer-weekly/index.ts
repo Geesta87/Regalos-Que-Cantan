@@ -160,7 +160,14 @@ const DESIGN_PHILOSOPHY = `DESIGN PHILOSOPHY — Regalos Que Cantan is a PREMIUM
 - NO RAINBOW or multi-color gradients/hairlines. Any gradient is subtle and 2-TONE, drawn only from the style's palette, used on at most the button plus one soft glow.
 - EMOJI: at most ONE small, tasteful glyph in the entire email (or none). NEVER emoji rows, confetti strips, a giant hero emoji, or an emoji in every section. Prefer typographic flourishes (a small ♪, ✦, a short rule) over emoji.
 - TYPOGRAPHY does the heavy lifting: a confident scale (headline ~38–46px), generous line-height (~1.7 on body), letter-spacing on small-caps labels, italic for emotional emphasis. Make ONE word or line the hero.
-- Every decorative element must earn its place. If anything looks like clip-art or a default template, delete it. Taste over decoration.`;
+- Every decorative element must earn its place. If anything looks like clip-art or a default template, delete it. Taste over decoration.
+
+STRUCTURE — this is what separates a PREMIUM email from a basic one. A basic email is one block: headline, paragraph, button, footer. A premium DTC email is MODULAR and STACKED — 6 to 9 distinct sections, each with its own job and its own background surface. Build that. (Kept in sync with email-studio's design philosophy.)
+- A strong default running order (adapt it, don't recite it): announcement bar → brand header → hero → price + risk-reversal → proof strip → how-it-works steps → a second emotional beat → final CTA → footer.
+- ALTERNATE THE SURFACES. Consecutive sections must not share the same background. Dark → light → dark, or full-bleed band → padded card. That alternation IS the premium feel; one flat background for 800px is what makes an email look cheap.
+- VARY THE WIDTH: mix full-bleed edge-to-edge bands with inset padded cards. Never give every section identical padding.
+- ONE hero moment only. Exactly one 40px+ headline; every other heading steps down hard (28px, then 18px). A flat type scale reads as amateur.
+- Useful modules to stack (build them in email-safe table HTML): a top announcement bar in the accent color; a 3-up benefit card row; a dashed-border code chip (ONLY if the brief gives a real code); numbered "cómo funciona" step rows; a now-playing card (a play glyph + song title + a waveform drawn as tiny colored table cells) — our product is a song, so that card is the closest thing we have to a product shot; a full-width accent offer bar; and a price + trust strip.`;
 
 const BLUEPRINT = `STRUCTURE — build a HIGH-CONVERTING product email (a great DTC promo / mini landing page in an inbox), all email-safe <table> layouts, in this order. Keep BODY TEXT MINIMAL throughout — mostly hero + offer + buttons.
 1. Hidden preheader (preview text + &nbsp;‌ spacer entities).

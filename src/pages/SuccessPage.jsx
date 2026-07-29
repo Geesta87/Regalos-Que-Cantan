@@ -949,6 +949,48 @@ export default function SuccessPage() {
     const song = songs[selectedVideoSongIdx];
     if (!song) return null;
     if (!songs.some(s => s?.has_video_addon)) return null;
+
+    // Reuse an existing paid, unused video order for this bundle before creating
+    // a new one. Each add-on entitles the customer to exactly one video, so a
+    // single-video bundle must never end up with two paid orders. A timing gap
+    // (videoOrder state still empty at upload time) used to make this function
+    // INSERT a second paid order, which then let the customer generate a free
+    // extra video. Look it up in the DB and reuse/repoint instead of inserting.
+    const isDualVideo = (songs[0]?.video_addon_count ?? 1) >= 2 && songs.length >= 2;
+    try {
+      const bundleSongIds = songs.map(s => s?.id).filter(Boolean);
+      const { data: existing } = await supabase
+        .from('video_orders')
+        .select('*')
+        .in('song_id', bundleSongIds)
+        .eq('paid', true)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+      const unused = (existing || []).filter(o => (o.photo_count || 0) === 0);
+      // Prefer an unused order already tied to the selected song.
+      let reusable = unused.find(o => o.song_id === song.id);
+      // Single-video bundle: the one order follows the customer's song choice, so
+      // repoint an unused order from another song. Dual-video: each song keeps its
+      // own order — do NOT steal the other song's order; fall through to insert.
+      if (!reusable && !isDualVideo) reusable = unused[0];
+      if (reusable) {
+        if (reusable.song_id !== song.id) {
+          const { data: moved } = await supabase
+            .from('video_orders')
+            .update({ song_id: song.id, updated_at: new Date().toISOString() })
+            .eq('id', reusable.id)
+            .select()
+            .single();
+          reusable = moved || reusable;
+        }
+        setVideoOrder(reusable);
+        return reusable;
+      }
+    } catch (e) {
+      console.error('Failed to reuse existing video order:', e);
+    }
+
+    // No reusable order — create one.
     try {
       const { data: newOrder, error: insertErr } = await supabase
         .from('video_orders')

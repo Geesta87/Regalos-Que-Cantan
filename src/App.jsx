@@ -59,7 +59,7 @@ import AnimadoUpsell from './pages/AnimadoUpsell';
 import PaqueteLanding from './pages/PaqueteLanding';
 import PaqueteCheckout from './pages/PaqueteCheckout';
 import OneTapUpsellDemo from './components/OneTapUpsell';
-import { captureAffiliateRef } from './services/tracking';
+import { captureAffiliateRef, captureTrafficSource } from './services/tracking';
 
 // App State Context
 export const AppContext = React.createContext();
@@ -237,6 +237,11 @@ export default function App() {
 
     // Capture affiliate ref code from URL and log a visit (one per session)
     captureAffiliateRef();
+
+    // Capture how this visitor found us (Google/organic, referral, direct) from
+    // document.referrer. Only used at checkout when there's no UTM tag, so it
+    // fills the "unknown source" gap without touching paid attribution.
+    captureTrafficSource();
 
     // Capture coupon code from the landing URL so it survives the funnel.
     // The checkout/comparison page reads sessionStorage['rqc_coupon'] as a

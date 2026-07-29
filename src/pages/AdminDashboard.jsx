@@ -5948,14 +5948,25 @@ export default function AdminDashboard() {
                             </div>
                           )}
 
-                          {/* Combined link for song pairs (same email + recipient) */}
+                          {/* Combined link for the songs bought TOGETHER. Pair by the
+                              Stripe checkout session so extra takes for the same
+                              recipient (regenerations, A/B takes) don't inflate the
+                              bundle — email+recipient is only the fallback for old
+                              rows with no session ids. Pair against the rendered list
+                              (server search covers the whole DB) AND the local cache —
+                              `songs` only holds the recent working set, so older
+                              bundles lost their Both buttons once they aged out. */}
                           {hasAudio && (() => {
-                            const pairSongs = songs.filter(s => 
-                              s.id !== song.id && 
-                              s.audio_url && 
-                              s.email === song.email && 
-                              s.recipient_name === song.recipient_name
-                            );
+                            const isPair = s => {
+                              if (s.id === song.id || !s.audio_url) return false;
+                              if (song.stripe_session_id) return s.stripe_session_id === song.stripe_session_id;
+                              if (song.session_id) return s.session_id === song.session_id;
+                              return s.email === song.email && s.recipient_name === song.recipient_name;
+                            };
+                            const pairMap = new Map();
+                            [...lookupFiltered.filter(isPair), ...songs.filter(isPair)]
+                              .forEach(s => { if (!pairMap.has(s.id)) pairMap.set(s.id, s); });
+                            const pairSongs = [...pairMap.values()];
                             if (pairSongs.length === 0) return null;
                             const combinedIds = [song.id, ...pairSongs.map(s => s.id)].join(',');
                             const combinedPreviewLink = `${window.location.origin}/listen?song_ids=${combinedIds}`;
