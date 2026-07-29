@@ -718,7 +718,15 @@ serve(async (req: Request) => {
     const doc = body.document;
     if (doc && typeof doc === 'object' && typeof doc.data === 'string' && doc.data.trim()) {
       const dname = String(doc.name || 'document').slice(0, 160);
-      if (doc.kind === 'pdf') {
+      if (doc.kind === 'image') {
+        // The owner uploaded an image (an ad creative, a screenshot, a
+        // reference) and wants the coach to look at it and give feedback.
+        const b64 = doc.data.replace(/\s+/g, '');
+        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+        const mt = allowed.includes(String(doc.mediaType)) ? doc.mediaType : 'image/jpeg';
+        docBlocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } });
+        docLabel = `The FIRST image above (before any top-ad thumbnails) is an image the owner just uploaded for your feedback — likely an ad creative, a screenshot, or a reference. Look at it closely and give specific, honest feedback as their ads coach. If they didn't ask a specific question, critique it: thumbnail / first-frame stopping power, whether the offer and price read instantly, text legibility, authenticity (call out any AI tells or generic stock feel), and the 2-3 concrete changes most likely to lift performance — grounded in the craft rules and in how it compares to their current top ads.`;
+      } else if (doc.kind === 'pdf') {
         // base64 must carry no whitespace/newlines
         const b64 = doc.data.replace(/\s+/g, '');
         docBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });

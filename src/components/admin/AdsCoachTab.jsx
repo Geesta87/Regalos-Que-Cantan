@@ -26,7 +26,7 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach a document (📎) — a PDF or text file, like an agency proposal or a strategy doc — and I'll read it and tell you what it means for your ads. (For a Google Doc, download it as a PDF first, or paste its text here.)";
+const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) an image — an ad creative or a screenshot — and I'll give you honest feedback on it, or a document (PDF or text, like an agency proposal or a strategy doc) and I'll tell you what it means for your ads. (For a Google Doc, download it as a PDF first, or paste its text here.)";
 const FACTORY_GREETING = "This is the Ad Factory — where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
@@ -90,7 +90,7 @@ export default function AdsCoachTab({ accessToken, showToast }) {
     setSending(true);
     if (doc) setAttached(null);
     try {
-      const body = await call({ messages: next, thread, document: doc ? { name: doc.name, kind: doc.kind, data: doc.data } : undefined });
+      const body = await call({ messages: next, thread, document: doc ? { name: doc.name, kind: doc.kind, mediaType: doc.mediaType, data: doc.data } : undefined });
       if (body.success) {
         setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: body.reply, images: body.images, live: body.had_live_data }] }));
         if (body.calls?.length) setCalls(body.calls);
@@ -109,26 +109,34 @@ export default function AdsCoachTab({ accessToken, showToast }) {
     } finally { setSending(false); }
   }, [input, sending, msgs, tab, call, showToast, attached]);
 
-  // Attach a document (PDF or text) for the coach to read. PDFs go up as base64
-  // (Claude reads them natively — text + layout); text files go up as plain text.
+  // Attach something for the coach to read/look at:
+  //  • an IMAGE (ad creative, screenshot, reference) → base64, coach gives feedback
+  //  • a PDF → base64 (Claude reads it natively — text + layout)
+  //  • a text file (.txt/.md/.csv) → plain text
   // For a Google Doc: File → Download → PDF, then attach that (or paste its text).
   const onPickFile = async (e) => {
     const file = e.target.files?.[0];
     if (e.target) e.target.value = ''; // let the same file be re-picked later
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      showToast?.('That file is over 10 MB — attach a smaller PDF, or paste the text into the box instead.');
+      showToast?.('That file is over 10 MB — attach a smaller image/PDF, or paste the text into the box instead.');
       return;
     }
+    const readB64 = () => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1] || ''); // strip the data: prefix
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+    const isImage = (file.type || '').startsWith('image/');
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     try {
-      if (isPdf) {
-        const data = await new Promise((res, rej) => {
-          const r = new FileReader();
-          r.onload = () => res(String(r.result).split(',')[1] || ''); // strip the data: prefix
-          r.onerror = rej;
-          r.readAsDataURL(file);
-        });
+      if (isImage) {
+        const data = await readB64();
+        if (!data) { showToast?.("Couldn't read that image — try another file."); return; }
+        setAttached({ name: file.name, kind: 'image', mediaType: file.type || 'image/jpeg', data });
+      } else if (isPdf) {
+        const data = await readB64();
         if (!data) { showToast?.("Couldn't read that PDF — try another file."); return; }
         setAttached({ name: file.name, kind: 'pdf', data });
       } else {
@@ -310,19 +318,21 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       {/* Composer */}
       {tab === 'coach' && attached && (
         <div className="mt-3 -mb-1 flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-2.5 pr-1.5 py-1 max-w-full">
-            <FileText size={12} className="flex-shrink-0" />
+          <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-1.5 pr-1.5 py-1 max-w-full">
+            {attached.kind === 'image'
+              ? <img src={`data:${attached.mediaType};base64,${attached.data}`} alt="" className="w-5 h-5 rounded object-cover flex-shrink-0" />
+              : <FileText size={12} className="flex-shrink-0 ml-1" />}
             <span className="truncate max-w-[220px]">{attached.name}</span>
             <button onClick={() => setAttached(null)} title="Remove" className="p-0.5 rounded-full hover:bg-indigo-100 text-indigo-500"><X size={12} /></button>
           </span>
-          <span className="text-gray-400">attached — ask a question or just send to have it analyzed</span>
+          <span className="text-gray-400">attached — ask a question or just send for {attached.kind === 'image' ? 'feedback' : 'analysis'}</span>
         </div>
       )}
       <div className="flex items-center gap-2 mt-3">
         {tab === 'coach' && (
           <>
-            <input ref={fileRef} type="file" accept=".pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
-            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach a PDF or text document" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
+            <input ref={fileRef} type="file" accept="image/*,.pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach an image, PDF, or text document" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
           </>
         )}
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
