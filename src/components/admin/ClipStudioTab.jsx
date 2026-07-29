@@ -107,6 +107,15 @@ const fmtTime = (s) => {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
+// Accepts plain seconds ("90", "90.5") or clock time ("1:30", "1:30.5") → seconds, or null if unreadable.
+const parseTimeInput = (v) => {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const m = s.match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  return (m[1] ? parseInt(m[1], 10) * 60 : 0) + parseFloat(m[2]);
+};
+
 // Mini caption preview used on the style picker cards. Every style has a
 // REAL rendered loop of the owner (public/videos/clip-style-previews/) that
 // plays on hover — choosing a style = watching yourself in it. Falls back to
@@ -217,6 +226,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [manualOpen, setManualOpen] = useState(false);
   const [cutRanges, setCutRanges] = useState([]);       // [{start,end}] source-seconds spans to REMOVE before rendering
   const [pendingCut, setPendingCut] = useState(null);   // start time captured, waiting for the end
+  const [cutForm, setCutForm] = useState({ start: '', end: '' }); // typed-in cut times (m:ss or seconds)
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sendingId, setSendingId] = useState(null);
   const [enBusyId, setEnBusyId] = useState(null);
@@ -564,9 +574,19 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   };
   const removeCutRange = (i) => setCutRanges((r) => r.filter((_, j) => j !== i));
 
+  // Remove-parts: type the times instead of marking them on the player.
+  const addTypedCut = () => {
+    const start = parseTimeInput(cutForm.start);
+    const end = parseTimeInput(cutForm.end);
+    if (start == null || end == null) { showToast?.('Enter both times as m:ss (like 1:23) or plain seconds'); return; }
+    if (end <= start + 0.2) { showToast?.('The end time must come after the start time'); return; }
+    setCutRanges((r) => [...r, { start, end }].sort((a, b) => a.start - b.start));
+    setCutForm({ start: '', end: '' });
+  };
+
   const renderClip = async (project) => {
-    const start = parseFloat(form.start) || 0;
-    const end = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
+    const start = parseTimeInput(form.start) ?? 0;
+    const end = form.end === '' ? (project.duration_sec || 0) : (parseTimeInput(form.end) ?? (project.duration_sec || 0));
     setRendering(true);
     try {
       await call({
@@ -832,8 +852,8 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     const working = ['uploaded', 'preparing', 'transcribing'].includes(project.status);
     const ready = project.status === 'ready';
     const suggestions = project.ai_suggestions?.suggestions || [];
-    const selStart = parseFloat(form.start) || 0;
-    const selEnd = form.end === '' ? (project.duration_sec || 0) : parseFloat(form.end);
+    const selStart = parseTimeInput(form.start) ?? 0;
+    const selEnd = form.end === '' ? (project.duration_sec || 0) : (parseTimeInput(form.end) ?? (project.duration_sec || 0));
     const selDur = Math.max(0, selEnd - selStart);
     const hasSelection = form.start !== '' || form.end !== '';
     const cutTotal = cutRanges.reduce((a, r) => a + (r.end - r.start), 0);
@@ -948,7 +968,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                           ? 'Click any word the AI misheard (names especially) and type the correction. Timing is kept, so captions stay in sync.'
                           : 'Click words to cross them out — a stumble, a tangent, a bad sentence. Crossed-out words are removed from the audio, video and captions of every clip you render after saving.'}
                       </p>
-                      <div className="max-h-72 overflow-y-auto leading-7 text-sm border border-gray-100 rounded-lg p-2.5">
+                      <div className="max-h-72 overflow-y-auto leading-7 text-sm text-gray-900 bg-white border border-gray-100 rounded-lg p-2.5">
                         {editWords.map((w, i) => {
                           const isCut = wordCuts[i] !== undefined ? wordCuts[i] : !!w.cut;
                           if (editorMode === 'fix' && editingIdx === i) {
@@ -965,7 +985,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                                   setEditingIdx(null);
                                 }}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
-                                className="inline-block w-28 border border-indigo-300 rounded px-1 py-0 text-sm mx-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                className="inline-block w-28 border border-indigo-300 rounded px-1 py-0 text-sm text-gray-900 bg-white mx-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                               />
                             );
                           }
@@ -1053,14 +1073,14 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   <div className="grid grid-cols-2 gap-3">
                     {['start', 'end'].map((field) => (
                       <div key={field}>
-                        <label className="text-xs text-gray-500 block mb-1">{field === 'start' ? 'Start (seconds)' : 'End (seconds)'}</label>
+                        <label className="text-xs text-gray-500 block mb-1">{field === 'start' ? 'Start' : 'End'} <span className="text-gray-400">— m:ss or seconds</span></label>
                         <div className="flex gap-1.5">
                           <input
-                            type="number" min="0" step="0.1"
+                            type="text" inputMode="decimal"
                             value={form[field]}
-                            placeholder={field === 'start' ? '0' : project.duration_sec ? String(Math.floor(project.duration_sec)) : 'end'}
+                            placeholder={field === 'start' ? '0:00' : project.duration_sec ? fmtTime(project.duration_sec) : 'end'}
                             onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
-                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            className={`w-full border rounded-lg px-2.5 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 ${form[field] && parseTimeInput(form[field]) == null ? 'border-red-300' : 'border-gray-200'}`}
                           />
                           <button onClick={() => setFromPlayer(field)} className="text-[11px] px-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 whitespace-nowrap" title="Use the player's current position">
                             <Play size={11} className="inline -mt-0.5" /> here
@@ -1069,7 +1089,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                       </div>
                     ))}
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-2">Pause the player where you want a cut and press “here”. Empty = whole video (up to 3 minutes).</p>
+                  <p className="text-[11px] text-gray-400 mt-2">Type a time like <strong>1:23</strong> (or plain seconds), or pause the player where you want and press “here”. Empty = whole video (up to 3 minutes).</p>
                 </div>
               )}
 
@@ -1095,6 +1115,23 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     <button onClick={() => setPendingCut(null)} className="text-[11px] px-1.5 py-1.5 text-gray-400 hover:text-gray-700" title="Cancel"><X size={12} /></button>
                   </div>
                 )}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[11px] text-gray-500">or type the times:</span>
+                  {['start', 'end'].map((field) => (
+                    <input key={field}
+                      type="text" inputMode="decimal"
+                      value={cutForm[field]}
+                      placeholder={field === 'start' ? 'from 0:12' : 'to 0:18'}
+                      onChange={(e) => setCutForm((f) => ({ ...f, [field]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addTypedCut(); }}
+                      className={`w-20 border rounded-lg px-2 py-1 text-[11px] text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 ${cutForm[field] && parseTimeInput(cutForm[field]) == null ? 'border-red-300' : 'border-gray-200'}`}
+                    />
+                  ))}
+                  <button onClick={addTypedCut} disabled={!cutForm.start || !cutForm.end}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                    Add cut
+                  </button>
+                </div>
                 {cutRanges.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {cutRanges.map((r, i) => (
@@ -1106,7 +1143,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                     <p className="text-[11px] text-gray-500">{cutRanges.length} cut{cutRanges.length === 1 ? '' : 's'} · {Math.round(cutTotal * 10) / 10}s removed → final ≈ {fmtTime(Math.max(0, selDur - cutTotal))}</p>
                   </div>
                 )}
-                <p className="text-[11px] text-gray-400 mt-2">Pause on a part you don't want, press “Cut from here”, then play to its end and press “to here”. Works on silence, mistakes — anything.</p>
+                <p className="text-[11px] text-gray-400 mt-2">Pause on a part you don't want, press “Cut from here”, then play to its end and press “to here” — or just type the times as m:ss. Works on silence, mistakes — anything.</p>
               </div>
             </Card>
 
