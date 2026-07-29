@@ -84,7 +84,7 @@ function genreProductSchema(genre) {
     "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -104,7 +104,7 @@ function occasionProductSchema(occasion) {
     "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
     "offers": {
       "@type": "Offer",
-      "price": "24.99",
+      "price": "29.99",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
@@ -182,9 +182,9 @@ function genreBodyHtml(genre) {
       <h1>${esc(genre.heroTitle)}</h1>
       <p>${esc(genre.heroSubtitle)}</p>
       <p>${esc(genre.definitionBlock || genre.description)}</p>
-      <p>Listo en 2-4 minutos desde $24.99 USD.</p>
+      <p>Listo en 2-4 minutos desde $29.99 USD.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Mi ${esc(genre.name)} Ahora — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi ${esc(genre.name)} Ahora — Desde $29.99</a>
       <section>
         <h2>¿Qué es un ${esc(genre.name)} Personalizado?</h2>
         ${(genre.longDescription || genre.description).split('\n\n').map(p => `<p>${esc(p)}</p>`).join('')}
@@ -198,7 +198,7 @@ function genreBodyHtml(genre) {
           <li>2 versiones únicas para elegir</li>
           <li>Listo en 2-4 minutos — descarga instantánea en MP3</li>
         </ul>
-        <p>Desde $24.99 USD • Sin suscripción • Pago único</p>
+        <p>Desde $29.99 USD • Sin suscripción • Pago único</p>
       </section>
       <section>
         <h2>Preguntas Frecuentes sobre ${esc(genre.name)}</h2>
@@ -227,9 +227,9 @@ function occasionBodyHtml(occasion) {
       <h1>${esc(occasion.heroTitle)}</h1>
       <p>${esc(occasion.heroSubtitle)}</p>
       <p>${esc(occasion.definitionBlock || occasion.description)}</p>
-      <p>El regalo musical más emotivo desde $24.99 USD. Listo en 2-4 minutos.</p>
+      <p>El regalo musical más emotivo desde $29.99 USD. Listo en 2-4 minutos.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Mi Canción de ${esc(occasion.name)} — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción de ${esc(occasion.name)} — Desde $29.99</a>
       <section>
         <h2>¿Por qué regalar una canción para ${esc(occasion.name)}?</h2>
         ${(occasion.longDescription || occasion.description).split('\n\n').map(p => `<p>${esc(p)}</p>`).join('')}
@@ -247,7 +247,7 @@ function occasionBodyHtml(occasion) {
           <li>2 versiones únicas para elegir</li>
           <li>Listo en 2-4 minutos — descarga instantánea en MP3</li>
         </ul>
-        <p>Desde $24.99 USD • Sin suscripción • Pago único</p>
+        <p>Desde $29.99 USD • Sin suscripción • Pago único</p>
       </section>
       <section>
         <h2>Preguntas Frecuentes</h2>
@@ -268,7 +268,7 @@ function generosHubBodyHtml() {
       <p>RegalosQueCantan ofrece más de 20 géneros de música latina para canciones personalizadas. Cada género incluye instrumentación auténtica y estilo profesional.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <ul>${allGenres.map(g => `<li><a href="/generos/${g.slug}">${esc(g.name)}</a> — ${esc(g.description)}</li>`).join('')}</ul>
-      <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción — Desde $29.99</a>
     </div>`;
 }
 
@@ -281,7 +281,7 @@ function ocasionesHubBodyHtml() {
       <p>¿Buscas ideas? Mira todas las <a href="/canciones-para-regalar">canciones para regalar</a> y encuentra el regalo musical perfecto.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
       <ul>${allOccasions.map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a> — ${esc(o.description)}</li>`).join('')}</ul>
-      <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción — Desde $29.99</a>
     </div>`;
 }
 
@@ -299,7 +299,7 @@ function comoFuncionaBodyHtml() {
         <li><strong>Escucha y Elige</strong> — Escucha un preview de cada versión antes de pagar.</li>
         <li><strong>Descarga y Comparte</strong> — Descarga en MP3 de alta calidad. Comparte por WhatsApp, redes sociales o email.</li>
       </ol>
-      <a href="/create/occasion">Crear Mi Canción Ahora — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción Ahora — Desde $29.99</a>
     </div>`;
 }
 
@@ -308,14 +308,14 @@ function preguntasFrecuentesBodyHtml() {
     ...DEFAULT_GENRE_FAQS,
     { question: '¿Para qué ocasiones puedo crear una canción?', answer: 'Cumpleaños, Día de las Madres, Día del Padre, aniversarios, bodas, quinceañeras, graduaciones, San Valentín, Navidad, declaraciones de amor, despedidas y agradecimientos.' },
     { question: '¿Qué géneros musicales están disponibles?', answer: 'Más de 20 géneros latinos: corridos tumbados, cumbia, banda sinaloense, norteño, mariachi, bachata, reggaeton, salsa, bolero, ranchera, pop latino, balada, vallenato, merengue, huapango y más.' },
-    { question: '¿Cuánto cuesta una canción personalizada?', answer: 'Una canción individual cuesta $24.99 USD. También ofrecemos un paquete de dos versiones por $39.99 USD.' }
+    { question: '¿Cuánto cuesta una canción personalizada?', answer: 'Una canción individual cuesta $29.99 USD. También ofrecemos un paquete de dos versiones por $39.99 USD.' }
   ];
   return `
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Preguntas Frecuentes</nav>
       <h1>Preguntas Frecuentes — Canciones Personalizadas</h1>
       ${allFaqs.map(f => `<h2>${esc(f.question)}</h2><p>${esc(f.answer)}</p>`).join('')}
-      <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción — Desde $29.99</a>
     </div>`;
 }
 
@@ -329,7 +329,7 @@ function sobreNosotrosBodyHtml() {
       <p>Miles de familias latinas en Estados Unidos, México y Latinoamérica ya han sorprendido a sus seres queridos con canciones personalizadas.</p>
       <p>Cada canción se genera en 2-4 minutos, combinando composición lírica personalizada con producción musical profesional en el género seleccionado.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Mi Canción — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción — Desde $29.99</a>
     </div>`;
 }
 
@@ -337,10 +337,10 @@ function homepageBodyHtml() {
   return `
     <div id="prerender-content">
       <h1>RegalosQueCantan — Canciones Personalizadas para la Comunidad Latina</h1>
-      <p>RegalosQueCantan es una plataforma de canciones personalizadas que permite crear canciones únicas con el nombre de tu ser querido en más de 20 géneros musicales latinos — corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, bolero y más. Cada canción se genera en 2-4 minutos y cuesta desde $24.99 USD.</p>
+      <p>RegalosQueCantan es una plataforma de canciones personalizadas que permite crear canciones únicas con el nombre de tu ser querido en más de 20 géneros musicales latinos — corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, bolero y más. Cada canción se genera en 2-4 minutos y cuesta desde $29.99 USD.</p>
       <p>Miles de familias latinas ya han sorprendido a sus seres queridos con canciones personalizadas de RegalosQueCantan.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Mi Canción Ahora — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi Canción Ahora — Desde $29.99</a>
       <section>
         <h2>¿Qué es RegalosQueCantan?</h2>
         <p>RegalosQueCantan es el primer servicio de canciones personalizadas diseñado específicamente para la comunidad latina. A diferencia de tarjetas musicales genéricas, cada canción incluye el nombre del destinatario, detalles personales y se produce en géneros auténticos latinos con instrumentación profesional. El proceso completo toma menos de 5 minutos.</p>
@@ -375,7 +375,7 @@ function homepageBodyHtml() {
           <li><strong>Rapidez:</strong> Tu canción está lista en 2-4 minutos, no días</li>
           <li><strong>Personalización real:</strong> Incluye nombres, recuerdos y detalles específicos en la letra</li>
           <li><strong>Géneros auténticos:</strong> 20+ géneros latinos con instrumentación profesional</li>
-          <li><strong>Sin suscripción:</strong> Pago único desde $24.99 USD, sin cargos recurrentes</li>
+          <li><strong>Sin suscripción:</strong> Pago único desde $29.99 USD, sin cargos recurrentes</li>
           <li><strong>2 versiones:</strong> Recibes dos versiones únicas para elegir tu favorita</li>
           <li><strong>Descarga instantánea:</strong> MP3 de alta calidad, comparte por WhatsApp al instante</li>
         </ul>
@@ -392,7 +392,7 @@ function buildRouteConfigs() {
   routes.push({
     path: '/',
     title: 'RegalosQueCantan - Canciones Personalizadas | Corridos, Cumbia, Banda y Más',
-    description: 'Crea canciones personalizadas únicas para cumpleaños, día de las madres, aniversarios y más. Elige entre corridos tumbados, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Listo en minutos desde $24.99.',
+    description: 'Crea canciones personalizadas únicas para cumpleaños, día de las madres, aniversarios y más. Elige entre corridos tumbados, cumbia, banda, norteño, mariachi y 20+ géneros latinos. Listo en minutos desde $29.99.',
     keywords: 'canciones personalizadas, regalo único, corridos tumbados, cumbia personalizada, canción para mamá, regalo cumpleaños, música personalizada',
     structuredData: [organizationSchema(), howToSchema()],
     bodyHtml: homepageBodyHtml()
@@ -402,7 +402,7 @@ function buildRouteConfigs() {
   routes.push({
     path: '/como-funciona',
     title: 'Cómo Funciona — Crea tu Canción Personalizada | RegalosQueCantan',
-    description: 'Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $24.99.',
+    description: 'Aprende cómo crear una canción personalizada en RegalosQueCantan. Elige género, agrega detalles y recibe tu canción en minutos. Fácil, rápido y desde $29.99.',
     keywords: 'cómo funciona regalos que cantan, crear canción personalizada, canción personalizada pasos',
     structuredData: [howToSchema(), breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Cómo Funciona', path: '/como-funciona' }])],
     bodyHtml: comoFuncionaBodyHtml()
@@ -415,7 +415,7 @@ function buildRouteConfigs() {
     description: 'Respuestas a todas tus preguntas sobre canciones personalizadas en RegalosQueCantan. Precios, géneros, tiempos de entrega, personalización y más.',
     keywords: 'preguntas frecuentes regalos que cantan, FAQ canciones personalizadas',
     structuredData: [
-      faqSchema([...DEFAULT_GENRE_FAQS, { question: '¿Qué géneros están disponibles?', answer: 'Más de 20 géneros latinos incluyendo corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, salsa, bolero, ranchera y más.' }, { question: '¿Cuánto cuesta?', answer: 'Una canción individual cuesta $24.99 USD. Paquete de dos versiones por $39.99 USD.' }]),
+      faqSchema([...DEFAULT_GENRE_FAQS, { question: '¿Qué géneros están disponibles?', answer: 'Más de 20 géneros latinos incluyendo corridos tumbados, cumbia, banda, norteño, mariachi, bachata, reggaeton, salsa, bolero, ranchera y más.' }, { question: '¿Cuánto cuesta?', answer: 'Una canción individual cuesta $29.99 USD. Paquete de dos versiones por $39.99 USD.' }]),
       breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Preguntas Frecuentes', path: '/preguntas-frecuentes' }])
     ],
     bodyHtml: preguntasFrecuentesBodyHtml()
@@ -435,10 +435,10 @@ function buildRouteConfigs() {
   routes.push({
     path: '/pricing',
     title: 'Precios — Canciones Personalizadas | RegalosQueCantan',
-    description: 'Canción personalizada desde $24.99 USD. Paquete de dos versiones por $39.99. Sin suscripción, pago único, descarga instantánea.',
+    description: 'Canción personalizada desde $29.99 USD. Paquete de dos versiones por $39.99. Sin suscripción, pago único, descarga instantánea.',
     keywords: 'precio canción personalizada, cuánto cuesta, regalos que cantan precios',
     structuredData: [breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Precios', path: '/pricing' }])],
-    bodyHtml: `<div id="prerender-content"><h1>Precios — Canciones Personalizadas</h1><p>Canción individual: $24.99 USD. Paquete de dos versiones: $39.99 USD. Sin suscripción, pago único, descarga instantánea en MP3.</p><a href="/create/occasion">Crear Mi Canción</a></div>`
+    bodyHtml: `<div id="prerender-content"><h1>Precios — Canciones Personalizadas</h1><p>Canción individual: $29.99 USD. Paquete de dos versiones: $39.99 USD. Sin suscripción, pago único, descarga instantánea en MP3.</p><a href="/create/occasion">Crear Mi Canción</a></div>`
   });
 
   // Generos Hub
@@ -579,7 +579,7 @@ function buildRouteConfigs() {
   routes.push({
     path: '/dia-de-las-madres',
     title: 'Cancion para Mama este 10 de Mayo | RegalosQueCantan',
-    description: 'Sorprende a mama con una cancion personalizada este Dia de las Madres. Con su nombre, en mariachi, bolero o ranchera. Lista en minutos desde $24.99.',
+    description: 'Sorprende a mama con una cancion personalizada este Dia de las Madres. Con su nombre, en mariachi, bolero o ranchera. Lista en minutos desde $29.99.',
     keywords: 'regalo dia de las madres, cancion para mama, 10 de mayo, regalo mama original, serenata mama, cancion personalizada mama, dia de las madres 2026',
     structuredData: [
       {
@@ -588,14 +588,14 @@ function buildRouteConfigs() {
         "name": "Cancion Personalizada para el Dia de las Madres",
         "description": "Cancion personalizada para mama con su nombre en mariachi, bolero, ranchera y mas generos latinos.",
         "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
-        "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
+        "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" }
       },
       breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Dia de las Madres', path: '/dia-de-las-madres' }]),
       faqSchema([
         { question: '¿Puedo crear la cancion el mismo 10 de Mayo?', answer: 'Si, tu cancion estara lista en 2-4 minutos. Puedes crearla el mismo dia y enviarla por WhatsApp al instante.' },
         { question: '¿Que genero es mejor para mama?', answer: 'Depende de sus gustos. Mariachi y ranchera son los mas populares para mamas tradicionales. Bolero para las romanticas. Cumbia para las fiesteras.' },
         { question: '¿Puedo incluir su apodo carinoso?', answer: 'Claro que si. Mami, Jefa, Madre, Ma — cualquier nombre carinoso se incorpora naturalmente en la letra.' },
-        { question: '¿Cuanto cuesta la cancion para mama?', answer: 'Una cancion individual cuesta $24.99 USD. Sin suscripcion, pago unico. Recibes 2 versiones para elegir tu favorita.' },
+        { question: '¿Cuanto cuesta la cancion para mama?', answer: 'Una cancion individual cuesta $29.99 USD. Sin suscripcion, pago unico. Recibes 2 versiones para elegir tu favorita.' },
         { question: '¿Como se la envio a mama?', answer: 'Descargas el MP3 al instante y lo envias por WhatsApp, mensaje de texto, email o redes sociales.' },
         { question: '¿La cancion menciona el nombre de mama?', answer: 'Si, la letra incluye su nombre, apodo, y los detalles personales que tu proporciones. Es una cancion 100% unica creada solo para ella.' }
       ])
@@ -604,10 +604,10 @@ function buildRouteConfigs() {
     <div id="prerender-content">
       <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Dia de las Madres</nav>
       <h1>Cancion para Mama este 10 de Mayo — Dia de las Madres 2026</h1>
-      <p>Una cancion personalizada para el Dia de las Madres es un regalo musical unico que incluye el nombre de mama, un mensaje de amor y detalles familiares especificos. Disponible en mariachi, bolero, ranchera y 20+ generos latinos, cada cancion se crea en 2-4 minutos y cuesta desde $24.99 USD.</p>
+      <p>Una cancion personalizada para el Dia de las Madres es un regalo musical unico que incluye el nombre de mama, un mensaje de amor y detalles familiares especificos. Disponible en mariachi, bolero, ranchera y 20+ generos latinos, cada cancion se crea en 2-4 minutos y cuesta desde $29.99 USD.</p>
       <p>Cientos de familias ya han sorprendido a mama con una cancion personalizada de RegalosQueCantan.</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Cancion para Mama — Desde $24.99</a>
+      <a href="/create/occasion">Crear Cancion para Mama — Desde $29.99</a>
       <section>
         <h2>¿Por que regalar una cancion para el Dia de las Madres?</h2>
         <p>Mama merece mas que flores. Una cancion personalizada con su nombre es el regalo mas emotivo que puedes dar este 10 de Mayo. Menciona sus sacrificios, su amor incondicional y todo lo que significa para ti.</p>
@@ -635,7 +635,7 @@ function buildRouteConfigs() {
         <h2>Preguntas Frecuentes — Canciones para Mama</h2>
         <h3>¿Puedo crear la cancion el mismo 10 de Mayo?</h3><p>Si, tu cancion estara lista en 2-4 minutos.</p>
         <h3>¿Que genero es mejor para mama?</h3><p>Mariachi y ranchera son los mas populares. Bolero para las romanticas. Cumbia para las fiesteras.</p>
-        <h3>¿Cuanto cuesta?</h3><p>$24.99 USD. Sin suscripcion, pago unico.</p>
+        <h3>¿Cuanto cuesta?</h3><p>$29.99 USD. Sin suscripcion, pago unico.</p>
       </section>
       <section>
         <h2>Mas Ocasiones</h2>
@@ -724,7 +724,7 @@ function buildRouteConfigs() {
     const comboSlug = `${combo.genreSlug}-${combo.occasionSlug}`;
     const comboPath = `/canciones/${comboSlug}`;
     const comboTitle = `${genre.name} para ${occasion.name} — Cancion Personalizada`;
-    const comboDesc = `Crea un ${genre.name.toLowerCase()} personalizado para ${occasion.name.toLowerCase()}. ${genre.description} Con el nombre de tu ser querido, listo en minutos desde $24.99.`;
+    const comboDesc = `Crea un ${genre.name.toLowerCase()} personalizado para ${occasion.name.toLowerCase()}. ${genre.description} Con el nombre de tu ser querido, listo en minutos desde $29.99.`;
     const comboKeywords = `${genre.name.toLowerCase()} ${occasion.name.toLowerCase()}, ${genre.name.toLowerCase()} personalizado, cancion ${occasion.name.toLowerCase()}, ${genre.keywords}, ${occasion.keywords}`;
 
     const comboBreadcrumbs = [
@@ -756,7 +756,7 @@ function buildRouteConfigs() {
           "name": `${genre.name} para ${occasion.name} Personalizado`,
           "description": comboDesc,
           "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
-          "offers": { "@type": "Offer", "price": "24.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+          "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
           "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "reviewCount": genre.reviewCount || 50 }
         },
         breadcrumbSchema(comboBreadcrumbs),
@@ -768,7 +768,7 @@ function buildRouteConfigs() {
       <h1>${esc(genre.name)} para ${esc(occasion.name)} — Cancion Personalizada</h1>
       <p>${esc(comboDesc)}</p>
       <p><em>Actualizado: ${BUILD_DATE}</em></p>
-      <a href="/create/occasion">Crear Mi ${esc(genre.name)} para ${esc(occasion.name)} — Desde $24.99</a>
+      <a href="/create/occasion">Crear Mi ${esc(genre.name)} para ${esc(occasion.name)} — Desde $29.99</a>
       <section>
         <h2>¿Por que elegir ${esc(genre.name)} para ${esc(occasion.name)}?</h2>
         <p>${esc(genre.description)} Es la combinacion perfecta para celebrar ${esc(occasion.name.toLowerCase())} con un regalo musical unico.</p>
@@ -782,7 +782,7 @@ function buildRouteConfigs() {
           <li>2 versiones unicas para elegir</li>
           <li>Listo en 2-4 minutos — descarga instantanea en MP3</li>
         </ul>
-        <p>Desde $24.99 USD • Sin suscripcion • Pago unico</p>
+        <p>Desde $29.99 USD • Sin suscripcion • Pago unico</p>
       </section>
       <section>
         <h2>Preguntas Frecuentes</h2>

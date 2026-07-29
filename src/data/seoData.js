@@ -13,7 +13,7 @@ export const DEFAULT_GENRE_FAQS = [
   },
   {
     question: '¿Puedo escuchar la canción antes de pagar?',
-    answer: 'Sí, escuchas un preview de 20 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta antes de completar tu compra.'
+    answer: 'Sí, escuchas un preview de 40 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta antes de completar tu compra.'
   },
   {
     question: '¿En qué formato recibo la canción?',
@@ -32,7 +32,7 @@ export const DEFAULT_OCCASION_FAQS = [
   },
   {
     question: '¿Puedo escuchar la canción antes de pagar?',
-    answer: 'Sí, escuchas un preview de 20 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta.'
+    answer: 'Sí, escuchas un preview de 40 segundos de cada versión antes de decidir. Así puedes asegurarte de que te encanta.'
   },
   {
     question: '¿En qué formato recibo la canción?',
@@ -740,8 +740,8 @@ Puede ser un vals tradicional, una cumbia para después, o incluso un reggaeton 
     id: 'declaracion-amor',
     name: 'Declaración de Amor',
     slug: 'declaracion-amor',
-    title: 'Canción para Declarar tu Amor: Canción Romántica Personalizada',
-    metaDescription: 'Declárate con una canción romántica personalizada, con su nombre y tu historia de amor. Bachata, bolero o balada para enamorar. Lista en minutos desde $29.99.',
+    title: 'Canción de Amor Personalizada — Escúchala Antes de Pagar',
+    metaDescription: 'Declárate con una canción romántica hecha con su nombre y tu historia: bachata, bolero o balada. Escúchala antes de pagar. Lista en minutos, desde $29.99.',
     keywords: 'declaración de amor, canción para enamorar, canción romántica personalizada, canción para mi pareja, canción para declararse, propuesta de amor',
     heroTitle: 'Canciones para Declarar tu Amor',
     heroSubtitle: 'Las palabras que tu corazón no puede expresar',
