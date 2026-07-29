@@ -9,7 +9,7 @@
 // Both talk to the ads-coach edge function (thread: 'coach' | 'factory').
 // Admin-only. It never changes the ad account.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText } from 'lucide-react';
+import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2 } from 'lucide-react';
 import { btn, Badge } from './ui';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-coach`;
@@ -26,7 +26,7 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) an image — an ad creative or a screenshot — and I'll give you honest feedback on it, or a document (PDF or text, like an agency proposal or a strategy doc) and I'll tell you what it means for your ads. (For a Google Doc, download it as a PDF first, or paste its text here.)";
+const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move.";
 const FACTORY_GREETING = "This is the Ad Factory — where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
@@ -41,9 +41,15 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const [imgConcept, setImgConcept] = useState('');
   const [imgVariation, setImgVariation] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [attached, setAttached] = useState(null); // { name, kind:'pdf'|'text', data } — Coach thread only
+  // Publish-to-Meta state (Ad Factory → existing ad set, always paused)
+  const [publishAd, setPublishAd] = useState(null);
+  const [targets, setTargets] = useState([]);
+  const [publishTarget, setPublishTarget] = useState('');
+  const [pubText, setPubText] = useState('');
+  const [pubHeadline, setPubHeadline] = useState('');
+  const [pubLink, setPubLink] = useState('https://www.regalosquecantan.com/premium');
+  const [publishing, setPublishing] = useState(false);
   const scrollRef = useRef(null);
-  const fileRef = useRef(null);
 
   const call = useCallback(async (payload) => {
     const res = await fetch(COACH, {
@@ -76,21 +82,15 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, sending, tab]);
 
   const submit = useCallback(async (text) => {
-    const typed = (text ?? input).trim();
-    const doc = tab === 'coach' ? attached : null; // documents are a Coach-thread feature
-    if ((!typed && !doc) || sending) return;
+    const msg = (text ?? input).trim();
+    if (!msg || sending) return;
     setInput('');
     const thread = tab;
-    // What shows in the chat log: keep a visible 📎 marker so the conversation
-    // reads coherently. The backend also gets the file as its own `document`
-    // field and reads it natively; if no question was typed it summarizes.
-    const shown = doc ? (typed ? `📎 ${doc.name}\n${typed}` : `📎 ${doc.name}`) : typed;
-    const next = [...msgs[thread], { role: 'user', content: shown }];
+    const next = [...msgs[thread], { role: 'user', content: msg }];
     setMsgs((p) => ({ ...p, [thread]: next }));
     setSending(true);
-    if (doc) setAttached(null);
     try {
-      const body = await call({ messages: next, thread, document: doc ? { name: doc.name, kind: doc.kind, mediaType: doc.mediaType, data: doc.data } : undefined });
+      const body = await call({ messages: next, thread });
       if (body.success) {
         setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: body.reply, images: body.images, live: body.had_live_data }] }));
         if (body.calls?.length) setCalls(body.calls);
@@ -107,43 +107,42 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       showToast?.(`Error: ${e.message}`);
       setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: `Connection problem — ${e.message}. Try again in a moment.` }] }));
     } finally { setSending(false); }
-  }, [input, sending, msgs, tab, call, showToast, attached]);
+  }, [input, sending, msgs, tab, call, showToast]);
 
-  // Attach something for the coach to read/look at:
-  //  • an IMAGE (ad creative, screenshot, reference) → base64, coach gives feedback
-  //  • a PDF → base64 (Claude reads it natively — text + layout)
-  //  • a text file (.txt/.md/.csv) → plain text
-  // For a Google Doc: File → Download → PDF, then attach that (or paste its text).
-  const onPickFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (e.target) e.target.value = ''; // let the same file be re-picked later
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      showToast?.('That file is over 10 MB — attach a smaller image/PDF, or paste the text into the box instead.');
-      return;
+  // Open the publish panel for one Factory ad, prefilling its own copy.
+  const openPublish = async (a) => {
+    setPublishAd(a);
+    setPublishTarget('');
+    const c = a.ad_copy || {};
+    setPubText(c.subhead || a.concept || '');
+    setPubHeadline(Array.isArray(c.headline_lines) ? c.headline_lines.join(' ') : '');
+    if (!targets.length) {
+      try {
+        const body = await call({ action: 'list_ad_targets' });
+        if (body.success) setTargets(body.targets || []);
+        else showToast?.(`Couldn't load your ad sets: ${body.error || ''}`);
+      } catch (e) { showToast?.(`Error: ${e.message}`); }
     }
-    const readB64 = () => new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).split(',')[1] || ''); // strip the data: prefix
-      r.onerror = rej;
-      r.readAsDataURL(file);
-    });
-    const isImage = (file.type || '').startsWith('image/');
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  };
+
+  const doPublish = async () => {
+    if (!publishAd || !publishTarget || publishing) return;
+    setPublishing(true);
     try {
-      if (isImage) {
-        const data = await readB64();
-        if (!data) { showToast?.("Couldn't read that image — try another file."); return; }
-        setAttached({ name: file.name, kind: 'image', mediaType: file.type || 'image/jpeg', data });
-      } else if (isPdf) {
-        const data = await readB64();
-        if (!data) { showToast?.("Couldn't read that PDF — try another file."); return; }
-        setAttached({ name: file.name, kind: 'pdf', data });
-      } else {
-        const data = await file.text();
-        setAttached({ name: file.name, kind: 'text', data });
-      }
-    } catch { showToast?.("Couldn't read that file — try another one."); }
+      const body = await call({
+        action: 'publish_ad', ad_id: publishAd.id, adset_id: publishTarget,
+        primary_text: pubText, headline: pubHeadline, link: pubLink,
+        ad_name: publishAd.concept || 'Ads Coach ad',
+      });
+      if (body.success) {
+        showToast?.(`Created in Meta — paused, in ${body.adset_name}`);
+        setMsgs((p) => ({ ...p, factory: [...p.factory, { role: 'assistant', content: `Published “${publishAd.concept || 'ad'}” into ${body.adset_name} as a PAUSED ad (id ${body.ad_id}). It won't spend until you switch it on in Ads Manager. UTM tracking is attached and Meta's text rewriting is off.` }] }));
+        setPublishAd(null);
+        const g = await call({ action: 'list_ads' });
+        if (g.success) setAds(g.ads || []);
+      } else showToast?.(`Publish failed: ${body.error || 'unknown error'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setPublishing(false); }
   };
 
   const resolve = async (id, verdict) => {
@@ -234,18 +233,72 @@ export default function AdsCoachTab({ accessToken, showToast }) {
         </div>
       )}
 
-      {/* FACTORY: gallery of built ads */}
+      {/* FACTORY: gallery of built ads + publish-to-Meta */}
       {tab === 'factory' && ads.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
           <p className="text-sm font-medium text-gray-900 mb-2">Ads built by the factory</p>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {ads.map((a) => (
-              <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="flex-shrink-0 w-32 group" title={a.why_it_wins || a.concept || ''}>
-                <img src={a.url} alt={a.concept || 'ad'} className="w-32 rounded-lg border border-gray-200 group-hover:opacity-90 transition" />
+              <div key={a.id} className="flex-shrink-0 w-32">
+                <a href={a.url} target="_blank" rel="noreferrer" title={a.why_it_wins || a.concept || ''}>
+                  <img src={a.url} alt={a.concept || 'ad'} className="w-32 rounded-lg border border-gray-200 hover:opacity-90 transition" />
+                </a>
                 {a.concept && <p className="text-[11px] text-gray-500 mt-1 truncate">{a.concept}</p>}
-              </a>
+                {a.published_ad_id ? (
+                  <p className="text-[11px] text-green-700 mt-0.5">✓ In Meta (paused)</p>
+                ) : (
+                  <button onClick={() => openPublish(a)} className="mt-1 w-full text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded px-2 py-1">
+                    Publish to Meta
+                  </button>
+                )}
+              </div>
             ))}
           </div>
+
+          {/* Publish panel — explicit confirm, always creates PAUSED */}
+          {publishAd && (
+            <div className="mt-4 border-t border-gray-200 pt-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-900">Publish “{publishAd.concept || 'ad'}” to Meta</p>
+                <button onClick={() => setPublishAd(null)} className={btn.iconGhost}><X size={15} /></button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Creates a new ad inside an ad set you already have — <b>paused</b>, so it can’t spend until you switch it on in Ads Manager.
+                UTM tracking is added automatically and Meta’s text rewriting is turned off.
+              </p>
+
+              <label className="block text-xs text-gray-600">Put it in this ad set
+                <select value={publishTarget} onChange={(e) => setPublishTarget(e.target.value)} disabled={publishing}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white">
+                  <option value="">Select an ad set…</option>
+                  {targets.map((t) => <option key={t.adset_id} value={t.adset_id}>{t.campaign} → {t.adset_name}</option>)}
+                </select>
+              </label>
+
+              <label className="block text-xs text-gray-600">Primary text (what people read above the image)
+                <textarea rows={2} value={pubText} onChange={(e) => setPubText(e.target.value)} disabled={publishing}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+              </label>
+
+              <div className="flex gap-2">
+                <label className="block text-xs text-gray-600 flex-1">Headline
+                  <input value={pubHeadline} onChange={(e) => setPubHeadline(e.target.value)} disabled={publishing}
+                    className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+                </label>
+                <label className="block text-xs text-gray-600 flex-1">Destination URL
+                  <input value={pubLink} onChange={(e) => setPubLink(e.target.value)} disabled={publishing}
+                    className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button onClick={doPublish} disabled={publishing || !publishTarget} className={btn.accent + ' !px-4'}>
+                  {publishing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Create paused ad in Meta
+                </button>
+                <button onClick={() => setPublishAd(null)} className={btn.ghost}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -316,29 +369,11 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       )}
 
       {/* Composer */}
-      {tab === 'coach' && attached && (
-        <div className="mt-3 -mb-1 flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-1.5 pr-1.5 py-1 max-w-full">
-            {attached.kind === 'image'
-              ? <img src={`data:${attached.mediaType};base64,${attached.data}`} alt="" className="w-5 h-5 rounded object-cover flex-shrink-0" />
-              : <FileText size={12} className="flex-shrink-0 ml-1" />}
-            <span className="truncate max-w-[220px]">{attached.name}</span>
-            <button onClick={() => setAttached(null)} title="Remove" className="p-0.5 rounded-full hover:bg-indigo-100 text-indigo-500"><X size={12} /></button>
-          </span>
-          <span className="text-gray-400">attached — ask a question or just send for {attached.kind === 'image' ? 'feedback' : 'analysis'}</span>
-        </div>
-      )}
       <div className="flex items-center gap-2 mt-3">
-        {tab === 'coach' && (
-          <>
-            <input ref={fileRef} type="file" accept="image/*,.pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
-            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach an image, PDF, or text document" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
-          </>
-        )}
         <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
           placeholder={tab === 'coach' ? 'Ask your ads coach… (e.g. "which of my ads should I kill?")' : 'Tell the factory what you need… (e.g. "build me an ad for mamá\'s birthday")'}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
-        <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attached))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
+        <button onClick={() => submit()} disabled={sending || loading || !input.trim()} className={btn.accent + ' !px-4'}><Send size={15} /></button>
       </div>
     </div>
   );
