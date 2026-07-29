@@ -2301,6 +2301,77 @@ export default function SuccessPage() {
           </div>
           )}{/* end audio-download section — instrumental & video add-ons below render for video buyers too */}
 
+          {/* ===== SHARE VIDEO SECTION =====
+                The auto-rendered branded gift video (songs.share_video_url). Lets
+                the BUYER watch, download, and share the same video the recipient
+                sees on /song/:id. Hidden for $9.99 photo-video buyers — their
+                premium video block renders below and is the better share asset.
+                Follows the selected song in a multi-song order. */}
+          {currentSong?.share_video_url && !currentSong?.has_video_addon && (
+            <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.4s both' }}>
+              <div style={{
+                textAlign: 'center', marginBottom: '12px', padding: '12px 16px',
+                background: isLight ? `rgba(${ts.accentRgb},0.06)` : `rgba(${ts.accentRgb},0.1)`,
+                borderRadius: '14px',
+                border: `1px solid ${isLight ? `rgba(${ts.accentRgb},0.12)` : `rgba(${ts.accentRgb},0.2)`}`
+              }}>
+                <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: ts.accent }}>
+                  🎬 Paso 2: Comparte el video
+                </p>
+                <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
+                  Un video listo para enviar por WhatsApp o Facebook — así se ve cuando lo compartes
+                </p>
+              </div>
+
+              <div style={{
+                borderRadius: '20px', overflow: 'hidden', marginBottom: '12px',
+                border: `1px solid ${ts.cardBorder}`, background: '#000',
+                boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`,
+              }}>
+                <video
+                  key={currentSong.share_video_url}
+                  src={currentSong.share_video_url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  style={{ width: '100%', aspectRatio: '16 / 9', display: 'block' }}
+                />
+              </div>
+
+              <button
+                onClick={() => {
+                  const filename = `video-para-${currentSong?.recipient_name || recipientName || 'ti'}.mp4`;
+                  const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(currentSong.share_video_url)}&filename=${encodeURIComponent(filename)}`;
+                  const a = document.createElement('a');
+                  a.href = proxyUrl; a.download = filename;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                }}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: ts.accentGrad, color: ts.btnText,
+                  fontWeight: '800', fontSize: '16px', fontFamily: ts.font,
+                  border: 'none', borderRadius: '16px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: `0 8px 30px rgba(${ts.accentRgb},0.35)`, marginBottom: '10px',
+                }}>
+                🎬 Descargar Video
+              </button>
+
+              <button
+                onClick={handleShareWhatsAppSingle}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: '#25D366', color: 'white',
+                  fontWeight: '800', fontSize: '16px', fontFamily: ts.font,
+                  border: 'none', borderRadius: '16px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: '0 8px 30px rgba(37,211,102,0.35)',
+                }}>
+                💬 Compartir por WhatsApp
+              </button>
+            </div>
+          )}
+
           {/* ===== KARAOKE SECTION =====
                 Shows only when the customer bought the karaoke add-on
                 (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
