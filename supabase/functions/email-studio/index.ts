@@ -574,6 +574,84 @@ function inkOnAccent(hex: string): string {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#141414' : '#FFFFFF';
 }
 
+// ===========================================================================
+// ONE-CLICK AUTO-DESIGN
+// ===========================================================================
+// The manual flow asks the owner for five decisions (style, photo, banner
+// headline, accent word, tiles) that the brief already implies. The planner
+// makes all of them in one call, then the normal design pass runs unchanged.
+const PLAN_TOOL = {
+  name: 'emit_plan',
+  description: 'Emit the full creative plan for one marketing email.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      style_id: { type: 'string', description: 'One of the offered visual style ids — pick the one whose mood fits the angle.' },
+      brief: { type: 'string', description: 'The expanded creative brief for the designer: the angle, who it targets, the emotional beat, which modules to lean on. 3-6 sentences, in English.' },
+      banner: {
+        type: 'object',
+        properties: {
+          headline: { type: 'string', description: 'Spanish banner headline, 2 lines separated by " | ", each line <= 18 characters. Short and emotional.' },
+          accent: { type: 'string', description: 'ONE word from the headline to render in italic accent colour.' },
+          kicker: { type: 'string', description: 'Short uppercase eyebrow, <= 26 chars (e.g. "Cumpleaños").' },
+          sub: { type: 'string', description: 'Optional short italic line under the headline, <= 46 chars. Empty string for none.' },
+          cta: { type: 'string', description: 'Optional short pill label baked into the banner, <= 20 chars. Empty string for none — prefer empty unless the offer is time-bound.' },
+          align: { type: 'string', enum: ['center', 'left'], description: 'left works when the photo subject sits on the right side of frame.' },
+        },
+        required: ['headline', 'accent', 'kicker', 'sub', 'cta', 'align'],
+      },
+      hero_photo: { type: 'string', description: 'The `path` of the library photo for the banner. Must be one of the offered paths.' },
+      tiles: {
+        type: 'array',
+        maxItems: 2,
+        description: 'Two DIFFERENT library photos for the tile grid (never the hero). Empty array if the angle does not suit a grid.',
+        items: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            title: { type: 'string', description: 'Spanish tile title, <= 20 chars.' },
+            caption: { type: 'string', description: 'Spanish tile caption, <= 42 chars.' },
+          },
+          required: ['path', 'title', 'caption'],
+        },
+      },
+    },
+    required: ['style_id', 'brief', 'banner', 'hero_photo', 'tiles'],
+  },
+};
+
+// Vision pass over the house photo library. `focus` is the payload that matters:
+// our sources are portrait and a wide banner crops them hard, so the planner
+// needs to know whether the faces sit high, centred or low in the frame.
+const CATALOG_TOOL = {
+  name: 'emit_catalog',
+  description: 'Describe each supplied photo.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      photos: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            index: { type: 'number', description: 'The 1-based number of the photo as labelled in the message.' },
+            label: { type: 'string', description: 'Two or three words, in Spanish (e.g. "abuela emocionada").' },
+            description: { type: 'string', description: 'One sentence: who or what is in it and what is happening.' },
+            subjects: { type: 'string', description: 'Who appears (e.g. "abuela + familia", "pareja joven", "objeto / flatlay").' },
+            mood: { type: 'string', description: 'Two or three adjectives (e.g. "emotivo, íntimo").' },
+            is_bw: { type: 'boolean', description: 'True if black and white.' },
+            brightness: { type: 'string', enum: ['dark', 'mid', 'bright'] },
+            focus: { type: 'string', enum: ['top', 'center', 'bottom'], description: 'Which horizontal BAND holds the faces/subject. If the heads sit in the upper third answer "top" — a wide crop would otherwise cut them off.' },
+            headroom: { type: 'string', description: 'Where the calm empty space is, for headline placement: "top", "left", "right", "bottom" or "none".' },
+          },
+          required: ['index', 'label', 'description', 'subjects', 'mood', 'is_bw', 'brightness', 'focus', 'headroom'],
+        },
+      },
+    },
+    required: ['photos'],
+  },
+};
+
 // Email photo tiles: 270x196 CSS px at 2x retina.
 const TILE_W = 540, TILE_H = 392;
 const tileFocus = (f: unknown): 'top' | 'center' | 'bottom' =>
@@ -588,6 +666,46 @@ async function storeImage(admin: any, bytes: Uint8Array, contentType: string): P
   const { data } = admin.storage.from('creative-studio').getPublicUrl(path);
   if (!data?.publicUrl) throw new Error('no public URL');
   return data.publicUrl;
+}
+
+// The design pass, shared by the manual "generate" action and the one-click
+// auto flow, so both produce identical craft from the same prompt.
+async function designEmail(admin: any, o: {
+  brief: string; style: Style; styleNote?: unknown; bannerUrl?: string;
+  imageUrl?: string; tiles?: string[]; ctaUrl: string;
+}): Promise<{ subject: string; preview_text: string; html: string }> {
+  const tiles = (o.tiles || []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 6);
+  const blocks: string[] = [];
+  if (o.bannerUrl) {
+    blocks.push(`DESIGNED BANNER HERO (hosted, 600x375 — the headline is ALREADY typeset INTO this image): ${o.bannerUrl}
+Use the FULL-BLEED DESIGNED BANNER HERO module: place it edge-to-edge as the first element under the brand header, with NO side padding, NO rounded corners and NO border. Repeat the banner's headline verbatim in its alt text, and put a live HTML headline + CTA button directly beneath it so the email still sells when images are blocked.`);
+  }
+  if (o.imageUrl) {
+    blocks.push(`HERO PHOTO (hosted): ${o.imageUrl}
+${o.bannerUrl ? 'The banner above is the hero — use this photo further down instead, in an editorial split or a full-bleed band.' : 'Run it FULL-BLEED edge-to-edge near the top (or in an editorial split), with width/height and real alt text.'}`);
+  }
+  if (tiles.length) {
+    blocks.push(`GALLERY IMAGES (hosted) — use EVERY one of these, in the PHOTO TILE GRID and/or editorial splits. Do not leave any unused:
+${tiles.map((u, i) => `  ${i + 1}. ${u}`).join('\n')}`);
+  }
+  const imageBlock = blocks.length
+    ? `${blocks.join('\n\n')}\n\nUse ONLY these hosted URLs. Never invent an image URL, and never use a base64 data URI.`
+    : 'NO images supplied — design a clean, premium type-led layout. Compensate for the missing imagery with stronger typographic structure: alternating surfaces, an announcement bar, the now-playing card, and the how-it-works rows.';
+  // The owner's live "This week's push" (same box that steers ads & social)
+  // biases studio emails too — one push, all channels.
+  const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+  const data = await callAnthropic({
+    model: MODEL, max_tokens: 9000, system: generateSystem(cfg?.promo_notes),
+    tools: [EMIT_EMAIL_TOOL], tool_choice: { type: 'tool', name: 'emit_email' },
+    messages: [{ role: 'user', content: `${styleBrief(o.style)}${styleNoteBlock(o.styleNote)}\n\n${imageBlock}\n\nCTA LINK (every button href — use EXACTLY this): ${o.ctaUrl}\n\nTHE OWNER'S BRIEF:\n${o.brief}\n\nDesign and emit the complete email now (subject + preview_text + full HTML).` }],
+  });
+  const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
+  if (!tu?.input?.html) throw new Error('Model returned no HTML');
+  return {
+    subject: (tu.input.subject || '').toString(),
+    preview_text: (tu.input.preview_text || '').toString(),
+    html: finalizeHtml(tu.input.html, o.style),
+  };
 }
 
 // ===========================================================================
@@ -612,45 +730,187 @@ Deno.serve(async (req: Request) => {
     if (action === 'generate') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
-      // Image supply: a designed banner (headline already typeset in), a plain
-      // hero photo, and/or a gallery for the tile grid + editorial splits.
-      const tiles: string[] = (Array.isArray(body.image_urls) ? body.image_urls : [])
-        .filter((u: unknown) => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 6);
-      const bannerUrl = (body.banner_url || '').toString().trim();
-      const blocks: string[] = [];
-      if (bannerUrl) {
-        blocks.push(`DESIGNED BANNER HERO (hosted, 600x375 — the headline is ALREADY typeset INTO this image): ${bannerUrl}
-Use the FULL-BLEED DESIGNED BANNER HERO module: place it edge-to-edge as the first element under the brand header, with NO side padding, NO rounded corners and NO border. Repeat the banner's headline verbatim in its alt text, and put a live HTML headline + CTA button directly beneath it so the email still sells when images are blocked.`);
-      }
-      if (body.image_url) {
-        blocks.push(`HERO PHOTO (hosted): ${body.image_url}
-${bannerUrl ? 'The banner above is the hero — use this photo further down instead, in an editorial split or a full-bleed band.' : 'Run it FULL-BLEED edge-to-edge near the top (or in an editorial split), with width/height and real alt text.'}`);
-      }
-      if (tiles.length) {
-        blocks.push(`GALLERY IMAGES (hosted) — use EVERY one of these, in the PHOTO TILE GRID and/or editorial splits. Do not leave any unused:
-${tiles.map((u, i) => `  ${i + 1}. ${u}`).join('\n')}`);
-      }
-      const imageBlock = blocks.length
-        ? `${blocks.join('\n\n')}\n\nUse ONLY these hosted URLs. Never invent an image URL, and never use a base64 data URI.`
-        : 'NO images supplied — design a clean, premium type-led layout. Compensate for the missing imagery with stronger typographic structure: alternating surfaces, an announcement bar, the now-playing card, and the how-it-works rows.';
-      const noteBlock = styleNoteBlock(body.style_note);
+      const out = await designEmail(admin, {
+        brief, style, styleNote: body.style_note,
+        bannerUrl: (body.banner_url || '').toString().trim(),
+        imageUrl: (body.image_url || '').toString().trim(),
+        tiles: Array.isArray(body.image_urls) ? body.image_urls : [],
+        ctaUrl: (body.cta_url || SITE).toString(),
+      });
+      return json({ success: true, ...out });
+    }
+
+    // ---- One-click auto-design: brief in, finished email out ----
+    // Plans everything the brief implies (style, photo, banner copy, tiles),
+    // renders the banner and tiles, then runs the normal design pass. The
+    // owner's only decision is the brief. Still returns a DRAFT — queueing and
+    // approval are untouched.
+    if (action === 'auto_email') {
+      const brief = (body.brief || '').toString().trim();
+      if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
       const ctaUrl = (body.cta_url || SITE).toString();
-      // The owner's live "This week's push" (same box that steers ads & social)
-      // biases studio emails too — one push, all channels.
+
+      const { data: catalog } = await admin.from('creative_photo_catalog')
+        .select('path,label,description,subjects,mood,is_bw,brightness,focus,headroom').limit(200);
+      let pool = catalog || [];
+      if (!pool.length) {
+        // No catalog yet — fall back to filenames so the flow still works.
+        const { data: objs } = await admin.storage.from('creative-studio')
+          .list('photo-lab', { limit: 200, sortBy: { column: 'name', order: 'asc' } });
+        pool = (objs || []).filter((o: any) => /\.(png|jpe?g|webp)$/i.test(o.name || ''))
+          .map((o: any) => ({
+            path: `photo-lab/${o.name}`,
+            label: (o.name || '').replace(/\.[a-z0-9]+$/i, '').replace(/^[a-z]\d+-/i, '').replace(/-/g, ' '),
+            description: '(not catalogued yet — infer from the name)', subjects: '', mood: '',
+            is_bw: false, brightness: 'mid', focus: 'center', headroom: 'unknown',
+          }));
+      }
+      if (!pool.length) return json({ success: false, error: 'No photos available in the library' }, 400);
+
+      const catalogText = pool.map((p: any) =>
+        `- ${p.path} | ${p.label} | ${p.description} | gente: ${p.subjects || '?'} | mood: ${p.mood || '?'}`
+        + ` | ${p.is_bw ? 'B&W' : 'color'} | ${p.brightness} | focus:${p.focus} | espacio:${p.headroom || '?'}`).join('\n');
+      const styleList = STYLES.map((s) => `- ${s.id}: ${s.name} — ${s.blurb}`).join('\n');
       const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
-      const data = await callAnthropic({
-        model: MODEL, max_tokens: 9000, system: generateSystem(cfg?.promo_notes),
-        tools: [EMIT_EMAIL_TOOL], tool_choice: { type: 'tool', name: 'emit_email' },
-        messages: [{ role: 'user', content: `${styleBrief(style)}${noteBlock}\n\n${imageBlock}\n\nCTA LINK (every button href — use EXACTLY this): ${ctaUrl}\n\nTHE OWNER'S BRIEF:\n${brief}\n\nDesign and emit the complete email now (subject + preview_text + full HTML).` }],
+
+      const planRes = await callAnthropic({
+        model: MODEL, max_tokens: 2000,
+        system: `You are the creative director for "Regalos Que Cantan" (personalized Spanish songs as gifts, ${OFFERS.site}). Plan ONE premium marketing email from the owner's brief. Customer-facing copy is natural US-Hispanic Spanish (English only if the brief targets giftsthatsing.com).
+
+${brandContext(cfg?.promo_notes)}
+
+Choosing well matters more than being clever:
+- STYLE: match the emotional register of the angle, not the occasion cliché. A memorial or a win-back is not "Cálido Fiesta".
+- PHOTO: it must genuinely depict the angle's subject. A corrido-for-dad email cannot open on a flatlay of a gift box. Respect the catalogue's focus/brightness notes.
+- BANNER HEADLINE: two short lines, the shorter the better — big type only stays big if the line is short. Emotional and specific, never a slogan. Pick ONE word to accent, and it must appear in the headline verbatim.
+- A baked CTA pill is for time-bound offers only. Leave it empty otherwise; the email always carries a real HTML button anyway.
+- TILES: only when a grid genuinely helps (browsing occasions or genres). Never reuse the hero. Empty array is a valid, often better answer.
+
+AVAILABLE STYLES:
+${styleList}
+
+AVAILABLE PHOTOS (path | label | description | people | mood | colour | brightness | focus | free space):
+${catalogText}`,
+        tools: [PLAN_TOOL], tool_choice: { type: 'tool', name: 'emit_plan' },
+        messages: [{ role: 'user', content: `THE OWNER'S BRIEF:\n${brief}\n\nPlan the email now.` }],
       });
-      const tu = (data.content || []).find((c: any) => c.type === 'tool_use');
-      if (!tu?.input?.html) return json({ success: false, error: 'Model returned no HTML' }, 502);
+      const pu = (planRes.content || []).find((c: any) => c.type === 'tool_use');
+      const plan = pu?.input;
+      if (!plan?.banner?.headline || !plan?.hero_photo) {
+        return json({ success: false, error: 'The planner did not return a usable plan' }, 502);
+      }
+
+      const paths = new Set(pool.map((p: any) => p.path));
+      const heroPath = paths.has(plan.hero_photo) ? plan.hero_photo : pool[0].path;
+      const heroMeta = pool.find((p: any) => p.path === heroPath) || {};
+      const planStyle = styleById(plan.style_id);
+      const pub = (p: string) => admin.storage.from('creative-studio').getPublicUrl(p).data.publicUrl;
+
+      // Banner: text-free photo + our typeset layer, in the chosen style's accent.
+      const heroRes = await fetch(pub(heroPath));
+      if (!heroRes.ok) return json({ success: false, error: `Could not read the chosen photo (${heroPath}, ${heroRes.status})` }, 502);
+      const heroBytes = await heroRes.arrayBuffer();
+      const png = await renderAd({
+        template: 'emailhero',
+        imageBytes: new Uint8Array(heroBytes),
+        headlineLines: String(plan.banner.headline).split(/\n|\s*\|\s*/).map((s) => s.trim()).filter(Boolean).slice(0, 3),
+        kicker: (plan.banner.kicker || '').trim() || undefined,
+        accent: (plan.banner.accent || '').trim() || undefined,
+        sub: (plan.banner.sub || '').trim() || undefined,
+        cta: (plan.banner.cta || '').trim() || undefined,
+        accentHex: planStyle.palette.accent,
+        inkHex: inkOnAccent(planStyle.palette.accent),
+        align: plan.banner.align === 'left' ? 'left' : 'center',
+        focus: tileFocus(heroMeta.focus),
+      });
+      if (!png) return json({ success: false, error: 'Banner render failed' }, 502);
+      const bannerUrl = await storeImage(admin, png, 'image/png');
+
+      // Tiles: cropped to landscape, skipping anything that fails rather than
+      // failing the whole email.
+      const tileUrls: string[] = [];
+      const tilePlan: any[] = [];
+      for (const t of (Array.isArray(plan.tiles) ? plan.tiles : []).slice(0, 2)) {
+        if (!t?.path || !paths.has(t.path) || t.path === heroPath) continue;
+        const meta = pool.find((p: any) => p.path === t.path) || {};
+        const cropped = await cropPhoto({ imageUrl: pub(t.path) }, TILE_W, TILE_H, tileFocus(meta.focus));
+        if (!cropped) continue;
+        tileUrls.push(await storeImage(admin, cropped, 'image/png'));
+        tilePlan.push({ path: t.path, title: t.title, caption: t.caption });
+      }
+
+      const designBrief = `${plan.brief}\n\nORIGINAL BRIEF FROM THE OWNER:\n${brief}`
+        + (tilePlan.length ? `\n\nTILE LABELS (use these exact titles/captions on the photo tile grid, in order):\n${tilePlan.map((t, i) => `  ${i + 1}. ${t.title} — ${t.caption}`).join('\n')}` : '');
+
+      const out = await designEmail(admin, {
+        brief: designBrief, style: planStyle, styleNote: body.style_note,
+        bannerUrl, tiles: tileUrls, ctaUrl,
+      });
+
       return json({
-        success: true,
-        subject: (tu.input.subject || '').toString(),
-        preview_text: (tu.input.preview_text || '').toString(),
-        html: finalizeHtml(tu.input.html, style),
+        success: true, ...out,
+        plan: {
+          style_id: planStyle.id, style_name: planStyle.name,
+          hero_photo: heroPath, hero_label: heroMeta.label || heroPath,
+          banner: plan.banner, tiles: tilePlan,
+          banner_url: bannerUrl, tile_urls: tileUrls,
+          catalogued: !!(catalog || []).length,
+        },
       });
+    }
+
+    // ---- One-time vision pass over the house photo library ----
+    // Cheap and idempotent: only photos missing from the catalogue are sent, in
+    // small batches, and the caller loops until `remaining` hits zero.
+    if (action === 'catalog_photos') {
+      const folder = 'photo-lab';
+      const { data: objs, error: listErr } = await admin.storage.from('creative-studio')
+        .list(folder, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
+      if (listErr) return json({ success: false, error: listErr.message }, 500);
+      const all = (objs || []).filter((o: any) => /\.(png|jpe?g|webp)$/i.test(o.name || ''))
+        .map((o: any) => `${folder}/${o.name}`);
+      const { data: known } = await admin.from('creative_photo_catalog').select('path').limit(500);
+      const have = new Set((known || []).map((r: any) => r.path));
+      const todo = all.filter((p) => !have.has(p));
+      if (!todo.length) return json({ success: true, catalogued: 0, remaining: 0, total: all.length });
+
+      // Bounded per invocation so we stay well inside the function's wall clock.
+      const batch = todo.slice(0, 8);
+      const pub = (p: string) => admin.storage.from('creative-studio').getPublicUrl(p).data.publicUrl;
+      const content: any[] = [];
+      batch.forEach((p, i) => {
+        content.push({ type: 'text', text: `Photo ${i + 1}:` });
+        content.push({ type: 'image', source: { type: 'url', url: pub(p) } });
+      });
+      content.push({ type: 'text', text: 'Describe all of the photos above. Be accurate about focus — it decides whether a wide banner crop cuts off the faces.' });
+
+      const res = await callAnthropic({
+        model: MODEL, max_tokens: 3000,
+        system: 'You catalogue a brand photo library for "Regalos Que Cantan" (personalized Spanish songs). Labels, descriptions, subjects and mood are written in Spanish; the enum fields stay in English. Be literal and accurate — these notes decide which photo gets auto-picked for a customer email.',
+        tools: [CATALOG_TOOL], tool_choice: { type: 'tool', name: 'emit_catalog' },
+        messages: [{ role: 'user', content }],
+      });
+      const cu = (res.content || []).find((c: any) => c.type === 'tool_use');
+      const rows = (cu?.input?.photos || [])
+        .filter((p: any) => p && batch[Number(p.index) - 1])
+        .map((p: any) => ({
+          path: batch[Number(p.index) - 1],
+          bucket: 'creative-studio',
+          label: (p.label || '').toString().slice(0, 80),
+          description: (p.description || '').toString().slice(0, 400),
+          subjects: (p.subjects || '').toString().slice(0, 120),
+          mood: (p.mood || '').toString().slice(0, 120),
+          is_bw: !!p.is_bw,
+          brightness: ['dark', 'mid', 'bright'].includes(p.brightness) ? p.brightness : 'mid',
+          focus: ['top', 'center', 'bottom'].includes(p.focus) ? p.focus : 'center',
+          headroom: (p.headroom || '').toString().slice(0, 40),
+          updated_at: new Date().toISOString(),
+        }));
+      if (rows.length) {
+        const { error: upErr } = await admin.from('creative_photo_catalog').upsert(rows, { onConflict: 'path' });
+        if (upErr) return json({ success: false, error: upErr.message }, 500);
+      }
+      return json({ success: true, catalogued: rows.length, remaining: Math.max(0, todo.length - rows.length), total: all.length });
     }
 
     if (action === 'improve' || action === 'refine') {

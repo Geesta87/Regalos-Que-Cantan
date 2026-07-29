@@ -117,6 +117,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [library, setLibrary] = useState([]);
   const [libRole, setLibRole] = useState('');   // '' | 'hero' | 'tile'
   const [libBusy, setLibBusy] = useState(false);
+  const [plan, setPlan] = useState(null);   // what auto-design chose, shown as chips
 
   const [html, setHtml] = useState('');
   const [subject, setSubject] = useState('');
@@ -339,6 +340,44 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     } finally { setImageBusy(false); if (galleryRef.current) galleryRef.current.value = ''; }
   };
 
+  // One-click: the brief is the only input. The planner picks the style, the
+  // photo, the banner copy and the tiles, renders them, and designs the email.
+  const autoDesign = async () => {
+    if (!brief.trim()) { showToast?.('Pick an offering above, or write one line about the email'); return; }
+    setEditingId(null);
+    setError(''); setPlan(null); setStage('auto'); setTab('preview');
+    try {
+      const r = await call({ action: 'auto_email', brief, cta_url: ctaUrl, style_note: styleNote || undefined });
+      if (!r.success) throw new Error(r.error || 'Auto-design failed');
+      let out = r.html;
+      setHtml(out); setSubject(r.subject || ''); setPreviewText(r.preview_text || '');
+      setPlan(r.plan || null);
+      if (r.plan?.style_id) setStyleId(r.plan.style_id);
+      if (r.plan?.banner_url) setBannerUrl(r.plan.banner_url);
+      if (r.plan?.tile_urls?.length) setGallery(r.plan.tile_urls);
+      if (polish) {
+        setStage('polish');
+        const r2 = await call({ action: 'improve', html: out, style_id: r.plan?.style_id || styleId, style_note: styleNote || undefined });
+        if (r2.success && r2.html) { out = r2.html; setHtml(out); }
+      }
+      pushHistory(out, r.subject || '');
+      // First run with an uncatalogued library: describe the photos in the
+      // background so the next auto-design picks from real descriptions.
+      if (r.plan && r.plan.catalogued === false) runCatalog();
+    } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
+    finally { setStage(''); }
+  };
+
+  // Best-effort, idempotent: only uncatalogued photos are sent, in batches.
+  const runCatalog = useCallback(async () => {
+    try {
+      for (let i = 0; i < 15; i++) {
+        const r = await call({ action: 'catalog_photos' });
+        if (!r?.success || !r.remaining) break;
+      }
+    } catch { /* background nicety — never surfaced as an error */ }
+  }, [call]);
+
   const openLibrary = async (role) => {
     setLibRole(role);
     if (library.length) return;
@@ -382,8 +421,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     a.click();
   };
 
-  const generating = stage === 'design' || stage === 'polish';
-  const stageLabel = stage === 'design' ? 'Designing…' : stage === 'polish' ? 'Art-director polish…' : stage === 'refine' ? 'Applying your change…' : '';
+  const generating = stage === 'design' || stage === 'polish' || stage === 'auto';
+  const stageLabel = stage === 'auto' ? 'Choosing the style, photo & headline…'
+    : stage === 'design' ? 'Designing…'
+    : stage === 'polish' ? 'Art-director polish…'
+    : stage === 'refine' ? 'Applying your change…' : '';
 
   return (
     <div className="max-w-6xl">
@@ -598,10 +640,39 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
             </Card>
           )}
 
-          <button onClick={generate} disabled={generating || !brief.trim()} className={btn.accent + ' w-full !py-2.5'}>
-            {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            {generating ? stageLabel : 'Generate email'}
-          </button>
+          <div className="space-y-2">
+            <button onClick={autoDesign} disabled={!!stage || !brief.trim()} className={btn.accent + ' w-full !py-3'}>
+              {stage === 'auto' || stage === 'polish' ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+              {stage === 'auto' ? 'Planning & designing…' : stage === 'polish' ? 'Art-director polish…' : 'Design it for me'}
+            </button>
+            <p className="text-[11px] text-gray-400 text-center">
+              Picks the style, the photo, the banner headline and the tiles from your brief — then builds the whole email.
+            </p>
+            <button onClick={generate} disabled={generating || !!stage || !brief.trim()} className={btn.ghost + ' w-full'}>
+              {generating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {generating ? stageLabel : 'Generate from my settings instead'}
+            </button>
+          </div>
+
+          {plan && (
+            <Card className="p-4">
+              <SectionLabel className="mb-2">What it chose</SectionLabel>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <span className="text-[11px] px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">{plan.style_name}</span>
+                <span className="text-[11px] px-2 py-1 rounded-md bg-gray-50 text-gray-600 border border-gray-200">{plan.hero_label}</span>
+                {plan.tiles?.map((t) => (
+                  <span key={t.path} className="text-[11px] px-2 py-1 rounded-md bg-gray-50 text-gray-600 border border-gray-200">tile · {t.title}</span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                “{String(plan.banner?.headline || '').replace(/\s*\|\s*/g, ' ')}”
+              </p>
+              {plan.banner?.kicker && <p className="text-[11px] text-gray-400 mt-1">Kicker: {plan.banner.kicker}</p>}
+              <button onClick={autoDesign} disabled={!!stage} className={btn.ghost + ' w-full mt-3'}>
+                {stage === 'auto' ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} Try a different take
+              </button>
+            </Card>
+          )}
 
           {history.length > 1 && (
             <Card className="p-4">
@@ -736,8 +807,8 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                 <>
                   <Palette size={22} className="text-gray-300 mb-3" />
                   <p className="text-sm text-gray-500 max-w-sm">
-                    Pick an offering preset, choose a style, and hit <span className="font-medium text-gray-700">Generate email</span>.
-                    Your brand facts, prices and proof points are baked into every design.
+                    Pick an offering preset (or write one line) and hit <span className="font-medium text-gray-700">Design it for me</span>.
+                    It chooses the style, the photo, the banner headline and the tiles — your brand facts, prices and proof points are baked in.
                   </p>
                 </>
               )}
