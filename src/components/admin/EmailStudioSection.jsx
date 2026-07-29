@@ -362,14 +362,33 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       if (!p.success) throw new Error(errOf(p, 'Could not plan the email'));
       setPlan(p.plan || null);
       if (p.style_id) setStyleId(p.style_id);
-      if (p.banner_url) setBannerUrl(p.banner_url);
-      if (p.tile_urls?.length) setGallery(p.tile_urls);
+
+      // One render per request — the platform kills an invocation that tries to
+      // do the banner and the tile crops together.
+      setStage('art');
+      const b = p.hero?.banner || {};
+      const bRes = await call({
+        action: 'banner_hero', style_id: p.style_id,
+        photo_url: p.hero?.url, focus: p.hero?.focus,
+        headline: b.headline, kicker: b.kicker, accent: b.accent,
+        sub: b.sub, cta: b.cta, align: b.align,
+      });
+      if (!bRes.success) throw new Error(errOf(bRes, 'Could not render the banner'));
+      setBannerUrl(bRes.url);
+
+      const tileUrls = [];
+      for (const t of p.tiles || []) {
+        const c = await call({ action: 'use_photo', url: t.url, role: 'tile', focus: t.focus });
+        if (c.success && c.url) tileUrls.push(c.url);
+      }
+      if (tileUrls.length) setGallery(tileUrls);
+      if ((p.tiles || []).length && !tileUrls.length) showToast?.('Tiles could not be prepared — building without the photo grid.');
 
       setStage('design');
       const r = await call({
         action: 'generate', brief: p.design_brief, style_id: p.style_id,
-        style_note: styleNote || undefined, banner_url: p.banner_url,
-        image_urls: p.tile_urls?.length ? p.tile_urls : undefined, cta_url: ctaUrl,
+        style_note: styleNote || undefined, banner_url: bRes.url,
+        image_urls: tileUrls.length ? tileUrls : undefined, cta_url: ctaUrl,
       });
       if (!r.success) throw new Error(errOf(r, 'Could not design the email'));
       let out = r.html;
@@ -441,8 +460,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     a.click();
   };
 
-  const generating = stage === 'design' || stage === 'polish' || stage === 'auto';
+  const generating = stage === 'design' || stage === 'polish' || stage === 'auto' || stage === 'art';
   const stageLabel = stage === 'auto' ? 'Choosing the style, photo & headline…'
+    : stage === 'art' ? 'Making the banner & tiles…'
     : stage === 'design' ? 'Designing…'
     : stage === 'polish' ? 'Art-director polish…'
     : stage === 'refine' ? 'Applying your change…' : '';
@@ -662,8 +682,8 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
 
           <div className="space-y-2">
             <button onClick={autoDesign} disabled={!!stage || !brief.trim()} className={btn.accent + ' w-full !py-3'}>
-              {stage === 'auto' || stage === 'polish' ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-              {stage === 'auto' ? 'Planning & designing…' : stage === 'polish' ? 'Art-director polish…' : 'Design it for me'}
+              {generating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+              {generating ? stageLabel : 'Design it for me'}
             </button>
             <p className="text-[11px] text-gray-400 text-center">
               Picks the style, the photo, the banner headline and the tiles from your brief — then builds the whole email.

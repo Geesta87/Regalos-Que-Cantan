@@ -740,11 +740,13 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, ...out });
     }
 
-    // ---- One-click auto-design, STEP 1 of 2: the plan + its artwork ----
-    // Plans everything the brief implies (style, photo, banner copy, tiles) and
-    // renders the banner + tiles. The design pass is a SEPARATE request: doing
-    // both in one invocation blew the platform's wall-clock limit, which comes
-    // back as {code, message} rather than an error we can catch.
+    // ---- One-click auto-design, STEP 1: the plan, and ONLY the plan ----
+    // This request does no image work at all. Rendering is genuinely expensive —
+    // resvg decodes each ~2.5MB photo into a full bitmap — and an invocation
+    // that rendered a banner plus two tile crops was killed by the platform for
+    // exceeding its compute budget. Every proven function in this project does
+    // at most ONE render per request, so the client now drives the steps:
+    // auto_plan -> banner_hero -> use_photo (per tile) -> generate -> improve.
     if (action === 'auto_plan') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
@@ -806,53 +808,34 @@ ${catalogText}`,
       const planStyle = styleById(plan.style_id);
       const pub = (p: string) => admin.storage.from('creative-studio').getPublicUrl(p).data.publicUrl;
 
-      // Banner: text-free photo + our typeset layer, in the chosen style's accent.
-      const heroRes = await fetch(pub(heroPath));
-      if (!heroRes.ok) return json({ success: false, error: `Could not read the chosen photo (${heroPath}, ${heroRes.status})` }, 502);
-      const heroBytes = await heroRes.arrayBuffer();
-      const png = await renderAd({
-        template: 'emailhero',
-        imageBytes: new Uint8Array(heroBytes),
-        headlineLines: String(plan.banner.headline).split(/\n|\s*\|\s*/).map((s) => s.trim()).filter(Boolean).slice(0, 3),
-        kicker: (plan.banner.kicker || '').trim() || undefined,
-        accent: (plan.banner.accent || '').trim() || undefined,
-        sub: (plan.banner.sub || '').trim() || undefined,
-        cta: (plan.banner.cta || '').trim() || undefined,
-        accentHex: planStyle.palette.accent,
-        inkHex: inkOnAccent(planStyle.palette.accent),
-        align: plan.banner.align === 'left' ? 'left' : 'center',
-        focus: tileFocus(heroMeta.focus),
-      });
-      if (!png) return json({ success: false, error: 'Banner render failed' }, 502);
-      const bannerUrl = await storeImage(admin, png, 'image/png');
-
-      // Tiles: cropped to landscape, skipping anything that fails rather than
-      // failing the whole email.
-      const tileUrls: string[] = [];
-      const tilePlan: any[] = [];
-      for (const t of (Array.isArray(plan.tiles) ? plan.tiles : []).slice(0, 2)) {
-        if (!t?.path || !paths.has(t.path) || t.path === heroPath) continue;
-        const meta = pool.find((p: any) => p.path === t.path) || {};
-        const cropped = await cropPhoto({ imageUrl: pub(t.path) }, TILE_W, TILE_H, tileFocus(meta.focus));
-        if (!cropped) continue;
-        tileUrls.push(await storeImage(admin, cropped, 'image/png'));
-        tilePlan.push({ path: t.path, title: t.title, caption: t.caption });
-      }
+      const tilePlan = (Array.isArray(plan.tiles) ? plan.tiles : []).slice(0, 2)
+        .filter((t: any) => t?.path && paths.has(t.path) && t.path !== heroPath)
+        .map((t: any) => {
+          const meta = pool.find((p: any) => p.path === t.path) || {};
+          return {
+            path: t.path, url: pub(t.path), focus: tileFocus(meta.focus),
+            title: (t.title || '').toString(), caption: (t.caption || '').toString(),
+          };
+        });
 
       const designBrief = `${plan.brief}\n\nORIGINAL BRIEF FROM THE OWNER:\n${brief}`
-        + (tilePlan.length ? `\n\nTILE LABELS (use these exact titles/captions on the photo tile grid, in order):\n${tilePlan.map((t, i) => `  ${i + 1}. ${t.title} — ${t.caption}`).join('\n')}` : '');
+        + (tilePlan.length ? `\n\nTILE LABELS (use these exact titles/captions on the photo tile grid, in order):\n${tilePlan.map((t: any, i: number) => `  ${i + 1}. ${t.title} — ${t.caption}`).join('\n')}` : '');
 
       return json({
         success: true,
         design_brief: designBrief,
         style_id: planStyle.id,
-        banner_url: bannerUrl,
-        tile_urls: tileUrls,
+        // The client renders these one request at a time (banner_hero, then
+        // use_photo per tile) so no single invocation blows its compute budget.
+        hero: {
+          path: heroPath, url: pub(heroPath), focus: tileFocus(heroMeta.focus),
+          banner: plan.banner,
+        },
+        tiles: tilePlan,
         plan: {
           style_id: planStyle.id, style_name: planStyle.name,
           hero_photo: heroPath, hero_label: heroMeta.label || heroPath,
           banner: plan.banner, tiles: tilePlan,
-          banner_url: bannerUrl, tile_urls: tileUrls,
           catalogued: !!(catalog || []).length,
         },
       });
