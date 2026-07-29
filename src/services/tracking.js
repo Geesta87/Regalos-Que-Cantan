@@ -68,6 +68,80 @@ const storeUtmParams = () => {
   }
 };
 
+// ─── Traffic-source capture (organic search, referrals, direct) ─────────────
+// WHY: UTM tags only exist on links WE control (ads, email, tagged social). A
+// visitor who finds us on Google arrives with a clean URL, so utm_source is NULL
+// and the order lands in the "unknown" bucket — 61% of paid orders at the time
+// this was written. That made organic revenue unmeasurable.
+//
+// The one signal we do get is document.referrer (the site the click came from).
+// Google strips the search TERM (has since 2011 — "not provided"), so this tells
+// us the CHANNEL ("came from Google search"), not the keyword. Keywords come from
+// Search Console; this closes the revenue half.
+//
+// Stored FIRST-touch: the first non-internal referrer in the window is how the
+// visitor actually discovered us, and it is only ever READ when utm_source is
+// null, so paid-campaign attribution is never overwritten or affected.
+// Privacy: we store the referrer HOSTNAME and the landing PATH only — never the
+// full referring URL or query string, which can carry personal data.
+const SRC_KEY = 'rqc_src';
+const SRC_TTL_DAYS = 30;
+
+// Map a referrer hostname to a stable channel label.
+export const classifyReferrer = (host) => {
+  const h = (host || '').toLowerCase().replace(/^www\./, '');
+  if (!h) return 'direct';
+  if (/(^|\.)google\./.test(h) || h === 'googleusercontent.com') return 'google-organic';
+  if (/(^|\.)bing\.com$/.test(h)) return 'bing-organic';
+  if (/(^|\.)duckduckgo\.com$/.test(h)) return 'duckduckgo-organic';
+  if (/(^|\.)(search\.)?yahoo\./.test(h)) return 'yahoo-organic';
+  if (/(^|\.)ecosia\.org$/.test(h)) return 'ecosia-organic';
+  if (/(^|\.)(chatgpt\.com|openai\.com|perplexity\.ai|claude\.ai|copilot\.microsoft\.com|gemini\.google\.com)$/.test(h)) return 'ai-referral';
+  if (/(^|\.)(facebook\.com|fb\.com|m\.facebook\.com|l\.facebook\.com)$/.test(h)) return 'facebook-referral';
+  if (/(^|\.)instagram\.com$/.test(h)) return 'instagram-referral';
+  if (/(^|\.)(tiktok\.com)$/.test(h)) return 'tiktok-referral';
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(h)) return 'youtube-referral';
+  if (/(^|\.)(whatsapp\.com|wa\.me)$/.test(h)) return 'whatsapp-referral';
+  if (/(^|\.)(t\.co|twitter\.com|x\.com)$/.test(h)) return 'x-referral';
+  if (/(^|\.)pinterest\./.test(h)) return 'pinterest-referral';
+  if (/(^|\.)reddit\.com$/.test(h)) return 'reddit-referral';
+  return `referral:${h.slice(0, 60)}`;
+};
+
+// Capture on landing. Safe to call on every route change — it only writes once
+// per 30-day window (first touch) and ignores our own domain (internal clicks).
+export const captureTrafficSource = () => {
+  try {
+    const existing = getStoredTrafficSource();
+    if (existing) return existing; // first touch already recorded, keep it
+
+    let host = '';
+    try { host = document.referrer ? new URL(document.referrer).hostname : ''; } catch { host = ''; }
+    // Internal navigation is not a discovery source — don't record it at all,
+    // so a later real referrer (or a clean 'direct') still gets a chance.
+    if (host && host.replace(/^www\./, '') === window.location.hostname.replace(/^www\./, '')) return null;
+
+    const record = {
+      referrer_source: classifyReferrer(host),
+      referrer_host: host || null,
+      landing_path: (window.location.pathname || '/').slice(0, 200),
+      expiresAt: Date.now() + SRC_TTL_DAYS * 24 * 60 * 60 * 1000,
+    };
+    localStorage.setItem(SRC_KEY, JSON.stringify(record));
+    return record;
+  } catch { return null; /* storage disabled — attribution is best-effort, never break the funnel */ }
+};
+
+export const getStoredTrafficSource = () => {
+  try {
+    const raw = localStorage.getItem(SRC_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || typeof o.expiresAt !== 'number' || Date.now() >= o.expiresAt) return null;
+    return o;
+  } catch { return null; }
+};
+
 // ─── Meta click-ID (fbc) capture ────────────────────────────────────────────
 // The Meta pixel only writes the _fbc cookie when it loads with ?fbclid= in the
 // URL, and that cookie can be missing by the time checkout runs — which left the
