@@ -232,6 +232,22 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
         const u = readUtm() || {};
         return { utm_source: u.utm_source || null, utm_medium: u.utm_medium || null, utm_campaign: u.utm_campaign || null };
       })(),
+      // Traffic-source passthrough (organic search / referral / direct). Captured
+      // from document.referrer on landing and persisted 30 days, same TTL as UTM.
+      // The server only uses it when utm_source is null, so paid attribution wins.
+      ...(() => {
+        try {
+          const raw = localStorage.getItem('rqc_src');
+          if (!raw) return {};
+          const o = JSON.parse(raw);
+          if (!o || typeof o.expiresAt !== 'number' || Date.now() >= o.expiresAt) return {};
+          return {
+            referrer_source: o.referrer_source || null,
+            referrer_host: o.referrer_host || null,
+            landing_path: o.landing_path || null,
+          };
+        } catch { return {}; }
+      })(),
       session_id: sessionStorage.getItem('rqc_session_id') || null,
       from_email_campaign: (() => {
         try { const raw = localStorage.getItem('rqc_utm'); if (raw) { const o = JSON.parse(raw); if (o && typeof o.expiresAt === 'number' && Date.now() < o.expiresAt && o.from_email) return o.from_email; } } catch { /* ignore */ }

@@ -35,6 +35,9 @@ const GSC_SITE = Deno.env.get('GSC_SITE_URL') || 'https://regalosquecantan.com/'
 const RQC_PLATFORM = Deno.env.get('MEDIA_BUYER_PLATFORM') || 'es';
 // Queries that are really people looking for US by name (not new demand).
 const BRAND_RE = /regalos?\s*que\s*cantan|regalosque\s*cantan|regalosquecantan/i;
+// Date referrer-based attribution went live. Orders before this have no
+// referrer_source, so organic revenue is unmeasured (not zero) before it.
+const TRAFFIC_SOURCE_LIVE_FROM = Deno.env.get('TRAFFIC_SOURCE_LIVE_FROM') || '2026-07-23';
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -159,16 +162,45 @@ async function gatherSearchContext(supabase: any) {
   // Real paid orders (deduped per stripe_session_id) for business context. NOTE:
   // we can NOT attribute orders to organic search yet (utm_source is only set on
   // tagged links) — the coach must say so instead of inventing an organic ROAS.
+  // Deduped paid orders, now split by SOURCE. referrer_source is filled from the
+  // landing referrer (added 2026-07); utm_source wins when present, so paid
+  // campaigns are never double-counted as organic.
   const dedupedOrders = async (startISO: string, endISO: string) => {
     const { data } = await supabase
-      .from('songs').select('stripe_session_id, amount_paid')
+      .from('songs').select('stripe_session_id, amount_paid, utm_source, referrer_source, landing_path')
       .eq('paid', true).gte('paid_at', `${startISO}T00:00:00Z`).lt('paid_at', `${endISO}T23:59:59Z`)
       .eq('platform', RQC_PLATFORM).not('stripe_session_id', 'is', null);
-    const per = new Map<string, number>();
-    for (const r of (data || [])) { const sid = r.stripe_session_id as string; const amt = num(r.amount_paid); if (!per.has(sid) || amt > (per.get(sid) as number)) per.set(sid, amt); }
-    return { orders: per.size, revenue: r2([...per.values()].reduce((a, b) => a + b, 0)) };
+    const per = new Map<string, { amt: number; src: string; landing: string | null }>();
+    for (const r of (data || [])) {
+      const sid = r.stripe_session_id as string;
+      const amt = num(r.amount_paid);
+      const src = (r.utm_source || r.referrer_source || 'unknown') as string;
+      if (!per.has(sid) || amt > (per.get(sid) as any).amt) per.set(sid, { amt, src, landing: r.landing_path || null });
+    }
+    const rows = [...per.values()];
+    const isOrganicSearch = (s: string) => /-organic$/.test(s) || s === 'google';
+    const org = rows.filter((x) => isOrganicSearch(x.src));
+    const bySource: Record<string, { orders: number; revenue: number }> = {};
+    for (const x of rows) {
+      const k = x.src;
+      if (!bySource[k]) bySource[k] = { orders: 0, revenue: 0 };
+      bySource[k].orders++; bySource[k].revenue = r2(bySource[k].revenue + x.amt);
+    }
+    // Which landing page the organic buyers entered on — GSC shows clicks, this
+    // shows which page actually earns money.
+    const organicLanding: Record<string, number> = {};
+    for (const x of org) { const k = x.landing || '(unrecorded)'; organicLanding[k] = (organicLanding[k] || 0) + 1; }
+    return {
+      orders: rows.length,
+      revenue: r2(rows.reduce((a, b) => a + b.amt, 0)),
+      organic_search: { orders: org.length, revenue: r2(org.reduce((a, b) => a + b.amt, 0)) },
+      unknown_source: rows.filter((x) => x.src === 'unknown').length,
+      by_source: bySource,
+      organic_landing_pages: organicLanding,
+    };
   };
-  let orders_28d = { orders: 0, revenue: 0 }, orders_prev_28d = { orders: 0, revenue: 0 };
+  const emptyOrders = { orders: 0, revenue: 0, organic_search: { orders: 0, revenue: 0 }, unknown_source: 0, by_source: {}, organic_landing_pages: {} };
+  let orders_28d: any = emptyOrders, orders_prev_28d: any = emptyOrders;
   try { [orders_28d, orders_prev_28d] = await Promise.all([dedupedOrders(RANGE.cur.startDate, RANGE.cur.endDate), dedupedOrders(RANGE.prev.startDate, RANGE.prev.endDate)]); } catch (_e) { /* best-effort */ }
 
   const hadData = curTotal.length > 0 || curQueries.length > 0;
@@ -191,7 +223,7 @@ async function gatherSearchContext(supabase: any) {
     devices_28d: devices.map((r) => ({ device: r.keys?.[0], ...shapeRow(r) })),
     real_orders_context: {
       last_28d: orders_28d, prev_28d: orders_prev_28d,
-      note: 'ALL-channel real paid orders (deduped). We cannot attribute orders to organic search yet (utm gap) — never invent an organic ROAS; say this plainly if asked.',
+      note: `Deduped real paid orders, split by source. utm_source (paid/email/tagged links) wins; when absent we fall back to referrer_source, captured from the landing referrer. organic_search = arrived from a search engine (google/bing/duckduckgo/yahoo/ecosia). CRITICAL HONESTY RULES: (1) Referrer capture went live ${TRAFFIC_SOURCE_LIVE_FROM}. For any period BEFORE that date organic_search reads 0 because it was never measured, NOT because there were no organic sales — never report that as growth or a decline, and say so when the window spans that date. (2) unknown_source counts orders with neither a UTM nor a referrer (older orders, or browsers/apps that strip the referrer) — real organic is somewhat HIGHER than measured, so treat organic numbers as a floor. (3) Google strips the search term, so this gives the CHANNEL, never the keyword — keywords only come from the Search Console data above. (4) organic_landing_pages shows which page organic BUYERS entered on (GSC shows clicks; this shows money).`,
     },
   };
 }
@@ -262,7 +294,7 @@ How you operate:
 - The LIVE Search Console snapshot OUTRANKS the brain doc. If they disagree, trust the data and say so.
 - BE HONEST ABOUT TIME. Organic compounds over 6-18 months. Never promise fast rankings. The genuinely fast levers: fixing striking-distance queries (position 4-20), sharper titles on pages that already get impressions, seasonal pages built months early, and brand/AI-answer visibility via mentions.
 - Distinguish BRANDED from NON-BRANDED ruthlessly. Branded clicks are people who already know us (ads and social built that); non-branded is new demand. Never let branded volume flatter the SEO picture — the snapshot splits them; use the split.
-- WHAT YOU CANNOT SEE — say so plainly instead of guessing: no keyword-volume database (no Ahrefs/Semrush access), no backlink index, no AI Overview citation report (Google folds AI traffic into normal Web totals), no per-order organic attribution (utm gap), GSC data lags ~2 days, and you can't crawl the whole site (only fetch specific pages). If a question needs one of these, name the gap and give the best grounded answer possible.
+- WHAT YOU CANNOT SEE — say so plainly instead of guessing: no keyword-volume database (no Ahrefs/Semrush access), no backlink index, no AI Overview citation report (Google folds AI traffic into normal Web totals), no search KEYWORD per order (Google strips the term — you get the channel only, and organic revenue is measured as a FLOOR from ${TRAFFIC_SOURCE_LIVE_FROM} onward; before that date it was never captured, so never read a pre-launch zero as a real number), GSC data lags ~2 days, and you can't crawl the whole site (only fetch specific pages). If a question needs one of these, name the gap and give the best grounded answer possible.
 - Never invent a number (a keyword volume, a difficulty score, a benchmark CTR). If the owner asks "how many people search X", say what the snapshot shows about our own impressions for similar queries and be explicit that you have no volume database.
 - MATCH LENGTH TO THE QUESTION. Simple/narrow question → a few sentences, direct, done. Reserve the fuller mechanic-and-teaching treatment for strategic or open questions, or when asked. Never pad. Plain language, warm and direct.
 - FORMATTING: plain text only. No markdown — no ** or __, no ## headers, no asterisk bullets (they render as literal clutter in the owner's chat). Lists use "- " or "1." only.`;

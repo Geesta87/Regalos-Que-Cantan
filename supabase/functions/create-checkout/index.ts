@@ -87,7 +87,7 @@ serve(async (req) => {
     }
 
     let { email } = body;
-    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, ttclid, ttp, clientUserAgent, affiliateCode } = body;
+    const { couponCode, utm_source, utm_medium, utm_campaign, session_id, from_email_campaign, purchaseBoth, pricingTier, videoAddon, videoAddonCount: rawVideoAddonCount, karaokeAddon, lyricVideoAddon, karaokeVideoAddon, fbc, fbp, ttclid, ttp, clientUserAgent, affiliateCode, referrer_source, referrer_host, landing_path } = body;
     // Gift-SMS add-on payload (optional): { recipient_name, recipient_phone,
     // buyer_name, personal_message, send_at (ISO UTC), buyer_timezone, attestation }
     const giftRaw = body.giftSms || null;
@@ -676,6 +676,13 @@ serve(async (req) => {
     if (utm_medium) songUpdate.utm_medium = utm_medium;
     if (utm_campaign) songUpdate.utm_campaign = utm_campaign;
     if (from_email_campaign) songUpdate.from_email_campaign = from_email_campaign;
+    // Traffic source (organic search / referral / direct), derived from the
+    // referrer on landing. Always recorded so we can tell a real "direct" visit
+    // from "we never knew" — but it never overwrites utm_source, so paid-campaign
+    // attribution is untouched. Reporting reads coalesce(utm_source, referrer_source).
+    if (referrer_source) songUpdate.referrer_source = String(referrer_source).slice(0, 80);
+    if (referrer_host) songUpdate.referrer_host = String(referrer_host).slice(0, 120);
+    if (landing_path) songUpdate.landing_path = String(landing_path).slice(0, 200);
     if (resolvedAffiliate) songUpdate.affiliate_code = resolvedAffiliate;
     if (Object.keys(songUpdate).length > 0) {
       for (const sid of songIds) {
