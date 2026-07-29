@@ -1,6 +1,6 @@
 -- FIX: normalize_traffic_source() mapped NULL/'' -> 'organic', so every order we
 -- simply had no source for was REPORTED as organic. Measured at the time of this
--- change: 880 purchases / $29,095.75 in 30 days (58% of revenue) were being
+-- change: 880 purchases / $29,095.75 in 30 days (60.7% of $47,955.67 total revenue) were being
 -- credited to "organic" when the true answer was "we don't know".
 -- NULL now means 'unknown'. Genuine organic is identified by the referrer
 -- captured at landing ('google-organic' etc.), never by absence of data.
