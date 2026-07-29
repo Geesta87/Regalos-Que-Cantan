@@ -492,7 +492,9 @@ function buildRouteConfigs() {
           { question: '¿Cuánto cuesta una canción personalizada para regalar?', answer: 'Una canción personalizada cuesta $29.99 USD. Es un pago único, sin suscripción, e incluye dos versiones para que elijas tu favorita. Está lista para descargar y regalar en minutos.' },
           { question: '¿A quién le puedo regalar una canción?', answer: 'A quien quieras sorprender: tu pareja, tu mamá o papá, un amigo, tus hijos, tus abuelos. Funciona para aniversarios, cumpleaños, bodas, el Día de las Madres, o simplemente para decir te quiero sin ocasión.' },
           { question: '¿Puedo regalar una canción para una pareja o aniversario?', answer: 'Sí. Es uno de los regalos más pedidos. Incluimos los nombres de los dos, cómo se conocieron y los detalles de su historia, en el género que más les guste.' },
+          { question: '¿Puedo escucharla antes de pagar?', answer: 'Sí. Recibes un preview de cada una de las dos versiones antes de decidir, así te aseguras de que te encanta antes de comprarla.' },
           { question: '¿Cómo entrego la canción de regalo?', answer: 'Recibes un archivo MP3 de alta calidad al instante. Lo puedes enviar por WhatsApp, ponerlo en una tarjeta con un código QR, reproducirlo en la fiesta o compartirlo por redes sociales.' },
+          { question: '¿En qué géneros puedo pedir la canción?', answer: 'En más de 20 géneros de música latina: corridos tumbados, cumbia, norteño, banda, mariachi, bachata, bolero, reggaetón y más. Tú eliges el estilo que mejor va con la persona.' },
           { question: '¿Cuánto tarda en estar lista?', answer: 'Entre 2 y 4 minutos. Escuchas un preview gratis de cada versión antes de pagar.' }
         ])
       ].filter(Boolean),
@@ -503,6 +505,10 @@ function buildRouteConfigs() {
         <p>Una canción para regalar es una canción personalizada creada exclusivamente para alguien especial: incluye su nombre, tu mensaje y los detalles de su historia, en el género latino que elijas —corridos, cumbia, bachata, mariachi y más—. Está lista en minutos y se entrega en MP3 para compartir por WhatsApp. Desde $29.99 USD, pago único.</p>
         <p><em>Actualizado: ${BUILD_DATE}</em></p>
         <a href="/create/occasion">Crear una Canción para Regalar — Desde $29.99</a>
+        <section>
+          <h2>Así suena una canción hecha para alguien</h2>
+          <p>En la página puedes escuchar ejemplos reales antes de pedir la tuya: un corrido tumbado, una bachata romántica y una balada — para que sepas exactamente cómo va a sonar tu regalo. También verás las reacciones de clientes escuchando su canción por primera vez.</p>
+        </section>
         <section>
           <h2>¿Por qué regalar una canción?</h2>
           <p>Los regalos comunes se olvidan. Una canción con el nombre de esa persona, que cuenta su historia y dice lo que sientes, se guarda para siempre y se escucha una y otra vez.</p>
