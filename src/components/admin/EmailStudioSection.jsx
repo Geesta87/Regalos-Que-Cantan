@@ -74,6 +74,11 @@ const PRESETS = [
 
 const DEVICE_WIDTHS = { desktop: '100%', mobile: 390 };
 
+// Platform-level failures (a wall-clock kill, a gateway error) come back as
+// {code, message} with no `error` field. Without this the UI showed a generic
+// "failed" and hid the one detail that explains what happened.
+const errOf = (r, fallback) => r?.error || r?.message || (r?.code ? String(r.code) : '') || fallback;
+
 // Audience segments — must match the enum in email-studio + the SQL filters in
 // enqueue_marketing_recipients. "Everyone" is the default.
 const SEGMENTS = [
@@ -152,7 +157,11 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
       body: JSON.stringify(payload),
     });
-    return res.json();
+    // Not every failure is JSON — a killed worker or a gateway error can return
+    // plain text, and res.json() would throw a parse error that hides the cause.
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch { return { success: false, error: `HTTP ${res.status}: ${text.slice(0, 200) || 'empty response'}` }; }
   }, [accessToken]);
 
   const pickPreset = (p) => {
@@ -179,7 +188,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         image_urls: gallery.length ? gallery : undefined,
         cta_url: ctaUrl,
       });
-      if (!r.success) throw new Error(r.error || 'Generation failed');
+      if (!r.success) throw new Error(errOf(r, 'Generation failed'));
       let out = r.html;
       setHtml(out); setSubject(r.subject || ''); setPreviewText(r.preview_text || '');
       if (polish) {
@@ -197,7 +206,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setError(''); setStage('refine');
     try {
       const r = await call({ action: 'refine', html, instruction: refineText, style_id: styleId });
-      if (!r.success) throw new Error(r.error || 'Refine failed');
+      if (!r.success) throw new Error(errOf(r, 'Refine failed'));
       setHtml(r.html); setRefineText(''); pushHistory(r.html, subject);
     } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
     finally { setStage(''); }
@@ -207,7 +216,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setBusy(true);
     try {
       const r = await call({ action: 'send_test', html, subject, preview_text: previewText, style_id: styleId });
-      if (!r.success) throw new Error(r.error || 'Test failed');
+      if (!r.success) throw new Error(errOf(r, 'Test failed'));
       showToast?.(`Test sent to ${r.sent_to}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }
@@ -223,7 +232,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setBusy(true);
     try {
       const r = await call({ action: 'queue', id: editingId || undefined, html, subject, subject_b: abTest ? subjectB : '', segment, preview_text: previewText, cta_url: ctaUrl, style_id: styleId });
-      if (!r.success) throw new Error(r.error || 'Queue failed');
+      if (!r.success) throw new Error(errOf(r, 'Queue failed'));
       showToast?.(r.updated ? 'Draft updated — review it in the Emails section.' : 'Added to the Emails queue — open the Emails section to test & approve the send.');
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setBusy(false); }
@@ -242,7 +251,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         action: 'refine', html, style_id: styleId,
         instruction: `Place this hosted hero image near the TOP of the email, full content width (about 600x400, rounded corners, descriptive alt text). If a hero image already exists, REPLACE its src with this one; otherwise insert it. Use EXACTLY this URL and change NOTHING else about the copy or layout: ${url}`,
       });
-      if (!r.success) throw new Error(r.error || 'Could not apply the image');
+      if (!r.success) throw new Error(errOf(r, 'Could not apply the image'));
       setHtml(r.html); pushHistory(r.html, subject);
       showToast?.('Hero image added to the email.');
     } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
@@ -262,7 +271,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     try {
       const dataUrl = await readDataUrl(f);
       const r = await call({ action: 'upload_image', image: dataUrl });
-      if (!r.success) throw new Error(r.error || 'Upload failed');
+      if (!r.success) throw new Error(errOf(r, 'Upload failed'));
       setImageUrl(r.url);
       showToast?.(html ? 'Image hosted — applying it to the email…' : 'Image hosted — it will be used as the hero.');
       await applyHeroToEmail(r.url);
@@ -275,7 +284,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setImageBusy(true);
     try {
       const r = await call({ action: 'gen_image', prompt: imagePrompt });
-      if (!r.success) throw new Error(r.error || 'Image generation failed');
+      if (!r.success) throw new Error(errOf(r, 'Image generation failed'));
       setImageUrl(r.url);
       showToast?.(html ? 'Image generated — applying it to the email…' : 'Hero image generated.');
       await applyHeroToEmail(r.url);
@@ -294,7 +303,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         action: 'refine', html, style_id: styleId,
         instruction: `Place this hosted DESIGNED BANNER as the very first element under the brand header, FULL-BLEED: edge to edge, no side padding, no rounded corners, no border, wrapped in a link to the main CTA URL, as <img width="600" height="375" style="display:block;width:100%;max-width:600px;height:auto;border:0;">. Its alt text must repeat the banner headline: "${bh.headline.replace(/\|/g, ' ')}". If a hero image or banner already sits at the top, REPLACE it with this one. Keep a live HTML headline and a real CTA button directly beneath the banner. Change nothing else. Use EXACTLY this URL: ${url}`,
       });
-      if (!r.success) throw new Error(r.error || 'Could not apply the banner');
+      if (!r.success) throw new Error(errOf(r, 'Could not apply the banner'));
       setHtml(r.html); pushHistory(r.html, subject);
       showToast?.('Banner placed at the top of the email.');
     } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
@@ -312,7 +321,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         prompt: imageUrl ? undefined : bh.prompt,
         headline: bh.headline, kicker: bh.kicker, accent: bh.accent, sub: bh.sub, cta: bh.cta, align: bh.align,
       });
-      if (!r.success) throw new Error(r.error || 'Banner failed');
+      if (!r.success) throw new Error(errOf(r, 'Banner failed'));
       setBannerUrl(r.url);
       showToast?.(html ? 'Banner made — placing it in the email…' : 'Banner made — it becomes the hero when you Generate email.');
       await applyBannerToEmail(r.url);
@@ -340,30 +349,41 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     } finally { setImageBusy(false); if (galleryRef.current) galleryRef.current.value = ''; }
   };
 
-  // One-click: the brief is the only input. The planner picks the style, the
-  // photo, the banner copy and the tiles, renders them, and designs the email.
+  // One-click: the brief is the only input. Runs as THREE requests on purpose —
+  // plan+artwork, then design, then polish. Doing it in one invocation exceeded
+  // the edge function's wall-clock limit, which comes back as a bare
+  // {code, message} the app can't catch as an error.
   const autoDesign = async () => {
     if (!brief.trim()) { showToast?.('Pick an offering above, or write one line about the email'); return; }
     setEditingId(null);
     setError(''); setPlan(null); setStage('auto'); setTab('preview');
     try {
-      const r = await call({ action: 'auto_email', brief, cta_url: ctaUrl, style_note: styleNote || undefined });
-      if (!r.success) throw new Error(r.error || 'Auto-design failed');
+      const p = await call({ action: 'auto_plan', brief, cta_url: ctaUrl, style_note: styleNote || undefined });
+      if (!p.success) throw new Error(errOf(p, 'Could not plan the email'));
+      setPlan(p.plan || null);
+      if (p.style_id) setStyleId(p.style_id);
+      if (p.banner_url) setBannerUrl(p.banner_url);
+      if (p.tile_urls?.length) setGallery(p.tile_urls);
+
+      setStage('design');
+      const r = await call({
+        action: 'generate', brief: p.design_brief, style_id: p.style_id,
+        style_note: styleNote || undefined, banner_url: p.banner_url,
+        image_urls: p.tile_urls?.length ? p.tile_urls : undefined, cta_url: ctaUrl,
+      });
+      if (!r.success) throw new Error(errOf(r, 'Could not design the email'));
       let out = r.html;
       setHtml(out); setSubject(r.subject || ''); setPreviewText(r.preview_text || '');
-      setPlan(r.plan || null);
-      if (r.plan?.style_id) setStyleId(r.plan.style_id);
-      if (r.plan?.banner_url) setBannerUrl(r.plan.banner_url);
-      if (r.plan?.tile_urls?.length) setGallery(r.plan.tile_urls);
+
       if (polish) {
         setStage('polish');
-        const r2 = await call({ action: 'improve', html: out, style_id: r.plan?.style_id || styleId, style_note: styleNote || undefined });
+        const r2 = await call({ action: 'improve', html: out, style_id: p.style_id, style_note: styleNote || undefined });
         if (r2.success && r2.html) { out = r2.html; setHtml(out); }
       }
       pushHistory(out, r.subject || '');
       // First run with an uncatalogued library: describe the photos in the
       // background so the next auto-design picks from real descriptions.
-      if (r.plan && r.plan.catalogued === false) runCatalog();
+      if (p.plan && p.plan.catalogued === false) runCatalog();
     } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
     finally { setStage(''); }
   };
@@ -384,7 +404,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setLibBusy(true);
     try {
       const r = await call({ action: 'list_photos', folder: 'photo-lab' });
-      if (!r.success) throw new Error(r.error || 'Could not load the library');
+      if (!r.success) throw new Error(errOf(r, 'Could not load the library'));
       setLibrary(r.photos || []);
     } catch (e) { showToast?.(`Error: ${e.message}`); setLibRole(''); }
     finally { setLibBusy(false); }
@@ -395,7 +415,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setLibBusy(true);
     try {
       const r = await call({ action: 'use_photo', url, role });
-      if (!r.success) throw new Error(r.error || 'Could not use that photo');
+      if (!r.success) throw new Error(errOf(r, 'Could not use that photo'));
       setLibRole('');
       if (role === 'tile') {
         setGallery((g) => [...g, r.url].slice(0, 6));

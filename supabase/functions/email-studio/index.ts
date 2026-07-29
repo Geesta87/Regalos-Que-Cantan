@@ -740,12 +740,12 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, ...out });
     }
 
-    // ---- One-click auto-design: brief in, finished email out ----
-    // Plans everything the brief implies (style, photo, banner copy, tiles),
-    // renders the banner and tiles, then runs the normal design pass. The
-    // owner's only decision is the brief. Still returns a DRAFT — queueing and
-    // approval are untouched.
-    if (action === 'auto_email') {
+    // ---- One-click auto-design, STEP 1 of 2: the plan + its artwork ----
+    // Plans everything the brief implies (style, photo, banner copy, tiles) and
+    // renders the banner + tiles. The design pass is a SEPARATE request: doing
+    // both in one invocation blew the platform's wall-clock limit, which comes
+    // back as {code, message} rather than an error we can catch.
+    if (action === 'auto_plan') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
       const ctaUrl = (body.cta_url || SITE).toString();
@@ -842,13 +842,12 @@ ${catalogText}`,
       const designBrief = `${plan.brief}\n\nORIGINAL BRIEF FROM THE OWNER:\n${brief}`
         + (tilePlan.length ? `\n\nTILE LABELS (use these exact titles/captions on the photo tile grid, in order):\n${tilePlan.map((t, i) => `  ${i + 1}. ${t.title} — ${t.caption}`).join('\n')}` : '');
 
-      const out = await designEmail(admin, {
-        brief: designBrief, style: planStyle, styleNote: body.style_note,
-        bannerUrl, tiles: tileUrls, ctaUrl,
-      });
-
       return json({
-        success: true, ...out,
+        success: true,
+        design_brief: designBrief,
+        style_id: planStyle.id,
+        banner_url: bannerUrl,
+        tile_urls: tileUrls,
         plan: {
           style_id: planStyle.id, style_name: planStyle.name,
           hero_photo: heroPath, hero_label: heroMeta.label || heroPath,
