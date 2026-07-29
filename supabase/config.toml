@@ -963,3 +963,10 @@ verify_jwt = true
 # unchanged). Called by pg_cron (no JWT) → verify_jwt = false. Kill switch:
 # fix_auto_state.enabled (default false).
 verify_jwt = false
+
+# Checkout (payment-critical). Called by our own frontend with the Supabase anon
+# key, which satisfies the default gate — verified live 2026-07-23: an anon
+# Bearer token reaches the handler, no auth header gets 401. Pinned explicitly so
+# a future redeploy can never silently flip it (see CLAUDE.md section 2).
+[functions.create-checkout]
+verify_jwt = true
