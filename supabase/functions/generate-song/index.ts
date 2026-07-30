@@ -152,7 +152,12 @@ const genreDNA: Record<string, GenreData> = {
         instruments: 'punchy alto saxophone playing melodic hooks and fills between accordion lines, diatonic button accordion lead, bajo sexto twelve-string with percussive downstrokes, electric bass walking polka bass lines, polka norteña drum pattern with 2/4 backbeat, traditional conjunto rhythm section',
         vibe: 'cantina norteño polka, traditional border-town conjunto dance, working-class polka norteña party, accordion-and-sax call and response, palenque feria norteño polka, conjunto polka norteña celebration',
         negative: 'cumbia, cumbia norteña, sonidera, güiro, synth cumbia, dance hall electronic, fast quebradita, slow ballad, classy wedding crooner, smooth romantic crooning, jazz fusion, EDM, trap, 808, heavy metal, banda brass section, modern pop production',
-        vocalCharacter: 'earnest male norteño tenor lead vocal, slightly nasal cantina warmth, conjunto polka norteña delivery, blue-collar polka norteño charm'
+        // MUST stay gender-neutral: the gender label is prepended at payload
+        // build time, so a gendered word here contradicts it. This field used to
+        // read "earnest male norteño tenor lead vocal", which sent Suno
+        // "solo female vocalist, female voice, ... earnest male norteño tenor
+        // lead vocal" on female orders (confirmed on a real 2026-07-30 order).
+        vocalCharacter: 'earnest norteño lead vocal, slightly nasal cantina warmth, conjunto polka norteña delivery, blue-collar polka norteño charm'
       },
       nortena_banda: {
         name: 'Norteña-Banda',
