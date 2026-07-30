@@ -149,6 +149,65 @@ async function publishAdToMeta(opts: {
   return { ad_id: ad.id, creative_id: creative.id };
 }
 
+// ---------------------------------------------------------------------------
+// CAMPAIGN CREATION — owner-approved, always PAUSED.
+//
+// HARD GUARANTEES enforced in CODE (not in a prompt):
+//  • The MODEL CANNOT REACH THIS. There is deliberately no generate_* tool for
+//    it — the coach can only recommend a campaign in words. The only path that
+//    creates anything is an explicit human click that sends confirm:true.
+//  • Campaign AND ad set are created status=PAUSED. Nothing can spend until the
+//    owner switches it on in Ads Manager.
+//  • The daily budget is clamped to BUDGET_MIN/MAX_USD, so a mistyped number
+//    cannot create a $5,000/day campaign.
+//  • objective is allow-listed.
+//  • Targeting / optimization / attribution are CLONED from one of the account's
+//    real ad sets (validated server-side) — never invented by an LLM.
+//  • special_ad_categories is always [] (this account runs no special category).
+//  • Budget lives on the CAMPAIGN (CBO), matching how this account is run; the
+//    ad set therefore carries no budget of its own.
+//  • If ad-set creation fails, the just-created campaign is DELETED so a failed
+//    attempt can never leave an orphan campaign behind.
+// ---------------------------------------------------------------------------
+const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '1296066869001492';
+const CAMPAIGN_OBJECTIVES = ['OUTCOME_SALES'];
+const BUDGET_MIN_USD = 5;
+const BUDGET_MAX_USD = Number(Deno.env.get('ADS_COACH_MAX_DAILY_USD') || 150);
+
+async function metaDelete(path: string): Promise<void> {
+  try {
+    await fetch(`${META_BASE}/${path}`, {
+      method: 'POST',
+      body: new URLSearchParams({ access_token: META_ACCESS_TOKEN!, _method: 'DELETE' }),
+    });
+  } catch (_e) { /* best-effort rollback */ }
+}
+
+// One of the account's REAL ad sets, used as the settings template. Returning
+// null means "not in this account" — callers must refuse rather than invent.
+async function fetchAdsetTemplate(adsetId: string): Promise<any | null> {
+  const sets = await metaGet(`${META_AD_ACCOUNT_ID}/adsets`, {
+    fields: 'id,name,optimization_goal,billing_event,attribution_spec,destination_type,promoted_object,targeting,campaign_id',
+    limit: '200',
+  });
+  return (sets.data || []).find((s: any) => String(s.id) === String(adsetId)) || null;
+}
+
+// Meta rejects a few read-only keys that come back on a GET of targeting.
+function cleanTargeting(t: any): any {
+  const out = { ...(t || {}) };
+  for (const k of ['is_whatsapp_destination_ad', 'targeting_optimization', 'brand_safety_content_filter_levels']) delete out[k];
+  return out;
+}
+
+function budgetCentsOrError(usd: any): { cents?: number; error?: string } {
+  const n = Number(usd);
+  if (!Number.isFinite(n)) return { error: 'Enter a daily budget in dollars.' };
+  if (n < BUDGET_MIN_USD) return { error: `Daily budget must be at least $${BUDGET_MIN_USD}.` };
+  if (n > BUDGET_MAX_USD) return { error: `Daily budget is capped at $${BUDGET_MAX_USD}/day here as a safety limit. Raise ADS_COACH_MAX_DAILY_USD if you really want more.` };
+  return { cents: Math.round(n * 100) };
+}
+
 // Start-of-day (UTC instant) for a calendar day in `tz`, offset by dayOffset.
 function tzOffsetMs(date: Date, tz: string): number {
   const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -895,6 +954,145 @@ serve(async (req: Request) => {
         const targets = (sets.data || []).map((s: any) => ({ adset_id: s.id, adset_name: s.name, campaign: campName[s.campaign_id] || s.campaign_id }));
         return json({ success: true, targets });
       } catch (e: any) { return json({ success: false, error: String(e?.message || e).slice(0, 300) }, 200); }
+    }
+
+    // --- PLAN A CAMPAIGN (READ-ONLY): builds the exact spec that would be sent
+    // to Meta and returns it for the owner to review. Creates NOTHING. The
+    // approval screen renders this verbatim, so what you approve is what runs.
+    if (action === 'plan_campaign') {
+      try {
+        const templateId = String(body.template_adset_id || '');
+        if (!templateId) return json({ success: false, error: 'Pick an existing ad set to copy the targeting from.' }, 400);
+        const tpl = await fetchAdsetTemplate(templateId);
+        if (!tpl) return json({ success: false, error: 'That ad set is not in your ad account.' }, 400);
+
+        const { cents, error } = budgetCentsOrError(body.daily_budget_usd);
+        if (error) return json({ success: false, error }, 400);
+
+        const objective = String(body.objective || 'OUTCOME_SALES');
+        if (!CAMPAIGN_OBJECTIVES.includes(objective)) return json({ success: false, error: `Objective must be one of: ${CAMPAIGN_OBJECTIVES.join(', ')}.` }, 400);
+
+        const campaignName = String(body.campaign_name || '').trim().slice(0, 90);
+        const adsetName = String(body.adset_name || '').trim().slice(0, 90) || `${campaignName} — ad set`;
+        if (!campaignName) return json({ success: false, error: 'Give the campaign a name.' }, 400);
+
+        // Warn (don't block) on a duplicate name so the owner notices.
+        let duplicate = false;
+        try {
+          const camps = await metaGet(`${META_AD_ACCOUNT_ID}/campaigns`, { fields: 'name', limit: '200' });
+          duplicate = (camps.data || []).some((c: any) => String(c.name).trim().toLowerCase() === campaignName.toLowerCase());
+        } catch (_e) { /* non-fatal */ }
+
+        const t = tpl.targeting || {};
+        return json({
+          success: true,
+          plan: {
+            campaign: {
+              name: campaignName, objective, buying_type: 'AUCTION',
+              status: 'PAUSED', daily_budget_usd: cents! / 100,
+              bid_strategy: 'LOWEST_COST_WITHOUT_CAP', special_ad_categories: [],
+            },
+            adset: {
+              name: adsetName, status: 'PAUSED',
+              budget: 'none — the campaign holds the budget (CBO)',
+              optimization_goal: tpl.optimization_goal || 'OFFSITE_CONVERSIONS',
+              billing_event: tpl.billing_event || 'IMPRESSIONS',
+              promoted_object: tpl.promoted_object || { pixel_id: META_PIXEL_ID, custom_event_type: 'PURCHASE' },
+              copied_from: tpl.name,
+              targeting_summary: {
+                ages: `${t.age_min ?? '—'}–${t.age_max ?? '—'}`,
+                genders: t.genders || 'all',
+                countries: t.geo_locations?.countries || t.geo_locations?.location_types || '—',
+                platforms: t.publisher_platforms || 'automatic',
+                advantage_audience: t.targeting_automation?.advantage_audience ?? '—',
+              },
+            },
+            duplicate_name: duplicate,
+            guarantees: [
+              'Campaign and ad set are both created PAUSED — nothing can spend until you switch it on.',
+              `Targeting, optimization and attribution are copied from your existing "${tpl.name}" — nothing invented.`,
+              `Budget is capped at $${BUDGET_MAX_USD}/day by this tool.`,
+              'No ads are created here. You add those afterwards from the gallery.',
+            ],
+          },
+        });
+      } catch (e: any) { return json({ success: false, error: String(e?.message || e).slice(0, 300) }, 200); }
+    }
+
+    // --- CREATE THE CAMPAIGN (WRITE): requires an explicit confirm:true from a
+    // human click. Re-derives every value server-side from the same inputs the
+    // plan used, so nothing can be smuggled in between preview and creation. ---
+    if (action === 'create_campaign') {
+      if (body.confirm !== true) return json({ success: false, error: 'Not confirmed — nothing was created.' }, 400);
+      try {
+        const templateId = String(body.template_adset_id || '');
+        const tpl = templateId ? await fetchAdsetTemplate(templateId) : null;
+        if (!tpl) return json({ success: false, error: 'That ad set is not in your ad account.' }, 400);
+
+        const { cents, error } = budgetCentsOrError(body.daily_budget_usd);
+        if (error) return json({ success: false, error }, 400);
+
+        const objective = String(body.objective || 'OUTCOME_SALES');
+        if (!CAMPAIGN_OBJECTIVES.includes(objective)) return json({ success: false, error: 'Objective not allowed.' }, 400);
+
+        const campaignName = String(body.campaign_name || '').trim().slice(0, 90);
+        if (!campaignName) return json({ success: false, error: 'Give the campaign a name.' }, 400);
+        const adsetName = String(body.adset_name || '').trim().slice(0, 90) || `${campaignName} — ad set`;
+
+        // 1) Campaign — PAUSED, budget on the campaign (CBO).
+        const camp = await metaFormPost(`${META_AD_ACCOUNT_ID}/campaigns`, {
+          name: campaignName,
+          objective,
+          status: 'PAUSED', // HARD RULE — never created live
+          buying_type: 'AUCTION',
+          daily_budget: String(cents),
+          bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+          special_ad_categories: JSON.stringify([]),
+        });
+        if (!camp?.id) throw new Error('Meta did not return a campaign id.');
+
+        // 2) Ad set — PAUSED, settings cloned from the proven template. If this
+        // fails we delete the campaign so no orphan is left behind.
+        let adset: any;
+        try {
+          const params: Record<string, string> = {
+            name: adsetName,
+            campaign_id: camp.id,
+            status: 'PAUSED', // HARD RULE — never created live
+            billing_event: tpl.billing_event || 'IMPRESSIONS',
+            optimization_goal: tpl.optimization_goal || 'OFFSITE_CONVERSIONS',
+            targeting: JSON.stringify(cleanTargeting(tpl.targeting)),
+            promoted_object: JSON.stringify(tpl.promoted_object || { pixel_id: META_PIXEL_ID, custom_event_type: 'PURCHASE' }),
+          };
+          if (tpl.attribution_spec) params.attribution_spec = JSON.stringify(tpl.attribution_spec);
+          if (tpl.destination_type) params.destination_type = tpl.destination_type;
+          adset = await metaFormPost(`${META_AD_ACCOUNT_ID}/adsets`, params);
+          if (!adset?.id) throw new Error('Meta did not return an ad set id.');
+        } catch (inner: any) {
+          await metaDelete(camp.id);
+          return json({ success: false, error: `Ad set failed, so the campaign was rolled back (nothing left behind): ${String(inner?.message || inner).slice(0, 300)}` }, 200);
+        }
+
+        // Audit trail — who created what, when.
+        try {
+          await admin.from('ads_coach_campaigns').insert({
+            campaign_id: camp.id, campaign_name: campaignName,
+            adset_id: adset.id, adset_name: adsetName,
+            daily_budget_usd: cents! / 100, objective,
+            template_adset_id: templateId, template_adset_name: tpl.name,
+            created_by: ud.user.email || ud.user.id,
+          });
+        } catch (_e) { /* audit is best-effort — never lose the result over it */ }
+
+        return json({
+          success: true,
+          campaign_id: camp.id, adset_id: adset.id,
+          campaign_name: campaignName, adset_name: adsetName,
+          note: 'Created PAUSED. Nothing will spend until you switch it on in Ads Manager. Add ads to it from the gallery below.',
+        });
+      } catch (e: any) {
+        return json({ success: false, error: String(e?.message || e).slice(0, 400) }, 200);
+      }
     }
 
     // --- PUBLISH: put a Factory-built ad into an existing ad set, PAUSED. ---

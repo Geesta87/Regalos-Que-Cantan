@@ -16,7 +16,7 @@
 // deleted once by a rewrite of this file — keep ingestFile/onPickFile, the
 // paste useEffect, `attached` in submit's deps, and the composer chip.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText } from 'lucide-react';
+import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText, Plus } from 'lucide-react';
 import { btn, Badge } from './ui';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-coach`;
@@ -60,6 +60,15 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const [pubHeadline, setPubHeadline] = useState('');
   const [pubLink, setPubLink] = useState('https://www.regalosquecantan.com/premium');
   const [publishing, setPublishing] = useState(false);
+  // New-campaign state (always PAUSED, two-step: preview → explicit confirm)
+  const [showCamp, setShowCamp] = useState(false);
+  const [campName, setCampName] = useState('');
+  const [campAdsetName, setCampAdsetName] = useState('');
+  const [campBudget, setCampBudget] = useState('40');
+  const [campTemplate, setCampTemplate] = useState('');
+  const [campPlan, setCampPlan] = useState(null);
+  const [campBusy, setCampBusy] = useState(false);
+  const [campDone, setCampDone] = useState(null);
   // Attachment the coach should look at / read (Coach thread only): an image
   // (ad creative, screenshot), a PDF, or a text doc. Attach via 📎 or paste.
   const [attached, setAttached] = useState(null); // { name, kind:'image'|'pdf'|'text', mediaType?, data }
@@ -218,6 +227,57 @@ export default function AdsCoachTab({ accessToken, showToast }) {
     } finally { setSending(false); }
   }, [input, sending, msgs, tab, call, showToast, attached]);
 
+  // --- NEW CAMPAIGN (always paused) -----------------------------------------
+  // Deliberately two steps: you must PREVIEW the exact spec, then confirm.
+  // The coach cannot do this on its own — it has no tool for it; only this
+  // button reaches the write path, and only with confirm:true.
+  const loadTargets = async () => {
+    if (targets.length) return;
+    try {
+      const body = await call({ action: 'list_ad_targets' });
+      if (body.success) setTargets(body.targets || []);
+      else showToast?.(`Couldn't load your ad sets: ${body.error || ''}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
+  const openCampaign = async () => {
+    setShowCamp(true); setCampPlan(null); setCampDone(null);
+    await loadTargets();
+  };
+
+  const previewCampaign = async () => {
+    if (campBusy) return;
+    setCampBusy(true); setCampPlan(null);
+    try {
+      const body = await call({
+        action: 'plan_campaign', campaign_name: campName, adset_name: campAdsetName,
+        daily_budget_usd: campBudget, template_adset_id: campTemplate,
+      });
+      if (body.success) setCampPlan(body.plan);
+      else showToast?.(`Can't build that: ${body.error || 'unknown error'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setCampBusy(false); }
+  };
+
+  // The only call in the app that creates a campaign. confirm:true is set here
+  // and nowhere else — a human clicked this exact button.
+  const createCampaign = async () => {
+    if (campBusy || !campPlan) return;
+    setCampBusy(true);
+    try {
+      const body = await call({
+        action: 'create_campaign', confirm: true,
+        campaign_name: campName, adset_name: campAdsetName,
+        daily_budget_usd: campBudget, template_adset_id: campTemplate,
+      });
+      if (body.success) {
+        setCampDone(body); setCampPlan(null); setTargets([]); // refresh publish picker
+        setMsgs((p) => ({ ...p, factory: [...p.factory, { role: 'assistant', content: `Created “${body.campaign_name}” with ad set “${body.adset_name}” — both PAUSED (campaign ${body.campaign_id}). Nothing will spend until you switch it on in Ads Manager. Next: publish ads into it from the gallery.` }] }));
+      } else showToast?.(`Not created: ${body.error || 'unknown error'}`);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+    finally { setCampBusy(false); }
+  };
+
   // Open the publish panel for one Factory ad, prefilling its own copy.
   const openPublish = async (a) => {
     setPublishAd(a);
@@ -339,6 +399,94 @@ export default function AdsCoachTab({ accessToken, showToast }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* FACTORY: create a new campaign — always PAUSED, preview then confirm */}
+      {tab === 'factory' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
+          {!showCamp ? (
+            <button onClick={openCampaign} className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+              <Plus size={14} /> New campaign in Meta (created paused)
+            </button>
+          ) : (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-900">New campaign — created paused</p>
+                <button onClick={() => { setShowCamp(false); setCampPlan(null); setCampDone(null); }} className={btn.iconGhost}><X size={15} /></button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Creates an empty campaign + one ad set, both <b>paused</b>, copying targeting from an ad set you already run.
+                You’ll see exactly what gets created before anything happens. No ads are added here — you publish those afterwards.
+              </p>
+
+              <div className="flex gap-2">
+                <label className="block text-xs text-gray-600 flex-1">Campaign name
+                  <input value={campName} onChange={(e) => setCampName(e.target.value)} disabled={campBusy} placeholder="e.g. Multi-genre test"
+                    className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+                </label>
+                <label className="block text-xs text-gray-600" style={{ width: 130 }}>Daily budget (USD)
+                  <input value={campBudget} onChange={(e) => setCampBudget(e.target.value)} disabled={campBusy} inputMode="decimal"
+                    className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+                </label>
+              </div>
+
+              <label className="block text-xs text-gray-600">Copy targeting from this existing ad set
+                <select value={campTemplate} onChange={(e) => setCampTemplate(e.target.value)} disabled={campBusy}
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white">
+                  <option value="">Select an ad set to copy…</option>
+                  {targets.map((t) => <option key={t.adset_id} value={t.adset_id}>{t.campaign} → {t.adset_name}</option>)}
+                </select>
+              </label>
+
+              <label className="block text-xs text-gray-600">Ad set name <span className="text-gray-400">(optional)</span>
+                <input value={campAdsetName} onChange={(e) => setCampAdsetName(e.target.value)} disabled={campBusy} placeholder="defaults to “<campaign> — ad set”"
+                  className="mt-1 w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm bg-white" />
+              </label>
+
+              {/* STEP 1 — preview. Creates nothing. */}
+              {!campPlan && !campDone && (
+                <button onClick={previewCampaign} disabled={campBusy || !campName.trim() || !campTemplate} className={btn.accent + ' !px-4'}>
+                  {campBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Show me exactly what will be created
+                </button>
+              )}
+
+              {/* STEP 2 — the approval gate. Only this confirms. */}
+              {campPlan && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <p className="text-xs font-medium text-amber-900">Review — nothing has been created yet</p>
+                  <div className="text-[11px] text-gray-700 space-y-0.5">
+                    <p><b>Campaign:</b> {campPlan.campaign.name} · {campPlan.campaign.objective} · <b>${campPlan.campaign.daily_budget_usd}/day</b> · {campPlan.campaign.status}</p>
+                    <p><b>Ad set:</b> {campPlan.adset.name} · {campPlan.adset.status} · {campPlan.adset.optimization_goal} · budget: {campPlan.adset.budget}</p>
+                    <p><b>Targeting copied from:</b> {campPlan.adset.copied_from} — ages {campPlan.adset.targeting_summary.ages}, {String(campPlan.adset.targeting_summary.genders)}, {JSON.stringify(campPlan.adset.targeting_summary.countries)}</p>
+                  </div>
+                  {campPlan.duplicate_name && (
+                    <p className="text-[11px] text-amber-800">⚠ You already have a campaign with this exact name — check you’re not duplicating it.</p>
+                  )}
+                  <ul className="text-[11px] text-gray-600 list-disc pl-4 space-y-0.5">
+                    {campPlan.guarantees.map((g, i) => <li key={i}>{g}</li>)}
+                  </ul>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button onClick={createCampaign} disabled={campBusy} className={btn.accent + ' !px-4'}>
+                      {campBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Yes — create it, paused
+                    </button>
+                    <button onClick={() => setCampPlan(null)} disabled={campBusy} className={btn.ghost}>Back</button>
+                  </div>
+                </div>
+              )}
+
+              {campDone && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <p className="text-xs text-green-900">
+                    ✓ Created <b>{campDone.campaign_name}</b> + ad set <b>{campDone.adset_name}</b>, both paused.
+                    <a href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${(import.meta.env.VITE_META_AD_ACCOUNT_ID || '832413711748940').replace('act_', '')}`}
+                      target="_blank" rel="noreferrer" className="underline ml-1">Open Ads Manager</a>
+                  </p>
+                  <p className="text-[11px] text-green-800 mt-1">Nothing spends until you switch it on. Next: publish ads into it from the gallery below.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
