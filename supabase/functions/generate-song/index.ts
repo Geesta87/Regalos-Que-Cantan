@@ -115,13 +115,22 @@ const genreDNA: Record<string, GenreData> = {
     defaultVocalCharacter: 'bright energetic vocal, festive cantina delivery',
     subGenres: {
       tradicional: {
+        // Norteño tradicional is a STORYTELLING genre — a corrido-style narrative
+        // sung by a norteño conjunto, not a party polka. It shares corrido
+        // tradicional's narrator pacing, diction and dry live-band character; the
+        // difference is instrumentation (accordion leads throughout) not intent.
+        // `vibe` also feeds Claude's lyric prompt (CARÁCTER SONORO DEL GÉNERO), so
+        // it must describe narrative weight — the old "Friday night dance,
+        // beer-drinking celebration" wording was producing party LYRICS too.
+        // No "sing-along"/"group" tokens (project_mureka_v9_norteno_bias) and no
+        // saxophone — sax belongs to the two con_sax_* sub-genres.
         name: 'Norteño Tradicional',
-        style: 'traditional norteño, classic conjunto norteño, accordion-driven polka rhythm northern Mexican music, authentic Tex-Mex conjunto, oom-pah bass pattern, two-step dance groove, cantina norteño',
-        tempo: '110-130 BPM, upbeat polka-derived groove, energetic two-step dance tempo',
-        instruments: 'diatonic button accordion with bellows dynamics and melodic runs, bajo sexto twelve-string with percussive downstroke strumming, electric bass walking lines, polka drum pattern with rim shots and backbeat snare, optional alto saxophone fills between verses',
-        vibe: 'festive cantina energy, working-class pride, Friday night dance, beer-drinking celebration, authentic border culture, accordion-forward joyful',
-        negative: 'electronic beats, trap production, urban sounds, reggaeton, modern pop, synthesizers',
-        vocalCharacter: 'bright energetic vocal, festive delivery, sing-along friendly, cantina warmth'
+        style: 'traditional narrative norteño, classic conjunto norteño storytelling ballad, corrido-style narrative sung by a norteño conjunto, accordion-driven polka norteña, authentic Tex-Mex conjunto, oom-pah bass pattern, cantina norteño, narrative balladeer structure',
+        tempo: "95-115 BPM, steady two-step polka norteña 2/4 pulse at a narrator's storytelling pace, unhurried enough for every lyric word to land, NEVER rushed",
+        instruments: 'diatonic three-row button accordion leading the melody throughout with bellows dynamics grace notes and runs between sung lines, bajo sexto twelve-string with driving percussive downstroke strumming, tololoche upright bass or electric bass on the oom-pah polka pulse, simple kick and rim-shot snare only, NO saxophone NO brass',
+        vibe: 'narrative storytelling in the classic conjunto tradition, working-class northern Mexican pride, cantina at closing time, weathered storyteller recounting a real life, warm rancho authenticity, dignity and respect, every word carrying weight',
+        negative: 'cumbia, cumbia norteña, sonidera, güiro, saxophone, alto sax, banda brass section, trumpets, trombones, corridos tumbados, trap beats, 808 bass, auto-tune, electronic beats, synthesizers, reggaeton, modern pop production, slick radio polish, fast quebradita, party dance anthem',
+        vocalCharacter: 'clear narrative storyteller vocal, unhurried balladeer delivery, strong consonants and clear diction, warm cantina authority, every word audible, single dry lead vocal'
       },
       con_sax_romantico: {
         name: 'Norteño con Sax — Romántico',
@@ -2057,6 +2066,20 @@ const KIE_GENRE_OVERRIDES: Record<string, { style: string; negatives: string }> 
     style: 'authentic 1990s Sinaloa corrido tradicional, classic conjunto corrido, narrative corrido balladeer storytelling, diatonic button accordion lead with bright reedy treble timbre, bajo sexto twelve-string rhythm, slapped tololoche upright bass driving a 2/4 oom-pah pulse, sparse minimal drums, live cantina band feel, 85-105 BPM deliberate storytelling pace, grave declamatory corridista narrator vocal, clear diction, every word audible, warm vintage 90s analog recording character, classic-era corrido production',
     negatives: 'trap, 808, auto-tune, EDM, synthesizer, brass section, saxophone, modern pop production, reggaeton',
   },
+  // Deliberately parallel to corrido/tradicional above: same narrative spine
+  // (storytelling pace, clear diction, vintage analog character, live one-room
+  // band) with the instrument core swapped to conjunto norteño — the accordion
+  // LEADS throughout rather than trading with other voices. Without this recipe
+  // norteño fell through to the verbose Mureka-era genreDNA prompt, which Suno
+  // read as an upbeat party polka. Gender-neutral: the gender label + Spanish
+  // lock are prepended at payload build time.
+  'norteno/tradicional': {
+    style: "authentic classic conjunto norteño, traditional norteño storytelling ballad, narrative norteño balladeer, diatonic three-row button accordion leading the melody throughout with bellows shakes grace notes and runs between every sung line, bajo sexto twelve-string with driving percussive downstrokes, upright tololoche bass on a 2/4 oom-pah polka pulse, simple kick and rim-shot snare only, live conjunto band playing together in one room, 95-115 BPM steady two-step polka norteña at a narrator's pace, warm clear storyteller vocal, unhurried narrative delivery, clear diction, every word audible, warm vintage analog recording character, classic-era norteño production",
+    // Kept short on purpose: the 200-char cap is shared with the language lock
+    // and the wrong-gender block. cumbia leads — it is Suno's most common
+    // norteño drift (the same lesson already baked into con_sax_bailar).
+    negatives: 'cumbia, sonidera, banda brass, saxophone, corridos tumbados, trap, 808, auto-tune, EDM, synthesizer, modern pop',
+  },
   'ranchera/lenta': {
     style: 'classic Mexican ranchera ballad, golden-age ranchera tradition, full mariachi ensemble, mariachi violin section with sustained emotional bowing, soft trumpet fanfares between verses, vihuela gentle strumming, guitarrón deep bass, 60-75 BPM very slow dramatic ballad, dramatic pauses between phrases, powerful dramatic vocal with deep vibrato, theatrical heartfelt delivery, every word clear and audible, warm vintage analog recording character, classic 1960s-70s ranchera era production',
     negatives: 'trap, 808, auto-tune, EDM, synthesizer, modern pop, rock, accordion, upbeat rhythms, fast tempo, dance energy',
@@ -2722,6 +2745,9 @@ serve(async (req) => {
       (genre === 'ranchera' && subGenre === 'lenta') ||
       (genre === 'bolero' && (subGenre === 'bolero_clasico' || subGenre === 'clasico')) ||
       (genre === 'corrido' && subGenre === 'tradicional') ||
+      // Norteño tradicional is a narrative genre too — it gets the same
+      // "Señores, les voy a contar..." narrator intro as corrido tradicional.
+      (genre === 'norteno' && subGenre === 'tradicional') ||
       (genre === 'cumbia' && subGenre === 'sonidera') ||
       (genre === 'balada' && (subGenre === 'balada_clasica' || subGenre === 'clasica')) ||
       (genre === 'banda' && (subGenre === 'romantica' || subGenre === 'romantico')) ||
@@ -2736,6 +2762,8 @@ serve(async (req) => {
     // with a pop-style ramp-up. Skip those; everyone else gets it.
     const skipPreChorus =
       (genre === 'corrido' && (subGenre === 'tradicional' || subGenre === 'romantico')) ||
+      // Same reason as corrido tradicional: a pop pre-chorus breaks narrative flow.
+      (genre === 'norteno' && subGenre === 'tradicional') ||
       (genre === 'ranchera' && subGenre === 'lenta') ||
       genre === 'sierreno' ||
       genre === 'bolero' ||
@@ -2807,8 +2835,11 @@ ${recipientName}... si supieras lo que siento cada vez que te veo... estas palab
       placement: 'before_coro_final',
       sectionDesc: `- [Hablado] (spoken, no melody, whispered, intimate): Confesión susurrada (NO cantada). 2-3 líneas íntimas, románticas, en voz baja.`
     },
+    // Shared by corrido tradicional and norteño tradicional — both are narrative
+    // genres that open with the classic corridista narrator. Must stay in sync
+    // with the hasSpokenWord conditions above.
     corrido_tradicional: {
-      condition: genre === 'corrido' && subGenre === 'tradicional',
+      condition: (genre === 'corrido' || genre === 'norteno') && subGenre === 'tradicional',
       instruction: `SECCIÓN HABLADA (OBLIGATORIA):
 Incluye [Hablado] como PRIMERA sección, ANTES del [Verso 1]. INMEDIATAMENTE después del marcador, en la misma línea, agrega la pista de prosodia en inglés entre paréntesis: "(spoken, no melody, narrator voice, storytelling)" — esto le indica al modelo de Mureka que cambie de canto a habla. Luego escribe 2-3 líneas HABLADAS — el narrador presenta la historia al estilo corrido clásico. Ejemplo formato exacto:
 [Hablado] (spoken, no melody, narrator voice, storytelling)
