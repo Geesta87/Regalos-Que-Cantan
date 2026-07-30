@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { validateCoupon } from '../services/api';
 import { OneTapUpsell } from '../components/OneTapUpsell';
@@ -24,6 +24,11 @@ const BUNDLE_PRICE = 39.99;
 const EXTRA_SONG_PRICE = 9.99;
 const VIDEO_ADDON_PRICE = 9.99;
 const VIDEO_DUAL_ADDON_PRICE = 17.99;
+// Animado (animated story video). Mirrors the constants in AnimadoUpsell.jsx —
+// keep them in sync if the offer is retuned there.
+const ANIMADO_PRICE = 29;
+const ANIMADO_PRICE_BOTH = 44.99;
+const ANIMADO_ANCHOR = 99;
 // Phase 4 upsells (Suno-era): synced lyric video + karaoke video (no voice).
 const LYRIC_VIDEO_ADDON_PRICE = 9.99;
 const KARAOKE_VIDEO_ADDON_PRICE = 9.99;
@@ -161,6 +166,16 @@ export default function ShareablePreviewPage() {
   // Video addon (0 = none, 1 = one video, 2 = both videos)
   const [videoAddonCount, setVideoAddonCount] = useState(0);
   const videoAddon = videoAddonCount > 0; // backward-compat derived bool
+  // Animado addon (0 = none, 1 = one animated video, 2 = both songs animated).
+  // Only ever non-zero when Animado holds the hero slot — in the grid it rides
+  // checkoutExtras like the other tiles.
+  const [animadoCount, setAnimadoCount] = useState(0);
+  const animadoAdded = animadoCount > 0;
+  // Soft-launch gate (master switch + in-progress cap). Animado can only take
+  // the hero slot while this is open; otherwise the video hero shows for everyone.
+  const [animadoAvailable, setAnimadoAvailable] = useState(false);
+  const [animadoPriceOne, setAnimadoPriceOne] = useState(ANIMADO_PRICE);
+  const [animadoPriceBoth, setAnimadoPriceBoth] = useState(ANIMADO_PRICE_BOTH);
   // Phase 4 upsells: synced lyric video / karaoke video (no voice)
   const [lyricVideoAddon, setLyricVideoAddon] = useState(false);
   const [karaokeVideoAddon, setKaraokeVideoAddon] = useState(false);
@@ -184,6 +199,24 @@ export default function ShareablePreviewPage() {
 
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 100);
+  }, []);
+
+  // Animado soft-launch availability — same gate /comparison uses. Only decides
+  // whether Animado is ELIGIBLE for the hero slot; the grid tile is unaffected.
+  useEffect(() => {
+    // Local preview: ?demo=1 forces the offer on so we can see it without prod.
+    if (urlParams.get('demo') === '1') { setAnimadoAvailable(true); return; }
+    if (!supabase) return;
+    let cancelled = false;
+    supabase.functions.invoke('animado-availability', { body: {} })
+      .then(({ data }) => {
+        if (cancelled || !data || !data.available) return;
+        setAnimadoAvailable(true);
+        if (data.price_one_cents) setAnimadoPriceOne(data.price_one_cents / 100);
+        if (data.price_both_cents) setAnimadoPriceBoth(data.price_both_cents / 100);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -335,9 +368,14 @@ export default function ShareablePreviewPage() {
       // as /comparison, folded into this single checkout.
       const gridKeys = new Set(checkoutExtras.map((e) => e.key));
       const target = idsArray[0];
-      const gVideoCount = gridKeys.has('video') ? 1 : 0;
-      const gAnimadoCount = gridKeys.has('animado') ? 1 : 0;
-      const gAnimadoIds = gAnimadoCount ? [target].filter(Boolean) : [];
+      // Video and Animado can each come from EITHER the hero card (their own
+      // count state) or the grid tile, depending on which one won the hero slot
+      // for this visitor. Read the hero state first, fall back to the grid.
+      const gVideoCount = videoAddonCount > 0 ? videoAddonCount : (gridKeys.has('video') ? 1 : 0);
+      const gAnimadoCount = animadoCount > 0 ? animadoCount : (gridKeys.has('animado') ? 1 : 0);
+      const gAnimadoIds = gAnimadoCount >= 2
+        ? idsArray.slice(0, gAnimadoCount)
+        : (gAnimadoCount ? [target].filter(Boolean) : []);
       const gKaraoke = gridKeys.has('instrumental');
       const gKaraokeIds = gKaraoke ? [target].filter(Boolean) : [];
       const gLyric = gridKeys.has('lyric_video');
@@ -364,6 +402,99 @@ export default function ShareablePreviewPage() {
   };
 
   const selectedCount = selectedIds.size;
+  // Declared up here because the hero config below interpolates it into copy.
+  const recipientName = songs[0]?.recipient_name || '';
+
+  // ── Hero A/B: which upsell gets the big landscape spot above the grid ──
+  // Assignment is DETERMINISTIC from the song id (last hex digit, even/odd), not
+  // random: the same /listen link always shows the same hero, on every reload and
+  // for everyone the link is forwarded to. That keeps the page from looking broken
+  // and makes the test measurable after the fact — the same even/odd rule can be
+  // recomputed in SQL over any order, so no tracking column is needed:
+  //   ('x' || right(id::text,1))::bit(4)::int % 2   → 0 = video, 1 = animado
+  // Animado only wins the slot while its soft-launch gate is open; if the master
+  // switch is off or the in-progress cap is hit, everyone falls back to video.
+  const heroVariant = useMemo(() => {
+    const raw = (songs[0]?.id || '').replace(/-/g, '');
+    if (!raw) return 'video';
+    const nibble = parseInt(raw.slice(-1), 16);
+    const drawsAnimado = Number.isFinite(nibble) && nibble % 2 === 1;
+    return (drawsAnimado && animadoAvailable) ? 'animado' : 'video';
+  }, [songs, animadoAvailable]);
+  const heroIsAnimado = heroVariant === 'animado';
+
+  // The availability gate resolves AFTER first paint, so the hero can flip from
+  // video to animado mid-session. Clear whichever hero count is no longer the one
+  // on screen — otherwise a customer could be charged for an add-on whose card
+  // they can no longer see.
+  useEffect(() => {
+    if (heroIsAnimado) setVideoAddonCount(0);
+    else setAnimadoCount(0);
+  }, [heroIsAnimado]);
+
+  // Everything the hero card renders, per variant. Both go through the SAME
+  // frame below — only this config changes — so an A/B win reflects the offer
+  // rather than the layout. A/ADEEP/RGB/RGB2 are the accent palette.
+  const HERO = heroIsAnimado
+    ? {
+        A: '#f5b942', ADEEP: '#f74da6', RGB: '245,185,66', RGB2: '247,77,166',
+        TITLE_COLOR: '#fde68a',
+        badge: '⭐ Hazlo inolvidable',
+        title: `🎬 Película Animada${recipientName ? ` para ${recipientName}` : ''}`,
+        sub: 'Su rostro convertido en personaje — su historia hecha película',
+        overlayLabel: 'SU ROSTRO, ANIMADO',
+        barLabel: 'Su historia animada',
+        note: '💡 No es un video de fotos. Son ilustraciones animadas hechas a mano — que cobran vida con movimiento en los momentos más especiales.',
+        features: [
+          { icon: '🎨', label: 'Su rostro convertido en personaje animado', sub: 'Fiel a su cara — lo creamos a partir de una foto suya' },
+          { icon: '🖼️', label: 'Bellas ilustraciones de su historia', sub: 'Cada escena, ilustrada a mano a partir de SU canción' },
+          { icon: '🎬', label: 'Movimiento en las escenas clave', sub: 'Los momentos más especiales cobran vida, al ritmo de la letra' },
+        ],
+        disclaimer: 'Es una recreación artística hecha a mano en estilo animado (tipo Pixar). Buscamos el mejor parecido posible, pero al ser una interpretación de su foto puede no ser idéntica al rostro real.',
+        anchor: ANIMADO_ANCHOR,
+        price: animadoPriceOne,
+        priceBoth: animadoPriceBoth,
+        savePct: Math.round((1 - animadoPriceOne / ANIMADO_ANCHOR) * 100),
+        ctaAdd: `🎬 Agregar Película — $${animadoPriceOne}`,
+        ctaAdded: '✓ Película Agregada',
+        nudgeAdded: '✅ ¡Agregado! Tu película se crea después del pago.',
+        dualNone: '❌ Sin película',
+        dualOne: '🎬 Película animada para 1 canción',
+        dualOneSub: 'Su historia hecha película — tú eliges cuál canción',
+        dualBoth: '🎬🎬 Una película por cada canción',
+        dualBothSub: 'Las 2 canciones animadas, cada una con su propia película',
+        count: animadoCount, setCount: setAnimadoCount, added: animadoAdded,
+      }
+    : {
+        A: '#a855f7', ADEEP: '#7c3aed', RGB: '139,92,246', RGB2: '124,58,237',
+        TITLE_COLOR: '#e9d5ff',
+        badge: '⭐ Más popular',
+        title: `🎬 Video Musical${recipientName ? ` para ${recipientName}` : ''}`,
+        sub: 'Convierte la canción en un regalo que se ve y se siente',
+        overlayLabel: 'TUS FOTOS AQUÍ',
+        barLabel: 'Tu canción sonando',
+        note: null,
+        features: [
+          { icon: '📸', label: 'Hasta 15 fotos que cuentan su historia', sub: 'Las transformamos en un video cinematográfico personalizado' },
+          { icon: '🎤', label: 'Graba un mensaje directo de tu corazón', sub: 'Tu voz y tu cara aparecen al final del video' },
+          { icon: '📲', label: 'Listo para compartir en el momento especial', sub: 'Descárgalo en HD — perfecto para WhatsApp, Instagram o proyectarlo en vivo' },
+        ],
+        disclaimer: null,
+        anchor: 29.99,
+        price: VIDEO_ADDON_PRICE,
+        priceBoth: VIDEO_DUAL_ADDON_PRICE,
+        savePct: Math.round((1 - VIDEO_ADDON_PRICE / 29.99) * 100),
+        ctaAdd: `🎬 Agregar Video — $${VIDEO_ADDON_PRICE}`,
+        ctaAdded: '✓ Video Agregado',
+        nudgeAdded: '✅ ¡Agregado! Tu video se crea después del pago.',
+        dualNone: '❌ Sin video',
+        dualOne: '🎬 Video con fotos para 1 canción',
+        dualOneSub: 'Slideshow cinematográfico con tus fotos — tú eliges cuál canción',
+        dualBoth: '🎬🎬 Un video por cada canción',
+        dualBothSub: 'Slideshow con fotos para cada una de las 2 canciones',
+        count: videoAddonCount, setCount: setVideoAddonCount, added: videoAddon,
+      };
+
   // The customer is "on the bundle" as soon as they have 2+ picks — that's the
   // threshold where bundle pricing applies (same $39.99 base, +$9.99 for each
   // additional song beyond 2).
@@ -382,12 +513,16 @@ export default function ShareablePreviewPage() {
     : rawPrice
     : rawPrice;
   const basePrice = discountedPrice;
+  // Hero add-on totals. Only ONE of these can be non-zero at a time (whichever
+  // product holds the hero slot); the other rides checkoutExtras via the grid.
+  const heroVideoTotal = videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0;
+  const heroAnimadoTotal = animadoCount === 2 ? animadoPriceBoth : animadoCount === 1 ? animadoPriceOne : 0;
   const currentPrice = basePrice
-    + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0)
+    + heroVideoTotal
+    + heroAnimadoTotal
     + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0)
     + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0)
     + extrasTotal;
-  const recipientName = songs[0]?.recipient_name || '';
   const createdAt = songs[0]?.created_at;
   const genreName = (songs[0]?.genre_name || songs[0]?.genre || '').replace(/_/g, ' ');
   const isBundleSelected = isBundleSelectedNow;
@@ -1012,7 +1147,7 @@ export default function ShareablePreviewPage() {
             <div style={{textAlign: 'right'}}>
               {couponApplied && rawPrice !== discountedPrice && (
                 <p style={{margin: 0, fontSize: '14px', textDecoration: 'line-through', color: 'rgba(255,255,255,0.4)'}}>
-                  ${(rawPrice + (videoAddonCount === 2 ? VIDEO_DUAL_ADDON_PRICE : videoAddonCount === 1 ? VIDEO_ADDON_PRICE : 0) + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0) + extrasTotal).toFixed(2)}
+                  ${(rawPrice + heroVideoTotal + heroAnimadoTotal + (lyricVideoAddon ? LYRIC_VIDEO_ADDON_PRICE : 0) + (karaokeVideoAddon ? KARAOKE_VIDEO_ADDON_PRICE : 0) + extrasTotal).toFixed(2)}
                 </p>
               )}
               <p style={{margin: 0, fontSize: '24px', fontWeight: 'bold'}}>
@@ -1058,9 +1193,394 @@ export default function ShareablePreviewPage() {
               </div>
               <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>Opcional — elige lo que quieras, o solo la canción.</p>
             </div>
+            {/* ── Standalone LANDSCAPE hero upsell card ──
+                Sits ABOVE the add-on grid so the lead offer owns the big spot.
+                WHICH offer lands here rotates 50/50 between the $9.99 photo video
+                and the $29 Animado — see `heroVariant` above. Both render through
+                this IDENTICAL frame, so the test measures the OFFER, not the
+                layout. Whichever one isn't here stays sellable as a grid tile
+                below — the rotation moves an offer, it never removes one. */}
+            <style>{`
+              @keyframes vhKenBurns1 { 0%{transform:scale(1) translate(0,0);opacity:1} 12.5%{transform:scale(1.12) translate(-2%,1%);opacity:1} 14.3%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns2 { 0%{opacity:0} 12.5%{opacity:0} 14.3%{transform:scale(1.08) translate(2%,-1%);opacity:1} 26.8%{transform:scale(1.2) translate(-1%,2%);opacity:1} 28.6%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns3 { 0%{opacity:0} 26.8%{opacity:0} 28.6%{transform:scale(1) translate(-1%,0);opacity:1} 41.1%{transform:scale(1.15) translate(2%,-2%);opacity:1} 42.9%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns4 { 0%{opacity:0} 41.1%{opacity:0} 42.9%{transform:scale(1.05) translate(0,1%);opacity:1} 55.4%{transform:scale(1.18) translate(-3%,2%);opacity:1} 57.1%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns5 { 0%{opacity:0} 55.4%{opacity:0} 57.1%{transform:scale(1) translate(1%,0);opacity:1} 69.6%{transform:scale(1.14) translate(-2%,-1%);opacity:1} 71.4%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns6 { 0%{opacity:0} 69.6%{opacity:0} 71.4%{transform:scale(1.1) translate(1%,1%);opacity:1} 83.9%{transform:scale(1.2) translate(-2%,0);opacity:1} 85.7%{opacity:0} 100%{opacity:0} }
+              @keyframes vhKenBurns7 { 0%{opacity:0} 83.9%{opacity:0} 85.7%{transform:scale(1.05) translate(0,-1%);opacity:1} 98.2%{transform:scale(1.16) translate(2%,1%);opacity:1} 100%{opacity:0} }
+              @keyframes vhProgress { 0%{width:0%} 100%{width:100%} }
+              @keyframes vhNoteFloat { 0%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} 100%{transform:translateY(0) rotate(0deg);opacity:0.7} }
+              @keyframes vhGlimmer { 0% { left: -100%; } 100% { left: 200%; } }
+              @keyframes vhPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+              @keyframes vhEq1 { 0%, 100% { height: 8px; } 50% { height: 20px; } }
+              @keyframes vhEq2 { 0%, 100% { height: 14px; } 50% { height: 6px; } }
+              @keyframes vhEq3 { 0%, 100% { height: 10px; } 50% { height: 22px; } }
+            `}</style>
+            <div
+              onClick={() => HERO.setCount(c => c > 0 ? 0 : 1)}
+              style={{
+                background: HERO.added
+                  ? `linear-gradient(135deg, rgba(${HERO.RGB},0.22), rgba(${HERO.RGB2},0.1))`
+                  : `linear-gradient(160deg, rgba(${HERO.RGB},0.1) 0%, rgba(15,11,14,0.9) 60%)`,
+                border: HERO.added ? `2px solid ${HERO.A}` : `2px solid rgba(${HERO.RGB},0.4)`,
+                borderRadius: '20px', padding: '0',
+                cursor: 'pointer', marginBottom: '16px',
+                position: 'relative', overflow: 'hidden',
+                transition: 'all 0.35s',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              }}
+            >
+              {/* Glimmer sweep */}
+              <div style={{
+                position: 'absolute', top: 0, width: '50%', height: '100%',
+                background: `linear-gradient(90deg, transparent, rgba(${HERO.RGB},0.07), rgba(255,255,255,0.05), transparent)`,
+                animation: 'vhGlimmer 3.5s ease-in-out infinite',
+                pointerEvents: 'none', zIndex: 1,
+              }} />
+
+              {/* Top badge */}
+              <div style={{
+                position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)',
+                background: `linear-gradient(90deg, ${HERO.ADEEP}, ${HERO.A})`,
+                color: heroIsAnimado ? '#1a1020' : 'white',
+                padding: '5px 20px', borderRadius: '0 0 12px 12px',
+                fontSize: '11px', fontWeight: '800', letterSpacing: '0.5px',
+                boxShadow: `0 4px 14px rgba(${HERO.RGB2},0.45)`,
+                whiteSpace: 'nowrap', zIndex: 2,
+              }}>
+                {HERO.badge}
+              </div>
+
+              {/* Cinematic 16:9 preview — identical frame for both variants */}
+              <div style={{
+                position: 'relative', overflow: 'hidden',
+                aspectRatio: '16/9',
+                borderRadius: '18px 18px 0 0',
+                background: '#0a0015',
+              }}>
+                {heroIsAnimado ? (
+                  /* Real produced Animado teaser. It's a 9:16 master, so it's
+                     cover-cropped at the same focal point the grid tile uses. */
+                  <video
+                    src="/animado-sample.mp4"
+                    poster="/animado-sample-poster.jpg"
+                    muted loop playsInline autoPlay
+                    style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%',
+                      objectFit: 'cover', objectPosition: 'center 18%',
+                    }}
+                  />
+                ) : (
+                  [
+                    'https://images.unsplash.com/photo-1543342384-1f1350e27861?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1581952976147-5a2d15560349?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1609220136736-443140cffec6?w=700&h=394&fit=crop',
+                    'https://images.unsplash.com/photo-1494774157365-9e04c6720e47?w=700&h=394&fit=crop',
+                  ].map((src, i) => (
+                    <img key={i} src={src} alt="" style={{
+                      position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                      animation: `vhKenBurns${i + 1} 28s ease-in-out infinite`,
+                      opacity: i === 0 ? 1 : 0,
+                    }} />
+                  ))
+                )}
+
+                {/* Dark vignette overlay */}
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: 'linear-gradient(180deg, rgba(10,0,21,0.15) 0%, rgba(10,0,21,0) 40%, rgba(10,0,21,0.75) 100%)',
+                  pointerEvents: 'none',
+                }} />
+
+                {/* "Muestra real" proof badge — only honest on the Animado cut,
+                    which is a frame from an actually produced video. */}
+                {heroIsAnimado && (
+                  <div style={{
+                    position: 'absolute', top: '12px', left: '12px', zIndex: 3,
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+                    padding: '4px 10px', borderRadius: 20, fontSize: 11, color: '#fff', fontWeight: 800,
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                    Muestra real
+                  </div>
+                )}
+
+                {/* Floating music notes */}
+                <div style={{ position: 'absolute', top: '14px', right: '14px', display: 'flex', gap: '8px', zIndex: 3 }}>
+                  {['🎵', '🎶'].map((n, i) => (
+                    <span key={i} style={{
+                      fontSize: '18px', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))',
+                      animation: `vhNoteFloat 2s ease-in-out ${i * 0.7}s infinite`,
+                    }}>{n}</span>
+                  ))}
+                </div>
+
+                {/* Center play button — only on the photo-video variant, whose
+                    preview is a still slideshow. The Animado teaser is already
+                    playing, so a play button there would just be a lie. */}
+                {!heroIsAnimado && (
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                    zIndex: 3,
+                  }}>
+                    <div style={{
+                      width: '60px', height: '60px', borderRadius: '50%',
+                      background: 'rgba(124,58,237,0.9)', backdropFilter: 'blur(12px)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 0 0 8px rgba(124,58,237,0.2), 0 8px 32px rgba(124,58,237,0.6)',
+                      animation: 'vhPulse 2.5s ease-in-out infinite',
+                    }}>
+                      <span style={{ fontSize: '22px', marginLeft: '4px', color: 'white' }}>▶</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Center caption */}
+                <div style={{
+                  position: 'absolute', top: '50%', left: '50%',
+                  transform: `translate(-50%, calc(-50% + ${heroIsAnimado ? '0px' : '46px'}))`,
+                  zIndex: 3, textAlign: 'center',
+                }}>
+                  <span style={{
+                    fontSize: '11px', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '1.5px',
+                    textTransform: 'uppercase', textShadow: '0 1px 6px rgba(0,0,0,0.8)',
+                  }}>{HERO.overlayLabel}</span>
+                </div>
+
+                {/* Bottom bar */}
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  padding: '10px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  zIndex: 3,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '12px' }}>
+                      {[0, 1, 2].map(i => (
+                        <div key={i} style={{
+                          width: '3px', borderRadius: '2px', background: HERO.A,
+                          animation: `vhEq${i + 1} ${[0.6, 0.5, 0.7][i]}s ease-in-out infinite`,
+                        }} />
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '12px', color: HERO.A, fontWeight: 700 }}>{HERO.barLabel}</span>
+                  </div>
+                  <span style={{
+                    fontSize: '10px', color: HERO.A, fontWeight: 700,
+                    background: `rgba(${HERO.RGB2},0.45)`, padding: '2px 8px', borderRadius: '5px',
+                    backdropFilter: 'blur(4px)',
+                  }}>HD 1080p</span>
+                </div>
+
+                {/* Progress bar — paced to the slideshow loop. Omitted on Animado
+                    so it can't drift out of sync with the real video's length. */}
+                {!heroIsAnimado && (
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: 'rgba(124,58,237,0.2)', zIndex: 4 }}>
+                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #7c3aed, #a78bfa)', animation: 'vhProgress 28s linear infinite' }} />
+                  </div>
+                )}
+              </div>
+
+              {/* Body section */}
+              <div style={{ padding: '18px 20px 20px', position: 'relative', zIndex: 2 }}>
+                {/* Title row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '19px', fontWeight: '900', margin: '0 0 3px', color: HERO.TITLE_COLOR, lineHeight: 1.2 }}>
+                      {HERO.title}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '12px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>
+                      {HERO.sub}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); HERO.setCount(c => c > 0 ? 0 : 1); }}
+                    style={{
+                      flexShrink: 0, marginLeft: '12px',
+                      padding: '9px 18px', borderRadius: '50px',
+                      border: HERO.added ? '2px solid #22c55e' : `2px solid ${HERO.A}`,
+                      background: HERO.added
+                        ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                        : `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})`,
+                      color: 'white', fontSize: '13px', fontWeight: '800', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      transition: 'all 0.25s',
+                      boxShadow: HERO.added
+                        ? '0 0 14px rgba(34,197,94,0.5), 0 4px 12px rgba(0,0,0,0.3)'
+                        : `0 0 14px rgba(${HERO.RGB},0.5), 0 4px 12px rgba(0,0,0,0.3)`,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {HERO.added ? '✓ Agregado' : '+ Agregar'}
+                  </button>
+                </div>
+
+                {/* Differentiator note — only the Animado offer needs to explain
+                    what it is NOT, since the $9.99 photo video is the obvious
+                    thing customers assume it is. */}
+                {HERO.note && (
+                  <div style={{
+                    marginBottom: 14, fontSize: 12, color: '#fde68a',
+                    background: `rgba(${HERO.RGB},0.08)`,
+                    border: `1px solid rgba(${HERO.RGB},0.25)`,
+                    borderRadius: 10, padding: '9px 12px', lineHeight: 1.45,
+                  }}>
+                    {HERO.note}
+                  </div>
+                )}
+
+                {/* What you get — 3 feature rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                  {HERO.features.map(({ icon, label, sub }, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: '12px',
+                      background: `rgba(${HERO.RGB},0.07)`, borderRadius: '10px',
+                      padding: '10px 12px',
+                      border: `1px solid rgba(${HERO.RGB},0.12)`,
+                    }}>
+                      <span style={{ fontSize: '20px', flexShrink: 0, lineHeight: 1 }}>{icon}</span>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: HERO.TITLE_COLOR, lineHeight: 1.2 }}>{label}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>{sub}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Likeness-accuracy disclaimer — required wherever Animado is
+                    sold, same wording as the grid detail view. */}
+                {HERO.disclaimer && (
+                  <p style={{
+                    margin: '0 0 16px', fontSize: 10.5, color: 'rgba(255,255,255,0.42)',
+                    lineHeight: 1.45, fontStyle: 'italic',
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 8, padding: '8px 10px',
+                  }}>ℹ️ {HERO.disclaimer}</p>
+                )}
+
+                {/* Price row */}
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  background: HERO.added
+                    ? `linear-gradient(90deg, rgba(${HERO.RGB},0.25), rgba(${HERO.RGB2},0.15))`
+                    : `rgba(${HERO.RGB},0.08)`,
+                  borderRadius: '12px', padding: '16px',
+                  border: HERO.added ? `1px solid rgba(${HERO.RGB2},0.4)` : `1px solid rgba(${HERO.RGB},0.2)`,
+                  transition: 'all 0.3s',
+                }}>
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>${HERO.anchor.toFixed(2)}</span>
+                      <span style={{
+                        fontSize: '11px', fontWeight: '800', color: '#fbbf24',
+                        background: 'rgba(251,191,36,0.15)', padding: '2px 8px',
+                        borderRadius: '6px', border: '1px solid rgba(251,191,36,0.3)',
+                        letterSpacing: '0.5px'
+                      }}>SOLO</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '12px' }}>
+                      <span style={{
+                        fontSize: '40px', fontWeight: '900', lineHeight: 1, display: 'inline-block',
+                        color: HERO.TITLE_COLOR,
+                      }}>${HERO.price}</span>
+                      <div>
+                        <span style={{
+                          display: 'block', fontSize: '13px', fontWeight: '800', color: '#22c55e',
+                          background: 'rgba(34,197,94,0.15)', padding: '4px 12px',
+                          borderRadius: '20px', border: '1px solid rgba(34,197,94,0.25)',
+                          marginBottom: '4px', whiteSpace: 'nowrap',
+                        }}>Ahorra {HERO.savePct}%</span>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>precio de lanzamiento</span>
+                      </div>
+                    </div>
+                    {/* 3-way selector only for the exact 2-song bundle (the
+                        "one per song" copy is only true there); single songs and
+                        3+ packs get the simple one-unit toggle. */}
+                    {selectedCount === 2 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        {[
+                          { count: 0, label: HERO.dualNone, sub: 'Solo las canciones en MP3', price: null, color: HERO.count === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)', border: HERO.count === 0 ? '2px solid rgba(255,255,255,0.35)' : '2px solid rgba(255,255,255,0.1)', textColor: HERO.count === 0 ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' },
+                          { count: 1, label: HERO.dualOne, sub: HERO.dualOneSub, price: `$${HERO.price}`, color: HERO.count === 1 ? `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})` : `rgba(${HERO.RGB},0.12)`, border: HERO.count === 1 ? `2px solid ${HERO.A}` : `2px solid rgba(${HERO.RGB},0.4)`, textColor: 'white' },
+                          { count: 2, label: HERO.dualBoth, sub: HERO.dualBothSub, price: `$${HERO.priceBoth}`, color: HERO.count === 2 ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'rgba(34,197,94,0.12)', border: HERO.count === 2 ? '2px solid #22c55e' : '2px solid rgba(34,197,94,0.4)', textColor: 'white' },
+                        ].map(({ count, label, sub, price, color, border, textColor }) => (
+                          <button
+                            key={count}
+                            onClick={(e) => { e.stopPropagation(); HERO.setCount(count); }}
+                            style={{
+                              width: '100%', padding: '12px 16px', borderRadius: '12px',
+                              border, background: color, color: textColor,
+                              fontSize: '14px', fontWeight: '700', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              transition: 'all 0.2s', textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                width: '18px', height: '18px', borderRadius: '50%',
+                                border: HERO.count === count ? '2px solid white' : '2px solid rgba(255,255,255,0.3)',
+                                background: HERO.count === count ? 'white' : 'transparent',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                              }}>
+                                {HERO.count === count && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: count === 0 ? '#666' : count === 2 ? '#16a34a' : HERO.ADEEP }} />}
+                              </span>
+                              <div>
+                                <div>{label}</div>
+                                {sub && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '400', marginTop: '1px' }}>{sub}</div>}
+                              </div>
+                            </div>
+                            {price && <span style={{ fontWeight: '800', fontSize: '15px', flexShrink: 0 }}>{price}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); HERO.setCount(c => c > 0 ? 0 : 1); }}
+                        style={{
+                          width: '100%', padding: '16px', borderRadius: '14px',
+                          border: HERO.added ? '2px solid #22c55e' : `2px solid ${HERO.A}`,
+                          background: HERO.added
+                            ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                            : `linear-gradient(135deg, ${HERO.ADEEP}, ${HERO.A})`,
+                          color: 'white', fontSize: '18px', fontWeight: '900', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          transition: 'all 0.25s',
+                          boxShadow: HERO.added
+                            ? '0 0 24px rgba(34,197,94,0.55), 0 6px 16px rgba(0,0,0,0.4)'
+                            : `0 0 24px rgba(${HERO.RGB},0.55), 0 6px 16px rgba(0,0,0,0.4)`,
+                          letterSpacing: '0.3px',
+                        }}
+                      >
+                        {HERO.added ? HERO.ctaAdded : HERO.ctaAdd}
+                      </button>
+                    )}
+                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+                      Se agrega a tu pedido
+                    </p>
+                  </div>
+                </div>
+
+                {/* CTA nudge text */}
+                <p style={{
+                  textAlign: 'center', margin: '12px 0 0',
+                  fontSize: '12px', transition: 'all 0.3s',
+                  color: HERO.added ? '#86efac' : 'rgba(255,255,255,0.35)',
+                  fontWeight: HERO.added ? '600' : '400',
+                }}>
+                  {HERO.added ? HERO.nudgeAdded : 'Toca "Agregar" para incluirlo en tu pedido'}
+                </p>
+              </div>
+            </div>
+
+            {/* Grid = everything that ISN'T in the hero slot. Exactly one of
+                video / animado appears here, so the offer count stays the same
+                whichever way the rotation falls. */}
             <OneTapUpsell mode="select" bare recipientName={recipientName || 'tu ser querido'} onSelectChange={setCheckoutExtras} items={[
-              { key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } },
-              { key: 'animado', price: 29, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } },
+              ...(heroIsAnimado
+                ? [{ key: 'video', price: 9.99, label: 'Video con fotos', title: 'Revive cada recuerdo', sub: 'Sus fotos hechas película, con la canción', media: { type: 'photos' } }]
+                : [{ key: 'animado', price: animadoPriceOne, label: 'Película animada', title: 'Para llorar de emoción', sub: 'Su rostro animado en su propia película', media: { type: 'video', src: '/animado-sample.mp4', pos: 'center 18%' } }]),
               { key: 'instrumental', price: 7.99, label: 'Pista instrumental', title: 'Ahora cántala tú', sub: 'La música sin voz, lista para cantar', media: { type: 'ab' } },
               { key: 'lyric_video', price: 9.99, label: 'Video con letra', title: 'Que todos se la canten', sub: 'La letra en pantalla, al ritmo', media: { type: 'lyrics' } },
               { key: 'gift', price: 5, label: 'Envío sorpresa por mensaje', title: 'La sorpresa que no verá venir', sub: 'Se la enviamos el día y la hora que elijas', media: { type: 'video', src: '/sms-reaction.mp4' }, form: 'gift' },
