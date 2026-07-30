@@ -1300,19 +1300,47 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Accent-insensitive artist matching. Customers type "Vicente Fernandez" while
+// the name lists store "Vicente Fernández"; a literal match misses it and the
+// real artist name reaches Suno, which REJECTS any request naming a real artist
+// (the song then fails or falls back). Verified 2026-07-30 against live orders:
+// "Vicente Fernandez", "Estilo grupo bronco" and 5 other real customer strings
+// all passed through unscrubbed.
+//
+// Fold the STORED name's accents, then let each vowel match its accented forms
+// (the 'gi' flag covers case). This is why the lists carry hand-duplicated
+// spellings — 'Maná'/'Mana', 'Rocío Dúrcal'/'Rocio Durcal', 'Zacarías/Zacarias
+// Ferreira'. Those are now redundant but harmless; new names need only ONE
+// spelling.
+const ACCENT_CLASS: Record<string, string> = {
+  a: 'aáàäâã', e: 'eéèëê', i: 'iíìïî', o: 'oóòöôõ', u: 'uúùüû', n: 'nñ', c: 'cç',
+};
+
+function artistNameRegExp(name: string): RegExp {
+  const pattern = name
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .split('')
+    .map((ch) => {
+      const cls = ACCENT_CLASS[ch.toLowerCase()];
+      return cls ? `[${cls}]` : escapeRegExp(ch);
+    })
+    .join('');
+  return new RegExp(`\\b${pattern}\\b`, 'gi');
+}
+
 function sanitizeArtistNames(input: string): string {
   if (!input) return input;
   let out = input;
   // Strip canonical names from artistDNA
   for (const artist of Object.values(artistDNA)) {
     if (artist.name && artist.name.length >= 6) {
-      out = out.replace(new RegExp(`\\b${escapeRegExp(artist.name)}\\b`, 'gi'), '');
+      out = out.replace(artistNameRegExp(artist.name), '');
     }
   }
   // Strip the additional well-known names list
   for (const name of ADDITIONAL_ARTIST_NAMES) {
     if (name.length >= 6) {
-      out = out.replace(new RegExp(`\\b${escapeRegExp(name)}\\b`, 'gi'), '');
+      out = out.replace(artistNameRegExp(name), '');
     }
   }
   // Clean up the artifacts of stripping (double commas, "style" left dangling)
