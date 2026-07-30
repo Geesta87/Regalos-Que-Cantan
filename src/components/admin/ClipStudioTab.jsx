@@ -214,7 +214,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
   const [upload, setUpload] = useState(null); // { name, pct, phase }
   const [form, setForm] = useState({
     start: '', end: '', aspect: '9:16', style: 'boldpop', label: '',
-    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false,
+    framing: 'auto', silences: false, zoom: false, hook: false, emphasis: true, music: false, broll: false, fx: true, clean: false, outro: false, nocaptions: false,
     punch: false, progress: false, watermark: false, emoji: false, sfxwords: false, depth: false, depthwords: false, puncher: false, beatsync: false,
     musicTrack: '', // '' = random pick from the library
     accentColor: '', // '' = the style's own default highlight color
@@ -304,7 +304,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords', 'puncher', 'beatsync', 'captionSize'];
+  const PRESET_KEYS = ['aspect', 'style', 'framing', 'silences', 'zoom', 'hook', 'emphasis', 'music', 'musicTrack', 'broll', 'fx', 'clean', 'outro', 'nocaptions', 'punch', 'progress', 'watermark', 'emoji', 'sfxwords', 'accentColor', 'depth', 'depthwords', 'puncher', 'beatsync', 'captionSize'];
   const presetConfigFromForm = () => Object.fromEntries(PRESET_KEYS.map((k) => [k, form[k]]));
   // What the server-side auto-clip needs (its option names differ from the form's).
   const presetToAutoConfig = (cfg) => ({
@@ -592,7 +592,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       await call({
         action: 'render_clip', project_id: project.id, start_sec: start, end_sec: end,
         aspect: form.aspect, style: form.style, label: form.label || null,
-        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync, caption_size: form.captionSize || 1, cut_ranges: cutRanges.length ? cutRanges : undefined },
+        options: { framing: form.framing, remove_silences: form.silences, zoom: form.zoom, hook_title: form.hook, emphasis: form.emphasis, no_captions: form.nocaptions, music: form.music, music_track: form.musicTrack || null, broll: form.broll, transitions: form.fx, clean_audio: form.clean, outro: form.outro, punch_zooms: form.punch, progress_bar: form.progress, watermark: form.watermark, emoji: form.emoji, sfx_emphasis: form.sfxwords, accent_color: form.accentColor || null, depth_title: form.depth, depth_words: form.depthwords, punch_cuts: form.puncher, beat_sync: form.beatsync, caption_size: form.captionSize || 1, cut_ranges: cutRanges.length ? cutRanges : undefined },
       });
       showToast?.(cutRanges.length ? `Clip rendering with ${cutRanges.length} part${cutRanges.length === 1 ? '' : 's'} removed — it will appear below` : 'Clip rendering — it will appear in "Your clips" below');
       load(true);
@@ -760,7 +760,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
       start: String(clip.start_sec), end: String(clip.end_sec),
       aspect: clip.aspect, style: clip.style, label: clip.label || '',
       framing: o.framing || 'auto', silences: !!o.remove_silences, zoom: !!o.zoom,
-      hook: !!o.hook_title, emphasis: o.emphasis !== false, music: !!o.music,
+      hook: !!o.hook_title, emphasis: o.emphasis !== false, nocaptions: !!o.no_captions, music: !!o.music,
       broll: !!o.broll, fx: o.transitions !== false, clean: !!o.clean_audio, outro: !!o.outro,
       punch: !!o.punch_zooms, progress: !!o.progress_bar, watermark: !!o.watermark,
       emoji: !!o.emoji, sfxwords: !!o.sfx_emphasis,
@@ -1256,6 +1256,7 @@ export default function ClipStudioTab({ accessToken, showToast }) {
                   <div className="space-y-1.5">
                     {[
                       ['silences', 'Remove silences & filler words', 'auto-cuts pauses, dead air, and "um/uh/eh"'],
+                      ['nocaptions', 'No captions', 'render with NO subtitles — for videos where you just want music, an outro, or a clean look'],
                       ['emphasis', 'Highlight key words', 'AI paints the power words gold and bigger'],
                       ['zoom', 'Subtle zoom', 'slow push-in for extra motion'],
                       ['hook', 'Title overlay', 'shows the clip name at the top for the first seconds'],

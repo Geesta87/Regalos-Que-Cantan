@@ -451,6 +451,9 @@ serve(async (req) => {
         zoom: !!rawOpts.zoom,
         hook_title: !!rawOpts.hook_title || (isTemplate && !!cleanLabel),
         emphasis: rawOpts.emphasis !== false || isTemplate,
+        // No-captions mode: render without burning subtitles — for clips that
+        // only want background music / an outro / a clean look.
+        no_captions: !!rawOpts.no_captions,
         music: !!rawOpts.music,
         broll: !!rawOpts.broll,
         transitions: rawOpts.transitions !== false,

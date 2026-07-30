@@ -2003,7 +2003,10 @@ async function renderClip(job, { dir, log }) {
   const styleGrade = !tpl && (STYLES[job.style] || {}).grade;
   if (tpl && tpl.grade) postParts.push(tpl.grade);
   else if (styleGrade) postParts.push(styleGrade);
-  postParts.push(zoomStage, 'subtitles=captions.ass:fontsdir=.');
+  postParts.push(zoomStage);
+  // No-captions mode: skip the subtitle burn entirely — for clips that only
+  // want music / an outro / a clean look. Everything else still applies.
+  if (!opts.no_captions) postParts.push('subtitles=captions.ass:fontsdir=.');
   const post = postParts.join(',');
 
   const hasAudio = (() => {
@@ -2130,9 +2133,12 @@ async function renderClip(job, { dir, log }) {
     log(`music bed: ${job.music_url.slice(0, 100)}`);
     if (!fs.existsSync(path.join(dir, 'music.mp3'))) await download(job.music_url, path.join(dir, 'music.mp3'));
     if (hasAudio) {
-      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.22[mus]`);
+      // Measured 2026-07-29: 0.22 + threshold 0.03 / ratio 10 left the bed at
+      // -51dB RMS under continuous speech (~29dB below the voice — inaudible).
+      // These settings land it ~12-15dB under the voice: present, not fighting.
+      parts.push(`[1:a]atrim=end=${outDur.toFixed(3)},asetpts=PTS-STARTPTS,volume=0.35[mus]`);
       parts.push(`${speechLabel}asplit=2[spA][spB]`);
-      parts.push(`[mus][spB]sidechaincompress=threshold=0.03:ratio=10:attack=40:release=500[duck]`);
+      parts.push(`[mus][spB]sidechaincompress=threshold=0.15:ratio=4:attack=20:release=600[duck]`);
       parts.push(`[spA][duck]amix=inputs=2:duration=first:normalize=0[aout]`);
       audioLabel = '[aout]';
     } else {
