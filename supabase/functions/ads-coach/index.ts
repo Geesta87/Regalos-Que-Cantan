@@ -1196,34 +1196,62 @@ serve(async (req: Request) => {
     // Keep the original question text before vision may replace it with image blocks.
     const userQuestion = String(convo[convo.length - 1].content);
 
-    // ATTACHMENT: the owner can attach (or paste) something for the coach to look
-    // at / read — an IMAGE (ad creative, screenshot) for feedback, or a PDF /
-    // plain text doc (agency proposal, Meta guide, strategy doc, P&L). Sent as
-    // its own top-level `body.document` field, NOT through messages (the convo
-    // filter above only keeps string content, so blocks would be dropped).
-    // Claude reads PDFs natively (text + layout) — no beta header needed.
-    // The file rides ONLY the turn it's attached; the coach's analysis then
-    // lives on as saved reply text, so we never re-send it.
+    // ATTACHMENTS: the owner can attach (or paste) up to 5 items for the coach
+    // to look at / read — images (ad creatives, screenshots; several at once =
+    // compare them), PDFs, or plain-text docs. Sent as the top-level `documents`
+    // array (the older single `document` field is still accepted so cached
+    // frontends keep working), NOT through messages (the convo filter above only
+    // keeps string content, so blocks would be dropped). Claude reads PDFs
+    // natively (text + layout) — no beta header needed. Files ride ONLY the turn
+    // they're attached; the coach's analysis then lives on as saved reply text.
     // DO NOT DELETE when editing this file — the frontend 📎 / paste depends on it.
     const docBlocks: any[] = [];
     let docLabel = '';
-    const doc = body.document;
-    if (doc && typeof doc === 'object' && typeof doc.data === 'string' && doc.data.trim()) {
-      const dname = String(doc.name || 'document').slice(0, 160);
-      if (doc.kind === 'image') {
-        const b64 = doc.data.replace(/\s+/g, '');
-        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-        const mt = allowed.includes(String(doc.mediaType)) ? doc.mediaType : 'image/jpeg';
-        docBlocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } });
-        docLabel = `The FIRST image above (before any top-ad thumbnails) is an image the owner just uploaded for your feedback — likely an ad creative, a screenshot, or a reference. Look at it closely and give specific, honest feedback as their ads coach. If they didn't ask a specific question, critique it: thumbnail / first-frame stopping power, whether the offer and price read instantly, text legibility, authenticity (call out any AI tells or generic stock feel), and the 2-3 concrete changes most likely to lift performance — grounded in the craft rules and in how it compares to their current top ads.`;
-      } else if (doc.kind === 'pdf') {
-        const b64 = doc.data.replace(/\s+/g, ''); // base64 must carry no whitespace
-        docBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
-        docLabel = `The owner attached a PDF named "${dname}". Read the whole document above and use it to answer their question. If they didn't ask a specific question, summarize what it says and what it means for their Meta ads.`;
-      } else {
-        const text = doc.data.slice(0, 200000);
-        docBlocks.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: text } });
-        docLabel = `The owner attached a document named "${dname}"; its full text is above. Use it to answer. If they didn't ask a specific question, summarize what it says and what it means for their Meta ads.`;
+    {
+      const rawDocs: any[] = Array.isArray(body.documents) ? body.documents.slice(0, 5)
+        : (body.document && typeof body.document === 'object' ? [body.document] : []);
+      const descs: string[] = [];
+      let imageCount = 0, hasDocs = false, totalChars = 0;
+      for (const doc of rawDocs) {
+        if (!doc || typeof doc.data !== 'string' || !doc.data.trim()) continue;
+        const dname = String(doc.name || 'attachment').slice(0, 160);
+        if (doc.kind === 'image') {
+          const b64 = doc.data.replace(/\s+/g, '');
+          if (b64.length > 9_000_000) return json({ success: false, error: `"${dname}" is too big to send — attach a smaller version of that image.` }, 400);
+          totalChars += b64.length;
+          const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+          const mt = allowed.includes(String(doc.mediaType)) ? doc.mediaType : 'image/jpeg';
+          docBlocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } });
+          imageCount++;
+          descs.push(`image ${imageCount}: "${dname}"`);
+        } else if (doc.kind === 'pdf') {
+          const b64 = doc.data.replace(/\s+/g, ''); // base64 must carry no whitespace
+          totalChars += b64.length;
+          docBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+          hasDocs = true;
+          descs.push(`PDF "${dname}"`);
+        } else {
+          const text = doc.data.slice(0, 200000);
+          totalChars += text.length;
+          docBlocks.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: text } });
+          hasDocs = true;
+          descs.push(`text document "${dname}"`);
+        }
+        if (totalChars > 22_000_000) return json({ success: false, error: 'Those attachments are too large together — remove one and try again.' }, 400);
+      }
+      if (docBlocks.length) {
+        const parts: string[] = [
+          `The owner attached ${docBlocks.length === 1 ? 'one item' : `${docBlocks.length} items`} to this message — they appear ABOVE, before anything else, in this order: ${descs.join('; ')}.`,
+        ];
+        if (imageCount === 1) {
+          parts.push(`The uploaded image is for your feedback — likely an ad creative, a screenshot, or a reference. Look at it closely and give specific, honest feedback as their ads coach. If they didn't ask a specific question, critique it: thumbnail / first-frame stopping power, whether the offer and price read instantly, text legibility, authenticity (call out any AI tells or generic stock feel), and the 2-3 concrete changes most likely to lift performance — grounded in the craft rules and in how it compares to their current top ads.`);
+        } else if (imageCount > 1) {
+          parts.push(`The uploaded images are for your feedback. Treat them as a SET: if they look like variants or candidates, compare them directly against each other — rank them, name which one to run and why (the mechanic, not vibes), and what you'd change on the runner-up. If they're a sequence (e.g. carousel or before/after), judge them as one. Apply the same craft lens as always: hook/thumbnail stopping power, offer + price readability, legibility, authenticity, and how they stack up against the current top ads.`);
+        }
+        if (hasDocs) {
+          parts.push(`Read any attached document fully and use it to answer. If the owner didn't ask a specific question about it, summarize what it says and what it means for their Meta ads.`);
+        }
+        docLabel = parts.join('\n');
       }
     }
 
@@ -1283,7 +1311,7 @@ AD FACTORY MODE — you are in the dedicated ad-building workspace. This OVERRID
         if (thumbs.length) {
           sawCreatives = thumbs.length;
           imgBlocks = thumbs.map((t) => ({ type: 'image', source: { type: 'base64', media_type: t.media_type, data: t.b64 } }));
-          imgLabel = `The images above are the ACTUAL creative thumbnails of your current top ads by spend, in order: ${thumbs.map((t, i) => `${i + 1}. ${t.label}`).join('; ')}. Use them to judge the hook/first frame, whether ads are visually too similar (Meta groups look-alikes under one Entity ID), and creative diversity — alongside the numbers in the snapshot.`;
+          imgLabel = `${docBlocks.length ? `Separate from the owner's attachments: the LAST ${thumbs.length} images (immediately above this text)` : 'The images above'} are the ACTUAL creative thumbnails of your current top ads by spend, in order: ${thumbs.map((t, i) => `${i + 1}. ${t.label}`).join('; ')}. Use them to judge the hook/first frame, whether ads are visually too similar (Meta groups look-alikes under one Entity ID), and creative diversity — alongside the numbers in the snapshot.`;
         }
       } catch (_e) { /* vision is a bonus; never fail the answer over it */ }
     }

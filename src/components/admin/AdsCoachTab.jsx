@@ -10,11 +10,12 @@
 // Admin-only. It never changes the ad account.
 //
 // DO NOT DROP WHEN EDITING THIS FILE: the Coach composer has an ATTACH feature
-// (📎 button + Ctrl+V paste) that sends an image / PDF / text doc up as the
-// `document` field so the coach can look at it and give feedback. The backend
-// (ads-coach index.ts, `body.document`) depends on it. It was accidentally
-// deleted once by a rewrite of this file — keep ingestFile/onPickFile, the
-// paste useEffect, `attached` in submit's deps, and the composer chip.
+// (📎 button + Ctrl+V paste, up to 5 files) that sends images / PDFs / text docs
+// up as the `documents` array so the coach can look at them and give feedback
+// (several images = it compares them). The backend (ads-coach index.ts,
+// `body.documents`) depends on it. It was accidentally deleted once by a rewrite
+// of this file — keep compressImage/ingestFile/onPickFile, the paste useEffect,
+// `attachments` in submit's deps, and the composer chip row.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText, Plus } from 'lucide-react';
 import { btn, Badge } from './ui';
@@ -36,7 +37,7 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) an image — an ad creative or a screenshot — and I'll give you honest feedback on it, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
+const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) images — up to 5 at once, like ad variants for me to compare — and I'll give you honest feedback, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
 const FACTORY_GREETING = "This is the Ad Factory — where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
@@ -71,7 +72,7 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const [campDone, setCampDone] = useState(null);
   // Attachment the coach should look at / read (Coach thread only): an image
   // (ad creative, screenshot), a PDF, or a text doc. Attach via 📎 or paste.
-  const [attached, setAttached] = useState(null); // { name, kind:'image'|'pdf'|'text', mediaType?, data }
+  const [attachments, setAttachments] = useState([]); // [{ name, kind:'image'|'pdf'|'text', mediaType?, data }] — up to 5 per message
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
   const inputRef = useRef(null);
@@ -119,13 +120,44 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, sending, tab]);
 
-  // Read a picked/pasted file into state. Images → base64 (the coach LOOKS at it
-  // and critiques it); PDFs → base64 (Claude reads them natively, text + layout);
-  // .txt/.md/.csv → plain text. For a Google Doc: download as PDF, then attach.
+  // Read picked/pasted files into state — up to MAX_ATTACH per message, mixed
+  // kinds. Images → base64 (the coach LOOKS at them; several = it compares them);
+  // PDFs → base64 (Claude reads them natively, text + layout); .txt/.md/.csv →
+  // plain text. For a Google Doc: download as PDF, then attach.
+  const MAX_ATTACH = 5;
+  // Phone photos are routinely 8-20 MB; Claude rejects images much over ~5 MB.
+  // Downscale big images to JPEG client-side so multi-photo uploads don't fail
+  // on exactly the photos the owner is most likely to send (same lesson as the
+  // video add-on photo picker). Falls back to the raw bytes if decoding fails.
+  const compressImage = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const MAX_DIM = 2000;
+        const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+        if (scale === 1 && file.size <= 3.5 * 1024 * 1024) { resolve(null); return; } // small enough — keep original
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ data: dataUrl.split(',')[1] || '', mediaType: 'image/jpeg' });
+      } catch { resolve(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+
   const ingestFile = useCallback(async (file) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      showToast?.('That file is over 10 MB — attach a smaller image/PDF, or paste the text into the box instead.');
+    if (attachments.length >= MAX_ATTACH) {
+      showToast?.(`Up to ${MAX_ATTACH} attachments per message — remove one first.`);
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      showToast?.('That file is over 25 MB — attach a smaller one, or paste the text into the box instead.');
       return;
     }
     const readB64 = () => new Promise((res, rej) => {
@@ -137,26 +169,36 @@ export default function AdsCoachTab({ accessToken, showToast }) {
     const isImage = (file.type || '').startsWith('image/');
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
     try {
+      let item = null;
       if (isImage) {
-        const data = await readB64();
+        const shrunk = await compressImage(file);
+        const data = shrunk?.data || await readB64();
         if (!data) { showToast?.("Couldn't read that image — try another one."); return; }
         // A pasted screenshot has no filename — give it a friendly one.
-        setAttached({ name: file.name || 'pasted image', kind: 'image', mediaType: file.type || 'image/png', data });
+        item = { name: file.name || 'pasted image', kind: 'image', mediaType: shrunk ? shrunk.mediaType : (file.type || 'image/png'), data };
       } else if (isPdf) {
+        if (file.size > 10 * 1024 * 1024) { showToast?.('That PDF is over 10 MB — attach a smaller one.'); return; }
         const data = await readB64();
         if (!data) { showToast?.("Couldn't read that PDF — try another file."); return; }
-        setAttached({ name: file.name || 'document.pdf', kind: 'pdf', data });
+        item = { name: file.name || 'document.pdf', kind: 'pdf', data };
       } else {
         const data = await file.text();
-        setAttached({ name: file.name || 'document.txt', kind: 'text', data });
+        item = { name: file.name || 'document.txt', kind: 'text', data };
       }
+      // Keep the whole request comfortably under the edge-function body limit.
+      setAttachments((prev) => {
+        if (prev.length >= MAX_ATTACH) return prev;
+        const total = prev.reduce((s, a) => s + a.data.length, 0) + item.data.length;
+        if (total > 15 * 1024 * 1024) { showToast?.('That would make the message too large to send — remove an attachment first.'); return prev; }
+        return [...prev, item];
+      });
     } catch { showToast?.("Couldn't read that file — try another one."); }
-  }, [showToast]);
+  }, [attachments.length, showToast]);
 
   const onPickFile = (e) => {
-    const file = e.target.files?.[0];
-    if (e.target) e.target.value = ''; // let the same file be re-picked later
-    ingestFile(file);
+    const files = Array.from(e.target.files || []);
+    if (e.target) e.target.value = ''; // let the same files be re-picked later
+    files.forEach((f) => ingestFile(f));
   };
 
   // PASTE an image straight in (Ctrl/Cmd+V) — no file dialog, no saving the
@@ -166,15 +208,15 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   useEffect(() => {
     if (tab !== 'coach') return undefined;
     const onPaste = (e) => {
-      const img = Array.from(e.clipboardData?.items || []).find((i) => i.type?.startsWith('image/'));
-      if (!img) return; // text paste → behave normally
+      const imgs = Array.from(e.clipboardData?.items || []).filter((i) => i.type?.startsWith('image/'));
+      if (!imgs.length) return; // text paste → behave normally
       const t = e.target;
       const inAnotherField = (t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable) && t !== inputRef.current;
       if (inAnotherField) return;
-      const file = img.getAsFile();
-      if (!file) return;
+      const files = imgs.map((i) => i.getAsFile()).filter(Boolean);
+      if (!files.length) return;
       e.preventDefault();
-      ingestFile(file);
+      files.forEach((f) => ingestFile(f));
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
@@ -182,19 +224,19 @@ export default function AdsCoachTab({ accessToken, showToast }) {
 
   const submit = useCallback(async (text) => {
     const typed = (text ?? input).trim();
-    const doc = tab === 'coach' ? attached : null; // attachments are a Coach-thread feature
-    if ((!typed && !doc) || sending) return;
+    const docs = tab === 'coach' ? attachments : []; // attachments are a Coach-thread feature
+    if ((!typed && !docs.length) || sending) return;
     setInput('');
     const thread = tab;
-    // Show a marker in the log so the conversation reads coherently; the file
-    // itself goes up separately as `document` and rides only this turn.
-    const shown = doc ? (typed ? `📎 ${doc.name}\n${typed}` : `📎 ${doc.name}`) : typed;
+    // Show a marker in the log so the conversation reads coherently; the files
+    // themselves go up separately as `documents` and ride only this turn.
+    const shown = docs.length ? `📎 ${docs.map((d) => d.name).join(', ')}${typed ? `\n${typed}` : ''}` : typed;
     const next = [...msgs[thread], { role: 'user', content: shown }];
     setMsgs((p) => ({ ...p, [thread]: next }));
     setSending(true);
-    if (doc) setAttached(null);
+    if (docs.length) setAttachments([]);
     try {
-      const body = await call({ messages: next, thread, document: doc ? { name: doc.name, kind: doc.kind, mediaType: doc.mediaType, data: doc.data } : undefined });
+      const body = await call({ messages: next, thread, documents: docs.length ? docs.map(({ name, kind, mediaType, data }) => ({ name, kind, mediaType, data })) : undefined });
       if (body.success) {
         setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: body.reply, images: body.images, live: body.had_live_data }] }));
         if (body.calls?.length) setCalls(body.calls);
@@ -225,7 +267,7 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       showToast?.(`Error: ${e.message}`);
       setMsgs((p) => ({ ...p, [thread]: [...p[thread], { role: 'assistant', content: `Connection problem — ${e.message}. Try again in a moment.` }] }));
     } finally { setSending(false); }
-  }, [input, sending, msgs, tab, call, showToast, attached]);
+  }, [input, sending, msgs, tab, call, showToast, attachments]);
 
   // --- NEW CAMPAIGN (always paused) -----------------------------------------
   // Deliberately two steps: you must PREVIEW the exact spec, then confirm.
@@ -626,29 +668,33 @@ export default function AdsCoachTab({ accessToken, showToast }) {
       )}
 
       {/* Composer */}
-      {tab === 'coach' && attached && (
-        <div className="mt-3 -mb-1 flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-1.5 pr-1.5 py-1 max-w-full">
-            {attached.kind === 'image'
-              ? <img src={`data:${attached.mediaType};base64,${attached.data}`} alt="" className="w-5 h-5 rounded object-cover flex-shrink-0" />
-              : <FileText size={12} className="flex-shrink-0 ml-1" />}
-            <span className="truncate max-w-[220px]">{attached.name}</span>
-            <button onClick={() => setAttached(null)} title="Remove" className="p-0.5 rounded-full hover:bg-indigo-100 text-indigo-500"><X size={12} /></button>
+      {tab === 'coach' && attachments.length > 0 && (
+        <div className="mt-3 -mb-1 flex items-center gap-2 text-xs flex-wrap">
+          {attachments.map((a, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full pl-1.5 pr-1.5 py-1 max-w-full">
+              {a.kind === 'image'
+                ? <img src={`data:${a.mediaType};base64,${a.data}`} alt="" className="w-5 h-5 rounded object-cover flex-shrink-0" />
+                : <FileText size={12} className="flex-shrink-0 ml-1" />}
+              <span className="truncate max-w-[160px]">{a.name}</span>
+              <button onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== i))} title="Remove" className="p-0.5 rounded-full hover:bg-indigo-100 text-indigo-500"><X size={12} /></button>
+            </span>
+          ))}
+          <span className="text-gray-400">
+            {attachments.length}/5 — {attachments.length > 1 ? 'the coach will compare them' : 'ask a question or just send'}
           </span>
-          <span className="text-gray-400">attached — ask a question or just send for {attached.kind === 'image' ? 'feedback' : 'analysis'}</span>
         </div>
       )}
       <div className="flex items-center gap-2 mt-3">
         {tab === 'coach' && (
           <>
-            <input ref={fileRef} type="file" accept="image/*,.pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
-            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach an image, PDF, or text document — or just paste an image with Ctrl+V" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
+            <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,text/plain,application/pdf" onChange={onPickFile} className="hidden" />
+            <button onClick={() => fileRef.current?.click()} disabled={sending || loading} title="Attach up to 5 images/PDFs/docs — or just paste images with Ctrl+V" className={btn.iconGhost + ' flex-shrink-0'}><Paperclip size={16} /></button>
           </>
         )}
         <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
-          placeholder={tab === 'coach' ? 'Ask your ads coach… (or paste an image for feedback)' : 'Tell the factory what you need… (e.g. "build me an ad for mamá\'s birthday")'}
+          placeholder={tab === 'coach' ? 'Ask your ads coach… (or paste images for feedback)' : 'Tell the factory what you need… (e.g. "build me an ad for mamá\'s birthday")'}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
-        <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attached))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
+        <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attachments.length))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
       </div>
     </div>
   );
