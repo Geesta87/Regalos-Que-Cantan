@@ -26,8 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { encode as encodeBase64 } from 'https://deno.land/std@0.168.0/encoding/base64.ts';
 import { metaBrainContext, META_BRAIN_LAST_REVIEWED } from '../_shared/meta-algorithm-brain.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
-import { kiePhotoBytes, kieEditBytes, KIE_IMAGE_ENABLED } from '../_shared/kie-image.ts';
-import { renderAd } from '../_shared/render-ad.ts';
+import { kiePhotoBytes, kieEditBytes, openaiPhotoBytes, KIE_IMAGE_ENABLED, OPENAI_IMAGE_ENABLED } from '../_shared/kie-image.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -67,6 +66,147 @@ function actionCount(actions: any[] | undefined, type: string): number {
   return hit ? num(hit.value || hit.count) : 0;
 }
 function purchasesOf(row: any): number { return actionCount(row.actions, 'purchase') || actionCount(row.actions, 'omni_purchase'); }
+
+// ---------------------------------------------------------------------------
+// META WRITE PATH — publish a Factory-built ad into an EXISTING ad set.
+//
+// SCOPE (deliberate): creates ADS ONLY, inside ad sets that already exist. It
+// never creates campaigns or ad sets, never changes budgets, never enables
+// anything. That matches the account strategy — consolidate, so new creative
+// goes into existing ad sets as new ads, NOT into new campaigns.
+//
+// HARD GUARANTEES enforced in CODE (not in a prompt):
+//   • status=PAUSED always — it cannot spend until the owner switches it on
+//   • the target ad set must be one of the account's real ad sets (validated)
+//   • UTM parameters always attached (fixes the account's attribution gap)
+//   • text_optimizations / text_translation always OPTED OUT so Meta cannot
+//     rewrite or translate the owner's Spanish copy
+// ---------------------------------------------------------------------------
+const FB_PAGE_ID = Deno.env.get('FB_PAGE_ID') || '950188118177218';
+const IG_USER_ID = Deno.env.get('IG_USER_ID') || '17841479696876347';
+const AD_UTM_TAGS = 'utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}';
+
+async function metaUploadImage(bytes: Uint8Array): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append('access_token', META_ACCESS_TOKEN!);
+    fd.append('filename', new Blob([bytes], { type: 'image/png' }), 'ad.png');
+    const res = await fetch(`${META_BASE}/${META_AD_ACCOUNT_ID}/adimages`, { method: 'POST', body: fd });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { console.warn('[ads-coach] adimages failed', JSON.stringify(j).slice(0, 300)); return null; }
+    const first: any = Object.values(j?.images || {})[0];
+    return first?.hash || null;
+  } catch (e) { console.warn('[ads-coach] adimages error', e); return null; }
+}
+
+async function metaFormPost(path: string, params: Record<string, string>): Promise<any> {
+  const body = new URLSearchParams({ ...params, access_token: META_ACCESS_TOKEN! });
+  const res = await fetch(`${META_BASE}/${path}`, { method: 'POST', body });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j?.error?.error_user_msg || j?.error?.message || JSON.stringify(j).slice(0, 250));
+  return j;
+}
+
+// Publish one finished ad image into an existing ad set, PAUSED.
+async function publishAdToMeta(opts: {
+  imageBytes: Uint8Array; adsetId: string; adName: string;
+  primaryText: string; headline?: string; description?: string;
+  link: string; ctaType?: string;
+}): Promise<{ ad_id: string; creative_id: string }> {
+  const hash = await metaUploadImage(opts.imageBytes);
+  if (!hash) throw new Error('Could not upload the image to Meta.');
+
+  const linkData: any = {
+    image_hash: hash,
+    link: opts.link,
+    message: opts.primaryText,
+    call_to_action: { type: opts.ctaType || 'ORDER_NOW', value: { link: opts.link } },
+  };
+  if (opts.headline) linkData.name = opts.headline;
+  if (opts.description) linkData.description = opts.description;
+
+  const creative = await metaFormPost(`${META_AD_ACCOUNT_ID}/adcreatives`, {
+    name: `${opts.adName} — creative`.slice(0, 100),
+    object_story_spec: JSON.stringify({ page_id: FB_PAGE_ID, instagram_user_id: IG_USER_ID, link_data: linkData }),
+    url_tags: AD_UTM_TAGS,
+    // Stop Meta rewriting/translating the owner's carefully-written Spanish.
+    degrees_of_freedom_spec: JSON.stringify({
+      creative_features_spec: {
+        text_optimizations: { enroll_status: 'OPT_OUT' },
+        text_translation: { enroll_status: 'OPT_OUT' },
+      },
+    }),
+  });
+  if (!creative?.id) throw new Error('Meta did not return a creative id.');
+
+  const ad = await metaFormPost(`${META_AD_ACCOUNT_ID}/ads`, {
+    name: opts.adName.slice(0, 100),
+    adset_id: opts.adsetId,
+    creative: JSON.stringify({ creative_id: creative.id }),
+    status: 'PAUSED', // HARD RULE — never created live
+  });
+  if (!ad?.id) throw new Error('Meta did not return an ad id.');
+  return { ad_id: ad.id, creative_id: creative.id };
+}
+
+// ---------------------------------------------------------------------------
+// CAMPAIGN CREATION — owner-approved, always PAUSED.
+//
+// HARD GUARANTEES enforced in CODE (not in a prompt):
+//  • The MODEL CANNOT REACH THIS. There is deliberately no generate_* tool for
+//    it — the coach can only recommend a campaign in words. The only path that
+//    creates anything is an explicit human click that sends confirm:true.
+//  • Campaign AND ad set are created status=PAUSED. Nothing can spend until the
+//    owner switches it on in Ads Manager.
+//  • The daily budget is clamped to BUDGET_MIN/MAX_USD, so a mistyped number
+//    cannot create a $5,000/day campaign.
+//  • objective is allow-listed.
+//  • Targeting / optimization / attribution are CLONED from one of the account's
+//    real ad sets (validated server-side) — never invented by an LLM.
+//  • special_ad_categories is always [] (this account runs no special category).
+//  • Budget lives on the CAMPAIGN (CBO), matching how this account is run; the
+//    ad set therefore carries no budget of its own.
+//  • If ad-set creation fails, the just-created campaign is DELETED so a failed
+//    attempt can never leave an orphan campaign behind.
+// ---------------------------------------------------------------------------
+const META_PIXEL_ID = Deno.env.get('META_PIXEL_ID') || '1296066869001492';
+const CAMPAIGN_OBJECTIVES = ['OUTCOME_SALES'];
+const BUDGET_MIN_USD = 5;
+const BUDGET_MAX_USD = Number(Deno.env.get('ADS_COACH_MAX_DAILY_USD') || 150);
+
+async function metaDelete(path: string): Promise<void> {
+  try {
+    await fetch(`${META_BASE}/${path}`, {
+      method: 'POST',
+      body: new URLSearchParams({ access_token: META_ACCESS_TOKEN!, _method: 'DELETE' }),
+    });
+  } catch (_e) { /* best-effort rollback */ }
+}
+
+// One of the account's REAL ad sets, used as the settings template. Returning
+// null means "not in this account" — callers must refuse rather than invent.
+async function fetchAdsetTemplate(adsetId: string): Promise<any | null> {
+  const sets = await metaGet(`${META_AD_ACCOUNT_ID}/adsets`, {
+    fields: 'id,name,optimization_goal,billing_event,attribution_spec,destination_type,promoted_object,targeting,campaign_id',
+    limit: '200',
+  });
+  return (sets.data || []).find((s: any) => String(s.id) === String(adsetId)) || null;
+}
+
+// Meta rejects a few read-only keys that come back on a GET of targeting.
+function cleanTargeting(t: any): any {
+  const out = { ...(t || {}) };
+  for (const k of ['is_whatsapp_destination_ad', 'targeting_optimization', 'brand_safety_content_filter_levels']) delete out[k];
+  return out;
+}
+
+function budgetCentsOrError(usd: any): { cents?: number; error?: string } {
+  const n = Number(usd);
+  if (!Number.isFinite(n)) return { error: 'Enter a daily budget in dollars.' };
+  if (n < BUDGET_MIN_USD) return { error: `Daily budget must be at least $${BUDGET_MIN_USD}.` };
+  if (n > BUDGET_MAX_USD) return { error: `Daily budget is capped at $${BUDGET_MAX_USD}/day here as a safety limit. Raise ADS_COACH_MAX_DAILY_USD if you really want more.` };
+  return { cents: Math.round(n * 100) };
+}
 
 // Start-of-day (UTC instant) for a calendar day in `tz`, offset by dayOffset.
 function tzOffsetMs(date: Date, tz: string): number {
@@ -153,7 +293,7 @@ async function gatherAccountContext(supabase: any) {
   // "previous 7 days" preset, so build an explicit time_range in the ad-account tz.
   const adDate = (daysAgo: number) => new Intl.DateTimeFormat('en-CA', { timeZone: AD_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(startOfTzDay(AD_TZ, -daysAgo));
   const prior7 = JSON.stringify({ since: adDate(14), until: adDate(8) });
-  const [campaignsList, week, yday, ydayAccount, adsWeek, month, prevAccount, prevWeek, adsetsList, adsetWeek, placements] = await Promise.all([
+  const [campaignsList, week, yday, ydayAccount, adsWeek, month, prevAccount, prevWeek, adsetsList, adsetWeek, placements, dailyAccount] = await Promise.all([
     metaGet(`${META_AD_ACCOUNT_ID}/campaigns`, { fields: 'id,name,daily_budget,objective,buying_type,smart_promotion_type,effective_status', limit: '100', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }),
     metaGet(acctPath, { level: 'campaign', date_preset: 'last_7d', fields: INSIGHT_FIELDS, limit: '100' }),
     metaGet(acctPath, { level: 'campaign', date_preset: 'yesterday', fields: INSIGHT_FIELDS, limit: '100' }),
@@ -175,6 +315,10 @@ async function gatherAccountContext(supabase: any) {
     metaGet(`${META_AD_ACCOUNT_ID}/adsets`, { fields: 'name,campaign_id,daily_budget,lifetime_budget,optimization_goal,bid_strategy,effective_status,targeting{age_min,age_max,genders,geo_locations,custom_audiences,targeting_automation,publisher_platforms}', limit: '200', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }).catch(() => ({ data: [] })),
     metaGet(acctPath, { level: 'adset', date_preset: 'last_7d', fields: 'adset_name,campaign_name,spend,cpm,ctr,frequency,actions', limit: '200' }).catch(() => ({ data: [] })),
     metaGet(acctPath, { level: 'account', date_preset: 'last_7d', fields: 'spend,actions', breakdowns: 'publisher_platform', limit: '50' }).catch(() => ({ data: [] })),
+    // DAY-BY-DAY: one row per calendar day for the last 30 days (time_increment=1),
+    // so the coach can audit specific days / weekdays vs weekends — instead of only
+    // aggregates. This is what lets it answer "what happened last Thursday / Sunday".
+    metaGet(acctPath, { level: 'account', date_preset: 'last_30d', time_increment: '1', fields: 'spend,impressions,clicks,ctr,cpm,frequency,actions', limit: '40' }).catch(() => ({ data: [] })),
   ]);
 
   const budgetByName: Record<string, number> = {};
@@ -264,18 +408,70 @@ async function gatherAccountContext(supabase: any) {
     real_revenue = r2([...perSession.values()].reduce((a, b) => a + b, 0));
   } catch (_e) { /* revenue cross-check is best-effort; coach still works on Meta data */ }
 
-  // 30-day real-order baseline (same dedupe) for a longer ROAS/profit view.
+  // 30-day real-order baseline (same dedupe) + PER-DAY real orders (bucketed to the
+  // ad-account day so it lines up with Meta's daily spend) so the coach can audit
+  // specific days with REAL orders, not just Meta's pixel count.
   let orders_30d = 0, revenue_30d = 0;
+  const realByDay: Record<string, { sessions: Map<string, number> }> = {};
+  const realByPacificDay: Record<string, Map<string, number>> = {};
   try {
     const { data: rows30 } = await supabase
-      .from('songs').select('stripe_session_id, amount_paid')
+      .from('songs').select('stripe_session_id, amount_paid, paid_at')
       .eq('paid', true).gte('paid_at', startOfTzDay(AD_TZ, -30).toISOString()).lt('paid_at', dayEnd)
       .eq('platform', RQC_PLATFORM).not('stripe_session_id', 'is', null);
     const per30 = new Map<string, number>();
-    for (const r of (rows30 || [])) { const sid = r.stripe_session_id as string; const amt = num(r.amount_paid); if (!per30.has(sid) || amt > (per30.get(sid) as number)) per30.set(sid, amt); }
+    for (const r of (rows30 || [])) {
+      const sid = r.stripe_session_id as string; const amt = num(r.amount_paid);
+      if (!per30.has(sid) || amt > (per30.get(sid) as number)) per30.set(sid, amt);
+      // Bucket to the ad-account (Manila) day — pairs with Meta's daily spend so
+      // the CPA is exact. Dedupe per session within each day.
+      const day = new Intl.DateTimeFormat('en-CA', { timeZone: AD_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.paid_at as string));
+      (realByDay[day] ||= { sessions: new Map() });
+      const cur = realByDay[day].sessions.get(sid);
+      if (cur == null || amt > cur) realByDay[day].sessions.set(sid, amt);
+      // ALSO bucket to the owner's TRUE Pacific calendar day (midnight-midnight),
+      // which is the honest number for "how did Sunday do" / weekday comparisons.
+      const pday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(r.paid_at as string));
+      (realByPacificDay[pday] ||= new Map());
+      const pcur = realByPacificDay[pday].get(sid);
+      if (pcur == null || amt > pcur) realByPacificDay[pday].set(sid, amt);
+    }
     orders_30d = per30.size;
     revenue_30d = r2([...per30.values()].reduce((a, b) => a + b, 0));
   } catch (_e) { /* best-effort */ }
+
+  // DAY-BY-DAY series: merge Meta's per-day metrics with real orders per day, and
+  // tag the weekday so the coach can reason about weekends vs weekdays honestly.
+  // The ad account bills in Asia/Manila, which is 15-16h AHEAD of the owner's
+  // Pacific day: Manila day D runs from Pacific (D-1) 9am to D 9am, i.e. it is
+  // essentially the owner's PREVIOUS calendar day. So every row is labeled with
+  // the OWNER'S Pacific date + weekday (same convention as media-buyer-daily).
+  // Getting this wrong makes the coach call the owner's Sunday a "Monday".
+  const backOneDay = (ymd: string) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+  const daily_last_30d = (dailyAccount.data || []).map((r: any) => {
+    const date = r.date_start;
+    const rd = date && realByDay[date];
+    const realOrders = rd ? rd.sessions.size : 0;
+    const realRev = rd ? r2([...rd.sessions.values()].reduce((a, b) => a + b, 0)) : 0;
+    const daySpend = r2(num(r.spend));
+    const ownerDate = date ? backOneDay(date) : null;
+    return {
+      owner_date: ownerDate,
+      weekday: ownerDate ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short' }).format(new Date(`${ownerDate}T12:00:00Z`)) : null,
+      ad_account_day: date,
+      // True midnight-to-midnight Pacific orders for THIS weekday — the honest
+      // number for demand/weekday questions (real_orders below is the Manila
+      // 9am-9am window, which is what pairs exactly with spend for CPA).
+      orders_owner_day: ownerDate && realByPacificDay[ownerDate] ? realByPacificDay[ownerDate].size : null,
+      spend: daySpend,
+      real_orders: realOrders,
+      real_revenue: realRev,
+      real_cpa: realOrders > 0 ? r2(daySpend / realOrders) : null,
+      real_roas: daySpend > 0 ? r2(realRev / daySpend) : null,
+      meta_purchases: purchasesOf(r),
+      ctr: r2(num(r.ctr)), cpm: r2(num(r.cpm)), frequency: r2(num(r.frequency)),
+    };
+  });
 
   const spend_7d = r2(num(acc.spend));
   const acc30 = (month.data || [])[0] || {};
@@ -288,6 +484,13 @@ async function gatherAccountContext(supabase: any) {
     account_30d: { spend: spend_30d, ctr: r2(num(acc30.ctr)), cpm: r2(num(acc30.cpm)), frequency: r2(num(acc30.frequency)), meta_purchases: purchasesOf(acc30), note: '30-day baseline — use it to judge whether the last 7 days are normal, better, or worse than the recent norm.' },
     real_revenue_7d: { orders: real_orders, revenue: real_revenue, real_cpa: real_orders > 0 ? r2(spend_7d / real_orders) : null, real_roas: spend_7d > 0 ? r2(real_revenue / spend_7d) : null, note: 'REAL deduped paid orders from the songs table — trust these over Meta pixel counts, which usually under-count.' },
     real_revenue_30d: { orders: orders_30d, revenue: revenue_30d, real_cpa: orders_30d > 0 ? r2(spend_30d / orders_30d) : null, real_roas: spend_30d > 0 ? r2(revenue_30d / spend_30d) : null, note: '30-day REAL-order baseline for a steadier ROAS read than any single week.' },
+    daily_last_30d,
+    daily_note: 'ONE ROW PER DAY for the last 30 days. IMPORTANT: owner_date/weekday are the OWNER\'S Pacific calendar day — always speak in those terms. (ad_account_day is the raw Meta/Manila billing day, which starts 9am Pacific the PREVIOUS day; spend and orders in a row cover that same window so the CPA is apples-to-apples. Never quote ad_account_day to the owner — calling their Sunday a "Monday" is a real error.) TWO order numbers per row, use the right one: orders_owner_day = true midnight-to-midnight Pacific orders → use for ANY demand/weekday question ("how did Sunday do") and for comparing against weekday_baseline. real_orders = the Manila 9am-9am window, which pairs EXACTLY with that row\'s spend → use only for CPA/ROAS math (real_cpa/real_roas are computed from it). They differ by a few orders; that is expected, not an error. meta_purchases is the pixel count (undercounts). The most recent day is PARTIAL — say so rather than reporting it as a crash.',
+    weekday_baseline: {
+      note: 'MEASURED baseline of avg REAL orders by the OWNER\'S Pacific weekday (78 days, Father\'s Day week excluded). ALWAYS judge a day against its OWN weekday here, never against yesterday or the week\'s peak — most "the account is crashing" panics are just Monday being Monday.',
+      Sat: 46.2, Fri: 41.5, Thu: 41.2, Wed: 37.6, Sun: 37.1, Tue: 36.3, Mon: 32.7,
+      spread: 'Saturday runs ~41% above Monday every week — that gap alone moves CPA by several dollars with flat spend.',
+    },
     campaigns_7d,
     campaigns_yesterday,
     top_ads_7d: ads_7d,
@@ -368,7 +571,17 @@ const COACH_SYSTEM = `You are a world-class Meta ads coach for "Regalos Que Cant
 Your job is to make the owner a better advertiser AND tell them the highest-leverage move right now — grounded in how Meta ACTUALLY delivers ads today, not generic tips.
 
 How you operate:
-- You never change the ad ACCOUNT yourself (budgets, pausing) — you hand the owner a specific move ("raise Corrido 6/26 from $120 to $180/day") to apply in Meta Ads Manager. Be concrete and ranked.
+- You never change the ad ACCOUNT yourself (budgets, pausing) — you hand the owner a specific move to apply in Meta Ads Manager. Be concrete and ranked.
+
+BUDGET-CHANGE DISCIPLINE (the owner's hard rules — violating these destroys your credibility):
+1. NEVER propose a budget change without first computing it as a PERCENTAGE of that campaign's CURRENT daily_budget (it's in the snapshot). The owner moves budgets in ~20% increments, up or down. A "$100 shift" onto a $120/day campaign is +83% and is an unacceptable recommendation. Do the arithmetic BEFORE you write the sentence.
+2. When shrinking a large campaign to feed small ones the numbers won't balance in one move — propose WAVES: repeat ~20% steps with a checkpoint after each, not one big reallocation.
+3. JUDGE A BUDGET CHANGE AT ~14 DAYS, NOT 7. This account's own history proves it: when Corrido 6/26 went $100→$120, its CPA got WORSE for the first ~9 days (learning phase re-optimizing) and only then recovered to better-than-before. Judging at day 7 would have wrongly killed a working change. Always warn the owner to expect that dip.
+4. CHANGE ONE VARIABLE AT A TIME. Never propose cutting one campaign and raising another in the same move — if orders drop, nothing is learned. Isolate.
+5. Before recommending SCALING a campaign, check whether it can actually absorb spend: frequency (low/flat ~1.2 = audience headroom; climbing toward 2.5-3 = saturating), budget utilization (is it even spending its current budget?), and whether the campaign has ever run at a higher budget and what happened. If the evidence isn't there, say so instead of assuming.
+6. NEVER assume linear scaling in a projection. "Move $X and get Y more orders at the same CPA" is almost always wrong — efficiency usually shifts as spend grows. If you give a number, state the assumption behind it and label it an estimate.
+
+ANALYTICAL METHOD — separating campaign effects from market moves: a campaign's CPA moving is meaningless on its own. ALWAYS compare it to the ACCOUNT's CPA over the SAME window. If both moved together, it's the market (auction/CPM/demand) and the campaign is fine. If the campaign moved and the account didn't, it's the campaign. Express it as a ratio (campaign CPA ÷ account CPA) across periods — that ratio is the real performance signal. Apply this before ever telling the owner a campaign is degrading.
 - YOU CREATE AD IMAGES YOURSELF using the generate_ad_image tool, as the CREATIVE DIRECTOR. When the owner asks you to make/create an ad — even vaguely ("make me an ad", "create something") — do NOT ask them for direction and do NOT ask which occasion or angle to use. Decide EVERYTHING yourself: pick the highest-leverage occasion/angle from the owner's current promo push (in the business section above) and what the account needs (a missing door, a fatiguing concept to replace), then write the exact text-free image prompt yourself (a real Latino/Mexican human moment, ONE emotion, photoreal, NO text/words/logos on the image — copy is typeset separately) AND write ALL the Spanish ad copy the tool needs: a short punchy headline (1-2 lines, each roughly <=16 characters), an accent word to highlight, an emotional subheadline, a CTA, a price, and pick a template (default "song"; use "poster" for a bold promo). Weave in ONE real proof point from the offer (e.g. "Escúchala GRATIS antes de pagar", "Lista en ~3 minutos"). Then call the tool — it returns a FINISHED ad (photo + headline + subhead + CTA typeset on-brand), not just a photo. After it generates, in one or two lines tell them WHAT you chose and WHY, and offer to try a different occasion/angle/template if they'd like. Only ask a clarifying question if the request is genuinely contradictory — never just to get direction you could decide yourself. ONE finished ad per turn (hard limit — pitch the next concept in words and offer to build it). Set variation_of_winner=true only when a fresh take on the current top ad is the right move. Never say you can't create images.
 - For substantive recommendations, lead with the MECHANIC then the move — explain the WHY (how Meta delivers) before the WHAT; that's what separates you from generic AI. For a quick factual question, just answer it directly.
 - Judge on REAL cost-per-sale and PROFIT, not vanity metrics. The real paid-order numbers beat Meta's pixel count; trust them and say so.
@@ -378,7 +591,9 @@ How you operate:
 - MATCH LENGTH TO THE QUESTION. This is important. A simple, narrow question ("which ad should I kill?", "what's my ROAS?", "how many ad sets do I have?") gets a SHORT, direct answer — the answer plus at most one line of why, a few sentences total. Reserve the fuller mechanic-and-teaching treatment for strategic or open questions ("is my structure right?", "what should I test?", "why is this dying?") or when the owner asks for more. Teach when it genuinely adds value, not on every turn. Never pad or repeat yourself; if one line is the honest, complete answer, give one line. Length should track the weight of the question, not be uniform. Plain language, warm and direct.
 - FORMATTING: write in clean, plain text. Do NOT use markdown — no ** or __ for bold, no ## headers, no asterisk bullets. The owner reads this in a plain chat bubble, so any * or # shows up as literal clutter. For lists use a simple dash "-" or "1." ; for emphasis rely on word choice and short punchy sentences, not symbols. A section label can just be a short line of normal text.
 - Use the TREND data: the snapshot has account_7d vs account_prev_7d vs account_30d, and each campaign's trend_prev_7d. Judge direction (improving vs fatiguing), not just today's snapshot. One week is a signal; the 30-day baseline says whether it's normal.
-- You see: campaign + ad-SET + top-15 ad-level numbers, each campaign's type (objective, CBO vs ABO, Advantage+ vs manual, ad-set count), ad-set budgets + optimization goal + audience/targeting, a placement breakdown, the real creative thumbnails, real paid orders, and 7d/prior-7d/30d trends. So you CAN now judge structure and over-fragmentation directly. You still do NOT see: audience-overlap analysis, granular dayparting, or history beyond ~30 days. When a question needs something you can't see, say so plainly instead of guessing.`;
+- DAY-BY-DAY: daily_last_30d has one row per day (last 30) with the OWNER'S Pacific date + weekday, spend, REAL orders/CPA/ROAS and Meta purchases. You CAN answer "what happened last Thursday / Sunday / this weekend" — do that instead of saying you lack daily data. ALWAYS speak in the owner's Pacific days (owner_date/weekday), never the raw ad_account_day: the Meta/Manila billing day starts 9am Pacific the PREVIOUS day, so quoting it calls the owner's Sunday a "Monday".
+- JUDGE A DAY AGAINST ITS OWN WEEKDAY, never against yesterday or the week's best day. Use weekday_baseline. Saturday averages ~46 orders and Monday ~33 — a 33-order Monday is DEAD NORMAL, not a crash. Say "that's normal for a Monday" when it is. Only call a day genuinely soft when it's meaningfully below ITS OWN weekday average, and check whether the preceding days were an unusually hot streak (a return to normal after a hot week feels like a collapse but isn't). Never let the owner make a budget change based on one below-average day.
+- You see: campaign + ad-SET + top-15 ad-level numbers, each campaign's type (objective, CBO vs ABO, Advantage+ vs manual, ad-set count), ad-set budgets + optimization goal + audience/targeting, a placement breakdown, per-day metrics for 30 days, the real creative thumbnails, real paid orders, and 7d/prior-7d/30d trends. You still do NOT see: audience-overlap analysis, hour-of-day dayparting, or history beyond ~30 days. When a question truly needs something you can't see, say so plainly instead of guessing.`;
 
 // Raw Anthropic Messages call with retry — returns the full response JSON so the
 // caller can read text AND tool_use blocks.
@@ -446,7 +661,16 @@ async function qcAdPhoto(photo: Uint8Array, intent: string): Promise<{ pass: boo
 // a corrected prompt if it fails) → typeset design layer (renderAd: headline,
 // subhead, CTA, price on-brand). Returns the public URL + an honest QC note.
 async function generateAdImage(admin: any, prompt: string, refUrl: string, copy?: any, startedAt?: number): Promise<{ url: string | null; qcNote: string }> {
-  let photo = refUrl ? await kieEditBytes(prompt, refUrl) : await kiePhotoBytes(prompt);
+  // Fail KIE FAST (15s). It has been degraded, and every second spent waiting on
+  // it is a second stolen from the OpenAI fallback inside the same worker budget.
+  // If KIE is healthy it answers well inside this; if not we move on immediately.
+  const KIE_FAST = 15000;
+  let photo = refUrl ? await kieEditBytes(prompt, refUrl, KIE_FAST) : await kiePhotoBytes(prompt, undefined, KIE_FAST);
+  // FALLBACK: if KIE (the cheap reseller) failed/timed out, generate the photo
+  // straight from OpenAI so a KIE outage never kills the build. (Text-to-image
+  // only — variations off a reference stay on KIE's image-to-image.)
+  let via = photo ? 'kie' : '';
+  if (!photo && !refUrl && OPENAI_IMAGE_ENABLED) { photo = await openaiPhotoBytes(prompt); if (photo) via = 'openai'; }
   if (!photo) return { url: null, qcNote: 'photo generation failed' };
   // QC gate: grade the photo; on fail, regenerate ONCE with the corrected prompt —
   // but only if there's runtime budget left (a retry adds up to ~100s; past ~60s
@@ -467,31 +691,19 @@ async function generateAdImage(admin: any, prompt: string, refUrl: string, copy?
   } else if (!qc1.pass) {
     qcNote = `QC flagged: ${qc1.issues}`;
   }
-  let finalBytes = photo;
-  if (copy && Array.isArray(copy.headline_lines) && copy.headline_lines.length) {
-    try {
-      const rendered = await renderAd({
-        imageBytes: photo,
-        template: copy.template || 'song',
-        headlineLines: copy.headline_lines.slice(0, 3).map((s: any) => String(s)),
-        accent: copy.accent_word ? String(copy.accent_word) : undefined,
-        sub: copy.subhead ? String(copy.subhead) : undefined,
-        cta: copy.cta ? String(copy.cta) : undefined,
-        price: copy.price ? String(copy.price) : undefined,
-        kicker: copy.kicker ? String(copy.kicker) : undefined,
-        feats: Array.isArray(copy.benefit_lines) && copy.benefit_lines.length ? copy.benefit_lines.slice(0, 3).map((s: any) => String(s)) : (Array.isArray(copy.feats) ? copy.feats.slice(0, 3).map((s: any) => String(s)) : undefined),
-        player: copy.song_title ? { title: String(copy.song_title) } : undefined,
-      });
-      if (rendered) finalBytes = rendered; // else keep the text-free photo
-    } catch (_e) { /* design layer failed → ship the clean photo */ }
-  }
-  const path = `ads-coach/${crypto.randomUUID()}.png`;
-  const { error: upErr } = await admin.storage.from(IMG_BUCKET).upload(path, finalBytes, { contentType: 'image/png', upsert: false });
+  // This function NEVER typesets. render-ad.ts caches the resvg WASM module and
+  // brand fonts at module level, so any worker that renders keeps that memory for
+  // its whole life — which starved the NEXT image generation on the same warm
+  // worker and produced intermittent WORKER_RESOURCE_LIMIT (546) failures.
+  // Typesetting lives in the separate `ads-coach-render` function so these
+  // workers never load the WASM at all.
+  const path = `ads-coach/${crypto.randomUUID()}-photo.png`;
+  const { error: upErr } = await admin.storage.from(IMG_BUCKET).upload(path, photo, { contentType: 'image/png', upsert: false });
   if (upErr) { console.warn('[ads-coach] upload failed:', upErr.message); return { url: null, qcNote: 'upload failed' }; }
   // creative-studio is a PUBLIC bucket → a public URL never fails and never expires
   // (a signed URL was the broken link: upload succeeded but the signed URL came back empty).
   const { data: pub } = admin.storage.from(IMG_BUCKET).getPublicUrl(path);
-  return { url: pub?.publicUrl || null, qcNote };
+  return { url: pub?.publicUrl || null, qcNote: `(via ${via}) ${qcNote}` };
 }
 
 // The tool the Coach uses to CREATE ads itself — it writes the exact prompt.
@@ -521,48 +733,42 @@ const IMAGE_TOOL = {
 
 // Chat runner WITH tool use, so the Coach can generate ad images itself. Returns
 // the final text plus any images it created. Fail-soft on generation.
-async function runChatWithTools(system: string, convo: any[], admin: any): Promise<{ text: string; images: string[]; made: any[] }> {
+async function runChatWithTools(system: string, convo: any[], admin: any): Promise<{ text: string; images: string[]; made: any[]; staged: any[] }> {
   const images: string[] = [];
-  const made: any[] = []; // every finished ad built this turn (for the gallery)
-  const startedAt = Date.now();
-  // Hard cap: ONE finished ad per request. Building two stacks photo-gen + QC +
-  // design-render twice into one invocation and blows the edge function's
-  // execution budget (the failure the owner hit). The Coach offers the next ad
-  // as a follow-up turn instead.
-  let built = 0;
+  const made: any[] = []; // (unused in the staged flow; kept for shape compatibility)
+  // Ad specs the model asked to build. We return these to the frontend, which
+  // then calls 'execute_build' in a SEPARATE request — image generation is far
+  // too slow to run inside the chat turn without hitting the 150s request limit.
+  const staged: any[] = [];
   const messages = convo.map((m) => ({ role: m.role, content: m.content }));
-  for (let round = 0; round < 3; round++) {
+  for (let round = 0; round < 4; round++) {
     const data = await anthropicRaw({ model: MODEL, max_tokens: 1800, system, tools: [IMAGE_TOOL], messages });
     const content = data?.content || [];
     const toolUses = content.filter((c: any) => c.type === 'tool_use');
-    if (!toolUses.length) return { text: textOf(data), images, made };
+    if (!toolUses.length) return { text: textOf(data), images, made, staged };
     // Record the assistant's tool-use turn, then run the tools and feed results back.
     messages.push({ role: 'assistant', content });
     const toolResults: any[] = [];
     for (const tu of toolUses) {
       if (tu.name === 'generate_ad_image' && KIE_IMAGE_ENABLED) {
-        if (built >= 1) {
-          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Build limit: ONE finished ad per message (each build is expensive and slow). Present the ad you already built, describe this second concept in words, and tell the owner to say "build it" to get it next.', is_error: true });
+        // DO NOT generate here. Image generation takes 60-120s; doing it inside
+        // the chat turn (on top of the account pull, thumbnails and the model
+        // call) blew Supabase's 150s request limit and killed the whole reply.
+        // Instead we STAGE the spec and return fast; the frontend then fires a
+        // dedicated 'execute_build' request that has the full budget for it.
+        if (staged.length >= 1) {
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: 'You already staged one ad this message — one per message keeps it fast. Describe the next concept in words and offer to build it next turn.', is_error: true });
           continue;
         }
-        built++;
-        const inp = tu.input || {};
-        let refUrl = '';
-        if (inp.variation_of_winner) { const top = await topAdImageUrl(); refUrl = top.url || ''; }
-        const { url, qcNote } = await generateAdImage(admin, String(inp.image_prompt || '').slice(0, 3800), refUrl, inp, startedAt);
-        if (url) {
-          images.push(url);
-          made.push({ url, concept: String(inp.concept_label || '').slice(0, 200), why_it_wins: String(inp.why_it_wins || '').slice(0, 500), distinct_from: String(inp.distinct_from || '').slice(0, 300), ad_copy: { template: inp.template, headline_lines: inp.headline_lines, accent_word: inp.accent_word, subhead: inp.subhead, cta: inp.cta, price: inp.price, song_title: inp.song_title }, qc_note: qcNote });
-          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Generated the finished ad "${inp.concept_label || 'concept'}" (headline + copy typeset) and showed it to the owner. Vision QC result: ${qcNote}. If QC flagged a remaining concern, tell the owner honestly in one line.` });
-        }
-        else toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Image generation failed this time (${qcNote}).`, is_error: true });
+        staged.push(tu.input || {});
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Staged "${(tu.input || {}).concept_label || 'the ad'}" — it is being built now and will appear for the owner in about a minute. In one or two lines tell them WHAT you're building and WHY it opens a new door. Do not claim it is already finished, and never say you can't make images.` });
       } else {
         toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: KIE_IMAGE_ENABLED ? 'Unknown tool.' : 'Image generation is not configured.', is_error: true });
       }
     }
     messages.push({ role: 'user', content: toolResults });
   }
-  return { text: 'I created the image(s) above.', images, made };
+  return { text: staged.length ? 'Building that ad now — it will appear in about a minute.' : 'Ask me again and I\'ll pick this up.', images, made, staged };
 }
 
 // Pull the single most concrete recommendation out of a coach reply, cheaply,
@@ -604,11 +810,45 @@ serve(async (req: Request) => {
     const TEST_TOKEN = Deno.env.get('ADS_COACH_TEST_TOKEN') || '';
     if (body.action === 'selftest') {
       if (!TEST_TOKEN || body.token !== TEST_TOKEN) return json({ success: false, error: 'not found' }, 404);
+      // Settings audit: dump the real campaign/ad-set/ad configuration so the
+      // owner can be told exactly what is set vs unset, instead of generic advice.
+      // Token scope check — definitively answers whether the Meta token can WRITE
+      // (ads_management) or is read-only (ads_read).
+      if (body.mode === 'token') {
+        try {
+          const dbg = await metaGet('debug_token', { input_token: META_ACCESS_TOKEN!, access_token: META_ACCESS_TOKEN! });
+          const d = dbg?.data || {};
+          return json({ success: true, scopes: d.scopes || [], type: d.type, app_id: d.app_id, expires_at: d.expires_at, is_valid: d.is_valid, can_write: (d.scopes || []).includes('ads_management') });
+        } catch (e: any) { return json({ success: false, error: String(e?.message || e).slice(0, 300) }); }
+      }
+      if (body.mode === 'settings') {
+        const [camps, adsets, ads] = await Promise.all([
+          metaGet(`${META_AD_ACCOUNT_ID}/campaigns`, { fields: 'name,objective,buying_type,status,effective_status,daily_budget,lifetime_budget,bid_strategy,special_ad_categories,spend_cap,start_time,stop_time,smart_promotion_type', limit: '50', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }).catch((e) => ({ error: String(e).slice(0, 120) })),
+          metaGet(`${META_AD_ACCOUNT_ID}/adsets`, { fields: 'name,campaign_id,daily_budget,billing_event,optimization_goal,bid_strategy,bid_amount,attribution_spec,destination_type,promoted_object,start_time,end_time,targeting', limit: '50', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }).catch((e) => ({ error: String(e).slice(0, 120) })),
+          metaGet(`${META_AD_ACCOUNT_ID}/ads`, { fields: 'name,adset_id,status,tracking_specs,creative{name,object_story_spec,degrees_of_freedom_spec,asset_feed_spec,url_tags,link_destination_display_url,effective_object_story_id}', limit: '25', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }).catch((e) => ({ error: String(e).slice(0, 120) })),
+        ]);
+        return json({ success: true, campaigns: camps, adsets, ads });
+      }
       const report: any = {}; const t = (s: number) => Date.now() - s;
+      // mode:'build' — exercise ONLY the generation path (what execute_build does
+      // in production). The full selftest additionally pulls the account and
+      // downloads ad thumbnails, which together blow the worker's resource limit;
+      // that combination no longer happens in the real flow.
+      if (body.mode === 'build') {
+        // Phase-1 only (photo + QC + store) — matches what execute_build does in
+        // production. __photoOnly keeps resvg typesetting OUT of this worker.
+        const s0 = Date.now();
+        try {
+          const { url, qcNote } = await generateAdImage(admin,
+            String(body.prompt || 'Candid photo: a Mexican mother listening to a phone with happy tears in a real kitchen. No text anywhere.'),
+            '', { ...(body.copy || { concept_label: 'buildtest', template: 'native', headline_lines: ['Prueba'] }), __photoOnly: true }, s0);
+          return json({ success: !!url, build: { ok: !!url, secs: Math.round(t(s0) / 1000), qc: qcNote, url } });
+        } catch (e: any) { return json({ success: false, build: { ok: false, secs: Math.round(t(s0) / 1000), error: String(e?.message || e).slice(0, 250) } }); }
+      }
       try {
         let s = Date.now();
         const ctx = await gatherAccountContext(admin);
-        report.meta_pull = { ok: true, ms: t(s), campaigns: ctx.campaigns_7d?.length ?? 0, ad_sets: ctx.ad_sets?.length ?? 0, top_ads: ctx.top_ads_7d?.length ?? 0, real_orders_7d: ctx.real_revenue_7d?.orders ?? null };
+        report.meta_pull = { ok: true, ms: t(s), campaigns: ctx.campaigns_7d?.length ?? 0, ad_sets: ctx.ad_sets?.length ?? 0, top_ads: ctx.top_ads_7d?.length ?? 0, real_orders_7d: ctx.real_revenue_7d?.orders ?? null, daily_rows: ctx.daily_last_30d?.length ?? 0, daily_sample: (ctx.daily_last_30d || []).slice(-4) };
         s = Date.now();
         const thumbs = await fetchTopAdThumbs(ctx.top_ads_7d || [], 3);
         report.thumbnails = { ok: thumbs.length > 0, ms: t(s), fetched: thumbs.length };
@@ -645,17 +885,267 @@ serve(async (req: Request) => {
 
     // --- MEMORY: load the past conversation + track record (cross-session) ---
     if (action === 'history') {
+      // NEWEST 60, then reversed to chronological. Two deliberate choices:
+      //  • DESC + reverse — ascending+limit returned the OLDEST 60, so once the
+      //    thread crossed 60 rows every reload "reverted" the chat to an old
+      //    conversation and silently dropped the latest turns.
+      //  • order by id, not created_at — each turn's user+assistant rows are
+      //    batch-inserted with the same timestamp, and a created_at sort can
+      //    flip them; id is the true insertion order.
       const [{ data: msgs }, { data: calls }] = await Promise.all([
-        admin.from('ads_coach_messages').select('role, content, created_at').eq('thread', thread).order('created_at', { ascending: true }).limit(60),
+        admin.from('ads_coach_messages').select('role, content, created_at').eq('thread', thread).order('id', { ascending: false }).limit(60),
         admin.from('ads_coach_calls').select('*').order('created_at', { ascending: false }).limit(30),
       ]);
-      return json({ success: true, messages: msgs || [], calls: calls || [] });
+      return json({ success: true, messages: (msgs || []).reverse(), calls: calls || [] });
     }
 
     // --- GALLERY: every finished ad the Coach has built ---
     if (action === 'list_ads') {
       const { data: ads } = await admin.from('ads_coach_ads').select('*').order('created_at', { ascending: false }).limit(60);
       return json({ success: true, ads: ads || [] });
+    }
+
+    // --- EXECUTE BUILD: generate ONE finished ad from a spec the chat staged.
+    // Runs in its own request so the whole 150s budget is available for the slow
+    // parts (photo generation + vision QC + typeset), instead of sharing it with
+    // the account pull and the model call. This is what fixes the 150s timeouts. ---
+    if (action === 'execute_build') {
+      if (!KIE_IMAGE_ENABLED && !OPENAI_IMAGE_ENABLED) return json({ success: false, error: 'No image provider is configured.' }, 200);
+      const spec = body.spec || {};
+      const prompt = String(spec.image_prompt || '').trim();
+      if (!prompt) return json({ success: false, error: 'No image prompt was staged.' }, 400);
+      const t0 = Date.now();
+      let refUrl = '';
+      if (spec.variation_of_winner) { try { const top = await topAdImageUrl(); refUrl = top.url || ''; } catch (_e) { /* optional */ } }
+      try {
+        // PHASE 1 only: generate + QC the photo and store it. The typeset layer
+        // runs in the separate ads-coach-render FUNCTION (doing both in one
+        // worker exceeds WORKER_RESOURCE_LIMIT — see that function's header).
+        const { url: photoUrl, qcNote } = await generateAdImage(admin, prompt.slice(0, 3800), refUrl, { ...spec, __photoOnly: true }, t0);
+        if (!photoUrl) return json({ success: false, error: 'The image service did not return a photo this time — ask me to build it again.' }, 200);
+        const wantsTypeset = Array.isArray(spec.headline_lines) && spec.headline_lines.length > 0;
+        if (wantsTypeset) {
+          return json({ success: true, phase: 'photo', photo_url: photoUrl, qc: qcNote, spec, secs: Math.round((Date.now() - t0) / 1000) });
+        }
+        const url = photoUrl;
+        const row = {
+          url,
+          concept: String(spec.concept_label || '').slice(0, 200),
+          why_it_wins: String(spec.why_it_wins || '').slice(0, 500),
+          distinct_from: String(spec.distinct_from || '').slice(0, 300),
+          ad_copy: { template: spec.template, headline_lines: spec.headline_lines, accent_word: spec.accent_word, subhead: spec.subhead, cta: spec.cta, price: spec.price, song_title: spec.song_title, benefit_lines: spec.benefit_lines },
+          qc_note: qcNote,
+        };
+        let ads: any[] = [];
+        try {
+          await admin.from('ads_coach_ads').insert(row);
+          const { data } = await admin.from('ads_coach_ads').select('*').order('created_at', { ascending: false }).limit(60);
+          ads = data || [];
+        } catch (_e) { /* gallery write is best-effort */ }
+        return json({ success: true, image: url, qc: qcNote, concept: row.concept, ads, secs: Math.round((Date.now() - t0) / 1000) });
+      } catch (e: any) {
+        return json({ success: false, error: String(e?.message || e).slice(0, 300) }, 200);
+      }
+    }
+
+    // --- WHERE CAN AN AD GO: the account's existing ad sets, for the picker.
+    // Only existing ad sets — publishing never creates campaigns or ad sets. ---
+    if (action === 'list_ad_targets') {
+      try {
+        const [camps, sets] = await Promise.all([
+          metaGet(`${META_AD_ACCOUNT_ID}/campaigns`, { fields: 'name', limit: '50', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }),
+          metaGet(`${META_AD_ACCOUNT_ID}/adsets`, { fields: 'name,campaign_id,effective_status', limit: '50', filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]) }),
+        ]);
+        const campName: Record<string, string> = {};
+        for (const c of (camps.data || [])) campName[c.id] = c.name;
+        const targets = (sets.data || []).map((s: any) => ({ adset_id: s.id, adset_name: s.name, campaign: campName[s.campaign_id] || s.campaign_id }));
+        return json({ success: true, targets });
+      } catch (e: any) { return json({ success: false, error: String(e?.message || e).slice(0, 300) }, 200); }
+    }
+
+    // --- PLAN A CAMPAIGN (READ-ONLY): builds the exact spec that would be sent
+    // to Meta and returns it for the owner to review. Creates NOTHING. The
+    // approval screen renders this verbatim, so what you approve is what runs.
+    if (action === 'plan_campaign') {
+      try {
+        const templateId = String(body.template_adset_id || '');
+        if (!templateId) return json({ success: false, error: 'Pick an existing ad set to copy the targeting from.' }, 400);
+        const tpl = await fetchAdsetTemplate(templateId);
+        if (!tpl) return json({ success: false, error: 'That ad set is not in your ad account.' }, 400);
+
+        const { cents, error } = budgetCentsOrError(body.daily_budget_usd);
+        if (error) return json({ success: false, error }, 400);
+
+        const objective = String(body.objective || 'OUTCOME_SALES');
+        if (!CAMPAIGN_OBJECTIVES.includes(objective)) return json({ success: false, error: `Objective must be one of: ${CAMPAIGN_OBJECTIVES.join(', ')}.` }, 400);
+
+        const campaignName = String(body.campaign_name || '').trim().slice(0, 90);
+        const adsetName = String(body.adset_name || '').trim().slice(0, 90) || `${campaignName} — ad set`;
+        if (!campaignName) return json({ success: false, error: 'Give the campaign a name.' }, 400);
+
+        // Warn (don't block) on a duplicate name so the owner notices.
+        let duplicate = false;
+        try {
+          const camps = await metaGet(`${META_AD_ACCOUNT_ID}/campaigns`, { fields: 'name', limit: '200' });
+          duplicate = (camps.data || []).some((c: any) => String(c.name).trim().toLowerCase() === campaignName.toLowerCase());
+        } catch (_e) { /* non-fatal */ }
+
+        const t = tpl.targeting || {};
+        return json({
+          success: true,
+          plan: {
+            campaign: {
+              name: campaignName, objective, buying_type: 'AUCTION',
+              status: 'PAUSED', daily_budget_usd: cents! / 100,
+              bid_strategy: 'LOWEST_COST_WITHOUT_CAP', special_ad_categories: [],
+            },
+            adset: {
+              name: adsetName, status: 'PAUSED',
+              budget: 'none — the campaign holds the budget (CBO)',
+              optimization_goal: tpl.optimization_goal || 'OFFSITE_CONVERSIONS',
+              billing_event: tpl.billing_event || 'IMPRESSIONS',
+              promoted_object: tpl.promoted_object || { pixel_id: META_PIXEL_ID, custom_event_type: 'PURCHASE' },
+              copied_from: tpl.name,
+              targeting_summary: {
+                ages: `${t.age_min ?? '—'}–${t.age_max ?? '—'}`,
+                genders: t.genders || 'all',
+                countries: t.geo_locations?.countries || t.geo_locations?.location_types || '—',
+                platforms: t.publisher_platforms || 'automatic',
+                advantage_audience: t.targeting_automation?.advantage_audience ?? '—',
+              },
+            },
+            duplicate_name: duplicate,
+            guarantees: [
+              'Campaign and ad set are both created PAUSED — nothing can spend until you switch it on.',
+              `Targeting, optimization and attribution are copied from your existing "${tpl.name}" — nothing invented.`,
+              `Budget is capped at $${BUDGET_MAX_USD}/day by this tool.`,
+              'No ads are created here. You add those afterwards from the gallery.',
+            ],
+          },
+        });
+      } catch (e: any) { return json({ success: false, error: String(e?.message || e).slice(0, 300) }, 200); }
+    }
+
+    // --- CREATE THE CAMPAIGN (WRITE): requires an explicit confirm:true from a
+    // human click. Re-derives every value server-side from the same inputs the
+    // plan used, so nothing can be smuggled in between preview and creation. ---
+    if (action === 'create_campaign') {
+      if (body.confirm !== true) return json({ success: false, error: 'Not confirmed — nothing was created.' }, 400);
+      try {
+        const templateId = String(body.template_adset_id || '');
+        const tpl = templateId ? await fetchAdsetTemplate(templateId) : null;
+        if (!tpl) return json({ success: false, error: 'That ad set is not in your ad account.' }, 400);
+
+        const { cents, error } = budgetCentsOrError(body.daily_budget_usd);
+        if (error) return json({ success: false, error }, 400);
+
+        const objective = String(body.objective || 'OUTCOME_SALES');
+        if (!CAMPAIGN_OBJECTIVES.includes(objective)) return json({ success: false, error: 'Objective not allowed.' }, 400);
+
+        const campaignName = String(body.campaign_name || '').trim().slice(0, 90);
+        if (!campaignName) return json({ success: false, error: 'Give the campaign a name.' }, 400);
+        const adsetName = String(body.adset_name || '').trim().slice(0, 90) || `${campaignName} — ad set`;
+
+        // 1) Campaign — PAUSED, budget on the campaign (CBO).
+        const camp = await metaFormPost(`${META_AD_ACCOUNT_ID}/campaigns`, {
+          name: campaignName,
+          objective,
+          status: 'PAUSED', // HARD RULE — never created live
+          buying_type: 'AUCTION',
+          daily_budget: String(cents),
+          bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+          special_ad_categories: JSON.stringify([]),
+        });
+        if (!camp?.id) throw new Error('Meta did not return a campaign id.');
+
+        // 2) Ad set — PAUSED, settings cloned from the proven template. If this
+        // fails we delete the campaign so no orphan is left behind.
+        let adset: any;
+        try {
+          const params: Record<string, string> = {
+            name: adsetName,
+            campaign_id: camp.id,
+            status: 'PAUSED', // HARD RULE — never created live
+            billing_event: tpl.billing_event || 'IMPRESSIONS',
+            optimization_goal: tpl.optimization_goal || 'OFFSITE_CONVERSIONS',
+            targeting: JSON.stringify(cleanTargeting(tpl.targeting)),
+            promoted_object: JSON.stringify(tpl.promoted_object || { pixel_id: META_PIXEL_ID, custom_event_type: 'PURCHASE' }),
+          };
+          if (tpl.attribution_spec) params.attribution_spec = JSON.stringify(tpl.attribution_spec);
+          if (tpl.destination_type) params.destination_type = tpl.destination_type;
+          adset = await metaFormPost(`${META_AD_ACCOUNT_ID}/adsets`, params);
+          if (!adset?.id) throw new Error('Meta did not return an ad set id.');
+        } catch (inner: any) {
+          await metaDelete(camp.id);
+          return json({ success: false, error: `Ad set failed, so the campaign was rolled back (nothing left behind): ${String(inner?.message || inner).slice(0, 300)}` }, 200);
+        }
+
+        // Audit trail — who created what, when.
+        try {
+          await admin.from('ads_coach_campaigns').insert({
+            campaign_id: camp.id, campaign_name: campaignName,
+            adset_id: adset.id, adset_name: adsetName,
+            daily_budget_usd: cents! / 100, objective,
+            template_adset_id: templateId, template_adset_name: tpl.name,
+            created_by: ud.user.email || ud.user.id,
+          });
+        } catch (_e) { /* audit is best-effort — never lose the result over it */ }
+
+        return json({
+          success: true,
+          campaign_id: camp.id, adset_id: adset.id,
+          campaign_name: campaignName, adset_name: adsetName,
+          note: 'Created PAUSED. Nothing will spend until you switch it on in Ads Manager. Add ads to it from the gallery below.',
+        });
+      } catch (e: any) {
+        return json({ success: false, error: String(e?.message || e).slice(0, 400) }, 200);
+      }
+    }
+
+    // --- PUBLISH: put a Factory-built ad into an existing ad set, PAUSED. ---
+    if (action === 'publish_ad') {
+      const adRowId = body.ad_id;
+      const adsetId = String(body.adset_id || '');
+      if (!adRowId || !adsetId) return json({ success: false, error: 'Pick an ad and an ad set.' }, 400);
+
+      const { data: row } = await admin.from('ads_coach_ads').select('*').eq('id', adRowId).single();
+      if (!row?.url) return json({ success: false, error: 'That ad could not be found.' }, 404);
+      if (row.published_ad_id) return json({ success: false, error: `Already published to Meta (ad ${row.published_ad_id}).` }, 200);
+
+      // Validate the ad set actually belongs to this account — never trust the client.
+      let adsetName = '';
+      try {
+        const sets = await metaGet(`${META_AD_ACCOUNT_ID}/adsets`, { fields: 'name', limit: '100' });
+        const hit = (sets.data || []).find((s: any) => String(s.id) === adsetId);
+        if (!hit) return json({ success: false, error: 'That ad set is not in your ad account.' }, 400);
+        adsetName = hit.name;
+      } catch (e: any) { return json({ success: false, error: `Could not verify the ad set: ${String(e?.message || e).slice(0, 160)}` }, 200); }
+
+      const copy = row.ad_copy || {};
+      const primaryText = String(body.primary_text || copy.subhead || row.concept || 'Una canción personalizada, hecha solo para esa persona.').slice(0, 2000);
+      const headline = String(body.headline || (Array.isArray(copy.headline_lines) ? copy.headline_lines.join(' ') : '') || '').slice(0, 255);
+      const description = String(body.description || '').slice(0, 255);
+      const link = String(body.link || 'https://www.regalosquecantan.com/premium');
+      const adName = String(body.ad_name || row.concept || 'Ads Coach ad').slice(0, 90);
+
+      try {
+        const imgRes = await fetch(row.url);
+        if (!imgRes.ok) return json({ success: false, error: 'Could not read the ad image.' }, 200);
+        const bytes = new Uint8Array(await imgRes.arrayBuffer());
+        const { ad_id, creative_id } = await publishAdToMeta({
+          imageBytes: bytes, adsetId, adName, primaryText,
+          headline: headline || undefined, description: description || undefined,
+          link, ctaType: String(body.cta_type || 'ORDER_NOW'),
+        });
+        await admin.from('ads_coach_ads').update({
+          published_ad_id: ad_id, published_adset_id: adsetId, published_adset_name: adsetName,
+          published_at: new Date().toISOString(), published_by: ud.user.email || ud.user.id,
+        }).eq('id', adRowId);
+        return json({ success: true, ad_id, creative_id, adset_name: adsetName,
+          note: 'Created PAUSED. Nothing will spend until you switch it on in Ads Manager.' });
+      } catch (e: any) {
+        return json({ success: false, error: String(e?.message || e).slice(0, 400) }, 200);
+      }
     }
 
     // --- TRACK RECORD: owner marks a past recommendation right/wrong/skip ---
@@ -706,36 +1196,62 @@ serve(async (req: Request) => {
     // Keep the original question text before vision may replace it with image blocks.
     const userQuestion = String(convo[convo.length - 1].content);
 
-    // DOCUMENT UPLOAD: the owner can attach a file (a PDF, or plain/pasted text —
-    // e.g. an agency proposal, a Meta guide, a strategy doc, a P&L) so the coach
-    // reads and analyzes the ACTUAL document. Sent as its own top-level field
-    // (NOT smuggled through messages — the convo filter above drops non-string
-    // content). Claude reads PDFs natively (text + layout), no beta header needed.
-    // The doc rides only on the turn it's attached; the coach's analysis then
-    // lives on as text in the saved reply, so we never re-send the file.
+    // ATTACHMENTS: the owner can attach (or paste) up to 5 items for the coach
+    // to look at / read — images (ad creatives, screenshots; several at once =
+    // compare them), PDFs, or plain-text docs. Sent as the top-level `documents`
+    // array (the older single `document` field is still accepted so cached
+    // frontends keep working), NOT through messages (the convo filter above only
+    // keeps string content, so blocks would be dropped). Claude reads PDFs
+    // natively (text + layout) — no beta header needed. Files ride ONLY the turn
+    // they're attached; the coach's analysis then lives on as saved reply text.
+    // DO NOT DELETE when editing this file — the frontend 📎 / paste depends on it.
     const docBlocks: any[] = [];
     let docLabel = '';
-    const doc = body.document;
-    if (doc && typeof doc === 'object' && typeof doc.data === 'string' && doc.data.trim()) {
-      const dname = String(doc.name || 'document').slice(0, 160);
-      if (doc.kind === 'image') {
-        // The owner uploaded an image (an ad creative, a screenshot, a
-        // reference) and wants the coach to look at it and give feedback.
-        const b64 = doc.data.replace(/\s+/g, '');
-        const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-        const mt = allowed.includes(String(doc.mediaType)) ? doc.mediaType : 'image/jpeg';
-        docBlocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } });
-        docLabel = `The FIRST image above (before any top-ad thumbnails) is an image the owner just uploaded for your feedback — likely an ad creative, a screenshot, or a reference. Look at it closely and give specific, honest feedback as their ads coach. If they didn't ask a specific question, critique it: thumbnail / first-frame stopping power, whether the offer and price read instantly, text legibility, authenticity (call out any AI tells or generic stock feel), and the 2-3 concrete changes most likely to lift performance — grounded in the craft rules and in how it compares to their current top ads.`;
-      } else if (doc.kind === 'pdf') {
-        // base64 must carry no whitespace/newlines
-        const b64 = doc.data.replace(/\s+/g, '');
-        docBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
-        docLabel = `The owner attached a PDF named "${dname}". Read the whole document above and use it to answer their question. If they didn't ask a specific question, summarize what it says and what it means for their Meta ads.`;
-      } else {
-        // plain text / pasted document (cap to keep the turn bounded)
-        const text = doc.data.slice(0, 200000);
-        docBlocks.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: text } });
-        docLabel = `The owner attached a document named "${dname}"; its full text is above. Use it to answer. If they didn't ask a specific question, summarize what it says and what it means for their Meta ads.`;
+    {
+      const rawDocs: any[] = Array.isArray(body.documents) ? body.documents.slice(0, 5)
+        : (body.document && typeof body.document === 'object' ? [body.document] : []);
+      const descs: string[] = [];
+      let imageCount = 0, hasDocs = false, totalChars = 0;
+      for (const doc of rawDocs) {
+        if (!doc || typeof doc.data !== 'string' || !doc.data.trim()) continue;
+        const dname = String(doc.name || 'attachment').slice(0, 160);
+        if (doc.kind === 'image') {
+          const b64 = doc.data.replace(/\s+/g, '');
+          if (b64.length > 9_000_000) return json({ success: false, error: `"${dname}" is too big to send — attach a smaller version of that image.` }, 400);
+          totalChars += b64.length;
+          const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+          const mt = allowed.includes(String(doc.mediaType)) ? doc.mediaType : 'image/jpeg';
+          docBlocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: b64 } });
+          imageCount++;
+          descs.push(`image ${imageCount}: "${dname}"`);
+        } else if (doc.kind === 'pdf') {
+          const b64 = doc.data.replace(/\s+/g, ''); // base64 must carry no whitespace
+          totalChars += b64.length;
+          docBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+          hasDocs = true;
+          descs.push(`PDF "${dname}"`);
+        } else {
+          const text = doc.data.slice(0, 200000);
+          totalChars += text.length;
+          docBlocks.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: text } });
+          hasDocs = true;
+          descs.push(`text document "${dname}"`);
+        }
+        if (totalChars > 22_000_000) return json({ success: false, error: 'Those attachments are too large together — remove one and try again.' }, 400);
+      }
+      if (docBlocks.length) {
+        const parts: string[] = [
+          `The owner attached ${docBlocks.length === 1 ? 'one item' : `${docBlocks.length} items`} to this message — they appear ABOVE, before anything else, in this order: ${descs.join('; ')}.`,
+        ];
+        if (imageCount === 1) {
+          parts.push(`The uploaded image is for your feedback — likely an ad creative, a screenshot, or a reference. Look at it closely and give specific, honest feedback as their ads coach. If they didn't ask a specific question, critique it: thumbnail / first-frame stopping power, whether the offer and price read instantly, text legibility, authenticity (call out any AI tells or generic stock feel), and the 2-3 concrete changes most likely to lift performance — grounded in the craft rules and in how it compares to their current top ads.`);
+        } else if (imageCount > 1) {
+          parts.push(`The uploaded images are for your feedback. Treat them as a SET: if they look like variants or candidates, compare them directly against each other — rank them, name which one to run and why (the mechanic, not vibes), and what you'd change on the runner-up. If they're a sequence (e.g. carousel or before/after), judge them as one. Apply the same craft lens as always: hook/thumbnail stopping power, offer + price readability, legibility, authenticity, and how they stack up against the current top ads.`);
+        }
+        if (hasDocs) {
+          parts.push(`Read any attached document fully and use it to answer. If the owner didn't ask a specific question about it, summarize what it says and what it means for their Meta ads.`);
+        }
+        docLabel = parts.join('\n');
       }
     }
 
@@ -795,19 +1311,19 @@ AD FACTORY MODE — you are in the dedicated ad-building workspace. This OVERRID
         if (thumbs.length) {
           sawCreatives = thumbs.length;
           imgBlocks = thumbs.map((t) => ({ type: 'image', source: { type: 'base64', media_type: t.media_type, data: t.b64 } }));
-          imgLabel = `The images above are the ACTUAL creative thumbnails of your current top ads by spend, in order: ${thumbs.map((t, i) => `${i + 1}. ${t.label}`).join('; ')}. Use them to judge the hook/first frame, whether ads are visually too similar (Meta groups look-alikes under one Entity ID), and creative diversity — alongside the numbers in the snapshot.`;
+          imgLabel = `${docBlocks.length ? `Separate from the owner's attachments: the LAST ${thumbs.length} images (immediately above this text)` : 'The images above'} are the ACTUAL creative thumbnails of your current top ads by spend, in order: ${thumbs.map((t, i) => `${i + 1}. ${t.label}`).join('; ')}. Use them to judge the hook/first frame, whether ads are visually too similar (Meta groups look-alikes under one Entity ID), and creative diversity — alongside the numbers in the snapshot.`;
         }
       } catch (_e) { /* vision is a bonus; never fail the answer over it */ }
     }
-    // Prepend any attached document + the creative thumbnails to the latest turn,
-    // with the question text last. Both are optional and fully fail-soft.
+    // Prepend the owner's attachment (if any) + the top-ad thumbnails to the
+    // latest turn, question text last. Both optional, both fail-soft.
     if (docBlocks.length || imgBlocks.length) {
       const last = convo[convo.length - 1];
       const labels = [docLabel, imgLabel].filter(Boolean).join('\n\n');
       last.content = [...docBlocks, ...imgBlocks, { type: 'text', text: `${labels}\n\n${last.content}` }] as any;
     }
 
-    const { text: reply, images: chatImages, made } = await runChatWithTools(system, convo, admin);
+    const { text: reply, images: chatImages, made, staged } = await runChatWithTools(system, convo, admin);
 
     // MEMORY: persist just this turn (new question + reply) under its thread. The
     // frontend re-sends prior turns each call, so saving only the latest avoids dupes.
@@ -847,7 +1363,7 @@ AD FACTORY MODE — you are in the dedicated ad-building workspace. This OVERRID
       } catch (_e) { /* track record is best-effort */ }
     }
 
-    return json({ success: true, reply, images: chatImages, ads, brain_reviewed: META_BRAIN_LAST_REVIEWED, had_live_data: !!context, saw_creatives: sawCreatives, calls });
+    return json({ success: true, reply, images: chatImages, ads, pending_builds: staged, brain_reviewed: META_BRAIN_LAST_REVIEWED, had_live_data: !!context, saw_creatives: sawCreatives, calls });
   } catch (e: any) {
     return json({ success: false, error: String(e?.message || e).slice(0, 400) }, 500);
   }

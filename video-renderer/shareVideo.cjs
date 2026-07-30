@@ -126,10 +126,14 @@ async function renderShareVideo(job, { dir, log }) {
   const fTag = textFile(dir, 'tag.txt', BRAND_TAGLINE);
   const fSub = textFile(dir, 'sub.txt', BRAND_SUB);
 
+  // Names sit high enough to clear a phone player's control bar. A 375px-wide
+  // phone scales this 1280px-wide frame by ~0.29, so a ~48 CSS-px control bar
+  // eats ~165 video pixels off the bottom — the old y=h-90 sender line was
+  // fully behind it while paused.
   const draw = [
-    `drawtext=fontfile=${FONT}:textfile=${fPara}:fontcolor=white:fontsize=${paraSize}:x=60:y=h-160:shadowcolor=black@0.6:shadowx=2:shadowy=2:enable='lt(t,${endStart})'`,
+    `drawtext=fontfile=${FONT}:textfile=${fPara}:fontcolor=white:fontsize=${paraSize}:x=60:y=h-270:shadowcolor=black@0.6:shadowx=2:shadowy=2:enable='lt(t,${endStart})'`,
     fSender
-      ? `drawtext=fontfile=${FONT}:textfile=${fSender}:fontcolor=white@0.85:fontsize=${senderSize}:x=62:y=h-90:shadowcolor=black@0.6:shadowx=2:shadowy=2:enable='lt(t,${endStart})'`
+      ? `drawtext=fontfile=${FONT}:textfile=${fSender}:fontcolor=white@0.85:fontsize=${senderSize}:x=62:y=h-200:shadowcolor=black@0.6:shadowx=2:shadowy=2:enable='lt(t,${endStart})'`
       : null,
     `drawtext=fontfile=${FONT}:textfile=${fWm}:fontcolor=white@0.45:fontsize=20:x=w-tw-24:y=24:shadowcolor=black@0.4:shadowx=1:shadowy=1`,
     `drawbox=color=black@0.65:t=fill:enable='gte(t,${endStart})'`,

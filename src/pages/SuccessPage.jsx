@@ -353,6 +353,9 @@ export default function SuccessPage() {
 
   const audioRef = useRef(null);
   const hasVideoAddonRef = useRef(false);
+  // Share video present → the video is the player, so the hidden <audio> must
+  // never autoplay (it would sing over the video the moment they press play).
+  const hasShareVideoRef = useRef(false);
   const hasTriggeredCountdown = useRef(false);
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -412,6 +415,7 @@ export default function SuccessPage() {
         return keep || list[0];
       });
       hasVideoAddonRef.current = list[0]?.has_video_addon || false;
+      hasShareVideoRef.current = Boolean(list[0]?.share_video_url);
       setSelectedTemplate((prev) => prev || list[0]?.template || 'golden_hour');
     } catch (err) {
       if (!background) setError(err.message);
@@ -652,9 +656,10 @@ export default function SuccessPage() {
     setShowConfetti(true);
     setRevealed(true);
 
-    // Try auto-play (skip if video addon — don't play song on photo upload page)
+    // Try auto-play (skip if video addon — don't play song on photo upload page;
+    // skip if a share video is shown — the video carries the audio)
     // Use ref to get current value since useCallback closure may be stale
-    if (audioRef.current && !hasVideoAddonRef.current) {
+    if (audioRef.current && !hasVideoAddonRef.current && !hasShareVideoRef.current) {
       audioRef.current.volume = 0.8;
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
@@ -2122,8 +2127,81 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== PLAYER CARD — hidden entirely when has_video_addon (video replaces it) ===== */}
-          {!currentSong?.has_video_addon && (<>
+          {/* ===== SHARE VIDEO — the auto-rendered branded gift video
+                (songs.share_video_url). When it exists it IS the player: the
+                audio player card below is hidden so the buyer sees exactly one
+                thing to press. Watch / download / share, same video the
+                recipient gets on /song/:id. Skipped for $9.99 photo-video
+                buyers — their premium block below is the better share asset.
+                Follows the selected song in a multi-song order. */}
+          {currentSong?.share_video_url && !currentSong?.has_video_addon && (
+            <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.15s both' }}>
+              <div style={{
+                textAlign: 'center', marginBottom: '12px', padding: '12px 16px',
+                background: isLight ? `rgba(${ts.accentRgb},0.06)` : `rgba(${ts.accentRgb},0.1)`,
+                borderRadius: '14px',
+                border: `1px solid ${isLight ? `rgba(${ts.accentRgb},0.12)` : `rgba(${ts.accentRgb},0.2)`}`
+              }}>
+                <p style={{ fontSize: '15px', fontWeight: '800', margin: '0 0 4px 0', color: ts.accent }}>
+                  🎬 Tu video para compartir
+                </p>
+                <p style={{ fontSize: '12px', color: ts.textSecondary, margin: 0 }}>
+                  Dale play para escuchar la canción — y compártelo por WhatsApp o Facebook
+                </p>
+              </div>
+
+              <div style={{
+                borderRadius: '20px', overflow: 'hidden', marginBottom: '12px',
+                border: `1px solid ${ts.cardBorder}`, background: '#000',
+                boxShadow: `0 12px 40px rgba(0,0,0,${isLight ? '0.15' : '0.5'})`,
+              }}>
+                <video
+                  key={currentSong.share_video_url}
+                  src={currentSong.share_video_url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  style={{ width: '100%', aspectRatio: '16 / 9', display: 'block' }}
+                />
+              </div>
+
+              <button
+                onClick={() => {
+                  const filename = `video-para-${currentSong?.recipient_name || recipientName || 'ti'}.mp4`;
+                  const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(currentSong.share_video_url)}&filename=${encodeURIComponent(filename)}`;
+                  const a = document.createElement('a');
+                  a.href = proxyUrl; a.download = filename;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                }}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: ts.accentGrad, color: ts.btnText,
+                  fontWeight: '800', fontSize: '16px', fontFamily: ts.font,
+                  border: 'none', borderRadius: '16px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: `0 8px 30px rgba(${ts.accentRgb},0.35)`, marginBottom: '10px',
+                }}>
+                🎬 Descargar Video
+              </button>
+
+              <button
+                onClick={handleShareWhatsAppSingle}
+                style={{
+                  width: '100%', padding: '16px',
+                  background: '#25D366', color: 'white',
+                  fontWeight: '800', fontSize: '16px', fontFamily: ts.font,
+                  border: 'none', borderRadius: '16px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  boxShadow: '0 8px 30px rgba(37,211,102,0.35)',
+                }}>
+                💬 Compartir por WhatsApp
+              </button>
+            </div>
+          )}
+
+          {/* ===== PLAYER CARD — hidden when has_video_addon OR when the share
+                video is present (in both cases a video replaces it) ===== */}
+          {!currentSong?.has_video_addon && !currentSong?.share_video_url && (<>
           <div style={{
             background: ts.cardBg,
             borderRadius: '24px', padding: '28px 24px',
