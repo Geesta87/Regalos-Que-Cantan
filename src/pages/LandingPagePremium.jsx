@@ -462,7 +462,7 @@ export default function LandingPagePremium() {
             Precio normal $49.99
           </div>
           <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '56px', fontWeight: 900, marginBottom: '4px', position: 'relative', zIndex: 1 }}>
-            $24<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
+            $29<span style={{ fontSize: '28px', color: 'rgba(255,255,255,0.4)' }}>.99</span>
           </div>
           <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '32px', position: 'relative', zIndex: 1 }}>
             Pago único · Acceso de por vida
@@ -507,7 +507,7 @@ export default function LandingPagePremium() {
                 display: 'inline-block', background: '#c9184a', color: 'white',
                 fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '999px',
                 letterSpacing: '0.05em', marginLeft: '8px', verticalAlign: 'middle'
-              }}>AHORRA $10</span>
+              }}>AHORRA $20</span>
             </div>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>
               Regala ambas versiones — el doble de emoción
