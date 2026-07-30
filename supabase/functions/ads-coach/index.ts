@@ -885,11 +885,18 @@ serve(async (req: Request) => {
 
     // --- MEMORY: load the past conversation + track record (cross-session) ---
     if (action === 'history') {
+      // NEWEST 60, then reversed to chronological. Two deliberate choices:
+      //  • DESC + reverse — ascending+limit returned the OLDEST 60, so once the
+      //    thread crossed 60 rows every reload "reverted" the chat to an old
+      //    conversation and silently dropped the latest turns.
+      //  • order by id, not created_at — each turn's user+assistant rows are
+      //    batch-inserted with the same timestamp, and a created_at sort can
+      //    flip them; id is the true insertion order.
       const [{ data: msgs }, { data: calls }] = await Promise.all([
-        admin.from('ads_coach_messages').select('role, content, created_at').eq('thread', thread).order('created_at', { ascending: true }).limit(60),
+        admin.from('ads_coach_messages').select('role, content, created_at').eq('thread', thread).order('id', { ascending: false }).limit(60),
         admin.from('ads_coach_calls').select('*').order('created_at', { ascending: false }).limit(30),
       ]);
-      return json({ success: true, messages: msgs || [], calls: calls || [] });
+      return json({ success: true, messages: (msgs || []).reverse(), calls: calls || [] });
     }
 
     // --- GALLERY: every finished ad the Coach has built ---
