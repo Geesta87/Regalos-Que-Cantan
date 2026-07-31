@@ -67,6 +67,44 @@ const MIN_WINDOW_S = 6;
 const MAX_WINDOW_S = 60;
 
 // ---------------------------------------------------------------------------
+// Stale-artifact invalidation on apply.
+//
+// A fix swaps the audio, so anything RENDERED from the old audio is now wrong.
+// The share video is the worst offender: on /success and /song/:id it REPLACES
+// the audio player, so leaving it means the customer keeps seeing and hearing
+// the pre-fix song no matter how many times the audio is corrected (this cost
+// us three rounds of "the fix didn't apply" on 2026-07-31).
+//
+// Nulling these puts the row back in render-share-videos' queue — that cron
+// only picks up `share_video_url IS NULL` — and it rebuilds against the new
+// audio on the next 5-minute pass.
+//
+// Deliberately NOT cleared: karaoke_url, lyric_video_url and karaoke_video_url
+// are PAID upsells rendered on demand with no auto-rebuild, so nulling them
+// would silently delete something the customer bought. Those are reported back
+// to the caller as `staleArtifacts` so staff can re-run them by hand instead.
+// ---------------------------------------------------------------------------
+const CLEAR_STALE_SHARE_VIDEO = {
+  share_video_url: null,
+  share_video_status: null,
+  share_video_attempts: 0,
+  share_video_error: null,
+  share_video_dispatched_at: null,
+};
+
+// Paid, audio-derived deliverables that a fix invalidates but cannot rebuild.
+// deno-lint-ignore no-explicit-any
+function staleAudioArtifacts(row: any): string[] {
+  if (!row) return [];
+  const stale: string[] = [];
+  if (row.karaoke_url) stale.push('karaoke');
+  if (row.lyric_video_url) stale.push('lyric_video');
+  if (row.karaoke_video_url) stale.push('karaoke_video');
+  if (row.video_url) stale.push('video_addon');
+  return stale;
+}
+
+// ---------------------------------------------------------------------------
 // Lyric marker / prosody normalization — identical to regenerate-paid-song-kie
 // so the regenerated slice matches how the original paid song was produced.
 // ---------------------------------------------------------------------------
@@ -903,7 +941,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 
   const { data: prev } = await supabase
     .from('songs')
-    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
     .eq('id', songId)
     .single();
 
@@ -917,6 +955,8 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     needs_reupload: true,
     error_message: null,
     lyrics_timestamps: null,
+    // The old share video still has the pre-fix audio baked in.
+    ...CLEAR_STALE_SHARE_VIDEO,
     kie_task_id: null,
     task_id: null,
     kie_payload: null,
@@ -935,7 +975,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
   const { error } = await supabase.from('songs').update(update).eq('id', songId);
   if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
   await logAttempt(supabase, { song_id: songId, action: 'apply-spliced', fixed_audio_url: publicUrl, outcome: 'applied', detail: summary.slice(0, 500) });
-  return json({ ok: true, songId, applied: true, audioUrl: publicUrl, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: now, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+  return json({ ok: true, songId, applied: true, audioUrl: publicUrl, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: now, canUndo: !!prev, staleArtifacts: staleAudioArtifacts(prev), songLink: `https://regalosquecantan.com/song/${songId}` });
 }
 
 // Fetch a specific Kie track's CURRENT audioUrl via record-info. Kie's temp
@@ -1106,7 +1146,7 @@ Deno.serve(async (req) => {
       // Snapshot the current state so the owner can Undo this fix.
       const { data: prev } = await supabase
         .from('songs')
-        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
+        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
         .eq('id', songId)
         .single();
 
@@ -1120,6 +1160,8 @@ Deno.serve(async (req) => {
         needs_reupload: true,
         provider: 'kie',
         error_message: null,
+        // The old share video still has the pre-fix audio baked in.
+        ...CLEAR_STALE_SHARE_VIDEO,
         // Footprint — stamp the song as fixed (when + note + count).
         fixed_at: nowTs,
         fix_count: (Number(prev?.fix_count) || 0) + 1,
@@ -1137,7 +1179,7 @@ Deno.serve(async (req) => {
       const { error } = await supabase.from('songs').update(update).eq('id', songId);
       if (error) return json({ ok: false, error: `apply failed: ${error.message}` });
       await logAttempt(supabase, { song_id: songId, action: 'apply', kie_task_id: fixTaskId || null, fixed_audio_url: fixedAudioUrl, outcome: 'applied', detail: (changeSummary || '').slice(0, 500) });
-      return json({ ok: true, songId, applied: true, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: nowTs, canUndo: !!prev, songLink: `https://regalosquecantan.com/song/${songId}` });
+      return json({ ok: true, songId, applied: true, fixCount: (Number(prev?.fix_count) || 0) + 1, fixedAt: nowTs, canUndo: !!prev, staleArtifacts: staleAudioArtifacts(prev), songLink: `https://regalosquecantan.com/song/${songId}` });
     }
 
     // -----------------------------------------------------------------
@@ -1167,6 +1209,9 @@ Deno.serve(async (req) => {
         needs_reupload: true,
         status: 'completed',
         fix_backup: null,
+        // Undo swaps the audio back, so the share video rendered from the fixed
+        // audio is stale in the other direction — rebuild it too.
+        ...CLEAR_STALE_SHARE_VIDEO,
       };
       const { error } = await supabase.from('songs').update(restore).eq('id', songId);
       if (error) return json({ ok: false, error: `undo failed: ${error.message}` });

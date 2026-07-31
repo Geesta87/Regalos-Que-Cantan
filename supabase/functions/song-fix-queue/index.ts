@@ -105,6 +105,17 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
     kie_task_id: null,
     task_id: null,
     kie_payload: null,
+    // The share video replaces the audio player on the gift page and still has
+    // the pre-fix audio baked in. Nulling it re-queues the row for
+    // render-share-videos (which only picks up share_video_url IS NULL) so it
+    // rebuilds against the released audio. Paid audio-derived upsells
+    // (karaoke_url / lyric_video_url / karaoke_video_url) are left alone —
+    // they have no auto-rebuild and must be re-run by hand.
+    share_video_url: null,
+    share_video_status: null,
+    share_video_attempts: 0,
+    share_video_error: null,
+    share_video_dispatched_at: null,
     fixed_at: now,
     fix_count: (Number(prev?.fix_count) || 0) + 1,
     fix_history: [...prevHistory, {
