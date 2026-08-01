@@ -2,11 +2,13 @@
 // Receives webhook from useapi.net when a Mureka job completes
 // Instantly marks songs as completed with Mureka CDN URL (needs_reupload=true)
 // poll-processing-songs will later re-upload audio to Supabase Storage
-// Deploy with: supabase functions deploy mureka-useapi-callback --no-verify-jwt
+// Deploy: supabase functions deploy mureka-useapi-callback --project-ref yzbvajungshqcpusfiia
+// (verify_jwt=false is pinned in supabase/config.toml — do NOT pass --no-verify-jwt)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
+import { renderEmail } from '../_shared/email-shell.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -69,99 +71,34 @@ async function sendEmail(
   }
 }
 
-function getPreviewReadyEmailHtml(song: any, previewLink: string) {
-  const firstName = (song.sender_name || '').split(' ')[0] || 'Amigo';
-  const songTitle = song.song_title || `Canci\u00f3n para ${song.recipient_name || 'ti'}`;
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0;padding:0;background-color:#1a0e08;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;padding:0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
-
-        <!-- Dark Hero Section -->
-        <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:50px 30px 40px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 20px;">&#10024; TU REGALO TE EST&Aacute; ESPERANDO &#10024;</p>
-          <h1 style="font-family:'Righteous',cursive;color:#ffffff;font-size:36px;margin:0 0 4px;font-weight:400;">Oye, ${firstName}...</h1>
-          <h2 style="font-family:'Righteous',cursive;color:#ffffff;font-size:32px;margin:0 0 24px;font-weight:400;">Tu canci&oacute;n ya <span style="background:linear-gradient(135deg,#ff6b35,#ff8c42);padding:2px 12px;border-radius:8px;">est&aacute; viva.</span></h2>
-          <p style="color:#c9b99a;font-size:16px;margin:0;line-height:1.7;">Letra, melod&iacute;a y emoci&oacute;n &mdash; todo est&aacute; listo. Solo<br>falta <em>un paso</em> para que llegue al coraz&oacute;n de quien amas.</p>
-        </td></tr>
-
-        <!-- CTA Button -->
-        <tr><td style="background-color:#1a0e08;padding:10px 30px 16px;text-align:center;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
-            <tr><td align="center" style="border-radius:8px;background-color:#ff6b35;">
-              <a href="${previewLink}" target="_blank" style="display:inline-block;padding:18px 44px;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;font-size:18px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:8px;">
-                &#127925; Terminar Mi Canci&oacute;n
-              </a>
-            </td></tr>
-          </table>
-        </td></tr>
-
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#a67c52;font-size:13px;margin:0;">&#127873; Tu progreso se guarda por 24 horas &middot; Sin compromiso</p>
-        </td></tr>
-
-        <!-- Gradient Divider -->
-        <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-
-        <!-- Song Preview Section -->
-        <tr><td style="background-color:#1a0e08;padding:40px 30px 10px;text-align:center;">
-          <p style="color:#ff6b35;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">&#127911; VISTA PREVIA DE TU CANCI&Oacute;N</p>
-          <h3 style="font-family:'Righteous',cursive;color:#ffffff;font-size:24px;margin:0 0 24px;font-weight:400;">Tu regalo ya tiene voz</h3>
-        </td></tr>
-
-        <!-- Song Card -->
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:16px;overflow:hidden;">
-            <tr>
-              <!-- Play Button Column -->
-              <td width="120" style="background:linear-gradient(135deg,#ff6b35 0%,#c2693a 100%);text-align:center;vertical-align:middle;padding:20px;">
-                <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:50%;margin:0 auto 8px;line-height:50px;font-size:24px;">&#9654;</div>
-                <p style="color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0;">PREVIA</p>
-              </td>
-              <!-- Song Info Column -->
-              <td style="background:linear-gradient(135deg,#2a1408 0%,#1a0e08 100%);padding:20px 24px;vertical-align:middle;">
-                <p style="color:#ff6b35;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">TU CANCI&Oacute;N PERSONALIZADA</p>
-                <p style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 8px;font-family:'Righteous',cursive;">${songTitle}</p>
-                <p style="color:#a67c52;font-size:13px;margin:0 0 12px;">Hecha con amor para <strong style="color:#ffd23f;">${song.recipient_name || 'tu ser querido'}</strong> &middot; Estilo: <span style="text-transform:capitalize;">${song.genre || 'Musical'}</span></p>
-                <!-- Mini Waveform -->
-                <span style="display:inline-block;width:4px;height:14px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:22px;background:#ff8c42;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:10px;background:#ffd23f;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:26px;background:#ff6b35;border-radius:2px;margin:0 1px;"></span>
-                <span style="display:inline-block;width:4px;height:16px;background:#ff2e88;border-radius:2px;margin:0 1px;"></span>
-              </td>
-            </tr>
-          </table>
-        </td></tr>
-
-        <!-- Price Section -->
-        <tr><td style="background-color:#1a0e08;padding:0 30px 30px;text-align:center;">
-          <p style="color:#c9b99a;font-size:15px;margin:0;">&iquest;Te gusta? Compra la canci&oacute;n completa por solo <strong style="color:#ff6b35;">$29.99 USD</strong></p>
-        </td></tr>
-
-        <!-- Gradient Divider -->
-        <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-
-        <!-- Footer -->
-        <tr><td style="background-color:#1a0e08;padding:30px;text-align:center;">
-          <p style="color:#a67c52;font-size:12px;margin:0 0 10px;">&iquest;Preguntas? Escr&iacute;benos a<br>
-            <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a>
-          </p>
-          <p style="color:#4a2c1a;font-size:11px;margin:0;">&copy; 2025 Regalos Que Cantan. Hecho con &#10084;&#65039; para ti.</p>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+// `versionCount` = how many versions the CTA actually opens. Every order gets
+// two takes, so the copy must not promise a single song when the page is about
+// to show both.
+function getPreviewReadyEmailHtml(song: any, previewLink: string, versionCount: number = 1) {
+  const recipientName = song.recipient_name || 'tu ser querido';
+  // genre_name is the human label ("Pop Latino"); `genre` is the raw slug
+  // ("pop_latino") and is only the fallback.
+  const genre = song.genre_name || song.genre || 'Musical';
+  const multi = versionCount > 1;
+  // Rebuilt on the shared brand shell (_shared/email-shell.ts). previewLink is
+  // passed straight through as ctaHref — the URL is unchanged from the caller.
+  return renderEmail({
+    palette: 'preview',
+    hero: 'vinyl',
+    eyebrow: multi ? 'Tus 2 versiones est&aacute;n listas' : 'Tu muestra est&aacute; lista',
+    headline: `La canci&oacute;n de <span style="color:#a9c4f0;">${recipientName}</span> ya est&aacute; lista.`,
+    sub: multi
+      ? 'Te hicimos <strong>dos versiones</strong> distintas. Esc&uacute;chalas y qu&eacute;date con la que m&aacute;s te guste.'
+      : 'Escucha c&oacute;mo qued&oacute; &mdash; y si te encanta, ll&eacute;vatela para descargar y compartir.',
+    credits: [{ label: 'Para', value: recipientName }, { label: 'Estilo', value: genre }],
+    ctaText: multi
+      ? '&#9654;&nbsp;&nbsp;Escuchar mis 2 versiones&nbsp;&nbsp;&#8594;'
+      : '&#9654;&nbsp;&nbsp;Escuchar mi canci&oacute;n&nbsp;&nbsp;&#8594;',
+    ctaHref: previewLink,
+    subcopy: multi
+      ? 'Las dos te esperan en el navegador.'
+      : 'Tu muestra te espera en el navegador.',
+  });
 }
 
 // ============================================================================
@@ -215,7 +152,7 @@ Deno.serve(async (req) => {
     // ---- Look up songs by mureka_job_id ----
     const { data: dbSongs, error: lookupError } = await supabase
       .from('songs')
-      .select('id, version, recipient_name, sender_name, email, genre, occasion, status, mureka_job_id')
+      .select('id, version, recipient_name, sender_name, email, genre, genre_name, occasion, status, mureka_job_id')
       .eq('mureka_job_id', jobId)
       .eq('status', 'processing')
       .order('version', { ascending: true });
@@ -242,7 +179,10 @@ Deno.serve(async (req) => {
     if (responseState === 3 || responseStatus === 'completed') {
       console.log(`Job ${jobId} COMPLETED with ${apiSongs.length} songs`);
       const results: any[] = [];
-      let emailSent = false;
+      // Rows actually completed in this pass, in version order — exactly the
+      // ids the preview link must open.
+      const completedIds: string[] = [];
+      let emailRow: any = null;
 
       for (const dbSong of dbSongs) {
         // Map version 1 → apiSongs[0], version 2 → apiSongs[1]
@@ -264,18 +204,11 @@ Deno.serve(async (req) => {
 
           if (updatedSong) {
             results.push({ id: dbSong.id, action: 'completed_instant' });
-
-            // Send email for the FIRST song only (one email per order, not per song)
-            if (!emailSent && dbSong.email) {
-              const previewLink = `https://regalosquecantan.com/preview/${dbSong.id}`;
-              await sendEmail(
-                dbSong.email,
-                `🎧 ¡Tu canción para ${dbSong.recipient_name} está lista!`,
-                getPreviewReadyEmailHtml(updatedSong, previewLink)
-              );
-              console.log('Email sent to:', dbSong.email);
-              emailSent = true;
-            }
+            completedIds.push(dbSong.id);
+            // Remember the first row that carries an email. The order is
+            // emailed once, AFTER the loop, so the link can include every
+            // version.
+            if (!emailRow && dbSong.email) emailRow = { ...updatedSong, email: dbSong.email };
           } else {
             // Song was already completed (race condition with poller)
             results.push({ id: dbSong.id, action: 'already_completed' });
@@ -284,6 +217,23 @@ Deno.serve(async (req) => {
           console.warn(`No mp3_url for song ${dbSong.id} (v${dbSong.version}) in API response`);
           results.push({ id: dbSong.id, action: 'no_audio_url' });
         }
+      }
+
+      // ---- One email per order, linking to EVERY version ----
+      // This used to fire inside the loop with `/preview/<first id>`, which the
+      // frontend resolves to /listen?song_id=<one id> — so the customer only
+      // ever saw one of their two takes. dbSongs is ordered v1→v2, so
+      // completedIds keeps the versions in order.
+      if (emailRow && completedIds.length > 0) {
+        const previewLink =
+          `https://regalosquecantan.com/listen?song_ids=${completedIds.join(',')}` +
+          `&utm_source=email&utm_medium=transactional&utm_campaign=preview_ready`;
+        await sendEmail(
+          emailRow.email,
+          `🎧 ¡Tu canción para ${emailRow.recipient_name} está lista!`,
+          getPreviewReadyEmailHtml(emailRow, previewLink, completedIds.length)
+        );
+        console.log(`Email sent to: ${emailRow.email} (${completedIds.length} version(s))`);
       }
 
       return new Response(

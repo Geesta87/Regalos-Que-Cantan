@@ -379,15 +379,51 @@ async function completeSong(supabase: any, song: any, audioUrl: string): Promise
 
     console.log(`COMPLETED: ${song.id} (${song.recipient_name})`);
 
-    // Send email notification
+    // Send email notification.
+    //
+    // The link must open EVERY version of the order. This used to be
+    // `?song_id=<this row>`, and since completeSong runs once per version the
+    // customer got up to two emails, each showing only one of their two takes.
+    // Now: collect the order's completed siblings and send a single email
+    // once nothing else is still rendering.
     if (song.email) {
-      const previewLink = `https://regalosquecantan.com/listen?song_id=${song.id}&utm_source=email&utm_medium=transactional&utm_campaign=preview_ready`;
-      await sendEmail(
-        song.email,
-        `🎧 ¡Tu canción para ${song.recipient_name} está lista!`,
-        getPreviewReadyEmailHtml(updatedSong || song, previewLink)
-      );
-      console.log('Email sent to:', song.email);
+      const full = updatedSong || song;
+      let ids = [song.id];
+      let pending = 0;
+
+      if (full.session_id) {
+        const { data: siblings } = await supabase
+          .from('songs')
+          .select('id, version, status, created_at')
+          .eq('session_id', full.session_id)
+          .order('version', { ascending: true });
+
+        if (siblings?.length) {
+          // Only wait on a sibling that is plausibly still rendering. A row
+          // wedged in 'processing' for over 30 min must never swallow the
+          // email for the version that DID finish.
+          const HOLD_WINDOW_MS = 30 * 60 * 1000;
+          pending = siblings.filter((s: any) =>
+            s.status === 'processing' &&
+            Date.now() - new Date(s.created_at).getTime() < HOLD_WINDOW_MS
+          ).length;
+
+          const done = siblings.filter((s: any) => s.status === 'completed');
+          if (done.length) ids = done.map((s: any) => s.id);
+        }
+      }
+
+      if (pending > 0) {
+        console.log(`Holding preview email for ${song.id} — ${pending} sibling(s) still rendering`);
+      } else {
+        const previewLink = `https://regalosquecantan.com/listen?song_ids=${ids.join(',')}&utm_source=email&utm_medium=transactional&utm_campaign=preview_ready`;
+        await sendEmail(
+          song.email,
+          `🎧 ¡Tu canción para ${song.recipient_name} está lista!`,
+          getPreviewReadyEmailHtml(full, previewLink)
+        );
+        console.log(`Email sent to: ${song.email} (${ids.length} version(s))`);
+      }
     }
 
     return true;

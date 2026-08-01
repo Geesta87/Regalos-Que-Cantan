@@ -62,8 +62,15 @@ export default function DetailsStep() {
       saveAndGo();
       return;
     }
-    // Story mode — nudge if the story is very short, otherwise continue.
-    if (details.length > 0 && details.length < 50 && !showQualityWarning) {
+    // Story mode — nudge on a short OR EMPTY story.
+    //
+    // The empty case used to skip this check entirely (`details.length > 0`),
+    // so the emptiest possible order got the least friction: we'd compose from
+    // nothing but a name, a relationship and a genre, the lyrics would come
+    // back completely generic, and the customer would (rightly) tell us "esta
+    // no es la canción, nada de lo que escribí". Whitespace-only counts as
+    // empty. They can still continue — this only makes sure they're asked.
+    if (details.trim().length < 50 && !showQualityWarning) {
       setShowQualityWarning(true);
       return;
     }
@@ -416,6 +423,17 @@ export default function DetailsStep() {
                     que nosotros la escribamos, vuelve y elige <strong className="text-gold/90">"Cuéntanos la historia"</strong>.
                   </p>
                 </>
+              ) : details.trim().length === 0 ? (
+                <>
+                  {/* Empty box: be explicit about the consequence, not just
+                      "add more". This is the case that produced generic songs. */}
+                  <h3 className="font-display text-2xl font-bold text-white mb-2">No nos contaste nada</h3>
+                  <p className="text-white/60 text-sm">
+                    La casilla de la historia está vacía. Si continúas así, la canción se
+                    escribirá solo con el nombre de <strong className="text-gold/90">{formData.recipientName || 'tu ser querido'}</strong> y
+                    el estilo que elegiste, y va a sonar general &mdash; no va a hablar de ustedes.
+                  </p>
+                </>
               ) : (
                 <>
                   <h3 className="font-display text-2xl font-bold text-white mb-2">¿Pocos detalles?</h3>
@@ -454,7 +472,7 @@ export default function DetailsStep() {
                 onClick={() => setShowQualityWarning(false)}
                 className="flex-1 py-4 rounded-full font-bold bg-gold/20 text-gold hover:bg-gold/30 transition-all"
               >
-                Agregar más
+                {!useOwnLyrics && details.trim().length === 0 ? 'Escribir la historia' : 'Agregar más'}
               </button>
               <button
                 onClick={handleContinueAnyway}
