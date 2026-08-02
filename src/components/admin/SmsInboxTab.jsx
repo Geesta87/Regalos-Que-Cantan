@@ -526,7 +526,7 @@ export default function SmsInboxTab({ accessToken }) {
       turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false,
       // intake fields
       phone: selected.phone || '', email: '', paid: true,
-      songs: null, searching: false, selectedSongs: [],
+      songs: null, searching: false, selectedSongs: [], searchFailed: '',
     });
     // Auto-search right away when we already have the phone from the thread.
     if (!isDemo && selected.phone) searchIntakeSongs({ phone: selected.phone, email: '', paid: true });
@@ -562,7 +562,7 @@ export default function SmsInboxTab({ accessToken }) {
       setFixModal((m) => (m ? { ...m, error: 'Enter the email or phone tied to the song first.' } : m));
       return;
     }
-    setFixModal((m) => (m ? { ...m, searching: true, error: '' } : m));
+    setFixModal((m) => (m ? { ...m, searching: true, error: '', searchFailed: '' } : m));
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`,
@@ -578,9 +578,13 @@ export default function SmsInboxTab({ accessToken }) {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || `song-search ${res.status}`);
-      setFixModal((m) => (m ? { ...m, searching: false, songs: data.songs || [], selectedSongs: [] } : m));
+      setFixModal((m) => (m ? { ...m, searching: false, songs: data.songs || [], selectedSongs: [], searchFailed: '' } : m));
     } catch (e) {
-      setFixModal((m) => (m ? { ...m, searching: false, songs: [], error: `Song search failed: ${e.message}` } : m));
+      // A CRASH is not an empty result. Keep `songs` null so the "No paid songs
+      // found — check the info" box stays hidden: that wording sent the owner
+      // hunting for a typo when the real problem was a broken query
+      // (songs.phone did not exist, 2026-08-01). Surface it as a system failure.
+      setFixModal((m) => (m ? { ...m, searching: false, songs: null, selectedSongs: [], searchFailed: e.message || 'unknown error' } : m));
     }
   };
 
@@ -2091,6 +2095,21 @@ export default function SmsInboxTab({ accessToken }) {
                     {fixModal.searching ? 'Searching…' : '🔍 Find songs'}
                   </button>
                 </div>
+                {/* The search BROKE — a different thing from "this customer has
+                    no songs". Say so plainly so nobody re-checks a correct
+                    email/phone, and show the raw reason to hand to the dev. */}
+                {fixModal.searchFailed && (
+                  <div className="mb-3 rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/30">
+                    <p className="text-[11px] text-red-300 font-semibold">
+                      ⚠️ The search itself broke — this is NOT "no songs found".
+                    </p>
+                    <p className="text-[11px] text-red-200/80 mt-0.5">
+                      Nothing was actually searched, so the email/phone is probably fine — don't re-check it.
+                      Retry, and if it keeps failing send the developer this: <span className="font-mono">{fixModal.searchFailed}</span>
+                    </p>
+                  </div>
+                )}
+
                 {Array.isArray(fixModal.songs) && (
                   <div className="mb-3">
                     <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">

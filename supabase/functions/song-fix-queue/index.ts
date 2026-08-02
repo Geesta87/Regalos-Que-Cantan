@@ -423,14 +423,27 @@ serve(async (req) => {
       const digits = String(body.phone || '').replace(/\D/g, '').slice(-10);
       if (!email && !digits) return json({ success: false, error: 'email or phone required' }, 400);
       const paid = body.paid !== false; // default: paid songs
+      // IMPORTANT: `songs` has NO `phone` column — querying it made every search
+      // 500 with "column songs.phone does not exist" (bug found 2026-08-01).
+      // The customer's number lives in `whatsapp_phone`; `phone_number` exists
+      // but is empty on every paid row today, so we match BOTH and let either
+      // one hit. Same widest-net shape admin-songs already uses for its search.
+      // Quoted `%…%` with or()-breaking chars stripped — the exact form already
+      // proven in production by admin-songs' song search. Don't "simplify" the
+      // quotes or the strip away.
+      const orParts: string[] = [];
+      const safeEmail = email.replace(/["\\,()]/g, '');
+      if (safeEmail) orParts.push(`email.ilike."%${safeEmail}%"`);
+      if (digits) orParts.push(`whatsapp_phone.ilike."%${digits}%"`, `phone_number.ilike."%${digits}%"`);
+      // Everything stripped away (e.g. an email of just punctuation) — an empty
+      // or() would throw, so say what's wrong instead.
+      if (!orParts.length) return json({ success: false, error: 'That email/phone has no searchable characters.' }, 400);
       let q = admin.from('songs')
-        .select('id, recipient_name, sender_name, genre, genre_name, created_at, paid, version, audio_url, email, phone')
+        .select('id, recipient_name, sender_name, genre, genre_name, created_at, paid, version, audio_url, email, whatsapp_phone, phone_number')
         .eq('paid', paid)
+        .or(orParts.join(','))
         .order('created_at', { ascending: false })
         .limit(15);
-      if (email && digits) q = q.or(`email.ilike.%${email}%,phone.ilike.%${digits}%`);
-      else if (email) q = q.ilike('email', `%${email}%`);
-      else q = q.ilike('phone', `%${digits}%`);
       const { data: songs, error } = await q;
       if (error) return json({ success: false, error: error.message }, 500);
       return json({ success: true, songs: songs || [] });

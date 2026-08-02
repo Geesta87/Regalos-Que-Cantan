@@ -258,11 +258,14 @@ async function stepLink(admin: any, r: any): Promise<void> {
   const phoneRaw = r.context?.phone || '';
   const digits = String(phoneRaw).replace(/\D/g, '').slice(-10);
   if (!digits) { await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: 'No phone on the request — link the song manually.' }); return; }
-  // songs.phone / whatsapp-style columns vary; match on the widest net we have.
+  // There is NO `songs.phone` column — this used to query it and threw
+  // "column songs.phone does not exist" on every run (bug found 2026-08-01).
+  // The number lives in `whatsapp_phone`; `phone_number` is currently always
+  // empty but is matched too so neither can silently miss.
   const { data: cands } = await admin
     .from('songs')
-    .select('id, recipient_name, paid, created_at, phone')
-    .ilike('phone', `%${digits}%`)
+    .select('id, recipient_name, paid, created_at, whatsapp_phone, phone_number')
+    .or(`whatsapp_phone.ilike."%${digits}%",phone_number.ilike."%${digits}%"`)
     .gt('created_at', new Date(Date.now() - 60 * 86400000).toISOString())
     .order('created_at', { ascending: false })
     .limit(10);
