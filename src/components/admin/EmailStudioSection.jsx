@@ -23,9 +23,17 @@ const GTS = 'https://giftsthatsing.com';
 // 540x392 tile throws away the face and upscales what's left into mush.
 const CDN = 'https://www.regalosquecantan.com';
 const ANIMADO_POSTERS = [
-  { url: `${CDN}/images/paquete/animado-poster-6.jpg`, label: 'Para mamá' },
-  { url: `${CDN}/images/paquete/animado-poster-7.jpg`, label: 'Padre e hija' },
-  { url: `${CDN}/images/paquete/animado-poster-1.jpg`, label: 'En familia' },
+  { url: `${CDN}/images/paquete/animado-poster-6.jpg`, label: 'Para mamá', w: 9, h: 16 },
+  { url: `${CDN}/images/paquete/animado-poster-7.jpg`, label: 'Padre e hija', w: 9, h: 16 },
+  { url: `${CDN}/images/paquete/animado-poster-1.jpg`, label: 'En familia', w: 9, h: 16 },
+];
+
+// Library folders. 'animado-likeness' holds the Pixar renders of REAL customers
+// lifted out of story-video-assets — kept OUT of photo-lab on purpose, because
+// photo-lab is what auto-design draws from unattended.
+const LIB_FOLDERS = [
+  { id: 'photo-lab', label: 'House photos' },
+  { id: 'animado-likeness', label: 'Animado faces' },
 ];
 
 // Visual styles — must match the STYLES ids in supabase/functions/email-studio.
@@ -141,8 +149,10 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   // The house photo library (creative-studio/photo-lab) — text-free shots the
   // ad lab already produced. Free to reuse; generating a new photo costs credits.
   const [library, setLibrary] = useState([]);
-  const [libRole, setLibRole] = useState('');   // '' | 'hero' | 'tile'
+  const [libRole, setLibRole] = useState('');   // '' | 'hero' | 'tile' | 'poster'
   const [libBusy, setLibBusy] = useState(false);
+  const [libFolder, setLibFolder] = useState('photo-lab');
+  const [libCache, setLibCache] = useState({}); // folder -> photos[], so switching tabs is instant
   const [plan, setPlan] = useState(null);   // what auto-design chose, shown as chips
 
   const [html, setHtml] = useState('');
@@ -477,26 +487,38 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     } catch { /* background nicety — never surfaced as an error */ }
   }, [call]);
 
-  const openLibrary = async (role) => {
-    setLibRole(role);
-    if (library.length) return;
+  const loadFolder = useCallback(async (folder) => {
+    setLibFolder(folder);
+    if (libCache[folder]) { setLibrary(libCache[folder]); return; }
     setLibBusy(true);
     try {
-      const r = await call({ action: 'list_photos', folder: 'photo-lab' });
+      const r = await call({ action: 'list_photos', folder });
       if (!r.success) throw new Error(errOf(r, 'Could not load the library'));
-      setLibrary(r.photos || []);
-    } catch (e) { showToast?.(`Error: ${e.message}`); setLibRole(''); }
+      const photos = r.photos || [];
+      setLibCache((c) => ({ ...c, [folder]: photos }));
+      setLibrary(photos);
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setLibBusy(false); }
+  }, [call, libCache, showToast]);
+
+  // A poster pick opens straight into the Animado faces folder — that's the only
+  // folder whose contents belong in a poster row.
+  const openLibrary = (role) => {
+    setLibRole(role);
+    loadFolder(role === 'poster' ? 'animado-likeness' : libFolder);
   };
 
-  const pickPhoto = async (url) => {
+  const pickPhoto = async (url, name) => {
     const role = libRole;
     setLibBusy(true);
     try {
       const r = await call({ action: 'use_photo', url, role });
       if (!r.success) throw new Error(errOf(r, 'Could not use that photo'));
       setLibRole('');
-      if (role === 'tile') {
+      if (role === 'poster') {
+        setPosters((ps) => [...ps, { url: r.url, label: '', w: r.w, h: r.h }].slice(0, 4));
+        showToast?.('Added to the poster row — kept portrait, not cropped.');
+      } else if (role === 'tile') {
         setGallery((g) => [...g, r.url].slice(0, 6));
         showToast?.('Cropped to landscape and added as a tile.');
       } else {
@@ -695,33 +717,41 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
           {/* Portrait 9:16 stills — the Animado proof row. Staged by the Animado
               preset (or by an agreed Animado brief), shown here so you can see
               exactly which frames the email will carry, and drop any of them. */}
-          {posters.length > 0 && (
-            <Card className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <SectionLabel className="flex items-center gap-1.5"><Images size={12} /> Animado stills</SectionLabel>
-                <span className="text-[11px] text-gray-400">— shown as a poster row</span>
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <SectionLabel className="flex items-center gap-1.5"><Images size={12} /> Animado poster row</SectionLabel>
+              <span className="text-[11px] text-gray-400">— portrait stills</span>
+              {posters.length > 0 && (
                 <button onClick={() => setPosters([])} className="ml-auto text-gray-300 hover:text-gray-700" title="Remove all">
                   <X size={14} />
                 </button>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
+              )}
+            </div>
+            {posters.length > 0 && (
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
                 {posters.map((p) => (
                   <div key={p.url} className="relative">
                     <img src={p.url} alt={p.label || 'animado still'} loading="lazy"
-                      className="w-full aspect-[9/16] object-cover rounded-md border border-gray-200" />
+                      className="w-full aspect-[2/3] object-cover rounded-md border border-gray-200" />
                     <button onClick={() => setPosters((ps) => ps.filter((x) => x.url !== p.url))}
                       className="absolute top-0.5 right-0.5 bg-white/90 rounded-full p-0.5 text-gray-500 hover:text-gray-800">
                       <X size={11} />
                     </button>
-                    <span className="block text-[10px] text-gray-400 truncate mt-0.5">{p.label}</span>
+                    {p.label && <span className="block text-[10px] text-gray-400 truncate mt-0.5">{p.label}</span>}
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-gray-400 mt-2">
-                Real customer frames, kept at their true 9:16 — never cropped to landscape.
-              </p>
-            </Card>
-          )}
+            )}
+            <button onClick={() => openLibrary('poster')} disabled={libBusy || !!stage || posters.length >= 4}
+              className={btn.ghost + ' w-full'}>
+              {libBusy && libRole === 'poster' ? <Loader2 size={15} className="animate-spin" /> : <Images size={15} />}
+              Animado faces ({posters.length}/4)
+            </button>
+            <p className="text-[11px] text-gray-400 mt-2">
+              The 20 Pixar likenesses from real Animado orders. Kept portrait and downscaled — never cropped to landscape.
+              “usada” marks the option that customer's finished video actually used.
+            </p>
+          </Card>
 
           {/* Extra photos → the "explora por estilo" tile grid. */}
           <Card className="p-4">
@@ -756,9 +786,24 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
             <Card className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <SectionLabel className="flex items-center gap-1.5"><Images size={12} /> Photo library</SectionLabel>
-                <span className="text-[11px] text-gray-400">{libRole === 'tile' ? '— adds a cropped tile' : '— sets the hero'}</span>
+                <span className="text-[11px] text-gray-400">
+                  {libRole === 'poster' ? '— adds a portrait poster' : libRole === 'tile' ? '— adds a cropped tile' : '— sets the hero'}
+                </span>
                 <button onClick={() => setLibRole('')} className="ml-auto text-gray-400 hover:text-gray-700"><X size={14} /></button>
               </div>
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-2">
+                {LIB_FOLDERS.map((f) => (
+                  <button key={f.id} onClick={() => loadFolder(f.id)} disabled={libBusy}
+                    className={`flex-1 px-2 py-1 text-[11px] rounded-md transition ${libFolder === f.id ? 'bg-white shadow-sm text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              {libFolder === 'animado-likeness' && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 mb-2">
+                  Real customers' faces. Only use one in a broadcast if you're comfortable showing that family to the whole list.
+                </p>
+              )}
               {libBusy && !library.length ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
                   <Loader2 size={15} className="animate-spin" /> Loading the library…
@@ -766,9 +811,12 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               ) : library.length ? (
                 <div className="grid grid-cols-3 gap-1.5 max-h-72 overflow-y-auto">
                   {library.map((p) => (
-                    <button key={p.url} onClick={() => pickPhoto(p.url)} disabled={libBusy} title={p.name}
+                    <button key={p.url} onClick={() => pickPhoto(p.url, p.name)} disabled={libBusy} title={p.name}
                       className="relative group rounded-md overflow-hidden border border-gray-200 hover:border-indigo-400 focus:outline-none focus:border-indigo-500 disabled:opacity-50">
-                      <img src={p.url} alt={p.name} loading="lazy" className="w-full h-20 object-cover" />
+                      {/* The likeness renders are portraits — show them tall so you
+                          can actually see the face you're picking. */}
+                      <img src={p.url} alt={p.name} loading="lazy"
+                        className={`w-full object-cover ${libFolder === 'animado-likeness' ? 'h-32' : 'h-20'}`} />
                       <span className="block text-[10px] text-gray-500 truncate px-1 py-0.5 bg-white">{p.name}</span>
                     </button>
                   ))}

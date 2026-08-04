@@ -680,6 +680,11 @@ const CATALOG_TOOL = {
 
 // Email photo tiles: 270x196 CSS px at 2x retina.
 const TILE_W = 540, TILE_H = 392;
+// Poster row target — PORTRAIT 2:3. The Animado likeness renders arrive as
+// ~1024x1536 PNGs weighing ~2.5MB each; three of those in one email is ~7.5MB of
+// images on a phone. Downscaling to 540x810 keeps the full frame (same 2:3
+// aspect, so nothing is cropped away) at roughly a tenth of the weight.
+const POSTER_W = 540, POSTER_H = 810;
 const tileFocus = (f: unknown): 'top' | 'center' | 'bottom' =>
   (f === 'top' || f === 'bottom') ? f : 'center';
 
@@ -725,10 +730,17 @@ ${tiles.map((u, i) => `  ${i + 1}. ${u}`).join('\n')}`);
   if (posters.length) {
     const n = Math.min(posters.length, 3);
     const w = n === 3 ? 176 : n === 2 ? 268 : 340;
-    const h = Math.round((w * 16) / 9);
-    blocks.push(`POSTER ROW — PORTRAIT 9:16 stills from REAL customer videos (hosted). Use ALL of them, together, in ONE dedicated section:
-${posters.map((p, i) => `  ${i + 1}. ${p.url}${p.label ? ` — caption: "${p.label}"` : ''}`).join('\n')}
-Lay them out as a single row of ${n} vertical posters inside a table (one <td> each, ~12px gutters), each as <img width="${w}" height="${h}" style="display:block;width:100%;max-width:${w}px;height:auto;border-radius:10px;border:0;">. Give the section a short heading and put each caption in small type under its poster. NEVER crop them to landscape, never omit width/height, and never stretch them — they are 9:16 and must stay 9:16. Real alt text on every one.`);
+    // Each poster keeps its OWN aspect. A likeness render is 2:3 and a website
+    // still is 9:16; pinning one shared height would stretch whichever doesn't
+    // match, and a stretched face is worse than no image at all.
+    const dims = posters.map((p: any) => {
+      const pw = Number(p.w) > 0 ? Number(p.w) : 9;
+      const ph = Number(p.h) > 0 ? Number(p.h) : 16;
+      return Math.round((w * ph) / pw);
+    });
+    blocks.push(`POSTER ROW — PORTRAIT stills of REAL customers (hosted). Use ALL of them, together, in ONE dedicated section:
+${posters.map((p, i) => `  ${i + 1}. ${p.url} — width="${w}" height="${dims[i]}"${p.label ? ` — caption: "${p.label}"` : ''}`).join('\n')}
+Lay them out as a single row of ${n} vertical posters inside a table (one <td> each, ~12px gutters). Each must be <img width="${w}" height="[ITS OWN height from the list above]" style="display:block;width:100%;max-width:${w}px;height:auto;border-radius:10px;border:0;">. Give the section a short heading and put each caption in small type under its poster. Use each poster's OWN height — they are not all the same aspect. NEVER crop them to landscape, never omit width/height, never stretch them. Real alt text on every one.`);
   }
   const imageBlock = blocks.length
     ? `${blocks.join('\n\n')}\n\nUse ONLY these hosted URLs. Never invent an image URL, and never use a base64 data URI.`
@@ -1142,8 +1154,12 @@ ${catalogText}`,
     // These are the text-free, art-directed shots the ad lab already produced
     // and the owner already approved. Picking one costs nothing; generating a
     // fresh photo spends image credits — so the picker is the default path.
+    // 'animado-likeness' holds Pixar renders of REAL customers, copied out of
+    // story-video-assets. It is deliberately a SEPARATE folder from photo-lab:
+    // photo-lab is the pool auto-design picks from unattended, and a real
+    // customer's face must never reach an email without the owner choosing it.
     if (action === 'list_photos') {
-      const folder = ['photo-lab', 'email-studio'].includes(body.folder) ? body.folder : 'photo-lab';
+      const folder = ['photo-lab', 'email-studio', 'animado-likeness'].includes(body.folder) ? body.folder : 'photo-lab';
       const { data, error } = await admin.storage.from('creative-studio')
         .list(folder, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
       if (error) return json({ success: false, error: error.message }, 500);
@@ -1161,6 +1177,14 @@ ${catalogText}`,
     if (action === 'use_photo') {
       const url = (body.url || '').toString().trim();
       if (!/^https?:\/\//.test(url)) return json({ success: false, error: 'A photo url is required' }, 400);
+      // Poster: stays PORTRAIT. Sending a likeness render down the tile path
+      // would crop 1024x1536 to 540x392 landscape and cut the faces off — the
+      // one thing the whole asset exists to show.
+      if (body.role === 'poster') {
+        const shrunk = await cropPhoto({ imageUrl: url }, POSTER_W, POSTER_H, tileFocus(body.focus));
+        if (!shrunk) return json({ success: false, error: 'Could not prepare that poster' }, 502);
+        return json({ success: true, url: await storeImage(admin, shrunk, 'image/png'), w: POSTER_W, h: POSTER_H });
+      }
       if (body.role !== 'tile') return json({ success: true, url });
       const cropped = await cropPhoto({ imageUrl: url }, TILE_W, TILE_H, tileFocus(body.focus));
       if (!cropped) return json({ success: false, error: 'Could not crop that photo' }, 502);
