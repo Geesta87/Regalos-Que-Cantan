@@ -457,6 +457,8 @@ verify_jwt = true
 # credits, can send tests and queue list sends). Generates/refines email HTML,
 # sends [PRUEBA] tests to the logged-in admin, and queues finished emails into
 # email_queue (pending_approval) for the existing approve→send pipeline.
+# Also hosts the 'brainstorm' action — the email STRATEGIST chat that proposes
+# topics and writes the agreed brief into the Studio form (_shared/email-brain.ts).
 verify_jwt = true
 
 [functions.email-marketer-send]

@@ -17,6 +17,11 @@
 //   upload_image— host an uploaded image in the creative-studio bucket (returns
 //                 a public URL — inline base64 images don't render in Gmail).
 //   gen_image   — generate a photographic hero image via Kie (KIE_IMAGE_ENABLED).
+//   brainstorm  — chat with the EMAIL STRATEGIST agent (see _shared/email-brain.ts).
+//                 It knows the whole catalog, the gifting calendar, the segments,
+//                 what we already sent and how it performed. It proposes ideas,
+//                 argues them through, and — once the owner agrees — writes the
+//                 finished brief straight into the Studio form.
 //
 // Design assets carried over from EmailForge: the premium component reference
 // library, Outlook MSO/VML bulletproof buttons, dark-mode CSS classes, and the
@@ -28,6 +33,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { brandContext, OFFERS } from '../_shared/brand-brief.ts';
+import { buildBrainstormSystem, EMAIL_CATALOG, IDEAS_TOOL, BRIEF_TOOL } from '../_shared/email-brain.ts';
 import { kiePhotoBytes, KIE_IMAGE_ENABLED } from '../_shared/kie-image.ts';
 import { renderAd, cropPhoto } from '../_shared/render-ad.ts';
 import { buildUnsubscribeHeaders, buildUnsubscribeUrl } from '../_shared/unsubscribe.ts';
@@ -40,6 +46,9 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const MODEL = Deno.env.get('EMAIL_STUDIO_MODEL') || Deno.env.get('EMAIL_MARKETER_MODEL') || 'claude-sonnet-4-6';
+// The strategist reasons about the catalog, the calendar and past performance —
+// worth the stronger model. Override with the EMAIL_BRAINSTORM_MODEL secret.
+const BRAINSTORM_MODEL = Deno.env.get('EMAIL_BRAINSTORM_MODEL') || 'claude-opus-4-8';
 const SITE = 'https://regalosquecantan.com';
 const SENDER_EMAIL = 'hola@regalosquecantan.com';
 const SENDER_NAME = 'Regalos Que Cantan';
@@ -146,6 +155,21 @@ const STYLES: Style[] = [
 ];
 
 const styleById = (id?: string) => STYLES.find((s) => s.id === id) || STYLES[0];
+
+// Audience segments — must match SEGMENTS in EmailStudioSection.jsx and the SQL
+// filters in enqueue_marketing_recipients. Listed here so the brainstorm agent
+// can only recommend a segment the sender can actually resolve.
+const SEGMENT_IDS = [
+  { id: 'all', label: 'All buyers' },
+  { id: 'buyers_7d', label: 'Bought in the last 7 days' },
+  { id: 'buyers_30d', label: 'Bought in the last 30 days' },
+  { id: 'recent', label: 'Recent buyers (bought ≤90 days ago)' },
+  { id: 'winback', label: 'Win-back (last bought >90 days ago)' },
+  { id: 'video_buyers', label: 'Bought a video add-on' },
+  { id: 'no_video', label: 'Bought a song but never a video — the upsell list' },
+  { id: 'nonbuyers', label: 'Created a song and never paid' },
+  { id: 'everyone_all', label: 'Everyone, buyers and non-buyers' },
+];
 
 // ===========================================================================
 // DESIGN PHILOSOPHY — same taste bar as the weekly engine, adapted for a
@@ -459,6 +483,8 @@ function generateSystem(promoNotes?: string): string {
 
 ${brandContext(promoNotes)}
 
+${EMAIL_CATALOG}
+
 ${DESIGN_PHILOSOPHY}
 
 ${COMPONENT_LIBRARY}
@@ -672,9 +698,17 @@ async function storeImage(admin: any, bytes: Uint8Array, contentType: string): P
 // auto flow, so both produce identical craft from the same prompt.
 async function designEmail(admin: any, o: {
   brief: string; style: Style; styleNote?: unknown; bannerUrl?: string;
-  imageUrl?: string; tiles?: string[]; ctaUrl: string;
+  imageUrl?: string; tiles?: string[]; posters?: { url: string; label?: string }[]; ctaUrl: string;
 }): Promise<{ subject: string; preview_text: string; html: string }> {
   const tiles = (o.tiles || []).filter((u) => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 6);
+  // PORTRAIT stills (9:16) — Animado frames and other vertical video posters.
+  // They are NOT tiles: cropping a 420x747 still into the 540x392 landscape tile
+  // throws away most of the frame and upscales what's left into mush. They go in
+  // as a poster ROW at their native aspect, with width/height pinned so Outlook
+  // (which ignores object-fit) can't squash them.
+  const posters = (o.posters || [])
+    .filter((p: any) => p && typeof p.url === 'string' && /^https?:\/\//.test(p.url))
+    .slice(0, 4);
   const blocks: string[] = [];
   if (o.bannerUrl) {
     blocks.push(`DESIGNED BANNER HERO (hosted, 600x375 — the headline is ALREADY typeset INTO this image): ${o.bannerUrl}
@@ -687,6 +721,14 @@ ${o.bannerUrl ? 'The banner above is the hero — use this photo further down in
   if (tiles.length) {
     blocks.push(`GALLERY IMAGES (hosted) — use EVERY one of these, in the PHOTO TILE GRID and/or editorial splits. Do not leave any unused:
 ${tiles.map((u, i) => `  ${i + 1}. ${u}`).join('\n')}`);
+  }
+  if (posters.length) {
+    const n = Math.min(posters.length, 3);
+    const w = n === 3 ? 176 : n === 2 ? 268 : 340;
+    const h = Math.round((w * 16) / 9);
+    blocks.push(`POSTER ROW — PORTRAIT 9:16 stills from REAL customer videos (hosted). Use ALL of them, together, in ONE dedicated section:
+${posters.map((p, i) => `  ${i + 1}. ${p.url}${p.label ? ` — caption: "${p.label}"` : ''}`).join('\n')}
+Lay them out as a single row of ${n} vertical posters inside a table (one <td> each, ~12px gutters), each as <img width="${w}" height="${h}" style="display:block;width:100%;max-width:${w}px;height:auto;border-radius:10px;border:0;">. Give the section a short heading and put each caption in small type under its poster. NEVER crop them to landscape, never omit width/height, and never stretch them — they are 9:16 and must stay 9:16. Real alt text on every one.`);
   }
   const imageBlock = blocks.length
     ? `${blocks.join('\n\n')}\n\nUse ONLY these hosted URLs. Never invent an image URL, and never use a base64 data URI.`
@@ -727,6 +769,115 @@ Deno.serve(async (req: Request) => {
     const action = body.action || '';
     const style = styleById(body.style_id);
 
+    // ---- The BRAINSTORM agent — "what do I even send this week?" ----
+    // A strategist chat, not a writer. It proposes ideas as cards, argues them
+    // through, and on agreement calls lock_in_brief, which the client drops
+    // straight into the Studio form. Conversation state lives on the client and
+    // comes back as plain {role, content} — no table, no migration.
+    if (action === 'brainstorm') {
+      const turns = (Array.isArray(body.messages) ? body.messages : [])
+        .filter((m: any) => (m?.role === 'user' || m?.role === 'assistant') && (m?.content || '').toString().trim())
+        .slice(-20)
+        .map((m: any) => ({ role: m.role, content: m.content.toString().slice(0, 6000) }));
+      if (!turns.length || turns[turns.length - 1].role !== 'user') {
+        return json({ success: false, error: 'The last message must be from you' }, 400);
+      }
+
+      // What we already sent — the agent's main defence against repeating itself.
+      const { data: recent } = await admin.from('email_queue')
+        .select('subject, reason, segment, campaign_key, status, sent_at, created_at')
+        .order('created_at', { ascending: false }).limit(25);
+      const recentText = (recent || []).length
+        ? (recent || []).map((r: any) => {
+            const when = (r.sent_at || r.created_at || '').toString().slice(0, 10);
+            return `- ${when} · [${r.status}] · to "${r.segment || 'all'}" · "${r.subject}"${r.reason ? ` — ${r.reason}` : ''}`;
+          }).join('\n')
+        : '- (nothing sent yet — the list has never received a broadcast from the Studio)';
+
+      // How they did. Roll the campaign×day table up per campaign, and only for
+      // the campaigns we just listed, so this stays a small read.
+      const keys = (recent || []).map((r: any) => r.campaign_key).filter(Boolean);
+      let perfText = '- (no engagement data yet)';
+      if (keys.length) {
+        const { data: rows } = await admin.from('email_campaign_daily')
+          .select('campaign_key, sent, delivered, unique_opens, unique_clicks, unsubs, purchases, revenue_cents')
+          .in('campaign_key', keys);
+        const agg: Record<string, any> = {};
+        for (const r of rows || []) {
+          if (!agg[r.campaign_key]) agg[r.campaign_key] = { sent: 0, delivered: 0, opens: 0, clicks: 0, unsubs: 0, purchases: 0, cents: 0 };
+          const a = agg[r.campaign_key];
+          a.sent += r.sent || 0; a.delivered += r.delivered || 0; a.opens += r.unique_opens || 0;
+          a.clicks += r.unique_clicks || 0; a.unsubs += r.unsubs || 0; a.purchases += r.purchases || 0;
+          a.cents += Number(r.revenue_cents || 0);
+        }
+        const pct = (n: number, d: number) => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : 'n/a');
+        const lines = (recent || [])
+          .filter((r: any) => r.campaign_key && agg[r.campaign_key]?.delivered)
+          .slice(0, 12)
+          .map((r: any) => {
+            const a = agg[r.campaign_key];
+            return `- "${r.subject}" — ${a.delivered} delivered · ${pct(a.opens, a.delivered)} opens · ${pct(a.clicks, a.delivered)} clicks · ${a.unsubs} unsub · ${a.purchases} orders · $${(a.cents / 100).toFixed(2)}`;
+          });
+        if (lines.length) perfText = lines.join('\n');
+      }
+
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const system = buildBrainstormSystem({
+        todayISO: new Date().toISOString().slice(0, 10),
+        styleList: STYLES.map((s) => `- ${s.id}: ${s.name} — ${s.blurb}`).join('\n'),
+        segmentList: SEGMENT_IDS.map((s) => `- ${s.id}: ${s.label}`).join('\n'),
+        recentEmails: recentText,
+        performance: perfText,
+        promoNotes: cfg?.promo_notes,
+      });
+
+      const msgs: any[] = turns.map((t) => ({ role: t.role, content: t.content }));
+      let reply = '', ideas: any = null, brief: any = null;
+
+      // Up to two round-trips: the first may come back as a bare tool call, and
+      // a card with no sentence under it reads as the agent ignoring the owner.
+      // The second pass (with the tool_result fed back) gets that sentence.
+      for (let hop = 0; hop < 2; hop++) {
+        const res = await callAnthropic({
+          // The wrap-up hop only owes us a sentence or two — keeping its budget
+          // small keeps the worst-case turn inside the edge function's clock.
+          model: BRAINSTORM_MODEL, max_tokens: hop === 0 ? 3000 : 600, system,
+          tools: [IDEAS_TOOL, BRIEF_TOOL],
+          messages: msgs,
+        });
+        const content = res.content || [];
+        reply = [reply, ...content.filter((c: any) => c.type === 'text').map((c: any) => (c.text || '').trim())]
+          .filter(Boolean).join('\n\n');
+        const calls = content.filter((c: any) => c.type === 'tool_use');
+        for (const c of calls) {
+          if (c.name === 'propose_ideas' && Array.isArray(c.input?.ideas)) ideas = c.input.ideas.slice(0, 5);
+          if (c.name === 'lock_in_brief' && c.input?.brief) brief = c.input;
+        }
+        if (!calls.length || reply) break;
+        msgs.push({ role: 'assistant', content });
+        msgs.push({
+          role: 'user',
+          content: calls.map((c: any) => ({
+            type: 'tool_result', tool_use_id: c.id,
+            content: c.name === 'lock_in_brief'
+              ? 'Loaded into the Email Studio form. Tell him in one short sentence what you set and that he can hit "Design it for me".'
+              : 'Shown to him as cards. Now say in 1-2 sentences which one you would send and why.',
+          })),
+        });
+      }
+
+      if (!reply && !ideas && !brief) return json({ success: false, error: 'The strategist had nothing to say — try rephrasing' }, 502);
+      // What the client stores as this turn's content, so the next turn keeps
+      // the thread. The cards themselves are rendered from `ideas` / `brief`.
+      const memo = [
+        reply,
+        ideas ? `[proposed: ${ideas.map((i: any) => i.title).join(' · ')}]` : '',
+        brief ? `[locked in: ${brief.label} → style ${brief.style_id}, segment ${brief.segment}]` : '',
+      ].filter(Boolean).join('\n');
+
+      return json({ success: true, reply: reply || '(no comment)', memo, ideas, brief });
+    }
+
     if (action === 'generate') {
       const brief = (body.brief || '').toString().trim();
       if (!brief) return json({ success: false, error: 'Brief is required' }, 400);
@@ -735,6 +886,7 @@ Deno.serve(async (req: Request) => {
         bannerUrl: (body.banner_url || '').toString().trim(),
         imageUrl: (body.image_url || '').toString().trim(),
         tiles: Array.isArray(body.image_urls) ? body.image_urls : [],
+        posters: Array.isArray(body.posters) ? body.posters : [],
         ctaUrl: (body.cta_url || SITE).toString(),
       });
       return json({ success: true, ...out });

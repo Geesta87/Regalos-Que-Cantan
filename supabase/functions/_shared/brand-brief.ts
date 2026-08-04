@@ -26,6 +26,16 @@ export const OFFERS = {
   threePack: '$49.99',
   videoAddon: '$9.99',
   lyricVideo: '$9.99',
+  // Added for the Email Studio brainstorm agent + the Animado preset. Purely
+  // additive — the BRAND_BRIEF ladder below is unchanged, so ad/social rotation
+  // behaves exactly as before. The full catalog narrative lives in
+  // _shared/email-brain.ts (email surfaces only).
+  instrumental: '$7.99',
+  animado: '$29',
+  animadoBoth: '$44.99',
+  songPlusAnimado: '$59.99',
+  clonaMiVoz: '$69',
+  giftSms: '$5',
 };
 
 export const BRAND_BRIEF = `THE BUSINESS — this is a REAL product with REAL advantages, not just a vibe. Keep every fact below true in every creative.

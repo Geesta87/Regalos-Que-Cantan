@@ -10,10 +10,23 @@ import {
   Monitor, Smartphone, Image as ImageIcon, X, Code, Eye, History, Layers, Images,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
+import EmailBrainstormPanel from './EmailBrainstormPanel';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-studio`;
 const SITE = 'https://regalosquecantan.com';
 const GTS = 'https://giftsthatsing.com';
+
+// Animado stills — real customer frames, already live on our own CDN (the www
+// host is canonical; the apex 307-redirects, and some inbox image proxies won't
+// follow that). They are 9:16 PORTRAIT, so they go to the designer as a POSTER
+// ROW, never as a banner or a landscape tile: cropping a 420x747 still to the
+// 540x392 tile throws away the face and upscales what's left into mush.
+const CDN = 'https://www.regalosquecantan.com';
+const ANIMADO_POSTERS = [
+  { url: `${CDN}/images/paquete/animado-poster-6.jpg`, label: 'Para mamá' },
+  { url: `${CDN}/images/paquete/animado-poster-7.jpg`, label: 'Padre e hija' },
+  { url: `${CDN}/images/paquete/animado-poster-1.jpg`, label: 'En familia' },
+];
 
 // Visual styles — must match the STYLES ids in supabase/functions/email-studio.
 const STYLES = [
@@ -45,6 +58,11 @@ const PRESETS = [
   {
     id: 'three_pack', label: '3-Pack', desc: '$49.99 — family bundle', styleId: 'royal_deep', ctaUrl: SITE,
     brief: `Promo email for the 3-Pack family bundle ($49.99): three personalized songs for the whole family. Angle: one gift that covers mamá, papá y los abuelos — the best value in the store. Listen free before paying, each song made for one specific person.`,
+  },
+  {
+    id: 'animado', label: 'Canción + Animado', desc: '$59.99 — película animada', styleId: 'midnight_serenade', ctaUrl: SITE,
+    posters: ANIMADO_POSTERS,
+    brief: `Promo email for the CANCIÓN + ANIMADO bundle ($59.99) — our most emotional offer, sold as ONE gift instead of an add-on. What it is: we take a real photo of the person, turn them into an animated character, and build a short animated MOVIE of their story set to their own personalized song. Angle: "no solo va a escuchar su canción — se va a VER en ella". Lead with the reveal moment: the face when they recognize themselves on screen. Use the poster row of real customer stills as the proof that this is real. Anchor the price: the song alone is $29.99, so the movie is the part that turns a gift into a keepsake. Keep the proof points — escúchala completa GRATIS antes de pagar, lista en ~3 minutos. CTA: create the song and add the animated movie.`,
   },
   {
     id: 'video_addon', label: 'Video con foto', desc: '$9.99 — top add-on', styleId: 'romantico_calido', ctaUrl: SITE, segment: 'no_video',
@@ -116,6 +134,9 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   const [bh, setBh] = useState({ headline: '', kicker: '', accent: '', sub: '', cta: '', align: 'center', prompt: '' });
   const [gallery, setGallery] = useState([]);
   const galleryRef = useRef(null);
+  // Portrait 9:16 stills (Animado frames) — kept apart from `gallery` because
+  // they must reach the designer uncropped, as a poster row.
+  const [posters, setPosters] = useState([]);
 
   // The house photo library (creative-studio/photo-lab) — text-free shots the
   // ad lab already produced. Free to reuse; generating a new photo costs credits.
@@ -170,7 +191,24 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
     setStyleId(p.styleId);
     setCtaUrl(p.ctaUrl);
     setSegment(p.segment || 'all');
+    setPosters(p.posters || []);
   };
+
+  // The strategist agreed a brief — drop it into the form. Nothing generates or
+  // sends here; this only fills the same boxes you'd fill by hand.
+  const applyBrief = useCallback((b) => {
+    if (!b) return;
+    setPresetId(null);
+    setBrief(b.brief || '');
+    if (b.style_id) setStyleId(b.style_id);
+    setStyleNote((b.style_note || '').toString());
+    if (b.cta_url) setCtaUrl(b.cta_url);
+    if (b.segment) setSegment(b.segment);
+    setPlan(null);
+    // If the agreed idea is the Animado bundle, stage the real customer stills
+    // so the email actually SHOWS the thing it's selling.
+    setPosters(/animado/i.test(`${b.label || ''} ${b.brief || ''}`) ? ANIMADO_POSTERS : []);
+  }, []);
 
   const pushHistory = (h, subj) => {
     setHistory((prev) => [{ ts: Date.now(), html: h, subject: subj, styleId }, ...prev].slice(0, 5));
@@ -186,6 +224,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
         image_url: imageUrl || undefined,
         banner_url: bannerUrl || undefined,
         image_urls: gallery.length ? gallery : undefined,
+        posters: posters.length ? posters : undefined,
         cta_url: ctaUrl,
       });
       if (!r.success) throw new Error(errOf(r, 'Generation failed'));
@@ -353,12 +392,18 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
   // plan+artwork, then design, then polish. Doing it in one invocation exceeded
   // the edge function's wall-clock limit, which comes back as a bare
   // {code, message} the app can't catch as an error.
-  const autoDesign = async () => {
-    if (!brief.trim()) { showToast?.('Pick an offering above, or write one line about the email'); return; }
+  // `o` lets a caller (the strategist's "Design it now") drive a run from a brief
+  // it just handed us, without waiting a render for the state to settle.
+  const autoDesign = async (o = {}) => {
+    const runBrief = (o.brief ?? brief).toString();
+    const runCta = (o.ctaUrl ?? ctaUrl).toString();
+    const runNote = (o.styleNote ?? styleNote).toString();
+    const runPosters = o.posters ?? posters;
+    if (!runBrief.trim()) { showToast?.('Pick an offering above, or write one line about the email'); return; }
     setEditingId(null);
     setError(''); setPlan(null); setStage('auto'); setTab('preview');
     try {
-      const p = await call({ action: 'auto_plan', brief, cta_url: ctaUrl, style_note: styleNote || undefined });
+      const p = await call({ action: 'auto_plan', brief: runBrief, cta_url: runCta, style_note: runNote || undefined });
       if (!p.success) throw new Error(errOf(p, 'Could not plan the email'));
       setPlan(p.plan || null);
       if (p.style_id) setStyleId(p.style_id);
@@ -387,8 +432,10 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       setStage('design');
       const r = await call({
         action: 'generate', brief: p.design_brief, style_id: p.style_id,
-        style_note: styleNote || undefined, banner_url: bRes.url,
-        image_urls: tileUrls.length ? tileUrls : undefined, cta_url: ctaUrl,
+        style_note: runNote || undefined, banner_url: bRes.url,
+        image_urls: tileUrls.length ? tileUrls : undefined,
+        posters: runPosters.length ? runPosters : undefined,
+        cta_url: runCta,
       });
       if (!r.success) throw new Error(errOf(r, 'Could not design the email'));
       let out = r.html;
@@ -396,7 +443,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
 
       if (polish) {
         setStage('polish');
-        const r2 = await call({ action: 'improve', html: out, style_id: p.style_id, style_note: styleNote || undefined });
+        const r2 = await call({ action: 'improve', html: out, style_id: p.style_id, style_note: runNote || undefined });
         if (r2.success && r2.html) { out = r2.html; setHtml(out); }
       }
       pushHistory(out, r.subject || '');
@@ -405,6 +452,19 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
       if (p.plan && p.plan.catalogued === false) runCatalog();
     } catch (e) { setError(e.message); showToast?.(`Error: ${e.message}`); }
     finally { setStage(''); }
+  };
+
+  // The strategist's "Design it now": fill the form AND run it in one click,
+  // passing the brief through directly so we don't race React's state update.
+  const designFromBrief = (b) => {
+    if (!b?.brief) return;
+    applyBrief(b);
+    autoDesign({
+      brief: b.brief,
+      ctaUrl: b.cta_url || SITE,
+      styleNote: b.style_note || '',
+      posters: /animado/i.test(`${b.label || ''} ${b.brief || ''}`) ? ANIMADO_POSTERS : [],
+    });
   };
 
   // Best-effort, idempotent: only uncatalogued photos are sent, in batches.
@@ -494,6 +554,14 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
               ))}
             </div>
           </Card>
+
+          <EmailBrainstormPanel
+            accessToken={accessToken}
+            showToast={showToast}
+            onUseBrief={applyBrief}
+            onDesignNow={designFromBrief}
+            busy={!!stage}
+          />
 
           <Card className="p-4">
             <SectionLabel className="mb-2">The brief</SectionLabel>
@@ -624,6 +692,37 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
             )}
           </Card>
 
+          {/* Portrait 9:16 stills — the Animado proof row. Staged by the Animado
+              preset (or by an agreed Animado brief), shown here so you can see
+              exactly which frames the email will carry, and drop any of them. */}
+          {posters.length > 0 && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <SectionLabel className="flex items-center gap-1.5"><Images size={12} /> Animado stills</SectionLabel>
+                <span className="text-[11px] text-gray-400">— shown as a poster row</span>
+                <button onClick={() => setPosters([])} className="ml-auto text-gray-300 hover:text-gray-700" title="Remove all">
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {posters.map((p) => (
+                  <div key={p.url} className="relative">
+                    <img src={p.url} alt={p.label || 'animado still'} loading="lazy"
+                      className="w-full aspect-[9/16] object-cover rounded-md border border-gray-200" />
+                    <button onClick={() => setPosters((ps) => ps.filter((x) => x.url !== p.url))}
+                      className="absolute top-0.5 right-0.5 bg-white/90 rounded-full p-0.5 text-gray-500 hover:text-gray-800">
+                      <X size={11} />
+                    </button>
+                    <span className="block text-[10px] text-gray-400 truncate mt-0.5">{p.label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2">
+                Real customer frames, kept at their true 9:16 — never cropped to landscape.
+              </p>
+            </Card>
+          )}
+
           {/* Extra photos → the "explora por estilo" tile grid. */}
           <Card className="p-4">
             <SectionLabel className="mb-2">Photo tiles (optional)</SectionLabel>
@@ -681,7 +780,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
           )}
 
           <div className="space-y-2">
-            <button onClick={autoDesign} disabled={!!stage || !brief.trim()} className={btn.accent + ' w-full !py-3'}>
+            <button onClick={() => autoDesign()} disabled={!!stage || !brief.trim()} className={btn.accent + ' w-full !py-3'}>
               {generating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
               {generating ? stageLabel : 'Design it for me'}
             </button>
@@ -708,7 +807,7 @@ export default function EmailStudioSection({ accessToken, showToast, initialDraf
                 “{String(plan.banner?.headline || '').replace(/\s*\|\s*/g, ' ')}”
               </p>
               {plan.banner?.kicker && <p className="text-[11px] text-gray-400 mt-1">Kicker: {plan.banner.kicker}</p>}
-              <button onClick={autoDesign} disabled={!!stage} className={btn.ghost + ' w-full mt-3'}>
+              <button onClick={() => autoDesign()} disabled={!!stage} className={btn.ghost + ' w-full mt-3'}>
                 {stage === 'auto' ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} Try a different take
               </button>
             </Card>
