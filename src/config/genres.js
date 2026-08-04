@@ -39,6 +39,7 @@ const genres = {
     description: "Música de viento poderosa de Sinaloa",
     subGenres: {
       romantica: { name: "Romántica", description: "Balada de banda emotiva estilo Banda MS" },
+      banda_90s: { name: "Banda de los 90", description: "Rápida para bailar pero con letra de amor, estilo Banda El Recodo con Julio Preciado" },
       quebradita: { name: "Quebradita", description: "Rápida y bailable estilo Banda Machos" },
       tecnobanda: { name: "Tecnobanda", description: "Fusión con electrónico estilo Banda Cuisillos" },
       sinaloense_clasica: { name: "Sinaloense Clásica", description: "Tradicional estilo Banda El Recodo" }

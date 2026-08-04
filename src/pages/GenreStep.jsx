@@ -68,6 +68,7 @@ const voiceGuidance = {
   banda: {
     _default: { default: 'male', femalePopular: true },
     romantica: { default: 'male', femalePopular: true, tip: 'Banda MS tiene éxitos con ambas voces' },
+    banda_90s: { default: 'male', femalePopular: true, tip: 'La voz rasposa de los 90 — funciona con ambas' },
     quebradita: { default: 'male', femalePopular: true },
     tecnobanda: { default: 'male', femalePopular: true },
     sinaloense_clasica: { default: 'male', femalePopular: false }

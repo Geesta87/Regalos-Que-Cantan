@@ -65,13 +65,17 @@ const artistsByGenre = {
   },
 
   // ==========================================
-  // BANDA - 4 subgenres
+  // BANDA - 5 subgenres
   // ==========================================
   banda: {
     romantica: [
       { id: 'banda_ms', name: 'Banda MS' },
       { id: 'julion', name: 'Julión Álvarez' },
       { id: 'recoditos', name: 'Banda Los Recoditos' }
+    ],
+    banda_90s: [
+      { id: 'el_recodo', name: 'Banda El Recodo' },
+      { id: 'banda_limon', name: 'Banda El Limón' }
     ],
     quebradita: [
       { id: 'el_recodo', name: 'Banda El Recodo' },

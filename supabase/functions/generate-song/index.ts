@@ -199,6 +199,35 @@ const genreDNA: Record<string, GenreData> = {
         negative: 'fast quebradita, electronic music, rock guitars, reggaeton, uptempo, FAST, party, dance',
         vocalCharacter: 'powerful emotional vocal, dramatic belting, tearful intensity, full vibrato'
       },
+      banda_90s: {
+        // The 1990s golden-era Sinaloa banda sound (the Julio Preciado era).
+        // This exists because NO other banda sub-genre could reach it: `romantica`
+        // negates "FAST/dance", `quebradita` negates "romantic/emotional", and
+        // `tecnobanda` is synth-based. The defining trait of this era is that the
+        // song is fast and danceable AND the lyric is heartbreak/love at the same
+        // time — so neither negative list may kill the other half.
+        //
+        // Do NOT name Banda El Recodo or Julio Preciado in any field here: the
+        // provider rejects requests referencing real artists, and both are in the
+        // sanitizeArtistNames scrubber. The signature has to be described from
+        // scratch — above all the clarinet counter-melody running over the vocal,
+        // which is what separates this from the Banda MS ballad sound.
+        name: 'Banda de los 90',
+        style: 'classic 1990s banda sinaloense, traditional Sinaloa tamborazo brass band, golden-era acoustic 15-piece banda, fast 2/4 polka-ranchera banda groove, zapateado sinaloense duple meter, up-tempo heartbreak banda, bright major-key acoustic brass with despecho lyrics',
+        // Tempo is researched, not estimated: the reference catalog measures
+        // 123-136 BPM across independent sources (Y llegaste tú ~124, Que te
+        // ruegue quien te quiera ~128-130, Acábame de matar 133 on six separate
+        // releases, Seis pies abajo 133-136). An earlier 150-165 guess rendered
+        // ~20 BPM too fast. Do not raise this without re-measuring.
+        tempo: '125-138 BPM centered around 130 BPM, fast 2/4 cut-time zapateado sinaloense pulse, driving danceable tempo, energetic and forward-moving but never rushed, every lyric word still lands clearly',
+        instruments: 'four-trumpet section in tight close harmony, three trombones answering, two or three clarinets running an ornamental counter-melody over and between the sung lines, charchetas alto horns punching the off-beats, sousaphone tuba walking the bass, tambora bass drum on the downbeat with tarola snare redoble and cowbell, punchy full-brass mambo interludes between verses',
+        vibe: 'golden-era 1990s Sinaloa dance hall, palenque and baile popular, romantic pain you dance to anyway, bittersweet celebration, warm analog 90s recording',
+        negative: 'cumbia, banda cumbia, cumbia sonidera, güiro, tropical 4/4 groove, sonidera, slow ballad, slow tempo, 70-90 BPM, synthesizers, electronic drums, tecnobanda, trap, 808, auto-tune, modern radio pop polish, accordion, norteño conjunto, bajo sexto, guitar-only, acoustic-only, quebradita dance craze, acrobatic party craze',
+        // Gender-neutral by contract: the gender label is prepended at payload
+        // build time, so a gendered word here would contradict it (see the
+        // con_sax_bailar note above).
+        vocalCharacter: 'powerful raspy high ranchera vocal, gravelly grain, long sustained belted notes at the end of phrases, gritos and ad-libs, raw unpolished 90s emotion, no auto-tune'
+      },
       quebradita: {
         name: 'Quebradita',
         style: 'quebradita, FAST danceable banda, HIGH ENERGY party banda, 1990s quebradita dance craze, uptempo brass, driving rhythm, dance music',
@@ -2116,6 +2145,23 @@ const KIE_GENRE_OVERRIDES: Record<string, { style: string; negatives: string }> 
   'ranchera/lenta': {
     style: 'classic Mexican ranchera ballad, golden-age ranchera tradition, full mariachi ensemble, mariachi violin section with sustained emotional bowing, soft trumpet fanfares between verses, vihuela gentle strumming, guitarrón deep bass, 60-75 BPM very slow dramatic ballad, dramatic pauses between phrases, powerful dramatic vocal with deep vibrato, theatrical heartfelt delivery, every word clear and audible, warm vintage analog recording character, classic 1960s-70s ranchera era production',
     negatives: 'trap, 808, auto-tune, EDM, synthesizer, modern pop, rock, accordion, upbeat rhythms, fast tempo, dance energy',
+  },
+  // First banda recipe on the Kie path. Without an entry here, banda falls
+  // through to the verbose Mureka-era genreDNA prompt — which for this sub-genre
+  // would also blow the 1000-char cap once the gender label, Spanish lock and
+  // vocalCharacter are prepended, truncating away the instruments and vibe.
+  // Suno's prior for the bare word "banda" is the modern slow Banda MS ballad,
+  // so "slow ballad, slow tempo" leads the negatives (only ~115 chars of genre
+  // negatives survive the 200-char cap after the language and gender blocks).
+  'banda/banda_90s': {
+    style: 'classic 1990s banda sinaloense, traditional Sinaloa tamborazo brass band, golden-era acoustic 15-piece banda, fast 2/4 polka-ranchera banda groove, zapateado sinaloense duple meter, 125-138 BPM centered around 130 BPM, four trumpets in tight close harmony, three trombones answering in call and response, clarinets running an ornamental counter-melody over and between the sung lines, charchetas alto horns punching the off-beats, sousaphone tuba on a steady oom-pah two-beat bass, tambora bass drum on the downbeat with tarola snare redoble, punchy full-brass mambo interludes between verses, powerful raspy high ranchera vocal with gravelly grain, long sustained belted notes at the end of phrases, gritos and ad-libs, bright major-key harmony under a bittersweet heartbreak lyric, warm analog 1990s studio recording',
+    // Cumbia leads the negatives: at ~130 BPM with a brass band, Suno's nearest
+    // prior is banda-cumbia, and the first cut of this recipe drifted there
+    // (owner-rejected 2026-08-04). The positive side does the other half of the
+    // work — "bailable / danceable / dance pulse" were removed because they pull
+    // toward cumbia-grupera, replaced with tamborazo / polka-ranchera / duple
+    // meter / oom-pah two-beat, which cumbia's 4/4 bass pattern cannot satisfy.
+    negatives: 'cumbia, banda cumbia, cumbia sonidera, güiro, tropical 4/4 groove, slow ballad, synthesizer, tecnobanda, accordion',
   },
   'corrido/belico': {
     style: 'corrido bélico, movimiento alterado street corrido, requinto twelve-string acoustic guitar lead with rapid ornamental runs tremolos and parallel thirds, segunda rhythm guitar with percussive rasgueado strumming, tololoche upright bass, tuba bass accents on the low end, snare-driven 2/4 polka groove with rimshot backbeat pops, driving uptempo forward momentum 100-120 BPM, dark minor-key narrative intensity, tight speech-like aggressive narrative vocal cadences, gritty gravelly mid-range voice, crew shouts gritos and ad-libs on hooks, modern studio clarity on an acoustic backbone',
