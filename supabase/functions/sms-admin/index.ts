@@ -217,7 +217,15 @@ async function backfillTranslations(admin: any, messages: any[]): Promise<void> 
 async function captureExample(
   // deno-lint-ignore no-explicit-any
   admin: any,
-  opts: { conversationId: string; channel: string; reply: string; wasEdited: boolean; source: string },
+  opts: {
+    conversationId: string;
+    channel: string;
+    reply: string;
+    wasEdited: boolean;
+    source: string;
+    /** What the AI originally wrote, when the owner rewrote it before approving. */
+    draftOriginal?: string | null;
+  },
 ) {
   try {
     const { data: lastIn } = await admin
@@ -234,6 +242,7 @@ async function captureExample(
       reply: redactPII(opts.reply),
       was_edited: opts.wasEdited,
       source: opts.source,
+      draft_original: opts.draftOriginal ? redactPII(opts.draftOriginal) : null,
     });
   } catch (e) {
     console.warn('captureExample failed', e);
@@ -756,6 +765,8 @@ serve(async (req) => {
       const result = await deliver(draftCh, convo.phone, text);
       const nowIso = new Date().toISOString();
 
+      const wasEdited = !!(editedText && editedText !== draft.body);
+
       const { data: updated, error: uErr } = await admin
         .from('sms_messages')
         .update({
@@ -765,7 +776,13 @@ serve(async (req) => {
           needs_human: false,
           // Quality signal for the dashboard: did the owner change the draft
           // before approving it?
-          was_edited: !!(editedText && editedText !== draft.body),
+          was_edited: wasEdited,
+          // Keep the AI's ORIGINAL wording when the owner rewrote it. Without
+          // this the update below overwrites `body` in place and the "before"
+          // is gone forever — which is exactly what happened to 296 owner
+          // corrections before the Aug-2026 audit. This column is the raw
+          // material for teaching the bot what it keeps getting wrong.
+          draft_original: wasEdited ? draft.body : null,
           // Re-stamp to the SEND time. The draft was created when the AI wrote
           // it, but the customer may have sent more messages before the owner
           // approved — without this the approved reply appears mid-thread
@@ -787,8 +804,9 @@ serve(async (req) => {
         conversationId: convoId,
         channel: draftCh,
         reply: text,
-        wasEdited: !!(editedText && editedText !== draft.body),
+        wasEdited,
         source: 'approve',
+        draftOriginal: wasEdited ? draft.body : null,
       });
 
       // Execute the draft's PROPOSED side action — the owner's approval of the

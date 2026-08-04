@@ -40,6 +40,19 @@ import { embedText, embedTexts } from '../_shared/embed.ts';
 import { sendSms } from '../_shared/send-sms.ts';
 import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { translateOne } from '../_shared/translate.ts';
+// ONE resolver for "who is this customer". The snapshot and the look_up_my_order
+// tool both go through it, so they can no longer contradict each other — which
+// was the single biggest cause of thrown-away drafts in the Aug-2026 audit.
+import {
+  buildOrderLink,
+  buildPreviewLink,
+  extractEmails,
+  fetchOrderExtras,
+  phoneLast10 as toLast10,
+  resolveCustomerOrders,
+  type CsOrder,
+  type OrderExtras,
+} from '../_shared/cs-customer-resolve.ts';
 
 // Topics that can NEVER auto-send, even if added to the allowlist (belt & braces
 // with needs_human). Money, complaints, and edits to finished songs always go to
@@ -65,70 +78,6 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Build the customer-facing link for one order, mirroring send-song-ready-sms's
-// logic: upsell buyers get /success (shows everything); audio-only orders get
-// the branded /s/<short_code>; fall back to /success by id.
-function buildOrderLink(o: Record<string, unknown>): string {
-  const isUpsell =
-    o.has_video_addon === true ||
-    o.karaoke_video_status != null ||
-    o.karaoke_status != null;
-  if (isUpsell) return `${SITE}/success?song_id=${o.id}`;
-  if (o.short_code) return `${SITE}/s/${o.short_code}`;
-  return `${SITE}/success?song_id=${o.id}`;
-}
-
-// ── Always-on "situation snapshot" ─────────────────────────────────────────
-// Before the model writes anything, we hand it a factual picture of WHO this
-// customer is and WHERE they are in the journey — so it responds to the
-// situation, not just the words. Grounded by BOTH the conversation's phone AND
-// any email the customer typed (over half of people who message us can't be
-// found by phone — they bought on the web with no phone on file).
-const SNAPSHOT_SONG_COLS =
-  'id, recipient_name, sender_name, occasion, genre, genre_name, short_code, audio_url, has_video_addon, karaoke_status, karaoke_video_status, created_at, paid, payment_status, paid_at, amount_paid, stripe_payment_id, email, whatsapp_phone';
-
-function snapIsPaid(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
-}
-
-// Pull email addresses the CUSTOMER typed in the thread (for identity lookup).
-function extractEmails(texts: string[]): string[] {
-  const re = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-  const found = new Set<string>();
-  for (const t of texts) {
-    const matches = String(t || '').match(re);
-    if (matches) for (const m of matches) found.add(m.toLowerCase());
-  }
-  return [...found];
-}
-
-// deno-lint-ignore no-explicit-any
-async function fetchByPhone(admin: any, last10: string): Promise<Record<string, unknown>[]> {
-  if (last10.length < 10) return [];
-  const { data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
-    .ilike('whatsapp_phone', `%${last10}`).order('created_at', { ascending: false }).limit(8);
-  return data || [];
-}
-
-// Email lookup with domain-typo tolerance (glail→gmail via the local-part),
-// mirroring the copilot fix.
-// deno-lint-ignore no-explicit-any
-async function fetchByEmail(admin: any, email: string): Promise<Record<string, unknown>[]> {
-  let { data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
-    .ilike('email', email).order('created_at', { ascending: false }).limit(8);
-  if (!data || !data.length) {
-    const local = email.split('@')[0].replace(/[%,()*]/g, '');
-    if (local.length >= 4) {
-      ({ data } = await admin.from('songs').select(SNAPSHOT_SONG_COLS)
-        .ilike('email', `${local}@%`).order('created_at', { ascending: false }).limit(8));
-    }
-  }
-  return data || [];
-}
-
 function daysAgo(iso: unknown): number | null {
   if (!iso) return null;
   const t = new Date(String(iso)).getTime();
@@ -136,63 +85,125 @@ function daysAgo(iso: unknown): number | null {
   return Math.floor((Date.now() - t) / 86400000);
 }
 
+// ── Always-on "situation snapshot" ─────────────────────────────────────────
+// Before the model writes anything, we hand it a factual picture of WHO this
+// customer is and WHERE they are in the journey — so it responds to the
+// situation, not just the words.
+//
+// Identity resolution lives ENTIRELY in _shared/cs-customer-resolve.ts, which
+// the look_up_my_order tool also calls. Previously these were two separate
+// implementations reading two different sources, and they disagreed constantly:
+// the snapshot could find you by email, the tool could only find you by phone.
+// The model got both answers in one turn and wrote "I couldn't find your order"
+// to customers whose order was right there. One resolver, one answer.
+
+// Render the video / story-video / open-correction state for the songs we found,
+// so threads about photos, videos and pending fixes stop being answered blind.
+function renderExtras(orders: CsOrder[], extras: OrderExtras): string[] {
+  const lines: string[] = [];
+  const nameFor = (songId: string) =>
+    orders.find((o) => String(o.id) === String(songId))?.recipient_name || 'su canción';
+
+  for (const v of extras.videos) {
+    const who = nameFor(v.song_id);
+    if (v.video_url) {
+      lines.push(`- VIDEO CON FOTOS de ${who}: YA ESTÁ LISTO. Si pregunta por el video, es este pedido.`);
+    } else if (v.paid && !v.photo_count) {
+      lines.push(`- VIDEO CON FOTOS de ${who}: PAGADO pero AÚN NO subió las fotos. Si escribe sobre el video, lo que necesita es subir sus fotos desde el enlace de su canción.`);
+    } else if (v.paid) {
+      lines.push(`- VIDEO CON FOTOS de ${who}: pagado, ${v.photo_count} foto(s) recibidas, en proceso (estado: ${v.status || 'en curso'}). NO prometas fecha.`);
+    }
+  }
+  for (const sv of extras.storyVideos) {
+    const who = nameFor(sv.song_id);
+    lines.push(
+      sv.video_url
+        ? `- VIDEO ANIMADO de ${who}: YA ESTÁ LISTO.`
+        : `- VIDEO ANIMADO (Animado) de ${who}: EN PRODUCCIÓN (estado: ${sv.state || 'en curso'}). Si manda fotos o dice quién es quién, es para ESTE video — agradécelo y confirma que se lo pasamos al equipo. NO prometas fecha y NO lo trates como una pregunta sobre la canción.`,
+    );
+  }
+  for (const f of extras.fixes) {
+    lines.push(
+      `- CORRECCIÓN YA REGISTRADA para ${nameFor(f.song_id)} (estado: ${f.status || 'abierta'}): "${String(f.customer_request || '').slice(0, 140)}". NO la registres de nuevo; confirma que el equipo ya la tiene.`,
+    );
+  }
+  return lines;
+}
+
 // deno-lint-ignore no-explicit-any
 async function buildSituationSnapshot(admin: any, opts: {
   phoneLast10: string;
   customerEmails: string[];
   alreadySentLink: boolean;
-}): Promise<string> {
-  const rows: Record<string, unknown>[] = [];
-  rows.push(...(await fetchByPhone(admin, opts.phoneLast10)));
-  for (const em of opts.customerEmails.slice(0, 3)) {
-    rows.push(...(await fetchByEmail(admin, em)));
-  }
-  // Dedup by id, newest first.
-  const seen = new Set<string>();
-  const orders = rows
-    .filter((s) => { const id = String(s.id); if (seen.has(id)) return false; seen.add(id); return true; })
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+}): Promise<{ text: string; identified: boolean; orders: CsOrder[] }> {
+  const { orders, matchedBy } = await resolveCustomerOrders(admin, {
+    phoneLast10: opts.phoneLast10,
+    emails: opts.customerEmails,
+    // Names are NOT used here on purpose: a name-only match can hit a stranger.
+    // The tool may try it, and flags the result as needing confirmation.
+  });
 
   const header =
     'SITUACIÓN DEL CLIENTE (contexto real del sistema — LÉELO Y PIÉNSALO ANTES DE RESPONDER; responde según la SITUACIÓN, no solo según las palabras del mensaje):';
 
   if (!orders.length) {
     const gaveEmail = opts.customerEmails.length > 0;
-    return `${header}
+    return {
+      identified: false,
+      orders: [],
+      text: `${header}
 - NO pude identificar a este cliente${gaveEmail ? ' ni con el correo que dio' : ' por su número de teléfono'}. Esto NO significa que sea nuevo: puede haber comprado en la web con otro número o correo. NUNCA asumas que no ha comprado, y NUNCA le preguntes "¿ya hiciste tu canción?" como si fuera nuevo.
-- Con calidez, pídele el CORREO con el que hizo su pedido (o el nombre de la persona a quien va la canción) para ubicarlo. Si ya dio un correo y aun así no aparece, dile que un compañero del equipo lo verificará.`;
+- Con calidez, pídele el CORREO con el que hizo su pedido. Si ya dio un correo y aun así no aparece, pídele el NOMBRE de la persona a quien va dedicada la canción y usa look_up_my_order con ese nombre antes de rendirte.
+- Solo si nada de eso lo ubica, dile que un compañero del equipo lo verificará.`,
+    };
   }
 
-  const paid = orders.filter((o) => snapIsPaid(o));
-  const unpaid = orders.filter((o) => !snapIsPaid(o));
-  const anyReady = orders.some((o) => o.audio_url && String(o.audio_url) !== '');
+  const paid = orders.filter((o) => o.is_paid);
+  const unpaid = orders.filter((o) => !o.is_paid);
+  const anyReady = orders.some((o) => o.song_ready);
   const recent = orders[0];
   const d = daysAgo(recent.created_at);
   const whenTxt = d === 0 ? 'hoy' : d === 1 ? 'ayer' : d != null ? `hace ${d} días` : 'recientemente';
   const recipient = recent.recipient_name
     ? ` (la más reciente para ${recent.recipient_name}${recent.occasion ? `, ${recent.occasion}` : ''})`
     : '';
+  const how = matchedBy.includes('phone')
+    ? 'por su teléfono'
+    : matchedBy.length
+    ? 'por el correo que dio'
+    : '';
 
-  const lines: string[] = [header, `- Cliente IDENTIFICADO. Pedido más reciente: ${whenTxt}${recipient}.`];
+  const lines: string[] = [
+    header,
+    `- Cliente IDENTIFICADO${how ? ` (${how})` : ''}. Pedido más reciente: ${whenTxt}${recipient}.`,
+  ];
 
   if (paid.length) {
     lines.push(
       `- YA ES CLIENTE: tiene ${paid.length} canción(es) PAGADA(S)${anyReady ? ' y lista(s)' : ''}.${opts.alreadySentLink ? ' Ya le enviamos su enlace antes.' : ''} Trátalo como cliente existente y NUNCA le preguntes si ya hizo su canción. Si necesita su enlace, compárteselo:`,
     );
     for (const o of paid.slice(0, 4)) {
-      lines.push(`    · ${o.recipient_name || 'su canción'}: ${buildOrderLink(o)}`);
+      lines.push(`    · ${o.recipient_name || 'su canción'}: ${buildOrderLink(o, SITE)}`);
     }
   }
   if (unpaid.length) {
-    const previewLink = `${SITE}/listen?song_ids=${unpaid.map((o) => o.id).join(',')}`;
     lines.push(
-      `- Tiene ${unpaid.length} canción(es) SIN pagar. Si pregunta por ellas, comparte este enlace para que las ESCUCHE y explícale que al completar la compra se desbloquea la descarga (NUNCA compartas descarga de algo no pagado): ${previewLink}`,
+      `- Tiene ${unpaid.length} canción(es) SIN pagar. Si pregunta por ellas, comparte este enlace para que las ESCUCHE y explícale que al completar la compra se desbloquea la descarga (NUNCA compartas descarga de algo no pagado): ${buildPreviewLink(unpaid, SITE)}`,
     );
   }
   if (paid.length > 1) {
     lines.push(`- Es CLIENTE RECURRENTE (${paid.length} compradas). Trátalo con especial cariño y gratitud.`);
   }
-  return lines.join('\n');
+
+  // Everything that is NOT the song itself: videos, Animado, open corrections.
+  try {
+    const extras = await fetchOrderExtras(admin, orders.map((o) => String(o.id)));
+    lines.push(...renderExtras(orders, extras));
+  } catch (exErr) {
+    console.warn('cs-agent: extras fetch failed', exErr);
+  }
+
+  return { text: lines.join('\n'), identified: true, orders };
 }
 
 // LIVE PRICES — built from the same code-owned catalog the website and every
@@ -212,8 +223,20 @@ const TOOLS = [
   {
     name: 'look_up_my_order',
     description:
-      "Busca el pedido del cliente que está escribiendo en esta conversación. NO recibe parámetros: siempre usa el número de teléfono de esta conversación (el cliente solo puede ver SU propio pedido). Úsala cuando el cliente pregunte por su canción, su enlace, si ya está lista o si ya pagó. Devuelve los pedidos de ese número con: nombre del destinatario, ocasión, si está pagado (is_paid), si la canción está lista (song_ready), el download_link (SOLO si está pagado) y preview_link_for_unpaid (enlace para ESCUCHAR sin descargar, para pedidos no pagados).",
-    input_schema: { type: 'object', properties: {} },
+      "Busca el pedido del cliente de esta conversación. SIEMPRE busca automáticamente por el teléfono de esta conversación. Además puedes pasar el CORREO que el cliente escribió y/o el NOMBRE de la persona a quien va dedicada la canción, para encontrarlo cuando el teléfono no lo ubica (más de la mitad de los clientes compraron en la web con otro número). Úsala cuando el cliente pregunte por su canción, su enlace, si ya está lista o si ya pagó — y ÚSALA DE NUEVO en cuanto el cliente te dé un correo o un nombre nuevo. Devuelve: nombre del destinatario, ocasión, si está pagado (is_paid), si la canción está lista (song_ready), el download_link (SOLO si está pagado) y preview_link_for_unpaid (enlace para ESCUCHAR sin descargar). Si el resultado trae needs_confirmation=true, el pedido se encontró SOLO por nombre y puede ser de otra persona: confirma la identidad con el cliente ANTES de compartir ningún enlace.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        email: {
+          type: 'string',
+          description: 'El correo que el cliente escribió en la conversación, si dio alguno. Opcional.',
+        },
+        recipient_name: {
+          type: 'string',
+          description: 'El nombre de la persona a quien va dedicada la canción, si el cliente lo dijo. Úsalo solo cuando el teléfono y el correo no encontraron nada. Opcional.',
+        },
+      },
+    },
   },
   {
     name: 'send_link_by_email',
@@ -255,6 +278,25 @@ const TOOLS = [
     },
   },
 ];
+
+// ── The WhatsApp button opener ──────────────────────────────────────────────
+// 755 of 2,775 inbound messages in 45 days (27%) are the SAME contentless text,
+// produced by tapping the "Hola, tengo una pregunta" button on the site. There
+// is nothing to reason about: when we can't identify the sender there is exactly
+// one right reply, and it's the one the training doc already prescribes (PASO 1).
+// Answering it with a full tool-using model round-trip bought nothing.
+const OPENER_REPLY =
+  '¡Hola! 👋 Gracias por escribirnos a Regalos Que Cantan 🎵 Con mucho gusto le ayudo. Para empezar, ¿ya creó su canción con nosotros o le gustaría hacer una?';
+
+function isButtonOpener(text: string): boolean {
+  const t = String(text || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')                // strip emoji/punctuation/mojibake
+    .replace(/\s+/g, ' ')
+    .trim().toLowerCase();
+  if (!t || t.length > 80) return false;
+  return /^hola\s+tengo una pregunta( sobre)?\b/.test(t);
+}
 
 // Finite set of question categories (the "states" a message can be about) — used
 // to measure quality BY topic in the dashboard and, later, to gate auto-send.
@@ -351,7 +393,10 @@ REGLAS ESTRICTAS:
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
 - Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
 - Si el pedido NO está pagado (is_paid = false): comparte el preview_link_for_unpaid para que ESCUCHE sus versiones, y explícale con calidez que ahí puede escucharlas y que al COMPLETAR SU COMPRA se desbloquea la descarga para guardarla y compartirla. NUNCA compartas un download_link ni digas que la canción "ya está lista para descargar" en un pedido no pagado. El enlace de preview solo deja escuchar; la descarga sigue bloqueada hasta que pague.
-- Si no aparece ningún pedido para este número, no inventes: pide amablemente que escriba desde el número con el que hizo la compra, o que comparta su correo para que una persona lo verifique.
+- Si no aparece ningún pedido para este número, NO te rindas y NO inventes. Sigue esta escalera, en orden: (1) pide con calidez el CORREO del pedido y vuelve a llamar look_up_my_order con ese correo; (2) si el correo tampoco lo ubica, pide el NOMBRE de la persona a quien va dedicada la canción y llama look_up_my_order con ese nombre; (3) solo cuando ya intentaste teléfono, correo Y nombre, di que un compañero lo verificará. Pide UN dato a la vez, no los tres juntos.
+- Si un resultado viene con needs_confirmation=true, se encontró SOLO por nombre y podría ser de otra persona: NO compartas enlaces, confirma primero la identidad.
+- VENDER ANTES QUE ESCALAR: si el cliente muestra intención de COMPRAR (quiere otra canción, dice "la compro", "aunque me cobren", pregunta cómo pagar, quiere un video o un extra), tu respuesta SIEMPRE debe incluir el camino para comprar — el enlace de su canción sin pagar, o regalosquecantan.com para una nueva. Nunca respondas solo "un compañero te dará seguimiento" a alguien que quiere darnos dinero.
+- UNA ESCALACIÓN NUNCA ES LA RESPUESTA COMPLETA: aunque uses flag_for_human, responde PRIMERO lo que sí puedes responder con los datos que tienes (el precio, cómo funciona, dónde está su canción, qué opciones existen) y recién entonces di que un compañero dará seguimiento. Una respuesta que solo dice "un compañero te contactará" y nada más NO sirve.
 - Si el cliente pide un CAMBIO o corrección en una canción que YA se hizo (un nombre mal escrito o mal pronunciado, una fecha equivocada, una línea de la letra que quiere cambiar): usa request_song_fix con el detalle EXACTO del cambio, y responde con calidez que tomamos nota y que el equipo lo revisará (sin prometer plazo).
 - Si el tema es de dinero (reembolso, cargo, cobro doble, disputa), una queja/molestia fuerte, o algo de lo que no estás seguro: usa flag_for_human y responde que un compañero del equipo dará seguimiento pronto.
 - No prometas reembolsos, cambios ni plazos exactos.
@@ -445,7 +490,7 @@ serve(async (req) => {
       staleDraftId = existingDraft.id as string;
     }
 
-    const phoneLast10 = String(convo.phone || '').replace(/\D/g, '').slice(-10);
+    const phoneLast10 = toLast10(convo.phone);
 
     // Build the Anthropic message list from the thread.
     const messages: { role: 'user' | 'assistant'; content: unknown }[] = history
@@ -501,8 +546,11 @@ serve(async (req) => {
       (m) => m.direction === 'outbound' && /\/s\/|\/success|\/listen|ya est\w* lista/i.test(m.body || ''),
     );
     let snapshot = '';
+    let customerIdentified = false;
     try {
-      snapshot = await buildSituationSnapshot(admin, { phoneLast10, customerEmails, alreadySentLink });
+      const snap = await buildSituationSnapshot(admin, { phoneLast10, customerEmails, alreadySentLink });
+      snapshot = snap.text;
+      customerIdentified = snap.identified;
     } catch (snapErr) {
       console.warn('cs-agent: snapshot build failed', snapErr);
     }
@@ -537,7 +585,9 @@ serve(async (req) => {
       }
 
       // (b) Retrieve the approved replies most SIMILAR to this incoming message.
-      let examples: { customer_msg: string; reply: string; was_edited: boolean }[] | null = null;
+      let examples:
+        | { customer_msg: string; reply: string; was_edited: boolean; draft_original?: string | null }[]
+        | null = null;
       const queryVec = await embedText(String(last.body || ''));
       if (queryVec) {
         const { data: matched } = await admin.rpc('match_cs_examples', {
@@ -550,22 +600,30 @@ serve(async (req) => {
       if (!examples) {
         const { data: recent } = await admin
           .from('cs_examples')
-          .select('customer_msg, reply, was_edited')
+          .select('customer_msg, reply, was_edited, draft_original')
+          // Skip fragments ("ok", "gracias") — they teach nothing and crowd out
+          // real examples. Mirrors the filter in match_cs_examples.
+          .not('reply', 'is', null)
           .order('created_at', { ascending: false })
           .limit(EXAMPLE_LIMIT);
-        examples = recent || null;
+        examples = (recent || []).filter((e: { reply?: string }) => (e.reply || '').trim().length >= 25);
       }
 
       if (examples && examples.length) {
         const lines = examples
           .map((e) => {
             const q = (e.customer_msg || '').trim();
+            const before = (e.draft_original || '').trim();
+            // A correction teaches far more when the MISTAKE travels with it.
+            if (e.was_edited && before) {
+              return `${q ? `Cliente: ${q}\n` : ''}Borrador INCORRECTO: ${before}\nCORREGIDO por el equipo: ${e.reply}`;
+            }
             const tag = e.was_edited ? ' (corregido por el equipo)' : '';
             return `${q ? `Cliente: ${q}\n` : ''}Equipo${tag}: ${e.reply}`;
           })
           .join('\n---\n');
         examplesBlock =
-          `\n\nAPRENDE DE ESTAS RESPUESTAS REALES del equipo (las más PARECIDAS a este mensaje). Imita el TONO, la calidez, la longitud y el estilo con que responde el equipo. Las marcadas "(corregido por el equipo)" son correcciones importantes: síguelas. NO copies nombres, enlaces ni datos específicos de estos ejemplos — esos SIEMPRE vienen de la herramienta look_up_my_order o de la SITUACIÓN DEL CLIENTE:\n${lines}`;
+          `\n\nAPRENDE DE ESTAS RESPUESTAS REALES del equipo (las más PARECIDAS a este mensaje). Imita el TONO, la calidez, la longitud y el estilo con que responde el equipo. Donde veas "Borrador INCORRECTO" seguido de "CORREGIDO por el equipo", es un error que YA cometiste antes: NO lo repitas, escribe como la versión corregida. NO copies nombres, enlaces ni datos específicos de estos ejemplos — esos SIEMPRE vienen de la herramienta look_up_my_order o de la SITUACIÓN DEL CLIENTE:\n${lines}`;
       }
     } catch (exErr) {
       console.warn('cs-agent: retrieval failed', exErr);
@@ -573,6 +631,9 @@ serve(async (req) => {
 
     let needsHuman = false;
     let escalateReason = '';
+    // Set when an order was matched ONLY by recipient name — it may belong to
+    // someone else. Blocks auto-send outright (see the gate below).
+    let unconfirmedMatch = false;
     // Approval-gated side action, recorded on the draft; sms-admin executes it
     // ONLY when the owner approves the draft. Two shapes today:
     //   { type: 'resend_email', email }           → resend the paid link by email
@@ -581,7 +642,24 @@ serve(async (req) => {
 
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
-    for (let hop = 0; hop < 4; hop++) {
+
+    // FAST PATH — the contentless "Hola, tengo una pregunta" button, from a
+    // first-time writer we could NOT identify. There is nothing to think about:
+    // reply with the qualifying question the training doc prescribes and skip
+    // the model entirely. Still written as a DRAFT, so it goes through the exact
+    // same approval (and, if 'greeting' is ever allowlisted, auto-send) gate.
+    // Deliberately NOT taken when we DID identify them — an existing customer
+    // deserves a real answer about their actual order, not a generic greeting.
+    const inboundCount = history.filter((m) => m.direction === 'inbound').length;
+    const useOpenerFastPath =
+      !customerIdentified &&
+      inboundCount === 1 &&
+      !last.media_path &&
+      isButtonOpener(String(last.body || ''));
+
+    if (useOpenerFastPath) finalText = OPENER_REPLY;
+
+    for (let hop = 0; !useOpenerFastPath && hop < 4; hop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -617,40 +695,58 @@ serve(async (req) => {
       for (const tu of toolUses) {
         let result: unknown;
         if (tu.name === 'look_up_my_order') {
-          // PHONE IS PINNED from the conversation — AI input is ignored.
-          if (phoneLast10.length < 10) {
-            result = { orders: [], note: 'no valid phone on this conversation' };
+          // PHONE IS ALWAYS PINNED from the conversation. The model may ADD an
+          // email or a recipient name to widen the search, but it can never
+          // swap the phone out — so a customer still cannot reach anyone else's
+          // order through the phone path.
+          const toolEmail = String(tu.input?.email || '').trim().toLowerCase();
+          const toolName = String(tu.input?.recipient_name || '').trim();
+          // Emails the customer typed in the thread + whatever the model passed.
+          const searchEmails = [...new Set([...customerEmails, toolEmail].filter(Boolean))];
+
+          const { orders, matchedBy, needsConfirmation } = await resolveCustomerOrders(admin, {
+            phoneLast10,
+            emails: searchEmails,
+            recipientNames: toolName ? [toolName] : [],
+          });
+
+          if (!orders.length) {
+            result = {
+              orders: [],
+              searched_by: {
+                phone: phoneLast10.length === 10,
+                emails: searchEmails,
+                recipient_name: toolName || null,
+              },
+              guidance: searchEmails.length || toolName
+                ? 'No apareció nada. Pide el OTRO dato que aún no tengas (si ya diste correo, pide el nombre de la persona a quien va la canción; si ya diste nombre, pide el correo) y vuelve a llamar a esta herramienta. Solo si ya intentaste teléfono, correo Y nombre, dile que un compañero lo verificará.'
+                : 'No apareció nada por teléfono. Pide con calidez el CORREO del pedido y vuelve a llamar a esta herramienta con él. NUNCA asumas que el cliente no ha comprado.',
+            };
           } else {
-            const { data: orders } = await admin
-              .from('cs_customer_lookup')
-              .select('id, recipient_name, sender_name, occasion, genre, short_code, song_status, song_ready, has_video_addon, karaoke_video_status, karaoke_status, created_at, is_paid')
-              .eq('phone_last10', phoneLast10)
-              .order('created_at', { ascending: false })
-              .limit(5);
-            const orderList = (orders || []).map((o) => ({
+            if (needsConfirmation) unconfirmedMatch = true;
+            const orderList = orders.slice(0, 5).map((o) => ({
               recipient_name: o.recipient_name,
               occasion: o.occasion,
               genre: o.genre,
               is_paid: o.is_paid,
               song_ready: o.song_ready,
               created_at: o.created_at,
-              // HARD GATE: the DOWNLOAD link is only ever built for PAID orders.
-              // Impossible for the model to hand out a download before payment.
-              download_link: o.is_paid ? buildOrderLink(o) : null,
+              // HARD GATE: the DOWNLOAD link is only ever built for PAID orders,
+              // and never at all on an unconfirmed name-only match.
+              download_link: o.is_paid && !needsConfirmation ? buildOrderLink(o, SITE) : null,
             }));
-            // One PREVIEW ("listen before you pay") link covering all UNPAID
-            // songs for this phone. Safe to share: the /listen page lets the
-            // customer HEAR their versions, but the download stays locked until
-            // they complete the purchase.
-            const unpaidIds = (orders || []).filter((o) => !o.is_paid).map((o) => o.id);
-            const previewLink = unpaidIds.length
-              ? `${SITE}/listen?song_ids=${unpaidIds.join(',')}`
-              : null;
+            const unpaid = orders.filter((o) => !o.is_paid);
             result = {
               orders: orderList,
-              preview_link_for_unpaid: previewLink,
-              guidance:
-                'Pedidos PAGADOS: comparte su download_link. Pedidos NO pagados: comparte preview_link_for_unpaid para que escuche, y explica que al completar la compra se desbloquea la descarga. NUNCA compartas un download_link de un pedido no pagado.',
+              matched_by: matchedBy,
+              needs_confirmation: needsConfirmation,
+              // One PREVIEW ("listen before you pay") link covering all UNPAID
+              // songs. Safe to share: /listen lets the customer HEAR their
+              // versions, but download stays locked until they complete purchase.
+              preview_link_for_unpaid: needsConfirmation ? null : buildPreviewLink(unpaid, SITE),
+              guidance: needsConfirmation
+                ? 'ATENCIÓN: esto se encontró SOLO por el nombre del destinatario, así que podría ser el pedido de otra persona. NO compartas ningún enlace todavía. Confirma primero con el cliente (por ejemplo: "¿La canción es para [NOMBRE], de parte de [REMITENTE]?") y pídele el correo del pedido para confirmarlo.'
+                : 'Pedidos PAGADOS: comparte su download_link. Pedidos NO pagados: comparte preview_link_for_unpaid para que escuche, y explica que al completar la compra se desbloquea la descarga. NUNCA compartas un download_link de un pedido no pagado.',
             };
           }
         } else if (tu.name === 'send_link_by_email') {
@@ -733,13 +829,29 @@ serve(async (req) => {
     // switch is on, this category is on the allowlist (and not a never-auto one),
     // nothing flagged a human, and the safety critic explicitly passed.
     const autoCats: string[] = Array.isArray(settings?.auto_categories) ? settings.auto_categories : [];
-    const canAuto =
-      settings?.auto_send_enabled === true &&
-      autoCats.includes(category) &&
-      !NEVER_AUTO.has(category) &&
-      !needsHuman &&
-      !proposedAction &&           // email-resend proposals still need approval
-      safety.ran && safety.pass;
+    // Every condition below must hold. The list fails CLOSED: anything we are
+    // not sure about becomes a draft for the owner, which is the status quo and
+    // costs nothing. Ordered cheapest-check-first for readability, not speed.
+    const autoBlockers: string[] = [];
+    if (settings?.auto_send_enabled !== true) autoBlockers.push('master switch off');
+    if (!autoCats.includes(category)) autoBlockers.push(`category '${category}' not allowlisted`);
+    if (NEVER_AUTO.has(category)) autoBlockers.push('category is never-auto');
+    if (needsHuman) autoBlockers.push('flagged for a human');
+    if (proposedAction) autoBlockers.push('has a proposed side action');
+    if (!(safety.ran && safety.pass)) autoBlockers.push('safety critic did not explicitly pass');
+    // ── extra gates added after the Aug-2026 audit ──
+    // An order matched only by NAME could belong to a stranger — never unattended.
+    if (unconfirmedMatch) autoBlockers.push('order matched by name only');
+    // Any customer-specific LINK in an unidentified thread is a leak risk.
+    if (!customerIdentified && /https?:\/\//.test(finalText)) {
+      autoBlockers.push('shares a link but customer is not identified');
+    }
+    // Image threads go through the vision path, which is the least reliable input.
+    if (last.media_path) autoBlockers.push('inbound message contains media');
+    // Long replies are where the model reasons most, and reason most wrongly.
+    if (finalText.length > 600) autoBlockers.push('reply too long for unattended send');
+
+    const canAuto = autoBlockers.length === 0;
 
     if (canAuto) {
       const sendCh = convo.channel || 'sms';
@@ -828,7 +940,15 @@ serve(async (req) => {
       console.warn('cs-agent: push failed', pushErr);
     }
 
-    return json({ ok: true, draft: inserted, needs_human: needsHuman, reason: escalateReason || undefined });
+    return json({
+      ok: true,
+      draft: inserted,
+      needs_human: needsHuman,
+      reason: escalateReason || undefined,
+      // When auto-send is ON but this reply still became a draft, say WHY. This
+      // is how you tune the allowlist without guessing.
+      auto_blocked_by: settings?.auto_send_enabled === true ? autoBlockers : undefined,
+    });
   } catch (e) {
     console.error('cs-agent error:', e);
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);

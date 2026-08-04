@@ -21,6 +21,8 @@
 // Import from any edge function:
 //   import { sendSms } from '../_shared/send-sms.ts';
 
+import { formatForSms } from './format-message.ts';
+
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
 const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID');
@@ -57,7 +59,9 @@ export async function sendSms(to: string, body: string, mediaUrl?: string): Prom
     const sender = TWILIO_MESSAGING_SERVICE_SID
       ? { MessagingServiceSid: TWILIO_MESSAGING_SERVICE_SID }
       : { From: TWILIO_SMS_FROM! };
-    const form = new URLSearchParams({ ...sender, To: to, Body: body });
+    // SMS has no rich text — Markdown emphasis from the CS agent would arrive as
+    // literal asterisks. Strip it here so every caller is covered.
+    const form = new URLSearchParams({ ...sender, To: to, Body: formatForSms(body) });
     if (mediaUrl) form.append('MediaUrl', mediaUrl);
 
     const res = await fetch(url, {
@@ -101,7 +105,7 @@ export async function scheduleSms(to: string, body: string, sendAtIso: string): 
     const form = new URLSearchParams({
       MessagingServiceSid: TWILIO_MESSAGING_SERVICE_SID,
       To: to,
-      Body: body,
+      Body: formatForSms(body),
       ScheduleType: 'fixed',
       SendAt: sendAtIso,
     });

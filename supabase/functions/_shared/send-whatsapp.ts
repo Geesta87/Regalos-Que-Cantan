@@ -25,6 +25,8 @@
 // Import from any edge function:
 //   import { sendWhatsApp, isWhatsAppConfigured } from '../_shared/send-whatsapp.ts';
 
+import { formatForWhatsApp } from './format-message.ts';
+
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
 // Prefer the dedicated customer-service sender; fall back to the shared one.
@@ -73,7 +75,11 @@ export async function sendWhatsApp(to: string, body: string, mediaUrl?: string):
         ? TWILIO_WHATSAPP_FROM!
         : `whatsapp:${TWILIO_WHATSAPP_FROM!}`,
       To: toWhatsAppAddress(to),
-      Body: body,
+      // WhatsApp bold is *one* asterisk. The CS agent writes Markdown `**x**`,
+      // which reaches the customer as literal stray asterisks (43% of sent
+      // replies in the Aug-2026 audit). Normalize here so every caller is
+      // covered and nobody has to remember.
+      Body: formatForWhatsApp(body),
     });
     if (mediaUrl) form.append('MediaUrl', mediaUrl);
 

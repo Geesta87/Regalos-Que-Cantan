@@ -33,6 +33,47 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// ── Learned-facts section ───────────────────────────────────────────────────
+// Approving a distilled fact used to do `doc + "\n\n# " + title + "\n" + body`.
+// Blind append, forever, with no dedupe and no structure. Over ~2 weeks that
+// bolted ten loose English-titled blocks onto the end of a carefully written
+// Spanish document and grew it from 11.6k to 15.1k characters — and the blocks
+// started CONTRADICTING the body (the doc said customers abroad need a US payer;
+// an appended block said they can just use an international card). The bot was
+// handed both, in the same prompt, and had to guess.
+//
+// Now the learned facts live in ONE delimited, de-duplicated section at the end.
+// Re-approving the same title REPLACES that entry instead of stacking a new one,
+// so the section converges instead of growing without bound, and the owner can
+// see at a glance what the bot taught itself versus what they wrote.
+const LEARNED_START = '<!-- APRENDIDO:INICIO — sección administrada automáticamente, editable -->';
+const LEARNED_END = '<!-- APRENDIDO:FIN -->';
+
+export function mergeLearnedFact(doc: string, title: string, proposal: string): string {
+  const entry = `### ${title}\n${proposal}`;
+  const startIdx = doc.indexOf(LEARNED_START);
+  const endIdx = doc.indexOf(LEARNED_END);
+
+  // No managed section yet → create one at the end.
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+    return `${doc.trimEnd()}\n\n---\n\n## APRENDIDO DE CASOS REALES\n${LEARNED_START}\n\n${entry}\n\n${LEARNED_END}\n`;
+  }
+
+  const head = doc.slice(0, startIdx + LEARNED_START.length);
+  const body = doc.slice(startIdx + LEARNED_START.length, endIdx);
+  const tail = doc.slice(endIdx);
+
+  // Split existing entries on the `### ` heading and drop any with this title,
+  // so an updated fact supersedes the old one instead of contradicting it.
+  const existing = body
+    .split(/\n(?=### )/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => s.replace(/^###\s*/, '').split('\n')[0].trim().toLowerCase() !== title.toLowerCase());
+
+  return `${head}\n\n${[...existing, entry].join('\n\n')}\n\n${tail}`;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -309,7 +350,7 @@ serve(async (req) => {
       const { data: settings } = await admin
         .from('cs_agent_settings').select('knowledge_doc').eq('id', 1).maybeSingle();
       const base = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
-      const appended = `${base}\n\n# ${prop.title}\n${prop.proposal}`;
+      const appended = mergeLearnedFact(base, String(prop.title || '').trim(), String(prop.proposal || '').trim());
       const { error: upErr } = await admin
         .from('cs_agent_settings').update({ knowledge_doc: appended, updated_at: new Date().toISOString() }).eq('id', 1);
       if (upErr) return json({ success: false, error: upErr.message }, 500);
