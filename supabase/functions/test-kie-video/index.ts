@@ -42,6 +42,49 @@ serve(async (req) => {
       return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
+    // ---- MUSIC (house/marketing songs) ------------------------------------
+    // Kie's music API is a DIFFERENT base than the jobs API above:
+    //   POST https://api.kie.ai/api/v1/generate                  (submit)
+    //   GET  https://api.kie.ai/api/v1/generate/record-info?taskId=...  (poll)
+    // Kie REQUIRES callBackUrl (422 "Please enter callBackUrl." without it), but
+    // for house songs point it at a dead path — NEVER song-callback — so nothing
+    // writes a `songs` row. These are marketing assets, not customer orders, and
+    // must stay out of that table; poll music-status for the result instead.
+    //   { mode: 'music', prompt, style, title, vocalGender?, negativeTags?, model? }
+    //   { mode: 'music-status', taskId }
+    if (body.mode === 'music') {
+      if (!body.prompt || !body.style) throw new Error('Missing prompt (lyrics) or style');
+      const payload: Record<string, unknown> = {
+        prompt: body.prompt,
+        customMode: true,
+        instrumental: false,
+        model: body.model || Deno.env.get('KIE_MODEL') || 'V5_5',
+        style: body.style,
+        title: body.title || 'Untitled',
+        styleWeight: body.styleWeight ?? 0.85,
+        audioWeight: body.audioWeight ?? 0.7,
+      };
+      if (body.vocalGender) payload.vocalGender = body.vocalGender;
+      if (body.negativeTags) payload.negativeTags = body.negativeTags;
+      if (body.callBackUrl) payload.callBackUrl = body.callBackUrl;
+      const r = await fetch('https://api.kie.ai/api/v1/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || raw?.taskId || null, raw });
+    }
+
+    if (body.mode === 'music-status') {
+      if (!body.taskId) throw new Error('Missing taskId');
+      const r = await fetch(
+        `https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(body.taskId)}`,
+        { headers: { Authorization: `Bearer ${KIE_API_KEY}` } },
+      );
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
+    }
+
     // default: create
     if (!body.prompt) throw new Error('Missing prompt');
     let input: Record<string, unknown>;
