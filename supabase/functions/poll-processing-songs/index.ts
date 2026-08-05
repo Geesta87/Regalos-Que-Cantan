@@ -702,12 +702,12 @@ Deno.serve(async (req) => {
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
-      .select('id, task_id, version, recipient_name, email, genre, occasion, provider')
+      .select('id, task_id, version, recipient_name, email, genre, occasion, provider, error_message, created_at')
       .eq('status', 'processing')
       .not('task_id', 'is', null)
       .lt('updated_at', pollThreshold)
       .order('created_at', { ascending: true })
-      .limit(10);
+      .limit(30);
 
     if (pollError) {
       console.error('Error fetching songs to poll:', pollError.message);
@@ -774,9 +774,30 @@ Deno.serve(async (req) => {
                 results.push({ id: song.id, job: 'poll', action: 'kie_recovery_already_handled', kieStatus });
               }
             } else {
-              // Still generating — bump updated_at so JOB 3 doesn't touch it
-              await supabase.from('songs').update({ updated_at: new Date().toISOString() }).eq('id', song.id);
-              results.push({ id: song.id, job: 'poll', action: 'still_processing', provider: 'kie', kieStatus });
+              // record-info says still generating — but that can lie. During the
+              // 2026-08-05 Suno outage, tasks that had already died (failure
+              // callback received, stamped "(awaiting auto-recovery)" by
+              // song-callback) stayed non-terminal in record-info forever, and
+              // the updated_at bump below also kept them out of JOB 3's stuck
+              // net. Treat either signal as terminal: a failure callback already
+              // arrived, or the song has been processing far beyond any normal
+              // generation time.
+              const callbackFailed = (song.error_message || '').includes('(awaiting auto-recovery)');
+              const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
+              if (callbackFailed || ageMin > 30) {
+                if (!handledKieTasks.has(song.task_id)) {
+                  handledKieTasks.add(song.task_id);
+                  const syntheticStatus = callbackFailed ? 'CALLBACK_REPORTED_FAILURE' : 'STUCK_OVER_30_MIN';
+                  const recovery = await handleKieTerminalFailure(supabase, song.task_id, syntheticStatus);
+                  results.push({ id: song.id, job: 'poll', action: `kie_recovery_${recovery}`, kieStatus: syntheticStatus });
+                } else {
+                  results.push({ id: song.id, job: 'poll', action: 'kie_recovery_already_handled', kieStatus });
+                }
+              } else {
+                // Genuinely still generating — bump updated_at so JOB 3 doesn't touch it
+                await supabase.from('songs').update({ updated_at: new Date().toISOString() }).eq('id', song.id);
+                results.push({ id: song.id, job: 'poll', action: 'still_processing', provider: 'kie', kieStatus });
+              }
             }
             continue;
           }
