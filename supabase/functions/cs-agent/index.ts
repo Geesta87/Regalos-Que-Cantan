@@ -47,6 +47,7 @@ import {
   buildOrderLink,
   buildPreviewLink,
   extractEmails,
+  extractSongRefs,
   fetchOrderExtras,
   phoneLast10 as toLast10,
   resolveCustomerOrders,
@@ -134,9 +135,18 @@ function renderExtras(orders: CsOrder[], extras: OrderExtras): string[] {
 async function buildSituationSnapshot(admin: any, opts: {
   phoneLast10: string;
   customerEmails: string[];
+  songIds: string[];
+  shortCodes: string[];
   alreadySentLink: boolean;
+  /** How many times we have ALREADY asked this person for their email. */
+  emailAsks: number;
+  /** Someone in this thread has claimed a payment (often Zelle). */
+  paymentClaimed: boolean;
 }): Promise<{ text: string; identified: boolean; orders: CsOrder[] }> {
   const { orders, matchedBy } = await resolveCustomerOrders(admin, {
+    // Song links already in this thread beat everything — see extractSongRefs.
+    songIds: opts.songIds,
+    shortCodes: opts.shortCodes,
     phoneLast10: opts.phoneLast10,
     emails: opts.customerEmails,
     // Names are NOT used here on purpose: a name-only match can hit a stranger.
@@ -148,13 +158,21 @@ async function buildSituationSnapshot(admin: any, opts: {
 
   if (!orders.length) {
     const gaveEmail = opts.customerEmails.length > 0;
+    // STOP THE LOOP. Asking again for an email we already asked for is the
+    // single most common wasted draft: on 2026-08-05 one thread got the same
+    // request five times because the order was built by hand (no phone, house
+    // email) and no answer could ever have resolved it.
+    const askedAlready = opts.emailAsks >= 1;
     return {
       identified: false,
       orders: [],
       text: `${header}
-- NO pude identificar a este cliente${gaveEmail ? ' ni con el correo que dio' : ' por su número de teléfono'}. Esto NO significa que sea nuevo: puede haber comprado en la web con otro número o correo. NUNCA asumas que no ha comprado, y NUNCA le preguntes "¿ya hiciste tu canción?" como si fuera nuevo.
-- Con calidez, pídele el CORREO con el que hizo su pedido. Si ya dio un correo y aun así no aparece, pídele el NOMBRE de la persona a quien va dedicada la canción y usa look_up_my_order con ese nombre antes de rendirte.
-- Solo si nada de eso lo ubica, dile que un compañero del equipo lo verificará.`,
+- NO pude identificar a este cliente${gaveEmail ? ' ni con el correo que dio' : ' por su número de teléfono'}. Esto NO significa que sea nuevo: puede haber comprado en la web con otro número, o el equipo pudo haberle creado la canción a mano desde este mismo chat. NUNCA asumas que no ha comprado, y NUNCA le preguntes "¿ya hizo su canción?" como si fuera nuevo.
+${askedAlready
+  ? `- ⛔ YA LE PEDIMOS EL CORREO ${opts.emailAsks} vez/veces en esta conversación y seguimos sin ubicarlo. PROHIBIDO volver a pedírselo. Pedir el mismo dato otra vez enoja al cliente y no resuelve nada.
+- Haz UNA de estas dos cosas, no otra: (a) si el cliente hizo una PREGUNTA o te dio una INSTRUCCIÓN, respóndele ESO directamente con lo que ya sabes de la conversación; o (b) si de verdad hace falta ubicar el pedido, usa look_up_my_order con el NOMBRE de la persona a quien va la canción (búscalo en el historial de este chat — es muy probable que ya lo haya dicho).
+- Si aun así no aparece, dile con calidez que un compañero lo revisa y NO pidas más datos.`
+  : `- Pídele UNA SOLA VEZ, con calidez, el CORREO de su pedido. Si no lo da o no aparece, NO se lo vuelvas a pedir: usa look_up_my_order con el NOMBRE de la persona a quien va la canción (revisa el historial, quizá ya lo dijo).`}`,
     };
   }
 
@@ -187,9 +205,20 @@ async function buildSituationSnapshot(admin: any, opts: {
     }
   }
   if (unpaid.length) {
-    lines.push(
-      `- Tiene ${unpaid.length} canción(es) SIN pagar. Si pregunta por ellas, comparte este enlace para que las ESCUCHE y explícale que al completar la compra se desbloquea la descarga (NUNCA compartas descarga de algo no pagado): ${buildPreviewLink(unpaid, SITE)}`,
-    );
+    // Zelle and other off-Stripe payments never reach the songs table, so an
+    // order can read "unpaid" for a customer who HAS paid. Telling a paying
+    // customer to go pay is far worse than saying nothing — so when a payment
+    // has been claimed in this thread, we suppress the pay-now push entirely
+    // and hand it to a person. (Real case: Rolando, 2026-08-05, paid by Zelle.)
+    if (opts.paymentClaimed) {
+      lines.push(
+        `- ⚠️ ATENCIÓN: en el sistema estas canciones figuran SIN pagar, PERO en esta conversación ya se habló de un pago (posiblemente por Zelle o transferencia, que NO se registran automáticamente). NO le digas que no ha pagado, NO le pidas que pague y NO le mandes a completar la compra. Responde con calidez lo que te pregunte y deja que un compañero verifique el pago.`,
+      );
+    } else {
+      lines.push(
+        `- Tiene ${unpaid.length} canción(es) SIN pagar. Si pregunta por ellas, comparte este enlace para que las ESCUCHE y explícale que al completar la compra se desbloquea la descarga (NUNCA compartas descarga de algo no pagado): ${buildPreviewLink(unpaid, SITE)}`,
+      );
+    }
   }
   if (paid.length > 1) {
     lines.push(`- Es CLIENTE RECURRENTE (${paid.length} compradas). Trátalo con especial cariño y gratitud.`);
@@ -363,7 +392,8 @@ async function safetyReview(draft: string): Promise<{ ran: boolean; pass: boolea
 1. Revela o insinúa que es IA / bot / robot / automático / computadora / software / algoritmo.
 2. Promete un REEMBOLSO, o una fecha/plazo EXACTO garantizado (ej. "llega el martes sin falta").
 3. Tono grosero, ofensivo o claramente poco profesional.
-Si NO rompe ninguna de estas 3, responde "PASS". Solo responde "FAIL: <razón corta>" si rompe claramente una. Ante la duda, PASS.`,
+4. Confirma o da por recibido un PAGO (dice "recibimos su pago", "ya nos llegó", "pago confirmado", o menciona un monto como recibido). Nunca podemos confirmar un pago en el chat.
+Si NO rompe ninguna de estas 4, responde "PASS". Solo responde "FAIL: <razón corta>" si rompe claramente una. Ante la duda, PASS.`,
         messages: [{ role: 'user', content: t.slice(0, 1200) }],
       }),
     });
@@ -378,6 +408,68 @@ Si NO rompe ninguna de estas 3, responde "PASS". Solo responde "FAIL: <razón co
   }
 }
 
+// ── Payment-claim guard (code, not prompt) ─────────────────────────────────
+// On 2026-08-05 a customer sent a Zelle screenshot and said "ahí está ya". The
+// vision path read the image and the bot drafted "¡Perfecto, recibimos su pago
+// de $30 por Zelle!" — asserting we had received money, off a picture the
+// customer supplied. It was classified 'other' with needs_human = false, so the
+// NEVER_AUTO list (which only covers billing_money) would NOT have stopped it.
+// The classifier is the weak link, so this check does not depend on it.
+//
+// A screenshot is a claim, not a receipt. Confirming payment we have not
+// verified invites both fraud and chargebacks.
+// NOTE ON \b: JavaScript's \b is ASCII-only, so it does NOT match after an
+// accented letter — "llegó ", "acreditó ", "está " all failed a trailing \b and
+// silently slipped past an earlier version of this guard. Use Unicode-aware
+// lookarounds instead, with the /u flag.
+const B0 = '(?<![\\p{L}\\p{N}])'; // start-of-word
+const B1 = '(?![\\p{L}\\p{N}])'; // end-of-word
+
+const PAYMENT_CONFIRM_RE = new RegExp(
+  B0 +
+    '(?:' +
+    'recibimos|recib[ií]|recibido' +
+    '|ya\\s+(?:nos\\s+)?(?:lleg[oó]|entr[oó]|cay[oó])' +
+    '|confirmamos' +
+    '|qued[oó]\\s+(?:pagado|confirmado)' +
+    // "pago recibido", "pago fue confirmado", "depósito ya se acreditó", …
+    '|(?:pago|dep[oó]sito|transferencia)\\s+(?:\\S+\\s+){0,2}?(?:recibido|confirmado|acreditado)' +
+    '|se\\s+acredit[oó]' +
+    ')' +
+    B1,
+  'iu',
+);
+const PAYMENT_CONTEXT_RE = new RegExp(
+  B0 + '(?:pago|pagado|zelle|dep[oó]sito|transferencia|cargo)|\\$\\s?\\d',
+  'iu',
+);
+
+/** Does this draft assert that WE received money? */
+export function claimsPaymentReceipt(text: string): boolean {
+  const t = String(text || '');
+  return PAYMENT_CONFIRM_RE.test(t) && PAYMENT_CONTEXT_RE.test(t);
+}
+
+/** Is the customer claiming/sending proof of a payment right now? */
+function customerClaimsPayment(text: string, hasImage: boolean): boolean {
+  const t = String(text || '');
+  const claim = new RegExp(
+    B0 +
+      '(?:' +
+      'ya\\s+(?:le\\s+|se\\s+lo\\s+)?(?:pagu[eé]|deposit[eé]|mand[eé]|envi[eé])' +
+      '|ah[ií]\\s+est[aá]' +
+      '|listo\\s+el\\s+pago' +
+      '|hice\\s+(?:el\\s+)?(?:pago|dep[oó]sito|la\\s+transferencia)' +
+      '|comprobante|captura' +
+      '|le\\s+mand[eé]\\s+el\\s+dinero' +
+      ')' +
+      B1,
+    'iu',
+  ).test(t);
+  // An image with no text, in a thread about money, is almost always a receipt.
+  return claim || (hasImage && PAYMENT_CONTEXT_RE.test(t));
+}
+
 function systemPrompt(customerName: string | null, channel: string, knowledge: string, snapshot: string): string {
   const who = customerName ? `El cliente se llama ${customerName}. ` : '';
   return `Eres el agente de servicio al cliente de Regalos Que Cantan y respondes por ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} en ESPAÑOL. ${who}Tu trabajo es responder de forma cálida, humana y BREVE (es un chat, no un correo).
@@ -387,6 +479,9 @@ ${snapshot ? snapshot + '\n\n' : ''}${knowledge}${LIVE_PRICES}
 ${CS_GOLDEN_ANSWERS}
 
 REGLAS ESTRICTAS:
+- ⭐ REGLA #1 — RESPONDE LO QUE EL CLIENTE ACABA DE DECIR. Antes que nada, lee (a) el ÚLTIMO mensaje del cliente y (b) el último mensaje que le mandamos NOSOTROS. Si le hicimos una PREGUNTA y él la contestó, tu respuesta debe atender ESA contestación. Si te dio una instrucción ("mándamela", "la uno", "está bien"), atiéndela. El bloque "SITUACIÓN DEL CLIENTE" es CONTEXTO para responder mejor — NO es un guion que reemplace lo que el cliente dijo. Es un ERROR GRAVE contestar con un trámite (pedir el correo, pedir datos) cuando el cliente acaba de responder una pregunta nuestra o pedir algo concreto.
+- NO REPITAS PREGUNTAS. Si un dato ya se pidió en esta conversación —o el cliente ya lo dio— no lo vuelvas a pedir. Relee el historial antes de preguntar cualquier cosa.
+- 💰 NUNCA confirmes que recibimos un pago. No digas "recibimos su pago", "ya nos llegó", ni menciones un monto, AUNQUE el cliente mande una captura, un comprobante o diga que ya pagó. Una captura es lo que el cliente dice, no una confirmación nuestra. Agradece, dile que el equipo lo verifica y confirma en un momento, y usa flag_for_human. Esto aplica a Zelle, transferencias y cualquier otro método.
 - ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.
 - IDIOMA: responde normalmente en ESPAÑOL (la gran mayoría de clientes son hispanohablantes). SOLO si el cliente claramente escribe TODO su mensaje en otro idioma (inglés, portugués), respóndele en ESE idioma. Ante cualquier duda, español. 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
@@ -540,15 +635,44 @@ serve(async (req) => {
     const customerEmails = extractEmails(
       history.filter((m) => m.direction === 'inbound').map((m) => m.body || ''),
     );
+    // Song links already in this thread — from EITHER side. When the team builds
+    // an order by hand there is no phone and no customer email to find it by, but
+    // the /listen link we pasted names the songs exactly. Scanned over the FULL
+    // conversation, not just the recent window, because the link is often several
+    // messages back.
+    const { data: allBodies } = await admin
+      .from('sms_messages')
+      .select('body')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(120);
+    const threadTexts = (allBodies || []).map((m: { body: string | null }) => m.body || '');
+    const { ids: songIds, shortCodes } = extractSongRefs(threadTexts);
+
+    // How many times have we ALREADY asked this person for their email? Used to
+    // hard-stop the re-ask loop.
+    const emailAsks = (allBodies || []).filter((m: { body: string | null }) =>
+      /correo|email/i.test(m.body || '') && /comparte|compartir|me da|cu[aá]l es|proporcion|indic/i.test(m.body || ''),
+    ).length;
+
     // Did we already send them a song link earlier in this thread? (so the bot
     // doesn't re-ask or re-explain what we already delivered).
     const alreadySentLink = history.some(
       (m) => m.direction === 'outbound' && /\/s\/|\/success|\/listen|ya est\w* lista/i.test(m.body || ''),
     );
+    // Has anyone in this thread claimed a payment? Zelle/transfers never reach
+    // the songs table, so this is the only signal we have that "unpaid" may be
+    // stale. Checked over the whole conversation, either direction.
+    const paymentClaimed = threadTexts.some((b) =>
+      /zelle|dep[oó]sito|transferencia|ya (?:le )?(?:pagu[eé]|pag[oó])|comprobante|ya complet[oó] su pago|ya lleg[oó]/i.test(b),
+    );
+
     let snapshot = '';
     let customerIdentified = false;
     try {
-      const snap = await buildSituationSnapshot(admin, { phoneLast10, customerEmails, alreadySentLink });
+      const snap = await buildSituationSnapshot(admin, {
+        phoneLast10, customerEmails, songIds, shortCodes, alreadySentLink, emailAsks, paymentClaimed,
+      });
       snapshot = snap.text;
       customerIdentified = snap.identified;
     } catch (snapErr) {
@@ -705,6 +829,8 @@ serve(async (req) => {
           const searchEmails = [...new Set([...customerEmails, toolEmail].filter(Boolean))];
 
           const { orders, matchedBy, needsConfirmation } = await resolveCustomerOrders(admin, {
+            songIds,
+            shortCodes,
             phoneLast10,
             emails: searchEmails,
             recipientNames: toolName ? [toolName] : [],
@@ -804,6 +930,18 @@ serve(async (req) => {
     if (safety.ran && !safety.pass) {
       needsHuman = true;
       escalateReason = `safety: ${safety.reason}`;
+    }
+
+    // PAYMENT GUARD — deterministic, independent of the topic classifier.
+    // Money confirmations always want a person's eyes, whatever category the
+    // Haiku pass happened to assign.
+    if (claimsPaymentReceipt(finalText)) {
+      needsHuman = true;
+      escalateReason = escalateReason || 'draft confirms a payment we have not verified';
+    }
+    if (customerClaimsPayment(String(last.body || ''), !!last.media_path)) {
+      needsHuman = true;
+      escalateReason = escalateReason || 'customer is claiming a payment / sent a receipt';
     }
 
     // English gloss of the draft, so a non-Spanish-speaking assistant can read

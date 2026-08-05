@@ -47,7 +47,7 @@ export interface CsOrder {
   email: string | null;
 }
 
-export type MatchKind = 'phone' | 'email' | 'email_local' | 'recipient_name';
+export type MatchKind = 'song_link' | 'phone' | 'email' | 'email_local' | 'recipient_name';
 
 export interface ResolvedCustomer {
   orders: CsOrder[];
@@ -69,6 +69,45 @@ const VIEW_COLS =
 const PER_QUERY_LIMIT = 8;
 /** Hard cap on a name-only match, which can legitimately hit many strangers. */
 const NAME_MATCH_LIMIT = 4;
+
+/**
+ * Pull song references out of the THREAD — both the links we sent them and any
+ * link they pasted back.
+ *
+ * This is the strongest identity signal we have and it was being ignored. When
+ * the team works an order by hand (builds the song from the chat, takes payment
+ * by Zelle), the song row has no phone and a house email, so phone/email/name
+ * lookups all fail forever — but the `/listen?song_ids=…` link we pasted into
+ * that very conversation names the songs exactly. Real case, 2026-08-05: the bot
+ * asked one customer for his email FIVE times while two song ids sat in the
+ * scrollback, put there by us three minutes earlier.
+ *
+ * Exact, unambiguous, and works regardless of how the order was created.
+ */
+export function extractSongRefs(texts: string[]): { ids: string[]; shortCodes: string[] } {
+  const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+  const ids = new Set<string>();
+  const shortCodes = new Set<string>();
+  for (const raw of texts) {
+    const t = String(raw || '');
+    // song_id=<uuid> and song_ids=<uuid>,<uuid>,…
+    for (const m of t.matchAll(new RegExp(`song_ids?=((?:${UUID})(?:\\s*,\\s*${UUID})*)`, 'g'))) {
+      for (const one of m[1].split(',')) {
+        const v = one.trim().toLowerCase();
+        if (v) ids.add(v);
+      }
+    }
+    // Any bare uuid in a regalosquecantan URL (e.g. /song/<uuid>).
+    for (const m of t.matchAll(new RegExp(`regalosquecantan\\.com\\S*?(${UUID})`, 'gi'))) {
+      ids.add(m[1].toLowerCase());
+    }
+    // Branded short links: /s/<code>
+    for (const m of t.matchAll(/\/s\/([A-Za-z0-9_-]{4,32})\b/g)) {
+      shortCodes.add(m[1]);
+    }
+  }
+  return { ids: [...ids], shortCodes: [...shortCodes] };
+}
 
 /** Pull email addresses out of free text the CUSTOMER wrote. */
 export function extractEmails(texts: string[]): string[] {
@@ -149,6 +188,10 @@ async function queryView(
 export async function resolveCustomerOrders(
   admin: Admin,
   opts: {
+    /** Song ids seen in the thread (links we sent, or the customer pasted back). */
+    songIds?: string[];
+    /** Short codes seen in the thread (/s/<code>). */
+    shortCodes?: string[];
     phoneLast10?: string;
     emails?: string[];
     /** Names the customer offered for "who is the song for" — LAST resort. */
@@ -170,7 +213,19 @@ export async function resolveCustomerOrders(
     return added;
   };
 
-  // 1. PHONE — strongest signal: they are messaging us from it.
+  // 0. SONG LINKS ALREADY IN THE THREAD — the strongest signal of all, and
+  // exact. If we (or they) put a song link in this conversation, that IS the
+  // order, no matter how it was created or paid for.
+  const songIds = (opts.songIds || []).filter(Boolean).slice(0, 8);
+  if (songIds.length) {
+    absorb(await queryView(admin, (q) => (q as any).in('id', songIds)), 'song_link');
+  }
+  const shortCodes = (opts.shortCodes || []).filter(Boolean).slice(0, 8);
+  if (shortCodes.length) {
+    absorb(await queryView(admin, (q) => (q as any).in('short_code', shortCodes)), 'song_link');
+  }
+
+  // 1. PHONE — they are messaging us from it.
   const last10 = (opts.phoneLast10 || '').replace(/\D/g, '').slice(-10);
   if (last10.length === 10) {
     absorb(await queryView(admin, (q) => (q as any).eq('phone_last10', last10)), 'phone');

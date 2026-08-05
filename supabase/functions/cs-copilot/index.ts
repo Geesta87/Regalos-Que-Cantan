@@ -19,6 +19,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isPaidSong as isPaid } from '../_shared/is-paid.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,13 +36,6 @@ const SITE = 'https://regalosquecantan.com';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-}
-
-function isPaid(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
 }
 
 function downloadLink(s: Record<string, unknown>): string {
@@ -92,7 +86,7 @@ serve(async (req) => {
     const convoLast10 = convoPhone.replace(/\D/g, '').slice(-10);
 
     const ORDER_SELECT =
-      'id, recipient_name, sender_name, email, whatsapp_phone, occasion, genre, genre_name, short_code, audio_url, paid, payment_status, paid_at, amount_paid, stripe_payment_id, has_video_addon, karaoke_status, karaoke_video_status, details, lyrics, created_at';
+      'id, recipient_name, sender_name, email, whatsapp_phone, occasion, genre, genre_name, short_code, audio_url, paid, payment_status, paid_at, amount_paid, stripe_payment_id, marked_paid_at, has_video_addon, karaoke_status, karaoke_video_status, details, lyrics, created_at';
 
     // Run one lookup variant. Returns [] on no match so the caller can fall back.
     // deno-lint-ignore no-explicit-any

@@ -10,6 +10,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
+import { handleKieTerminalFailure, KIE_FAILED_STATUSES } from '../_shared/kie-recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,153 +31,11 @@ const MAX_RETRIES = 3;           // Max re-submission attempts
 const TIMEOUT_MINUTES = 90;      // Absolute timeout
 
 // Kie/Suno (primary provider since 2026-06-12) — JOB 2 polls record-info as
-// the backup for missed song-callback deliveries.
+// the backup for missed song-callback deliveries. The failure-recovery ladder
+// (retry once on Kie, then hand to Mureka) lives in _shared/kie-recovery.ts,
+// shared with song-callback which now triggers it event-driven the moment a
+// failure callback arrives; JOB 2 remains the backstop.
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY') || '';
-const KIE_FAILED_STATUSES = new Set([
-  'CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION',
-  'SENSITIVE_WORD_ERROR', 'FAILED',
-]);
-
-// ---------------------------------------------------------------------------
-// Kie mid-generation failure recovery: retry once on Kie, then hand the order
-// to Mureka (useapi). Operates on the whole TASK (both v1+v2 sibling rows) so
-// a single resubmission replaces both takes — mirroring how generate-song and
-// the callbacks treat siblings.
-// ---------------------------------------------------------------------------
-
-function englishifyMarkersForProvider(lyrics: string): string {
-  if (!lyrics) return lyrics;
-  return lyrics
-    .replace(/\[Verso Final\]/gi, '[Final Verse]')
-    .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
-    .replace(/\[Verso\]/gi, '[Verse]')
-    .replace(/\[Coro Final\]/gi, '[Final Chorus]')
-    .replace(/\[Coro\]/gi, '[Chorus]')
-    .replace(/\[Puente\]/gi, '[Bridge]')
-    .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
-    .replace(/\[Hablado\]/gi, '[Spoken Word]');
-}
-
-async function handleKieTerminalFailure(supabase: any, taskId: string, kieStatus: string): Promise<string> {
-  // Load ALL sibling rows still processing for this task, with retry fields
-  const { data: siblings } = await supabase
-    .from('songs')
-    .select('id, version, recipient_name, lyrics, style_used, voice_type, genre, sub_genre, regenerate_count, kie_payload')
-    .eq('task_id', taskId)
-    .eq('status', 'processing');
-  if (!siblings || siblings.length === 0) return 'no_siblings';
-
-  const attempt = Math.max(...siblings.map((s: any) => s.regenerate_count || 0));
-  const failAll = async (msg: string) => {
-    for (const s of siblings) {
-      await supabase.from('songs').update({
-        status: 'failed',
-        error_message: msg.substring(0, 500),
-      }).eq('id', s.id);
-    }
-  };
-
-  // ---- Attempt 1: resubmit the SAME job to Kie ----
-  if (attempt === 0 && KIE_API_KEY) {
-    // The submit payload is stored on processing rows by generate-song
-    // (completed rows get it overwritten with the track object — guard on .prompt)
-    let submitPayload: any = null;
-    for (const s of siblings) {
-      try {
-        const p = s.kie_payload ? JSON.parse(s.kie_payload) : null;
-        if (p?.prompt) { submitPayload = p; break; }
-      } catch { /* ignore */ }
-    }
-    if (submitPayload) {
-      submitPayload.callBackUrl = `${SUPABASE_URL}/functions/v1/song-callback`;
-      try {
-        const r = await fetch('https://api.kie.ai/api/v1/generate', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(submitPayload),
-        });
-        const data = await r.json().catch(() => ({}));
-        const newTaskId = data?.data?.taskId;
-        if (data.code === 200 && newTaskId) {
-          for (const s of siblings) {
-            await supabase.from('songs').update({
-              task_id: newTaskId,
-              kie_task_id: newTaskId,
-              regenerate_count: (s.regenerate_count || 0) + 1,
-              error_message: `kie ${kieStatus} — auto-retried on kie`,
-              updated_at: new Date().toISOString(),
-            }).eq('id', s.id);
-          }
-          console.log(`Kie task ${taskId} failed (${kieStatus}) — RETRIED on Kie as ${newTaskId}`);
-          return 'kie_retried';
-        }
-        console.warn(`Kie retry submit failed for ${taskId}: code=${data.code} ${data.msg || ''}`);
-      } catch (e: any) {
-        console.warn(`Kie retry network error for ${taskId}: ${e.message}`);
-      }
-    }
-    // fall through to Mureka if the Kie retry could not be submitted
-  }
-
-  // ---- Attempt 2 (or Kie-retry unavailable): hand the order to Mureka ----
-  const USEAPI_TOKEN_2 = Deno.env.get('USEAPI_TOKEN');
-  const MUREKA_ACCOUNT = Deno.env.get('MUREKA_ACCOUNT');
-  const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
-  const base = siblings[0];
-  if (!USEAPI_TOKEN_2 || !MUREKA_ACCOUNT || !base?.lyrics || !base?.style_used) {
-    await failAll(`kie.ai task ${kieStatus} — no Mureka fallback available`);
-    return 'failed_no_fallback';
-  }
-
-  const genderLabel = base.voice_type === 'female'
-    ? 'solo female lead vocal, single female singer'
-    : 'solo male lead vocal, single male singer';
-  const desc = `${genderLabel}, ${base.style_used}`.substring(0, 1000);
-  const model = base.genre === 'norteno'
-    ? (Deno.env.get('MUREKA_NORTENO_MODEL') || 'V7.6')
-    : (base.genre === 'corrido' && base.sub_genre === 'tradicional')
-      ? (Deno.env.get('MUREKA_CORRIDO_MODEL') || 'V7.6')
-      : (Deno.env.get('MUREKA_MODEL') || 'V9');
-  const callbackBase = `${SUPABASE_URL}/functions/v1/mureka-useapi-callback`;
-  const murekaPayload = {
-    account: MUREKA_ACCOUNT,
-    lyrics: englishifyMarkersForProvider(base.lyrics).substring(0, 5000),
-    title: `Canción para ${base.recipient_name || 'ti'}`.substring(0, 50),
-    desc,
-    model,
-    vocal_gender: base.voice_type === 'female' ? 'female' : 'male',
-    replyUrl: USEAPI_WEBHOOK_SECRET ? `${callbackBase}?token=${USEAPI_WEBHOOK_SECRET}` : callbackBase,
-  };
-
-  try {
-    const r = await fetch('https://api.useapi.net/v1/mureka/music/create-advanced', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${USEAPI_TOKEN_2}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(murekaPayload),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (r.ok && data.jobid) {
-      for (const s of siblings) {
-        await supabase.from('songs').update({
-          task_id: data.jobid,
-          mureka_job_id: data.jobid,
-          provider: 'mureka-useapi',
-          mureka_payload: JSON.stringify(murekaPayload),
-          regenerate_count: (s.regenerate_count || 0) + 1,
-          error_message: `kie ${kieStatus} — handed to Mureka`,
-          updated_at: new Date().toISOString(),
-        }).eq('id', s.id);
-      }
-      console.log(`Kie task ${taskId} failed twice — HANDED TO MUREKA as ${data.jobid}`);
-      return 'mureka_handoff';
-    }
-    await failAll(`kie ${kieStatus}; Mureka handoff failed: ${r.status} ${JSON.stringify(data).substring(0, 150)}`);
-    return 'failed_handoff_error';
-  } catch (e: any) {
-    await failAll(`kie ${kieStatus}; Mureka handoff network error: ${e.message}`);
-    return 'failed_handoff_network';
-  }
-}
 
 // ============================================================================
 // EMAIL HELPERS
@@ -702,12 +561,12 @@ Deno.serve(async (req) => {
     const pollThreshold = new Date(Date.now() - POLL_AFTER_MINUTES * 60 * 1000).toISOString();
     const { data: pollSongs, error: pollError } = await supabase
       .from('songs')
-      .select('id, task_id, version, recipient_name, email, genre, occasion, provider')
+      .select('id, task_id, version, recipient_name, email, genre, occasion, provider, error_message, created_at')
       .eq('status', 'processing')
       .not('task_id', 'is', null)
       .lt('updated_at', pollThreshold)
       .order('created_at', { ascending: true })
-      .limit(10);
+      .limit(30);
 
     if (pollError) {
       console.error('Error fetching songs to poll:', pollError.message);
@@ -774,9 +633,30 @@ Deno.serve(async (req) => {
                 results.push({ id: song.id, job: 'poll', action: 'kie_recovery_already_handled', kieStatus });
               }
             } else {
-              // Still generating — bump updated_at so JOB 3 doesn't touch it
-              await supabase.from('songs').update({ updated_at: new Date().toISOString() }).eq('id', song.id);
-              results.push({ id: song.id, job: 'poll', action: 'still_processing', provider: 'kie', kieStatus });
+              // record-info says still generating — but that can lie. During the
+              // 2026-08-05 Suno outage, tasks that had already died (failure
+              // callback received, stamped "(awaiting auto-recovery)" by
+              // song-callback) stayed non-terminal in record-info forever, and
+              // the updated_at bump below also kept them out of JOB 3's stuck
+              // net. Treat either signal as terminal: a failure callback already
+              // arrived, or the song has been processing far beyond any normal
+              // generation time.
+              const callbackFailed = (song.error_message || '').includes('(awaiting auto-recovery)');
+              const ageMin = (Date.now() - new Date(song.created_at).getTime()) / 60000;
+              if (callbackFailed || ageMin > 30) {
+                if (!handledKieTasks.has(song.task_id)) {
+                  handledKieTasks.add(song.task_id);
+                  const syntheticStatus = callbackFailed ? 'CALLBACK_REPORTED_FAILURE' : 'STUCK_OVER_30_MIN';
+                  const recovery = await handleKieTerminalFailure(supabase, song.task_id, syntheticStatus);
+                  results.push({ id: song.id, job: 'poll', action: `kie_recovery_${recovery}`, kieStatus: syntheticStatus });
+                } else {
+                  results.push({ id: song.id, job: 'poll', action: 'kie_recovery_already_handled', kieStatus });
+                }
+              } else {
+                // Genuinely still generating — bump updated_at so JOB 3 doesn't touch it
+                await supabase.from('songs').update({ updated_at: new Date().toISOString() }).eq('id', song.id);
+                results.push({ id: song.id, job: 'poll', action: 'still_processing', provider: 'kie', kieStatus });
+              }
             }
             continue;
           }

@@ -2358,6 +2358,60 @@ const LYRICS_TOOL = {
   },
 } as const;
 
+// Cross-vendor lyrics fallback: only reached when EVERY Anthropic attempt
+// (Sonnet retries + Haiku) has failed — i.e. Anthropic itself is down. Without
+// this, no new songs can start at all during an Anthropic outage. Mirrors the
+// LYRICS_TOOL contract via OpenAI structured outputs.
+async function tryOpenAILyricsFallback(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<{ lyrics: string; emotionalModifiers: string } | null> {
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  if (!OPENAI_API_KEY) return null;
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 2000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'song_lyrics',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                lyrics: { type: 'string' },
+                emotionalModifiers: { type: 'string' },
+              },
+              required: ['lyrics', 'emotionalModifiers'],
+              additionalProperties: false,
+            },
+          },
+        },
+      }),
+    });
+    if (!resp.ok) {
+      console.warn(`OpenAI lyrics fallback HTTP ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json().catch(() => null);
+    const parsed = JSON.parse(data?.choices?.[0]?.message?.content || 'null');
+    if (parsed && typeof parsed.lyrics === 'string' && parsed.lyrics.trim()) {
+      return { lyrics: parsed.lyrics, emotionalModifiers: String(parsed.emotionalModifiers || '') };
+    }
+  } catch (e: any) {
+    console.warn('OpenAI lyrics fallback error:', e.message);
+  }
+  return null;
+}
+
 // Static composition rules — invariant across all requests, eligible for prompt caching.
 // Anything per-customer (recipient name, genre, occasion, details, structure) is in the
 // dynamic user message below, NOT here. Keep this block byte-stable so the cache holds.
@@ -3206,12 +3260,21 @@ Cuando termines, llama a la herramienta submit_song_lyrics con la letra completa
       }
 
       if (attempt === maxRetries) {
-        // No usable tool_use block after all retries (including Haiku fallback).
+        // No usable tool_use block after all retries (including Haiku fallback)
+        // — Anthropic is effectively down. Last resort: one OpenAI attempt with
+        // the same prompts before failing the request.
+        const oa = await tryOpenAILyricsFallback(LYRICS_SYSTEM_PROMPT, claudeUserMessage);
+        if (oa) {
+          toolUseBlock = { input: oa };
+          modelUsedForLyrics = 'gpt-4o (openai fallback)';
+          console.warn('Anthropic exhausted all retries — lyrics produced by OpenAI fallback');
+          break;
+        }
         // Fail loudly — outer catch returns 500, no DB row is created, customer
         // is not charged.
         throw new Error(
-          'LYRICS_TOOL_CALL_FAILED: Claude did not return valid structured lyrics after all retries. ' +
-          'Response: ' + JSON.stringify(claudeData).slice(0, 500)
+          'LYRICS_TOOL_CALL_FAILED: Claude did not return valid structured lyrics after all retries ' +
+          'and the OpenAI fallback also failed. Response: ' + JSON.stringify(claudeData).slice(0, 500)
         );
       }
     }
