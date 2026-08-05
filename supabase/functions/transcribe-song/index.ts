@@ -89,7 +89,21 @@ serve(async (req) => {
     new Response(JSON.stringify(obj), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: code });
 
   try {
-    const { songId, force } = await req.json();
+    const { songId, force, audioUrl } = await req.json();
+
+    // Ad-hoc mode: { audioUrl } transcribes any audio URL straight through
+    // Whisper -- no DB read, no `songs` row. House/marketing songs deliberately
+    // never enter that table, so they have no songId to look up. Also handy for
+    // QA-ing pronunciation on a take before it ships.
+    if (audioUrl) {
+      const w = await getWhisperWords(String(audioUrl));
+      if (!w) throw new Error('Whisper returned no words');
+      return json(200, {
+        success: true, source: 'whisper', word_count: w.words.length,
+        duration: w.duration, text: w.text, words: w.words,
+      });
+    }
+
     if (!songId) throw new Error('Missing songId');
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
