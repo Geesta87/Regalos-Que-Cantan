@@ -19,6 +19,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendSms } from '../_shared/send-sms.ts';
+import { isPaidSong as isStripeConfirmed } from '../_shared/is-paid.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -31,12 +32,6 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 
 // Same paid-confirmation gate the SMS auto-sender uses: a real Stripe confirmation,
 // not an abandoned checkout or a $0 free order.
-function isStripeConfirmed(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
-}
 
 function toE164(raw: string): string | null {
   const d = (raw || '').replace(/\D/g, '');
@@ -64,7 +59,7 @@ serve(async (req) => {
     const { data: song } = await admin.from('songs').select(
       'id, email, recipient_name, sender_name, whatsapp_phone, short_code, stripe_session_id, ' +
       'has_video, has_video_addon, karaoke_video_status, karaoke_status, ' +
-      'paid, payment_status, paid_at, amount_paid, stripe_payment_id, sms_consent_at, upsell_ready_notified_at',
+      'paid, payment_status, paid_at, amount_paid, stripe_payment_id, marked_paid_at, sms_consent_at, upsell_ready_notified_at',
     ).eq('id', song_id).single();
     if (!song) throw new Error('song not found');
     if (!isStripeConfirmed(song)) return json(200, { ok: true, skipped: 'not_paid' });

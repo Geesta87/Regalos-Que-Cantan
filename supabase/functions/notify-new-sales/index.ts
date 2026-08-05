@@ -19,18 +19,13 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isPaidSong as isStripeConfirmed } from '../_shared/is-paid.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Same Stripe-confirmation rule as send-song-ready-sms: requires paid_at AND
 // (real money or a Stripe payment id) — excludes abandoned and $0 orders.
-function isStripeConfirmed(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
-}
 
 serve(async () => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -40,7 +35,7 @@ serve(async () => {
     const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: rows, error } = await admin
       .from('songs')
-      .select('id, sender_name, recipient_name, genre, amount_paid, email, stripe_session_id, stripe_payment_id, paid, payment_status, paid_at')
+      .select('id, sender_name, recipient_name, genre, amount_paid, email, stripe_session_id, stripe_payment_id, marked_paid_at, paid, payment_status, paid_at')
       .is('sale_push_sent_at', null)
       .not('paid_at', 'is', null)
       .gt('paid_at', dayAgo)

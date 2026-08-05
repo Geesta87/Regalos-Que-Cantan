@@ -25,6 +25,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendWhatsAppTemplate, isWhatsAppConfigured } from '../_shared/send-whatsapp.ts';
+import { isPaidSong as isStripeConfirmed } from '../_shared/is-paid.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -35,13 +36,6 @@ const TRANSIENT_CODES = new Set([63018, 20429]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-}
-
-function isStripeConfirmed(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
 }
 
 function toE164(raw: string): string | null {
@@ -80,7 +74,7 @@ serve(async () => {
     const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: rows, error } = await admin
       .from('songs')
-      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid, has_video_addon, karaoke_video_status, karaoke_status')
+      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, marked_paid_at, paid_at, amount_paid, has_video_addon, karaoke_video_status, karaoke_status')
       .is('song_wa_sent_at', null)
       .not('whatsapp_phone', 'is', null)
       .not('paid_at', 'is', null)

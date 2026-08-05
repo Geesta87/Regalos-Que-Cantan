@@ -26,6 +26,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sendSms } from '../_shared/send-sms.ts';
+import { isPaidSong as isStripeConfirmed } from '../_shared/is-paid.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -37,12 +38,6 @@ const WA_SUPPORT = 'https://wa.me/18183065193';
 // sets stripe_payment_id. We require a confirmation timestamp (paid_at) AND
 // either real money paid or a Stripe payment id — which excludes abandoned
 // checkouts (no paid_at) and $0 free orders (no money, no Stripe payment).
-function isStripeConfirmed(s: Record<string, unknown>): boolean {
-  if (!s.paid_at) return false;
-  if (s.paid !== true && s.payment_status !== 'paid') return false;
-  const amt = s.amount_paid != null ? parseFloat(String(s.amount_paid)) : 0;
-  return amt > 0 || !!s.stripe_payment_id;
-}
 
 function toE164(raw: string): string | null {
   const d = (raw || '').replace(/\D/g, '');
@@ -68,7 +63,7 @@ serve(async () => {
     // Candidate set is tiny (consented + not-yet-texted); filter paid in code.
     const { data: rows, error } = await admin
       .from('songs')
-      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, paid_at, amount_paid, has_video_addon, karaoke_video_status, karaoke_status')
+      .select('id, whatsapp_phone, sender_name, recipient_name, short_code, paid, payment_status, stripe_payment_id, marked_paid_at, paid_at, amount_paid, has_video_addon, karaoke_video_status, karaoke_status')
       .is('song_sms_sent_at', null)
       .not('sms_consent_at', 'is', null)
       .gt('sms_consent_at', thirtyDaysAgo)
