@@ -11,6 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
 import { buildEmailParts } from '../_shared/email.ts';
 import { renderEmail } from '../_shared/email-shell.ts';
+import { handleKieTerminalFailure } from '../_shared/kie-recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -153,19 +154,30 @@ Deno.serve(async (req) => {
     console.log(`Found ${dbSongs.length} processing songs for kie_task_id ${taskId}`);
 
     // ---- ERROR stage (or non-200 code) ----
-    // Do NOT mark failed here: leave the rows in 'processing' (annotated) so
-    // poll-processing-songs' recovery picks them up within ~5 min — it
-    // retries the job once on Kie and then hands the order to Mureka. Only
-    // that recovery (or the 90-min absolute timeout) decides a song is dead.
+    // Event-driven recovery: run the retry-once-on-Kie → hand-to-Mureka ladder
+    // RIGHT NOW instead of waiting for a poll-processing-songs sweep (which
+    // added 5-10 min of pure queue time per failure during the 2026-08-05
+    // Suno outage). The rows stay 'processing' throughout; the marker below is
+    // stamped first so the poll's backstop still catches us if the recovery
+    // call dies mid-flight. Only the recovery ladder (or the 90-min absolute
+    // timeout) decides a song is dead.
     if (callbackType === 'error' || body.code !== 200) {
       const errMsg = (body.msg || `kie.ai code=${body.code}` || 'unknown error').toString();
-      console.log(`Task ${taskId} reported error: ${errMsg} — leaving for poll-processing-songs recovery`);
+      console.log(`Task ${taskId} reported error: ${errMsg} — triggering recovery now`);
       for (const dbSong of dbSongs) {
         await supabase.from('songs').update({
           error_message: `kie.ai callback: ${errMsg} (awaiting auto-recovery)`.substring(0, 500),
         }).eq('id', dbSong.id).eq('status', 'processing');
       }
-      return new Response(JSON.stringify({ ok: true, action: 'left_for_recovery', error: errMsg }),
+      let recovery = 'recovery_error';
+      try {
+        recovery = await handleKieTerminalFailure(supabase, taskId, 'CALLBACK_REPORTED_FAILURE');
+        console.log(`Recovery for ${taskId}: ${recovery}`);
+      } catch (e: any) {
+        // Marker is already stamped — poll-processing-songs will pick it up.
+        console.error(`Event-driven recovery failed for ${taskId}: ${e.message}`);
+      }
+      return new Response(JSON.stringify({ ok: true, action: 'recovery_triggered', recovery, error: errMsg }),
         { headers: responseHeaders, status: 200 });
     }
 
