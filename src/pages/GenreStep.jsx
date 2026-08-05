@@ -43,7 +43,10 @@ const genreIcons = {
 };
 
 // Primary genres to show first — balanced for all occasions
-const primaryGenreIds = ['corrido', 'banda', 'romantica', 'cristiana', 'bachata', 'ranchera', 'reggaeton', 'balada', 'vals'];
+// mariachi promoted out of the "ver más" drawer 2026-08-05: Mariachi Romántico
+// is the serenata/dedication sound the claymation birthday ad demos, and burying
+// it meant the ad drove demand for a genre most buyers never scrolled to.
+const primaryGenreIds = ['corrido', 'banda', 'romantica', 'cristiana', 'bachata', 'ranchera', 'mariachi', 'reggaeton', 'balada', 'vals'];
 
 // Voice guidance configuration per genre/subgenre
 // default: pre-selected voice, femalePopular: show female as recommended
