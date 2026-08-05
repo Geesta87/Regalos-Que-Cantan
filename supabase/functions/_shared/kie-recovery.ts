@@ -52,6 +52,23 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
       }).eq('id', s.id);
     }
   };
+  // Infra-level double failure (both providers down/unreachable): park the
+  // order in 'queued_retry' instead of killing it. retry-queued-songs (cron,
+  // every 5 min) resubmits until a provider recovers, then the normal
+  // completion email goes out. The customer-facing page already has a
+  // "singer is napping, we'll email you" state for this status. Only for
+  // transient failures — deterministic rejections still failAll, or the
+  // queue would spin forever.
+  const queueAll = async (msg: string, murekaPayloadJson: string | null) => {
+    for (const s of siblings) {
+      await supabase.from('songs').update({
+        status: 'queued_retry',
+        ...(murekaPayloadJson ? { mureka_payload: murekaPayloadJson } : {}),
+        error_message: msg.substring(0, 500),
+        updated_at: new Date().toISOString(),
+      }).eq('id', s.id);
+    }
+  };
 
   // ---- Attempt 1: resubmit the SAME job to Kie ----
   if (attempt === 0 && KIE_API_KEY) {
@@ -101,6 +118,15 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
   const USEAPI_WEBHOOK_SECRET = Deno.env.get('USEAPI_WEBHOOK_SECRET') || '';
   const base = siblings[0];
   if (!USEAPI_TOKEN_2 || !MUREKA_ACCOUNT || !base?.lyrics || !base?.style_used) {
+    // Can't hand to Mureka — but if a Kie submit payload exists, the retry
+    // queue can keep re-trying Kie itself until it recovers.
+    const hasKiePayload = siblings.some((s: any) => {
+      try { return !!JSON.parse(s.kie_payload || 'null')?.prompt; } catch { return false; }
+    });
+    if (hasKiePayload) {
+      await queueAll(`kie.ai task ${kieStatus} — no Mureka fallback available, queued for Kie retry`, null);
+      return 'queued_no_fallback';
+    }
     await failAll(`kie.ai task ${kieStatus} — no Mureka fallback available`);
     return 'failed_no_fallback';
   }
@@ -147,10 +173,23 @@ export async function handleKieTerminalFailure(supabase: any, taskId: string, ki
       console.log(`Kie task ${taskId} failed twice — HANDED TO MUREKA as ${data.jobid}`);
       return 'mureka_handoff';
     }
-    await failAll(`kie ${kieStatus}; Mureka handoff failed: ${r.status} ${JSON.stringify(data).substring(0, 150)}`);
-    return 'failed_handoff_error';
+    // 4xx (except 429) = Mureka deterministically rejected this payload —
+    // retrying the same thing forever would spin, so fail for real. Anything
+    // else (429, 5xx, weird body) is transient: queue for auto-retry.
+    if (r.status >= 400 && r.status < 500 && r.status !== 429) {
+      await failAll(`kie ${kieStatus}; Mureka handoff failed: ${r.status} ${JSON.stringify(data).substring(0, 150)}`);
+      return 'failed_handoff_error';
+    }
+    await queueAll(
+      `kie ${kieStatus}; Mureka handoff ${r.status} — queued for auto-retry`,
+      JSON.stringify(murekaPayload),
+    );
+    return 'queued_handoff_error';
   } catch (e: any) {
-    await failAll(`kie ${kieStatus}; Mureka handoff network error: ${e.message}`);
-    return 'failed_handoff_network';
+    await queueAll(
+      `kie ${kieStatus}; Mureka handoff network error (${e.message}) — queued for auto-retry`.substring(0, 400),
+      JSON.stringify(murekaPayload),
+    );
+    return 'queued_handoff_network';
   }
 }

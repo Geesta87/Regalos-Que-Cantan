@@ -178,12 +178,18 @@ interface CheckResult {
 async function checkStuckSongs(supabase: any): Promise<CheckResult> {
   try {
     const cutoff = new Date(Date.now() - STUCK_SONG_MINUTES * 60 * 1000).toISOString();
+    // Lower bound: only look at the last 24h. Without it, permanently-stuck
+    // zombie rows (e.g. the Mar–May 2026 batch cleaned on 2026-08-05) keep this
+    // check in a constant alert state, and real incidents — like the 08-05 Suno
+    // outage — no longer stand out.
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const { data: stuckSongs, error } = await supabase
       .from('songs')
       .select('id, recipient_name, email, status, created_at, platform, provider')
       .in('status', ['generating', 'processing', 'pending', 'callback_received', 'pending_upload'])
       .lt('created_at', cutoff)
+      .gt('created_at', windowStart)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -321,7 +327,8 @@ async function checkFailedSongsSpike(supabase: any): Promise<CheckResult> {
       .from('songs')
       .select('id, recipient_name, email, error_message, provider, platform', { count: 'exact' })
       .eq('status', 'failed')
-      .gte('updated_at', oneHourAgo);
+      .gte('updated_at', oneHourAgo)
+      .not('error_message', 'ilike', 'Ops cleanup%'); // bulk zombie closures are not real failures
 
     if (error) throw error;
 
@@ -422,6 +429,78 @@ async function checkWhatsAppCaptureRate(supabase: any): Promise<CheckResult> {
 
 // ============================================================================
 // SUPERVISOR ALARM — AI staff monitoring
+/**
+ * CHECK: Mureka fallback readiness. Mureka-via-useapi is the ONLY safety net
+ * when Kie/Suno fails (see _shared/kie-recovery.ts), and the useapi↔Mureka
+ * login expires roughly monthly — if it lapses during a Suno outage, songs
+ * stop falling back and just fail. Two detectors:
+ *   1. ACTIVE: hit useapi with the token. Only 401/403 alarms (auth dead);
+ *      any other response proves the token is being accepted.
+ *   2. PASSIVE: any song in the last hour whose error shows the handoff
+ *      itself failed ("Mureka handoff failed/network error" or "no Mureka
+ *      fallback available") — this is exactly how session expiry surfaces.
+ * Both alarms are throttled to once per 6h via ops_alert_state.
+ */
+async function checkMurekaFallback(supabase: any): Promise<CheckResult> {
+  const USEAPI_TOKEN = Deno.env.get('USEAPI_TOKEN');
+  try {
+    const problems: string[] = [];
+
+    if (!USEAPI_TOKEN) {
+      problems.push('USEAPI_TOKEN secret is not set — Mureka fallback cannot run at all');
+    } else {
+      try {
+        const r = await fetch('https://api.useapi.net/v1/mureka/jobs/', {
+          headers: { 'Authorization': `Bearer ${USEAPI_TOKEN}` },
+        });
+        if (r.status === 401 || r.status === 403) {
+          problems.push(`useapi rejected the token (HTTP ${r.status}) — re-login at useapi.net needed`);
+        }
+      } catch (e: any) {
+        // Network blip ≠ expired session; log only, the passive check still guards.
+        console.warn('useapi active probe network error:', e.message);
+      }
+    }
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: handoffFails } = await supabase
+      .from('songs')
+      .select('id, recipient_name, error_message')
+      .gte('updated_at', oneHourAgo)
+      .or('error_message.ilike.%Mureka handoff failed%,error_message.ilike.%Mureka handoff network error%,error_message.ilike.%no Mureka fallback available%');
+    if (handoffFails && handoffFails.length > 0) {
+      const sample = handoffFails.slice(0, 5).map((s: any) =>
+        `• ${s.recipient_name || 'Unknown'} — ${(s.error_message || '').substring(0, 100)}`).join('\n');
+      problems.push(`${handoffFails.length} Mureka handoff failure(s) in the last hour:\n${sample}`);
+    }
+
+    if (problems.length > 0) {
+      const fire = await shouldAlert(supabase, 'mureka_fallback_broken', 6);
+      return {
+        name: 'Mureka Fallback Readiness',
+        status: fire ? 'alert' : 'ok',
+        severity: 'critical',
+        message: `Mureka fallback may be BROKEN${fire ? '' : ' (already alerted, suppressed)'}`,
+        details: `The Kie→Mureka safety net is not healthy. If Suno fails now, songs will NOT fall back.\n\n${problems.join('\n\n')}\n\nFix: log in again at useapi.net (session expires ~monthly), then verify with a test song.`
+      };
+    }
+
+    return {
+      name: 'Mureka Fallback Readiness',
+      status: 'ok',
+      severity: 'info',
+      message: 'useapi token accepted; no handoff failures in the last hour'
+    };
+  } catch (e: any) {
+    return {
+      name: 'Mureka Fallback Readiness',
+      status: 'error',
+      severity: 'warning',
+      message: `Check failed: ${e.message}`
+    };
+  }
+}
+
 // ============================================================================
 
 /**
@@ -644,6 +723,7 @@ Deno.serve(async (req: Request) => {
     checkAgentHealth(supabase),
     checkStaleApprovals(supabase),
     checkCreativePipeline(supabase),
+    checkMurekaFallback(supabase),
   ]);
 
   // Filter for alerts
