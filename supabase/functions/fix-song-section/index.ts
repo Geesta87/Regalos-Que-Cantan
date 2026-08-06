@@ -951,6 +951,10 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
   const summary = form.get('summary') ? String(form.get('summary')) : '';
   const fixTaskId = form.get('fixTaskId') ? String(form.get('fixTaskId')) : '';
   const fixAudioId = form.get('fixAudioId') ? String(form.get('fixAudioId')) : '';
+  // When the applied blob is an END-TRIMMED whole take, this is where it was cut.
+  // Stored in kie_payload so the NEXT fix knows the live song's true length even
+  // though the Kie-hosted source runs longer (see resolveKieSource).
+  const fixTrimAtS = Number(form.get('fixTrimAtS')) > 0 ? Number(form.get('fixTrimAtS')) : null;
   // Multi-part fixes send the full list of corrections applied so far, so future
   // fixes can re-derive from the pristine original without dropping an earlier one.
   let corrections: unknown = null;
@@ -986,11 +990,13 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     ...CLEAR_STALE_SHARE_VIDEO,
     // Whole-take apply: chain future fixes off THIS take (resolveKieSource tries
     // kie_task_id + kie_payload.id first), so a later surgical fix re-sings from
-    // audio that already contains this correction. Otherwise drop the Kie ids —
-    // the stitched/trimmed MP3 is not a Kie track.
+    // audio that already contains this correction. TRIMMED whole takes chain too
+    // (2026-08-06): trimAtS rides along so downstream fixes cap the source at the
+    // live song's true length. Only browser-STITCHED audio (line/section splices)
+    // drops the Kie ids — that blob is genuinely not a Kie track.
     kie_task_id: fixTaskId && fixAudioId ? fixTaskId : null,
     task_id: fixTaskId && fixAudioId ? fixTaskId : null,
-    kie_payload: fixTaskId && fixAudioId ? JSON.stringify({ id: fixAudioId, audioUrl: publicUrl }) : null,
+    kie_payload: fixTaskId && fixAudioId ? JSON.stringify({ id: fixAudioId, audioUrl: publicUrl, ...(fixTrimAtS ? { trimAtS: fixTrimAtS } : {}) }) : null,
     // Footprint — stamp the song as fixed (when + note + count) so staff can see
     // at a glance which songs were repaired and why.
     fixed_at: now,
@@ -1018,7 +1024,9 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 
 // Fetch a specific Kie track's CURRENT audioUrl via record-info. Kie's temp
 // audio URLs can rotate, so we always re-fetch rather than trust a stored URL.
-async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string } | null> {
+// createTimeMs is the TAKE's generation time — the ~14-day retention clock runs
+// from this, not from the song's created_at (each chained fix resets it).
+async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string; createTimeMs: number | null } | null> {
   if (!KIE_API_KEY || !taskId) return null;
   try {
     const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
@@ -1029,7 +1037,8 @@ async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioU
     if (!tracks.length) return null;
     const t = (audioId && tracks.find((x: any) => x.id === audioId)) || tracks[0];
     if (!t?.audioUrl) return null;
-    return { audioUrl: t.audioUrl, id: t.id };
+    const ct = Number(t.createTime ?? raw?.data?.createTime);
+    return { audioUrl: t.audioUrl, id: t.id, createTimeMs: Number.isFinite(ct) && ct > 0 ? ct : null };
   } catch { return null; }
 }
 
@@ -1045,11 +1054,15 @@ function parseJsonMaybe(p: any): any {
 // it survives all future fixes. Returns the parent taskId, the per-track audioId,
 // and the CURRENT pristine audioUrl. null = no recoverable Kie source (Mureka, or
 // Kie purged the audio after ~14 days) → caller should offer a full re-roll.
-async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string } | null> {
-  const candidates: Array<{ taskId?: string; audioId?: string }> = [];
-  if (song?.kie_task_id) { const kp = parseJsonMaybe(song.kie_payload); candidates.push({ taskId: song.kie_task_id, audioId: kp?.id }); }
-  const ks = parseJsonMaybe(song?.kie_source); if (ks?.taskId) candidates.push({ taskId: ks.taskId, audioId: ks.audioId });
-  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id }); }
+async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null> {
+  // trimAtS travels ONLY on the chained candidate (kie_payload): when the applied
+  // audio was an end-trimmed whole take, the Kie-hosted source is LONGER than the
+  // live song, and every downstream consumer (Claude's window, the length checks)
+  // must treat everything past trimAtS as non-existent.
+  const candidates: Array<{ taskId?: string; audioId?: string; trimAtS?: number | null }> = [];
+  if (song?.kie_task_id) { const kp = parseJsonMaybe(song.kie_payload); candidates.push({ taskId: song.kie_task_id, audioId: kp?.id, trimAtS: Number(kp?.trimAtS) > 0 ? Number(kp.trimAtS) : null }); }
+  const ks = parseJsonMaybe(song?.kie_source); if (ks?.taskId) candidates.push({ taskId: ks.taskId, audioId: ks.audioId, trimAtS: null });
+  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id, trimAtS: null }); }
   for (const c of candidates) {
     if (!c.taskId) continue;
     const track = await fetchKieTrack(c.taskId, c.audioId);
@@ -1058,7 +1071,7 @@ async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: str
       if (!existing || existing.taskId !== c.taskId) {
         try { await supabase.from('songs').update({ kie_source: { taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ }
       }
-      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl };
+      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs };
     }
   }
   return null;
@@ -1533,14 +1546,16 @@ Deno.serve(async (req) => {
     if (!song.style_used) return json({ ok: false, error: 'song is missing style_used' });
     if (!song.lyrics) return json({ ok: false, error: 'song is missing lyrics' });
 
-    const ageDays = song.created_at ? (Date.now() - new Date(song.created_at).getTime()) / 86400000 : null;
-    // Songs older than Kie's ~14-day audio retention can't be section-fixed — the
-    // original voice-track is deleted, so the re-sing + splice have nothing to work
-    // from. Route straight to the full re-roll (fresh take, same style & voice)
-    // with a clear message, instead of failing later on a dead transcription/re-sing.
+    // Kie deletes take audio after ~14 days — but the clock runs per TAKE, not per
+    // song: every chained fix creates a fresh take and resets it. Age from the
+    // resolved take's own createTime (record-info) when Kie reports it; only fall
+    // back to the song's created_at when it doesn't. Basing this on created_at
+    // alone wrongly refused songs fixed yesterday but created weeks ago.
+    const ageBasisMs = kieSrc.createTimeMs ?? (song.created_at ? new Date(song.created_at).getTime() : null);
+    const ageDays = ageBasisMs ? (Date.now() - ageBasisMs) / 86400000 : null;
     if (ageDays !== null && ageDays > 14) {
       return json({ ok: false, eligible: false, tooOld: true,
-        reason: `Esta canción tiene ~${Math.round(ageDays)} días. Kie borra el audio original después de ~14 días, así que el arreglo por sección (misma voz exacta) ya no es posible. Usa "Rehacer la canción completa" — se vuelve a grabar con el mismo estilo y tipo de voz.` });
+        reason: `La grabación fuente de esta canción tiene ~${Math.round(ageDays)} días. Kie borra el audio original después de ~14 días, así que el arreglo por sección (misma voz exacta) ya no es posible. Usa "Rehacer la canción completa" — se vuelve a grabar con el mismo estilo y tipo de voz.` });
     }
 
     // ---- Word-level timestamps of the PRISTINE original (fresh Whisper — the
@@ -1565,6 +1580,16 @@ Deno.serve(async (req) => {
         reason: audioGone
           ? `No se pudo descargar el audio original (${cause}). Usa "Rehacer la canción completa" (mismo estilo y voz).`
           : `⚠ La transcripción falló, pero NO es problema de la canción: ${cause}. Corrige eso y vuelve a intentar el arreglo normal.` });
+    }
+
+    // Chained-from-a-TRIMMED-take source: the Kie-hosted audio is longer than the
+    // customer's live song (the applied version was end-trimmed). Everything past
+    // trimAtS is over-extension that was already cut — hide it from Claude and the
+    // window math, or the fix targets audio the customer never hears. Skip the cap
+    // when the Kie tempfile fell back to OUR permanent copy (already trimmed).
+    if (kieSrc.trimAtS && pristineForSplice === pristineUrl) {
+      whisper.words = whisper.words.filter((w) => w.start < kieSrc.trimAtS!);
+      if (whisper.duration && whisper.duration > kieSrc.trimAtS) whisper.duration = kieSrc.trimAtS;
     }
 
     const duration = whisper.duration || (whisper.words.length ? whisper.words[whisper.words.length - 1].end : 0);
@@ -1655,6 +1680,10 @@ Deno.serve(async (req) => {
           originalAudioUrl: pristineForSplice, // pristine original (or our permanent copy) — everything after the block comes from here
           fullLyrics, // the REAL corrected lyrics to store on apply
           verifyPhrases: phrasesToVerify,
+          // When the source is a trimmed chained take, this is the live song's
+          // TRUE length — the client must use it as the whole-take length
+          // baseline instead of the (longer) source file's duration.
+          sourceTrimAtS: (kieSrc.trimAtS && pristineForSplice === pristineUrl) ? kieSrc.trimAtS : null,
           // Corrections applied by EARLIER fixes that are still part of the
           // corrected lyrics we are about to sing. The client must verify the
           // chosen take sings these too — a take re-sung from a source that

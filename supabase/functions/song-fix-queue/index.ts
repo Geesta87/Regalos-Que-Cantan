@@ -132,10 +132,11 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
     // Whole-take release: chain future fixes off THIS take (fix-song-section's
     // resolveKieSource tries kie_task_id + kie_payload.id first) so a later
     // surgical fix re-sings from audio that already contains this correction.
+    // Trimmed takes chain too — trimAtS marks the live song's true length.
     kie_task_id: meta.fixTaskId && meta.fixAudioId ? String(meta.fixTaskId) : null,
     task_id: meta.fixTaskId && meta.fixAudioId ? String(meta.fixTaskId) : null,
     kie_payload: meta.fixTaskId && meta.fixAudioId
-      ? JSON.stringify({ id: String(meta.fixAudioId), audioUrl: candidateUrl })
+      ? JSON.stringify({ id: String(meta.fixAudioId), audioUrl: candidateUrl, ...(Number(meta.fixTrimAtS) > 0 ? { trimAtS: Number(meta.fixTrimAtS) } : {}) })
       : null,
     // The share video replaces the audio player on the gift page and still has
     // the pre-fix audio baked in. Nulling it re-queues the row for
@@ -232,10 +233,12 @@ serve(async (req) => {
       const meta = {
         mode: String(form.get('mode') || 'section'),
         corrections: Array.isArray(corrections) ? corrections : null,
-        // Present only when the staged audio is an untrimmed whole Kie take —
-        // release uses these to chain future fixes off the corrected take.
+        // Present when the staged audio is a whole Kie take — release uses these
+        // to chain future fixes off the corrected take. fixTrimAtS marks where an
+        // end-trimmed take was cut (the live song's true length).
         fixTaskId: form.get('fixTaskId') ? String(form.get('fixTaskId')) : null,
         fixAudioId: form.get('fixAudioId') ? String(form.get('fixAudioId')) : null,
+        fixTrimAtS: Number(form.get('fixTrimAtS')) > 0 ? Number(form.get('fixTrimAtS')) : null,
       };
 
       const { error: upErr } = await admin.from('song_fix_requests').update({
@@ -342,6 +345,7 @@ serve(async (req) => {
           // chains future fixes off the corrected take instead of the pristine.
           fixTaskId: body.fixTaskId ? String(body.fixTaskId) : null,
           fixAudioId: body.fixAudioId ? String(body.fixAudioId) : null,
+          fixTrimAtS: Number(body.fixTrimAtS) > 0 ? Number(body.fixTrimAtS) : null,
         },
         ...(reqRow.song_id ? {} : (body.songId ? { song_id: body.songId } : {})),
         status: 'awaiting_approval',

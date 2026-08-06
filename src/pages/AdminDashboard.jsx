@@ -317,6 +317,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           }
         } catch { origLine = null; }
       }
+      // Chained-from-a-trimmed-take source: the Kie file runs LONGER than the
+      // customer's live song. The server tells us the live song's true length —
+      // use it as the whole-take baseline or the length checks (and the end-trim
+      // rescue) would anchor to the over-extended file and ship a bloated take.
+      if (Number(sub.sourceTrimAtS) > 0) origFullDur = Number(sub.sourceTrimAtS);
 
       // Poll until the re-sing is ready. Keep each take's Kie track id — a
       // whole-take apply stores it so the NEXT fix re-sings from this take.
@@ -536,10 +541,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // so a later fix knows this correction must survive. (This was null
         // before 2026-08-06, which is how a later fix silently reverted one.)
         corrections: (plan?.changes || []).filter((c) => c?.after).map((c) => ({ before: c.before || '', after: c.after })),
-        // Untrimmed whole Kie take → pass its identity so the apply chains the
-        // next fix off this take. A trimmed blob is NOT the Kie take — omit.
-        fixTaskId: !r.trimAtS ? (r.fixTaskId || null) : null,
-        fixAudioId: !r.trimAtS ? (r.takeId || null) : null,
+        // Whole Kie take → pass its identity so the apply chains the next fix off
+        // this take. Trimmed takes chain too — fixTrimAtS records where the blob
+        // was cut so the next fix caps the (longer) Kie source at the true length.
+        fixTaskId: r.fixTaskId || null,
+        fixAudioId: r.takeId || null,
+        fixTrimAtS: r.trimAtS || null,
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: r.startS > 0 ? [r.startS] : [],
         takes: [{ audioUrl: url, verified: true, lyrics: r.fullLyrics }],
@@ -635,13 +642,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
       try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
     }
-    // Untrimmed whole Kie take → carry its identity so the apply chains the next
-    // fix off this take (a trimmed blob is not the Kie take — omit the ids).
+    // Whole Kie take → carry its identity so the apply chains the next fix off
+    // this take. Trimmed takes chain too (fixTrimAtS = where the blob was cut).
     return {
       splicedBlob: blob, correctedUrl: url, fullLyrics: combinedLyrics,
       changeMarks: r.startS > 0 ? [r.startS] : [], wholeTake: true,
-      fixTaskId: !r.trimAtS ? (r.fixTaskId || null) : null,
-      fixAudioId: !r.trimAtS ? (r.takeId || null) : null,
+      fixTaskId: r.fixTaskId || null,
+      fixAudioId: r.takeId || null,
+      fixTrimAtS: r.trimAtS || null,
     };
   }
 
@@ -659,6 +667,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         corrections: changes.map((c) => ({ before: c.before, after: c.after })),
         fixTaskId: one.fixTaskId || null,
         fixAudioId: one.fixAudioId || null,
+        fixTrimAtS: one.fixTrimAtS || null,
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: one.changeMarks,
         takes: [{ audioUrl: one.correctedUrl, verified: true, lyrics: combinedLyrics }],
@@ -723,8 +732,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       fd.append('fullLyrics', r.fullLyrics || '');
       fd.append('summary', summary);
       if (r.corrections) fd.append('corrections', JSON.stringify(r.corrections));
-      // Untrimmed whole Kie take: chain the next fix off this take (see resingOne).
-      if (r.fixTaskId && r.fixAudioId) { fd.append('fixTaskId', r.fixTaskId); fd.append('fixAudioId', r.fixAudioId); }
+      // Whole Kie take: chain the next fix off this take (see resingOne).
+      if (r.fixTaskId && r.fixAudioId) {
+        fd.append('fixTaskId', r.fixTaskId); fd.append('fixAudioId', r.fixAudioId);
+        if (r.fixTrimAtS) fd.append('fixTrimAtS', String(r.fixTrimAtS));
+      }
       const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
       const d = await resp.json();
       if (!d.ok) throw new Error(d.error || 'apply failed');
@@ -845,7 +857,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // swapping the customer's live song. The owner releases it later from the
   // queue. Surgical fixes upload the spliced MP3 blob; full re-rolls hand over
   // the Kie take URL for the backend to re-host (so it survives until approval).
-  async function stageToQueue({ blob, remoteUrl, fullLyrics, summary, corrections, mode, fixTaskId, fixAudioId }) {
+  async function stageToQueue({ blob, remoteUrl, fullLyrics, summary, corrections, mode, fixTaskId, fixAudioId, fixTrimAtS }) {
     if (blob) {
       const fd = new FormData();
       fd.append('request_id', stageRequest.id);
@@ -855,8 +867,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       fd.append('summary', summary || '');
       fd.append('mode', mode || 'section');
       if (corrections) fd.append('corrections', JSON.stringify(corrections));
-      // Untrimmed whole Kie take: the release chains the next fix off this take.
-      if (fixTaskId && fixAudioId) { fd.append('fixTaskId', fixTaskId); fd.append('fixAudioId', fixAudioId); }
+      // Whole Kie take: the release chains the next fix off this take.
+      if (fixTaskId && fixAudioId) {
+        fd.append('fixTaskId', fixTaskId); fd.append('fixAudioId', fixAudioId);
+        if (fixTrimAtS) fd.append('fixTrimAtS', String(fixTrimAtS));
+      }
       const resp = await fetch(QUEUE_URL, {
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON },
@@ -870,7 +885,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       body: JSON.stringify({
         action: 'stage-remote', request_id: stageRequest.id, remote_audio_url: remoteUrl,
         songId: song.id, fullLyrics: fullLyrics || '', summary: summary || '', corrections: corrections || null, mode: mode || 'full',
-        fixTaskId: fixTaskId || null, fixAudioId: fixAudioId || null,
+        fixTaskId: fixTaskId || null, fixAudioId: fixAudioId || null, fixTrimAtS: fixTrimAtS || null,
       }),
     });
     return resp.json();
@@ -883,7 +898,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       let d;
       if (result.surgical) {
-        d = await stageToQueue({ blob: result.splicedBlob, fullLyrics: result.fullLyrics, summary: result.changeSummary, corrections: result.corrections, mode: 'section', fixTaskId: result.fixTaskId, fixAudioId: result.fixAudioId });
+        d = await stageToQueue({ blob: result.splicedBlob, fullLyrics: result.fullLyrics, summary: result.changeSummary, corrections: result.corrections, mode: 'section', fixTaskId: result.fixTaskId, fixAudioId: result.fixAudioId, fixTrimAtS: result.fixTrimAtS });
       } else {
         // Full re-roll: the staged audio IS a whole Kie take — pass its identity
         // (and the lyric changes) so the release chains + accumulates correctly.
@@ -913,8 +928,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         fd.append('fullLyrics', result.fullLyrics || '');
         fd.append('summary', result.changeSummary || '');
         if (result.corrections) fd.append('corrections', JSON.stringify(result.corrections));
-        // Untrimmed whole Kie take: chain the next fix off this take (see resingOne).
-        if (result.fixTaskId && result.fixAudioId) { fd.append('fixTaskId', result.fixTaskId); fd.append('fixAudioId', result.fixAudioId); }
+        // Whole Kie take: chain the next fix off this take (see resingOne).
+        if (result.fixTaskId && result.fixAudioId) {
+          fd.append('fixTaskId', result.fixTaskId); fd.append('fixAudioId', result.fixAudioId);
+          if (result.fixTrimAtS) fd.append('fixTrimAtS', String(result.fixTrimAtS));
+        }
         const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
