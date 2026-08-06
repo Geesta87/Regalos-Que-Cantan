@@ -38,7 +38,11 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
     setBusy(`${id}:${action}`);
     try {
       await call({ action, id, ...extra });
-      showToast?.(action.includes('approve') ? '✓ Approved' : 'Done', 'success');
+      showToast?.(
+        action === 'delete_order' ? '🗑️ Moved to Deleted'
+          : action === 'restore_order' ? '↩ Restored'
+          : action.includes('approve') ? '✓ Approved' : 'Done',
+        'success');
       await load();
     } catch (e) { showToast?.(e.message || 'Error', 'error'); }
     finally { setBusy(null); }
@@ -55,16 +59,26 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
   const approvedLikeness = orders
     .filter((o) => o.approved_character_url && ['building', 'final_review', 'delivered'].includes(o.state))
     .sort((a, b) => new Date(b.approved_character_at || b.updated_at) - new Date(a.approved_character_at || a.updated_at));
+  const deletedOrders = orders
+    .filter((o) => o.state === 'deleted')
+    .sort((a, b) => new Date(b.deleted_at || b.updated_at) - new Date(a.deleted_at || a.updated_at));
   const isLikeness = gate === 'likeness';
+  const isFinal = gate === 'final';
+  const isDeleted = gate === 'deleted';
+
+  function remove(o) {
+    if (!window.confirm(`Move ${String(o.recipient).split(' · ')[0]}'s order to Deleted? You can restore it later from the Deleted tab.`)) return;
+    act(o.id, 'delete_order');
+  }
 
   // auto-refresh while in-progress work exists for THIS gate, so finished results
   // pop in by themselves: regenerating likenesses (gate 1) or building videos (gate 2).
   useEffect(() => {
-    const inProgress = isLikeness ? regenLikeness.length : rebuilding.length;
+    const inProgress = isLikeness ? regenLikeness.length : isFinal ? rebuilding.length : 0;
     if (inProgress === 0) return;
     const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [isLikeness, regenLikeness.length, rebuilding.length, load]);
+  }, [isLikeness, isFinal, regenLikeness.length, rebuilding.length, load]);
 
   const minsAgo = (ts) => Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
 
@@ -73,11 +87,13 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">
-            {isLikeness ? 'Animated — Choose likeness' : 'Animated — Approve final video'}
+            {isLikeness ? 'Animated — Choose likeness' : isDeleted ? 'Animated — Deleted' : 'Animated — Approve final video'}
           </h2>
           <p className="text-sm text-gray-400">
             {isLikeness
               ? `${likeness.length} likeness(es) pending${regenLikeness.length ? ` · ${regenLikeness.length} regenerating` : ''}`
+              : isDeleted
+              ? `${deletedOrders.length} deleted order(s) — restore puts one right back where it was`
               : `${finals.length} video(s) to review${rebuilding.length ? ` · ${rebuilding.length} building` : ''}${failed.length ? ` · ${failed.length} failed` : ''}`}
           </p>
         </div>
@@ -99,6 +115,9 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                 <p className="text-sm font-semibold text-amber-200">{o.recipient} — regenerating likeness…</p>
                 <p className="text-xs text-amber-300/70">New options usually ready in under a minute · they appear here by themselves.</p>
               </div>
+              <button onClick={() => remove(o)} disabled={busy}
+                className="flex-shrink-0 h-7 w-7 rounded-md text-amber-300/60 hover:text-rose-400 hover:bg-rose-500/10 text-base leading-none transition disabled:opacity-50"
+                title="Remove — moves to the Deleted tab (restorable)">✕</button>
             </div>
           ))}
           {likeness.length === 0 && regenLikeness.length === 0 ? <Empty text="No likenesses pending." /> : likeness.length === 0 ? null : (
@@ -115,6 +134,11 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
                       </button>
                       <button onClick={() => act(o.id, 'reject_likeness')} disabled={busy}
                         className="text-xs text-gray-400 hover:text-rose-400 disabled:opacity-50">Reject / request another photo</button>
+                      <button onClick={() => remove(o)} disabled={busy}
+                        className="h-7 w-7 rounded-md text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 text-base leading-none transition disabled:opacity-50"
+                        title="Remove — moves to the Deleted tab (restorable)">
+                        {busy === `${o.id}:delete_order` ? '…' : '✕'}
+                      </button>
                     </div>
                   </div>
                   <Assumptions items={o.assumptions} />
@@ -169,8 +193,33 @@ export default function NeedsApprovalTab({ accessToken, showToast, gate = 'liken
         </section>
       )}
 
+      {/* DELETED — X'd orders, kept restorable so nothing is ever lost by accident */}
+      {isDeleted && (
+        deletedOrders.length === 0 ? <Empty text="Nothing deleted. Removed likenesses land here and can be restored." /> : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {deletedOrders.map((o) => (
+              <div key={o.id} className="rounded-xl border border-gray-800 bg-[#1a1f26] p-2.5 opacity-90">
+                {(o.character_options?.[0]?.url || o.recipient_photo_url)
+                  ? <img src={o.character_options?.[0]?.url || o.recipient_photo_url} alt={o.recipient}
+                      className="w-full aspect-[3/4] object-cover rounded-lg grayscale" />
+                  : <div className="w-full aspect-[3/4] flex items-center justify-center text-gray-600 text-xs rounded-lg bg-gray-900">no image</div>}
+                <div className="text-xs text-white font-medium truncate mt-1.5">{o.recipient}</div>
+                <div className="text-[10px] text-gray-500">
+                  Deleted {o.deleted_at ? new Date(o.deleted_at).toLocaleDateString() : ''}
+                  {o.deleted_from_state ? ` · was: ${o.deleted_from_state.replace(/_/g, ' ')}` : ''}
+                </div>
+                <button onClick={() => act(o.id, 'restore_order')} disabled={busy}
+                  className="w-full mt-1.5 py-1.5 text-xs font-semibold rounded-md bg-gray-700 hover:bg-emerald-600 text-white transition disabled:opacity-50">
+                  {busy === `${o.id}:restore_order` ? '…' : '↩ Restore'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
       {/* GATE 2 — approve the final video: 3 sub-tabs (Building / Pending / Completed) */}
-      {!isLikeness && (
+      {isFinal && (
         <section className="space-y-4">
           <div className="flex gap-1.5 border-b border-gray-800 pb-2">
             {[
@@ -266,7 +315,7 @@ export function AnimadoAdmin({ accessToken, showToast }) {
   return (
     <div className="space-y-4">
       <div className="flex gap-1.5">
-        {[{ k: 'likeness', l: '🎬 Likeness' }, { k: 'final', l: '🎞️ Final Video' }].map((t) => (
+        {[{ k: 'likeness', l: '🎬 Likeness' }, { k: 'final', l: '🎞️ Final Video' }, { k: 'deleted', l: '🗑️ Deleted' }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === t.k ? 'bg-fuchsia-500 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
             {t.l}
