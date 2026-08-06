@@ -1532,11 +1532,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ---- SECTION path — resolve the ORIGINAL Kie voice-track. resolveKieSource
-    // recovers it from kie_source / fix_backup even if this song was already
-    // fixed once (an apply nulls kie_task_id), so repeat & multi-part surgical
-    // fixes keep re-singing from the same original voice. ----
-    const kieSrc = await resolveKieSource(song, supabase);
+    // ---- SECTION path — resolve the source Kie voice-track. ----
+    // EXPLICIT SOURCE OVERRIDE (multi-spot ladder, 2026-08-06): the client fixes
+    // several far-apart spots in sequence WITHOUT applying between rounds — each
+    // round passes the previous round's take as sourceTaskId/sourceAudioId (+
+    // sourceTrimAtS = its true musical end) so the next re-sing builds on it. If
+    // the override take is gone from Kie, fail loudly — falling back to the DB
+    // source would silently revert the earlier rounds' corrections.
+    let kieSrc: { taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null;
+    const srcTaskId: string | undefined = body?.sourceTaskId;
+    const srcAudioId: string | undefined = body?.sourceAudioId;
+    if (srcTaskId && srcAudioId) {
+      const track = await fetchKieTrack(srcTaskId, srcAudioId);
+      if (!track) return json({ ok: false, error: 'La toma fuente del paso anterior ya no está disponible en Kie. Vuelve a empezar el arreglo.' });
+      kieSrc = { taskId: srcTaskId, audioId: srcAudioId, pristineUrl: track.audioUrl, trimAtS: Number(body?.sourceTrimAtS) > 0 ? Number(body.sourceTrimAtS) : null, createTimeMs: track.createTimeMs };
+    } else {
+      // Normal path: the live row ids -> kie_source -> fix_backup (recovers even
+      // after applies, so repeat & multi-part fixes keep the same voice).
+      kieSrc = await resolveKieSource(song, supabase);
+    }
     if (!kieSrc) {
       return json({ ok: false, eligible: false, error: 'No hay una pista original de Kie disponible (hecha con Mureka, o Kie ya borró el audio tras ~14 días). Usa "regenerar canción completa".' });
     }
