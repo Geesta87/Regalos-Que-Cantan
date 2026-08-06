@@ -913,10 +913,35 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Append the new corrections to the ones already on the song (dedup by
+// before→after). Every fix keeps the FULL list, so later fixes can check that
+// none of the earlier corrections got sung back to the wrong words.
+// Returns null when there is nothing to store (leaves the column untouched).
+function mergeCorrections(prevList: unknown, newList: unknown): Array<{ before: string; after: string }> | null {
+  const prev = Array.isArray(prevList) ? prevList : [];
+  const next = Array.isArray(newList) ? newList : [];
+  const out: Array<{ before: string; after: string }> = [];
+  const seen = new Set<string>();
+  for (const c of [...prev, ...next]) {
+    const before = String((c as any)?.before ?? '').trim();
+    const after = String((c as any)?.after ?? '').trim();
+    if (!after) continue;
+    const key = `${before}→${after}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ before, after });
+  }
+  return out.length ? out : null;
+}
+
 // Host a browser-spliced surgical fix (MP3 multipart) and swap it into the song
-// row, snapshotting the previous version for undo. The applied audio is a
-// stitched MP3 (not a Kie track), so we drop the Kie ids — a future fix on this
-// song goes through a fresh re-roll rather than a stale section edit.
+// row, snapshotting the previous version for undo. When the applied audio is an
+// UNTRIMMED whole Kie take, the client passes fixTaskId + fixAudioId and we chain
+// future fixes off that take (same as the full-re-roll apply) — without this, the
+// next surgical fix re-sings from the PRISTINE original and silently REVERTS this
+// one in the audio (2026-08-04: a Nov-13→14 date fix was undone by a later
+// julio→agosto fix on the same songs). Trimmed/spliced audio is not a Kie track,
+// so those applies still drop the Kie ids.
 async function applySplicedAudio(req: Request, supabase: any): Promise<Response> {
   let form: FormData;
   try { form = await req.formData(); } catch (e) { return json({ ok: false, error: `bad multipart: ${e instanceof Error ? e.message : e}` }); }
@@ -924,6 +949,8 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
   const songId = String(form.get('songId') || '');
   const fullLyrics = form.get('fullLyrics') ? String(form.get('fullLyrics')) : '';
   const summary = form.get('summary') ? String(form.get('summary')) : '';
+  const fixTaskId = form.get('fixTaskId') ? String(form.get('fixTaskId')) : '';
+  const fixAudioId = form.get('fixAudioId') ? String(form.get('fixAudioId')) : '';
   // Multi-part fixes send the full list of corrections applied so far, so future
   // fixes can re-derive from the pristine original without dropping an earlier one.
   let corrections: unknown = null;
@@ -957,9 +984,13 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     lyrics_timestamps: null,
     // The old share video still has the pre-fix audio baked in.
     ...CLEAR_STALE_SHARE_VIDEO,
-    kie_task_id: null,
-    task_id: null,
-    kie_payload: null,
+    // Whole-take apply: chain future fixes off THIS take (resolveKieSource tries
+    // kie_task_id + kie_payload.id first), so a later surgical fix re-sings from
+    // audio that already contains this correction. Otherwise drop the Kie ids —
+    // the stitched/trimmed MP3 is not a Kie track.
+    kie_task_id: fixTaskId && fixAudioId ? fixTaskId : null,
+    task_id: fixTaskId && fixAudioId ? fixTaskId : null,
+    kie_payload: fixTaskId && fixAudioId ? JSON.stringify({ id: fixAudioId, audioUrl: publicUrl }) : null,
     // Footprint — stamp the song as fixed (when + note + count) so staff can see
     // at a glance which songs were repaired and why.
     fixed_at: now,
@@ -968,8 +999,15 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
     fix_backup: prev ? { ...prev, backed_up_at: now } : null,
   };
   // kie_source is intentionally NOT in `update` — it must survive the apply so a
-  // future surgical fix can still re-sing from the original voice-track.
-  if (Array.isArray(corrections)) update.fix_corrections = corrections;
+  // future surgical fix can still fall back to the original voice-track.
+  {
+    // ACCUMULATE corrections across fixes (append new, keep prior) — this list is
+    // what lets a later fix verify no earlier correction got reverted. Replacing
+    // it (or leaving it null, as the whole-take path did before 2026-08-06) is
+    // what let fix #2 silently undo fix #1.
+    const merged = mergeCorrections(prev?.fix_corrections, corrections);
+    if (merged) update.fix_corrections = merged;
+  }
   if (fullLyrics.trim()) update.lyrics = fullLyrics;
 
   const { error } = await supabase.from('songs').update(update).eq('id', songId);
@@ -1141,12 +1179,13 @@ Deno.serve(async (req) => {
       const fullLyrics: string | undefined = body?.fullLyrics;
       const imageUrl: string | undefined = body?.imageUrl;
       const changeSummary: string | undefined = body?.changeSummary;
+      const applyCorrections: unknown = body?.corrections;
       if (!songId || !fixedAudioUrl) return json({ ok: false, error: 'songId and fixedAudioUrl are required' });
 
       // Snapshot the current state so the owner can Undo this fix.
       const { data: prev } = await supabase
         .from('songs')
-        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
+        .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, fix_corrections, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
         .eq('id', songId)
         .single();
 
@@ -1170,6 +1209,12 @@ Deno.serve(async (req) => {
       };
       if (imageUrl) update.image_url = imageUrl;
       if (typeof fullLyrics === 'string' && fullLyrics.trim()) update.lyrics = fullLyrics;
+      {
+        // Keep the running list of corrections (see mergeCorrections) so later
+        // surgical fixes can verify none of them got reverted.
+        const merged = mergeCorrections(prev?.fix_corrections, applyCorrections);
+        if (merged) update.fix_corrections = merged;
+      }
       // Chain future fixes off the corrected version.
       if (fixTaskId) { update.kie_task_id = fixTaskId; update.task_id = fixTaskId; }
       if (fixTaskId || fixAudioId) update.kie_payload = JSON.stringify({ id: fixAudioId, audioUrl: fixedAudioUrl });
@@ -1371,7 +1416,7 @@ Deno.serve(async (req) => {
 
     const { data: song, error: songErr } = await supabase
       .from('songs')
-      .select('id, recipient_name, voice_type, style_used, genre, lyrics, audio_url, original_audio_url, kie_task_id, kie_payload, kie_source, fix_backup, lyrics_timestamps, provider, created_at')
+      .select('id, recipient_name, voice_type, style_used, genre, lyrics, audio_url, original_audio_url, kie_task_id, kie_payload, kie_source, fix_backup, fix_corrections, lyrics_timestamps, provider, created_at')
       .eq('id', songId)
       .single();
     if (songErr || !song) return json({ ok: false, error: `song lookup failed: ${songErr?.message || 'not found'}` });
@@ -1610,6 +1655,14 @@ Deno.serve(async (req) => {
           originalAudioUrl: pristineForSplice, // pristine original (or our permanent copy) — everything after the block comes from here
           fullLyrics, // the REAL corrected lyrics to store on apply
           verifyPhrases: phrasesToVerify,
+          // Corrections applied by EARLIER fixes that are still part of the
+          // corrected lyrics we are about to sing. The client must verify the
+          // chosen take sings these too — a take re-sung from a source that
+          // predates them silently REVERTS them (the 2026-08-04 trece/catorce
+          // regression). Filtered against fullLyrics (not song.lyrics) so a fix
+          // that re-edits a previously-fixed line doesn't demand the OLD text.
+          priorCorrections: (Array.isArray(song.fix_corrections) ? song.fix_corrections : [])
+            .filter((c: any) => c && typeof c.after === 'string' && c.after.trim() && String(fullLyrics || '').includes(c.after.trim())),
           staleWarning: null,
         });
       } catch (e: any) {

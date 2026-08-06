@@ -73,10 +73,37 @@ async function hostAudio(admin: any, requestId: string, bytes: Uint8Array): Prom
   return admin.storage.from(AUDIO_BUCKET).getPublicUrl(objectPath).data.publicUrl;
 }
 
+// Append the new corrections to the ones already on the song (dedup by
+// before→after) — same helper as fix-song-section. Every fix keeps the FULL
+// list so later fixes can verify none of the earlier ones got reverted.
+// deno-lint-ignore no-explicit-any
+function mergeCorrections(prevList: unknown, newList: unknown): Array<{ before: string; after: string }> | null {
+  const prev = Array.isArray(prevList) ? prevList : [];
+  const next = Array.isArray(newList) ? newList : [];
+  const out: Array<{ before: string; after: string }> = [];
+  const seen = new Set<string>();
+  for (const c of [...prev, ...next]) {
+    // deno-lint-ignore no-explicit-any
+    const before = String((c as any)?.before ?? '').trim();
+    // deno-lint-ignore no-explicit-any
+    const after = String((c as any)?.after ?? '').trim();
+    if (!after) continue;
+    const key = `${before}→${after}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ before, after });
+  }
+  return out.length ? out : null;
+}
+
 // Swap a STAGED candidate into the customer's live song, snapshotting the prior
-// state for undo — the same mechanics as the direct "Fix Song" apply. The
-// applied audio is a hosted MP3 (not a Kie track), so we drop the Kie ids: a
-// future fix on this song re-rolls fresh rather than editing a stale section.
+// state for undo — the same mechanics as the direct "Fix Song" apply. When the
+// staged audio is an UNTRIMMED whole Kie take, candidate_meta carries
+// fixTaskId + fixAudioId and we chain future fixes off that take — without this,
+// the next surgical fix re-sings from the PRISTINE original and silently REVERTS
+// this one in the audio (2026-08-04: a queue-released Nov-13→14 date fix was
+// undone by a later julio→agosto fix on the same songs). Stitched/trimmed audio
+// is not a Kie track, so those releases still drop the Kie ids.
 // deno-lint-ignore no-explicit-any
 async function releaseCandidate(admin: any, reqRow: any, approver: string): Promise<{ audioUrl: string }> {
   const songId = reqRow.song_id;
@@ -102,9 +129,14 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
     needs_reupload: true,
     error_message: null,
     lyrics_timestamps: null,
-    kie_task_id: null,
-    task_id: null,
-    kie_payload: null,
+    // Whole-take release: chain future fixes off THIS take (fix-song-section's
+    // resolveKieSource tries kie_task_id + kie_payload.id first) so a later
+    // surgical fix re-sings from audio that already contains this correction.
+    kie_task_id: meta.fixTaskId && meta.fixAudioId ? String(meta.fixTaskId) : null,
+    task_id: meta.fixTaskId && meta.fixAudioId ? String(meta.fixTaskId) : null,
+    kie_payload: meta.fixTaskId && meta.fixAudioId
+      ? JSON.stringify({ id: String(meta.fixAudioId), audioUrl: candidateUrl })
+      : null,
     // The share video replaces the audio player on the gift page and still has
     // the pre-fix audio baked in. Nulling it re-queues the row for
     // render-share-videos (which only picks up share_video_url IS NULL) so it
@@ -131,7 +163,13 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
   if (reqRow.candidate_lyrics && String(reqRow.candidate_lyrics).trim()) {
     update.lyrics = reqRow.candidate_lyrics;
   }
-  if (Array.isArray(meta.corrections)) update.fix_corrections = meta.corrections;
+  {
+    // ACCUMULATE corrections (append new, keep prior) — replacing the list (or
+    // leaving it null, as the whole-take path did before 2026-08-06) is what let
+    // a later fix silently undo an earlier one.
+    const merged = mergeCorrections(prev?.fix_corrections, meta.corrections);
+    if (merged) update.fix_corrections = merged;
+  }
 
   const { error } = await admin.from('songs').update(update).eq('id', songId);
   if (error) throw new Error(`release failed: ${error.message}`);
@@ -191,7 +229,14 @@ serve(async (req) => {
 
       let corrections: unknown = null;
       if (form.get('corrections')) { try { corrections = JSON.parse(String(form.get('corrections'))); } catch { corrections = null; } }
-      const meta = { mode: String(form.get('mode') || 'section'), corrections: Array.isArray(corrections) ? corrections : null };
+      const meta = {
+        mode: String(form.get('mode') || 'section'),
+        corrections: Array.isArray(corrections) ? corrections : null,
+        // Present only when the staged audio is an untrimmed whole Kie take —
+        // release uses these to chain future fixes off the corrected take.
+        fixTaskId: form.get('fixTaskId') ? String(form.get('fixTaskId')) : null,
+        fixAudioId: form.get('fixAudioId') ? String(form.get('fixAudioId')) : null,
+      };
 
       const { error: upErr } = await admin.from('song_fix_requests').update({
         candidate_audio_url: publicUrl,
@@ -290,7 +335,14 @@ serve(async (req) => {
         candidate_audio_url: publicUrl,
         candidate_lyrics: body.fullLyrics || null,
         candidate_summary: body.summary || null,
-        candidate_meta: { mode: body.mode || 'full', corrections },
+        candidate_meta: {
+          mode: body.mode || 'full',
+          corrections,
+          // Whole Kie take identity (full re-rolls always are one) — release
+          // chains future fixes off the corrected take instead of the pristine.
+          fixTaskId: body.fixTaskId ? String(body.fixTaskId) : null,
+          fixAudioId: body.fixAudioId ? String(body.fixAudioId) : null,
+        },
         ...(reqRow.song_id ? {} : (body.songId ? { song_id: body.songId } : {})),
         status: 'awaiting_approval',
         worked_by: actor,
