@@ -260,9 +260,16 @@ async function linkSongsToConversation(
       .map((s: { id: string }) => s.id);
     if (!needsPhone.length) return 0;
 
+    // The staff member literally just texted this customer the song's link, so
+    // the song is delivered/contacted: stamp whatsapp_sent_at (drops it from
+    // "Pending to Send" / Hot Leads) and song_wa_sent_at (stops the automated
+    // song-ready WhatsApp from re-sending what staff already sent — the phone
+    // write below trips the songs trigger that stamps phone_added_at, which
+    // would otherwise make send-song-ready-whatsapp pick it up).
+    const nowIso = new Date().toISOString();
     const { data: updated } = await admin
       .from('songs')
-      .update({ whatsapp_phone: digits })
+      .update({ whatsapp_phone: digits, whatsapp_sent_at: nowIso, song_wa_sent_at: nowIso })
       .in('id', needsPhone)
       // Re-check inside the write so a concurrent update can't be clobbered.
       .or('whatsapp_phone.is.null,whatsapp_phone.eq.')

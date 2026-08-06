@@ -33,6 +33,8 @@ export interface SendSmsResult {
   sid?: string;
   status?: string;
   error?: string;
+  code?: number; // Twilio error code, when present (lets callers tell a bad
+                 // number apart from a transient rate limit / auth hiccup)
 }
 
 export function isSmsConfigured(): boolean {
@@ -76,7 +78,12 @@ export async function sendSms(to: string, body: string, mediaUrl?: string): Prom
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       // Twilio returns { code, message, status, more_info } on error.
-      return { ok: false, error: data?.message || `Twilio HTTP ${res.status}`, status: data?.status };
+      return {
+        ok: false,
+        error: data?.message || `Twilio HTTP ${res.status}`,
+        status: data?.status,
+        code: typeof data?.code === 'number' ? data.code : undefined,
+      };
     }
     return { ok: true, sid: data.sid, status: data.status };
   } catch (e) {

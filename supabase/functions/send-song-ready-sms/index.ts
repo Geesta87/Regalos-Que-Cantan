@@ -33,6 +33,13 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SITE = 'https://regalosquecantan.com';
 const WA_SUPPORT = 'https://wa.me/18183065193';
 
+// Twilio failures worth retrying next run: rate limiting and OUR auth being
+// broken (20003 — stamping customers as handled during a credentials outage
+// would silently skip them forever). Everything else — invalid number, blocked,
+// landline, no international permission — fails identically every minute
+// forever, so the caller marks those handled after one attempt.
+const RETRYABLE_SMS_CODES = new Set([20003, 20429]);
+
 // Only orders GENUINELY confirmed paid via Stripe. The stripe-webhook sets
 // paid=true + payment_status='paid' + paid_at on confirmation; verify-payment
 // sets stripe_payment_id. We require a confirmation timestamp (paid_at) AND
@@ -96,7 +103,14 @@ serve(async () => {
     for (const [phone, group] of byPhone) {
       const to = toE164(phone);
       const ids = group.map((g) => g.id as string);
-      if (!to) { failed++; continue; }
+      if (!to) {
+        // Unusable digit count — an SMS to this number can never succeed, and
+        // leaving it unmarked meant it was retried every single minute forever.
+        // Mark handled after the one look so the queue can't wedge on it.
+        await admin.from('songs').update({ song_sms_sent_at: new Date().toISOString() }).in('id', ids);
+        failed++;
+        continue;
+      }
 
       // Respect STOP — mark handled so we stop reconsidering, but never send.
       if (optedOut.has(to)) {
@@ -152,7 +166,14 @@ serve(async () => {
 
       if (!result.ok) {
         failed++;
-        console.error('send-song-ready-sms: send failed', phone, result.error);
+        console.error('send-song-ready-sms: send failed', phone, result.code, result.error);
+        // A Twilio 4xx with a definitive code (invalid/blocked/landline number)
+        // will fail identically on every retry — mark handled so it stops
+        // being retried every minute. No code (network/5xx) or a retryable
+        // code (rate limit, auth outage) → leave it for the next run.
+        if (result.code && !RETRYABLE_SMS_CODES.has(result.code)) {
+          await admin.from('songs').update({ song_sms_sent_at: nowIso }).in('id', ids);
+        }
         continue;
       }
       sent++;

@@ -6,8 +6,12 @@
 // template (SONG_READY_TEMPLATE_SID) from CS_WHATSAPP_FROM.
 //
 // Eligibility (all must hold):
-//   - paid (isStripeConfirmed) AND paid_at within the last 24h (so enabling this
-//     never blasts the historical backlog — old buyers already have their song)
+//   - paid (isStripeConfirmed) AND recent: paid_at within the last 24h, OR the
+//     phone was attached within the last 24h (phone_added_at — stamped by a
+//     songs trigger whenever a side channel like the Animado photo upload or a
+//     staff inbox link adds a number to a row that had none). The 24h caps mean
+//     enabling this never blasts the historical backlog — old buyers already
+//     have their song, and pre-existing rows have phone_added_at NULL.
 //   - whatsapp_phone present
 //   - song_wa_sent_at IS NULL (not already WhatsApp-confirmed)
 //   - not opted out (STOP)
@@ -78,7 +82,7 @@ serve(async () => {
       .is('song_wa_sent_at', null)
       .not('whatsapp_phone', 'is', null)
       .not('paid_at', 'is', null)
-      .gt('paid_at', dayAgo)
+      .or(`paid_at.gt.${dayAgo},phone_added_at.gt.${dayAgo}`)
       .limit(400);
     if (error) throw new Error(`songs query failed: ${error.message}`);
 
@@ -125,7 +129,19 @@ serve(async () => {
 
       if (!result.ok && result.code && TRANSIENT_CODES.has(result.code)) { transient++; continue; }
       await markSent();
-      if (result.ok) sent++; else dropped++;
+      if (result.ok) {
+        sent++;
+        // The customer really received their song link on WhatsApp — also stamp
+        // whatsapp_sent_at (where still null) so the order leaves the admin
+        // "Pending to Send" queue instead of waiting for a manual send. Only
+        // song_sms/song_wa are dedup flags; whatsapp_sent_at is the queue flag.
+        await admin.from('songs')
+          .update({ whatsapp_sent_at: new Date().toISOString() })
+          .in('id', ids)
+          .is('whatsapp_sent_at', null);
+      } else {
+        dropped++;
+      }
 
       // Best-effort: thread it in the WhatsApp inbox.
       try {
