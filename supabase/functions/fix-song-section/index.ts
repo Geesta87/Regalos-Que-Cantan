@@ -1661,8 +1661,15 @@ Deno.serve(async (req) => {
           // predates them silently REVERTS them (the 2026-08-04 trece/catorce
           // regression). Filtered against fullLyrics (not song.lyrics) so a fix
           // that re-edits a previously-fixed line doesn't demand the OLD text.
+          // Line endings are normalized on BOTH sides — stored corrections use
+          // \n while lyrics use \r\n, and without this a multi-line correction
+          // block never matched (found 2026-08-06 on the Sánchez chorus case).
           priorCorrections: (Array.isArray(song.fix_corrections) ? song.fix_corrections : [])
-            .filter((c: any) => c && typeof c.after === 'string' && c.after.trim() && String(fullLyrics || '').includes(c.after.trim())),
+            .filter((c: any) => {
+              if (!c || typeof c.after !== 'string' || !c.after.trim()) return false;
+              const norm = (s: string) => s.replace(/\r\n/g, '\n').trim();
+              return norm(String(fullLyrics || '')).includes(norm(c.after));
+            }),
           staleWarning: null,
         });
       } catch (e: any) {
