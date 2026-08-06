@@ -38,6 +38,7 @@ import { sendSms } from '../_shared/send-sms.ts';
 import { sendWhatsApp } from '../_shared/send-whatsapp.ts';
 import { sendPush } from '../_shared/web-push.ts';
 import { redactPII } from '../_shared/cs-redact.ts';
+import { extractSongRefs } from '../_shared/cs-customer-resolve.ts';
 import { DEFAULT_OO_MESSAGE } from '../_shared/out-of-office.ts';
 import { translateBatch, translateOne } from '../_shared/translate.ts';
 import { runInBackground } from '../_shared/trigger-cs-agent.ts';
@@ -208,6 +209,68 @@ async function backfillTranslations(admin: any, messages: any[]): Promise<void> 
     }
   } catch (e) {
     console.warn('backfillTranslations failed', e);
+  }
+}
+
+// ── Link a song to the person we just sent it to ───────────────────────────
+// Orders built by hand from a chat never get a phone number: staff create them
+// through the public site with a placeholder email, so songs.whatsapp_phone stays
+// NULL. Every downstream system then loses that customer — the CS bot can't find
+// them by phone or email (it asked one customer for his email five times on
+// 2026-08-05), and none of the automated deliveries can reach them.
+//
+// The signal was always there: when staff paste a song link INTO a conversation,
+// that act asserts "this song belongs to this person". So capture it. Zero extra
+// work for whoever is working the inbox — they already send the link.
+//
+// Deliberately conservative:
+//   • only from a STAFF-SENT outbound message (both call sites are authenticated
+//     admin actions) — never from a link a customer pasted, which could be
+//     someone else's;
+//   • never overwrites a number the song already has;
+//   • best-effort — a failure here must never break sending a reply.
+async function linkSongsToConversation(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  conversationPhone: string,
+  text: string,
+): Promise<number> {
+  try {
+    const digits = String(conversationPhone || '').replace(/\D/g, '');
+    if (digits.length < 10) return 0;
+
+    const { ids, shortCodes } = extractSongRefs([text || '']);
+    if (!ids.length && !shortCodes.length) return 0;
+
+    // Resolve short codes to ids so both link paths behave identically.
+    const allIds = [...ids];
+    if (shortCodes.length) {
+      const { data } = await admin.from('songs').select('id').in('short_code', shortCodes).limit(8);
+      for (const r of data || []) allIds.push(String(r.id));
+    }
+    if (!allIds.length) return 0;
+
+    // Only songs that have NO number yet.
+    const { data: targets } = await admin
+      .from('songs')
+      .select('id, whatsapp_phone')
+      .in('id', [...new Set(allIds)].slice(0, 8));
+    const needsPhone = (targets || [])
+      .filter((s: { whatsapp_phone: string | null }) => !String(s.whatsapp_phone || '').trim())
+      .map((s: { id: string }) => s.id);
+    if (!needsPhone.length) return 0;
+
+    const { data: updated } = await admin
+      .from('songs')
+      .update({ whatsapp_phone: digits })
+      .in('id', needsPhone)
+      // Re-check inside the write so a concurrent update can't be clobbered.
+      .or('whatsapp_phone.is.null,whatsapp_phone.eq.')
+      .select('id');
+    return (updated || []).length;
+  } catch (e) {
+    console.warn('linkSongsToConversation failed', e);
+    return 0;
   }
 }
 
@@ -690,6 +753,10 @@ serve(async (req) => {
       // WhatsApp tab → whatsapp). Falls back to the conversation's channel.
       const result = await deliver(sendCh, convo.phone, text, mediaSignedUrl);
 
+      // Sending someone their song link asserts the song is theirs — capture the
+      // number so the CS bot and every automated delivery can find them later.
+      if (result.ok) await linkSongsToConversation(admin, convo.phone, text);
+
       // Record the outbound message regardless of send outcome, so the thread
       // reflects what was attempted. status mirrors the Twilio result.
       const nowIso = new Date().toISOString();
@@ -764,6 +831,10 @@ serve(async (req) => {
       const draftCh = draft.channel || convo.channel || 'sms';
       const result = await deliver(draftCh, convo.phone, text);
       const nowIso = new Date().toISOString();
+
+      // Same as the manual send path: an approved reply carrying a song link
+      // tells us whose song it is.
+      if (result.ok) await linkSongsToConversation(admin, convo.phone, text);
 
       const wasEdited = !!(editedText && editedText !== draft.body);
 
