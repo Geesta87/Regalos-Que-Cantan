@@ -265,7 +265,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // sings the correction, and if none does after a short retry, throw offerFull so the
   // caller offers a full re-roll. No atempo/stretch, no line/section splice, no 5×
   // loop that hides good takes and burns Kie credits.
-  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false, requireAll = null }, onMsg) {
+  async function resingOne({ songId = song.id, note, approvedLyrics, verifyPhrases, correctedText, addLine = null, lineReplace = null, allowWhole = true, wholeOnly = false, requireAll = null, consistency = null }, onMsg) {
     // Best-of-6: each round is one Kie generation (~2 takes), so 3 rounds surfaces
     // up to ~6 whole takes — we early-exit the moment one verifies clean, so the
     // extra rounds only run when the first didn't land. (Was 2 → too few chances,
@@ -361,42 +361,54 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // Over that ceiling ⇒ genuine over-extension ⇒ fall through to a full re-roll.
         if (allowWhole && !addLine && origFullDur && words.length) {
           const takeEnd = words[words.length - 1].end;
-          // Multi-change: the take must sing EVERY correction (each requireAll phrase),
-          // so two edits in the same verse land in ONE whole take. Single-change: the
-          // normal corrected-line check.
-          const sang = (requireAll && requireAll.length)
-            ? requireAll.every((p) => !!findCleanLine(words, buildTokenGroups(p), { maxGapS: 3.5 }))
-            : validateTake(words, groups, { maxGapS: 8, maxSpanS: maxSpanS + 60 }).ok;
-          // The take must ALSO still sing every correction from earlier fixes —
-          // a whole take that reverts one is a regression, never "clean".
-          const keptPrior = priorAfters.every((p) => !!findCleanLine(words, buildTokenGroups(p), { maxGapS: 3.5 }));
-          if (sang && !keptPrior && wholeOnly) {
-            lastReason = 'la toma revirtió una corrección anterior';
-            lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
-          }
-          const lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30;
-          if (sang && keptPrior && lenOk) {
-            wholeCands.push({ url, takeId, drift: Math.abs(takeEnd - origFullDur), trimAtS: null });
-          } else if (sang && keptPrior && takeEnd > origFullDur * 1.30) {
-            // END-TRIM RESCUE: Suno's replace-section often sings the whole song
-            // correctly and then APPENDS a duplicated puente/final chorus (over-
-            // extension). Those takes sang every correction — their only defect is
-            // the extra tail. Find where the TRUE final lyric line ends (nearest
-            // the original song's ending, so the duplicated copy further out is
-            // ignored) and, if that lands in the sane length band, accept the take
-            // with a trim point. The trim is a single end-cut + fade — no seam, no
-            // stretch, still one continuous performance.
+          // Length FIRST (in band, or over-long with a findable true end → END-TRIM
+          // RESCUE: Suno's replace-section often sings the whole song correctly and
+          // then APPENDS a duplicated puente/final chorus; those takes' only defect
+          // is the extra tail, cut with a single end-trim + fade — no seam/stretch).
+          let trimAtS = null;
+          let lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30;
+          if (!lenOk && takeEnd > origFullDur * 1.30) {
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
-            if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.30) {
-              wholeCands.push({ url, takeId, drift: Math.abs(trueEnd - origFullDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
-            } else if (wholeOnly) {
-              lastReason = 'la toma salió demasiado larga (y no se ubicó el final real para recortar)';
-              lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
-            }
-          } else if (wholeOnly && !(sang && !keptPrior)) { // reverted-prior takes already logged above
-            lastReason = !sang ? 'no cantó todas las correcciones' : 'la toma salió demasiado corta';
+            if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.30) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+          }
+          // Every check below runs on the AUDIBLE part only — the over-extension
+          // tail often re-sings everything correctly and used to satisfy checks
+          // for spots that are still wrong inside the real song.
+          const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
+          const sang = (requireAll && requireAll.length)
+            ? requireAll.every((p) => !!findCleanLine(audible, buildTokenGroups(p), { maxGapS: 3.5 }))
+            : validateTake(audible, groups, { maxGapS: 8, maxSpanS: maxSpanS + 60 }).ok;
+          // The take must ALSO still sing every correction from earlier fixes —
+          // a whole take that reverts one is a regression, never "clean".
+          const keptPrior = priorAfters.every((p) => !!findCleanLine(audible, buildTokenGroups(p), { maxGapS: 3.5 }));
+          // TEXT–AUDIO CONSISTENCY GUARD (2026-08-06): the stored lyrics may carry
+          // a correction in MORE places than one re-sung window covers (a "fix it
+          // in every chorus" plan writes N text occurrences). A take is clean only
+          // if each changed line is SUNG at least as many times as the lyrics that
+          // will be stored contain it, and the OLD wording is sung ZERO times —
+          // so the song page can never display a fix the customer doesn't hear.
+          const consistent = !(consistency && consistency.length) || consistency.every((c) => {
+            if (!c?.after) return true;
+            const need = Math.max(1, timesInLyrics(fullLyrics, c.after));
+            if (countCleanOccurrences(audible, c.after) < need) return false;
+            return !c.before || countCleanOccurrences(audible, c.before) === 0;
+          });
+          if (sang && lenOk && !keptPrior && wholeOnly) {
+            lastReason = 'la toma revirtió una corrección anterior';
+            lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
+          } else if (sang && lenOk && keptPrior && !consistent && wholeOnly) {
+            lastReason = 'la letra marca la corrección en más lugares de los que la toma canta';
+            lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
+          }
+          if (sang && keptPrior && consistent && lenOk) {
+            wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
+          } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.30) {
+            lastReason = 'la toma salió demasiado larga (y no se ubicó el final real para recortar)';
             lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
+          } else if (wholeOnly && !(sang && lenOk && (!keptPrior || !consistent))) {
+            lastReason = !sang ? 'no cantó todas las correcciones' : 'la toma salió demasiado corta';
+            lastTakesSeen.push({ url, text: audible.map((w) => w.word).join(' '), reason: lastReason });
           }
         }
         // In whole-only mode we never splice, so skip all line/section splice scoring.
@@ -515,7 +527,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const lineReplace = one && one.before && one.after ? { before: one.before, after: one.after } : null;
       // WHOLE-TAKE ONLY (owner rule). Never splice/stretch: take Suno's whole re-sing
       // if it sang the correction, else offer a full re-roll. No atempo speed-fit.
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace, wholeOnly: true }, setSurgicalMsg);
+      // `consistency` = the plan's changes: the take must sing each changed line as
+      // many times as the stored lyrics contain it (text can't outrun the audio).
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace, wholeOnly: true, consistency: (plan?.changes || []).filter((c) => c?.after) }, setSurgicalMsg);
       setSurgicalMsg('Saving the corrected version…');
       let url; let blob = null;
       if (r.trimAtS) {
