@@ -406,29 +406,14 @@ export default function GenreStep() {
           </div>
 
           {/* Genre Grid.
-              The "En Inglés" card keeps the FIRST slot on purpose — it refers
-              real revenue to Gifts That Sing (owner decision 2026-08-07). The
-              fix from the audit was the label, not the position: the old
-              "⭐ POPULAR" badge tricked Spanish-first buyers into tapping it;
-              "🇺🇸 English" + the explicit site name self-selects the right
-              people. Don't re-badge it as popular/recommended. */}
+              The "En Inglés" referral card (revenue via Gifts That Sing) renders
+              inside the map, right after Vals — last primary slot. Audit rule
+              stands: never badge it "POPULAR"/recommended; "🇺🇸 English" +
+              the explicit site name self-selects the right people. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            <a
-              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/10 via-bougainvillea/5 to-transparent backdrop-blur-xl border border-bougainvillea/40 hover:border-bougainvillea hover:shadow-[0_0_25px_rgba(242,13,128,0.35)] hover:-translate-y-1"
-            >
-              <span className="absolute top-2 right-2 bg-bougainvillea text-white text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">🇺🇸 ENGLISH</span>
-              <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
-              <span className="font-display text-xl md:text-2xl font-bold tracking-wide text-white">En Inglés</span>
-              <span className="text-white/80 text-[11px] md:text-xs text-center leading-tight font-medium">
-                Pop · Country · R&B · Rock<br/>en <span className="text-bougainvillea font-extrabold">Gifts That Sing →</span>
-              </span>
-            </a>
             {displayedGenres.map((genre) => (
+              <React.Fragment key={genre.id}>
               <button
-                key={genre.id}
                 onClick={() => handleGenreSelect(genre.id)}
                 className={`
                   relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-4 
@@ -455,6 +440,25 @@ export default function GenreStep() {
                 </span>
                 <span className="font-display text-xl md:text-2xl font-semibold tracking-wide">{genre.name}</span>
               </button>
+              {/* "En Inglés" referral card sits right after Vals — the last
+                  primary genre — so it stays in the visible first block even
+                  when "ver más" expands (owner placement 2026-08-07). */}
+              {genre.id === 'vals' && (
+                <a
+                  href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/10 via-bougainvillea/5 to-transparent backdrop-blur-xl border border-bougainvillea/40 hover:border-bougainvillea hover:shadow-[0_0_25px_rgba(242,13,128,0.35)] hover:-translate-y-1"
+                >
+                  <span className="absolute top-2 right-2 bg-bougainvillea text-white text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">🇺🇸 ENGLISH</span>
+                  <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
+                  <span className="font-display text-xl md:text-2xl font-bold tracking-wide text-white">En Inglés</span>
+                  <span className="text-white/80 text-[11px] md:text-xs text-center leading-tight font-medium">
+                    Pop · Country · R&B · Rock<br/>en <span className="text-bougainvillea font-extrabold">Gifts That Sing →</span>
+                  </span>
+                </a>
+              )}
+              </React.Fragment>
             ))}
           </div>
 
