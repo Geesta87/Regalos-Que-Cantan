@@ -59,6 +59,7 @@ import AnimadoUpsell from './pages/AnimadoUpsell';
 import PaqueteLanding from './pages/PaqueteLanding';
 import PaqueteCheckout from './pages/PaqueteCheckout';
 import OneTapUpsellDemo from './components/OneTapUpsell';
+import SimpleCreateFlow from './pages/SimpleCreateFlow';
 import { captureAffiliateRef, captureTrafficSource } from './services/tracking';
 
 // App State Context
@@ -78,6 +79,7 @@ const STORAGE_KEYS = {
 // Map URL paths to pages - MOVED OUTSIDE for immediate access
 const pathToPage = {
   '/': 'landing',
+  '/crear': 'crear',
   '/v2': 'landing_v2',
   '/premium': 'landing_premium',
   '/create/genre': 'genre',
@@ -216,6 +218,20 @@ export default function App() {
   const [songData, setSongData] = useState(null);
   const [directSongId, setDirectSongId] = useState(null);
 
+  // Back/forward button support. navigateTo() pushes history entries but nothing
+  // ever listened for popstate, so pressing the phone's back button changed the
+  // URL while the screen stayed frozen — users pressed back repeatedly and got
+  // thrown out of the site ("el sistema me saca"). Sync page state with the URL.
+  useEffect(() => {
+    const handlePopState = (event) => {
+      const page = event.state?.page || getInitialPage();
+      setCurrentPage(page);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Initialize additional data from localStorage
   useEffect(() => {
     // Check version and clear if updated
@@ -302,6 +318,7 @@ export default function App() {
     // Map pages to URLs for proper browser history
     const pageUrls = {
       landing: '/',
+      crear: '/crear',
       landing_v2: '/v2',
       landing_premium: '/premium',
       genre: '/create/genre',
@@ -414,6 +431,10 @@ export default function App() {
           {currentPage === 'landing_v2' && <LandingPageV2 />}
           {currentPage === 'landing_premium' && <LandingPagePremium />}
           
+          {/* Simplified one-question-per-screen creation flow (/crear) — local
+              rebuild from the 2026-08 UX audit; classic funnel below untouched. */}
+          {currentPage === 'crear' && <SimpleCreateFlow />}
+
           {/* Funnel pages */}
           {currentPage === 'genre' && <GenreStep />}
           {currentPage === 'artist' && <ArtistStep />}
