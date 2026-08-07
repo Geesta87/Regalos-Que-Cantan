@@ -183,6 +183,24 @@ export default function DetailsStep() {
               </p>
 
               {!useOwnLyrics && (<>
+              {/* Returning buyer with lyrics saved from a previous visit: they
+                  now always land on this tab, so point at where their letra
+                  lives before they overwrite it with an empty story. */}
+              {formData.useCustomLyrics && formData.customLyrics && (
+                <div className="bg-white/10 border border-white/30 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <span className="material-symbols-outlined text-gold">edit_note</span>
+                  <p className="text-white/90 text-sm">
+                    Tienes una letra guardada de tu visita anterior.{' '}
+                    <button
+                      onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
+                      className="text-gold font-bold underline underline-offset-2"
+                    >
+                      Verla en "Usar mi propia letra"
+                    </button>
+                  </p>
+                </div>
+              )}
+
               {/* Accuracy reminder */}
               <div className="bg-bougainvillea/15 border-2 border-bougainvillea/50 rounded-xl px-5 py-4 shadow-lg shadow-bougainvillea/5">
                 <p className="text-white/90 text-sm leading-relaxed">
@@ -487,18 +505,21 @@ export default function DetailsStep() {
               )}
             </div>
 
-            <div className="flex gap-3">
+            {/* Writing the story is the primary action; continuing without one
+                is a demoted text link (blank-story orders drive the "esta no
+                es mi canción" complaints). */}
+            <div className="flex flex-col gap-3">
               <button
                 onClick={() => setShowQualityWarning(false)}
-                className="flex-1 py-4 rounded-full font-bold bg-gold/20 text-gold hover:bg-gold/30 transition-all"
+                className="w-full py-4 rounded-full font-bold bg-bougainvillea text-white hover:bg-bougainvillea/90 transition-all"
               >
                 {!useOwnLyrics && details.trim().length === 0 ? 'Escribir la historia' : 'Agregar más'}
               </button>
               <button
                 onClick={handleContinueAnyway}
-                className="flex-1 py-4 rounded-full font-bold bg-white/10 text-white/70 hover:bg-white/20 transition-all"
+                className="w-full py-2 text-sm text-white/50 hover:text-white/80 underline underline-offset-4 transition-all"
               >
-                Continuar así
+                Continuar sin detalles
               </button>
             </div>
           </div>
