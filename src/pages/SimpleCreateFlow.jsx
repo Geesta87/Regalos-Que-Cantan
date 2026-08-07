@@ -1,70 +1,69 @@
-import React, { useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import { checkEmail } from '../services/emailValidation';
 
-// Simplified "one question per screen" creation flow (/crear).
-// Built for buyers with little tech experience (see docs/ux-audit-song-creation-2026-08.md):
-// boxed high-contrast inputs, no auto-advance, phone back button = previous
-// question, progress survives refresh/app-switch, buttons explain what's
-// missing instead of sitting disabled. Feeds the same formData context and
-// hands off to the existing GeneratingPage — no backend changes.
+// /crear — Heyflow-style micro-step funnel.
+// One decision per full screen. Single-select tiles auto-advance after a short
+// selected-state flash (~380ms) with a slide transition, which is what gives
+// click-funnels their momentum; free-text screens use an explicit Continuar.
+// The structural fixes from the 2026-08 UX audit are load-bearing here:
+// phone back button = previous screen, every keystroke persists and restores
+// synchronously after a reload, and inputs are boxed and high-contrast.
+// Feeds the same formData context and hands off to GeneratingPage untouched.
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const STORAGE_KEY = 'rqc_crear_simple';
-const TOTAL_STEPS = 7;
+const AUTO_ADVANCE_MS = 380;
 
-// Main genres with plain-language descriptions an abuela recognizes.
-const MAIN_GENRES = [
-  { id: 'corrido', emoji: '🎸', desc: 'Historias con guitarras y tuba' },
-  { id: 'banda', emoji: '🎺', desc: 'Fiesta sinaloense, pura energía' },
-  { id: 'romantica', emoji: '❤️', desc: 'Lenta y emotiva, para dedicar' },
-  { id: 'ranchera', emoji: '🤠', desc: 'La clásica de siempre, con sentimiento' },
-  { id: 'mariachi', emoji: '🎻', desc: 'Serenata tradicional mexicana' },
-  { id: 'bachata', emoji: '💃', desc: 'Romántica y para bailar' },
-  { id: 'cumbia', emoji: '🪇', desc: 'Alegre, para que todos bailen' },
-  { id: 'cristiana', emoji: '🙏', desc: 'De fe y alabanza' },
+const RELATIONSHIPS = [
+  { id: 'madre', name: 'Mi mamá', icon: 'face_4' },
+  { id: 'padre', name: 'Mi papá', icon: 'face' },
+  { id: 'pareja', name: 'Mi pareja', icon: 'favorite' },
+  { id: 'hijo', name: 'Mi hijo / hija', icon: 'child_care' },
+  { id: 'hermano', name: 'Mi hermano / hermana', icon: 'group' },
+  { id: 'abuelo', name: 'Mi abuelo / abuela', icon: 'elderly' },
+  { id: 'amigo', name: 'Mi amigo / amiga', icon: 'diversity_3' },
+  { id: 'yo_mismo', name: 'Es para mí', icon: 'person' },
+  { id: 'otro', name: 'Otra persona', icon: 'more_horiz' },
 ];
 
 const OCCASIONS = [
-  { id: 'cumpleanos', name: 'Cumpleaños', emoji: '🎂' },
-  { id: 'dia_madre', name: 'Día de la Madre', emoji: '🌷' },
-  { id: 'dia_padre', name: 'Día del Padre', emoji: '🤠' },
-  { id: 'aniversario', name: 'Aniversario', emoji: '💞' },
-  { id: 'amor', name: 'Amor / Pareja', emoji: '❤️' },
-  { id: 'boda', name: 'Boda', emoji: '💍' },
-  { id: 'graduacion', name: 'Graduación', emoji: '🎓' },
-  { id: 'quinceanera', name: 'Quinceañera', emoji: '👑' },
-  { id: 'agradecimiento', name: 'Agradecimiento', emoji: '🙏' },
-  { id: 'memorial', name: 'En Memoria', emoji: '🕊️' },
-  { id: 'navidad', name: 'Navidad', emoji: '🎄' },
-  { id: 'otro', name: 'Otra ocasión', emoji: '✨' },
+  { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
+  { id: 'dia_madre', name: 'Día de la Madre', icon: 'local_florist' },
+  { id: 'dia_padre', name: 'Día del Padre', icon: 'family_restroom' },
+  { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
+  { id: 'amor', name: 'Amor / Pareja', icon: 'volunteer_activism' },
+  { id: 'boda', name: 'Boda', icon: 'diamond' },
+  { id: 'graduacion', name: 'Graduación', icon: 'school' },
+  { id: 'quinceanera', name: 'Quinceañera', icon: 'celebration' },
+  { id: 'agradecimiento', name: 'Agradecimiento', icon: 'redeem' },
+  { id: 'memorial', name: 'En memoria', icon: 'eco' },
+  { id: 'navidad', name: 'Navidad', icon: 'ac_unit' },
+  { id: 'otro', name: 'Otra ocasión', icon: 'edit_note' },
 ];
 
-const RELATIONSHIPS = [
-  { id: 'madre', name: 'Mi mamá', emoji: '👩' },
-  { id: 'padre', name: 'Mi papá', emoji: '👨' },
-  { id: 'pareja', name: 'Mi pareja / esposo(a)', emoji: '💑' },
-  { id: 'hijo', name: 'Mi hijo(a)', emoji: '🧒' },
-  { id: 'hermano', name: 'Mi hermano(a)', emoji: '🤝' },
-  { id: 'abuelo', name: 'Mi abuelo(a)', emoji: '👵' },
-  { id: 'amigo', name: 'Mi amigo(a)', emoji: '😊' },
-  { id: 'yo_mismo', name: 'Es para mí', emoji: '⭐' },
-  { id: 'otro', name: 'Otra persona', emoji: '👥' },
+const MAIN_GENRES = [
+  { id: 'corrido', desc: 'Historias con guitarras y tuba', icon: 'music_note' },
+  { id: 'banda', desc: 'Fiesta sinaloense con tambora', icon: 'queue_music' },
+  { id: 'romantica', desc: 'Lenta y emotiva, para dedicar', icon: 'favorite' },
+  { id: 'ranchera', desc: 'La clásica de siempre', icon: 'piano' },
+  { id: 'mariachi', desc: 'Serenata tradicional', icon: 'library_music' },
+  { id: 'bachata', desc: 'Romántica y para bailar', icon: 'graphic_eq' },
+  { id: 'cumbia', desc: 'Alegre, para que todos bailen', icon: 'album' },
+  { id: 'cristiana', desc: 'De fe y alabanza', icon: 'church' },
 ];
 
-// Load saved progress synchronously so a refresh or app-switch never shows
-// blank fields (root cause of "el sistema me saca" in the audit).
 function loadSaved() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch { /* corrupted or unavailable — start fresh */ }
+  } catch { /* start fresh */ }
   return {};
 }
 
@@ -72,7 +71,6 @@ export default function SimpleCreateFlow() {
   const { updateFormData, navigateTo } = useContext(AppContext);
   const saved = useRef(loadSaved()).current;
 
-  const [step, setStep] = useState(saved.step || 1);
   const [answers, setAnswers] = useState({
     relationship: saved.relationship || '',
     customRelationship: saved.customRelationship || '',
@@ -82,43 +80,61 @@ export default function SimpleCreateFlow() {
     customOccasion: saved.customOccasion || '',
     genre: saved.genre || '',
     voiceType: saved.voiceType || '',
-    storyNickname: saved.storyNickname || '',
+    storySpecial: saved.storySpecial || '',
     storyMemory: saved.storyMemory || '',
     storyMessage: saved.storyMessage || '',
-    storyExtra: saved.storyExtra || '',
     useOwnLyrics: saved.useOwnLyrics || false,
     ownLyrics: saved.ownLyrics || '',
     email: saved.email || '',
   });
+  const [stepIndex, setStepIndex] = useState(saved.stepIndex || 0);
+  const [anim, setAnim] = useState('forward');
+  const [hint, setHint] = useState('');
   const [showAllGenres, setShowAllGenres] = useState(false);
-  const [hint, setHint] = useState('');            // friendly "what's missing" message
-  const [emptyStoryConfirm, setEmptyStoryConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const topRef = useRef(null);
+  const advancing = useRef(false);
 
   const isForSelf = answers.relationship === 'yo_mismo';
+
+  // The screen sequence adapts to the answers (skip name when it's for
+  // yourself, extra screen when "otra ocasión", own-lyrics replaces the three
+  // guided story screens).
+  const steps = useMemo(() => {
+    const s = ['relationship'];
+    if (answers.relationship === 'otro') s.push('customRelationship');
+    if (!isForSelf) s.push('recipientName');
+    s.push('senderName', 'occasion');
+    if (answers.occasion === 'otro') s.push('customOccasion');
+    s.push('genre', 'voice');
+    if (answers.useOwnLyrics) s.push('ownLyrics');
+    else s.push('storySpecial', 'storyMemory', 'storyMessage');
+    s.push('final');
+    return s;
+  }, [answers.relationship, isForSelf, answers.occasion, answers.useOwnLyrics]);
+
+  const step = steps[Math.min(stepIndex, steps.length - 1)];
+  const progress = ((Math.min(stepIndex, steps.length - 1) + 1) / steps.length) * 100;
 
   const set = (field, value) => {
     setAnswers(prev => ({ ...prev, [field]: value }));
     setHint('');
   };
 
-  // Persist every change immediately.
+  // Persist every change immediately so a reload or app-switch never loses work.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...answers, step }));
-    } catch { /* storage full/unavailable */ }
-  }, [answers, step]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...answers, stepIndex }));
+    } catch { /* storage unavailable */ }
+  }, [answers, stepIndex]);
 
-  // Phone back button = previous question. We push one history entry per step;
-  // popstate walks the wizard back instead of dumping the user out of the site.
+  // Phone back button = previous screen.
   useEffect(() => {
-    window.history.replaceState({ page: 'crear', wizardStep: step }, '', '/crear');
+    window.history.replaceState({ page: 'crear', wizardIndex: stepIndex }, '', '/crear');
     const onPop = (e) => {
-      if (e.state && e.state.page === 'crear' && e.state.wizardStep) {
-        setStep(e.state.wizardStep);
+      if (e.state && e.state.page === 'crear' && typeof e.state.wizardIndex === 'number') {
+        setAnim('back');
+        setStepIndex(e.state.wizardIndex);
         setHint('');
-        setEmptyStoryConfirm(false);
       }
     };
     window.addEventListener('popstate', onPop);
@@ -126,86 +142,68 @@ export default function SimpleCreateFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Funnel analytics — map micro-steps onto the classic step names so the
+  // existing dashboards keep working.
   useEffect(() => {
-    const stepNames = { 1: 'names', 2: 'names', 3: 'occasion', 4: 'genre', 5: 'genre', 6: 'details', 7: 'email' };
-    trackStep(stepNames[step] || 'names', { funnel_variant: 'simple_v1', simple_step: step });
+    const map = {
+      relationship: 'names', customRelationship: 'names', recipientName: 'names', senderName: 'names',
+      occasion: 'occasion', customOccasion: 'occasion', genre: 'genre', voice: 'genre',
+      storySpecial: 'details', storyMemory: 'details', storyMessage: 'details', ownLyrics: 'details',
+      final: 'email',
+    };
+    trackStep(map[step] || 'names', { funnel_variant: 'simple_v2', micro_step: step });
     window.scrollTo(0, 0);
   }, [step]);
 
-  const goTo = (n) => {
-    window.history.pushState({ page: 'crear', wizardStep: n }, '', '/crear');
-    setStep(n);
+  const goNext = () => {
+    if (stepIndex >= steps.length - 1) return;
+    const next = stepIndex + 1;
+    setAnim('forward');
+    window.history.pushState({ page: 'crear', wizardIndex: next }, '', '/crear');
+    setStepIndex(next);
     setHint('');
-    setEmptyStoryConfirm(false);
+    advancing.current = false;
   };
 
   const goBack = () => {
-    if (step > 1) {
-      window.history.back(); // popstate handler moves the wizard back
-    } else {
+    if (stepIndex === 0) {
       navigateTo('landing');
+      return;
+    }
+    window.history.back();
+  };
+
+  const jumpTo = (id) => {
+    const idx = steps.indexOf(id);
+    if (idx >= 0) {
+      setAnim('back');
+      window.history.pushState({ page: 'crear', wizardIndex: idx }, '', '/crear');
+      setStepIndex(idx);
     }
   };
 
-  // Compose the story the same way a CS agent would summarize it — labeled
-  // sections read better for the lyric composer than a raw blob.
+  // Single-select tile: paint the selection, breathe for a beat, slide on.
+  const selectAndAdvance = (field, value) => {
+    if (advancing.current) return;
+    advancing.current = true;
+    setAnswers(prev => ({ ...prev, [field]: value }));
+    setHint('');
+    setTimeout(() => {
+      advancing.current = false;
+      goNext();
+    }, AUTO_ADVANCE_MS);
+  };
+
   const composeDetails = () => {
     const parts = [];
-    if (answers.storyNickname.trim()) parts.push(`Apodos y lo que la hace especial: ${answers.storyNickname.trim()}`);
+    if (answers.storySpecial.trim()) parts.push(`Apodos y lo que la hace especial: ${answers.storySpecial.trim()}`);
     if (answers.storyMemory.trim()) parts.push(`Recuerdos o momentos importantes: ${answers.storyMemory.trim()}`);
     if (answers.storyMessage.trim()) parts.push(`Lo que quiero decirle con la canción: ${answers.storyMessage.trim()}`);
-    if (answers.storyExtra.trim()) parts.push(`Más detalles: ${answers.storyExtra.trim()}`);
     return parts.join('\n');
   };
-
   const storyLength = composeDetails().length;
 
-  // ---- per-step validation, with friendly guidance instead of dead buttons ----
-  const tryNext = () => {
-    switch (step) {
-      case 1: {
-        if (!answers.relationship) return setHint('Toca una de las opciones de arriba para decirnos para quién es. ☝️');
-        if (answers.relationship === 'otro' && answers.customRelationship.trim().length < 3)
-          return setHint('Escribe quién es esa persona (por ejemplo: "mi madrina").');
-        if (!isForSelf && answers.recipientName.trim().length < 2)
-          return setHint('Escribe el nombre de la persona en la caja blanca. Ese nombre se cantará en la canción. ☝️');
-        return goTo(2);
-      }
-      case 2: {
-        if (answers.senderName.trim().length < 2)
-          return setHint('Escribe tu nombre en la caja blanca. ☝️');
-        return goTo(3);
-      }
-      case 3: {
-        if (!answers.occasion) return setHint('Toca la ocasión que celebras. ☝️');
-        if (answers.occasion === 'otro' && answers.customOccasion.trim().length < 10)
-          return setHint('Cuéntanos brevemente qué celebras (por ejemplo: "se recupera de una operación").');
-        return goTo(4);
-      }
-      case 4: {
-        if (!answers.genre) return setHint('Toca el tipo de música que le gusta. ☝️');
-        return goTo(5);
-      }
-      case 5: {
-        if (!answers.voiceType) return setHint('Toca una de las dos tarjetas: voz de hombre o voz de mujer. ☝️');
-        return goTo(6);
-      }
-      case 6: {
-        if (answers.useOwnLyrics) {
-          if (answers.ownLyrics.trim().length < 20)
-            return setHint('Pega aquí tu letra completa, o regresa a las preguntas y nosotros la escribimos por ti.');
-          return goTo(7);
-        }
-        if (storyLength < 20 && !emptyStoryConfirm) {
-          setEmptyStoryConfirm(true);
-          return;
-        }
-        return goTo(7);
-      }
-      default:
-        return;
-    }
-  };
+  const recipientDisplay = isForSelf ? answers.senderName.trim() : answers.recipientName.trim();
 
   const handleSubmit = async () => {
     const result = checkEmail(answers.email);
@@ -217,8 +215,6 @@ export default function SimpleCreateFlow() {
     const finalSender = answers.senderName.trim();
     const finalRecipient = isForSelf ? finalSender : answers.recipientName.trim();
 
-    // Write everything into the shared funnel state so GeneratingPage and the
-    // rest of the existing pipeline work untouched.
     updateFormData('genre', answers.genre);
     updateFormData('genreName', genreConfig?.name || answers.genre);
     updateFormData('subGenre', '');
@@ -238,7 +234,6 @@ export default function SimpleCreateFlow() {
     updateFormData('songwriterNotes', '');
     updateFormData('email', answers.email.trim());
 
-    // Same lead capture + pixel event as the classic EmailStep.
     try {
       supabase.rpc('upsert_email_lead', {
         p_email: answers.email.trim().toLowerCase(),
@@ -262,451 +257,525 @@ export default function SimpleCreateFlow() {
     navigateTo('generating');
   };
 
-  // ---------- shared UI pieces ----------
+  // ---------- building blocks ----------
 
-  const genreName = genres[answers.genre]?.name || '';
-  const occasionName = answers.occasion === 'otro'
-    ? answers.customOccasion
-    : OCCASIONS.find(o => o.id === answers.occasion)?.name || '';
-  const relationshipName = answers.relationship === 'otro'
-    ? answers.customRelationship
-    : RELATIONSHIPS.find(r => r.id === answers.relationship)?.name || '';
-
-  const inputClass = 'w-full bg-white border-2 border-[#d8cfc4] focus:border-bougainvillea rounded-xl px-4 py-4 text-lg text-[#2b2018] placeholder:text-[#b3a089] outline-none shadow-sm';
-
-  const Card = ({ selected, onClick, children, className = '' }) => (
+  const Tile = ({ selected, onClick, icon, label, sub }) => (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left rounded-2xl border-2 px-4 py-4 transition-all active:scale-[0.98] ${
+      className={`sc-tile group relative flex items-center gap-3.5 w-full rounded-xl border bg-white px-4 py-4 text-left transition-all duration-150 ${
         selected
-          ? 'border-bougainvillea bg-bougainvillea/10 shadow-md'
-          : 'border-[#e5dcd2] bg-white hover:border-bougainvillea/40 shadow-sm'
-      } ${className}`}
+          ? 'border-primary ring-2 ring-primary/25 shadow-[0_4px_20px_rgba(242,13,128,0.12)]'
+          : 'border-neutral-200 hover:border-neutral-300 hover:shadow-sm'
+      }`}
     >
-      {children}
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
+        selected ? 'bg-primary text-white' : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
+      }`}>
+        <span className="material-symbols-outlined text-[22px]">{icon}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold leading-snug text-neutral-900">{label}</span>
+        {sub && <span className="mt-0.5 block text-[13px] leading-snug text-neutral-500">{sub}</span>}
+      </span>
+      <span className={`material-symbols-outlined shrink-0 text-[20px] transition-opacity ${
+        selected ? 'text-primary opacity-100' : 'opacity-0'
+      }`}>check_circle</span>
     </button>
   );
 
-  const questionTitle = {
-    1: '¿Para quién es la canción?',
-    2: '¿Quién se la regala?',
-    3: '¿Qué están celebrando?',
-    4: '¿Qué música le gusta?',
-    5: '¿Voz de hombre o de mujer?',
-    6: isForSelf ? 'Cuéntanos tu historia' : `Cuéntanos de ${answers.recipientName.trim() || 'esa persona'}`,
-    7: '¡Ya casi está lista!',
-  }[step];
+  const Question = ({ kicker, title, sub, children }) => (
+    <div>
+      {kicker && <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{kicker}</p>}
+      <h1 className="font-display text-[28px] md:text-[34px] font-bold leading-[1.15] text-neutral-900">{title}</h1>
+      {sub && <p className="mt-3 text-[15px] leading-relaxed text-neutral-500">{sub}</p>}
+      <div className="mt-7">{children}</div>
+    </div>
+  );
 
-  return (
-    <div ref={topRef} className="min-h-screen bg-[#FBF5EE] text-[#2b2018] font-body flex flex-col">
-      {/* Header: brand (not a link — a mis-tap must never throw progress away) + big progress */}
-      <header className="bg-white border-b border-[#eee3d8] px-5 py-4 sticky top-0 z-40">
-        <div className="max-w-lg mx-auto">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-display text-lg font-bold text-[#2b2018]">RegalosQueCantan</span>
-            <span className="text-base font-bold text-bougainvillea">Paso {step} de {TOTAL_STEPS}</span>
-          </div>
-          <div className="h-2.5 w-full bg-[#f0e6da] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-bougainvillea rounded-full transition-all duration-500"
-              style={{ width: `${Math.round((step / TOTAL_STEPS) * 100)}%` }}
+  const TextField = ({ id, value, onChange, label, example, textarea, autoFocus, onEnter }) => (
+    <div>
+      {label && <label htmlFor={id} className="mb-2 block text-[14px] font-semibold text-neutral-700">{label}</label>}
+      {textarea ? (
+        <textarea
+          id={id}
+          value={value}
+          onChange={onChange}
+          className="h-36 w-full resize-none rounded-xl border border-neutral-300 bg-white px-4 py-3.5 text-[16px] leading-relaxed text-neutral-900 shadow-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          autoFocus={autoFocus}
+        />
+      ) : (
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={onChange}
+          onKeyDown={e => { if (e.key === 'Enter' && onEnter) onEnter(); }}
+          className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3.5 text-[17px] text-neutral-900 shadow-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          autoComplete="off"
+          autoFocus={autoFocus}
+        />
+      )}
+      {example && <p className="mt-2 text-[13px] text-neutral-400">{example}</p>}
+    </div>
+  );
+
+  const ContinueBtn = ({ onClick, label = 'Continuar', disabled }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(242,13,128,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-50"
+    >
+      {label}
+      <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+    </button>
+  );
+
+  const SkipLink = ({ onClick }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mx-auto mt-4 block text-[13px] font-medium text-neutral-400 underline-offset-4 hover:text-neutral-600 hover:underline"
+    >
+      Omitir este paso
+    </button>
+  );
+
+  // ---------- screens ----------
+
+  const screen = () => {
+    switch (step) {
+      case 'relationship':
+        return (
+          <Question title="¿Para quién es la canción?" sub="Elige a la persona especial que la va a recibir.">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {RELATIONSHIPS.map(rel => (
+                <Tile
+                  key={rel.id}
+                  icon={rel.icon}
+                  label={rel.name}
+                  selected={answers.relationship === rel.id}
+                  onClick={() => selectAndAdvance('relationship', rel.id)}
+                />
+              ))}
+            </div>
+          </Question>
+        );
+
+      case 'customRelationship':
+        return (
+          <Question title="¿Quién es esa persona para ti?">
+            <TextField
+              id="sc-customrel"
+              value={answers.customRelationship}
+              onChange={e => set('customRelationship', e.target.value.slice(0, 50))}
+              example="Ejemplo: mi madrina, mi suegra, mi compadre"
+              autoFocus
+              onEnter={() => answers.customRelationship.trim().length >= 3 && goNext()}
             />
-          </div>
-        </div>
-      </header>
+            <ContinueBtn onClick={() => {
+              if (answers.customRelationship.trim().length < 3) return setHint('Escribe quién es esa persona para continuar.');
+              goNext();
+            }} />
+          </Question>
+        );
 
-      <main className="flex-grow px-5 py-8 pb-40">
-        <div className="max-w-lg mx-auto">
-          <h1 className="font-display text-3xl font-black leading-tight mb-2">{questionTitle}</h1>
+      case 'recipientName':
+        return (
+          <Question
+            title="¿Cómo se llama?"
+            sub="Su nombre se cantará dentro de la canción, así que revisa que esté bien escrito."
+          >
+            <TextField
+              id="sc-recipient"
+              value={answers.recipientName}
+              onChange={e => set('recipientName', e.target.value)}
+              example="Ejemplo: María Elena"
+              autoFocus
+              onEnter={() => answers.recipientName.trim().length >= 2 && goNext()}
+            />
+            <ContinueBtn onClick={() => {
+              if (answers.recipientName.trim().length < 2) return setHint('Escribe su nombre para continuar — es el nombre que se cantará.');
+              goNext();
+            }} />
+          </Question>
+        );
 
-          {/* ---------------- STEP 1: recipient ---------------- */}
-          {step === 1 && (
-            <div className="space-y-6 mt-6">
-              <div className="grid grid-cols-2 gap-3">
-                {RELATIONSHIPS.map(rel => (
-                  <Card
-                    key={rel.id}
-                    selected={answers.relationship === rel.id}
-                    onClick={() => set('relationship', rel.id)}
-                  >
-                    <span className="text-2xl mr-2 align-middle">{rel.emoji}</span>
-                    <span className="text-base font-semibold align-middle">{rel.name}</span>
-                    {answers.relationship === rel.id && <span className="float-right text-bougainvillea text-xl font-black">✓</span>}
-                  </Card>
-                ))}
-              </div>
+      case 'senderName':
+        return (
+          <Question
+            title={isForSelf ? '¿Cómo te llamas?' : '¿De parte de quién?'}
+            sub={isForSelf ? undefined : 'La canción puede mencionar de quién viene este regalo.'}
+          >
+            <TextField
+              id="sc-sender"
+              value={answers.senderName}
+              onChange={e => set('senderName', e.target.value)}
+              label="Tu nombre"
+              example="Ejemplo: Roberto"
+              autoFocus
+              onEnter={() => answers.senderName.trim().length >= 2 && goNext()}
+            />
+            <ContinueBtn onClick={() => {
+              if (answers.senderName.trim().length < 2) return setHint('Escribe tu nombre para continuar.');
+              goNext();
+            }} />
+          </Question>
+        );
 
-              {answers.relationship === 'otro' && (
-                <div>
-                  <label className="block text-base font-bold mb-2">¿Quién es esa persona para ti?</label>
-                  <input
-                    type="text"
-                    value={answers.customRelationship}
-                    onChange={e => set('customRelationship', e.target.value.slice(0, 50))}
-                    className={inputClass}
-                  />
-                  <p className="text-sm text-[#8a7a68] mt-2">Por ejemplo: mi madrina, mi suegra, mi compadre</p>
-                </div>
-              )}
-
-              {answers.relationship && !isForSelf && (
-                <div>
-                  <label className="block text-base font-bold mb-2" htmlFor="sc-recipient">
-                    ¿Cómo se llama? <span className="font-normal text-[#8a7a68]">(este nombre se cantará)</span>
-                  </label>
-                  <input
-                    id="sc-recipient"
-                    type="text"
-                    value={answers.recipientName}
-                    onChange={e => set('recipientName', e.target.value)}
-                    className={inputClass}
-                    autoComplete="off"
-                  />
-                  <p className="text-sm text-[#8a7a68] mt-2">Por ejemplo: María Elena</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ---------------- STEP 2: sender ---------------- */}
-          {step === 2 && (
-            <div className="space-y-4 mt-6">
-              <p className="text-lg text-[#6b5b4a]">
-                {isForSelf ? 'Escribe tu nombre.' : 'La canción dirá de parte de quién viene este regalo.'}
-              </p>
-              <div>
-                <label className="block text-base font-bold mb-2" htmlFor="sc-sender">Tu nombre</label>
-                <input
-                  id="sc-sender"
-                  type="text"
-                  value={answers.senderName}
-                  onChange={e => set('senderName', e.target.value)}
-                  className={inputClass}
-                  autoComplete="name"
+      case 'occasion':
+        return (
+          <Question title="¿Qué están celebrando?" sub="La letra se adapta a la ocasión.">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {OCCASIONS.map(occ => (
+                <Tile
+                  key={occ.id}
+                  icon={occ.icon}
+                  label={occ.name}
+                  selected={answers.occasion === occ.id}
+                  onClick={() => selectAndAdvance('occasion', occ.id)}
                 />
-                <p className="text-sm text-[#8a7a68] mt-2">Por ejemplo: Roberto</p>
-              </div>
+              ))}
             </div>
-          )}
+          </Question>
+        );
 
-          {/* ---------------- STEP 3: occasion ---------------- */}
-          {step === 3 && (
-            <div className="space-y-6 mt-6">
-              <div className="grid grid-cols-2 gap-3">
-                {OCCASIONS.map(occ => (
-                  <Card
-                    key={occ.id}
-                    selected={answers.occasion === occ.id}
-                    onClick={() => set('occasion', occ.id)}
-                  >
-                    <span className="text-2xl mr-2 align-middle">{occ.emoji}</span>
-                    <span className="text-base font-semibold align-middle">{occ.name}</span>
-                    {answers.occasion === occ.id && <span className="float-right text-bougainvillea text-xl font-black">✓</span>}
-                  </Card>
-                ))}
-              </div>
-              {answers.occasion === 'otro' && (
-                <div>
-                  <label className="block text-base font-bold mb-2">Cuéntanos qué celebras</label>
-                  <textarea
-                    value={answers.customOccasion}
-                    onChange={e => set('customOccasion', e.target.value.slice(0, 500))}
-                    className={`${inputClass} h-28 resize-none`}
-                  />
-                  <p className="text-sm text-[#8a7a68] mt-2">Por ejemplo: mi hermano abrió su propio negocio</p>
-                </div>
-              )}
+      case 'customOccasion':
+        return (
+          <Question title="Cuéntanos qué celebras">
+            <TextField
+              id="sc-customocc"
+              value={answers.customOccasion}
+              onChange={e => set('customOccasion', e.target.value.slice(0, 500))}
+              example="Ejemplo: mi hermano abrió su propio negocio después de años de esfuerzo"
+              textarea
+              autoFocus
+            />
+            <ContinueBtn onClick={() => {
+              if (answers.customOccasion.trim().length < 10) return setHint('Cuéntanos brevemente qué celebras para poder escribir la letra.');
+              goNext();
+            }} />
+          </Question>
+        );
+
+      case 'genre':
+        return (
+          <Question
+            title="¿Qué música le gusta?"
+            sub="Elige el estilo que suene a lo que se escucha en su casa."
+          >
+            <div className="grid grid-cols-1 gap-2.5">
+              {MAIN_GENRES.map(g => (
+                <Tile
+                  key={g.id}
+                  icon={g.icon}
+                  label={genres[g.id]?.name || g.id}
+                  sub={g.desc}
+                  selected={answers.genre === g.id}
+                  onClick={() => selectAndAdvance('genre', g.id)}
+                />
+              ))}
             </div>
-          )}
-
-          {/* ---------------- STEP 4: genre ---------------- */}
-          {step === 4 && (
-            <div className="space-y-4 mt-6">
-              <p className="text-lg text-[#6b5b4a]">No te preocupes si no sabes de música — elige lo que suene a lo que escucha en casa.</p>
-              <div className="space-y-3">
-                {MAIN_GENRES.map(g => (
-                  <Card
-                    key={g.id}
-                    selected={answers.genre === g.id}
-                    onClick={() => set('genre', g.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl">{g.emoji}</span>
-                      <div className="flex-1">
-                        <p className="text-lg font-bold">{genres[g.id]?.name || g.id}</p>
-                        <p className="text-sm text-[#8a7a68]">{g.desc}</p>
-                      </div>
-                      {answers.genre === g.id && <span className="text-bougainvillea text-2xl font-black">✓</span>}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-
-              {!showAllGenres ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAllGenres(true)}
-                  className="w-full text-center text-bougainvillea font-bold py-3 text-base underline underline-offset-4"
-                >
-                  Ver más tipos de música
-                </button>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(genres)
-                    .filter(([id]) => !MAIN_GENRES.some(m => m.id === id))
-                    .map(([id, data]) => (
-                      <Card
-                        key={id}
-                        selected={answers.genre === id}
-                        onClick={() => set('genre', id)}
-                        className="!py-3"
-                      >
-                        <span className="text-sm font-semibold">{data.name}</span>
-                        {answers.genre === id && <span className="float-right text-bougainvillea font-black">✓</span>}
-                      </Card>
-                    ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ---------------- STEP 5: voice ---------------- */}
-          {step === 5 && (
-            <div className="space-y-4 mt-6">
-              <p className="text-lg text-[#6b5b4a]">¿Quién quieres que cante la canción?</p>
-              <div className="grid grid-cols-1 gap-4">
-                <Card selected={answers.voiceType === 'male'} onClick={() => set('voiceType', 'male')}>
-                  <div className="flex items-center gap-4 py-2">
-                    <span className="text-4xl">👨‍🎤</span>
-                    <div className="flex-1">
-                      <p className="text-xl font-bold">Voz de hombre</p>
-                      <p className="text-sm text-[#8a7a68]">Fuerte y profunda</p>
-                    </div>
-                    {answers.voiceType === 'male' && <span className="text-bougainvillea text-2xl font-black">✓</span>}
-                  </div>
-                </Card>
-                <Card selected={answers.voiceType === 'female'} onClick={() => set('voiceType', 'female')}>
-                  <div className="flex items-center gap-4 py-2">
-                    <span className="text-4xl">👩‍🎤</span>
-                    <div className="flex-1">
-                      <p className="text-xl font-bold">Voz de mujer</p>
-                      <p className="text-sm text-[#8a7a68]">Suave y emotiva</p>
-                    </div>
-                    {answers.voiceType === 'female' && <span className="text-bougainvillea text-2xl font-black">✓</span>}
-                  </div>
-                </Card>
-              </div>
-            </div>
-          )}
-
-          {/* ---------------- STEP 6: guided story ---------------- */}
-          {step === 6 && !answers.useOwnLyrics && (
-            <div className="space-y-6 mt-4">
-              <p className="text-lg text-[#6b5b4a]">
-                No tienes que redactar nada. Contesta lo que puedas, como si nos lo contaras platicando. Con eso escribimos la letra por ti.
-              </p>
-
-              <div>
-                <label className="block text-base font-bold mb-2">
-                  {isForSelf ? '¿Cómo te dicen de cariño? ¿Qué te hace especial?' : '¿Cómo le dices de cariño? ¿Qué la hace especial?'}
-                </label>
-                <textarea
-                  value={answers.storyNickname}
-                  onChange={e => set('storyNickname', e.target.value.slice(0, 400))}
-                  className={`${inputClass} h-24 resize-none`}
-                />
-                <p className="text-sm text-[#8a7a68] mt-1">Por ejemplo: le decimos "La Jefa", hace los mejores tamales de diciembre</p>
-              </div>
-
-              <div>
-                <label className="block text-base font-bold mb-2">¿Qué recuerdo o momento quieres que mencione la canción?</label>
-                <textarea
-                  value={answers.storyMemory}
-                  onChange={e => set('storyMemory', e.target.value.slice(0, 600))}
-                  className={`${inputClass} h-24 resize-none`}
-                />
-                <p className="text-sm text-[#8a7a68] mt-1">Por ejemplo: llegó de Guanajuato hace 30 años y sacó adelante a 4 hijos ella sola</p>
-              </div>
-
-              <div>
-                <label className="block text-base font-bold mb-2">¿Qué le quieres decir con esta canción?</label>
-                <textarea
-                  value={answers.storyMessage}
-                  onChange={e => set('storyMessage', e.target.value.slice(0, 400))}
-                  className={`${inputClass} h-24 resize-none`}
-                />
-                <p className="text-sm text-[#8a7a68] mt-1">Por ejemplo: que estamos orgullosos de ella y que la amamos</p>
-              </div>
-
-              <div>
-                <label className="block text-base font-bold mb-2">
-                  ¿Algo más? <span className="font-normal text-[#8a7a68]">(nombres, fechas, lugares — opcional)</span>
-                </label>
-                <textarea
-                  value={answers.storyExtra}
-                  onChange={e => set('storyExtra', e.target.value.slice(0, 600))}
-                  className={`${inputClass} h-24 resize-none`}
-                />
-              </div>
-
-              <div className="bg-white border-2 border-[#eee3d8] rounded-xl p-4">
-                <p className="text-sm text-[#6b5b4a]">
-                  ✍️ <strong>Revisa los nombres y las fechas.</strong> La canción se escribe exactamente con lo que pongas aquí.
-                </p>
-              </div>
-
+            {!showAllGenres ? (
               <button
                 type="button"
-                onClick={() => set('useOwnLyrics', true)}
-                className="text-sm text-[#8a7a68] underline underline-offset-4"
+                onClick={() => setShowAllGenres(true)}
+                className="mx-auto mt-5 flex items-center gap-1.5 text-[14px] font-semibold text-primary"
               >
-                ¿Ya tienes escrita tu propia letra completa? Úsala aquí
+                Ver todos los estilos
+                <span className="material-symbols-outlined text-[18px]">expand_more</span>
               </button>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-2.5">
+                {Object.entries(genres)
+                  .filter(([id]) => !MAIN_GENRES.some(m => m.id === id))
+                  .map(([id, data]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => selectAndAdvance('genre', id)}
+                      className={`rounded-xl border bg-white px-3 py-3 text-[14px] font-semibold text-neutral-800 transition-all ${
+                        answers.genre === id
+                          ? 'border-primary ring-2 ring-primary/25'
+                          : 'border-neutral-200 hover:border-neutral-300'
+                      }`}
+                    >
+                      {data.name}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </Question>
+        );
 
-              {emptyStoryConfirm && (
-                <div className="bg-yellow-50 border-2 border-yellow-400 rounded-2xl p-5 space-y-4">
-                  <p className="text-lg font-bold">Todavía no nos cuentas nada 🙁</p>
-                  <p className="text-base text-[#6b5b4a]">
-                    Sin detalles, la canción solo va a decir el nombre de {isForSelf ? 'quien la recibe' : (answers.recipientName.trim() || 'tu ser querido')} y va a sonar como cualquier canción — no como la suya. Con una sola frase que escribas arriba ya queda mucho mejor.
+      case 'voice':
+        return (
+          <Question title="¿Qué voz prefieres?" sub="Quien interpretará la canción.">
+            <div className="grid grid-cols-1 gap-3">
+              <Tile
+                icon="record_voice_over"
+                label="Voz masculina"
+                sub="Fuerte y profunda"
+                selected={answers.voiceType === 'male'}
+                onClick={() => selectAndAdvance('voiceType', 'male')}
+              />
+              <Tile
+                icon="interpreter_mode"
+                label="Voz femenina"
+                sub="Suave y emotiva"
+                selected={answers.voiceType === 'female'}
+                onClick={() => selectAndAdvance('voiceType', 'female')}
+              />
+            </div>
+          </Question>
+        );
+
+      case 'storySpecial':
+        return (
+          <Question
+            kicker="Su historia · 1 de 3"
+            title={isForSelf ? '¿Qué te hace especial?' : `¿Qué hace especial a ${recipientDisplay || 'esa persona'}?`}
+            sub="Escríbelo como lo contarías platicando. Con esto componemos la letra — no tienes que redactar bonito."
+          >
+            <TextField
+              id="sc-special"
+              value={answers.storySpecial}
+              onChange={e => set('storySpecial', e.target.value.slice(0, 400))}
+              example='Ejemplo: le decimos "La Jefa", hace los mejores tamales de diciembre'
+              textarea
+              autoFocus
+            />
+            <ContinueBtn onClick={goNext} />
+            <SkipLink onClick={goNext} />
+            <button
+              type="button"
+              onClick={() => set('useOwnLyrics', true)}
+              className="mx-auto mt-6 block text-[13px] text-neutral-400 underline-offset-4 hover:text-neutral-600 hover:underline"
+            >
+              Ya tengo mi propia letra escrita
+            </button>
+          </Question>
+        );
+
+      case 'storyMemory':
+        return (
+          <Question
+            kicker="Su historia · 2 de 3"
+            title="¿Qué recuerdo debe mencionar la canción?"
+            sub="Un momento, una anécdota o una fecha que signifique mucho."
+          >
+            <TextField
+              id="sc-memory"
+              value={answers.storyMemory}
+              onChange={e => set('storyMemory', e.target.value.slice(0, 600))}
+              example="Ejemplo: llegó de Guanajuato hace 30 años y sacó adelante a 4 hijos ella sola"
+              textarea
+              autoFocus
+            />
+            <ContinueBtn onClick={goNext} />
+            <SkipLink onClick={goNext} />
+          </Question>
+        );
+
+      case 'storyMessage':
+        return (
+          <Question
+            kicker="Su historia · 3 de 3"
+            title={isForSelf ? '¿Qué quieres que diga de ti?' : '¿Qué quieres decirle?'}
+            sub="El mensaje del corazón de la canción."
+          >
+            <TextField
+              id="sc-message"
+              value={answers.storyMessage}
+              onChange={e => set('storyMessage', e.target.value.slice(0, 400))}
+              example="Ejemplo: que estamos orgullosos de ella y que la amamos"
+              textarea
+              autoFocus
+            />
+            <ContinueBtn onClick={goNext} />
+            <SkipLink onClick={goNext} />
+          </Question>
+        );
+
+      case 'ownLyrics':
+        return (
+          <Question
+            title="Tu letra, palabra por palabra"
+            sub="Cantaremos exactamente lo que escribas aquí. Solo para letras completas ya escritas."
+          >
+            <TextField
+              id="sc-lyrics"
+              value={answers.ownLyrics}
+              onChange={e => set('ownLyrics', e.target.value.slice(0, 4000))}
+              textarea
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => set('useOwnLyrics', false)}
+              className="mt-3 text-[13px] font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Mejor contesten unas preguntas y escriban la letra por mí
+            </button>
+            <ContinueBtn onClick={() => {
+              if (answers.ownLyrics.trim().length < 20) return setHint('Pega tu letra completa, o usa las preguntas guiadas y nosotros la escribimos.');
+              goNext();
+            }} />
+          </Question>
+        );
+
+      case 'final': {
+        const summaryRows = [
+          { label: 'Para', value: isForSelf ? `${answers.senderName.trim()} (para ti)` : recipientDisplay, target: 'relationship' },
+          { label: 'Ocasión', value: answers.occasion === 'otro' ? answers.customOccasion.trim() : OCCASIONS.find(o => o.id === answers.occasion)?.name, target: 'occasion' },
+          { label: 'Estilo', value: genres[answers.genre]?.name, target: 'genre' },
+          { label: 'Voz', value: answers.voiceType === 'male' ? 'Masculina' : 'Femenina', target: 'voice' },
+        ];
+        return (
+          <Question
+            kicker="Último paso"
+            title="Recibe tu canción"
+            sub="Escúchala completa antes de decidir si la compras."
+          >
+            <div className="divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white shadow-sm">
+              {summaryRows.map(row => (
+                <div key={row.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">{row.label}</p>
+                    <p className="truncate text-[15px] font-semibold text-neutral-900">{row.value || '—'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(row.target)}
+                    className="shrink-0 text-[13px] font-semibold text-primary"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {!answers.useOwnLyrics && storyLength < 20 && (
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5">
+                <span className="material-symbols-outlined mt-0.5 text-[20px] text-amber-500">info</span>
+                <div>
+                  <p className="text-[14px] font-semibold text-neutral-900">Tu canción aún no tiene historia</p>
+                  <p className="mt-0.5 text-[13px] leading-snug text-neutral-600">
+                    Sin detalles, la letra será genérica. Un solo recuerdo la hace suya.
                   </p>
                   <button
                     type="button"
-                    onClick={() => { setEmptyStoryConfirm(false); window.scrollTo(0, 0); }}
-                    className="w-full bg-bougainvillea text-white text-lg font-bold rounded-full py-4"
+                    onClick={() => jumpTo('storySpecial')}
+                    className="mt-1.5 text-[13px] font-bold text-primary"
                   >
-                    Escribir algo (recomendado)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goTo(7)}
-                    className="w-full text-sm text-[#8a7a68] underline underline-offset-4 py-1"
-                  >
-                    Continuar sin detalles
+                    Agregar detalles
                   </button>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* ---------------- STEP 6-alt: own lyrics ---------------- */}
-          {step === 6 && answers.useOwnLyrics && (
-            <div className="space-y-4 mt-4">
-              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4">
-                <p className="text-base font-bold mb-1">⚠️ Solo para letras ya escritas</p>
-                <p className="text-sm text-[#6b5b4a]">
-                  Cantaremos <strong>exactamente</strong> lo que pegues aquí, palabra por palabra. Si solo tienes ideas o recuerdos, mejor{' '}
-                  <button type="button" onClick={() => set('useOwnLyrics', false)} className="text-bougainvillea font-bold underline">
-                    contesta las preguntas
-                  </button>{' '}
-                  y nosotros escribimos la letra.
-                </p>
               </div>
-              <textarea
-                value={answers.ownLyrics}
-                onChange={e => set('ownLyrics', e.target.value.slice(0, 4000))}
-                placeholder="Pega aquí tu letra completa..."
-                className={`${inputClass} h-72`}
+            )}
+
+            <div className="mt-6">
+              <label htmlFor="sc-email" className="mb-2 block text-[14px] font-semibold text-neutral-700">
+                Tu correo electrónico
+              </label>
+              <input
+                id="sc-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={answers.email}
+                onChange={e => set('email', e.target.value)}
+                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3.5 text-[17px] text-neutral-900 shadow-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
               />
+              <p className="mt-2 text-[13px] text-neutral-400">Aquí te enviamos la canción terminada.</p>
             </div>
-          )}
 
-          {/* ---------------- STEP 7: summary + email ---------------- */}
-          {step === 7 && (
-            <div className="space-y-6 mt-4">
-              <p className="text-lg text-[#6b5b4a]">Revisa que todo esté bien y dinos a dónde te la enviamos.</p>
-
-              <div className="bg-white border-2 border-[#eee3d8] rounded-2xl p-5 space-y-3">
-                {[
-                  { label: 'Para', value: isForSelf ? `${answers.senderName.trim()} (para ti)` : `${answers.recipientName.trim()} (${relationshipName})`, edit: 1 },
-                  { label: 'De parte de', value: answers.senderName.trim(), edit: 2 },
-                  { label: 'Ocasión', value: occasionName, edit: 3 },
-                  { label: 'Música', value: genreName, edit: 4 },
-                  { label: 'Voz', value: answers.voiceType === 'male' ? 'De hombre' : 'De mujer', edit: 5 },
-                  {
-                    label: answers.useOwnLyrics ? 'Tu letra' : 'Su historia',
-                    value: answers.useOwnLyrics
-                      ? `${answers.ownLyrics.trim().slice(0, 90)}${answers.ownLyrics.trim().length > 90 ? '…' : ''}`
-                      : (storyLength ? `${composeDetails().slice(0, 90)}${storyLength > 90 ? '…' : ''}` : 'Sin detalles'),
-                    edit: 6,
-                  },
-                ].map(row => (
-                  <div key={row.label} className="flex items-start justify-between gap-3 border-b border-[#f3ece3] last:border-0 pb-2 last:pb-0">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold uppercase tracking-wide text-[#8a7a68]">{row.label}</p>
-                      <p className="text-base font-semibold break-words">{row.value || '—'}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => goTo(row.edit)}
-                      className="text-bougainvillea text-sm font-bold underline underline-offset-4 shrink-0"
-                    >
-                      Cambiar
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <label className="block text-base font-bold mb-2" htmlFor="sc-email">Tu correo electrónico</label>
-                <input
-                  id="sc-email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  value={answers.email}
-                  onChange={e => set('email', e.target.value)}
-                  className={inputClass}
-                />
-                <p className="text-sm text-[#8a7a68] mt-2">Ahí te llega tu canción. Por ejemplo: maria@gmail.com</p>
-              </div>
-
-              <p className="text-xs text-[#8a7a68]">
-                Al continuar aceptas los <a href="/terminos-de-servicio" className="underline">términos</a> y la{' '}
-                <a href="/politica-de-privacidad" className="underline">política de privacidad</a>. Escuchar la canción es gratis.
-              </p>
-            </div>
-          )}
-
-          {/* Friendly guidance when something is missing */}
-          {hint && (
-            <div className="mt-6 bg-bougainvillea/10 border-2 border-bougainvillea rounded-xl px-4 py-3">
-              <p className="text-base font-semibold text-[#2b2018]">{hint}</p>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {/* Fixed bottom navigation — same two buttons, same place, every step */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-[#eee3d8] px-5 py-4 z-40">
-        <div className="max-w-lg mx-auto flex items-center gap-3">
-          <button
-            type="button"
-            onClick={goBack}
-            className="shrink-0 border-2 border-[#d8cfc4] text-[#6b5b4a] font-bold rounded-full px-5 py-4 text-base active:scale-95 transition-transform"
-          >
-            ← Atrás
-          </button>
-          {step < 7 ? (
-            <button
-              type="button"
-              onClick={tryNext}
-              className="flex-1 bg-bougainvillea text-white text-lg font-bold rounded-full py-4 shadow-lg active:scale-[0.98] transition-transform"
-            >
-              Siguiente →
-            </button>
-          ) : (
             <button
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex-1 bg-bougainvillea text-white text-lg font-bold rounded-full py-4 shadow-lg active:scale-[0.98] transition-transform disabled:opacity-60"
+              className="mt-6 w-full rounded-xl bg-primary px-6 py-4 text-[16px] font-bold text-white shadow-[0_6px_24px_rgba(242,13,128,0.3)] transition-all hover:brightness-105 active:scale-[0.985] disabled:opacity-60"
             >
-              {submitting ? 'Creando…' : '🎵 Escuchar mi canción gratis'}
+              {submitting ? 'Creando tu canción…' : 'Crear mi canción — escúchala gratis'}
             </button>
+
+            <div className="mt-5 flex items-center justify-center gap-5 text-neutral-400">
+              <span className="flex items-center gap-1.5 text-[12px] font-medium">
+                <span className="material-symbols-outlined text-[16px]">lock</span> Pago seguro
+              </span>
+              <span className="flex items-center gap-1.5 text-[12px] font-medium">
+                <span className="material-symbols-outlined text-[16px]">schedule</span> Lista en ~3 min
+              </span>
+              <span className="flex items-center gap-1.5 text-[12px] font-medium">
+                <span className="material-symbols-outlined text-[16px]">star</span> +5,000 clientes
+              </span>
+            </div>
+
+            <p className="mt-4 text-center text-[11px] leading-relaxed text-neutral-400">
+              Al continuar aceptas los <a href="/terminos-de-servicio" className="underline">términos de servicio</a> y la{' '}
+              <a href="/politica-de-privacidad" className="underline">política de privacidad</a>.
+            </p>
+          </Question>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FAFAF8] font-body">
+      <style>{`
+        @keyframes scSlideForward {
+          from { opacity: 0; transform: translateX(28px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes scSlideBack {
+          from { opacity: 0; transform: translateX(-28px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .sc-forward { animation: scSlideForward 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+        .sc-back { animation: scSlideBack 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+      `}</style>
+
+      {/* Top bar: back chevron, wordmark, progress line */}
+      <header className="sticky top-0 z-40 bg-[#FAFAF8]/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
+          <button
+            type="button"
+            onClick={goBack}
+            aria-label="Regresar"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+          >
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <span className="font-display text-[17px] font-bold tracking-tight text-neutral-900">RegalosQueCantan</span>
+          <span className="w-10 text-right text-[12px] font-semibold tabular-nums text-neutral-400">
+            {Math.min(stepIndex + 1, steps.length)}/{steps.length}
+          </span>
+        </div>
+        <div className="h-[3px] w-full bg-neutral-200/70">
+          <div
+            className="h-full bg-primary transition-all duration-500 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-xl px-5 pb-24 pt-8 md:pt-12">
+        <div key={step} className={anim === 'forward' ? 'sc-forward' : 'sc-back'}>
+          {screen()}
+
+          {hint && (
+            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+              <span className="material-symbols-outlined mt-0.5 text-[19px] text-primary">error</span>
+              <p className="text-[14px] font-medium leading-snug text-neutral-800">{hint}</p>
+            </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
