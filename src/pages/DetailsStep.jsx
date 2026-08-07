@@ -152,30 +152,10 @@ export default function DetailsStep() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
             {/* Main textarea section */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Mode toggle: tell us the story (AI writes the lyrics) vs. use
-                  your own lyrics (sung exactly as submitted). */}
-              <div className="bg-white/[0.03] border border-gold/20 rounded-2xl p-2 flex gap-2">
-                <button
-                  onClick={() => { setUseOwnLyrics(false); setLyricsError(false); }}
-                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${!useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
-                >
-                  <span className="material-symbols-outlined text-base align-middle mr-1">auto_awesome</span>
-                  Cuéntanos la historia
-                </button>
-                <button
-                  onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
-                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
-                >
-                  <span className="material-symbols-outlined text-base align-middle mr-1">edit_note</span>
-                  Usar mi propia letra
-                </button>
-              </div>
-
-              {/* Disclaimer steering each buyer to the right option. */}
-              <p className="text-white/55 text-xs leading-relaxed px-1">
-                ¿Ya tienes tu letra escrita? Elige <span className="text-gold/90 font-semibold">"Usar mi propia letra"</span> y copia y pega tu letra aquí — la cantaremos tal cual. ¿No tienes una letra propia? Quédate en <span className="text-gold/90 font-semibold">"Cuéntanos la historia"</span>, escríbenos los detalles y nosotros la creamos por ti.
-              </p>
-
+              {/* Own-lyrics used to be a 50/50 toggle at the top — buyers who
+                  only had anecdotes picked it and their notes got sung verbatim
+                  (audit 2026-08). Story mode is now the single default; the
+                  own-lyrics escape hatch is a quiet link below the textarea. */}
               {!useOwnLyrics && (<>
               {/* Accuracy reminder */}
               <div className="bg-bougainvillea/15 border-2 border-bougainvillea/50 rounded-xl px-5 py-4 shadow-lg shadow-bougainvillea/5">
@@ -206,7 +186,11 @@ export default function DetailsStep() {
                 <textarea
                   value={details}
                   onChange={(e) => {
-                    setDetails(e.target.value.slice(0, maxChars));
+                    const v = e.target.value.slice(0, maxChars);
+                    setDetails(v);
+                    // Write-through so a refresh/app-switch mid-typing never
+                    // loses the story (it only saved on Continue before).
+                    updateFormData('details', v);
                     setShowQualityWarning(false);
                   }}
                   placeholder={`Escribe aquí los momentos especiales con ${formData.recipientName || 'esta persona'}, sus apodos cariñosos, o ese lugar donde todo comenzó...`}
@@ -264,7 +248,11 @@ export default function DetailsStep() {
                 </p>
                 <textarea
                   value={songwriterNotes}
-                  onChange={(e) => setSongwriterNotes(e.target.value.slice(0, maxNotesChars))}
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, maxNotesChars);
+                    setSongwriterNotes(v);
+                    updateFormData('songwriterNotes', v);
+                  }}
                   placeholder={`Ej: que al final diga "siempre serás mi héroe"; que mencione a sus tres hijos: Ana, Luis y Sofía...`}
                   className="w-full h-24 bg-white/5 border border-gold/30 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-gold/40"
                 />
@@ -274,6 +262,14 @@ export default function DetailsStep() {
                   </span>
                 </div>
               </div>
+
+              {/* Quiet escape hatch to own-lyrics mode */}
+              <button
+                onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
+                className="text-white/40 hover:text-white/70 text-xs underline underline-offset-4 transition-colors block mx-auto"
+              >
+                ¿Ya tienes tu propia letra completa escrita? Úsala aquí
+              </button>
               </>)}
 
               {/* Own-lyrics mode: the song is sung with these EXACT words. */}
@@ -302,7 +298,9 @@ export default function DetailsStep() {
                     <textarea
                       value={customLyrics}
                       onChange={(e) => {
-                        setCustomLyrics(e.target.value.slice(0, maxLyricsChars));
+                        const v = e.target.value.slice(0, maxLyricsChars);
+                        setCustomLyrics(v);
+                        updateFormData('customLyrics', v);
                         setLyricsError(false);
                       }}
                       placeholder={`Pega o escribe aquí tu letra completa...\n\n[Verso 1]\nTu primera estrofa...\n\n[Coro]\nEl gancho que se repite...\n\nPuedes incluir o no las etiquetas como [Verso], [Coro], [Puente].`}

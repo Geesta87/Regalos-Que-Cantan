@@ -223,6 +223,10 @@ export default function GenreStep() {
   // what they want. Sent to Suno/Kie (after the backend scrubs artist names).
   const [customStyle, setCustomStyle] = useState(formData.customStyle || '');
   const [showCustomStyle, setShowCustomStyle] = useState(!!formData.customStyle);
+  // Friendly guidance when Continue is tapped with nothing selected — a dead
+  // grey button that ignores taps reads as "the site is broken" to low-tech
+  // buyers (audit 2026-08).
+  const [missingHint, setMissingHint] = useState(false);
 
   // Auto-scroll refs
   const subGenreSectionRef = useRef(null);
@@ -260,6 +264,7 @@ export default function GenreStep() {
   const handleGenreSelect = (genreId) => {
     setSelectedGenre(genreId);
     setSelectedSubGenre('');
+    setMissingHint(false);
     // Auto-scroll to sub-genre section (or voice if no sub-genres)
     const targetGenre = genreList.find(g => g.id === genreId);
     const hasSubGenres = targetGenre?.subGenres?.length > 0;
@@ -289,6 +294,11 @@ export default function GenreStep() {
   };
 
   const handleContinue = () => {
+    if (!selectedGenre) {
+      setMissingHint(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (selectedGenre) {
       // Get the genre config to extract display names
       const genreConfig = genres[selectedGenre];
@@ -395,22 +405,12 @@ export default function GenreStep() {
             <p className="text-gold text-sm text-center font-medium">🎵 Cumpleaños · Aniversarios · Bodas · Graduaciones · O simplemente porque sí ✨</p>
           </div>
 
-          {/* Genre Grid */}
+          {/* Genre Grid.
+              The "Inglés" handoff card used to sit FIRST in this grid with a
+              "⭐ POPULAR" badge — the most-tapped slot sent confused buyers to
+              an external English-language site (audit 2026-08: literal
+              "el sistema me saca"). It now lives as a discreet link below. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {/* English songs — highlighted handoff to Gifts That Sing */}
-            <a
-              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3 group cursor-pointer transition-all duration-300 bg-gradient-to-br from-bougainvillea/10 via-bougainvillea/5 to-transparent backdrop-blur-xl border border-bougainvillea/40 hover:border-bougainvillea hover:shadow-[0_0_25px_rgba(242,13,128,0.35)] hover:-translate-y-1"
-            >
-              <span className="absolute top-2 right-2 bg-bougainvillea text-white text-[10px] font-extrabold px-2 py-1 rounded-full tracking-wide">⭐ POPULAR</span>
-              <span className="text-4xl group-hover:scale-110 transition-transform">🇺🇸</span>
-              <span className="font-display text-xl md:text-2xl font-bold tracking-wide text-white">Inglés</span>
-              <span className="text-white/80 text-[11px] md:text-xs text-center leading-tight font-medium">
-                Pop · Country · R&B · Rock<br/>en <span className="text-bougainvillea font-extrabold">Gifts That Sing →</span>
-              </span>
-            </a>
             {displayedGenres.map((genre) => (
               <button
                 key={genre.id}
@@ -455,6 +455,18 @@ export default function GenreStep() {
               </button>
             </div>
           )}
+
+          {/* Discreet English handoff (moved out of the genre grid) */}
+          <div className="text-center mt-6">
+            <a
+              href="https://giftsthatsing.com/?utm_source=rqc&utm_medium=genre_card&utm_campaign=genre_card"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/40 hover:text-white/70 text-xs transition-colors underline underline-offset-4"
+            >
+              ¿Prefieres tu canción en inglés? Visita Gifts That Sing →
+            </a>
+          </div>
 
           {/* Sub-genre Selection */}
           {currentGenre && currentGenre.subGenres && currentGenre.subGenres.length > 0 && (
@@ -623,9 +635,13 @@ export default function GenreStep() {
 
           {/* Continue Button */}
           <div ref={continueButtonRef} className="mt-16 flex flex-col items-center gap-6">
+            {missingHint && !selectedGenre && (
+              <div className="bg-gold/10 border border-gold/40 rounded-xl px-5 py-3 max-w-md text-center">
+                <p className="text-gold text-sm font-medium">Primero toca el ritmo que quieres para tu canción y luego presiona Continuar.</p>
+              </div>
+            )}
             <button
               onClick={handleContinue}
-              disabled={!selectedGenre}
               className={`
                 group relative flex min-w-[280px] md:min-w-[340px] cursor-pointer items-center justify-center 
                 overflow-hidden rounded-full h-16 px-10 text-lg font-bold shadow-2xl 

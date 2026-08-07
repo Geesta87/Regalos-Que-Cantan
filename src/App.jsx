@@ -189,31 +189,45 @@ const getSlugFromPage = (page, prefix) => {
   return page.replace(prefix, '');
 };
 
+const DEFAULT_FORM_DATA = {
+  genre: '',
+  genreName: '',
+  genreStyle: '',
+  subGenre: '',
+  subGenreName: '',
+  subGenrePrompt: '',
+  customStyle: '',
+  artistInspiration: '',
+  occasion: '',
+  occasionPrompt: '',
+  customOccasion: '',
+  emotionalTone: '',
+  recipientName: '',
+  senderName: '',
+  relationship: '',
+  details: '',
+  useCustomLyrics: false,
+  customLyrics: '',
+  email: '',
+  voiceType: 'male',
+  pricingTier: ''
+};
+
 export default function App() {
   // ✅ FIX: Initialize currentPage from URL IMMEDIATELY (not in useEffect)
   const [currentPage, setCurrentPage] = useState(getInitialPage);
-  const [formData, setFormData] = useState({
-    genre: '',
-    genreName: '',
-    genreStyle: '',
-    subGenre: '',
-    subGenreName: '',
-    subGenrePrompt: '',
-    customStyle: '',
-    artistInspiration: '',
-    occasion: '',
-    occasionPrompt: '',
-    customOccasion: '',
-    emotionalTone: '',
-    recipientName: '',
-    senderName: '',
-    relationship: '',
-    details: '',
-    useCustomLyrics: false,
-    customLyrics: '',
-    email: '',
-    voiceType: 'male',
-    pricingTier: ''
+  // Load saved form data SYNCHRONOUSLY. It used to load in a useEffect after
+  // the first render, so funnel steps seeded their local inputs from the empty
+  // initial state — any refresh or phone app-switch mid-funnel showed every
+  // field blank and the customer had to retype ("el sistema me saca").
+  const [formData, setFormData] = useState(() => {
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.VERSION) === APP_VERSION) {
+        const saved = localStorage.getItem(STORAGE_KEYS.FORM_DATA);
+        if (saved) return { ...DEFAULT_FORM_DATA, ...JSON.parse(saved) };
+      }
+    } catch { /* corrupted or unavailable — start fresh */ }
+    return { ...DEFAULT_FORM_DATA };
   });
   const [songData, setSongData] = useState(null);
   const [directSongId, setDirectSongId] = useState(null);
@@ -270,17 +284,10 @@ export default function App() {
       } catch { /* sessionStorage unavailable — ignore */ }
     }
 
-    // Load form data from localStorage if not a direct URL navigation
-    const savedFormData = localStorage.getItem(STORAGE_KEYS.FORM_DATA);
+    // Form data now loads synchronously in the useState initializer above —
+    // re-setting it here after mount was the race that blanked typed fields.
     const savedSongData = localStorage.getItem(STORAGE_KEYS.SONG_DATA);
 
-    if (savedFormData) {
-      try {
-        setFormData(JSON.parse(savedFormData));
-      } catch (e) {
-        console.error('Error parsing saved form data:', e);
-      }
-    }
     if (savedSongData) {
       try {
         setSongData(JSON.parse(savedSongData));
@@ -379,27 +386,7 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.PAGE);
     localStorage.removeItem(STORAGE_KEYS.FORM_DATA);
     localStorage.removeItem(STORAGE_KEYS.SONG_DATA);
-    setFormData({
-      genre: '',
-      genreName: '',
-      genreStyle: '',
-      subGenre: '',
-      subGenreName: '',
-      subGenrePrompt: '',
-      customStyle: '',
-      artistInspiration: '',
-      occasion: '',
-      occasionPrompt: '',
-      customOccasion: '',
-      emotionalTone: '',
-      recipientName: '',
-      senderName: '',
-      relationship: '',
-      details: '',
-      email: '',
-      voiceType: 'male',
-      pricingTier: ''
-    });
+    setFormData({ ...DEFAULT_FORM_DATA });
     setSongData(null);
     setDirectSongId(null);
     setCurrentPage('landing');

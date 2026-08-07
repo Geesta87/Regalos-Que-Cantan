@@ -74,6 +74,7 @@ export default function EmailStep() {
   const handleEmailChange = (e) => {
     const value = e.target.value;
     setEmail(value);
+    updateFormData('email', value);
     setEmailError('');
   };
 
@@ -327,37 +328,42 @@ export default function EmailStep() {
                 ¿A dónde enviamos tu canción?
               </label>
 
-              {/* Email Input */}
+              {/* Email Input — boxed with a visible border (the old underline
+                  didn't read as a fillable field; audit 2026-08). */}
               <div className="relative mb-5">
                 <input
                   id="email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
                   value={email}
                   onChange={handleEmailChange}
                   onBlur={handleEmailBlur}
-                  placeholder="📧 tu@email.com"
                   className={`
-                    w-full bg-transparent border-0 border-b-2 py-4 text-xl md:text-2xl text-center
-                    focus:ring-0 text-white placeholder:text-white/20 transition-all font-light
-                    ${emailError ? 'border-red-400' : 'border-gold/30 focus:border-gold'}
+                    w-full bg-white/[0.07] border-2 rounded-xl py-4 px-4 text-xl md:text-2xl text-center
+                    focus:ring-0 text-white transition-all font-light
+                    ${emailError ? 'border-red-400' : 'border-white/25 focus:border-gold'}
                   `}
                 />
+                <p className="text-white/40 text-xs text-center mt-2">Por ejemplo: maria@gmail.com</p>
                 {emailError && (
-                  <p className="text-red-400 text-xs text-center mt-2">{emailError}</p>
+                  <p className="text-red-400 text-sm text-center mt-2">{emailError}</p>
                 )}
               </div>
 
             </div>
 
+            {/* Not disabled: tapping with a bad/missing email shows the exact
+                error instead of silently ignoring the tap. */}
             <button
               onClick={handleSubmit}
-              disabled={!isValidEmail || isSubmitting}
+              disabled={isSubmitting}
               className={`
-                group relative flex w-full cursor-pointer items-center justify-center overflow-hidden 
+                group relative flex w-full cursor-pointer items-center justify-center overflow-hidden
                 rounded-full h-20 px-10 text-xl font-bold transition-all hover:scale-[1.02] active:scale-95
                 ${isValidEmail && !isSubmitting
                   ? 'bg-bougainvillea text-white shadow-[0_0_20px_rgba(225,29,116,0.4)]'
-                  : 'bg-white/10 text-white/30 cursor-not-allowed hover:scale-100'}
+                  : 'bg-white/10 text-white/40 hover:scale-100'}
               `}
             >
               <span className="relative z-10">

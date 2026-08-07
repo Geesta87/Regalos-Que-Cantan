@@ -167,10 +167,14 @@ export default function NamesStep() {
           {/* Form */}
           <div className="space-y-6">
             {/* Recipient Name — hidden when song is for self */}
+            {/* Boxed inputs with visible borders + readable labels. The old
+                underline-only fields on the dark background didn't read as
+                "spaces to fill" to low-tech buyers (audit 2026-08: "no es
+                claro para llenar los espacios"). */}
             {!isForSelf && (
               <div className="group">
-                <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-2 ml-1" htmlFor="recipient">
-                  Nombre del destinatario *
+                <label className="block text-white/90 text-sm font-bold mb-2" htmlFor="recipient">
+                  ¿Para quién es la canción? <span className="text-white/50 font-normal">(su nombre se cantará)</span>
                 </label>
                 <input
                   id="recipient"
@@ -178,21 +182,22 @@ export default function NamesStep() {
                   value={recipientName}
                   onChange={(e) => {
                     setRecipientName(e.target.value);
+                    updateFormData('recipientName', e.target.value);
                     if (errors.recipientName) setErrors({...errors, recipientName: null});
                   }}
-                  placeholder="Ej: María Elena"
-                  className={`w-full bg-background-dark/40 border-0 border-b ${errors.recipientName ? 'border-red-400' : 'border-gold/40'} focus:border-gold focus:ring-0 text-white text-lg py-4 px-1 transition-all placeholder:text-white/20`}
+                  className={`w-full bg-white/[0.07] border-2 ${errors.recipientName ? 'border-red-400' : 'border-white/25'} focus:border-gold focus:ring-0 rounded-xl text-white text-lg py-4 px-4 transition-all`}
                 />
+                <p className="text-white/40 text-xs mt-1.5">Por ejemplo: María Elena</p>
                 {errors.recipientName && (
-                  <p className="text-red-400 text-xs mt-1 ml-1">{errors.recipientName}</p>
+                  <p className="text-red-400 text-sm mt-1">Escribe su nombre para continuar</p>
                 )}
               </div>
             )}
 
             {/* Sender Name */}
             <div className="group">
-              <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-2 ml-1" htmlFor="sender">
-                {isForSelf ? 'Tu nombre *' : 'Tu nombre *'}
+              <label className="block text-white/90 text-sm font-bold mb-2" htmlFor="sender">
+                Tu nombre {!isForSelf && <span className="text-white/50 font-normal">(de parte de quién viene el regalo)</span>}
               </label>
               <input
                 id="sender"
@@ -200,21 +205,22 @@ export default function NamesStep() {
                 value={senderName}
                 onChange={(e) => {
                   setSenderName(e.target.value);
+                  updateFormData('senderName', e.target.value);
                   if (errors.senderName) setErrors({...errors, senderName: null});
                 }}
-                placeholder="Ej: Roberto"
-                className={`w-full bg-background-dark/40 border-0 border-b ${errors.senderName ? 'border-red-400' : 'border-gold/40'} focus:border-gold focus:ring-0 text-white text-lg py-4 px-1 transition-all placeholder:text-white/20`}
+                className={`w-full bg-white/[0.07] border-2 ${errors.senderName ? 'border-red-400' : 'border-white/25'} focus:border-gold focus:ring-0 rounded-xl text-white text-lg py-4 px-4 transition-all`}
               />
+              <p className="text-white/40 text-xs mt-1.5">Por ejemplo: Roberto</p>
               {errors.senderName && (
-                <p className="text-red-400 text-xs mt-1 ml-1">{errors.senderName}</p>
+                <p className="text-red-400 text-sm mt-1">Escribe tu nombre para continuar</p>
               )}
             </div>
 
             {/* Relationship — hidden when occasion is para_mi (already yo_mismo) */}
             {!isParaMi && (
             <div className="group">
-              <label className="block text-white/50 text-[10px] uppercase tracking-[0.2em] font-bold mb-3 ml-1">
-                Relación *
+              <label className="block text-white/90 text-sm font-bold mb-3">
+                ¿Quién es para ti?
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {relationships.map((rel) => (
@@ -245,15 +251,16 @@ export default function NamesStep() {
 
             {/* Buttons */}
             <div ref={continueButtonRef} className="pt-8 flex flex-col items-center gap-6">
+              {/* Not disabled: tapping with missing fields runs validateFields
+                  and shows what's missing — a dead button explains nothing. */}
               <button
                 onClick={handleContinue}
-                disabled={!isValid}
                 className={`
                   group relative flex w-full cursor-pointer items-center justify-center overflow-hidden 
                   rounded-full h-16 text-lg font-bold shadow-2xl transition-all hover:scale-[1.02] active:scale-95
                   ${isValid
                     ? 'bg-bougainvillea text-white'
-                    : 'bg-white/10 text-white/30 cursor-not-allowed hover:scale-100'}
+                    : 'bg-white/10 text-white/40 hover:scale-100'}
                 `}
               >
                 <span className="relative z-10 flex items-center gap-2">

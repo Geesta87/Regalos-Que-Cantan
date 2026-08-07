@@ -93,7 +93,7 @@ export default function OccasionStep() {
       updateFormData('occasion', occasionId);
       autoAdvanceTimer.current = setTimeout(() => {
         navigateTo('names');
-      }, 1200);
+      }, 450);
     }
   };
 
@@ -114,7 +114,7 @@ export default function OccasionStep() {
       updateFormData('emotionalTone', emotionalTone);
       autoAdvanceTimer.current = setTimeout(() => {
         navigateTo('names');
-      }, 1200);
+      }, 450);
     }
   };
 
