@@ -18,7 +18,11 @@ export default function DetailsStep() {
   const [showQualityWarning, setShowQualityWarning] = useState(false);
   // "Usar mi propia letra" — when on, the buyer pastes/writes the exact lyrics
   // and we skip the AI story-based generation entirely.
-  const [useOwnLyrics, setUseOwnLyrics] = useState(formData.useCustomLyrics || false);
+  // ALWAYS start on story mode ("Cuéntanos la historia"), even if the buyer
+  // had lyrics mode active in a previous visit — landing on the lyrics tab is
+  // how anecdotes end up sung verbatim. Their pasted lyrics stay saved in the
+  // other tab; they just have to switch on purpose.
+  const [useOwnLyrics, setUseOwnLyrics] = useState(false);
   const [customLyrics, setCustomLyrics] = useState(formData.customLyrics || '');
   const [lyricsError, setLyricsError] = useState(false);
   // Optional free-text notes the AI composer takes into account (story mode only).
@@ -152,10 +156,32 @@ export default function DetailsStep() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
             {/* Main textarea section */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Own-lyrics used to be a 50/50 toggle at the top — buyers who
-                  only had anecdotes picked it and their notes got sung verbatim
-                  (audit 2026-08). Story mode is now the single default; the
-                  own-lyrics escape hatch is a quiet link below the textarea. */}
+              {/* Mode toggle: tell us the story (AI writes the lyrics) vs. use
+                  your own lyrics (sung exactly as submitted). Everyone LANDS on
+                  story mode (see useState above); this toggle is only how they
+                  switch on purpose. */}
+              <div className="bg-white/[0.03] border border-gold/20 rounded-2xl p-2 flex gap-2">
+                <button
+                  onClick={() => { setUseOwnLyrics(false); setLyricsError(false); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${!useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
+                >
+                  <span className="material-symbols-outlined text-base align-middle mr-1">auto_awesome</span>
+                  Cuéntanos la historia
+                </button>
+                <button
+                  onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all ${useOwnLyrics ? 'bg-bougainvillea text-white shadow-lg' : 'text-white/60 hover:text-white'}`}
+                >
+                  <span className="material-symbols-outlined text-base align-middle mr-1">edit_note</span>
+                  Usar mi propia letra
+                </button>
+              </div>
+
+              {/* Disclaimer steering each buyer to the right option. */}
+              <p className="text-white/55 text-xs leading-relaxed px-1">
+                ¿Ya tienes tu letra escrita? Elige <span className="text-gold/90 font-semibold">"Usar mi propia letra"</span> y copia y pega tu letra aquí — la cantaremos tal cual. ¿No tienes una letra propia? Quédate en <span className="text-gold/90 font-semibold">"Cuéntanos la historia"</span>, escríbenos los detalles y nosotros la creamos por ti.
+              </p>
+
               {!useOwnLyrics && (<>
               {/* Accuracy reminder */}
               <div className="bg-bougainvillea/15 border-2 border-bougainvillea/50 rounded-xl px-5 py-4 shadow-lg shadow-bougainvillea/5">
@@ -236,15 +262,18 @@ export default function DetailsStep() {
                   add specific asks UP FRONT (an exact line, a must-mention, or where
                   it goes) rather than after delivery. Pairs with the requested-line
                   guarantee in generate-song. */}
-              <div className="bg-gold/[0.07] border-2 border-gold/40 rounded-2xl p-5 space-y-3 shadow-lg shadow-gold/5">
+              {/* High-visibility card: the old bg-gold/[0.07] + border-gold/40
+                  treatment sank into the dark background and buyers scrolled
+                  past it (owner feedback 2026-08). */}
+              <div className="bg-gold/25 border-2 border-gold rounded-2xl p-5 space-y-3 shadow-[0_0_25px_rgba(242,13,128,0.25)]">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-gold text-xl">star</span>
-                  <span className="text-sm font-extrabold text-gold uppercase tracking-widest">
-                    ¿Hay algo que no puede faltar? <span className="text-white/40 normal-case font-normal tracking-normal">(opcional)</span>
+                  <span className="material-symbols-outlined text-white text-xl">star</span>
+                  <span className="text-base font-extrabold text-white uppercase tracking-widest">
+                    ¿Hay algo que no puede faltar? <span className="text-white/70 normal-case font-normal tracking-normal">(opcional)</span>
                   </span>
                 </div>
-                <p className="text-white/75 text-sm leading-relaxed">
-                  Este es el momento perfecto para pedirlo. Si quieres que la canción diga una <strong className="text-white">frase exacta</strong> (por ejemplo: "te amo, papá"), que <strong className="text-white">mencione</strong> un nombre, un recuerdo o un detalle importante, o incluso <strong className="text-white">dónde</strong> te gustaría que vaya (al inicio, en el coro o al final), escríbelo aquí. Nos aseguramos de incluirlo. 💛
+                <p className="text-white text-sm leading-relaxed">
+                  Este es el momento perfecto para pedirlo. Si quieres que la canción diga una <strong>frase exacta</strong> (por ejemplo: "te amo, papá"), que <strong>mencione</strong> un nombre, un recuerdo o un detalle importante, o incluso <strong>dónde</strong> te gustaría que vaya (al inicio, en el coro o al final), escríbelo aquí. Nos aseguramos de incluirlo. 💛
                 </p>
                 <textarea
                   value={songwriterNotes}
@@ -254,22 +283,15 @@ export default function DetailsStep() {
                     updateFormData('songwriterNotes', v);
                   }}
                   placeholder={`Ej: que al final diga "siempre serás mi héroe"; que mencione a sus tres hijos: Ana, Luis y Sofía...`}
-                  className="w-full h-24 bg-white/5 border border-gold/30 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-gold/40"
+                  className="w-full h-24 bg-background-dark/60 border-2 border-white/40 rounded-xl p-4 text-white focus:ring-1 focus:ring-white focus:border-white outline-none transition-all resize-none text-sm leading-relaxed placeholder:italic placeholder:text-white/45"
                 />
                 <div className="text-right">
-                  <span className="text-[10px] font-bold tracking-widest text-gold/60 uppercase">
+                  <span className="text-[10px] font-bold tracking-widest text-white/70 uppercase">
                     {songwriterNotes.length} / {maxNotesChars}
                   </span>
                 </div>
               </div>
 
-              {/* Quiet escape hatch to own-lyrics mode */}
-              <button
-                onClick={() => { setUseOwnLyrics(true); setShowQualityWarning(false); }}
-                className="text-white/40 hover:text-white/70 text-xs underline underline-offset-4 transition-colors block mx-auto"
-              >
-                ¿Ya tienes tu propia letra completa escrita? Úsala aquí
-              </button>
               </>)}
 
               {/* Own-lyrics mode: the song is sung with these EXACT words. */}
