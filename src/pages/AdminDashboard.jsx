@@ -68,6 +68,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const [showFixHistory, setShowFixHistory] = useState(false);
   // Bundle: the OTHER version(s) of this song (same session_id) + their fixed previews.
   const [siblings, setSiblings] = useState([]);
+  const [myCorrections, setMyCorrections] = useState([]);
   const [bothResults, setBothResults] = useState(null); // [{ id, version, splicedBlob, correctedUrl, changeMarks, ... }]
   const [appliedBothIds, setAppliedBothIds] = useState([]); // which bundle versions were applied (per-version apply)
   const [busyBothId, setBusyBothId] = useState(null); // version id currently applying/redoing
@@ -119,17 +120,92 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
   // Find the other version(s) of this song (same generation session) so we can
   // offer "Corregir ambas versiones" — even the unpaid one, in case the customer
-  // later wants it. Read-only, no cost.
+  // later wants it. Read-only, no cost. Also brings both sides' fix_corrections
+  // so we can detect BUNDLE DRIFT (a sibling has corrections this version lacks)
+  // and offer a one-click replay.
   useEffect(() => {
     let off = false;
     (async () => {
       try {
         const d = await postFn({ action: 'siblings', songId: song.id });
-        if (!off && d?.ok) setSiblings(Array.isArray(d.siblings) ? d.siblings : []);
+        if (!off && d?.ok) {
+          setSiblings(Array.isArray(d.siblings) ? d.siblings : []);
+          setMyCorrections(Array.isArray(d.myCorrections) ? d.myCorrections : []);
+        }
       } catch { /* ignore */ }
     })();
     return () => { off = true; };
   }, [song.id]);
+
+  // BUNDLE DRIFT: corrections a sibling has that THIS version doesn't. Matched by
+  // normalized after-text; only counted when this song's lyrics still show the old
+  // wording or would accept the new one (bundles share lyrics, so they should).
+  const siblingDrift = useMemo(() => {
+    const normLine = (s) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
+    const mine = new Set((myCorrections || []).map((c) => normLine(c?.after)).filter(Boolean));
+    const lyricsNorm = normLine(song?.lyrics || '');
+    const out = [];
+    for (const sib of siblings) {
+      const missing = (Array.isArray(sib.fix_corrections) ? sib.fix_corrections : [])
+        .filter((c) => c?.after && !mine.has(normLine(c.after)))
+        .filter((c) => {
+          // Only corrections that belong to THIS version's lyrics: either the old
+          // wording is still there, or the corrected wording is (bundles share
+          // lyrics). Neither present → different song text → not drift.
+          const hasBefore = c.before && lyricsNorm.includes(normLine(c.before));
+          const hasAfter = lyricsNorm.includes(normLine(c.after));
+          return hasBefore || hasAfter;
+        });
+      if (missing.length) out.push({ sib, missing });
+    }
+    return out;
+  }, [siblings, myCorrections, song?.lyrics]);
+
+  // One-click replay: apply a sibling's recorded corrections to THIS version —
+  // same wording, no re-typing, straight into the self-driving ladder. The text
+  // substitutions run on this song's own lyrics (CRLF-safe); audio is re-sung in
+  // THIS version's voice (audio can never be copied across takes).
+  async function runReplayFix(missing, fromVersion) {
+    const eol = (s) => [String(s), String(s).replace(/\n/g, '\r\n')];
+    let lyrics = String(song.lyrics || '');
+    const applied = [];
+    for (const c of missing) {
+      if (!c?.after) continue;
+      let done = false;
+      for (const b of (c.before ? eol(c.before) : [])) {
+        if (lyrics.includes(b)) { lyrics = lyrics.split(b).join(eol(c.after)[lyrics.includes('\r\n') ? 1 : 0]); done = true; break; }
+      }
+      // Text already corrected (or never wrong) — the ladder still verifies the
+      // AUDIO sings it, which is exactly the drift we're closing.
+      if (!done && !eol(c.after).some((a) => lyrics.includes(a))) continue; // wording not in this version at all — skip
+      applied.push({ before: c.before || '', after: c.after });
+    }
+    if (!applied.length) { showToast('No hay correcciones aplicables a esta versión.'); return; }
+    setError(''); setResult(null); setInput('');
+    setPhase('working');
+    try {
+      const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, setSurgicalMsg);
+      setResult({
+        surgical: true,
+        splicedBlob: one.splicedBlob,
+        changeSummary: `Replicadas ${applied.length} corrección(es) de la versión ${fromVersion ?? 'hermana'}`,
+        fullLyrics: lyrics,
+        corrections: applied,
+        fixTaskId: one.fixTaskId || null,
+        fixAudioId: one.fixAudioId || null,
+        fixTrimAtS: one.fixTrimAtS || null,
+        originalAudioUrl: song.original_audio_url || song.audio_url,
+        changeMarks: one.changeMarks,
+        takes: [{ audioUrl: one.correctedUrl, verified: true, lyrics }],
+      });
+      setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+    } catch (e) {
+      setOfferFullReroll(true);
+      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
+      // Back to idle (not 'plan' — a replay has no plan object to render).
+      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('idle');
+    }
+  }
 
   // Keep the "🔧 This song was fixed" badge + history in sync with the song.
   // fixed_at/fix_count come with the fast list data (so the badge shows), but
@@ -1125,6 +1201,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
         if (onApplied) onApplied(d.audioUrl, result.fullLyrics);
         setCanUndo(true);
+        // Keep the bundle-drift banner honest without a refetch.
+        if (Array.isArray(result.corrections) && result.corrections.length) setMyCorrections((prev) => [...(prev || []), ...result.corrections]);
         stampFix(d.fixedAt, d.fixCount, result.changeSummary, 'section');
         setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
         return;
@@ -1240,11 +1318,34 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           )}
         </div>
       )}
+
+      {/* BUNDLE DRIFT — a sibling version has corrections this one doesn't. One
+          click replays them here (same wording, this version's own voice). */}
+      {(phase === 'idle' || phase === 'plan') && siblingDrift.map(({ sib, missing }) => (
+        <div key={sib.id} className="mb-2 rounded-lg bg-sky-500/10 border border-sky-500/30 px-3 py-2">
+          <p className="text-[11px] text-sky-200 font-semibold mb-1">
+            ⚠️ Version {sib.version ?? '?'} has {missing.length} correction{missing.length > 1 ? 's' : ''} this version doesn't{song.paid === false ? ' (this version is UNPAID — confirm before spending credits)' : ''}:
+          </p>
+          <ul className="mb-1.5 space-y-0.5">
+            {missing.slice(0, 3).map((c, i) => (
+              <li key={i} className="text-[11px] text-sky-100/80 truncate">• "{(c.before || '').split('\n')[0]}" → "{(c.after || '').split('\n')[0]}"</li>
+            ))}
+            {missing.length > 3 && <li className="text-[11px] text-sky-100/60">…and {missing.length - 3} more</li>}
+          </ul>
+          <button
+            onClick={() => runReplayFix(missing, sib.version)}
+            className="text-[11px] font-semibold rounded-md bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-100 px-2.5 py-1"
+          >
+            ▶ Apply the same correction{missing.length > 1 ? 's' : ''} to this version
+          </button>
+        </div>
+      ))}
       <>
           <p className="text-[11px] text-gray-400 mb-2">
             Paste the customer's WhatsApp screenshot or type what to fix — you can list <strong>several corrections at once</strong>
-            (e.g. the date <em>and</em> a wrong name). They're re-sung into <strong>one whole take</strong> in the
-            <strong> same voice</strong> (no splicing). If they can't all land in one take, <strong>redo the full song</strong> with the corrections.
+            (e.g. the date <em>and</em> a wrong name), even in different parts of the song. Everything is re-sung in the
+            <strong> same voice</strong> (no splicing); far-apart corrections are fixed <strong>automatically, one spot at a time</strong>,
+            and you review one final preview. Tip: if the lyrics look right but the song <em>sings</em> it wrong, describe what the <strong>audio</strong> says.
           </p>
           {!eligible && (
             <p className="text-[11px] text-amber-300 mb-2">

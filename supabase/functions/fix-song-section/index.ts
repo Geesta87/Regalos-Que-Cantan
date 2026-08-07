@@ -1137,15 +1137,18 @@ Deno.serve(async (req) => {
     if (action === 'siblings') {
       const songId: string | undefined = body?.songId;
       if (!songId) return json({ ok: false, error: 'songId required' });
-      const { data: me } = await supabase.from('songs').select('session_id').eq('id', songId).single();
-      if (!me?.session_id) return json({ ok: true, siblings: [] });
+      // fix_corrections travels on both sides so the client can detect BUNDLE
+      // DRIFT — corrections applied to one version but not its sibling — and
+      // offer a one-click replay (2026-08-06).
+      const { data: me } = await supabase.from('songs').select('session_id, fix_corrections').eq('id', songId).single();
+      if (!me?.session_id) return json({ ok: true, siblings: [], myCorrections: me?.fix_corrections || null });
       const { data: sibs } = await supabase
         .from('songs')
-        .select('id, version, paid, recipient_name, audio_url, provider')
+        .select('id, version, paid, recipient_name, audio_url, provider, fix_corrections, fixed_at, fix_count')
         .eq('session_id', me.session_id)
         .neq('id', songId)
         .order('version', { ascending: true });
-      return json({ ok: true, siblings: sibs || [] });
+      return json({ ok: true, siblings: sibs || [], myCorrections: me?.fix_corrections || null });
     }
 
     // -----------------------------------------------------------------
