@@ -227,11 +227,16 @@ export default function GenreStep() {
   // grey button that ignores taps reads as "the site is broken" to low-tech
   // buyers (audit 2026-08).
   const [missingHint, setMissingHint] = useState(false);
+  // "Otro Estilo" tile: the typed style IS the genre there, so Continue with an
+  // empty box needs its own guidance instead of silently proceeding.
+  const [customHint, setCustomHint] = useState(false);
 
   // Auto-scroll refs
   const subGenreSectionRef = useRef(null);
   const voiceSectionRef = useRef(null);
   const continueButtonRef = useRef(null);
+  const customStyleSectionRef = useRef(null);
+  const customStyleInputRef = useRef(null);
 
   // Track page view
   useEffect(() => {
@@ -277,6 +282,19 @@ export default function GenreStep() {
     }, 350);
   };
 
+  // "Otro Estilo" tile: selects the sentinel genre 'otro', opens the free-text
+  // style box and focuses it — the typed text is required and drives the sound.
+  const handleCustomGenreSelect = () => {
+    setSelectedGenre('otro');
+    setSelectedSubGenre('');
+    setMissingHint(false);
+    setShowCustomStyle(true);
+    setTimeout(() => {
+      customStyleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      customStyleInputRef.current?.focus({ preventScroll: true });
+    }, 350);
+  };
+
   const handleSubGenreSelect = (subGenreId) => {
     setSelectedSubGenre(subGenreId);
     // Auto-scroll to voice section
@@ -299,13 +317,26 @@ export default function GenreStep() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+    // "Otro Estilo" without text = nothing to generate from; guide instead of
+    // silently continuing with a generic sound.
+    if (selectedGenre === 'otro' && !customStyle.trim()) {
+      setCustomHint(true);
+      setShowCustomStyle(true);
+      setTimeout(() => {
+        customStyleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        customStyleInputRef.current?.focus({ preventScroll: true });
+      }, 100);
+      return;
+    }
     if (selectedGenre) {
       // Get the genre config to extract display names
       const genreConfig = genres[selectedGenre];
-      
-      // Save genre ID and NAME
+
+      // Save genre ID and NAME. For "Otro Estilo" the typed style doubles as the
+      // display name so lyrics, emails and the generating screen say e.g.
+      // "huapango zapateado" — never the raw slug "otro".
       updateFormData('genre', selectedGenre);
-      updateFormData('genreName', genreConfig?.name || selectedGenre);
+      updateFormData('genreName', selectedGenre === 'otro' ? customStyle.trim() : (genreConfig?.name || selectedGenre));
       
       // Save subGenre ID and NAME if selected
       if (selectedSubGenre && genreConfig?.subGenres?.[selectedSubGenre]) {
@@ -460,6 +491,26 @@ export default function GenreStep() {
               )}
               </React.Fragment>
             ))}
+            {/* "Otro Estilo" — write-your-own-genre tile, always the last card.
+                Dashed border signals "fill in your own"; selecting it opens the
+                free-text style box below and makes the text required. */}
+            <button
+              onClick={handleCustomGenreSelect}
+              className={`
+                relative overflow-hidden p-8 rounded-2xl flex flex-col items-center justify-center gap-3
+                group cursor-pointer transition-all duration-300
+                bg-white/[0.03] backdrop-blur-xl
+                ${selectedGenre === 'otro'
+                  ? 'border-[3px] border-gold shadow-[0_0_25px_rgba(242,13,128,0.3)] -translate-y-1 bg-gold/10'
+                  : 'border-2 border-dashed border-gold/40 hover:border-gold hover:bg-white/5'}
+              `}
+            >
+              <span className={`material-symbols-outlined text-4xl text-gold transition-transform ${selectedGenre === 'otro' ? 'scale-110' : 'group-hover:scale-110'}`}>
+                edit_note
+              </span>
+              <span className="font-display text-xl md:text-2xl font-semibold tracking-wide">Otro Estilo</span>
+              <span className="text-white/60 text-[11px] md:text-xs text-center leading-tight">Escribe el género que quieras</span>
+            </button>
           </div>
 
           {/* Show More Button */}
@@ -501,9 +552,11 @@ export default function GenreStep() {
             </div>
           )}
 
-          {/* Custom style / "type your own genre" - Shows after a genre is selected */}
+          {/* Custom style / "type your own genre" - Shows after a genre is selected.
+              With the "Otro Estilo" tile selected the text is REQUIRED (it is the
+              genre); with a normal genre it stays an optional override. */}
           {selectedGenre && (
-            <div className="mt-6">
+            <div ref={customStyleSectionRef} className="mt-6">
               {!showCustomStyle ? (
                 <button
                   onClick={() => setShowCustomStyle(true)}
@@ -516,21 +569,32 @@ export default function GenreStep() {
                 <div className="p-6 md:p-8 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-gold/20">
                   <h3 className="text-gold text-xs uppercase tracking-[0.2em] font-bold mb-2 flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm">edit</span>
-                    Tu propio estilo (opcional)
+                    {selectedGenre === 'otro' ? 'Tu propio estilo' : 'Tu propio estilo (opcional)'}
                   </h3>
                   <p className="text-white/50 text-xs mb-4">
                     Escribe el género o estilo exacto que quieres (ej: "huapango zapateado", "salsa choke", "balada pop años 80"). Se usará tal cual para crear tu música.
                   </p>
                   <input
+                    ref={customStyleInputRef}
                     type="text"
                     value={customStyle}
-                    onChange={(e) => setCustomStyle(e.target.value.slice(0, 120))}
+                    onChange={(e) => { setCustomStyle(e.target.value.slice(0, 120)); setCustomHint(false); }}
                     placeholder="Ej: corrido bélico con tuba y trompeta..."
                     className="w-full bg-white/5 border border-gold/20 rounded-xl p-4 text-white focus:ring-1 focus:ring-gold focus:border-gold outline-none transition-all text-sm placeholder:text-white/30"
                   />
+                  {customHint && selectedGenre === 'otro' && !customStyle.trim() && (
+                    <p className="text-gold text-xs mt-2 font-medium">Escribe aquí tu estilo para continuar.</p>
+                  )}
                   <div className="flex justify-between mt-2">
                     <button
-                      onClick={() => { setShowCustomStyle(false); setCustomStyle(''); }}
+                      onClick={() => {
+                        setShowCustomStyle(false);
+                        setCustomStyle('');
+                        setCustomHint(false);
+                        // Quitar on the "Otro Estilo" tile = backing out of the
+                        // custom genre entirely, not just clearing the text.
+                        if (selectedGenre === 'otro') setSelectedGenre('');
+                      }}
                       className="text-white/40 hover:text-white/70 text-xs transition-colors"
                     >
                       Quitar

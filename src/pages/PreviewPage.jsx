@@ -28,7 +28,9 @@ export default function PreviewPage() {
 
   // Get genre display name
   const genreConfig = genres[formData.genre];
-  const genreName = genreConfig?.name || formData.genre;
+  // genreName fallback covers the "Otro Estilo" write-in (slug 'otro' has no
+  // config entry; formData.genreName carries the customer's typed style).
+  const genreName = genreConfig?.name || formData.genreName || formData.genre;
   const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Calculate price

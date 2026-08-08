@@ -401,7 +401,7 @@ export default function DetailsStep() {
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="text-gold">✓</span>
-                    Género: <span className="text-white">{formData.genre || '---'}</span>
+                    Género: <span className="text-white">{formData.subGenreName || formData.genreName || formData.genre || '---'}</span>
                   </li>
                   {formData.artistInspiration && (
                     <li className="flex items-center gap-2">

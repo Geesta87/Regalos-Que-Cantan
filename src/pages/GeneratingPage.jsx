@@ -14,8 +14,10 @@ let lastGenerationStartMs = 0;
 const GENERATION_DEBOUNCE_MS = 15000; // 15 seconds — no two generations within this window
 
 // Personalized step messages based on what's actually happening
-const getPersonalizedSteps = (recipientName, genre, occasion) => {
-  const genreName = genres[genre]?.name || genre;
+const getPersonalizedSteps = (recipientName, genre, occasion, genreDisplay) => {
+  // genreDisplay covers the "Otro Estilo" write-in: slug 'otro' has no config
+  // entry, so the customer's typed style (formData.genreName) is shown instead.
+  const genreName = genres[genre]?.name || genreDisplay || genre;
   
   return [
     { 
@@ -101,11 +103,11 @@ export default function GeneratingPage() {
   const hasNavigated = useRef(false);
 
   // Get personalized steps
-  const steps = getPersonalizedSteps(formData.recipientName, formData.genre, formData.occasion);
-  
+  const steps = getPersonalizedSteps(formData.recipientName, formData.genre, formData.occasion, formData.genreName);
+
   // Get genre info for display
   const genreConfig = genres[formData.genre];
-  const genreName = genreConfig?.name || formData.genre;
+  const genreName = genreConfig?.name || formData.genreName || formData.genre;
   const subGenreName = formData.subGenre && genreConfig?.subGenres?.[formData.subGenre]?.name;
 
   // Track page view with funnel variant
