@@ -469,6 +469,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             if (!c?.after) return true;
             const need = Math.max(1, timesInLyrics(fullLyrics, c.after));
             if (countCleanOccurrences(audible, c.after) < need) return false;
+            // Stylization-only change: before/after collapse to the same sung
+            // tokens — absence of the "old" wording is unverifiable, skip it.
+            if (c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after))) return true;
             return !c.before || countCleanOccurrences(audible, c.before) === 0;
           });
           if (sang && lenOk && !keptPrior && wholeOnly) {
@@ -735,7 +738,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (!c?.after) continue;
       const need = Math.max(1, timesInLyrics(combinedLyrics, c.after));
       const have = countCleanOccurrences(words, c.after);
-      const beforeLeft = c.before ? countCleanOccurrences(words, c.before) : 0;
+      // STYLIZATION-ONLY change ("¿y tú?" → "¿y tuuu?"): after norm-collapse the
+      // two wordings are the SAME sung tokens, so demanding the old wording be
+      // absent would contradict demanding the new one present — skip the absence
+      // check and just require the line sung (2026-08-08).
+      const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
+      const beforeLeft = (c.before && !cosmetic) ? countCleanOccurrences(words, c.before) : 0;
       items.push({ kind: 'change', after: c.after, need, have, beforeLeft, ok: have >= need && beforeLeft === 0 });
     }
     for (const p of (priorCorrections || [])) {
