@@ -300,7 +300,17 @@ export function parseTimed(timed) {
 }
 
 function norm(w) {
-  return String(w || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  return String(w || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')
+    // STYLIZED-SPELLING COLLAPSE (2026-08-08): lyric text often stretches words
+    // for feel ("¿y tuuu?", "nooo") but Whisper always transcribes the plain
+    // word ("tú", "no") — an exact-token demand can then NEVER be satisfied,
+    // and a perfect take gets rejected every round (14 generations burned on
+    // one "tuuu" before this fix). Collapse any letter repeated 3+ times, and
+    // a trailing doubled letter, to one — applied to BOTH the lyric tokens and
+    // the transcript tokens, so legit doubles ("leer", "llora") stay internally
+    // consistent and still match themselves.
+    .replace(/([a-z])\1{2,}/g, '$1')
+    .replace(/([a-z])\1$/g, '$1');
 }
 
 // Validate that a re-sung take ACTUALLY sang the correction — in order,

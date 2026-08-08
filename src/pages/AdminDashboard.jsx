@@ -776,7 +776,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
     // Budget: at most 2 generations per spot + 1 spare — each generation is one
     // Kie submission (~2 takes). The ladder stops the moment the checklist is clean.
+    // PER-TARGET cap: one stubborn line may never eat more than 3 generations —
+    // before this (2026-08-08) an unverifiable line burned the ENTIRE budget
+    // (7 generations on one line) before failing with a generic message.
     const MAX_SUBMITS = ordered.length * 2 + 1;
+    const MAX_PER_TARGET = 3;
+    const perTarget = {};
     let submits = 0;
     let source = null;           // { taskId, audioId, trimAtS } of the previous round's winner
     let baselineDur = null;      // the live song's true length (constant across rounds)
@@ -795,6 +800,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         ? ordered.find((c) => { const it = state.items.find((x) => x.kind === 'change' && x.after === c.after); return it && !it.ok; })
         : ordered[0];
       if (!target) break;
+
+      perTarget[target.after] = (perTarget[target.after] || 0) + 1;
+      if (perTarget[target.after] > MAX_PER_TARGET) {
+        reportOutcome('failed', `ladder: línea rendida tras ${MAX_PER_TARGET} generaciones: "${(target.after || '').slice(0, 80)}" (${lastReason || 'no clean take'})`, false);
+        const err = new Error(
+          `La línea "${(target.after || '').slice(0, 60)}" no pasó tras ${MAX_PER_TARGET} generaciones (${lastReason || 'sin toma limpia'}). ` +
+          `Si usa palabras inventadas u ortografía estilizada, prueba escribirla más simple, o usa "Rehacer canción completa".`);
+        err.takes = lastTakesSeen.slice(-4);
+        err.offerFull = true;
+        throw err;
+      }
 
       submits++;
       onMsg?.(`Arreglando "${(target.after || '').slice(0, 40)}…" (paso ${submits})`);
