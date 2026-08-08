@@ -223,6 +223,33 @@ export async function positionsForQueries(queries: string[]): Promise<Record<str
 }
 
 // ---------------------------------------------------------------------------
+// URL Inspection — is a page actually IN Google's index? The #1 silent killer
+// for new pages is "Crawled - currently not indexed"; this makes it visible.
+// Same service account + readonly scope as the query API. Quota: 2k/day.
+// ---------------------------------------------------------------------------
+export async function inspectUrl(url: string): Promise<any> {
+  try {
+    const token = await gscToken();
+    const res = await fetch('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ inspectionUrl: url, siteUrl: GSC_SITE }),
+    });
+    if (!res.ok) return { url, error: `inspect ${res.status}: ${(await res.text()).slice(0, 150)}` };
+    const r = (await res.json())?.inspectionResult?.indexStatusResult || {};
+    return {
+      url,
+      verdict: r.verdict || 'UNKNOWN',                 // PASS = indexed
+      coverage_state: r.coverageState || 'unknown',    // human-readable, e.g. "Crawled - currently not indexed"
+      last_crawl: r.lastCrawlTime || null,
+      indexed: r.verdict === 'PASS',
+    };
+  } catch (e: any) {
+    return { url, error: String(e?.message || e).slice(0, 150) };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // fetch_page — read any live page (ours or a competitor's) as served HTML.
 // ---------------------------------------------------------------------------
 export function extractPageFacts(html: string): any {

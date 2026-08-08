@@ -23,6 +23,7 @@ import ShareablePreviewPage from './pages/ShareablePreviewPage';
 import SongPage from './pages/SongPage';
 import KaraokePage from './pages/KaraokePage';
 import RecoverSongPage from './pages/RecoverSongPage';
+import ReviewPage from './pages/ReviewPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 // SEO Hub pages
@@ -96,6 +97,7 @@ const pathToPage = {
   '/success': 'success',
   '/listen': 'listen',
   '/mi-cancion': 'recoverSong',
+  '/calificar': 'calificar',
   '/admin': 'adminLogin',
   '/admin/dashboard': 'adminDashboard',
   '/generos': 'generos',
@@ -342,6 +344,7 @@ export default function App() {
       success: '/success',
       listen: '/listen',
       recoverSong: '/mi-cancion',
+      calificar: '/calificar',
       adminLogin: '/admin',
       adminDashboard: '/admin/dashboard',
       generos: '/generos',
@@ -439,6 +442,7 @@ export default function App() {
           {currentPage === 'songPage' && <SongPage />}
           {currentPage === 'karaokePage' && <KaraokePage />}
           {currentPage === 'recoverSong' && <RecoverSongPage />}
+          {currentPage === 'calificar' && <ReviewPage />}
           
           {/* Admin pages */}
           {currentPage === 'adminLogin' && <AdminLogin />}

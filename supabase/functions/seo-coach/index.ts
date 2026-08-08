@@ -62,7 +62,7 @@ const PROPOSE_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      title: { type: 'string', description: 'Short imperative task name (English).' },
+      title: { type: 'string', description: 'Short imperative task name — ALWAYS in English (admin dashboard language). Only draft content is Spanish.' },
       task_type: { type: 'string', enum: ['title_meta', 'new_page', 'content_fix', 'link', 'youtube', 'other'] },
       target_path: { type: 'string', description: 'Site route, e.g. /ocasiones/dia-de-las-madres. Empty if none.' },
       target_queries: { type: 'array', items: { type: 'string' }, description: 'The exact search queries this should move.' },
@@ -71,6 +71,7 @@ const PROPOSE_TOOL = {
       draft_meta_description: { type: 'string', description: 'For title_meta/new_page: the exact new meta description (Spanish). Else empty.' },
       draft_body_markdown: { type: 'string', description: 'For new_page/content_fix: full ready page copy in Spanish. Else empty.' },
       draft_instructions: { type: 'string', description: 'Plain-English steps for whoever applies it.' },
+      draft_clip_id: { type: 'string', description: 'For youtube tasks ONLY: the id of the ready clip to post. Approval posts it to the connected YouTube channel with an auto-written search caption. Else empty.' },
       due_date: { type: 'string', description: 'YYYY-MM-DD deadline, or empty.' },
     },
     required: ['title', 'task_type', 'rationale'],
@@ -170,6 +171,7 @@ async function runChatWithTools(admin: any, system: string, convo: any[]): Promi
               meta_description: String(inp.draft_meta_description || ''),
               body_markdown: String(inp.draft_body_markdown || ''),
               instructions: String(inp.draft_instructions || ''),
+              clip_id: String(inp.draft_clip_id || ''),
             },
             due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(inp.due_date || '')) ? inp.due_date : null,
             proposed_by: 'coach',
@@ -266,11 +268,30 @@ serve(async (req: Request) => {
         await admin.from('seo_plan_tasks').update({ status: 'rejected' }).eq('id', id);
         return json({ success: true, campaign: await loadCampaign(admin) });
       }
-      // Approve. For title_meta tasks with a draft, publish the build-time
-      // override — the acting layer. This is the owner's explicit tap.
-      let applied = false, buildTriggered = false;
+      // Approve. This is the owner's explicit tap — the acting layer:
+      //   title_meta → publish the build-time override
+      //   youtube    → post the clip through clip-studio's reviewed path
+      let applied = false, buildTriggered = false, youtubePosted = false, youtubeError = '';
       await admin.from('seo_plan_tasks').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', id);
       const draft = task.draft || {};
+      if (task.task_type === 'youtube' && draft.clip_id) {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/clip-studio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': authHeader, 'apikey': SUPABASE_ANON_KEY },
+            body: JSON.stringify({ action: 'post_clip_youtube', clip_id: draft.clip_id }),
+          });
+          const out = await r.json().catch(() => ({}));
+          youtubePosted = !!out.success;
+          youtubeError = out.success ? '' : String(out.error || 'posting failed');
+          if (youtubePosted) {
+            await admin.from('seo_plan_tasks').update({
+              status: 'implemented', implemented_at: new Date().toISOString(),
+              evidence: { youtube: { ghl_post_id: out.ghl_post_id, caption: String(out.caption || '').slice(0, 400), scheduled_for: out.scheduled_for } },
+            }).eq('id', id);
+          }
+        } catch (e: any) { youtubeError = String(e?.message || e).slice(0, 200); }
+      }
       if (task.task_type === 'title_meta' && task.target_path && (draft.title || draft.meta_description)) {
         const { error: ovErr } = await admin.from('seo_content_overrides').upsert({
           path: task.target_path,
@@ -285,7 +306,7 @@ serve(async (req: Request) => {
           try { const r = await fetch(VERCEL_DEPLOY_HOOK_URL, { method: 'POST' }); buildTriggered = r.ok; } catch (_e) { /* best-effort */ }
         }
       }
-      return json({ success: true, applied, build_triggered: buildTriggered, campaign: await loadCampaign(admin) });
+      return json({ success: true, applied, build_triggered: buildTriggered, youtube_posted: youtubePosted, youtube_error: youtubeError, campaign: await loadCampaign(admin) });
     }
 
     // --- CAMPAIGN: weekly agent kill switch ---

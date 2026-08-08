@@ -74,6 +74,45 @@ function organizationSchema() {
   };
 }
 
+// ── Real review aggregate (honest star ratings) ─────────────────────
+// Set in main() from the song_reviews table (REAL customer ratings collected
+// via /calificar). Stays null — and no rating markup ships — until at least
+// 10 genuine reviews exist. This is the integrity-safe replacement for the
+// fabricated aggregateRating removed on 2026-07-23.
+let REVIEW_AGG = null;
+
+async function fetchReviewAggregate() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/song_reviews?select=rating&approved=eq.true&limit=5000`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length < 10) return null;
+    const avg = rows.reduce((a, r) => a + Number(r.rating || 0), 0) / rows.length;
+    return { ratingValue: (Math.round(avg * 10) / 10).toFixed(1), reviewCount: rows.length };
+  } catch {
+    return null;
+  }
+}
+
+function realAggregateRating() {
+  if (!REVIEW_AGG) return {};
+  return {
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": REVIEW_AGG.ratingValue,
+      "reviewCount": REVIEW_AGG.reviewCount,
+      "bestRating": "5",
+      "worstRating": "1"
+    }
+  };
+}
+
 // ── Structured data generators ──────────────────────────────────────
 function genreProductSchema(genre) {
   return {
@@ -88,10 +127,10 @@ function genreProductSchema(genre) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": "Música Personalizada"
-    // No aggregateRating: review markup must reflect real collected reviews.
-    // Invented counts are a Google manual-action risk. Re-add when wired to a
-    // genuine review system.
+    "category": "Música Personalizada",
+    // aggregateRating only ships when REAL collected reviews exist (see
+    // realAggregateRating) — invented counts are a Google manual-action risk.
+    ...realAggregateRating()
   };
 }
 
@@ -108,8 +147,10 @@ function occasionProductSchema(occasion) {
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
     },
-    "category": `Regalo para ${occasion.name}`
-    // No aggregateRating — same integrity rule as genreProductSchema above.
+    "category": `Regalo para ${occasion.name}`,
+    // aggregateRating only ships when REAL collected reviews exist — same
+    // integrity rule as genreProductSchema above.
+    ...realAggregateRating()
   };
 }
 
@@ -977,6 +1018,9 @@ async function main() {
   // Copy original template as 200.html — Vercel's SPA fallback for non-prerendered routes
   writeFileSync(resolve(DIST, '200.html'), template, 'utf-8');
   console.log('  Created 200.html (SPA fallback)\n');
+
+  REVIEW_AGG = await fetchReviewAggregate();
+  if (REVIEW_AGG) console.log(`  Real review aggregate: ${REVIEW_AGG.ratingValue}/5 from ${REVIEW_AGG.reviewCount} customer reviews\n`);
 
   const routes = buildRouteConfigs();
 

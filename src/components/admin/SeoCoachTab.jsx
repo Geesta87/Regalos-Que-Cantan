@@ -107,7 +107,9 @@ export default function SeoCoachTab({ accessToken, showToast }) {
       if (body.success) {
         if (body.campaign) setCampaign(body.campaign);
         if (action === 'approve_task') {
-          showToast?.(body.applied
+          if (body.youtube_posted) showToast?.('Approved — the clip is being posted to YouTube now.');
+          else if (body.youtube_error) showToast?.(`Approved, but the YouTube post failed: ${body.youtube_error}`);
+          else showToast?.(body.applied
             ? (body.build_triggered ? 'Approved — change published, site rebuild started.' : 'Approved — change published; it goes live with the next site deploy.')
             : 'Approved — it will be applied from the task draft.');
         }

@@ -28,7 +28,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  gatherSearchContext, positionsForQueries, fetchPageFacts, hasGscKey,
+  gatherSearchContext, positionsForQueries, fetchPageFacts, inspectUrl, hasGscKey,
   upcomingSeasonalWindows, GSC_SITE, TRAFFIC_SOURCE_LIVE_FROM,
 } from '../_shared/seo-gsc.ts';
 import { seoBrainContext } from '../_shared/seo-brain.ts';
@@ -91,12 +91,13 @@ const REVIEW_SCHEMA = {
           draft: {
             type: 'object',
             additionalProperties: false,
-            required: ['title', 'meta_description', 'body_markdown', 'instructions'],
+            required: ['title', 'meta_description', 'body_markdown', 'instructions', 'clip_id'],
             properties: {
               title: { type: 'string', description: 'For title_meta/new_page: the exact new <title>. Else empty string.' },
               meta_description: { type: 'string', description: 'For title_meta/new_page: the exact new meta description. Else empty string.' },
               body_markdown: { type: 'string', description: 'For new_page/content_fix: full ready page copy in Spanish (headings, FAQ, unique asset ideas). Else empty string.' },
               instructions: { type: 'string', description: 'Plain-English steps for whoever applies it (owner or dev session).' },
+              clip_id: { type: 'string', description: 'For youtube tasks ONLY: the id of the ready clip to post (pick from candidate_youtube_clips in the data). Else empty string.' },
             },
           },
           due_date: { type: 'string', description: 'YYYY-MM-DD deadline, or empty string if none.' },
@@ -256,6 +257,72 @@ serve(async (req: Request) => {
       }
     } catch (_e) { /* best-effort */ }
 
+    // ── 3d. Index coverage: are our important pages actually IN Google? ─────
+    // "Crawled - currently not indexed" is the silent killer for new pages.
+    const index_flags: any[] = [];
+    try {
+      const pathsToCheck = [...new Set([
+        '/', '/canciones-para-regalar',
+        ...tasks.filter((t) => ['approved', 'implemented', 'verified'].includes(t.status) && t.target_path).map((t) => t.target_path),
+      ])].slice(0, 8);
+      for (const p of pathsToCheck) {
+        const r = await inspectUrl(`${siteBase}${p}`);
+        if (r.error) continue;
+        if (!r.indexed) index_flags.push({ path: p, coverage_state: r.coverage_state, last_crawl: r.last_crawl });
+      }
+      if (index_flags.length) verifyNotes.push(`NOT IN GOOGLE'S INDEX yet: ${index_flags.map((f) => `${f.path} (${f.coverage_state})`).join(', ')}`);
+    } catch (_e) { /* best-effort */ }
+
+    // ── 3e. AI-answer visibility: do the AIs recommend us? ──────────────────
+    // Asks realistic buyer questions (with live web search) and records which
+    // brands get named. Runs in parallel; each result is stored for trends.
+    const AI_VISIBILITY_PROMPTS = [
+      'What is the best service to get a personalized song in Spanish made as a gift for my wife?',
+      '¿Dónde puedo mandar a hacer una canción personalizada para regalarle a mi mamá?',
+      'I want to gift my girlfriend a custom corrido with her name in it. Where can I get one made?',
+      'Best personalized Spanish song gift for an anniversary — what service should I use?',
+    ];
+    let ai_visibility: any[] = [];
+    if (ANTHROPIC_API_KEY) {
+      try {
+        ai_visibility = (await Promise.all(AI_VISIBILITY_PROMPTS.map(async (prompt) => {
+          try {
+            const ans = await anthropicRaw({
+              model: MODEL, max_tokens: 2000,
+              output_config: { effort: 'low' },
+              tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+              messages: [{ role: 'user', content: prompt }],
+            });
+            const answerText = (ans?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ').slice(0, 3000);
+            const ex = await anthropicRaw({
+              model: MODEL, max_tokens: 300,
+              output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: ['rqc_mentioned', 'brands'], properties: { rqc_mentioned: { type: 'boolean', description: 'Was Regalos Que Cantan / regalosquecantan.com mentioned or recommended?' }, brands: { type: 'array', items: { type: 'string' }, description: 'Every brand/service named in the answer.' } } } } },
+              messages: [{ role: 'user', content: `Which brands does this answer recommend?\n\n${answerText}` }],
+            });
+            const v = JSON.parse((ex?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(''));
+            return { prompt, engine: 'claude+websearch', rqc_mentioned: !!v.rqc_mentioned, brands_mentioned: (v.brands || []).slice(0, 10), answer_excerpt: answerText.slice(0, 500) };
+          } catch (_e) { return null; }
+        }))).filter(Boolean);
+        for (const r of ai_visibility) {
+          await admin.from('seo_ai_visibility').insert({ engine: r.engine, prompt: r.prompt, rqc_mentioned: r.rqc_mentioned, brands_mentioned: r.brands_mentioned, answer_excerpt: r.answer_excerpt });
+        }
+      } catch (_e) { /* best-effort */ }
+    }
+    let ai_visibility_prev: any[] = [];
+    try {
+      const { data } = await admin.from('seo_ai_visibility').select('run_at, prompt, rqc_mentioned, brands_mentioned')
+        .lt('run_at', new Date(Date.now() - 3 * 864e5).toISOString()).order('run_at', { ascending: false }).limit(8);
+      ai_visibility_prev = data || [];
+    } catch (_e) { /* ok */ }
+
+    // ── 3f. Ready clips the agent may propose posting to YouTube ────────────
+    let candidate_youtube_clips: any[] = [];
+    try {
+      const { data } = await admin.from('clips').select('id, label, status, youtube_post_id, created_at')
+        .eq('status', 'ready').is('youtube_post_id', null).order('created_at', { ascending: false }).limit(6);
+      candidate_youtube_clips = (data || []).map((c) => ({ clip_id: c.id, label: c.label }));
+    } catch (_e) { /* ok */ }
+
     // ── 4. Seasonal build-ahead check ───────────────────────────────────────
     const seasonal = upcomingSeasonalWindows();
     const seasonalGaps = seasonal.filter((s) => s.in_build_window && !tasks.some((t) =>
@@ -274,6 +341,11 @@ serve(async (req: Request) => {
           tasks: tasks.map((t) => ({ title: t.title, type: t.task_type, status: t.status, target_path: t.target_path, due_date: t.due_date })),
           seasonal_calendar: seasonal,
           seasonal_gaps_needing_tasks: seasonalGaps,
+          pages_not_in_google_index: index_flags,
+          ai_answer_visibility_this_week: ai_visibility.map((r) => ({ prompt: r.prompt, rqc_mentioned: r.rqc_mentioned, brands_mentioned: r.brands_mentioned })),
+          ai_answer_visibility_previous: ai_visibility_prev,
+          candidate_youtube_clips,
+          youtube_note: 'You may propose at most ONE youtube task per week: pick a clip from candidate_youtube_clips (set draft.clip_id) and explain in plain words why posting it helps AIs and Google recommend us. When approved it posts to the connected YouTube channel with an auto-written search-friendly caption.',
           run_notes: notes,
           attribution_note: `Organic revenue is a measured FLOOR from ${TRAFFIC_SOURCE_LIVE_FROM} onward only.`,
         };
@@ -282,7 +354,7 @@ serve(async (req: Request) => {
           output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
           system: `You are the weekly SEO campaign agent for Regalos Que Cantan (personalized Spanish songs, ~$30 orders, US-Hispanic market, regalosquecantan.com). You write the owner's Monday SEO review and propose the next moves.
 
-THE OWNER KNOWS NOTHING ABOUT SEO — you do ALL the thinking. Write the digest the way you'd explain to a smart friend who has never heard the word "SEO": no jargon (never say SERP, CTR, meta, indexing without a plain-word explanation), plain English, short. Every proposal's rationale must let them decide with zero expertise: what will change, why it should bring more free customers, and that it's safe/reversible. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving is one tap and rejecting loses nothing. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.
+THE OWNER KNOWS NOTHING ABOUT SEO — you do ALL the thinking. Write the digest the way you'd explain to a smart friend who has never heard the word "SEO": no jargon (never say SERP, CTR, meta, indexing without a plain-word explanation), short and plain. LANGUAGE RULE: the digest, task titles, and rationales are ALWAYS in ENGLISH (this is the admin dashboard); only the draft page content itself (titles/meta/copy that ships to the site) is in Spanish. Every proposal's rationale must let them decide with zero expertise: what will change, why it should bring more free customers, and that it's safe/reversible. Before proposing to fix something on a page, trust the current live-page evidence over any claim in the brain doc — never propose fixing something already fixed. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving is one tap and rejecting loses nothing. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.
 
 ${seoBrainContext('Ground every proposal in these verified mechanics (but keep the OWNER-facing words simple):')}`,
           messages: [{ role: 'user', content: `Weekly data:\n${JSON.stringify(context, null, 2)}\n\nWrite the weekly review digest and propose up to 3 new tasks (cover seasonal gaps first). Keep each body_markdown under ~700 words.` }],

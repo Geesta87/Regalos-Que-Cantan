@@ -959,6 +959,11 @@ verify_jwt = true
 # proposals; nothing user-visible changes without dashboard approval.
 verify_jwt = false
 
+[functions.submit-review]
+# Public customer review capture from /calificar — customers have no JWT.
+# Validates song exists + paid server-side; one review per song.
+verify_jwt = false
+
 # Ads Coach - advice-only Meta ads specialist. Called by the admin frontend with
 # the owner's Supabase JWT (admin_users gate inside), so keep JWT verification ON.
 # Never invoked by an external webhook or pg_cron.
