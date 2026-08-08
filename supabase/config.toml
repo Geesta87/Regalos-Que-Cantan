@@ -1005,3 +1005,15 @@ verify_jwt = false
 # a future redeploy can never silently flip it (see CLAUDE.md section 2).
 [functions.create-checkout]
 verify_jwt = true
+
+# Action Inbox — read-only aggregator behind the admin home tab. Called only by
+# our admin frontend with the owner's Supabase JWT (admin_users gate inside),
+# so the default gate stays ON. Never invoked by webhooks or pg_cron.
+[functions.action-inbox]
+verify_jwt = true
+
+# Business Analyst — ask-the-business chat agent (read-only SQL via the
+# analyst_run_sql RPC). Called only by the admin frontend with the owner's
+# JWT (admin_users gate inside); default gate stays ON.
+[functions.business-analyst]
+verify_jwt = true
