@@ -938,6 +938,19 @@ verify_jwt = false
 # voice-cloning quality is validated and the paid tier launches.
 verify_jwt = true
 
+[functions.test-suno-voice]
+# TEMPORARY test harness added 2026-08-08 to evaluate Kie's Suno Voice
+# real-voice-cloning APIs (/api/v1/voice/validate → validate-info →
+# /api/v1/voice/generate → voiceId, then personaId on /api/v1/generate)
+# against the current upload-cover pipeline. Operator-driven relay to Kie
+# using the KIE_API_KEY secret; reads voice_samples/Storage for signed
+# URLs only, writes nothing. Double-gated: anon JWT at the gateway
+# (verify_jwt = true) + mandatory x-test-token header matching the
+# TEST_SUNO_VOICE_TOKEN secret (refuses everything if the secret is
+# unset). Remove this function, this block, and the secret once the
+# Suno Voice bake-off is decided.
+verify_jwt = true
+
 # cs-metrics — read-only CS quality dashboard. Called by the admin frontend with
 # the owner's Supabase JWT, so keep JWT verification ON (admin_users gate inside).
 [functions.cs-metrics]
