@@ -315,6 +315,7 @@ export default function VoiceRecorder({
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const streamRef = useRef(null);
+  const recStreamRef = useRef(null);
   const rafRef = useRef(null);
 
   useEffect(() => () => cleanup(), []);
@@ -328,6 +329,10 @@ export default function VoiceRecorder({
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+    }
+    if (recStreamRef.current) {
+      recStreamRef.current.getTracks().forEach((t) => t.stop());
+      recStreamRef.current = null;
     }
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close().catch(() => {});
@@ -364,12 +369,22 @@ export default function VoiceRecorder({
       });
       streamRef.current = stream;
 
+      // Record from a CLONE of the stream, never the original. On several
+      // Android browsers (Samsung Internet, some Chrome builds) attaching a
+      // Web Audio AnalyserNode (the live spectrum bars below) to the SAME
+      // MediaStream that MediaRecorder is capturing makes the recording come
+      // out as pure silence — the live meter shows voice while the saved
+      // file is empty. Cloning splits the two consumers onto independent
+      // tracks. Field-confirmed 2026-08-08 (51s silent take, Android).
+      const recStream = stream.clone();
+      recStreamRef.current = recStream;
+
       const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
       let mime = '';
       for (const m of mimeCandidates) {
         if (window.MediaRecorder && window.MediaRecorder.isTypeSupported(m)) { mime = m; break; }
       }
-      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      const recorder = mime ? new MediaRecorder(recStream, { mimeType: mime }) : new MediaRecorder(recStream);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       recorder.onstop = async () => {
@@ -385,7 +400,9 @@ export default function VoiceRecorder({
         setVerdict(computeVerdict(analysis));
         setAnalyzing(false);
       };
-      recorder.start();
+      // 1s timeslice: collect audio progressively instead of one giant chunk
+      // at stop() — mobile browsers are far less likely to drop data this way.
+      recorder.start(1000);
       mediaRecorderRef.current = recorder;
       startTimeRef.current = Date.now();
       setElapsedMs(0);
