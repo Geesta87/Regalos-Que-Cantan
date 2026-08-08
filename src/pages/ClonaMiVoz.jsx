@@ -274,32 +274,48 @@ export default function ClonaMiVoz() {
     await beginPhraseFlow(up.voice_sample_id);
   }
 
-  /** Kick off (or restart) validate → phrase polling for a sample. */
+  /**
+   * Kick off (or restart) validate → phrase polling for a sample.
+   *
+   * Self-healing: if Kie stays silent for ~45s (its task can silently
+   * evaporate when its first audio fetch fails — see the enroll fn), we
+   * automatically re-'start' once, which the backend maps to a FRESH
+   * storage path + fresh task. Only after the second silent run do we
+   * surface the failure screen.
+   */
   async function beginPhraseFlow(sampleId) {
     setEnrollError(null);
     setEnrollPhrase(null);
-    const st = await enrollVoice('start', { voiceSampleId: sampleId, language: recordingLanguage });
-    if (!st.ok) {
-      setEnrollError(st.message || 'No pudimos iniciar la clonación de tu voz.');
-      setStage(STAGES.ENROLL_FAILED);
-      return;
-    }
-    setStage(STAGES.ENROLL_PHRASE_WAIT);
-    for (let i = 0; i < 40; i++) {
+
+    for (let attempt = 0; attempt < 2; attempt++) {
       if (pollAbortRef.current) return;
-      await sleep(3000);
-      const ph = await enrollVoice('phrase', { voiceSampleId: sampleId });
-      if (ph.ok && ph.status === 'phrase_ready' && ph.phrase) {
-        setEnrollPhrase(ph.phrase);
-        setStage(STAGES.ENROLL_PHRASE_RECORD);
-        return;
-      }
-      if (ph.ok && ph.status === 'failed') {
-        setEnrollError(ph.message || 'No pudimos analizar tu grabación.');
+      const st = await enrollVoice('start', { voiceSampleId: sampleId, language: recordingLanguage });
+      if (!st.ok) {
+        setEnrollError(st.message || 'No pudimos iniciar la clonación de tu voz.');
         setStage(STAGES.ENROLL_FAILED);
         return;
       }
+      setStage(STAGES.ENROLL_PHRASE_WAIT);
+
+      // ~45s of polling per attempt (15 × 3s).
+      for (let i = 0; i < 15; i++) {
+        if (pollAbortRef.current) return;
+        await sleep(3000);
+        const ph = await enrollVoice('phrase', { voiceSampleId: sampleId });
+        if (ph.ok && ph.status === 'phrase_ready' && ph.phrase) {
+          setEnrollPhrase(ph.phrase);
+          setStage(STAGES.ENROLL_PHRASE_RECORD);
+          return;
+        }
+        if (ph.ok && ph.status === 'failed') {
+          setEnrollError(ph.message || 'No pudimos analizar tu grabación.');
+          setStage(STAGES.ENROLL_FAILED);
+          return;
+        }
+      }
+      // Silent timeout — loop restarts with a fresh Kie task on a fresh path.
     }
+
     setEnrollError('La preparación de tu voz tardó demasiado.');
     setStage(STAGES.ENROLL_FAILED);
   }

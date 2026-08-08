@@ -108,7 +108,22 @@ serve(async (req) => {
         message: `Voice sample is ${sample.source_mime}; Kie requires WAV or MP3. Re-record with the current recorder.`,
       });
     }
-    const url = await signedUrl(sample.storage_path);
+    // Kie's /voice/validate pipeline SILENTLY DROPS tasks whose audio URL
+    // filename contains a UUID pattern (isolated 2026-08-08: identical
+    // bytes — 'rootshort.wav' processes, '9f8e...uuid.wav' evaporates,
+    // across 10+ controlled trials; upload-cover is NOT affected). All
+    // our stored samples have UUID names, so copy the sample to a short
+    // non-UUID name per attempt. Unique-per-attempt also insulates each
+    // retry from any cached failure on a previous attempt's URL. Falls
+    // back to the original path only if the copy fails.
+    const ext = sample.storage_path.split('.').pop() || 'wav';
+    const attemptPath = `enroll-attempts/va${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const copied = await supabase.storage.from(STORAGE_BUCKET).copy(sample.storage_path, attemptPath);
+    const kiePath = copied.error ? sample.storage_path : attemptPath;
+    if (copied.error) {
+      console.warn('[clonamivoz-voice-enroll] attempt-copy failed, using original path:', copied.error.message);
+    }
+    const url = await signedUrl(kiePath);
     if (!url) return json(502, { error: 'signed_url_failed' });
 
     const durationS = Math.max(10, Math.min(Math.floor(Number(sample.duration_seconds) || 55), 120));
