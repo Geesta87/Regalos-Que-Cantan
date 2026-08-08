@@ -67,6 +67,11 @@ const ALLOWED_MIME_TYPES = new Set([
   'audio/webm;codecs=opus',
   'audio/mp4',
   'audio/x-m4a',         // Safari sometimes
+  // WAV (2026-08-08): the frontend now re-encodes recordings to WAV
+  // client-side because Kie's Suno Voice APIs silently discard WebM.
+  'audio/wav',
+  'audio/x-wav',
+  'audio/wave',
 ]);
 
 // Map MIME → file extension for the Storage path.
@@ -75,6 +80,7 @@ function extFor(mime: string): string {
   if (m.includes('mpeg') || m.includes('mp3')) return 'mp3';
   if (m.includes('webm')) return 'webm';
   if (m.includes('mp4') || m.includes('m4a')) return 'm4a';
+  if (m.includes('wav')) return 'wav';
   return 'bin';
 }
 

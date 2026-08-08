@@ -313,6 +313,13 @@ interface RequestBody {
   lyrics_model_used?: string;
   customer_email?: string;
   vocal_gender?: 'm' | 'f' | '';
+
+  // Suno Voice engine (2026-08-08): when the customer's voice was enrolled
+  // via clonamivoz-voice-enroll, this is the Kie voice-creation TASK ID —
+  // which doubles as the personaId for /api/v1/generate. When present the
+  // preview uses the REAL cloned voice; when absent we fall back to the
+  // legacy upload-cover engine so nothing existing breaks.
+  voice_task_id?: string;
 }
 
 serve(async (req) => {
@@ -457,6 +464,9 @@ serve(async (req) => {
     lyrics_model_used: body.lyrics_model_used || null,
     status: 'generating_preview' as const,
     error_message: null,
+    // Persist which engine this order runs on so the paid full-song path
+    // (stripe webhook → generate-cloned-voice-song) reuses the same voice.
+    voice_task_id: body.voice_task_id || null,
   };
 
   let clonedVoiceSongId: string;
@@ -511,25 +521,47 @@ serve(async (req) => {
   const previewLyric = buildPreviewLyric(body.recipient_name!, language);
   const previewTitle = `preview-${clonedVoiceSongId.slice(0, 8)}`;
 
-  const kiePayload = {
-    uploadUrl: voicePublicUrl,
-    prompt: previewLyric,
-    customMode: true,
-    instrumental: false,
-    model: SUNO_MODEL,
-    style: styleString,
-    title: previewTitle,
-    negativeTags: negativeTagsCombined,
-    styleWeight: STYLE_WEIGHT,
-    audioWeight: AUDIO_WEIGHT,
-    weirdnessConstraint: WEIRDNESS_CONSTRAINT,
-    callBackUrl: KIE_CALLBACK_URL,
-    ...(vocalGender ? { vocalGender } : {}),
-  };
+  // Engine switch (2026-08-08): enrolled Suno Voice (personaId = the Kie
+  // voice-creation task id) vs legacy upload-cover. The persona path uses
+  // /api/v1/generate and does NOT take the cover-tuning knobs
+  // (styleWeight/audioWeight/weirdness are upload-cover-only) nor the
+  // sample uploadUrl — the voice comes from the stored persona.
+  const voiceTaskId = body.voice_task_id || null;
+  const kieEndpoint = voiceTaskId
+    ? 'https://api.kie.ai/api/v1/generate'
+    : 'https://api.kie.ai/api/v1/generate/upload-cover';
+  const kiePayload = voiceTaskId
+    ? {
+        personaId: voiceTaskId,
+        prompt: previewLyric,
+        customMode: true,
+        instrumental: false,
+        model: SUNO_MODEL,
+        style: styleString,
+        title: previewTitle,
+        negativeTags: negativeTagsCombined,
+        callBackUrl: KIE_CALLBACK_URL,
+        ...(vocalGender ? { vocalGender } : {}),
+      }
+    : {
+        uploadUrl: voicePublicUrl,
+        prompt: previewLyric,
+        customMode: true,
+        instrumental: false,
+        model: SUNO_MODEL,
+        style: styleString,
+        title: previewTitle,
+        negativeTags: negativeTagsCombined,
+        styleWeight: STYLE_WEIGHT,
+        audioWeight: AUDIO_WEIGHT,
+        weirdnessConstraint: WEIRDNESS_CONSTRAINT,
+        callBackUrl: KIE_CALLBACK_URL,
+        ...(vocalGender ? { vocalGender } : {}),
+      };
 
   let kieResp: Response;
   try {
-    kieResp = await fetch('https://api.kie.ai/api/v1/generate/upload-cover', {
+    kieResp = await fetch(kieEndpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${KIE_API_KEY}`,

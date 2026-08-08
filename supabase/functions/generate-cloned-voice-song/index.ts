@@ -324,6 +324,14 @@ interface RequestBody {
   // the frontend keeps polling the first row — which never gets the
   // kie_task_id — and the customer times out waiting.
   cloned_voice_song_id?: string;
+
+  // Suno Voice engine (2026-08-08): Kie voice-creation TASK ID from
+  // clonamivoz-voice-enroll — doubles as the personaId for
+  // /api/v1/generate. Usually NOT passed by the webhook/bypass callers;
+  // when absent we read it off the existing row (the preview stored it),
+  // so the paid song is guaranteed to use the same voice the customer
+  // heard in the preview. Absent everywhere → legacy upload-cover.
+  voice_task_id?: string;
 }
 
 serve(async (req) => {
@@ -457,15 +465,22 @@ serve(async (req) => {
     emotional_modifiers: body.emotional_modifiers || null,
     lyrics_model_used: body.lyrics_model_used || null,
     status: 'generating_song',
+    // Only set when explicitly provided — an UPDATE must never wipe the
+    // voice_task_id the preview stored on the row.
+    ...(body.voice_task_id ? { voice_task_id: body.voice_task_id } : {}),
   };
 
   let clonedVoiceSongId: string;
+  // Engine selection: explicit body param wins; otherwise the existing
+  // row's voice_task_id (stored at preview time). Stays null → legacy
+  // upload-cover engine, exactly as before 2026-08-08.
+  let voiceTaskId: string | null = body.voice_task_id || null;
   if (body.cloned_voice_song_id) {
     const { data: updatedRow, error: updateError } = await supabase
       .from('cloned_voice_songs')
       .update(songFields)
       .eq('id', body.cloned_voice_song_id)
-      .select('id')
+      .select('id, voice_task_id')
       .single();
     if (updateError || !updatedRow) {
       console.error('[generate-cloned-voice-song] DB update failed:', updateError);
@@ -478,6 +493,7 @@ serve(async (req) => {
       );
     }
     clonedVoiceSongId = updatedRow.id;
+    if (!voiceTaskId && updatedRow.voice_task_id) voiceTaskId = updatedRow.voice_task_id;
   } else {
     const { data: songRow, error: insertError } = await supabase
       .from('cloned_voice_songs')
@@ -497,27 +513,47 @@ serve(async (req) => {
     clonedVoiceSongId = songRow.id;
   }
 
-  // ---------------- call Kie.ai upload-cover ----------------
-  const kiePayload = {
-    uploadUrl: voicePublicUrl,
-    prompt: englishifyLyricsMarkers(body.lyrics!),
-    customMode: true,
-    instrumental: false,
-    model: SUNO_MODEL,
-    style: styleString,
-    // Combined voice-clone protections + per-genre musical rejections.
-    title: (body.title || `cancion-${clonedVoiceSongId.slice(0, 8)}`).slice(0, 80),
-    negativeTags: negativeTagsCombined,
-    styleWeight: STYLE_WEIGHT,
-    audioWeight: AUDIO_WEIGHT,
-    weirdnessConstraint: WEIRDNESS_CONSTRAINT,
-    callBackUrl: KIE_CALLBACK_URL,
-    ...(vocalGender ? { vocalGender } : {}),
-  };
+  // ---------------- call Kie.ai (persona engine or upload-cover) ----------------
+  // Suno Voice engine (2026-08-08): with an enrolled voice, use
+  // /api/v1/generate + personaId (= the Kie voice-creation task id). The
+  // cover-tuning knobs (styleWeight/audioWeight/weirdness) and uploadUrl
+  // are upload-cover-only and must NOT be sent on the persona path.
+  const kieEndpoint = voiceTaskId
+    ? 'https://api.kie.ai/api/v1/generate'
+    : 'https://api.kie.ai/api/v1/generate/upload-cover';
+  const kiePayload = voiceTaskId
+    ? {
+        personaId: voiceTaskId,
+        prompt: englishifyLyricsMarkers(body.lyrics!),
+        customMode: true,
+        instrumental: false,
+        model: SUNO_MODEL,
+        style: styleString,
+        title: (body.title || `cancion-${clonedVoiceSongId.slice(0, 8)}`).slice(0, 80),
+        negativeTags: negativeTagsCombined,
+        callBackUrl: KIE_CALLBACK_URL,
+        ...(vocalGender ? { vocalGender } : {}),
+      }
+    : {
+        uploadUrl: voicePublicUrl,
+        prompt: englishifyLyricsMarkers(body.lyrics!),
+        customMode: true,
+        instrumental: false,
+        model: SUNO_MODEL,
+        style: styleString,
+        // Combined voice-clone protections + per-genre musical rejections.
+        title: (body.title || `cancion-${clonedVoiceSongId.slice(0, 8)}`).slice(0, 80),
+        negativeTags: negativeTagsCombined,
+        styleWeight: STYLE_WEIGHT,
+        audioWeight: AUDIO_WEIGHT,
+        weirdnessConstraint: WEIRDNESS_CONSTRAINT,
+        callBackUrl: KIE_CALLBACK_URL,
+        ...(vocalGender ? { vocalGender } : {}),
+      };
 
   let kieResp: Response;
   try {
-    kieResp = await fetch('https://api.kie.ai/api/v1/generate/upload-cover', {
+    kieResp = await fetch(kieEndpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${KIE_API_KEY}`,

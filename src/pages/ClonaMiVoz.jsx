@@ -39,11 +39,20 @@ import {
   createClonamivozCheckout,
   bypassClonamivozPayment,
   getClonedVoiceStatus,
+  enrollVoice,
 } from '../services/clonamivoz';
+import { blobToWav } from '../components/clonamivoz/wav';
 
 const STAGES = {
   INTRO: 'intro',
   RECORD: 'record',
+  // Suno Voice enrollment (2026-08-08): real voice cloning between the
+  // sample recording and the story/configure step. See startEnrollment().
+  ENROLL_UPLOADING: 'enroll_uploading',
+  ENROLL_PHRASE_WAIT: 'enroll_phrase_wait',
+  ENROLL_PHRASE_RECORD: 'enroll_phrase_record',
+  ENROLL_CREATING: 'enroll_creating',
+  ENROLL_FAILED: 'enroll_failed',
   CONFIGURE: 'configure',
   UPLOADING: 'uploading',
   SUBMITTING_PREVIEW: 'submitting_preview',
@@ -119,6 +128,14 @@ export default function ClonaMiVoz() {
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioDurationMs, setAudioDurationMs] = useState(0);
   const [voiceSampleId, setVoiceSampleId] = useState(null);
+
+  // Suno Voice enrollment (real cloning). voiceTaskId is the Kie
+  // voice-creation task id — it doubles as the personaId the generation
+  // functions use. null → legacy upload-cover engine (saved voices,
+  // enrollment failures, old browsers).
+  const [voiceTaskId, setVoiceTaskId] = useState(null);
+  const [enrollPhrase, setEnrollPhrase] = useState(null);
+  const [enrollError, setEnrollError] = useState(null);
 
   // Generation inputs
   const [genreSlug, setGenreSlug] = useState(GENRES[0].slug);
@@ -211,7 +228,118 @@ export default function ClonaMiVoz() {
   function handleRecordingComplete(blob, durationMs) {
     setAudioBlob(blob);
     setAudioDurationMs(durationMs);
-    setStage(STAGES.CONFIGURE);
+    startEnrollment(blob, durationMs);
+  }
+
+  // -------------------------------------------------------------------
+  // Suno Voice enrollment (2026-08-08) — real voice cloning.
+  //
+  // Sequence: WAV-encode the sample → upload → Kie voice/validate →
+  // poll for the verification phrase → customer SINGS the phrase (second
+  // short recording) → Kie voice/generate → poll until the voice is
+  // ready → voiceTaskId set → CONFIGURE. The phrase expires ~10-15 min
+  // after 'start', so this whole block runs as one uninterrupted screen
+  // sequence. Any failure lands on ENROLL_FAILED, which offers a retry
+  // (new phrase) or continuing with the legacy engine — the page can
+  // never dead-end.
+  // -------------------------------------------------------------------
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function startEnrollment(blob, durationMs) {
+    setEnrollError(null);
+    setEnrollPhrase(null);
+    setVoiceTaskId(null);
+    pollAbortRef.current = false;
+    setStage(STAGES.ENROLL_UPLOADING);
+
+    const wav = await blobToWav(blob);
+    if (!wav.type.includes('wav')) {
+      // Old browser couldn't re-encode; Kie would silently discard the
+      // original WebM. Skip enrollment, keep the legacy engine.
+      setStage(STAGES.CONFIGURE);
+      return;
+    }
+    const up = await uploadCustomerVoice(wav, {
+      customerEmail: customerEmail || undefined,
+      durationSeconds: durationMs / 1000,
+    });
+    if (!up.ok) {
+      setEnrollError(`No pudimos subir tu grabación: ${up.message || up.error}`);
+      setStage(STAGES.ENROLL_FAILED);
+      return;
+    }
+    setVoiceSampleId(up.voice_sample_id);
+    setAudioBlob(null); // uploaded — submit() must not re-upload
+
+    await beginPhraseFlow(up.voice_sample_id);
+  }
+
+  /** Kick off (or restart) validate → phrase polling for a sample. */
+  async function beginPhraseFlow(sampleId) {
+    setEnrollError(null);
+    setEnrollPhrase(null);
+    const st = await enrollVoice('start', { voiceSampleId: sampleId, language: recordingLanguage });
+    if (!st.ok) {
+      setEnrollError(st.message || 'No pudimos iniciar la clonación de tu voz.');
+      setStage(STAGES.ENROLL_FAILED);
+      return;
+    }
+    setStage(STAGES.ENROLL_PHRASE_WAIT);
+    for (let i = 0; i < 40; i++) {
+      if (pollAbortRef.current) return;
+      await sleep(3000);
+      const ph = await enrollVoice('phrase', { voiceSampleId: sampleId });
+      if (ph.ok && ph.status === 'phrase_ready' && ph.phrase) {
+        setEnrollPhrase(ph.phrase);
+        setStage(STAGES.ENROLL_PHRASE_RECORD);
+        return;
+      }
+      if (ph.ok && ph.status === 'failed') {
+        setEnrollError(ph.message || 'No pudimos analizar tu grabación.');
+        setStage(STAGES.ENROLL_FAILED);
+        return;
+      }
+    }
+    setEnrollError('La preparación de tu voz tardó demasiado.');
+    setStage(STAGES.ENROLL_FAILED);
+  }
+
+  /** Customer finished singing the verification phrase. */
+  async function handlePhraseRecorded(blob, durationMs) {
+    setStage(STAGES.ENROLL_CREATING);
+    const wav = await blobToWav(blob);
+    const up = await uploadCustomerVoice(wav, {
+      customerEmail: customerEmail || undefined,
+      durationSeconds: durationMs / 1000,
+    });
+    if (!up.ok) {
+      setEnrollError(`No pudimos subir la verificación: ${up.message || up.error}`);
+      setStage(STAGES.ENROLL_FAILED);
+      return;
+    }
+    const v = await enrollVoice('verify', { voiceSampleId, verifySampleId: up.voice_sample_id });
+    if (!v.ok || v.status === 'failed') {
+      setEnrollError(v.message || 'La verificación no fue aceptada. Intenta de nuevo.');
+      setStage(STAGES.ENROLL_FAILED);
+      return;
+    }
+    for (let i = 0; i < 36; i++) {
+      if (pollAbortRef.current) return;
+      await sleep(5000);
+      const st = await enrollVoice('status', { voiceSampleId });
+      if (st.ok && st.status === 'ready' && st.voice_task_id) {
+        setVoiceTaskId(st.voice_task_id);
+        setStage(STAGES.CONFIGURE);
+        return;
+      }
+      if (st.ok && st.status === 'failed') {
+        setEnrollError(st.message || 'No se pudo crear tu voz.');
+        setStage(STAGES.ENROLL_FAILED);
+        return;
+      }
+    }
+    setEnrollError('La creación de tu voz tardó demasiado.');
+    setStage(STAGES.ENROLL_FAILED);
   }
 
   /**
@@ -284,6 +412,8 @@ export default function ClonaMiVoz() {
       emotionalModifiers,
       lyricsModelUsed,
       language: storyContext?.language || 'es',
+      // Real cloned voice when enrollment succeeded; null → legacy engine.
+      voiceTaskId: voiceTaskId || undefined,
     });
     if (!previewRes.ok) {
       setError(`No pudimos crear la prueba: ${previewRes.message || previewRes.error}`);
@@ -570,6 +700,117 @@ export default function ClonaMiVoz() {
               language={recordingLanguage}
             />
             <CoachingPanel />
+          </section>
+        )}
+
+        {/* ---- Suno Voice enrollment stages (real cloning) ---- */}
+        {(stage === STAGES.ENROLL_UPLOADING || stage === STAGES.ENROLL_PHRASE_WAIT) && (
+          <section className="rounded-3xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-8 sm:p-12 text-center space-y-4 animate-fadeIn">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-bougainvillea/20 border border-bougainvillea/30 animate-bounce-slow mb-2">
+              <span className="material-symbols-outlined text-bougainvillea text-5xl">
+                fingerprint
+              </span>
+            </div>
+            <h2 className="font-display text-3xl font-bold text-white">
+              Preparando tu voz…
+            </h2>
+            <p className="text-white/60">
+              Estamos analizando tu grabación para clonar tu voz. Toma menos de un
+              minuto. <strong className="text-white/80">No cierres esta página.</strong>
+            </p>
+            <div className="flex items-center justify-center gap-2 text-sm text-white/50">
+              <span className="w-2 h-2 rounded-full bg-bougainvillea animate-pulse" />
+              <span>
+                {stage === STAGES.ENROLL_UPLOADING ? 'Subiendo tu grabación…' : 'Generando tu frase de verificación…'}
+              </span>
+            </div>
+          </section>
+        )}
+
+        {stage === STAGES.ENROLL_PHRASE_RECORD && (
+          <section className="space-y-4 animate-fadeIn">
+            <div className="text-center">
+              <h2 className="font-display text-3xl sm:text-4xl font-bold text-white mb-2">
+                Último paso: canta esta frase
+              </h2>
+              <p className="text-white/60">
+                Así confirmamos que la voz es tuya. Cántala{' '}
+                <strong className="text-white/85">2-3 veces seguidas, despacio y claro</strong>{' '}
+                (unos 15-25 segundos), con cualquier melodía.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-bougainvillea/10 border-2 border-bougainvillea/40 p-6 text-center">
+              <div className="text-xs uppercase tracking-widest text-bougainvillea/80 font-semibold mb-2">
+                Tu frase de verificación
+              </div>
+              <div className="font-display text-2xl sm:text-3xl font-bold text-white leading-snug">
+                “{enrollPhrase}”
+              </div>
+              <div className="mt-3 text-xs text-amber-200 bg-amber-500/10 border-l-4 border-amber-500 px-3 py-2 rounded inline-block">
+                ⏱ La frase caduca en unos minutos — grábala ahora mismo.
+              </div>
+            </div>
+            <VoiceRecorder
+              onRecordingComplete={handlePhraseRecorded}
+              language={recordingLanguage}
+              maxDurationMs={35_000}
+              minDurationSec={8}
+              showScript={false}
+            />
+          </section>
+        )}
+
+        {stage === STAGES.ENROLL_CREATING && (
+          <section className="rounded-3xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-8 sm:p-12 text-center space-y-4 animate-fadeIn">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-bougainvillea/20 border border-bougainvillea/30 animate-bounce-slow mb-2">
+              <span className="material-symbols-outlined text-bougainvillea text-5xl">
+                record_voice_over
+              </span>
+            </div>
+            <h2 className="font-display text-3xl font-bold text-white">
+              Creando tu voz…
+            </h2>
+            <p className="text-white/60">
+              Verificando tu frase y clonando tu voz. Suele tomar 1-2 minutos.{' '}
+              <strong className="text-white/80">No cierres esta página.</strong>
+            </p>
+            <div className="flex items-center justify-center gap-2 text-sm text-white/50">
+              <span className="w-2 h-2 rounded-full bg-bougainvillea animate-pulse" />
+              <span>Clonando…</span>
+            </div>
+          </section>
+        )}
+
+        {stage === STAGES.ENROLL_FAILED && (
+          <section className="rounded-3xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-8 sm:p-10 text-center space-y-5 animate-fadeIn">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30">
+              <span className="material-symbols-outlined text-amber-300 text-4xl">warning</span>
+            </div>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
+              No pudimos clonar tu voz esta vez
+            </h2>
+            {enrollError && <p className="text-white/60 text-sm">{enrollError}</p>}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              {voiceSampleId && (
+                <button
+                  type="button"
+                  onClick={() => beginPhraseFlow(voiceSampleId)}
+                  className="px-6 py-3 rounded-full bg-gradient-to-br from-bougainvillea to-[#d40b6e] text-white font-bold pink-glow active:scale-95 transition"
+                >
+                  Intentar de nuevo
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { setVoiceTaskId(null); setStage(STAGES.CONFIGURE); }}
+                className="px-6 py-3 rounded-full bg-white/10 border border-white/15 text-white/80 font-semibold active:scale-95 transition"
+              >
+                Continuar sin clonación avanzada
+              </button>
+            </div>
+            <p className="text-xs text-white/40">
+              “Continuar” usa nuestro método clásico — tu canción igual se crea con tu grabación.
+            </p>
           </section>
         )}
 
@@ -1031,6 +1272,11 @@ function ProgressSteps({ stage }) {
 
   const stageToStep = {
     [STAGES.RECORD]: 'record',
+    [STAGES.ENROLL_UPLOADING]: 'record',
+    [STAGES.ENROLL_PHRASE_WAIT]: 'record',
+    [STAGES.ENROLL_PHRASE_RECORD]: 'record',
+    [STAGES.ENROLL_CREATING]: 'record',
+    [STAGES.ENROLL_FAILED]: 'record',
     [STAGES.CONFIGURE]: 'configure',
     [STAGES.UPLOADING]: 'configure',
     [STAGES.SUBMITTING_PREVIEW]: 'preview',

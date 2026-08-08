@@ -81,7 +81,9 @@ export async function uploadCustomerVoice(blob, opts = {}) {
   const form = new FormData();
   // Filename only matters for browser DevTools UX — server picks its own
   // extension based on MIME type.
-  const filename = blob.type?.includes('mp4') || blob.type?.includes('m4a')
+  const filename = blob.type?.includes('wav')
+    ? 'voice.wav'
+    : blob.type?.includes('mp4') || blob.type?.includes('m4a')
     ? 'voice.m4a'
     : blob.type?.includes('mpeg') || blob.type?.includes('mp3')
     ? 'voice.mp3'
@@ -220,9 +222,41 @@ export async function generateClonedVoicePreview(args) {
       lyrics_model_used: args.lyricsModelUsed,
       customer_email: args.customerEmail,
       vocal_gender: args.vocalGender || undefined,
+      // Suno Voice engine: when the voice was enrolled, this Kie voice
+      // task id doubles as the personaId — the preview (and later the
+      // paid song, via the row) uses the REAL cloned voice.
+      voice_task_id: args.voiceTaskId || undefined,
     }),
   });
 
+  const data = (await safeJson(res)) || {};
+  if (!res.ok) {
+    return { ok: false, error: data.error || `http_${res.status}`, message: data.message };
+  }
+  return { ok: true, ...data };
+}
+
+/**
+ * Suno Voice enrollment (clonamivoz-voice-enroll). One call per step:
+ *   enrollVoice('start',  { voiceSampleId, language })
+ *   enrollVoice('phrase', { voiceSampleId })            → { status, phrase? }
+ *   enrollVoice('verify', { voiceSampleId, verifySampleId })
+ *   enrollVoice('status', { voiceSampleId })            → { status, voice_task_id? }
+ * Statuses: phrase_pending | phrase_ready | verifying | ready | failed.
+ * The phrase expires ~10-15 min after 'start' — only start when the mic
+ * screen is already in front of the customer.
+ */
+export async function enrollVoice(action, args) {
+  const res = await fetch(`${FN_BASE}/clonamivoz-voice-enroll`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      action,
+      voice_sample_id: args.voiceSampleId,
+      verify_sample_id: args.verifySampleId || undefined,
+      language: args.language || undefined,
+    }),
+  });
   const data = (await safeJson(res)) || {};
   if (!res.ok) {
     return { ok: false, error: data.error || `http_${res.status}`, message: data.message };

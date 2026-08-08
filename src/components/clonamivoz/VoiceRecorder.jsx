@@ -131,7 +131,7 @@ async function analyzeAudioBlob(blob) {
  *   - 'warn'   if any check is warn (allows Continuar with caution)
  *   - 'good'   if all checks are good
  */
-function computeVerdict(analysis) {
+function computeVerdict(analysis, minDurationSec = MIN_DURATION_SEC) {
   if (!analysis) {
     return {
       overall: 'unknown',
@@ -149,14 +149,14 @@ function computeVerdict(analysis) {
   const checks = [];
 
   // Duration
-  if (analysis.durationSec < MIN_DURATION_SEC) {
+  if (analysis.durationSec < minDurationSec) {
     checks.push({
       key: 'duration',
       status: 'fail',
       label: `Muy corta (${Math.round(analysis.durationSec)}s)`,
-      help: `Necesitas grabar mínimo ${MIN_DURATION_SEC} segundos. Lo ideal son ${IDEAL_DURATION_SEC}-90 segundos.`,
+      help: `Necesitas grabar mínimo ${minDurationSec} segundos.`,
     });
-  } else if (analysis.durationSec < IDEAL_DURATION_SEC) {
+  } else if (minDurationSec >= MIN_DURATION_SEC && analysis.durationSec < IDEAL_DURATION_SEC) {
     checks.push({
       key: 'duration',
       status: 'warn',
@@ -290,6 +290,10 @@ export default function VoiceRecorder({
   onRecordingComplete,
   maxDurationMs = 120_000,
   language = 'es',
+  // Phrase-verification mode (Suno Voice enrollment) records a short sung
+  // line: lower the duration floor and hide the long-lyric panel.
+  minDurationSec = MIN_DURATION_SEC,
+  showScript = true,
 }) {
   // Pick the right language version of the script + UI copy. Defaults to
   // Spanish if no language is passed (back-compat with earlier callers).
@@ -397,7 +401,7 @@ export default function VoiceRecorder({
         // Run analysis in background; show verdict when done.
         setAnalyzing(true);
         const analysis = await analyzeAudioBlob(blob);
-        setVerdict(computeVerdict(analysis));
+        setVerdict(computeVerdict(analysis, minDurationSec));
         setAnalyzing(false);
       };
       // 1s timeslice: collect audio progressively instead of one giant chunk
@@ -500,10 +504,12 @@ export default function VoiceRecorder({
 
   return (
     <div className="space-y-5">
-      <ReadingScriptPanel
-        readingScript={READING_SCRIPT}
-        hummingInstruction={HUMMING_INSTRUCTION}
-      />
+      {showScript && (
+        <ReadingScriptPanel
+          readingScript={READING_SCRIPT}
+          hummingInstruction={HUMMING_INSTRUCTION}
+        />
+      )}
 
       <div className="rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/15 p-6 sm:p-10">
         {/* Visualizer */}

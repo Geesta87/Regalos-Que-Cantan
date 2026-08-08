@@ -938,6 +938,15 @@ verify_jwt = false
 # voice-cloning quality is validated and the paid tier launches.
 verify_jwt = true
 
+[functions.clonamivoz-voice-enroll]
+# Suno Voice enrollment for Clona Mi Voz (2026-08-08): turns a recorded
+# sample into a reusable cloned voice via Kie's /api/v1/voice/* APIs
+# (validate → phrase → generate → check-voice). The voice-creation TASK ID
+# doubles as the personaId for /api/v1/generate — Kie's documented voiceId
+# field never populates (their bug), do not wait for it. Frontend posts
+# with the Supabase anon JWT, same pattern as the other clonamivoz fns.
+verify_jwt = true
+
 [functions.test-suno-voice]
 # TEMPORARY test harness added 2026-08-08 to evaluate Kie's Suno Voice
 # real-voice-cloning APIs (/api/v1/voice/validate → validate-info →
