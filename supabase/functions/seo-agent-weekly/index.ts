@@ -137,6 +137,36 @@ serve(async (req: Request) => {
 
     const notes: string[] = [];
 
+    // ── AI-answer visibility: kicked off FIRST and awaited later ────────────
+    // These web-search calls are the slowest single item and need nothing from
+    // the other steps, so they run concurrently with everything below — the
+    // whole run must fit the edge-function wall clock (~400s).
+    const AI_VISIBILITY_PROMPTS = [
+      'What is the best service to get a personalized song in Spanish made as a gift for my wife?',
+      '¿Dónde puedo mandar a hacer una canción personalizada para regalarle a mi mamá?',
+      'I want to gift my girlfriend a custom corrido with her name in it. Where can I get one made?',
+      'Best personalized Spanish song gift for an anniversary — what service should I use?',
+    ];
+    const aiVisibilityPromise: Promise<any[]> = !ANTHROPIC_API_KEY ? Promise.resolve([]) :
+      Promise.all(AI_VISIBILITY_PROMPTS.map(async (prompt) => {
+        try {
+          const ans = await anthropicRaw({
+            model: MODEL, max_tokens: 2000,
+            output_config: { effort: 'low' },
+            tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+            messages: [{ role: 'user', content: prompt }],
+          });
+          const answerText = (ans?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ').slice(0, 3000);
+          const ex = await anthropicRaw({
+            model: MODEL, max_tokens: 300,
+            output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: ['rqc_mentioned', 'brands'], properties: { rqc_mentioned: { type: 'boolean', description: 'Was Regalos Que Cantan / regalosquecantan.com mentioned or recommended?' }, brands: { type: 'array', items: { type: 'string' }, description: 'Every brand/service named in the answer.' } } } } },
+            messages: [{ role: 'user', content: `Which brands does this answer recommend?\n\n${answerText}` }],
+          });
+          const v = JSON.parse((ex?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(''));
+          return { prompt, engine: 'claude+websearch', rqc_mentioned: !!v.rqc_mentioned, brands_mentioned: (v.brands || []).slice(0, 10), answer_excerpt: answerText.slice(0, 500) };
+        } catch (_e) { return null; }
+      })).then((rows) => rows.filter(Boolean));
+
     // ── 1. Snapshot ─────────────────────────────────────────────────────────
     let snapshot: any = null;
     try { snapshot = await gatherSearchContext(admin); }
@@ -233,12 +263,12 @@ serve(async (req: Request) => {
 
     // 3c. Auto-check open coach recommendations against their target page.
     try {
-      const { data: openCalls } = await admin.from('seo_coach_calls').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(10);
-      for (const c of (openCalls || [])) {
+      const { data: openCalls } = await admin.from('seo_coach_calls').select('*').eq('status', 'open').order('created_at', { ascending: false }).limit(6);
+      await Promise.all((openCalls || []).map(async (c: any) => {
         const path = String(c.target_page || '').trim();
-        if (!path.startsWith('/')) continue;
+        if (!path.startsWith('/')) return;
         const facts = await fetchPageFacts(`${siteBase}${path}`);
-        if (facts.error || !ANTHROPIC_API_KEY) continue;
+        if (facts.error || !ANTHROPIC_API_KEY) return;
         const judge = await anthropicRaw({
           model: MODEL, max_tokens: 300,
           output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: ['implemented', 'evidence'], properties: { implemented: { type: 'boolean' }, evidence: { type: 'string' } } } } },
@@ -254,7 +284,7 @@ serve(async (req: Request) => {
           }).eq('id', c.id);
           if (verdict.implemented) verifyNotes.push(`Recommendation implemented (auto-detected): ${c.recommendation}`);
         }
-      }
+      }));
     } catch (_e) { /* best-effort */ }
 
     // ── 3d. Index coverage: are our important pages actually IN Google? ─────
@@ -265,49 +295,22 @@ serve(async (req: Request) => {
         '/', '/canciones-para-regalar',
         ...tasks.filter((t) => ['approved', 'implemented', 'verified'].includes(t.status) && t.target_path).map((t) => t.target_path),
       ])].slice(0, 8);
-      for (const p of pathsToCheck) {
-        const r = await inspectUrl(`${siteBase}${p}`);
+      const inspections = await Promise.all(pathsToCheck.map((p) => inspectUrl(`${siteBase}${p}`).then((r) => ({ p, r }))));
+      for (const { p, r } of inspections) {
         if (r.error) continue;
         if (!r.indexed) index_flags.push({ path: p, coverage_state: r.coverage_state, last_crawl: r.last_crawl });
       }
       if (index_flags.length) verifyNotes.push(`NOT IN GOOGLE'S INDEX yet: ${index_flags.map((f) => `${f.path} (${f.coverage_state})`).join(', ')}`);
     } catch (_e) { /* best-effort */ }
 
-    // ── 3e. AI-answer visibility: do the AIs recommend us? ──────────────────
-    // Asks realistic buyer questions (with live web search) and records which
-    // brands get named. Runs in parallel; each result is stored for trends.
-    const AI_VISIBILITY_PROMPTS = [
-      'What is the best service to get a personalized song in Spanish made as a gift for my wife?',
-      '¿Dónde puedo mandar a hacer una canción personalizada para regalarle a mi mamá?',
-      'I want to gift my girlfriend a custom corrido with her name in it. Where can I get one made?',
-      'Best personalized Spanish song gift for an anniversary — what service should I use?',
-    ];
+    // ── 3e. AI-answer visibility: collect the results kicked off at the top ─
     let ai_visibility: any[] = [];
-    if (ANTHROPIC_API_KEY) {
-      try {
-        ai_visibility = (await Promise.all(AI_VISIBILITY_PROMPTS.map(async (prompt) => {
-          try {
-            const ans = await anthropicRaw({
-              model: MODEL, max_tokens: 2000,
-              output_config: { effort: 'low' },
-              tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
-              messages: [{ role: 'user', content: prompt }],
-            });
-            const answerText = (ans?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ').slice(0, 3000);
-            const ex = await anthropicRaw({
-              model: MODEL, max_tokens: 300,
-              output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: ['rqc_mentioned', 'brands'], properties: { rqc_mentioned: { type: 'boolean', description: 'Was Regalos Que Cantan / regalosquecantan.com mentioned or recommended?' }, brands: { type: 'array', items: { type: 'string' }, description: 'Every brand/service named in the answer.' } } } } },
-              messages: [{ role: 'user', content: `Which brands does this answer recommend?\n\n${answerText}` }],
-            });
-            const v = JSON.parse((ex?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join(''));
-            return { prompt, engine: 'claude+websearch', rqc_mentioned: !!v.rqc_mentioned, brands_mentioned: (v.brands || []).slice(0, 10), answer_excerpt: answerText.slice(0, 500) };
-          } catch (_e) { return null; }
-        }))).filter(Boolean);
-        for (const r of ai_visibility) {
-          await admin.from('seo_ai_visibility').insert({ engine: r.engine, prompt: r.prompt, rqc_mentioned: r.rqc_mentioned, brands_mentioned: r.brands_mentioned, answer_excerpt: r.answer_excerpt });
-        }
-      } catch (_e) { /* best-effort */ }
-    }
+    try {
+      ai_visibility = await aiVisibilityPromise;
+      for (const r of ai_visibility) {
+        await admin.from('seo_ai_visibility').insert({ engine: r.engine, prompt: r.prompt, rqc_mentioned: r.rqc_mentioned, brands_mentioned: r.brands_mentioned, answer_excerpt: r.answer_excerpt });
+      }
+    } catch (_e) { /* best-effort */ }
     let ai_visibility_prev: any[] = [];
     try {
       const { data } = await admin.from('seo_ai_visibility').select('run_at, prompt, rqc_mentioned, brands_mentioned')
@@ -351,7 +354,9 @@ serve(async (req: Request) => {
         };
         const data = await anthropicRaw({
           model: MODEL, max_tokens: 32000,
-          output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
+          // effort medium: the digest must finish inside the edge-function wall
+          // clock alongside everything else; medium is plenty for this task.
+          output_config: { effort: 'medium', format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
           system: `You are the weekly SEO campaign agent for Regalos Que Cantan (personalized Spanish songs, ~$30 orders, US-Hispanic market, regalosquecantan.com). You write the owner's Monday SEO review and propose the next moves.
 
 THE OWNER KNOWS NOTHING ABOUT SEO — you do ALL the thinking. Write the digest the way you'd explain to a smart friend who has never heard the word "SEO": no jargon (never say SERP, CTR, meta, indexing without a plain-word explanation), short and plain. LANGUAGE RULE: the digest, task titles, and rationales are ALWAYS in ENGLISH (this is the admin dashboard); only the draft page content itself (titles/meta/copy that ships to the site) is in Spanish. Every proposal's rationale must let them decide with zero expertise: what will change, why it should bring more free customers, and that it's safe/reversible. Before proposing to fix something on a page, trust the current live-page evidence over any claim in the brain doc — never propose fixing something already fixed. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving is one tap and rejecting loses nothing. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.
