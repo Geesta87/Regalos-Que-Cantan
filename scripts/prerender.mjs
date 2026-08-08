@@ -394,6 +394,7 @@ function homepageBodyHtml() {
       <section>
         <h2>Ocasiones para Regalar una Canción</h2>
         <ul>${allOccasions.map(o => `<li><a href="/ocasiones/${o.slug}">${esc(o.name)}</a> — ${esc(o.description)}</li>`).join('')}</ul>
+        <p>¿Buscas ideas? Mira todas las <a href="/canciones-para-regalar">canciones para regalar</a> y consulta los <a href="/canciones-personalizadas-precios">precios de canciones personalizadas en EE. UU.</a></p>
       </section>
       <section>
         <h2>Combinaciones Populares de Género y Ocasión</h2>
@@ -583,6 +584,85 @@ function buildRouteConfigs() {
       </div>`
     });
   }
+
+  // Precios — "cuánto cuesta una canción personalizada" comparison page.
+  // From the SEO campaign agent's approved draft (2026-08-08); targets queries
+  // where we already almost rank. No FAQ schema (dead since May 2026).
+  routes.push({
+    path: '/canciones-personalizadas-precios',
+    title: '¿Cuánto cuesta una canción personalizada? Precios 2026 en EE. UU.',
+    description: 'Precios reales de canciones personalizadas en Estados Unidos: desde $29.99 USD con Regalos Que Cantan frente a $150-$200 de los servicios en inglés. Escucha ejemplos.',
+    keywords: 'cuanto cuesta una cancion personalizada, precio cancion personalizada, canciones personalizadas precios, cancion personalizada barata',
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Canción Personalizada en Español",
+        "description": "Canción original con la letra hecha a partir de tu historia, en el género latino que elijas.",
+        "brand": { "@type": "Brand", "name": "RegalosQueCantan" },
+        "offers": { "@type": "Offer", "price": "29.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock", "url": "https://regalosquecantan.com/canciones-personalizadas-precios" },
+        ...realAggregateRating()
+      },
+      breadcrumbSchema([{ name: 'Inicio', path: '/' }, { name: 'Precios de Canciones Personalizadas', path: '/canciones-personalizadas-precios' }]),
+    ],
+    bodyHtml: `
+      <div id="prerender-content">
+        <nav aria-label="Breadcrumb"><a href="/">Inicio</a> / Precios</nav>
+        <h1>¿Cuánto cuesta una canción personalizada? Precios reales en EE. UU.</h1>
+        <p><em>Actualizado: ${BUILD_DATE}. Precios en dólares, para quienes viven en Estados Unidos.</em></p>
+        <p><strong>Respuesta corta:</strong> en Regalos Que Cantan una canción personalizada cuesta desde $29.99 USD, con la letra escrita a partir de la historia que tú nos cuentas, cantada en el género que elijas y lista para compartir por WhatsApp. Los servicios equivalentes en inglés cobran entre $150 y $200, y las páginas de España cobran en euros y piensan en envíos dentro de Europa.</p>
+        <a href="/create/occasion">Crear Mi Canción — Desde $29.99</a>
+        <section>
+          <h2>Comparación de precios (agosto 2026)</h2>
+          <ol>
+            <li><strong>Regalos Que Cantan (español, EE. UU.):</strong> desde $29.99 USD. Corrido, cumbia norteña, bachata, banda, balada y más. La escuchas antes de pagar; audio para compartir por WhatsApp.</li>
+            <li><strong>Servicios en inglés tipo Songfinch:</strong> alrededor de $200 USD. Solo en inglés, sin géneros regionales mexicanos.</li>
+            <li><strong>Servicios en inglés tipo Songlorious:</strong> alrededor de $150 USD. Solo en inglés.</li>
+            <li><strong>Corridos por WhatsApp (operadores pequeños):</strong> alrededor de $49 USD. Sin catálogo público de ejemplos ni pago protegido.</li>
+            <li><strong>Vendedores de Etsy o Fiverr:</strong> de $15 a $300 USD. Calidad y tiempos muy variables.</li>
+            <li><strong>Páginas de España:</strong> cotizan en euros; el precio final sube con el cambio de moneda y no están pensadas para familias en Estados Unidos.</li>
+          </ol>
+        </section>
+        <section>
+          <h2>Qué incluye nuestro precio</h2>
+          <ul>
+            <li>Letra original escrita con los nombres, apodos y detalles que tú nos escribes.</li>
+            <li>Voz y música en el género que tú elijas.</li>
+            <li>La escuchas antes de pagar.</li>
+            <li>Archivo de audio para descargar y un link para compartir por WhatsApp.</li>
+            <li>Atención en español, de personas, por WhatsApp.</li>
+          </ul>
+          <p>En los últimos 30 días entregamos más de 1,300 canciones. Esa es la razón por la que podemos cobrar $29.99 y no $200: hacemos muchas, y le hablamos directo a las familias latinas en Estados Unidos.</p>
+        </section>
+        <section>
+          <h2>Por qué los precios varían tanto</h2>
+          <ol>
+            <li><strong>El idioma y el género.</strong> Casi nadie hace corridos o cumbia norteña personalizados; los servicios grandes solo trabajan en inglés.</li>
+            <li><strong>Quién escribe la letra.</strong> Una letra hecha con tus detalles reales no es lo mismo que rellenar una plantilla con un nombre.</li>
+            <li><strong>Poder escuchar antes de pagar.</strong> Si un servicio no te deja escuchar nada antes de pagar, es la primera señal de alarma.</li>
+            <li><strong>La moneda y el envío.</strong> Un precio en euros no es un precio en dólares.</li>
+            <li><strong>Las revisiones.</strong> Pregunta siempre si puedes pedir un cambio si algo no quedó bien.</li>
+          </ol>
+        </section>
+        <section>
+          <h2>Preguntas frecuentes</h2>
+          <h3>¿Por qué son más baratas que las de los servicios en inglés?</h3><p>Porque producimos a volumen y nos especializamos en un solo público: familias latinas en Estados Unidos. No hay estudio de grabación de lujo, hay muchísimas canciones bien hechas.</p>
+          <h3>¿Puedo pedir corrido, cumbia norteña o bachata?</h3><p>Sí. Eliges el género antes de pagar y la canción se hace en ese estilo.</p>
+          <h3>¿Los precios están en dólares?</h3><p>Sí, todo en dólares estadounidenses, sin sorpresas de conversión.</p>
+          <h3>¿Cuánto tarda?</h3><p>La canción se genera en minutos y la escuchas antes de pagar.</p>
+          <h3>¿Sirve para Día de las Madres, cumpleaños o aniversario?</h3><p>Sí; esas son las ocasiones que más nos piden.</p>
+          <h3>¿Y si no me gusta la letra?</h3><p>Escríbenos por WhatsApp y lo revisamos contigo.</p>
+        </section>
+        <section>
+          <h2>Sigue explorando</h2>
+          <ul>
+            <li><a href="/canciones-para-regalar">Canciones para regalar: ideas por ocasión</a></li>
+            <li><a href="/generos">Los 20+ géneros disponibles</a></li>
+            <li><a href="/ocasiones">Todas las ocasiones</a></li>
+          </ul>
+        </section>
+      </div>`
+  });
 
   // Individual Genre Pages
   for (const genre of allGenres) {
