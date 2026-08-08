@@ -317,6 +317,13 @@ const TOOLS = [
 const OPENER_REPLY =
   '¡Hola! 👋 Gracias por escribirnos a Regalos Que Cantan 🎵 Con mucho gusto le ayudo. Para empezar, ¿ya creó su canción con nosotros o le gustaría hacer una?';
 
+// Same idea for a customer we DID identify: still an instant, deterministic
+// welcome that orients them (owner rule 2026-08-08: the opener button always
+// gets the friendly created-or-create question) — but acknowledging that they
+// already have songs with us instead of asking as if they were new.
+const openerReplyKnown = (name: string | null) =>
+  `¡Hola${name ? `, ${name}` : ''}! 👋 Qué gusto saludarle de nuevo en Regalos Que Cantan 🎵 ¿Le ayudo con su canción, o le gustaría crear una nueva?`;
+
 function isButtonOpener(text: string): boolean {
   const t = String(text || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
@@ -444,6 +451,21 @@ const PAYMENT_CONTEXT_RE = new RegExp(
   'iu',
 );
 
+// ── Transactional-money talk (auto-send blocker, 2026-08-08 audit) ─────────
+// The category allowlist alone is not a safe gate: a customer wrote "la
+// segunda que pagué creo que es de 39.98, muchísimas gracias" and the
+// classifier filed it under thanks_closing. Any mention of an actual payment /
+// transaction in the customer's message keeps the reply as a DRAFT, no matter
+// the category. Deliberately does NOT match price-inquiry words ("cuánto
+// cuesta", "precio") — those are exactly what the price category auto-answers.
+const TRANSACTIONAL_MONEY_RE = new RegExp(
+  B0 +
+    '(?:pagu[eé]|pag[oó]|pagado|zelle|dep[oó]sit\\w*|transferencia|reembolso|devoluci[oó]n|cobr\\w*|cargo|comprobante|captura|tarjeta)' +
+    B1 +
+    '|\\$\\s?\\d',
+  'iu',
+);
+
 /** Does this draft assert that WE received money? */
 export function claimsPaymentReceipt(text: string): boolean {
   const t = String(text || '');
@@ -485,6 +507,7 @@ REGLAS ESTRICTAS:
 - ANTES de escribir, mira el bloque "SITUACIÓN DEL CLIENTE" de arriba y decide en qué situación está el cliente; responde acorde a ESA situación, no solo a las palabras del mensaje. Si el cliente ya es cliente (tiene canciones pagadas), trátalo como tal y NUNCA le preguntes si ya hizo su canción. Si no está identificado, pídele con calidez el correo de su pedido para ubicarlo — NUNCA asumas que no ha comprado.
 - IDIOMA: responde normalmente en ESPAÑOL (la gran mayoría de clientes son hispanohablantes). SOLO si el cliente claramente escribe TODO su mensaje en otro idioma (inglés, portugués), respóndele en ESE idioma. Ante cualquier duda, español. 1-3 frases cuando sea posible.
 - NUNCA digas ni insinúes que las canciones se hacen con inteligencia artificial, IA, computadora, software, algoritmos, bots o de forma automática. Si preguntan cómo se crean, responde con calidez que NUESTRO EQUIPO crea cada canción personalizada (letra y voz) a partir de los datos que nos comparten, lista en unos minutos, y que la pueden escuchar gratis antes de pagar. Evita detalles técnicos. Si preguntan si eres un robot/bot/máquina, responde amablemente que eres parte del equipo de Regalos Que Cantan y con gusto los ayudas — sin dar detalles técnicos.
+- 💵 PRECIO — RESPUESTA SIMPLE. Cuando pregunten el precio, responde solo lo esencial: la canción personalizada cuesta ${OFFERS.single} y puede ESCUCHAR una muestra GRATIS antes de pagar. Cierra con una pregunta cálida (ej. "¿Para quién sería la canción?"). NO enumeres el menú completo de paquetes, videos y extras — es demasiada información y abruma al cliente. Solo menciona el paquete de 2 (${OFFERS.twoPack}) o de 3 (${OFFERS.threePack}) si el cliente habla de VARIAS canciones, y un extra (video, etc.) solo si él pregunta por ese extra.
 - Para cualquier dato del pedido del cliente (su canción, su enlace, si está lista, si pagó) usa la herramienta look_up_my_order. NUNCA inventes enlaces, precios, plazos ni el estado de un pedido.
 - Si el pedido está PAGADO (is_paid = true): comparte su download_link para que descargue y comparta su canción.
 - Si el pedido NO está pagado (is_paid = false): comparte el preview_link_for_unpaid para que ESCUCHE sus versiones, y explícale con calidez que ahí puede escucharlas y que al COMPLETAR SU COMPRA se desbloquea la descarga para guardarla y compartirla. NUNCA compartas un download_link ni digas que la canción "ya está lista para descargar" en un pedido no pagado. El enlace de preview solo deja escuchar; la descarga sigue bloqueada hasta que pague.
@@ -556,7 +579,7 @@ serve(async (req) => {
     // Load recent history (oldest → newest).
     const { data: msgs } = await admin
       .from('sms_messages')
-      .select('id, direction, body, status, created_at, media_path, media_type')
+      .select('id, direction, body, status, created_at, media_path, media_type, ai_generated')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(HISTORY_LIMIT);
@@ -566,6 +589,39 @@ serve(async (req) => {
     const last = history[history.length - 1];
     if (!last || last.direction !== 'inbound') {
       return json({ ok: true, skipped: 'latest message is not inbound' });
+    }
+
+    // ── Draft hygiene (2026-08-08 audit) ──────────────────────────────────
+    // 1) OWNER IS LIVE IN THIS THREAD. When a human sent a manual reply in the
+    //    last 10 minutes, the owner is actively chatting — every draft written
+    //    behind their back is noise they must discard (977 discards in 30 days,
+    //    a large share from exactly this). Stay quiet and let them work.
+    const tenMinAgo = Date.now() - 10 * 60e3;
+    const ownerActive = history.some((m) =>
+      m.direction === 'outbound' && m.ai_generated !== true &&
+      m.status !== 'draft' && m.status !== 'discarded' &&
+      new Date(String(m.created_at)).getTime() > tenMinAgo,
+    );
+    if (ownerActive) return json({ ok: true, skipped: 'owner active in thread' });
+
+    // 2) CONTENTLESS ACKS. "ok", "vale", a bare 👍, or an empty body (no media)
+    //    need no reply — drafting on them buried the real drafts. EXCEPTION:
+    //    if OUR last message asked a question, a bare "ok"/👍 is the customer
+    //    ANSWERING it (consent), so the model still gets to respond.
+    if (!last.media_path) {
+      const norm = String(last.body || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim().toLowerCase();
+      const ACKS = new Set(['ok', 'okay', 'okey', 'oki', 'va', 'vale', 'sale', 'dale', 'esta bien', 'ta bien']);
+      const contentless = norm === '' || ACKS.has(norm);
+      if (contentless) {
+        const prevOutbound = [...history].reverse().find((m) =>
+          m.direction === 'outbound' && m.status !== 'draft' && m.status !== 'discarded');
+        const weAskedAQuestion = !!prevOutbound && /\?\s*$/.test(String(prevOutbound.body || '').trim());
+        if (!weAskedAQuestion) return json({ ok: true, skipped: 'contentless ack' });
+      }
     }
     // If an unapproved draft already exists, only REPLACE it when the customer
     // has messaged AGAIN since it was written (i.e. the draft is now stale and
@@ -767,21 +823,20 @@ serve(async (req) => {
     // ── Tool-use loop (max a few hops) ──────────────────────────────────────
     let finalText = '';
 
-    // FAST PATH — the contentless "Hola, tengo una pregunta" button, from a
-    // first-time writer we could NOT identify. There is nothing to think about:
-    // reply with the qualifying question the training doc prescribes and skip
-    // the model entirely. Still written as a DRAFT, so it goes through the exact
-    // same approval (and, if 'greeting' is ever allowlisted, auto-send) gate.
-    // Deliberately NOT taken when we DID identify them — an existing customer
-    // deserves a real answer about their actual order, not a generic greeting.
-    const inboundCount = history.filter((m) => m.direction === 'inbound').length;
+    // FAST PATH — the contentless "Hola, tengo una pregunta" button. There is
+    // nothing to reason about: the button carries zero information, so the one
+    // right reply is the friendly welcome that asks whether they already
+    // created their song or want to make one (owner rule 2026-08-08: ALWAYS
+    // answer the opener this way, instantly). Identified customers get the
+    // welcome-back variant that doesn't treat them like a stranger. Skips the
+    // model entirely; the fixed text also qualifies for auto-send below.
     const useOpenerFastPath =
-      !customerIdentified &&
-      inboundCount === 1 &&
       !last.media_path &&
       isButtonOpener(String(last.body || ''));
 
-    if (useOpenerFastPath) finalText = OPENER_REPLY;
+    if (useOpenerFastPath) {
+      finalText = customerIdentified ? openerReplyKnown(convo.customer_name) : OPENER_REPLY;
+    }
 
     for (let hop = 0; !useOpenerFastPath && hop < 4; hop++) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -988,6 +1043,19 @@ serve(async (req) => {
     if (last.media_path) autoBlockers.push('inbound message contains media');
     // Long replies are where the model reasons most, and reason most wrongly.
     if (finalText.length > 600) autoBlockers.push('reply too long for unattended send');
+    // Customer is talking about an actual payment/transaction (not asking a
+    // price): even in an allowlisted category, money talk waits for the owner.
+    if (TRANSACTIONAL_MONEY_RE.test(String(last.body || ''))) {
+      autoBlockers.push('customer message mentions a payment/transaction');
+    }
+
+    // The opener fast path is FIXED text we wrote ourselves — no model output,
+    // no links, no customer data beyond their first name. Category allowlist
+    // and safety critic don't apply to it; the master switch still does.
+    if (useOpenerFastPath) {
+      autoBlockers.length = 0;
+      if (settings?.auto_send_enabled !== true) autoBlockers.push('master switch off');
+    }
 
     const canAuto = autoBlockers.length === 0;
 
