@@ -133,44 +133,69 @@ export function zoneFor(seconds, language = 'es') {
 }
 
 /**
- * 90-second Spanish reading script for voice sample capture.
+ * Singable Spanish lyric for voice sample capture (~60-90s sung).
+ *
+ * Replaced the old spoken/letter-style reading script 2026-08-08: a SUNG
+ * sample teaches the model the customer's pitch and timbre far better
+ * than read-aloud prose, and short rhymed lines with a repeating chorus
+ * are much easier to improvise a melody over than paragraphs.
  *
  * Designed to:
- *   - Cover all 5 vowels in varied positions
- *   - Include rolled-r (rr), ñ, ll, ch, j, z, ci/ce sounds
- *   - Have natural sentence rhythm (not staccato or sing-song)
- *   - Be neutral and universally relatable (not tied to one culture, no
- *     famous song lyrics — copyright-safe)
- *   - Take ~85-95 seconds at moderate Spanish reading pace (~165 wpm)
+ *   - Be singable to ANY simple made-up melody (steady meter, rhymed
+ *     couplets, open-vowel line endings)
+ *   - Cover all 5 vowels + rr, ñ, ll, ch, j, z/ci sounds
+ *     (guitarra, cariño, sueño, lluvia, llega, escuchas, mejor, corazón)
+ *   - Be 100% original — copyright-safe
+ *   - Run ~60-90 seconds at relaxed singing pace; the chorus repeats,
+ *     and singing it through twice is fine if time remains
  *
- * Customer reads this aloud while recording. If they freestyle / hum
- * instead, that's fine — the script is opt-in scaffolding.
+ * Customer sings this while recording. If they freestyle or hum their
+ * own thing instead, that's fine — the lyric is opt-in scaffolding.
  */
-export const READING_SCRIPT_ES = `Hola, hoy quiero compartir un momento especial. Cada palabra que digo viene desde el corazón, con calma y con cariño.
+export const READING_SCRIPT_ES = `Esta es mi voz, la canto para ti,
+con el corazón, así me gusta a mí.
+La mañana llega, brilla ya el sol,
+y en mi ventana suena esta canción.
 
-Las mañanas tranquilas son las que más disfruto. El sol entra suave por la ventana, los pájaros cantan en el árbol, y se respira aire fresco. Me gusta el aroma del té recién hecho, el sonido suave de la lluvia sobre el techo, y las flores del jardín.
+Canto, canto, con todo el corazón,
+mi cariño te entrego en esta canción.
+La la la la, la vida es mejor,
+cuando canto contigo, siento tu amor.
 
-Las personas que quiero son lo más importante para mí. Por ellas vivimos, por ellas soñamos, por ellas seguimos adelante. Alguien me dijo una vez: donde hay amor, hay música. Y tenía toda la razón. La música une corazones, cruza fronteras, y guarda los recuerdos más bellos.
+Bajo la lluvia o bajo el cielo azul,
+mi guitarra suena, la escuchas tú.
+Sueño despierto, quiero compartir,
+este momento que me hace feliz.
 
-Cuando era pequeño, jugaba al aire libre con mucha alegría. El perro corría por el parque, los niños reían sin parar, y todo era simple. Esa libertad la llevo conmigo siempre. Cada canción que escucho me regresa a esos momentos felices.
-
-Ahora, con mi propia voz, quiero crear algo único. Algo hecho con sentimiento, desde lo más profundo. Gracias por escucharme. Gracias por permitirme compartir contigo este pequeño pedacito de mí.`;
+Canto, canto, con todo el corazón,
+mi cariño te entrego en esta canción.
+La la la la, la vida es mejor,
+cuando canto contigo, siento tu amor.`;
 
 /**
- * 90-second English reading script. Designed for the same purposes as
- * the Spanish version: vowel coverage, common consonant clusters
- * (th, sh, ch, r-controlled vowels, soft/hard c, plosives), natural
- * sentence rhythm, copyright-safe, ~165 wpm = ~90s reading time.
+ * Singable English lyric — same design goals as the Spanish version:
+ * steady meter, rhymed couplets, repeating chorus, easy to improvise a
+ * melody over, 100% original / copyright-safe, ~60-90s sung.
  */
-export const READING_SCRIPT_EN = `Hi there, today I want to share a special moment with you. Every word I say comes from the heart, slowly and with care.
+export const READING_SCRIPT_EN = `This is my voice, I'm singing it for you,
+straight from my heart, so simple and so true.
+The morning rises, the sun begins to shine,
+and through my window all the world feels fine.
 
-The quiet mornings are the ones I enjoy the most. Soft sunlight comes through the window, birds sing in the trees, and the air feels fresh and clean. I love the smell of fresh coffee, the gentle sound of rain on the roof, and the bright flowers in the garden.
+Singing, singing, with all my heart today,
+every little feeling, I give it all away.
+La la la la, life is better now,
+when I sing beside you, love will show me how.
 
-The people I love mean everything to me. For them we live, for them we dream, for them we keep moving forward. Someone once told me: where there is love, there is music. And they were absolutely right. Music brings hearts together, crosses every border, and holds our most beautiful memories.
+Under the rain or under skies of blue,
+my old guitar keeps playing songs for you.
+I'm dreaming wide awake, I want to share
+this happy moment floating in the air.
 
-When I was a child, I played outside with so much joy. The dog ran through the park, the children laughed without stopping, and everything was simple. That freedom I still carry with me. Every song I hear takes me right back to those happy moments.
-
-Now, with my own voice, I want to create something unique. Something made with feeling, from deep inside. Thank you for listening. Thank you for letting me share this small piece of myself with you.`;
+Singing, singing, with all my heart today,
+every little feeling, I give it all away.
+La la la la, life is better now,
+when I sing beside you, love will show me how.`;
 
 // Back-compat default for older importers.
 export const READING_SCRIPT = READING_SCRIPT_ES;
@@ -188,14 +213,14 @@ export function readingScriptFor(language = 'es') {
 export const HUMMING_INSTRUCTION_ES = {
   title: 'Bonus: tararea 15 segundos',
   subtitle: 'Esta es la parte secreta que hace que tu voz suene mucho mejor cantando.',
-  body: 'Después del texto, tararea cualquier melodía que se te ocurra por unos 15 segundos. No tiene que ser bonito. Solo "mmmm" o "lalala" con cualquier tonadita.',
+  body: 'Después de cantar la letra, tararea cualquier melodía que se te ocurra por unos 15 segundos. No tiene que ser bonito. Solo "mmmm" o "lalala" con cualquier tonadita.',
   warning: '⚠ NO tararees Cielito Lindo, Las Mañanitas, ni canciones famosas — la IA las detecta como copyright y rechaza la grabación.',
 };
 
 export const HUMMING_INSTRUCTION_EN = {
   title: 'Bonus: hum for 15 seconds',
   subtitle: 'This is the secret step that makes your voice sound much better when singing.',
-  body: 'After reading the script, hum any little melody for about 15 seconds. It doesn’t have to be pretty. Just "mmmm" or "lalala" on any tune you make up.',
+  body: 'After singing the lyric, hum any little melody for about 15 seconds. It doesn’t have to be pretty. Just "mmmm" or "lalala" on any tune you make up.',
   warning: '⚠ Do NOT hum Happy Birthday, Twinkle Twinkle, or any famous song — the AI flags them as copyright and rejects the recording.',
 };
 

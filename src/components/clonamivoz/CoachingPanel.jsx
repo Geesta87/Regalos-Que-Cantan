@@ -60,16 +60,17 @@ export default function CoachingPanel() {
           <div className="bg-white/5 rounded-xl border border-white/10 p-4">
             <div className="font-semibold text-white mb-1 flex items-center gap-2">
               <span className="material-symbols-outlined text-bougainvillea text-base">
-                menu_book
+                lyrics
               </span>
-              Opción 2: Lee el script de arriba
+              Opción 2: Canta la letra de arriba
             </div>
             <p className="text-white/70 italic">
-              Léelo despacio, con melodía. Cántalo o casi-cántalo. Tómate tu tiempo.
+              Es una letra corta con coro que se repite. Invéntale cualquier melodía
+              sencilla y cántala a tu ritmo. No tiene que quedar perfecto.
             </p>
             <p className="text-white/50 text-xs mt-2">
-              El script de 90 segundos está diseñado para capturar todos los sonidos
-              de tu voz — lo abres arriba del botón de grabar.
+              La letra está diseñada para capturar todos los sonidos de tu voz
+              cantando — la abres arriba del botón de grabar.
             </p>
           </div>
 

@@ -619,11 +619,11 @@ function ReadingScriptPanel({ readingScript, hummingInstruction }) {
         className="w-full flex items-center justify-between p-4 text-left"
       >
         <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-bougainvillea">menu_book</span>
+          <span className="material-symbols-outlined text-bougainvillea">lyrics</span>
           <div>
-            <div className="font-semibold text-white">Script para leer mientras grabas</div>
+            <div className="font-semibold text-white">Letra para cantar mientras grabas</div>
             <div className="text-xs text-white/50">
-              ~75 segundos · {wordCount} palabras · luego tararea 15 segundos
+              Invéntale tu propia melodía · ~60-90 segundos · luego tararea 15 segundos
             </div>
           </div>
         </div>
@@ -637,7 +637,7 @@ function ReadingScriptPanel({ readingScript, hummingInstruction }) {
 
       {open && (
         <div className="px-4 pb-4 space-y-4 animate-fadeIn">
-          {/* Spoken script */}
+          {/* Singable lyric */}
           <div className="bg-landing-bg/60 border border-bougainvillea/10 rounded-xl p-5 sm:p-6 text-white text-lg sm:text-xl leading-loose font-body font-medium tracking-wide">
             {READING_SCRIPT.split('\n\n').map((para, i) => (
               <p key={i} className="mb-4 last:mb-0">
@@ -673,7 +673,7 @@ function ReadingScriptPanel({ readingScript, hummingInstruction }) {
             <span className="material-symbols-outlined text-base text-bougainvillea">
               tips_and_updates
             </span>
-            Tip: lee con tu voz natural, sin actuar. Solo necesitamos escuchar tu timbre real. Toma pausas si lo necesitas.
+            Tip: canta con tu voz natural, sin actuar — cualquier melodía sencilla que se te ocurra funciona. No importa si no queda perfecto: solo necesitamos escuchar tu timbre real cantando. Si te sobra tiempo, cántala otra vez.
           </p>
         </div>
       )}
