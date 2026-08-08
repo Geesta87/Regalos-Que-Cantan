@@ -62,6 +62,9 @@ const LIST_COLUMNS = [
   'error_message',
   'completed_at',
   'voice_sample_id',
+  // Suno Voice engine marker (2026-08-08): non-null = generated with the
+  // customer's real cloned voice (personaId); null = legacy upload-cover.
+  'voice_task_id',
 ].join(',');
 
 const DETAIL_COLUMNS = LIST_COLUMNS + ',story,lyrics,emotional_modifiers,lyrics_model_used';
