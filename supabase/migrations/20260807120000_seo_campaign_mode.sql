@@ -107,6 +107,12 @@ create policy seo_content_overrides_public_read on public.seo_content_overrides
 create table if not exists public.seo_agent_state (
   id int primary key default 1 check (id = 1),
   enabled boolean not null default true,
+  -- Autopilot: when the OWNER flips this on in the dashboard, the weekly agent
+  -- may auto-approve and publish its own title/meta proposals (the reversible,
+  -- lowest-risk task type) instead of waiting for a tap. Everything else
+  -- (new pages, content rewrites) always waits for approval. Default OFF —
+  -- turning it on is the owner's explicit standing consent.
+  autopilot boolean not null default false,
   last_run_at timestamptz,
   last_digest text,
   updated_at timestamptz not null default now()

@@ -124,6 +124,18 @@ export default function SeoCoachTab({ accessToken, showToast }) {
     } catch (e) { showToast?.(`Error: ${e.message}`); }
   };
 
+  const toggleAutopilot = async () => {
+    const next = !campaign?.state?.autopilot;
+    if (next && !window.confirm('Turn on Autopilot?\n\nThe agent will apply its own page-title and description improvements directly (they go live on the next site build) and report each one in the Monday review. It never touches prices, pages, or anything else without your approval. You can turn this off anytime, and undo any change by rejecting its task.')) return;
+    try {
+      const body = await call({ action: 'set_autopilot', autopilot: next });
+      if (body.success && body.campaign) {
+        setCampaign(body.campaign);
+        showToast?.(next ? 'Autopilot on — safe title/description fixes now apply themselves.' : 'Autopilot off — everything waits for your approval again.');
+      }
+    } catch (e) { showToast?.(`Error: ${e.message}`); }
+  };
+
   const runWeekly = async () => {
     setRunningWeekly(true);
     showToast?.('Running the weekly review — this takes a minute or two…');
@@ -148,6 +160,7 @@ export default function SeoCoachTab({ accessToken, showToast }) {
   const activeTasks = tasks.filter((t) => ['approved', 'implemented'].includes(t.status));
   const doneTasks = tasks.filter((t) => ['verified', 'rejected', 'dropped'].includes(t.status));
   const agentEnabled = campaign?.state?.enabled !== false;
+  const autopilot = !!campaign?.state?.autopilot;
   const lastRun = campaign?.state?.last_run_at ? new Date(campaign.state.last_run_at).toLocaleDateString() : null;
 
   const AvatarSm = () => (
@@ -232,11 +245,17 @@ export default function SeoCoachTab({ accessToken, showToast }) {
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border ${agentEnabled ? 'border-green-200 text-green-700 bg-green-50' : 'border-gray-200 text-gray-500 bg-gray-50'}`}>
               <CalendarDays size={12} /> {agentEnabled ? 'Weekly agent on' : 'Weekly agent paused'}
             </button>
+            <button onClick={toggleAutopilot} title="When on, the agent applies its own safe title/description improvements and reports them Monday. Bigger work always waits for your approval."
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border ${autopilot ? 'border-indigo-200 text-indigo-700 bg-indigo-50' : 'border-gray-200 text-gray-500 bg-gray-50'}`}>
+              <Sparkles size={12} /> {autopilot ? 'Autopilot on' : 'Autopilot off'}
+            </button>
           </div>
         </div>
         <p className="text-[11px] text-gray-500 mb-3">
           {lastRun ? `Last weekly review: ${lastRun}. ` : 'No weekly review yet. '}
-          Tasks below are proposed by the coach — nothing touches the site until you approve it.
+          {autopilot
+            ? 'Autopilot is on: the agent applies safe title/description fixes itself and reports them Monday. Bigger work (new pages) still waits for your Approve.'
+            : 'Tasks below are proposed by the agent — nothing touches the site until you approve it. Turn on Autopilot to let it apply the safe fixes itself.'}
         </p>
 
         {proposedTasks.length === 0 && activeTasks.length === 0 && doneTasks.length === 0 && (

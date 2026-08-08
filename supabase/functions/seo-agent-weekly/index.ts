@@ -40,6 +40,7 @@ const MODEL = Deno.env.get('SEO_AGENT_MODEL') || 'claude-opus-5';
 const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const ALERT_EMAIL = Deno.env.get('ALERT_EMAIL');
 const SENDER_EMAIL = Deno.env.get('SENDER_EMAIL') || 'hola@regalosquecantan.com';
+const VERCEL_DEPLOY_HOOK_URL = Deno.env.get('VERCEL_DEPLOY_HOOK_URL');
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -279,7 +280,11 @@ serve(async (req: Request) => {
         const data = await anthropicRaw({
           model: MODEL, max_tokens: 8000,
           output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
-          system: `You are the weekly SEO campaign agent for Regalos Que Cantan (personalized Spanish songs, ~$30 orders, US-Hispanic market, regalosquecantan.com). You write the owner's Monday SEO review and propose the next moves. The owner is non-technical; write plainly, in English, no markdown symbols. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving them is one tap. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.\n\n${seoBrainContext('Ground every proposal in these verified mechanics:')}`,
+          system: `You are the weekly SEO campaign agent for Regalos Que Cantan (personalized Spanish songs, ~$30 orders, US-Hispanic market, regalosquecantan.com). You write the owner's Monday SEO review and propose the next moves.
+
+THE OWNER KNOWS NOTHING ABOUT SEO — you do ALL the thinking. Write the digest the way you'd explain to a smart friend who has never heard the word "SEO": no jargon (never say SERP, CTR, meta, indexing without a plain-word explanation), plain English, short. Every proposal's rationale must let them decide with zero expertise: what will change, why it should bring more free customers, and that it's safe/reversible. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving is one tap and rejecting loses nothing. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.
+
+${seoBrainContext('Ground every proposal in these verified mechanics (but keep the OWNER-facing words simple):')}`,
           messages: [{ role: 'user', content: `Weekly data:\n${JSON.stringify(context, null, 2)}\n\nWrite the weekly review digest and propose up to 3 new tasks (cover seasonal gaps first).` }],
         });
         const text = (data?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
@@ -292,15 +297,40 @@ serve(async (req: Request) => {
           const { data: newPlan } = await admin.from('seo_plan').insert({ title: 'SEO Campaign — regalosquecantan.com', goal: 'Grow non-branded organic search into a compounding free-customer channel.', status: 'active' }).select().single();
           planId = newPlan?.id;
         }
+        const insertedTasks: any[] = [];
         for (const p of (parsed.proposals || []).slice(0, 3)) {
           if (!planId) break;
-          await admin.from('seo_plan_tasks').insert({
+          const { data: row } = await admin.from('seo_plan_tasks').insert({
             plan_id: planId, title: String(p.title).slice(0, 200), task_type: p.task_type,
             target_path: p.target_path || null, target_queries: p.target_queries || [],
             rationale: String(p.rationale || '').slice(0, 600), draft: p.draft || {},
             due_date: p.due_date || null, proposed_by: 'weekly_agent',
-          });
+          }).select().single();
+          if (row) insertedTasks.push(row);
           proposalsInserted++;
+        }
+
+        // AUTOPILOT: with the owner's standing consent (seo_agent_state.autopilot,
+        // flipped ON in the dashboard), auto-approve and publish the agent's own
+        // title/meta proposals — the reversible, lowest-risk task type. Everything
+        // else always waits for a manual tap.
+        if (state?.autopilot) {
+          const applied: string[] = [];
+          for (const t of insertedTasks.filter((x) => x.task_type === 'title_meta' && x.target_path && ((x.draft || {}).title || (x.draft || {}).meta_description))) {
+            const d = t.draft || {};
+            const { error: ovErr } = await admin.from('seo_content_overrides').upsert({
+              path: t.target_path, title: d.title || null, meta_description: d.meta_description || null,
+              published: true, task_id: t.id, updated_at: new Date().toISOString(),
+            }, { onConflict: 'path' });
+            if (!ovErr) {
+              await admin.from('seo_plan_tasks').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', t.id);
+              applied.push(`${t.title} (${t.target_path})`);
+            }
+          }
+          if (applied.length) {
+            if (VERCEL_DEPLOY_HOOK_URL) { try { await fetch(VERCEL_DEPLOY_HOOK_URL, { method: 'POST' }); } catch (_e) { /* best-effort */ } }
+            digest += `\n\nAUTOPILOT: I went ahead and applied ${applied.length === 1 ? 'this change' : 'these changes'} myself (you turned autopilot on): ${applied.join('; ')}. ${VERCEL_DEPLOY_HOOK_URL ? 'The site is rebuilding now.' : 'It goes live with the next site deploy.'} You can undo any of it by rejecting the task in the dashboard.`;
+          }
         }
       } catch (e: any) {
         notes.push(`digest generation failed: ${String(e?.message || e).slice(0, 150)}`);

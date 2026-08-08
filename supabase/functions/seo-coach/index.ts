@@ -82,7 +82,9 @@ const PROPOSE_TOOL = {
 // ---------------------------------------------------------------------------
 const COACH_SYSTEM = `You are a world-class SEO coach for "Regalos Que Cantan", a US-Hispanic e-commerce brand selling personalized Spanish songs (~$25-40 order) at regalosquecantan.com. You advise the NON-TECHNICAL owner directly.
 
-Your job is to make the owner genuinely good at organic search AND tell them the highest-leverage move right now — grounded in how Google and AI answer engines ACTUALLY select results today, and in the site's LIVE Search Console numbers. Never generic tips.
+THE OWNER KNOWS NOTHING ABOUT SEO AND DOES NOT WANT TO BECOME AN EXPERT — you do all the thinking and all the legwork; their only job is tapping Approve on cards they can understand. Speak like you would to a smart friend who has never heard the word "SEO": no jargon without an instant plain-word translation (say "the title Google shows for your page", not "title tag"; "showing up when people search X", not "ranking for X"). When you propose a task, its rationale must make the decision trivial with zero expertise: what changes, why it should bring more free customers, and that it's safe to try.
+
+Your job is to find the highest-leverage move and package it as a ready-to-approve task — grounded in how Google and AI answer engines ACTUALLY select results today, and in the site's LIVE Search Console numbers. Never generic tips, never homework for the owner.
 
 How you operate:
 - You run an ongoing CAMPAIGN with the owner: a plan of concrete tasks they approve with one tap. When a conversation lands on a specific worthwhile move, use the propose_task tool to add it as a card (finished draft included — exact Spanish titles/meta/copy). Approved title_meta tasks apply to the live site automatically on the next build; other tasks are executed from your draft. Never propose a duplicate of an existing task.
@@ -292,6 +294,12 @@ serve(async (req: Request) => {
       return json({ success: true, campaign: await loadCampaign(admin) });
     }
 
+    // --- CAMPAIGN: autopilot (owner's standing consent for title/meta auto-apply) ---
+    if (action === 'set_autopilot') {
+      await admin.from('seo_agent_state').upsert({ id: 1, autopilot: !!body.autopilot, updated_at: new Date().toISOString() });
+      return json({ success: true, campaign: await loadCampaign(admin) });
+    }
+
     // --- CAMPAIGN: run the weekly review now (manual trigger) ---
     if (action === 'run_weekly') {
       try {
@@ -341,7 +349,7 @@ serve(async (req: Request) => {
     const campaign = await loadCampaign(admin);
     const campaignBlock = `CAMPAIGN STATE (the ongoing plan you and the weekly agent run with the owner):\n${JSON.stringify({
       plan: campaign.plan ? { title: campaign.plan.title, goal: campaign.plan.goal } : 'none yet — created automatically on your first propose_task',
-      weekly_agent: { enabled: campaign.state?.enabled !== false, last_run_at: campaign.state?.last_run_at || 'never' },
+      weekly_agent: { enabled: campaign.state?.enabled !== false, autopilot: !!campaign.state?.autopilot, last_run_at: campaign.state?.last_run_at || 'never', autopilot_note: 'autopilot=true means the weekly agent auto-applies its own title/meta proposals; false means every task waits for the owner\'s tap. If the owner asks you to "just do things yourself", explain the autopilot switch in the panel above the chat.' },
       tasks: campaign.tasks.map((t: any) => ({ title: t.title, type: t.task_type, status: t.status, target_path: t.target_path, target_queries: t.target_queries, due: t.due_date })),
       ranking_history_weekly_totals: campaign.snapshots.map((s: any) => ({ at: String(s.captured_at).slice(0, 10), ...s.totals })),
       seasonal_windows: upcomingSeasonalWindows(),
