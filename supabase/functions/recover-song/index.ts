@@ -23,10 +23,17 @@
 // per-IP rate limit (5 attempts / 10 min) remains, and the endpoint still
 // returns 200 with empty list on no-match (so the failure-shape mirrors
 // success-with-zero-songs).
+//
+// 2026-08-08: repo re-synced from the DEPLOYED version (which had migrated to
+// the shared email shell while the repo still carried the old hand-rolled
+// HTML), plus one addition: each paid song card now carries a "déjanos 5
+// estrellas" link to /calificar?song_id=<id> — the real-review capture that
+// legitimately earns star ratings in Google results.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildUnsubscribeHeaders } from '../_shared/unsubscribe.ts';
+import { renderEmail } from '../_shared/email-shell.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,59 +56,27 @@ function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
-type RecoveredSong = { recipient_names: string; listen_url: string; is_bundle: boolean; has_video: boolean };
+type RecoveredSong = { recipient_names: string; listen_url: string; is_bundle: boolean; has_video: boolean; review_song_id: string };
 
-function emailFooter(): string {
-  return `
-  <tr><td style="height:3px;background:linear-gradient(90deg,#ff6b35,#ffd23f,#ff2e88);font-size:0;line-height:0;">&nbsp;</td></tr>
-  <tr><td style="background-color:#1a0e08;padding:24px 30px;text-align:center;">
-    <p style="color:#a67c52;font-size:12px;margin:0 0 4px;line-height:1.6;">Estos enlaces nunca expiran &mdash; gu&aacute;rdalos.</p>
-    <p style="color:#a67c52;font-size:12px;margin:0;">&iquest;Necesitas ayuda? <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;">hola@regalosquecantan.com</a></p>
-    <p style="color:#4a2c1a;font-size:11px;margin:10px 0 0;">&copy; ${new Date().getFullYear()} Regalos Que Cantan</p>
-    <p style="color:#4a2c1a;font-size:10px;margin:4px 0 0;">Regalos Que Cantan &bull; Los Angeles, CA 91324, USA</p>
-  </td></tr>`;
-}
-
+// Migrated to the shared brand shell. Each song keeps its exact listen_url
+// (paid → /song/ or /success; passed straight through, never rebuilt here).
 function buildPaidHtml(entries: RecoveredSong[]): string {
-  const entryRows = entries.map((e) => {
-    const badge = e.has_video
-      ? `<p style="color:#7c3aed;font-size:11px;font-weight:700;margin:0 0 6px;letter-spacing:2px;text-transform:uppercase;">&#127909; CANCI&Oacute;N + VIDEO MUSICAL${e.is_bundle ? ' (PAQUETE 2)' : ''}</p>`
-      : e.is_bundle
-        ? `<p style="color:#8a7060;font-size:11px;font-weight:700;margin:0 0 6px;letter-spacing:2px;text-transform:uppercase;">&#127873; PAQUETE 2 CANCIONES</p>`
-        : `<p style="color:#8a7060;font-size:11px;font-weight:700;margin:0 0 6px;letter-spacing:2px;text-transform:uppercase;">&#127873; CANCI&Oacute;N PERSONALIZADA</p>`;
-    const btnBg = e.has_video ? 'background-color:#7c3aed;' : 'background-color:#ff6b35;';
-    const btnLabel = e.has_video ? '&#127909;  Ver video y descargar' : '&#9654;  Escuchar y descargar';
-    return `
-    <tr><td style="background-color:#ffffff;padding:28px 32px;border-left:1px solid #e8e0d5;border-right:1px solid #e8e0d5;border-bottom:1px solid #f0e8de;">
-      ${badge}
-      <p style="color:#1a0e08;font-size:20px;font-weight:800;margin:0 0 20px;line-height:1.3;">Para <span style="color:#e05a1a;">${e.recipient_names}</span></p>
-      <table cellpadding="0" cellspacing="0"><tr><td style="${btnBg}border-radius:8px;">
-        <a href="${e.listen_url}" style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;">${btnLabel}</a>
-      </td></tr></table>
-    </td></tr>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:32px 16px;background-color:#f4f0eb;font-family:'Helvetica Neue',Arial,sans-serif;">
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Tus canciones de RegalosQueCantan est&aacute;n listas &mdash; toca el bot&oacute;n para escucharlas.</div>
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-<table width="540" cellpadding="0" cellspacing="0" style="max-width:540px;width:100%;">
-  <tr><td style="background-color:#1a0e08;border-radius:16px 16px 0 0;padding:36px 32px 28px;text-align:center;">
-    <img src="https://regalosquecantan.com/images/logo.png" alt="Regalos Que Cantan" width="140" style="display:block;margin:0 auto 20px;width:140px;border:0;" />
-    <h1 style="color:#ffffff;font-size:22px;font-weight:800;margin:0 0 8px;line-height:1.3;">Tus canciones est&aacute;n listas</h1>
-    <p style="color:#c9b99a;font-size:14px;margin:0;line-height:1.6;">Toca el bot&oacute;n para escucharlas, descargarlas y compartirlas.</p>
-  </td></tr>
-  ${entryRows}
-  <tr><td style="background-color:#1a0e08;border-radius:0 0 16px 16px;padding:28px 32px;text-align:center;">
-    <p style="color:#a67c52;font-size:12px;margin:0 0 4px;">Estos enlaces nunca expiran &mdash; gu&aacute;rdalos.</p>
-    <p style="color:#a67c52;font-size:12px;margin:0;">&iquest;Necesitas ayuda? <a href="mailto:hola@regalosquecantan.com" style="color:#ff6b35;font-weight:600;text-decoration:none;">hola@regalosquecantan.com</a></p>
-    <p style="color:#4a2c1a;font-size:11px;margin:10px 0 0;">&copy; ${new Date().getFullYear()} Regalos Que Cantan</p>
-    <p style="color:#4a2c1a;font-size:10px;margin:6px 0 0;">Regalos Que Cantan &bull; Los Angeles, CA 91324, USA</p>
-  </td></tr>
-</table>
-</td></tr></table>
-</body></html>`;
+  return renderEmail({
+    palette: 'confirm',
+    hero: 'vinyl',
+    preheader: 'Tus canciones de RegalosQueCantan están listas — toca el botón para escucharlas.',
+    eyebrow: 'Tus canciones',
+    headline: 'Tus canciones ya est&aacute;n <span style="color:#8fe6b8;">listas</span>.',
+    sub: 'Toca el bot&oacute;n de cada una para escucharla, descargarla y compartirla. Estos enlaces nunca expiran &mdash; gu&aacute;rdalos.',
+    songRows: entries.map((e) => ({
+      name: e.recipient_names,
+      href: e.listen_url,
+      label: e.has_video ? '&#127909;&nbsp; Ver video y descargar' : '&#9654;&nbsp; Escuchar y descargar',
+      sub: e.review_song_id
+        ? { text: '&#11088; &iquest;Te encant&oacute;? D&eacute;janos 5 estrellas &mdash; toma 10 segundos', href: `${SITE_URL}/calificar?song_id=${e.review_song_id}` }
+        : undefined,
+    })),
+  });
 }
 
 function buildPaidPlaintext(entries: RecoveredSong[]): string {
@@ -110,6 +85,7 @@ function buildPaidPlaintext(entries: RecoveredSong[]): string {
     const tag = e.has_video ? ' (canción + video)' : e.is_bundle ? ' (paquete 2 canciones)' : '';
     lines.push(`• Para ${e.recipient_names}${tag}`);
     lines.push(`  ${e.listen_url}`);
+    if (e.review_song_id) lines.push(`  ¿Te encantó? Déjanos 5 estrellas: ${SITE_URL}/calificar?song_id=${e.review_song_id}`);
     lines.push('');
   }
   lines.push('Estos enlaces nunca expiran.');
@@ -119,29 +95,22 @@ function buildPaidPlaintext(entries: RecoveredSong[]): string {
 
 type UnpaidSong = { recipient_name: string; listen_url: string };
 
+// Migrated to the shared brand shell. Each song keeps its exact listen_url
+// (unpaid → /listen? preview+buy page; passed straight through, never rebuilt).
 function buildUnpaidHtml(songs: UnpaidSong[]): string {
-  const songRows = songs.map((s) => `
-    <tr><td style="padding:24px 0;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center;">
-      <p style="color:#ffffff;font-size:20px;font-weight:800;margin:0 0 16px;">Para <span style="color:#ffd23f;">${s.recipient_name}</span></p>
-      <a href="${s.listen_url}" style="display:inline-block;background:linear-gradient(135deg,#e11d74 0%,#c026d3 100%);color:#ffffff;padding:16px 36px;border-radius:40px;text-decoration:none;font-weight:800;font-size:16px;box-shadow:0 4px 20px rgba(225,29,116,0.4);">&#9654;&nbsp; Escuchar y comprar</a>
-    </td></tr>`).join('');
-
-  return `<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#1a0e08;font-family:'Nunito','Helvetica Neue',Arial,sans-serif;">
-<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Tienes canciones listas pendientes de comprar en RegalosQueCantan.</div>
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;"><tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a0e08;">
-  <tr><td style="background:linear-gradient(180deg,#2a1408 0%,#1a0e08 100%);padding:40px 30px 16px;text-align:center;">
-    <p style="color:#ffd23f;font-size:40px;margin:0 0 14px;">&#9203;</p>
-    <h1 style="color:#ffffff;font-size:26px;margin:0 0 8px;font-weight:800;">Tus canciones te esperan</h1>
-    <p style="color:#c9b99a;font-size:14px;margin:0;line-height:1.6;">Ya est&aacute;n listas. Compl&eacute;talas para descargar y compartir.</p>
-  </td></tr>
-  <tr><td style="background-color:#1a0e08;padding:0 30px 8px;">
-    <table width="100%" cellpadding="0" cellspacing="0">${songRows}</table>
-  </td></tr>
-  ${emailFooter()}
-</table></td></tr></table></body></html>`;
+  return renderEmail({
+    palette: 'preview',
+    hero: 'vinyl',
+    preheader: 'Tienes canciones listas pendientes de comprar en RegalosQueCantan.',
+    eyebrow: 'Listas &middot; pendientes de comprar',
+    headline: 'Tus canciones te <span style="color:#a9c4f0;">esperan</span>.',
+    sub: 'Ya est&aacute;n listas. Compl&eacute;talas para descargarlas, compartirlas y guardarlas para siempre.',
+    songRows: songs.map((s) => ({
+      name: s.recipient_name,
+      href: s.listen_url,
+      label: '&#9654;&nbsp; Escuchar y comprar',
+    })),
+  });
 }
 
 function buildUnpaidPlaintext(songs: UnpaidSong[]): string {
@@ -389,7 +358,10 @@ serve(async (req) => {
       console.log('[recover-song] group_key filter matched no entries', { email, filterGroupKey });
       return respondJson(200, { ok: true, songs: responseSongs, emailSent: false });
     }
-    const emailEntries: RecoveredSong[] = entriesToSend.map((e) => ({ recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video }));
+    const emailEntries: RecoveredSong[] = entriesToSend.map((e) => ({
+      recipient_names: e.recipient_names, listen_url: e.listen_url, is_bundle: e.is_bundle, has_video: e.has_video,
+      review_song_id: String(e.ids).split(',')[0].trim(),
+    }));
     subject = entriesToSend.length === 1 && !entriesToSend[0].is_bundle
       ? '🎵 Aquí está tu canción de RegalosQueCantan'
       : '🎵 Aquí están tus canciones de RegalosQueCantan';

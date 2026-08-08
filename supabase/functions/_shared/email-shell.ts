@@ -68,7 +68,7 @@ function heroAsset(hero: Hero, palette: Palette): string {
 function esc(s: string): string { return (s || '').replace(/&(?![a-zA-Z#0-9]+;)/g, '&amp;'); }
 
 export interface CreditItem { label: string; value: string; }
-export interface SongRow { name: string; href: string; label: string; }
+export interface SongRow { name: string; href: string; label: string; sub?: { text: string; href: string } }
 export interface EmailConfig {
   palette: Palette;
   hero: Hero;
@@ -101,7 +101,7 @@ function hero(c: Tokens, h: Hero, palette: Palette, eyebrow?: string): string {
 // Multi-song list: one card + button per song. Each href is the caller's
 // existing per-song URL, passed straight through (never rebuilt here).
 function songList(c: Tokens, rows: SongRow[]): string {
-  const items = rows.map((r) => `<tr><td style="padding:8px 0;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:rgba(255,255,255,.04);border:1px solid ${c.border};border-radius:12px;"><tr><td style="padding:16px 20px;"><p style="margin:0 0 12px;font-size:16px;color:${c.headline};font-weight:bold;">Para <span style="color:${c.accent};">${r.name}</span></p><table cellpadding="0" cellspacing="0" role="presentation"><tr><td bgcolor="${c.ctaSolid}" style="border-radius:10px;background:${c.ctaSolid};background:${c.ctaGrad};"><a href="${r.href}" style="display:inline-block;padding:12px 26px;color:${c.ctaText};font-size:14px;font-weight:bold;text-decoration:none;">${r.label}</a></td></tr></table></td></tr></table></td></tr>`).join('');
+  const items = rows.map((r) => `<tr><td style="padding:8px 0;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:rgba(255,255,255,.04);border:1px solid ${c.border};border-radius:12px;"><tr><td style="padding:16px 20px;"><p style="margin:0 0 12px;font-size:16px;color:${c.headline};font-weight:bold;">Para <span style="color:${c.accent};">${r.name}</span></p><table cellpadding="0" cellspacing="0" role="presentation"><tr><td bgcolor="${c.ctaSolid}" style="border-radius:10px;background:${c.ctaSolid};background:${c.ctaGrad};"><a href="${r.href}" style="display:inline-block;padding:12px 26px;color:${c.ctaText};font-size:14px;font-weight:bold;text-decoration:none;">${r.label}</a></td></tr></table>${r.sub ? `<p style="margin:12px 0 0;font-size:12px;"><a href="${r.sub.href}" style="color:${c.link};font-weight:600;text-decoration:none;">${r.sub.text}</a></p>` : ''}</td></tr></table></td></tr>`).join('');
   return `<table width="100%" role="presentation"><tr><td style="padding:22px 0 0;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation">${items}</table></td></tr></table>`;
 }
 function ctaButton(c: Tokens, text: string, href: string): string {

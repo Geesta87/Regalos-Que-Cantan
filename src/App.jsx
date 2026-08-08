@@ -36,6 +36,7 @@ import PreguntasFrecuentes from './pages/seo/PreguntasFrecuentes';
 import SobreNosotros from './pages/seo/SobreNosotros';
 import DiaDeLasMadresLanding from './pages/seo/DiaDeLasMadresLanding';
 import CancionesParaRegalarLanding from './pages/seo/CancionesParaRegalarLanding';
+import PreciosLanding from './pages/seo/PreciosLanding';
 import DiaDelPadreLanding from './pages/seo/DiaDelPadreLanding';
 import ComboLanding from './pages/seo/ComboLanding';
 import { getComboBySlug } from './data/seoData';
@@ -106,6 +107,7 @@ const pathToPage = {
   '/preguntas-frecuentes': 'preguntasFrecuentes',
   '/sobre-nosotros': 'sobreNosotros',
   '/canciones-para-regalar': 'cancionesParaRegalar',
+  '/canciones-personalizadas-precios': 'preciosLanding',
   '/dia-de-las-madres': 'diaDeLasMadres',
   '/dia-del-padre': 'diaDelPadre',
   '/corridos': 'corridos',
@@ -353,6 +355,7 @@ export default function App() {
       preguntasFrecuentes: '/preguntas-frecuentes',
       sobreNosotros: '/sobre-nosotros',
       cancionesParaRegalar: '/canciones-para-regalar',
+      preciosLanding: '/canciones-personalizadas-precios',
       diaDeLasMadres: '/dia-de-las-madres',
       diaDelPadre: '/dia-del-padre',
       corridos: '/corridos',
@@ -496,6 +499,7 @@ export default function App() {
           {currentPage === 'preguntasFrecuentes' && <PreguntasFrecuentes />}
           {currentPage === 'sobreNosotros' && <SobreNosotros />}
           {currentPage === 'cancionesParaRegalar' && <CancionesParaRegalarLanding />}
+          {currentPage === 'preciosLanding' && <PreciosLanding />}
           {currentPage === 'diaDeLasMadres' && <DiaDeLasMadresLanding />}
           {currentPage === 'diaDelPadre' && <DiaDelPadreLanding />}
           {currentPage === 'corridos' && <CorridosLanding />}
