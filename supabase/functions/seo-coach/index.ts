@@ -1,271 +1,48 @@
 // supabase/functions/seo-coach/index.ts
 // ===========================================================================
-// SEO COACH — interactive, advice-only search specialist
+// SEO COACH — interactive search specialist + campaign front-end
 // ===========================================================================
-// A chat surface where the owner asks about organic search ("what should I
-// build next?", "why does nobody find us?", "is this page working?") and gets
-// answers grounded in (a) LIVE Google Search Console data for the site, (b) the
-// verified SEO Brain (_shared/seo-brain.ts — how Google + AI answers actually
-// select results in 2026), and (c) the real pages themselves — the coach can
-// FETCH and read any live page (ours or a competitor's) during the chat.
+// A chat surface where the owner asks about organic search and gets answers
+// grounded in (a) LIVE Google Search Console data, (b) the verified SEO Brain
+// (_shared/seo-brain.ts), and (c) real live pages (fetch_page tool).
 //
-// ADVICE-ONLY BY DESIGN: this function never changes the site. It reads Search
-// Console (read-only scope), reads public pages, and talks. Mirrors ads-coach.
+// CAMPAIGN MODE (2026-08): the coach now also fronts the SEO campaign — a
+// plan of concrete tasks with ready-to-apply drafts, advanced weekly by the
+// seo-agent-weekly function. The coach can PROPOSE tasks (propose_task tool);
+// the owner approves/rejects them here. Approving a title_meta task publishes
+// a seo_content_overrides row that the prerender build applies on the next
+// deploy — the one path where an approval changes the live site, and it only
+// ever happens on the owner's explicit tap.
 //
 // Admin-only (verify_jwt = true + admin_users gate, same as ads-coach).
 // Deploy: supabase functions deploy seo-coach --project-ref yzbvajungshqcpusfiia
-// Required secrets: GSC_SERVICE_ACCOUNT_JSON (the seo-coach service-account key
-// JSON, whole file as one secret), ANTHROPIC_API_KEY (already set).
+// Required secrets: GSC_SERVICE_ACCOUNT_JSON, ANTHROPIC_API_KEY.
+// Optional: VERCEL_DEPLOY_HOOK_URL (build the site right after an approval).
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { seoBrainContext, SEO_BRAIN_LAST_REVIEWED } from '../_shared/seo-brain.ts';
 import { brandContext } from '../_shared/brand-brief.ts';
+import {
+  gatherSearchContext, fetchPageFacts, hasGscKey, upcomingSeasonalWindows,
+  TRAFFIC_SOURCE_LIVE_FROM,
+} from '../_shared/seo-gsc.ts';
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
-const MODEL = Deno.env.get('SEO_COACH_MODEL') || 'claude-opus-4-8';
+const MODEL = Deno.env.get('SEO_COACH_MODEL') || 'claude-opus-5';
 const EXTRACT_MODEL = Deno.env.get('SEO_COACH_EXTRACT_MODEL') || 'claude-haiku-4-5-20251001';
-
-const GSC_KEY_JSON = Deno.env.get('GSC_SERVICE_ACCOUNT_JSON');
-const GSC_SITE = Deno.env.get('GSC_SITE_URL') || 'https://regalosquecantan.com/';
-const RQC_PLATFORM = Deno.env.get('MEDIA_BUYER_PLATFORM') || 'es';
-// Queries that are really people looking for US by name (not new demand).
-const BRAND_RE = /regalos?\s*que\s*cantan|regalosque\s*cantan|regalosquecantan/i;
-// Date referrer-based attribution went live. Orders before this have no
-// referrer_source, so organic revenue is unmeasured (not zero) before it.
-const TRAFFIC_SOURCE_LIVE_FROM = Deno.env.get('TRAFFIC_SOURCE_LIVE_FROM') || '2026-07-23';
+const VERCEL_DEPLOY_HOOK_URL = Deno.env.get('VERCEL_DEPLOY_HOOK_URL');
 
 function json(b: unknown, s = 200) { return new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }); }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const num = (x: any) => { const n = Number(x); return Number.isFinite(n) ? n : 0; };
-const r2 = (n: number) => Math.round(n * 100) / 100;
-const r1 = (n: number) => Math.round(n * 10) / 10;
-const pct = (n: number) => r1(n * 100);
 
 // ---------------------------------------------------------------------------
-// Google Search Console auth + query (service account, read-only scope).
+// Tools the chat model can use.
 // ---------------------------------------------------------------------------
-let cachedToken: { token: string; exp: number } | null = null;
-
-function b64urlBytes(bytes: Uint8Array): string {
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-const b64urlStr = (s: string) => b64urlBytes(new TextEncoder().encode(s));
-
-async function gscToken(): Promise<string> {
-  if (!GSC_KEY_JSON) throw new Error('GSC_SERVICE_ACCOUNT_JSON not set');
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.exp - 120 > now) return cachedToken.token;
-  const key = JSON.parse(GSC_KEY_JSON);
-  const header = b64urlStr(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claims = b64urlStr(JSON.stringify({
-    iss: key.client_email,
-    scope: 'https://www.googleapis.com/auth/webmasters.readonly',
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now, exp: now + 3600,
-  }));
-  const pem = String(key.private_key).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
-  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
-  const ck = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
-  const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', ck, new TextEncoder().encode(`${header}.${claims}`)));
-  const jwt = `${header}.${claims}.${b64urlBytes(sig)}`;
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
-  });
-  if (!res.ok) throw new Error(`GSC token ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  cachedToken = { token: data.access_token, exp: now + num(data.expires_in || 3600) };
-  return data.access_token;
-}
-
-async function gscQuery(body: Record<string, unknown>): Promise<any[]> {
-  const token = await gscToken();
-  const site = encodeURIComponent(GSC_SITE);
-  const res = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${site}/searchAnalytics/query`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`GSC query ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return (await res.json()).rows || [];
-}
-
-// GSC data lags ~2 days; all windows end at today-3 (UTC) to be safe.
-const dayISO = (daysAgo: number) => new Date(Date.now() - daysAgo * 864e5).toISOString().slice(0, 10);
-const W = { end: 3, days: 28 }; // primary window: 28 days ending 3 days ago
-const RANGE = {
-  cur: { startDate: dayISO(W.end + W.days - 1), endDate: dayISO(W.end) },
-  prev: { startDate: dayISO(W.end + 2 * W.days - 1), endDate: dayISO(W.end + W.days) },
-  quarter: { startDate: dayISO(W.end + 90 - 1), endDate: dayISO(W.end) },
-};
-
-function shapeRow(row: any) {
-  return { clicks: num(row.clicks), impressions: num(row.impressions), ctr: pct(num(row.ctr)), position: r1(num(row.position)) };
-}
-
-// Pull the live search snapshot the coach reasons over. Every sub-pull is
-// .catch-isolated so one hiccup can never blank the whole snapshot.
-async function gatherSearchContext(supabase: any) {
-  const soft = (p: Promise<any[]>) => p.catch(() => []);
-  const [curTotal, prevTotal, quarterTotal, curQueries, prevQueries, curPages, prevPages, countries, devices] = await Promise.all([
-    soft(gscQuery({ ...RANGE.cur, rowLimit: 1 })),
-    soft(gscQuery({ ...RANGE.prev, rowLimit: 1 })),
-    soft(gscQuery({ ...RANGE.quarter, rowLimit: 1 })),
-    soft(gscQuery({ ...RANGE.cur, dimensions: ['query'], rowLimit: 250 })),
-    soft(gscQuery({ ...RANGE.prev, dimensions: ['query'], rowLimit: 250 })),
-    soft(gscQuery({ ...RANGE.cur, dimensions: ['page'], rowLimit: 50 })),
-    soft(gscQuery({ ...RANGE.prev, dimensions: ['page'], rowLimit: 50 })),
-    soft(gscQuery({ ...RANGE.cur, dimensions: ['country'], rowLimit: 8 })),
-    soft(gscQuery({ ...RANGE.cur, dimensions: ['device'], rowLimit: 3 })),
-  ]);
-
-  const prevByQuery: Record<string, any> = {};
-  for (const r of prevQueries) prevByQuery[r.keys?.[0]] = r;
-  const prevByPage: Record<string, any> = {};
-  for (const r of prevPages) prevByPage[r.keys?.[0]] = r;
-
-  // Branded vs non-branded split (across the top 250 queries — an approximation,
-  // labeled as such in the note below).
-  const branded = { clicks: 0, impressions: 0 };
-  const nonBranded = { clicks: 0, impressions: 0 };
-  for (const r of curQueries) {
-    const bucket = BRAND_RE.test(String(r.keys?.[0] || '')) ? branded : nonBranded;
-    bucket.clicks += num(r.clicks); bucket.impressions += num(r.impressions);
-  }
-
-  const withPrev = (r: any, prevMap: Record<string, any>) => {
-    const out: any = { ...shapeRow(r) };
-    const p = prevMap[r.keys?.[0]];
-    if (p) out.prev_28d = shapeRow(p);
-    return out;
-  };
-
-  const top_queries_28d = curQueries.slice(0, 20).map((r) => ({ query: r.keys?.[0], ...withPrev(r, prevByQuery) }));
-  // "Striking distance": real impressions, ranking page 1 bottom to page 2 —
-  // the cheapest wins in SEO are almost always here, not in new pages.
-  const almost_ranking = curQueries
-    .filter((r) => { const p = num(r.position); return p >= 4 && p <= 20 && num(r.impressions) >= 15 && !BRAND_RE.test(String(r.keys?.[0] || '')); })
-    .sort((a, b) => num(b.impressions) - num(a.impressions))
-    .slice(0, 15)
-    .map((r) => ({ query: r.keys?.[0], ...shapeRow(r) }));
-
-  const top_pages_28d = curPages.slice(0, 12).map((r) => ({ page: String(r.keys?.[0] || '').replace(GSC_SITE.replace(/\/$/, ''), '') || '/', ...withPrev(r, prevByPage) }));
-
-  // Real paid orders (deduped per stripe_session_id) for business context. NOTE:
-  // we can NOT attribute orders to organic search yet (utm_source is only set on
-  // tagged links) — the coach must say so instead of inventing an organic ROAS.
-  // Deduped paid orders, now split by SOURCE. referrer_source is filled from the
-  // landing referrer (added 2026-07); utm_source wins when present, so paid
-  // campaigns are never double-counted as organic.
-  const dedupedOrders = async (startISO: string, endISO: string) => {
-    const { data } = await supabase
-      .from('songs').select('stripe_session_id, amount_paid, utm_source, referrer_source, landing_path')
-      .eq('paid', true).gte('paid_at', `${startISO}T00:00:00Z`).lt('paid_at', `${endISO}T23:59:59Z`)
-      .eq('platform', RQC_PLATFORM).not('stripe_session_id', 'is', null);
-    const per = new Map<string, { amt: number; src: string; landing: string | null }>();
-    for (const r of (data || [])) {
-      const sid = r.stripe_session_id as string;
-      const amt = num(r.amount_paid);
-      const src = (r.utm_source || r.referrer_source || 'unknown') as string;
-      if (!per.has(sid) || amt > (per.get(sid) as any).amt) per.set(sid, { amt, src, landing: r.landing_path || null });
-    }
-    const rows = [...per.values()];
-    const isOrganicSearch = (s: string) => /-organic$/.test(s) || s === 'google';
-    const org = rows.filter((x) => isOrganicSearch(x.src));
-    const bySource: Record<string, { orders: number; revenue: number }> = {};
-    for (const x of rows) {
-      const k = x.src;
-      if (!bySource[k]) bySource[k] = { orders: 0, revenue: 0 };
-      bySource[k].orders++; bySource[k].revenue = r2(bySource[k].revenue + x.amt);
-    }
-    // Which landing page the organic buyers entered on — GSC shows clicks, this
-    // shows which page actually earns money.
-    const organicLanding: Record<string, number> = {};
-    for (const x of org) { const k = x.landing || '(unrecorded)'; organicLanding[k] = (organicLanding[k] || 0) + 1; }
-    return {
-      orders: rows.length,
-      revenue: r2(rows.reduce((a, b) => a + b.amt, 0)),
-      organic_search: { orders: org.length, revenue: r2(org.reduce((a, b) => a + b.amt, 0)) },
-      unknown_source: rows.filter((x) => x.src === 'unknown').length,
-      by_source: bySource,
-      organic_landing_pages: organicLanding,
-    };
-  };
-  const emptyOrders = { orders: 0, revenue: 0, organic_search: { orders: 0, revenue: 0 }, unknown_source: 0, by_source: {}, organic_landing_pages: {} };
-  let orders_28d: any = emptyOrders, orders_prev_28d: any = emptyOrders;
-  try { [orders_28d, orders_prev_28d] = await Promise.all([dedupedOrders(RANGE.cur.startDate, RANGE.cur.endDate), dedupedOrders(RANGE.prev.startDate, RANGE.prev.endDate)]); } catch (_e) { /* best-effort */ }
-
-  const hadData = curTotal.length > 0 || curQueries.length > 0;
-  if (!hadData) throw new Error('Search Console returned no data');
-
-  return {
-    window: `Primary window: ${RANGE.cur.startDate} → ${RANGE.cur.endDate} (28 days, ending 3 days back — GSC data lags ~2 days). prev_28d = the 28 days before that. 90d totals included for baseline.`,
-    totals_28d: shapeRow(curTotal[0] || {}),
-    totals_prev_28d: shapeRow(prevTotal[0] || {}),
-    totals_90d: shapeRow(quarterTotal[0] || {}),
-    branded_vs_nonbranded_28d: {
-      branded: { ...branded, note: 'people searching our name — retention/brand demand, not new discovery' },
-      non_branded: { ...nonBranded, note: 'real new-demand queries — THIS is the growth surface' },
-      method_note: 'split computed over the top 250 queries by regex on the brand name; treat as close approximation',
-    },
-    top_queries_28d,
-    almost_ranking: { note: 'Non-branded queries at position 4-20 with real impressions — the cheapest wins (improve these pages before building new ones).', rows: almost_ranking },
-    top_pages_28d,
-    countries_28d: countries.map((r) => ({ country: r.keys?.[0], ...shapeRow(r) })),
-    devices_28d: devices.map((r) => ({ device: r.keys?.[0], ...shapeRow(r) })),
-    real_orders_context: {
-      last_28d: orders_28d, prev_28d: orders_prev_28d,
-      note: `Deduped real paid orders, split by source. utm_source (paid/email/tagged links) wins; when absent we fall back to referrer_source, captured from the landing referrer. organic_search = arrived from a search engine (google/bing/duckduckgo/yahoo/ecosia). CRITICAL HONESTY RULES: (1) Referrer capture went live ${TRAFFIC_SOURCE_LIVE_FROM}. For any period BEFORE that date organic_search reads 0 because it was never measured, NOT because there were no organic sales — never report that as growth or a decline, and say so when the window spans that date. (2) unknown_source counts orders with neither a UTM nor a referrer (older orders, or browsers/apps that strip the referrer) — real organic is somewhat HIGHER than measured, so treat organic numbers as a floor. (3) Google strips the search term, so this gives the CHANNEL, never the keyword — keywords only come from the Search Console data above. (4) organic_landing_pages shows which page organic BUYERS entered on (GSC shows clicks; this shows money).`,
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// fetch_page tool — the coach's "vision": it can read any live page (ours or a
-// competitor's) as Google would see the served HTML. Capped + fail-soft.
-// ---------------------------------------------------------------------------
-function extractPageFacts(html: string): any {
-  const pick = (re: RegExp) => (html.match(re)?.[1] || '').replace(/\s+/g, ' ').trim();
-  const all = (re: RegExp, cap: number) => { const out: string[] = []; let m; const g = new RegExp(re.source, 'gis'); while ((m = g.exec(html)) && out.length < cap) { const t = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t) out.push(t); } return out; };
-  const body = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
-  return {
-    title: pick(/<title[^>]*>([\s\S]*?)<\/title>/i),
-    meta_description: pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) || pick(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i),
-    canonical: pick(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']*)["']/i),
-    robots_meta: pick(/<meta[^>]+name=["']robots["'][^>]+content=["']([^"']*)["']/i),
-    h1: all(/<h1[^>]*>([\s\S]*?)<\/h1>/i, 3),
-    h2: all(/<h2[^>]*>([\s\S]*?)<\/h2>/i, 10),
-    has_jsonld: /application\/ld\+json/i.test(html),
-    visible_text_excerpt: body.slice(0, 2800),
-    text_length_chars: body.length,
-  };
-}
-
-async function fetchPageFacts(url: string): Promise<any> {
-  try {
-    const u = new URL(url);
-    if (!/^https?:$/.test(u.protocol)) return { error: 'only http(s) URLs' };
-    const res = await fetch(u.toString(), { headers: { 'user-agent': 'Mozilla/5.0 (compatible; RQC-SEO-Coach/1.0)' }, redirect: 'follow' });
-    const ct = res.headers.get('content-type') || '';
-    if (!res.ok) return { url: u.toString(), http_status: res.status, error: `HTTP ${res.status}` };
-    if (!/text\/html/i.test(ct)) return { url: u.toString(), http_status: res.status, error: `not HTML (${ct.split(';')[0]})` };
-    const html = (await res.text()).slice(0, 600_000);
-    return { url: u.toString(), http_status: res.status, ...extractPageFacts(html) };
-  } catch (e: any) {
-    return { url, error: String(e?.message || e).slice(0, 150) };
-  }
-}
-
 const PAGE_TOOL = {
   name: 'fetch_page',
   description: 'Fetch a live web page (one of ours or a competitor\'s) and get its served HTML facts: title, meta description, canonical, robots meta, H1/H2s, whether it has JSON-LD, and a visible-text excerpt. Use it to ground any page critique in what is ACTUALLY published instead of guessing — check our own landing pages, or see what a competitor ranking for a query is doing. Max 3 fetches per turn.',
@@ -279,23 +56,45 @@ const PAGE_TOOL = {
   },
 };
 
+const PROPOSE_TOOL = {
+  name: 'propose_task',
+  description: 'Add a concrete task to the SEO campaign for the owner to approve. Call this when the conversation lands on a specific move worth doing — the task must carry the FINISHED work (exact new title/meta in Spanish, or full page copy in Spanish), never homework. The owner sees it as a card with Approve/Reject buttons; approving a title_meta task auto-applies it on the next site build. Do not propose duplicates of tasks already in the campaign (they are listed in your context).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Short imperative task name (English).' },
+      task_type: { type: 'string', enum: ['title_meta', 'new_page', 'content_fix', 'link', 'youtube', 'other'] },
+      target_path: { type: 'string', description: 'Site route, e.g. /ocasiones/dia-de-las-madres. Empty if none.' },
+      target_queries: { type: 'array', items: { type: 'string' }, description: 'The exact search queries this should move.' },
+      rationale: { type: 'string', description: '1-2 sentences: mechanic + data.' },
+      draft_title: { type: 'string', description: 'For title_meta/new_page: the exact new <title> (Spanish). Else empty.' },
+      draft_meta_description: { type: 'string', description: 'For title_meta/new_page: the exact new meta description (Spanish). Else empty.' },
+      draft_body_markdown: { type: 'string', description: 'For new_page/content_fix: full ready page copy in Spanish. Else empty.' },
+      draft_instructions: { type: 'string', description: 'Plain-English steps for whoever applies it.' },
+      due_date: { type: 'string', description: 'YYYY-MM-DD deadline, or empty.' },
+    },
+    required: ['title', 'task_type', 'rationale'],
+  },
+};
+
 // ---------------------------------------------------------------------------
-// The coach persona. Brain + live snapshot appended at call time.
+// The coach persona. Brain + live snapshot + campaign appended at call time.
 // ---------------------------------------------------------------------------
 const COACH_SYSTEM = `You are a world-class SEO coach for "Regalos Que Cantan", a US-Hispanic e-commerce brand selling personalized Spanish songs (~$25-40 order) at regalosquecantan.com. You advise the NON-TECHNICAL owner directly.
 
 Your job is to make the owner genuinely good at organic search AND tell them the highest-leverage move right now — grounded in how Google and AI answer engines ACTUALLY select results today, and in the site's LIVE Search Console numbers. Never generic tips.
 
 How you operate:
-- You never change the site yourself. You hand the owner (or their developer session) a specific move — "rewrite the title on /ocasiones/dia-de-las-madres to promise X", "build the quinceañera page now so it has 6 months to mature". Be concrete and ranked.
-- GROUND EVERY PAGE OPINION IN THE REAL PAGE. You have the fetch_page tool — when discussing a specific page of ours or a competitor's, FETCH it first and critique what is actually there (title, meta, H1s, content). Never review a page from imagination. Max 3 fetches per turn — choose them well.
+- You run an ongoing CAMPAIGN with the owner: a plan of concrete tasks they approve with one tap. When a conversation lands on a specific worthwhile move, use the propose_task tool to add it as a card (finished draft included — exact Spanish titles/meta/copy). Approved title_meta tasks apply to the live site automatically on the next build; other tasks are executed from your draft. Never propose a duplicate of an existing task.
+- A weekly agent (seo-agent-weekly) snapshots Search Console every Monday, verifies which tasks actually shipped, watches whether target queries move, and posts a review into this chat. Reason from that history when it exists.
+- GROUND EVERY PAGE OPINION IN THE REAL PAGE. You have the fetch_page tool — when discussing a specific page of ours or a competitor's, FETCH it first and critique what is actually there. Never review a page from imagination. Max 3 fetches per turn — choose them well.
 - For substantive recommendations, lead with the MECHANIC then the move — explain WHY (how Google/AI select) before WHAT to do. For a quick factual question, just answer it.
 - Respect the confidence tags in the brain below: assert [VERIFIED]; say "Google says" for [GOOGLE-SAYS]; give [LEAKED] with its caveat; recommend [CONSENSUS] directionally; present [DEBATE] as options; correct [MYTH] on sight; re-check [SNAPSHOT] before big bets.
 - The LIVE Search Console snapshot OUTRANKS the brain doc. If they disagree, trust the data and say so.
 - BE HONEST ABOUT TIME. Organic compounds over 6-18 months. Never promise fast rankings. The genuinely fast levers: fixing striking-distance queries (position 4-20), sharper titles on pages that already get impressions, seasonal pages built months early, and brand/AI-answer visibility via mentions.
-- Distinguish BRANDED from NON-BRANDED ruthlessly. Branded clicks are people who already know us (ads and social built that); non-branded is new demand. Never let branded volume flatter the SEO picture — the snapshot splits them; use the split.
-- WHAT YOU CANNOT SEE — say so plainly instead of guessing: no keyword-volume database (no Ahrefs/Semrush access), no backlink index, no AI Overview citation report (Google folds AI traffic into normal Web totals), no search KEYWORD per order (Google strips the term — you get the channel only, and organic revenue is measured as a FLOOR from ${TRAFFIC_SOURCE_LIVE_FROM} onward; before that date it was never captured, so never read a pre-launch zero as a real number), GSC data lags ~2 days, and you can't crawl the whole site (only fetch specific pages). If a question needs one of these, name the gap and give the best grounded answer possible.
-- Never invent a number (a keyword volume, a difficulty score, a benchmark CTR). If the owner asks "how many people search X", say what the snapshot shows about our own impressions for similar queries and be explicit that you have no volume database.
+- Distinguish BRANDED from NON-BRANDED ruthlessly. Branded clicks are people who already know us; non-branded is new demand. Never let branded volume flatter the SEO picture — the snapshot splits them; use the split.
+- WHAT YOU CANNOT SEE — say so plainly instead of guessing: no keyword-volume database (no Ahrefs/Semrush access), no backlink index, no AI Overview citation report, no search KEYWORD per order (channel only; organic revenue is a FLOOR measured from ${TRAFFIC_SOURCE_LIVE_FROM} onward), GSC data lags ~2 days, and you can't crawl the whole site (only fetch specific pages). If a question needs one of these, name the gap and give the best grounded answer possible.
+- Never invent a number (a keyword volume, a difficulty score, a benchmark CTR).
 - MATCH LENGTH TO THE QUESTION. Simple/narrow question → a few sentences, direct, done. Reserve the fuller mechanic-and-teaching treatment for strategic or open questions, or when asked. Never pad. Plain language, warm and direct.
 - FORMATTING: plain text only. No markdown — no ** or __, no ## headers, no asterisk bullets (they render as literal clutter in the owner's chat). Lists use "- " or "1." only.`;
 
@@ -323,15 +122,28 @@ async function anthropicRaw(bodyObj: any): Promise<any> {
 }
 const textOf = (data: any) => (data?.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n').trim();
 
-// Chat runner with the fetch_page tool. Caps: 3 fetches/turn, 3 rounds.
-async function runChatWithTools(system: string, convo: any[]): Promise<{ text: string; fetched: string[] }> {
+// Ensure there is an active campaign to attach tasks to.
+async function ensureActivePlan(admin: any): Promise<string | null> {
+  const { data } = await admin.from('seo_plan').select('id').eq('status', 'active').order('created_at', { ascending: false }).limit(1);
+  if (data?.[0]?.id) return data[0].id;
+  const { data: created } = await admin.from('seo_plan').insert({
+    title: 'SEO Campaign — regalosquecantan.com',
+    goal: 'Grow non-branded organic search into a compounding free-customer channel.',
+    status: 'active',
+  }).select().single();
+  return created?.id || null;
+}
+
+// Chat runner with tools. Caps: 3 fetches/turn, 4 rounds.
+async function runChatWithTools(admin: any, system: string, convo: any[]): Promise<{ text: string; fetched: string[]; proposed: string[] }> {
   const fetched: string[] = [];
+  const proposed: string[] = [];
   const messages = convo.map((m) => ({ role: m.role, content: m.content }));
-  for (let round = 0; round < 3; round++) {
-    const data = await anthropicRaw({ model: MODEL, max_tokens: 1800, system, tools: [PAGE_TOOL], messages });
+  for (let round = 0; round < 4; round++) {
+    const data = await anthropicRaw({ model: MODEL, max_tokens: 4000, system, tools: [PAGE_TOOL, PROPOSE_TOOL], messages });
     const content = data?.content || [];
     const toolUses = content.filter((c: any) => c.type === 'tool_use');
-    if (!toolUses.length) return { text: textOf(data), fetched };
+    if (!toolUses.length) return { text: textOf(data), fetched, proposed };
     messages.push({ role: 'assistant', content });
     const toolResults: any[] = [];
     for (const tu of toolUses) {
@@ -339,19 +151,46 @@ async function runChatWithTools(system: string, convo: any[]): Promise<{ text: s
         const facts = await fetchPageFacts(String(tu.input?.url || ''));
         if (!facts.error) fetched.push(facts.url);
         toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(facts).slice(0, 12_000), is_error: !!facts.error });
+      } else if (tu.name === 'propose_task') {
+        try {
+          const inp = tu.input || {};
+          const planId = await ensureActivePlan(admin);
+          if (!planId) throw new Error('no active plan');
+          const { data: row, error } = await admin.from('seo_plan_tasks').insert({
+            plan_id: planId,
+            title: String(inp.title || '').slice(0, 200),
+            task_type: ['title_meta', 'new_page', 'content_fix', 'link', 'youtube', 'other'].includes(inp.task_type) ? inp.task_type : 'other',
+            target_path: String(inp.target_path || '').trim() || null,
+            target_queries: Array.isArray(inp.target_queries) ? inp.target_queries.slice(0, 10) : [],
+            rationale: String(inp.rationale || '').slice(0, 600),
+            draft: {
+              title: String(inp.draft_title || ''),
+              meta_description: String(inp.draft_meta_description || ''),
+              body_markdown: String(inp.draft_body_markdown || ''),
+              instructions: String(inp.draft_instructions || ''),
+            },
+            due_date: /^\d{4}-\d{2}-\d{2}$/.test(String(inp.due_date || '')) ? inp.due_date : null,
+            proposed_by: 'coach',
+          }).select().single();
+          if (error) throw error;
+          proposed.push(row.title);
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Task proposed (id ${row.id}). The owner will see it as an approval card above this chat — tell them it is there and what approving will do.` });
+        } catch (e: any) {
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: `Could not save the task: ${String(e?.message || e).slice(0, 150)}`, is_error: true });
+        }
       } else {
-        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: fetched.length >= 3 ? 'Fetch limit reached this turn (3).' : 'Unknown tool.', is_error: true });
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: tu.name === 'fetch_page' ? 'Fetch limit reached this turn (3).' : 'Unknown tool.', is_error: true });
       }
     }
     messages.push({ role: 'user', content: toolResults });
   }
-  return { text: 'I fetched the pages but ran out of room to finish — ask me again and I will answer directly.', fetched };
+  return { text: 'I ran out of room mid-research — ask me again and I will answer directly.', fetched, proposed };
 }
 
 // Extract the single most concrete recommendation for the track record (Haiku).
 async function extractRecommendation(reply: string): Promise<any> {
   if (!ANTHROPIC_API_KEY) return null;
-  const sys = `Read this SEO coach message and extract its SINGLE most important concrete recommendation, if any. Return ONLY minified JSON: {"recommendation":"","rationale":"","target_page":""}. "recommendation" = the specific action (e.g. "Rewrite the title on /ocasiones/dia-de-las-madres to lead with 'canción personalizada'"); EMPTY string if no concrete actionable move (pure explanation counts as none). Keep every field short.`;
+  const sys = `Read this SEO coach message and extract its SINGLE most important concrete recommendation, if any. Return ONLY minified JSON: {"recommendation":"","rationale":"","target_page":""}. "recommendation" = the specific action (e.g. "Rewrite the title on /ocasiones/dia-de-las-madres to lead with 'canción personalizada'"); EMPTY string if no concrete actionable move (pure explanation counts as none). "target_page" = the site path if one page is the target (e.g. "/ocasiones/dia-de-las-madres"), else empty. Keep every field short.`;
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -366,6 +205,22 @@ async function extractRecommendation(reply: string): Promise<any> {
     const parsed = JSON.parse(m[0]);
     return (parsed && parsed.recommendation && String(parsed.recommendation).trim()) ? parsed : null;
   } catch { return null; }
+}
+
+// Load everything the campaign panel (and the chat context) needs.
+async function loadCampaign(admin: any) {
+  const [{ data: planRows }, { data: state }, { data: snaps }] = await Promise.all([
+    admin.from('seo_plan').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(1),
+    admin.from('seo_agent_state').select('*').eq('id', 1).maybeSingle(),
+    admin.from('seo_snapshots').select('captured_at, totals').order('captured_at', { ascending: false }).limit(10),
+  ]);
+  const plan = planRows?.[0] || null;
+  let tasks: any[] = [];
+  if (plan) {
+    const { data } = await admin.from('seo_plan_tasks').select('*').eq('plan_id', plan.id).order('created_at', { ascending: false }).limit(60);
+    tasks = data || [];
+  }
+  return { plan, tasks, state: state || { enabled: true, last_run_at: null }, snapshots: (snaps || []).reverse() };
 }
 
 // ---------------------------------------------------------------------------
@@ -386,11 +241,70 @@ serve(async (req: Request) => {
 
     // --- MEMORY: past conversation + track record (cross-session) ---
     if (action === 'history') {
-      const [{ data: msgs }, { data: calls }] = await Promise.all([
+      const [{ data: msgs }, { data: calls }, campaign] = await Promise.all([
         admin.from('seo_coach_messages').select('role, content, created_at').order('created_at', { ascending: true }).limit(60),
         admin.from('seo_coach_calls').select('*').order('created_at', { ascending: false }).limit(30),
+        loadCampaign(admin),
       ]);
-      return json({ success: true, messages: msgs || [], calls: calls || [] });
+      return json({ success: true, messages: msgs || [], calls: calls || [], campaign });
+    }
+
+    // --- CAMPAIGN panel data ---
+    if (action === 'get_plan') {
+      return json({ success: true, campaign: await loadCampaign(admin) });
+    }
+
+    // --- CAMPAIGN: approve / reject a task ---
+    if (action === 'approve_task' || action === 'reject_task') {
+      const id = body.id;
+      if (!id) return json({ success: false, error: 'missing task id' }, 400);
+      const { data: task } = await admin.from('seo_plan_tasks').select('*').eq('id', id).single();
+      if (!task) return json({ success: false, error: 'task not found' }, 404);
+      if (action === 'reject_task') {
+        await admin.from('seo_plan_tasks').update({ status: 'rejected' }).eq('id', id);
+        return json({ success: true, campaign: await loadCampaign(admin) });
+      }
+      // Approve. For title_meta tasks with a draft, publish the build-time
+      // override — the acting layer. This is the owner's explicit tap.
+      let applied = false, buildTriggered = false;
+      await admin.from('seo_plan_tasks').update({ status: 'approved', approved_at: new Date().toISOString() }).eq('id', id);
+      const draft = task.draft || {};
+      if (task.task_type === 'title_meta' && task.target_path && (draft.title || draft.meta_description)) {
+        const { error: ovErr } = await admin.from('seo_content_overrides').upsert({
+          path: task.target_path,
+          title: draft.title || null,
+          meta_description: draft.meta_description || null,
+          published: true,
+          task_id: task.id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'path' });
+        applied = !ovErr;
+        if (applied && VERCEL_DEPLOY_HOOK_URL) {
+          try { const r = await fetch(VERCEL_DEPLOY_HOOK_URL, { method: 'POST' }); buildTriggered = r.ok; } catch (_e) { /* best-effort */ }
+        }
+      }
+      return json({ success: true, applied, build_triggered: buildTriggered, campaign: await loadCampaign(admin) });
+    }
+
+    // --- CAMPAIGN: weekly agent kill switch ---
+    if (action === 'set_agent_enabled') {
+      await admin.from('seo_agent_state').upsert({ id: 1, enabled: !!body.enabled, updated_at: new Date().toISOString() });
+      return json({ success: true, campaign: await loadCampaign(admin) });
+    }
+
+    // --- CAMPAIGN: run the weekly review now (manual trigger) ---
+    if (action === 'run_weekly') {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/seo-agent-weekly`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_ROLE}` },
+          body: JSON.stringify({ manual: true }),
+        });
+        const out = await r.json().catch(() => ({}));
+        return json({ success: true, run: out, campaign: await loadCampaign(admin) });
+      } catch (e: any) {
+        return json({ success: false, error: String(e?.message || e).slice(0, 300) });
+      }
     }
 
     // --- TRACK RECORD: owner grades a past recommendation ---
@@ -403,7 +317,7 @@ serve(async (req: Request) => {
     }
 
     // --- CHAT (default) ---
-    if (!GSC_KEY_JSON) return json({ success: false, error: 'GSC_SERVICE_ACCOUNT_JSON not set — the coach needs the Search Console key to read your search data.' }, 200);
+    if (!hasGscKey()) return json({ success: false, error: 'GSC_SERVICE_ACCOUNT_JSON not set — the coach needs the Search Console key to read your search data.' }, 200);
     const incoming = Array.isArray(body.messages) ? body.messages : [];
     const convo = incoming
       .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -423,6 +337,16 @@ serve(async (req: Request) => {
       ? `LIVE SEARCH CONSOLE SNAPSHOT (pulled just now — reason from THIS, it outranks the doc):\n${JSON.stringify(context, null, 2)}`
       : `LIVE SEARCH CONSOLE SNAPSHOT: unavailable this turn (${contextErr || 'no data'}). Tell the owner you couldn't pull fresh search data and answer on principle, clearly flagged.`;
 
+    // Campaign context: plan, tasks, ranking history, seasonal windows.
+    const campaign = await loadCampaign(admin);
+    const campaignBlock = `CAMPAIGN STATE (the ongoing plan you and the weekly agent run with the owner):\n${JSON.stringify({
+      plan: campaign.plan ? { title: campaign.plan.title, goal: campaign.plan.goal } : 'none yet — created automatically on your first propose_task',
+      weekly_agent: { enabled: campaign.state?.enabled !== false, last_run_at: campaign.state?.last_run_at || 'never' },
+      tasks: campaign.tasks.map((t: any) => ({ title: t.title, type: t.task_type, status: t.status, target_path: t.target_path, target_queries: t.target_queries, due: t.due_date })),
+      ranking_history_weekly_totals: campaign.snapshots.map((s: any) => ({ at: String(s.captured_at).slice(0, 10), ...s.totals })),
+      seasonal_windows: upcomingSeasonalWindows(),
+    }, null, 2)}`;
+
     // Seasonal push context (same source the creative generators use).
     let promoNotes = '';
     try {
@@ -437,6 +361,8 @@ ${brandContext(promoNotes)}
 
 ${contextBlock}
 
+${campaignBlock}
+
 ${seoBrainContext('HOW GOOGLE + AI SEARCH SELECT RESULTS — reason with these mechanics (respect the confidence tags):')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -444,9 +370,10 @@ FINAL OUTPUT RULES — these override the formatting of everything above. Obey t
 1. PLAIN TEXT ONLY. Absolutely no markdown. Never ** or __ or ## (they show as literal symbols in the owner's chat). Lists use "- " or "1." only. The doc above uses CAPS/symbols for YOUR reading — do not copy that style.
 2. MATCH LENGTH TO THE QUESTION. Narrow question → a few sentences. Strategic/open question → fuller treatment. Never pad or repeat.
 3. When you discuss a specific page (ours or a competitor's), use fetch_page FIRST and critique the real page. Never review a page from imagination.
+4. When the owner agrees a specific move is worth doing (or asks you to plan), save it with propose_task — a card they can approve beats advice that evaporates.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-    const { text: reply, fetched } = await runChatWithTools(system, convo);
+    const { text: reply, fetched, proposed } = await runChatWithTools(admin, system, convo);
 
     // MEMORY: persist just this turn (frontend re-sends history each call).
     try {
@@ -456,22 +383,30 @@ FINAL OUTPUT RULES — these override the formatting of everything above. Obey t
       ]);
     } catch (_e) { /* best-effort */ }
 
-    // TRACK RECORD: log the top concrete recommendation for owner grading.
+    // TRACK RECORD: log the top concrete recommendation for grading — but only
+    // when the coach did NOT already turn it into a campaign task (tasks are
+    // the stronger, verifiable form; double-logging would clutter the record).
     let calls: any[] = [];
     try {
-      const rec = await extractRecommendation(reply);
-      if (rec?.recommendation) {
-        await admin.from('seo_coach_calls').insert({
-          recommendation: String(rec.recommendation).slice(0, 300),
-          rationale: String(rec.rationale || '').slice(0, 400),
-          target_page: String(rec.target_page || '').slice(0, 200),
-        });
+      if (!proposed.length) {
+        const rec = await extractRecommendation(reply);
+        if (rec?.recommendation) {
+          await admin.from('seo_coach_calls').insert({
+            recommendation: String(rec.recommendation).slice(0, 300),
+            rationale: String(rec.rationale || '').slice(0, 400),
+            target_page: String(rec.target_page || '').slice(0, 200),
+          });
+        }
       }
       const { data } = await admin.from('seo_coach_calls').select('*').order('created_at', { ascending: false }).limit(30);
       calls = data || [];
     } catch (_e) { /* best-effort */ }
 
-    return json({ success: true, reply, brain_reviewed: SEO_BRAIN_LAST_REVIEWED, had_live_data: !!context, pages_read: fetched, calls });
+    return json({
+      success: true, reply, brain_reviewed: SEO_BRAIN_LAST_REVIEWED, had_live_data: !!context,
+      pages_read: fetched, tasks_proposed: proposed, calls,
+      campaign: proposed.length ? await loadCampaign(admin) : undefined,
+    });
   } catch (e: any) {
     return json({ success: false, error: String(e?.message || e).slice(0, 400) }, 500);
   }

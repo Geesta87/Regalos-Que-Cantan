@@ -953,6 +953,12 @@ verify_jwt = false
 [functions.seo-coach]
 verify_jwt = true
 
+[functions.seo-agent-weekly]
+# SEO campaign agent heartbeat. Called by pg_cron (no JWT) and server-to-server
+# from seo-coach's run_weekly action. Advice/verification only + owner-gated
+# proposals; nothing user-visible changes without dashboard approval.
+verify_jwt = false
+
 # Ads Coach - advice-only Meta ads specialist. Called by the admin frontend with
 # the owner's Supabase JWT (admin_users gate inside), so keep JWT verification ON.
 # Never invoked by an external webhook or pg_cron.

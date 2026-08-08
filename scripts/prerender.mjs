@@ -942,9 +942,34 @@ function applyRoute(template, route) {
   return html;
 }
 
+// ── SEO content overrides (approved by the owner in the SEO Coach tab) ──────
+// The SEO campaign agent publishes approved title/meta changes into the
+// seo_content_overrides table; this build step applies them so an approval
+// reaches the live HTML on the next deploy without a code change. Fail-soft:
+// any error (no env vars, network, table missing) just keeps the static values.
+async function fetchSeoOverrides() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) return {};
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/seo_content_overrides?select=path,title,meta_description&published=eq.true`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return {};
+    const rows = await res.json();
+    const map = {};
+    for (const r of rows) map[r.path] = r;
+    return map;
+  } catch (err) {
+    console.warn(`  SEO overrides skipped (${err.message}) — using static values`);
+    return {};
+  }
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
-function main() {
+async function main() {
   console.log('\n  Static prerender (no browser needed)\n');
 
   const template = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
@@ -954,6 +979,18 @@ function main() {
   console.log('  Created 200.html (SPA fallback)\n');
 
   const routes = buildRouteConfigs();
+
+  const overrides = await fetchSeoOverrides();
+  let overridden = 0;
+  for (const route of routes) {
+    const ov = overrides[route.path];
+    if (!ov) continue;
+    if (ov.title) route.title = ov.title;
+    if (ov.meta_description) route.description = ov.meta_description;
+    overridden++;
+  }
+  if (overridden) console.log(`  Applied ${overridden} approved SEO override(s) from the campaign agent\n`);
+
   console.log(`  Prerendering ${routes.length} SEO routes...\n`);
 
   let ok = 0;
@@ -1015,4 +1052,4 @@ ${sitemapUrls}
 
 }
 
-main();
+main().catch((err) => { console.error(`  Prerender failed: ${err.message}`); process.exit(1); });
