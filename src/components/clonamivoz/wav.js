@@ -10,10 +10,13 @@
 // (pilot-confirmed) and every backend consumer (upload-customer-voice,
 // Suno upload-cover) also handles.
 //
-// 32 kHz mono keeps a 120 s recording at ~7.7 MB — under the 10 MB upload
-// cap — while preserving the full voice band (16 kHz bandwidth).
+// MUST be 44.1 kHz: Kie silently discards WAV at non-standard rates —
+// field-confirmed 2026-08-08 with an A/B test (identical audio: 32 kHz
+// task never registers, 44.1 kHz processes immediately). A 120 s mono
+// take at 44.1 kHz is ~10.6 MB, so the upload cap was raised to 16 MB
+// (upload-customer-voice MAX_BYTES + the customer-voice bucket limit).
 
-const TARGET_SAMPLE_RATE = 32000;
+const TARGET_SAMPLE_RATE = 44100;
 
 /**
  * Re-encode any browser-recorded audio Blob to a mono 16-bit WAV Blob.

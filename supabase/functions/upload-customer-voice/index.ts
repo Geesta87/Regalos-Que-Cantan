@@ -54,7 +54,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const STORAGE_BUCKET = 'customer-voice';
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB hard cap (matches bucket config)
+// 16 MB (matches bucket config). Raised from 10 MB 2026-08-08: client-side
+// WAV re-encoding must use 44.1 kHz (Kie discards non-standard rates), and
+// a max-length 120 s mono 44.1 kHz take is ~10.6 MB.
+const MAX_BYTES = 16 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 3600; // 1 hour — long enough for Suno to fetch
 
 // Accepted MIME types match what the bucket allows. Browser MediaRecorder
