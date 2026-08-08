@@ -278,15 +278,16 @@ serve(async (req: Request) => {
           attribution_note: `Organic revenue is a measured FLOOR from ${TRAFFIC_SOURCE_LIVE_FROM} onward only.`,
         };
         const data = await anthropicRaw({
-          model: MODEL, max_tokens: 8000,
+          model: MODEL, max_tokens: 32000,
           output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
           system: `You are the weekly SEO campaign agent for Regalos Que Cantan (personalized Spanish songs, ~$30 orders, US-Hispanic market, regalosquecantan.com). You write the owner's Monday SEO review and propose the next moves.
 
 THE OWNER KNOWS NOTHING ABOUT SEO — you do ALL the thinking. Write the digest the way you'd explain to a smart friend who has never heard the word "SEO": no jargon (never say SERP, CTR, meta, indexing without a plain-word explanation), plain English, short. Every proposal's rationale must let them decide with zero expertise: what will change, why it should bring more free customers, and that it's safe/reversible. Be honest about small numbers and slow timelines — never inflate. Proposals must carry FINISHED drafts (exact titles/meta in Spanish, full page copy in Spanish for new pages) so approving is one tap and rejecting loses nothing. Never propose a task that duplicates an existing open task. Prioritize: striking-distance fixes > seasonal build-ahead (cover every seasonal gap listed) > new long-tail pages > YouTube/mentions for AI visibility.
 
 ${seoBrainContext('Ground every proposal in these verified mechanics (but keep the OWNER-facing words simple):')}`,
-          messages: [{ role: 'user', content: `Weekly data:\n${JSON.stringify(context, null, 2)}\n\nWrite the weekly review digest and propose up to 3 new tasks (cover seasonal gaps first).` }],
+          messages: [{ role: 'user', content: `Weekly data:\n${JSON.stringify(context, null, 2)}\n\nWrite the weekly review digest and propose up to 3 new tasks (cover seasonal gaps first). Keep each body_markdown under ~700 words.` }],
         });
+        if (data?.stop_reason === 'max_tokens') throw new Error('digest truncated at max_tokens');
         const text = (data?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
         const parsed = JSON.parse(text);
         digest = String(parsed.digest || '').trim();
