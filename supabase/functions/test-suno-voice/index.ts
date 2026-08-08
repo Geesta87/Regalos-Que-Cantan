@@ -105,6 +105,18 @@ serve(async (req) => {
     return json(200, { signed_url: signed.data.signedUrl, expires_in: ttl });
   }
 
+  if (action === 'upload') {
+    const storagePath = typeof body.storage_path === 'string' ? body.storage_path : '';
+    const b64 = typeof body.base64 === 'string' ? body.base64 : '';
+    if (!storagePath || !b64) return json(400, { error: 'missing_storage_path_or_base64' });
+    const bucket = typeof body.bucket === 'string' && body.bucket ? body.bucket : DEFAULT_BUCKET;
+    const contentType = typeof body.content_type === 'string' ? body.content_type : 'audio/mpeg';
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const up = await supabase.storage.from(bucket).upload(storagePath, bytes, { contentType, upsert: true });
+    if (up.error) return json(502, { error: 'upload_failed', message: up.error.message });
+    return json(200, { uploaded: storagePath, bytes: bytes.length });
+  }
+
   if (action === 'latest_samples') {
     const limit = typeof body.limit === 'number' ? Math.min(body.limit, 20) : 5;
     const { data, error } = await supabase
