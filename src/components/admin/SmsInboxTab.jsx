@@ -512,6 +512,20 @@ export default function SmsInboxTab({ accessToken }) {
   const turnsToText = (turns) =>
     turns.map((t) => `${t.who === 'customer' ? 'Cliente' : 'Nosotros'}: ${t.text}`).join('\n');
 
+  // The customer often TYPES their email into the chat (the thread itself only
+  // carries a phone, and orders are sometimes placed under a different number) —
+  // fish the most recent email out of THEIR messages so the song lookup can use
+  // it automatically. Skips our own addresses. (Owner hit this 2026-08-09: email
+  // sat in the conversation, form found no songs by phone.)
+  const emailFromTurns = (turns) => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].who !== 'customer') continue;
+      const m = turns[i].text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+      if (m && !/@regalosquecantan\.com$/i.test(m[0])) return m[0].toLowerCase();
+    }
+    return '';
+  };
+
   // Open the confirmation modal and kick off the AI summary in the background.
   // INTAKE QUESTIONNAIRE (owner spec 2026-07-27): the modal now REQUIRES tying
   // the request to the exact song(s) — email/phone → paid filter → pick 1-2 from
@@ -522,14 +536,18 @@ export default function SmsInboxTab({ accessToken }) {
     if (!selected) return;
     const turns = buildTurns(selected);
     const exchange = turnsToText(turns);
+    // Prefill the email from the conversation itself (customers type it in chat
+    // when their order is under a different number than the thread's phone).
+    const chatEmail = emailFromTurns(turns);
     setFixModal({
       turns, exchange, summary: '', loading: true, submitting: false, error: '', done: false,
       // intake fields
-      phone: selected.phone || '', email: '', paid: true,
+      phone: selected.phone || '', email: chatEmail, paid: true,
       songs: null, searching: false, selectedSongs: [], searchFailed: '',
     });
-    // Auto-search right away when we already have the phone from the thread.
-    if (!isDemo && selected.phone) searchIntakeSongs({ phone: selected.phone, email: '', paid: true });
+    // Auto-search right away with EVERY identifier we have — the backend ORs
+    // phone + email, so whichever one matches the order finds the songs.
+    if (!isDemo && (selected.phone || chatEmail)) searchIntakeSongs({ phone: selected.phone || '', email: chatEmail, paid: true });
     if (isDemo) {
       setFixModal((m) => (m ? { ...m, summary: '', loading: false } : m));
       return;
