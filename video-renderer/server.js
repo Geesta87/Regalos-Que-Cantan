@@ -370,8 +370,13 @@ const server = http.createServer(async (req, res) => {
     let spec;
     try {
       spec = JSON.parse(await readBody(req));
-      if (spec.mode === 'rehost') {
+      // rehost and trim are single-input modes: they only need pristine_url
+      // (trim additionally needs the cut point). Without this clause every trim
+      // request died here with "missing resung_url" and the trim handler was
+      // unreachable — the auto-worker's end-trim rescue silently never worked.
+      if (spec.mode === 'rehost' || spec.mode === 'trim') {
         if (!spec.pristine_url) throw new Error('missing pristine_url');
+        if (spec.mode === 'trim' && !(Number(spec.trimAtS) > 0)) throw new Error('missing trimAtS');
       } else if (!spec.pristine_url || !spec.resung_url) {
         throw new Error('missing pristine_url or resung_url');
       }
