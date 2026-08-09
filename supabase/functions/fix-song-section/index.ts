@@ -846,10 +846,10 @@ async function submitReplaceSection(args: {
 // Full new Kie generation from corrected lyrics (whole-song re-roll). Mirrors
 // regenerate-paid-song-kie's submitToKie tuning so the remake matches how paid
 // songs are produced.
-async function submitFullGenerate(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string): Promise<string> {
+async function submitFullGenerate(lyrics: string, title: string, styleUsed: string, voiceType: string, callbackUrl: string, opts: { personaId?: string; durationS?: number } = {}): Promise<string> {
   const vocalGender: 'm' | 'f' = voiceType === 'female' ? 'f' : 'm';
   const { tags, negativeTags } = buildStyleAndNegatives(styleUsed, voiceType);
-  const payload = {
+  const payload: Record<string, unknown> = {
     prompt: englishifyLyricsMarkers(lyrics).substring(0, 5000),
     customMode: true,
     instrumental: false,
@@ -863,6 +863,12 @@ async function submitFullGenerate(lyrics: string, title: string, styleUsed: stri
     weirdnessConstraint: 0.3,
     audioWeight: 0.7,
   };
+  // PERSONA RE-ROLL (2026-08-09): sing the fresh full generation with the
+  // ORIGINAL take's minted voice; `duration` (V5_5 only) pins the length to the
+  // original song's — same singer + same length + corrected words, the
+  // deterministic fix when replace-section keeps over-extending.
+  if (opts.personaId) { payload.personaId = opts.personaId; payload.personaModel = 'voice_persona'; }
+  if (opts.durationS && opts.durationS >= 10 && opts.durationS <= 360) payload.duration = Math.round(opts.durationS);
   const resp = await fetch('https://api.kie.ai/api/v1/generate', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -1092,6 +1098,56 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action: string = body?.action || 'preview';
+
+    // -----------------------------------------------------------------
+    // MINT-PERSONA — create (or reuse) a Kie voice persona from THIS song's
+    // original take, so a FULL re-roll can sing with the SAME voice
+    // (personaId + duration on /generate = same singer, pinned length —
+    // the deterministic escape hatch when replace-section over-extends;
+    // docs.kie.ai/suno-api/generate-persona, verified 2026-08-09).
+    // Each audioId can mint a persona only ONCE, so the id is persisted in
+    // songs.kie_source and reused on later calls.
+    // -----------------------------------------------------------------
+    if (action === 'mint-persona') {
+      const songId: string | undefined = body?.songId;
+      if (!songId) return json({ ok: false, error: 'songId is required' });
+      if (!KIE_API_KEY) return json({ ok: false, error: 'KIE_API_KEY missing' });
+      const { data: song } = await supabase
+        .from('songs')
+        .select('id, recipient_name, style_used, kie_task_id, kie_payload, kie_source, fix_backup, provider, created_at')
+        .eq('id', songId)
+        .single();
+      if (!song) return json({ ok: false, error: 'song not found' });
+      // deno-lint-ignore no-explicit-any
+      const existing = (song.kie_source as any)?.personaId;
+      if (existing) return json({ ok: true, personaId: existing, reused: true });
+      const src = await resolveKieSource(song, supabase);
+      if (!src) return json({ ok: false, error: 'No Kie source available (Mureka song, or Kie purged the audio after ~14 days).' });
+      const resp = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: src.taskId,
+          audioId: src.audioId,
+          name: `voz-${String(songId).slice(0, 8)}`,
+          description: `Voz original de la canción para ${song.recipient_name || 'cliente'}. ${String(song.style_used || '').slice(0, 160)}`,
+          // 10-30s vocal sample window; verses start after the intro on our songs.
+          vocalStart: Number(body?.vocalStart) >= 0 ? Number(body.vocalStart) : 12,
+          vocalEnd: Number(body?.vocalEnd) > 0 ? Number(body.vocalEnd) : 40,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      const personaId = data?.data?.personaId;
+      if (!resp.ok || data?.code !== 200 || !personaId) {
+        return json({ ok: false, error: `generate-persona ${resp.status} code=${data?.code}: ${String(data?.msg || 'no personaId').slice(0, 200)}` });
+      }
+      // Persist (one mint per audio, ever) — merge into kie_source.
+      // deno-lint-ignore no-explicit-any
+      const mergedSource = { ...((song.kie_source as any) || {}), taskId: src.taskId, audioId: src.audioId, personaId };
+      await supabase.from('songs').update({ kie_source: mergedSource }).eq('id', songId);
+      await logAttempt(supabase, { song_id: songId, action: 'mint-persona', kie_task_id: src.taskId, outcome: 'success', detail: `personaId=${personaId}` });
+      return json({ ok: true, personaId, reused: false });
+    }
 
     // -----------------------------------------------------------------
     // DIAG — pull Kie's record-info for any taskId (status + errorCode +
@@ -1467,14 +1523,20 @@ Deno.serve(async (req) => {
         try {
           let lyricsUsed = correctedLyrics as string;
           let taskId: string;
+          // Optional persona re-roll: personaId (from action 'mint-persona') sings
+          // with the original take's voice; durationS pins the length (V5_5).
+          const genOpts = {
+            personaId: typeof body?.personaId === 'string' && body.personaId ? body.personaId : undefined,
+            durationS: Number(body?.durationS) > 0 ? Number(body.durationS) : undefined,
+          };
           try {
-            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {
             if (!isContentError(e)) throw e;
             const cleaned = await sanitizeLyricsForFilter(lyricsUsed);
             if (!cleaned || cleaned === lyricsUsed) throw e;
             lyricsUsed = cleaned;
-            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl);
+            taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           }
           await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: (correctedSummary || '').slice(0, 500) });
           return json({
