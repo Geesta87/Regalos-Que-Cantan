@@ -431,23 +431,23 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const tr = await postFn({ action: 'transcribe', audioUrl: url });
         const words = parseTimed(tr.timed);
         // WHOLE-TAKE (owner rule: ship Suno's whole re-sing, NEVER splice). Accept the
-        // entire take whenever it sang the corrected line and its length is in a sane
-        // band of the original (0.80–1.30×). This is deliberately generous: a corrido
-        // that comes back a little long is still a good WHOLE take, and rejecting it
-        // (as the old ±15% did) is exactly what hid good Kie songs and forced retries.
-        // Over that ceiling ⇒ genuine over-extension ⇒ fall through to a full re-roll.
+        // entire take whenever it sang the corrected line and its length is CLOSE to
+        // the original (≤1.08×) — anything longer gets the end-trim rescue below.
         if (allowWhole && !addLine && origFullDur && words.length) {
           const takeEnd = words[words.length - 1].end;
-          // Length FIRST (in band, or over-long with a findable true end → END-TRIM
-          // RESCUE: Suno's replace-section often sings the whole song correctly and
-          // then APPENDS a duplicated puente/final chorus; those takes' only defect
-          // is the extra tail, cut with a single end-trim + fade — no seam/stretch).
+          // Length FIRST. The as-is ceiling is deliberately TIGHT: a ≤1.30× ceiling
+          // shipped a 3:52 song as 4:49 (+25%, untrimmed — owner complaint
+          // 2026-08-09). Over 1.08× ⇒ END-TRIM RESCUE: Suno's replace-section often
+          // sings the whole song correctly and then APPENDS a duplicated
+          // puente/final chorus; locate the TRUE final lyric line near the original
+          // length and end-cut + fade there — no seam/stretch. Only a take whose
+          // real ending can't be found (or lands far from the original) is rejected.
           let trimAtS = null;
-          let lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.30;
-          if (!lenOk && takeEnd > origFullDur * 1.30) {
+          let lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.08;
+          if (!lenOk && takeEnd > origFullDur * 1.08) {
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
-            if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.30) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+            if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -483,7 +483,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           }
           if (sang && keptPrior && consistent && lenOk) {
             wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
-          } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.30) {
+          } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.08) {
             lastReason = 'la toma salió demasiado larga (y no se ubicó el final real para recortar)';
             lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
           } else if (wholeOnly && !(sang && lenOk && (!keptPrior || !consistent))) {
@@ -873,13 +873,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         if (!tr.ok) continue;
         const words = parseTimed(tr.timed);
         const takeEnd = words.length ? words[words.length - 1].end : 0;
-        // Length: in band, or over-long with a findable true end (end-trim rescue).
+        // Length: as-is only when CLOSE to the baseline (≤1.08×); anything longer
+        // gets the end-trim rescue. The old ≤1.30× as-is ceiling shipped a 3:52
+        // song as 4:49 untrimmed (owner complaint 2026-08-09).
         let trimAtS = null;
-        let lenOk = takeEnd >= baselineDur * 0.80 && takeEnd <= baselineDur * 1.30;
-        if (!lenOk && takeEnd > baselineDur * 1.30) {
+        let lenOk = takeEnd >= baselineDur * 0.80 && takeEnd <= baselineDur * 1.08;
+        if (!lenOk && takeEnd > baselineDur * 1.08) {
           const lyricLines = String(combinedLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
           const trueEnd = findLastLineEnd(words, lyricLines, baselineDur);
-          if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.30) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+          if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing

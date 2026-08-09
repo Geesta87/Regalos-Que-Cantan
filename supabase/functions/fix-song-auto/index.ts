@@ -394,13 +394,15 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (!sang) { diags.push({ url, verdict: 'reject', reason: 'no cantó todas las correcciones', text: words.map((w) => w.word).join(' ').slice(0, 400) }); continue; }
     const takeEnd = words[words.length - 1].end;
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
-    if (takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.30) {
+    // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
+    // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    if (takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08) {
       cands.push({ url, drift: Math.abs(takeEnd - origDur), trimAtS: null });
       diags.push({ url, verdict: 'clean', reason: 'in-band whole take' });
-    } else if (takeEnd > origDur * 1.30) {
+    } else if (takeEnd > origDur * 1.08) {
       // End-trim rescue: duplicated tail after the true ending.
       const trueEnd = findLastLineEnd(words, plan.fullLyrics || plan.approvedLyrics || '', origDur);
-      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.30) {
+      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
         cands.push({ url, drift: Math.abs(trueEnd - origDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
         diags.push({ url, verdict: 'clean-trimmed', reason: `over-long, true end at ${trueEnd.toFixed(1)}s` });
       } else {
