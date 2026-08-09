@@ -113,11 +113,14 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Buttons are thumb-sized on phones (the owner approves fixes from
+            WhatsApp pings on the go — owner ask 2026-08-09) and compact on
+            desktop: full-width + ~44px tall below sm, the original pill above. */}
         {req.status === 'pending' && (
           <button
             onClick={() => onClaim(req)}
             disabled={busy}
-            className="py-1.5 px-3 bg-amber-500 text-black rounded-lg text-xs font-semibold hover:bg-amber-400 transition disabled:opacity-60"
+            className="w-full sm:w-auto py-2.5 sm:py-1.5 px-3 bg-amber-500 text-black rounded-lg text-sm sm:text-xs font-semibold hover:bg-amber-400 transition disabled:opacity-60"
           >
             {busy ? '…' : '🔧 Start fixing'}
           </button>
@@ -128,14 +131,14 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
             <button
               onClick={() => onWork(req)}
               disabled={busy}
-              className="py-1.5 px-3 bg-indigo-500 text-white rounded-lg text-xs font-semibold hover:bg-indigo-400 transition disabled:opacity-60"
+              className="w-full sm:w-auto py-2.5 sm:py-1.5 px-3 bg-indigo-500 text-white rounded-lg text-sm sm:text-xs font-semibold hover:bg-indigo-400 transition disabled:opacity-60"
             >
               🎧 Continue fixing
             </button>
             <button
               onClick={() => onUnclaim(req)}
               disabled={busy}
-              className="py-1.5 px-3 bg-white/10 text-gray-200 rounded-lg text-xs font-medium hover:bg-white/15 transition disabled:opacity-60"
+              className="py-2 sm:py-1.5 px-3 bg-white/10 text-gray-200 rounded-lg text-[13px] sm:text-xs font-medium hover:bg-white/15 transition disabled:opacity-60"
             >
               Put back
             </button>
@@ -149,14 +152,14 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
             <button
               onClick={() => onRelease(req)}
               disabled={busy}
-              className="py-1.5 px-3 bg-green-500 text-black rounded-lg text-xs font-semibold hover:bg-green-400 transition disabled:opacity-60"
+              className="w-full sm:w-auto py-3 sm:py-1.5 px-3 bg-green-500 text-black rounded-lg text-sm sm:text-xs font-semibold hover:bg-green-400 transition disabled:opacity-60"
             >
               {busy ? '⏳ Releasing…' : '✅ Confirm & replace the customer\'s song'}
             </button>
             <button
               onClick={() => onWork(req)}
               disabled={busy}
-              className="py-1.5 px-3 bg-white/10 text-gray-200 rounded-lg text-xs font-medium hover:bg-white/15 transition disabled:opacity-60"
+              className="py-2 sm:py-1.5 px-3 bg-white/10 text-gray-200 rounded-lg text-[13px] sm:text-xs font-medium hover:bg-white/15 transition disabled:opacity-60"
               title="Redo the fix"
             >
               ↺ Redo
@@ -169,7 +172,7 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
           <button
             onClick={() => setRejecting(true)}
             disabled={busy}
-            className="py-1.5 px-3 bg-red-500/15 text-red-300 rounded-lg text-xs font-medium hover:bg-red-500/25 transition disabled:opacity-60"
+            className="py-2 sm:py-1.5 px-3 bg-red-500/15 text-red-300 rounded-lg text-[13px] sm:text-xs font-medium hover:bg-red-500/25 transition disabled:opacity-60"
           >
             Reject
           </button>

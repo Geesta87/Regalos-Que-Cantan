@@ -33,7 +33,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO') || '';
-const ADMIN_FIX_URL = 'https://regalosquecantan.com/admin'; // queue lives in the Fix Song tab
+// Deep-link straight to the Fix Song tab — the queue (staged card on top) is the
+// first thing on it. On a phone the owner taps the WhatsApp link and lands ONE
+// tap away from Release; bare /admin landed on the Action Inbox instead.
+const ADMIN_FIX_URL = 'https://regalosquecantan.com/admin?tab=fixsong';
 
 const CLAUDE_MODEL = 'claude-opus-4-8';
 const CLAUDE_FALLBACK = 'claude-sonnet-4-6';
