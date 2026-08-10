@@ -5,7 +5,6 @@
 // READ-ONLY aggregator. Pulls every "waiting on the owner" item from the
 // existing agent/pipeline tables into one ranked list:
 //
-//   - CS agent reply drafts            (sms_messages.status = 'draft')
 //   - SEO campaign proposed tasks      (seo_plan_tasks.status = 'proposed')
 //   - Chief of Staff staged actions    (cos_pending_actions.status = 'pending')
 //   - CoS drafted emails               (email_queue.status = 'pending_approval')
@@ -17,11 +16,14 @@
 //   - Slideshow videos paid, no photos (video_orders)
 //   - Recent hot leads (approximate)   (unpaid songs w/ phone, last 72h)
 //
+// CS reply drafts (SMS/WhatsApp) are deliberately NOT aggregated here —
+// owner decision 2026-08-10: message review stays inside the SMS tab only.
+//
 // This function never mutates anything. Approvals are executed by the frontend
 // calling the SAME existing endpoints the per-agent tabs already use
-// (sms-admin approve-draft, seo-coach approve_task, cos-assistant
-// confirm_action, ...), so every approval path stays single-sourced and the
-// per-agent tabs remain the source of truth for deep review.
+// (seo-coach approve_task, cos-assistant confirm_action, ...), so every
+// approval path stays single-sourced and the per-agent tabs remain the
+// source of truth for deep review.
 //
 // Admin-only (verify_jwt = true + admin_users gate, same as seo-coach).
 // Deploy: supabase functions deploy action-inbox --project-ref yzbvajungshqcpusfiia
@@ -79,12 +81,9 @@ serve(async (req: Request) => {
       .or('amount_paid.gt.0,stripe_payment_id.not.is.null,marked_paid_at.not.is.null');
 
     const [
-      csDrafts, seoTasks, cosActions, cosEmails, fixReady,
+      seoTasks, cosActions, cosEmails, fixReady,
       animado, pendingWa, stuckPaid, videosNoPhotos, hotLeads,
     ] = await Promise.all([
-      soft(admin.from('sms_messages')
-        .select('id, conversation_id, body, channel, needs_human, created_at')
-        .eq('status', 'draft').order('created_at', { ascending: false }).limit(300)),
       soft(admin.from('seo_plan_tasks')
         .select('id, title, task_type, target_path, rationale, created_at')
         .eq('status', 'proposed').order('created_at', { ascending: false }).limit(15)),
@@ -125,16 +124,6 @@ serve(async (req: Request) => {
         .order('created_at', { ascending: false }).limit(50)),
     ]);
 
-    // Draft cards need the customer's name/phone — one batched lookup, but
-    // only for the fresh drafts that become individual cards (the stale pile
-    // is a roll-up and never shows names).
-    const freshDraftRows = (csDrafts || []).filter((m: any) => hoursAgo(m.created_at) <= 72).slice(0, 10);
-    const convIds = [...new Set(freshDraftRows.map((m: any) => m.conversation_id).filter(Boolean))];
-    const convs = convIds.length
-      ? (await soft(admin.from('sms_conversations').select('id, customer_name, phone, channel').in('id', convIds))) || []
-      : [];
-    const convById = new Map(convs.map((c: any) => [c.id, c]));
-
     const items: Item[] = [];
 
     // --- Paid but stuck generating: the customer paid and has NOTHING. -----
@@ -168,34 +157,6 @@ serve(async (req: Request) => {
           created_at: o.created_at, nav: 'animado',
         });
       }
-    }
-
-    // --- CS reply drafts (one-tap approve via sms-admin). ------------------
-    // A customer waiting >72h has already been failed — individual cards are
-    // only useful for fresh drafts; the stale pile becomes one roll-up card
-    // (live check 2026-08-08 found 172 accumulated drafts).
-    const freshDrafts = freshDraftRows;
-    const staleDraftCount = (csDrafts || []).length - freshDrafts.length;
-    for (const m of freshDrafts) {
-      const c = convById.get(m.conversation_id) || {};
-      items.push({
-        key: `cs_draft:${m.id}`, source: 'CS agent', severity: 'high',
-        title: `Reply drafted for ${c.customer_name || c.phone || 'customer'}${m.needs_human ? ' (flagged: needs human judgment)' : ''}`,
-        detail: short(m.body, 220),
-        created_at: m.created_at, nav: 'sms',
-        approve: m.needs_human ? undefined : { // flagged drafts force a deep look in the SMS tab
-          fn: 'sms-admin',
-          approve: { action: 'approve-draft', conversation_id: m.conversation_id, message_id: m.id },
-        },
-      });
-    }
-    if (staleDraftCount > 0) {
-      items.push({
-        key: `cs_stale:${new Date().toISOString().slice(0, 10)}`, source: 'CS agent', severity: 'normal',
-        title: `${staleDraftCount}+ older CS drafts never approved`,
-        detail: 'Drafts older than 3 days — those conversations went unanswered. Worth a sweep in the SMS tab (approve the still-relevant, discard the rest).',
-        created_at: null, nav: 'sms',
-      });
     }
 
     // --- Paid songs waiting for WhatsApp delivery. -------------------------
