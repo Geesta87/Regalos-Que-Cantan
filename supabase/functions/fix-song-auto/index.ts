@@ -387,9 +387,12 @@ async function stepUnderstand(admin: any, r: any): Promise<void> {
 
 async function stepPlan(admin: any, r: any): Promise<void> {
   const spec = r.fix_spec;
+  // Add-line placement: END OF A RELATED VERSE, never appended after the final
+  // chorus — with duration pinned, Suno drops a line appended at the very end
+  // (Vicente a4672f19: 4 takes dropped it; mid-verse landed round 1).
   const note = spec.changes.map((c: any) =>
     c.type === 'add_line'
-      ? `AGREGA esta línea nueva al final: "${c.after}"`
+      ? `AGREGA esta línea nueva AL FINAL DE UN VERSO relacionado (a media canción, NUNCA como última línea después del coro final): "${c.after}"`
       : `La línea "${c.before}" debe decir exactamente "${c.after}"`).join('. ');
   const plan = await callFn('fix-song-section', { action: 'plan', songId: r.song_id, note });
   if (!plan?.ok || !plan.approvedLyrics) {
