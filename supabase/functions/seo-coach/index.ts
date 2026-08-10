@@ -285,7 +285,7 @@ serve(async (req: Request) => {
           });
           const out = await r.json().catch(() => ({}));
           youtubePosted = !!out.success;
-          youtubeError = out.success ? '' : String(out.error || 'posting failed');
+          youtubeError = out.success ? '' : String(out.error || `posting failed (HTTP ${r.status})`);
           if (youtubePosted) {
             await admin.from('seo_plan_tasks').update({
               status: 'implemented', implemented_at: new Date().toISOString(),
@@ -293,6 +293,15 @@ serve(async (req: Request) => {
             }).eq('id', id);
           }
         } catch (e: any) { youtubeError = String(e?.message || e).slice(0, 200); }
+        if (!youtubePosted) {
+          // Posting failed: record WHY and put the card back to 'proposed' so
+          // the Approve button stays available for a retry instead of the
+          // failure vanishing into an approved-but-never-posted limbo.
+          await admin.from('seo_plan_tasks').update({
+            status: 'proposed',
+            evidence: { ...(task.evidence || {}), youtube_error: { at: new Date().toISOString(), error: youtubeError.slice(0, 400) } },
+          }).eq('id', id);
+        }
       }
       if (task.task_type === 'title_meta' && task.target_path && (draft.title || draft.meta_description)) {
         const { error: ovErr } = await admin.from('seo_content_overrides').upsert({
