@@ -18,7 +18,7 @@ import SeoCoachTab from '../components/admin/SeoCoachTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab from '../components/admin/ActionInboxTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox } from 'lucide-react';
-import { spliceIntoOriginal, spliceAddedTail, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, biggestGap, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
+import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -655,55 +655,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     }
   }
 
-  // ADD-A-LINE surgical flow — add a brand-new line at the OUTRO while keeping
-  // the voice. Re-sings the final block (with the new line), keeps ONLY the clean
-  // re-sung tail that contains the new line, and grafts it onto the pristine song
-  // + the pristine instrumental outro. Proven recipe: memory
-  // project_add_new_line_to_song. NEEDS a live test on a real order before trusted.
-  async function runAddLine(approvedLyrics, addLine, verifyPhrases) {
-    setError(''); setResult(null); setInput('');
-    setFailedTakes(null); setShowFailedTakes(false); setRewordSuggestions(null);
-    setPhase('working'); setSurgicalMsg('Re-singing the ending with the new line…');
-    setSectionParams({ approvedLyrics, verifyPhrases });
-    try {
-      const note = `En el BLOQUE FINAL, AGREGA una línea nueva: "${addLine.text}". Re-canta el bloque final UNA sola vez, en orden, sin repetir el coro ni la despedida, incluyendo esta línea nueva en su lugar.`;
-      const r = await resingOne({ note, approvedLyrics, verifyPhrases, addLine }, setSurgicalMsg);
-      setSurgicalMsg('Locating the seams…');
-      // Pristine transcript → where to cut the original (just before its coro-final)
-      // and where its instrumental outro begins.
-      const pr = await postFn({ action: 'transcribe', audioUrl: r.originalAudioUrl });
-      const prWords = parseTimed(pr.timed);
-      const outroStart = lastSungWordEnd(prWords);
-      // joinP: biggest instrumental gap in the pristine just before the coro-final
-      // (≈ the re-sing window start). Fall back to window start if none stands out.
-      const jg = biggestGap(prWords, Math.max(0, r.startS - 10), r.startS + 4);
-      const joinP = jg.at != null ? jg.at : r.startS;
-      // reJoin: biggest gap in the re-sung take within ~14s before the new line
-      // (drops the model's 1st partial pass + the long instrumental gap it inserts).
-      const rg = biggestGap(r.resungWords, Math.max(0, r.anchorEnd - 14), r.anchorEnd - 0.5);
-      const reJoin = rg.at != null ? rg.at : Math.max(0, r.anchorEnd - 10);
-      // reEnd: end of the last real sung word after the new line (+1.5s), dropping padding.
-      const tail = r.resungWords.filter((w) => w.start >= r.anchorEnd);
-      const reEnd = (lastSungWordEnd(tail) || r.anchorEnd) + 1.5;
-      setSurgicalMsg('Stitching with the original recording…');
-      const spliced = await spliceAddedTail({ pristineUrl: r.originalAudioUrl, joinP, resungUrl: r.resungUrl, reJoin, reEnd, outroStart });
-      setResult({
-        surgical: true,
-        splicedBlob: spliced.blob,
-        changeSummary: r.changeSummary || `Added line: "${addLine.text}"`,
-        fullLyrics: r.fullLyrics,
-        corrections: [{ before: '(nueva línea)', after: addLine.text }],
-        originalAudioUrl: song.original_audio_url || song.audio_url,
-        changeMarks: joinP > 0 ? [joinP] : [],
-        takes: [{ audioUrl: spliced.url, verified: true, lyrics: r.fullLyrics }],
-      });
-      setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
-    } catch (e) {
-      setOfferFullReroll(true);
-      if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
-      setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
-    }
-  }
+  // ADD-A-LINE: RETIRED 2026-08-10. The old runAddLine grafted a re-sung tail
+  // onto the pristine song with two crossfaded seams (spliceAddedTail) — against
+  // the owner's whole-takes-only rule — and never passed a live test on a real
+  // order. Adding a line now routes through runFullReroll: the whole song is
+  // re-sung fresh with the new line included (see the confirm button below).
 
   // ── Multi-spot verification helpers (the "location-aware" net) ────────────
   // A change passes only when its corrected line is sung AT LEAST as many times
@@ -1517,12 +1473,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full'
                 ? 'The full song will be redone. Takes 1-3 min.'
                 : plan.addLine
-                  ? 'The new line will be sung into the ending and grafted onto the original — same voice. Takes 1-3 min.'
+                  ? 'Adding a line redoes the FULL song with the new line included (whole takes only — never spliced). Same style & voice type, brand-new performance. Takes 1-3 min.'
                   : (Array.isArray(plan.changes) && plan.changes.length > 1
                     ? `All ${plan.changes.length} corrections will be applied in the SAME voice (no splicing). The tool tries one take first; whatever doesn't land gets fixed automatically, spot by spot, building each round on the last. You review ONE final preview. Takes ~2 min per round.`
                     : 'Only the affected part will be regenerated as a whole take (no splicing). Takes 1-3 min.')}</p>
               {pendingMode === 'section' && plan.addLine && (
-                <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". This is newer — listen to the preview end-to-end before applying.</p>
+                <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". The whole song is re-sung fresh with it — listen end-to-end before applying.</p>
               )}
               {offerFullReroll && pendingMode === 'section' && (
                 <p className="text-[11px] text-amber-300 mb-2">⚠️ Even fixing spot by spot, Suno couldn't land every correction cleanly. You can try again (fresh takes often land), or redo the full song to apply everything at once — same style & voice type, but a brand-new performance.</p>
@@ -1539,7 +1495,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   <button
                     onClick={() => (pendingMode === 'section'
                       ? (plan.addLine
-                        ? runAddLine(plan.approvedLyrics, plan.addLine, plan.verifyPhrases)
+                        // ADD-A-LINE goes through the FULL re-roll (whole take with
+                        // the new line included). The old spliceAddedTail graft cut
+                        // and crossfaded audio — against the owner's whole-takes-only
+                        // rule — and never passed a live test. Retired 2026-08-10.
+                        ? runFullReroll(plan.approvedLyrics, plan.verifyPhrases)
                         : (Array.isArray(plan.changes) && plan.changes.length > 1
                           ? runMultiFix(plan.approvedLyrics, plan.changes)
                           : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)))
@@ -1547,7 +1507,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                     className="flex-1 py-2 px-4 bg-green-500 text-black rounded-lg text-sm font-semibold hover:bg-green-400 transition"
                   >
                     {pendingMode === 'section' && plan.addLine
-                      ? '✅ Add the line (same voice)'
+                      ? '✅ Add the line (redo full song)'
                       : pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
                         ? `✅ Fix all ${plan.changes.length} parts (same voice)`
                         : '✅ Confirm and generate'}
