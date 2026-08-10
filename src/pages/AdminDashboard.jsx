@@ -1740,6 +1740,9 @@ function FixSongTab({ accessToken, showToast }) {
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueBusyId, setQueueBusyId] = useState(null);
   const [activeRequest, setActiveRequest] = useState(null); // the request being worked
+  // Robot (fix-song-auto) state — the kill switch was SQL-only before 2026-08-10.
+  const [autoState, setAutoState] = useState(null); // fix_auto_state row
+  const [autoBusy, setAutoBusy] = useState(false);
 
   const BASE = import.meta.env.VITE_SUPABASE_URL;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -1754,8 +1757,27 @@ function FixSongTab({ accessToken, showToast }) {
     return res.json();
   }, [QUEUE_URL, accessToken, ANON]);
 
+  const loadAutoState = useCallback(async () => {
+    try {
+      const d = await postQueue({ action: 'auto-state' });
+      if (d?.success) setAutoState(d.state || null);
+    } catch { /* non-fatal */ }
+  }, [postQueue]);
+
+  async function toggleAuto() {
+    if (autoBusy) return;
+    setAutoBusy(true);
+    try {
+      const d = await postQueue({ action: 'auto-toggle', enabled: !autoState?.enabled });
+      if (d?.success) showToast(d.enabled ? '🤖 Auto-fixer ON — new chat intakes will be worked automatically.' : '🛑 Auto-fixer OFF.');
+      else showToast(`❌ ${d?.error || 'Could not switch the auto-fixer.'}`);
+      await loadAutoState();
+    } finally { setAutoBusy(false); }
+  }
+
   const loadQueue = useCallback(async () => {
     if (!accessToken) return;
+    loadAutoState();
     try {
       const data = await postQueue({ action: 'list' });
       if (data?.success) {
@@ -1764,7 +1786,7 @@ function FixSongTab({ accessToken, showToast }) {
       }
     } catch { /* ignore */ }
     finally { setQueueLoading(false); }
-  }, [accessToken, postQueue]);
+  }, [accessToken, postQueue, loadAutoState]);
 
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
@@ -1869,6 +1891,9 @@ function FixSongTab({ accessToken, showToast }) {
           role={queueRole}
           busyId={queueBusyId}
           loading={queueLoading}
+          autoState={autoState}
+          autoBusy={autoBusy}
+          onToggleAuto={toggleAuto}
           onClaim={claimReq}
           onWork={workReq}
           onUnclaim={unclaimReq}

@@ -289,6 +289,26 @@ serve(async (req) => {
       return json({ success: true, role, requests: enriched });
     }
 
+    // ── Robot (fix-song-auto) controls — the kill switch used to be SQL-only ──
+    if (action === 'auto-state') {
+      const { data: st } = await admin.from('fix_auto_state').select('*').eq('id', 1).single();
+      return json({ success: true, state: st || null });
+    }
+    if (action === 'auto-toggle') {
+      if (role !== 'admin') return json({ success: false, error: 'Only the owner can switch the auto-fixer on/off.' }, 403);
+      const enabled = !!body.enabled;
+      const patch: Record<string, unknown> = { enabled, updated_at: new Date().toISOString() };
+      // active_since gates which requests the robot may touch (future-only rule).
+      // Set it on FIRST enable only — re-enabling keeps the original window. A
+      // NULL active_since makes the worker silently process nothing (its cutoff
+      // falls back to "now"), so never leave it unset while enabled.
+      const { data: st } = await admin.from('fix_auto_state').select('active_since').eq('id', 1).single();
+      if (enabled && !st?.active_since) patch.active_since = new Date().toISOString();
+      const { error } = await admin.from('fix_auto_state').update(patch).eq('id', 1);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true, enabled });
+    }
+
     if (action === 'claim') {
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);
