@@ -1949,7 +1949,7 @@ function FixSongTab({ accessToken, showToast }) {
                 <button
                   onClick={queueRole === 'admin' ? toggleAuto : undefined}
                   disabled={autoBusy || queueRole !== 'admin'}
-                  title={queueRole === 'admin' ? 'Let Alfred pick up new chat requests by himself' : 'Only the owner can switch this'}
+                  title={queueRole === 'admin' ? 'Let him pick up new chat requests by himself' : 'Only the owner can switch this'}
                   className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
                     autoState.enabled
                       ? 'bg-green-500/15 text-green-300 border-green-500/30 hover:bg-green-500/25'
@@ -1965,6 +1965,33 @@ function FixSongTab({ accessToken, showToast }) {
                   : 'Auto-mode is off — every request is worked by hand.'}
               </span>
             </div>
+          </div>
+          {/* Studio meter — pulses like an equalizer while he's working. */}
+          {alfredBusy && (
+            <div className="hidden sm:flex items-end gap-1 h-12 self-center" aria-hidden="true">
+              {[55, 95, 40, 80, 60].map((h, i) => (
+                <span
+                  key={i}
+                  className="w-1.5 rounded-full bg-amber-400/80 animate-pulse"
+                  style={{ height: `${h}%`, animationDelay: `${i * 140}ms`, animationDuration: '850ms' }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Console strip — the studio-at-a-glance numbers. */}
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <div className="rounded-xl bg-purple-500/10 border border-purple-500/25 px-3 py-2 text-center">
+            <p className="text-lg font-bold text-purple-200 leading-none">{alfredStagedCount}</p>
+            <p className="text-[10px] uppercase tracking-wider text-purple-300/80 mt-1">To approve</p>
+          </div>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-center">
+            <p className="text-lg font-bold text-amber-200 leading-none">{alfredWorkingCount}</p>
+            <p className="text-[10px] uppercase tracking-wider text-amber-300/80 mt-1">Fixing now</p>
+          </div>
+          <div className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-center">
+            <p className="text-lg font-bold text-gray-200 leading-none">{alfredWaitingCount}</p>
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 mt-1">Waiting</p>
           </div>
         </div>
       </div>
@@ -1995,7 +2022,10 @@ function FixSongTab({ accessToken, showToast }) {
         </div>
       )}
 
-      {/* Search */}
+      {/* Search — its own labeled studio zone. */}
+      {!selected && (
+        <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500 mb-1.5">▸ Find a song to fix</p>
+      )}
       <div className="relative mb-4">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
         <input

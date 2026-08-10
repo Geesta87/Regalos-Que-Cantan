@@ -274,9 +274,26 @@ export default function FixQueue({ requests, role, busyId, loading, onClaim, onW
         </p>
       ) : (
         <div className="space-y-2.5">
-          {groups.awaiting_approval.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
-          {groups.in_progress.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
-          {groups.pending.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
+          {/* Studio zones — each state gets its own labeled rack instead of one
+              mixed stack, so the eye finds "what needs ME" instantly. */}
+          {groups.awaiting_approval.length > 0 && (
+            <>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-purple-300 pt-1">▸ Ready for your approval</p>
+              {groups.awaiting_approval.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
+            </>
+          )}
+          {groups.in_progress.length > 0 && (
+            <>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-indigo-300 pt-2">▸ On the workbench</p>
+              {groups.in_progress.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
+            </>
+          )}
+          {groups.pending.length > 0 && (
+            <>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-amber-300 pt-2">▸ New requests</p>
+              {groups.pending.map((r) => <RequestCard key={r.id} req={r} {...cardProps} />)}
+            </>
+          )}
         </div>
       )}
 
