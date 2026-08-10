@@ -1780,8 +1780,8 @@ function FixSongTab({ accessToken, showToast }) {
     setAutoBusy(true);
     try {
       const d = await postQueue({ action: 'auto-toggle', enabled: !autoState?.enabled });
-      if (d?.success) showToast(d.enabled ? '🎧 Alfred is on duty — he\'ll pick up new chat requests by himself.' : '🛑 Alfred\'s auto-mode is off — requests wait for a human.');
-      else showToast(`❌ ${d?.error || 'Could not switch Alfred\'s auto-mode.'}`);
+      if (d?.success) showToast(d.enabled ? '🎧 Ace is on duty — he\'ll pick up new chat requests by himself.' : '🛑 Ace\'s auto-mode is off — requests wait for a human.');
+      else showToast(`❌ ${d?.error || 'Could not switch Ace\'s auto-mode.'}`);
       await loadAutoState();
     } finally { setAutoBusy(false); }
   }
@@ -1891,27 +1891,27 @@ function FixSongTab({ accessToken, showToast }) {
 
   const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return ''; } };
 
-  // ── Alfred — the Fix Song specialist's live status ─────────────────────
+  // ── Ace — the Fix Song specialist's live status ─────────────────────
   // Working = the auto pipeline is actively driving a request through a step.
-  const ALFRED_ACTIVE = ['linking', 'understanding', 'planning', 'generating', 'polling', 'validating'];
-  const alfredWorkingCount = queue.filter((r) => r.status === 'pending' && ALFRED_ACTIVE.includes(r.auto_status)).length;
-  const alfredStagedCount = queue.filter((r) => r.status === 'awaiting_approval').length;
-  const alfredWaitingCount = queue.filter((r) => r.status === 'pending' && !ALFRED_ACTIVE.includes(r.auto_status)).length;
-  const alfredBusy = alfredWorkingCount > 0;
+  const ACE_ACTIVE = ['linking', 'understanding', 'planning', 'generating', 'polling', 'validating'];
+  const aceWorkingCount = queue.filter((r) => r.status === 'pending' && ACE_ACTIVE.includes(r.auto_status)).length;
+  const aceStagedCount = queue.filter((r) => r.status === 'awaiting_approval').length;
+  const aceWaitingCount = queue.filter((r) => r.status === 'pending' && !ACE_ACTIVE.includes(r.auto_status)).length;
+  const aceBusy = aceWorkingCount > 0;
 
   return (
     <div className="max-w-3xl">
-      {/* ── Alfred — hero. The fix agent has a face and a name so the team can
-          say "send it to Alfred". Portrait + working loop generated on Kie
+      {/* ── Ace — hero. The fix agent has a face and a name so the team can
+          say "send it to Ace". Portrait + working loop generated on Kie
           (nano-banana portrait → seedance-2 idle loop, 2026-08-10); assets in
           /public/agents. The loop plays only while he's actually working. */}
       <div className="mb-5 rounded-2xl border border-indigo-500/25 bg-gradient-to-r from-[#1a1f26] via-[#1c2230] to-[#232a3d] p-4 sm:p-5">
         <div className="flex items-center gap-4">
           <div className="relative flex-shrink-0">
-            {alfredBusy ? (
+            {aceBusy ? (
               <video
-                src="/agents/alfred-working.mp4"
-                poster="/agents/alfred.png"
+                src="/agents/ace-working.mp4"
+                poster="/agents/ace.png"
                 autoPlay
                 loop
                 muted
@@ -1920,28 +1920,28 @@ function FixSongTab({ accessToken, showToast }) {
               />
             ) : (
               <img
-                src="/agents/alfred.png"
-                alt="Alfred, Song Fix Specialist"
+                src="/agents/ace.png"
+                alt="Ace, Song Fix Specialist"
                 className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-indigo-400/30"
               />
             )}
             <span
-              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#1a1f26] ${alfredBusy ? 'bg-amber-400 animate-pulse' : autoState?.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
-              title={alfredBusy ? 'Working' : autoState?.enabled ? 'On duty' : 'Off duty'}
+              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-[#1a1f26] ${aceBusy ? 'bg-amber-400 animate-pulse' : autoState?.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
+              title={aceBusy ? 'Working' : autoState?.enabled ? 'On duty' : 'Off duty'}
             />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-bold text-white">Alfred</h2>
+              <h2 className="text-xl font-bold text-white">Ace</h2>
               <span className="text-[10px] uppercase tracking-wider font-semibold text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 rounded-full px-2 py-0.5">Song Fix Specialist</span>
             </div>
             <p className="text-sm text-gray-300 mt-1">
-              {alfredBusy
-                ? `Fixing ${alfredWorkingCount === 1 ? 'a song' : `${alfredWorkingCount} songs`} right now…`
-                : alfredStagedCount > 0
-                  ? `${alfredStagedCount} fix${alfredStagedCount > 1 ? 'es' : ''} ready for your approval below.`
-                  : alfredWaitingCount > 0
-                    ? `${alfredWaitingCount} request${alfredWaitingCount > 1 ? 's' : ''} waiting in the queue.`
+              {aceBusy
+                ? `Fixing ${aceWorkingCount === 1 ? 'a song' : `${aceWorkingCount} songs`} right now…`
+                : aceStagedCount > 0
+                  ? `${aceStagedCount} fix${aceStagedCount > 1 ? 'es' : ''} ready for your approval below.`
+                  : aceWaitingCount > 0
+                    ? `${aceWaitingCount} request${aceWaitingCount > 1 ? 's' : ''} waiting in the queue.`
                     : 'Standing by. Send him a fix from any chat, or search a song below.'}
             </p>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -1967,7 +1967,7 @@ function FixSongTab({ accessToken, showToast }) {
             </div>
           </div>
           {/* Studio meter — pulses like an equalizer while he's working. */}
-          {alfredBusy && (
+          {aceBusy && (
             <div className="hidden sm:flex items-end gap-1 h-12 self-center" aria-hidden="true">
               {[55, 95, 40, 80, 60].map((h, i) => (
                 <span
@@ -1982,15 +1982,15 @@ function FixSongTab({ accessToken, showToast }) {
         {/* Console strip — the studio-at-a-glance numbers. */}
         <div className="grid grid-cols-3 gap-2 mt-4">
           <div className="rounded-xl bg-purple-500/10 border border-purple-500/25 px-3 py-2 text-center">
-            <p className="text-lg font-bold text-purple-200 leading-none">{alfredStagedCount}</p>
+            <p className="text-lg font-bold text-purple-200 leading-none">{aceStagedCount}</p>
             <p className="text-[10px] uppercase tracking-wider text-purple-300/80 mt-1">To approve</p>
           </div>
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 px-3 py-2 text-center">
-            <p className="text-lg font-bold text-amber-200 leading-none">{alfredWorkingCount}</p>
+            <p className="text-lg font-bold text-amber-200 leading-none">{aceWorkingCount}</p>
             <p className="text-[10px] uppercase tracking-wider text-amber-300/80 mt-1">Fixing now</p>
           </div>
           <div className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-center">
-            <p className="text-lg font-bold text-gray-200 leading-none">{alfredWaitingCount}</p>
+            <p className="text-lg font-bold text-gray-200 leading-none">{aceWaitingCount}</p>
             <p className="text-[10px] uppercase tracking-wider text-gray-400 mt-1">Waiting</p>
           </div>
         </div>

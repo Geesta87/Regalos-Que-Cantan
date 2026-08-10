@@ -92,23 +92,23 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
         </p>
       )}
 
-      {/* Alfred's trail — before this the owner couldn't tell WHY the agent
+      {/* Ace's trail — before this the owner couldn't tell WHY the agent
           gave up on a card (needs_human looked identical to a plain "New"). */}
       {req.auto_status === 'needs_human' && ['pending', 'in_progress'].includes(req.status) && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 mb-2">
-          <p className="text-[11px] text-amber-200 font-semibold">🎧 Alfred stopped — he needs a human on this one:</p>
+          <p className="text-[11px] text-amber-200 font-semibold">🎧 Ace stopped — he needs a human on this one:</p>
           <p className="text-[11px] text-amber-100/90 whitespace-pre-wrap break-words">{req.auto_error || 'No reason recorded.'}</p>
         </div>
       )}
       {req.auto_status && !['needs_human', 'staged', 'failed'].includes(req.auto_status) && req.status === 'pending' && (
-        <p className="text-[11px] text-sky-300 mb-2">🎧 Alfred is working on this ({req.auto_status})…</p>
+        <p className="text-[11px] text-sky-300 mb-2">🎧 Ace is working on this ({req.auto_status})…</p>
       )}
 
       {/* Awaiting-approval: original vs corrected, side by side, for the owner. */}
       {req.status === 'awaiting_approval' && (
         <div className="rounded-lg bg-white/5 border border-white/10 p-3 mb-2 space-y-2">
           {req.candidate_summary && <p className="text-[11px] text-purple-100">📝 {req.candidate_summary}</p>}
-          {req.worked_by && <p className="text-[10px] text-gray-500">Prepared by {req.worked_by === 'fix-song-auto' ? 'Alfred 🎧' : req.worked_by}</p>}
+          {req.worked_by && <p className="text-[10px] text-gray-500">Prepared by {req.worked_by === 'fix-song-auto' ? 'Ace 🎧' : req.worked_by}</p>}
           {req.song && req.song.audio_url && (
             <div>
               <p className="text-[11px] text-gray-500 mb-1">Current (live) song:</p>
@@ -257,7 +257,7 @@ export default function FixQueue({ requests, role, busyId, loading, onClaim, onW
             </span>
           )}
         </h3>
-        {/* The Alfred auto-mode switch lives in the hero card above the queue. */}
+        {/* The Ace auto-mode switch lives in the hero card above the queue. */}
         <button
           onClick={onRefresh}
           className="text-xs text-gray-400 hover:text-white transition"
