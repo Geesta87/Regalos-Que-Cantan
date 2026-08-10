@@ -1572,6 +1572,11 @@ Deno.serve(async (req) => {
             changeSummary: correctedSummary,
             fullLyrics: correctedLyrics, // store the REAL corrected lyrics on apply
             verifyPhrases,
+            // The customer's current audio — the length yardstick for validating
+            // the fresh takes. section-submit always returned this; full-submit
+            // didn't, which made fix-song-auto's full-mode fallback reject EVERY
+            // take with "no pristine duration" and burn all its rounds.
+            originalAudioUrl: audioForFix,
             staleWarning: null,
           });
         } catch (e: any) {

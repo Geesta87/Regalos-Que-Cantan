@@ -371,13 +371,25 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const urls: string[] = (d?.trackList || []).map((t: any) => t.audioUrl).filter(Boolean);
   if (!urls.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
 
-  // Pristine duration (once) — the length yardstick for whole takes.
+  // Pristine duration (once) — the length yardstick for whole takes. When the
+  // plan carries no URL (full-submit didn't return one until 2026-08-10, and
+  // older mid-pipeline rows still won't have it), fall back to the customer's
+  // LIVE audio — same length, and without a yardstick every take gets rejected
+  // with "no pristine duration" and the round budget burns to needs_human.
   let origDur: number | null = plan.origDur || null;
-  if (!origDur && plan.originalAudioUrl) {
-    const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: plan.originalAudioUrl });
-    const pw = parseTimed(pt?.timed || '');
-    origDur = pw.length ? pw[pw.length - 1].end : null;
-    if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+  if (!origDur) {
+    let yardstickUrl: string | null = plan.originalAudioUrl || null;
+    if (!yardstickUrl) {
+      const { data: songRow } = await admin.from('songs')
+        .select('original_audio_url, audio_url').eq('id', r.song_id).single();
+      yardstickUrl = songRow?.original_audio_url || songRow?.audio_url || null;
+    }
+    if (yardstickUrl) {
+      const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: yardstickUrl });
+      const pw = parseTimed(pt?.timed || '');
+      origDur = pw.length ? pw[pw.length - 1].end : null;
+      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+    }
   }
 
   const requireAll: string[] = (plan.changes || []).map((c: any) => c.after).filter(Boolean);
