@@ -18,7 +18,7 @@ import SeoCoachTab from '../components/admin/SeoCoachTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab from '../components/admin/ActionInboxTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox } from 'lucide-react';
-import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, findAnchorEnd } from '../utils/audioSplice';
+import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
 function useDebounce(value, delay = 350) {
@@ -435,7 +435,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // entire take whenever it sang the corrected line and its length is CLOSE to
         // the original (≤1.08×) — anything longer gets the end-trim rescue below.
         if (allowWhole && !addLine && origFullDur && words.length) {
-          const takeEnd = words[words.length - 1].end;
+          // Length from the last REAL sung word — Whisper hallucinates credits
+          // ("Subtítulos … Amara.org") over instrumental outros, and counting
+          // them inflated takeEnd past 1.08× on perfectly good takes.
+          const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
           // Length FIRST. The as-is ceiling is deliberately TIGHT: a ≤1.30× ceiling
           // shipped a 3:52 song as 4:49 (+25%, untrimmed — owner complaint
           // 2026-08-09). Over 1.08× ⇒ END-TRIM RESCUE: Suno's replace-section often
@@ -829,7 +832,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
         if (!tr.ok) continue;
         const words = parseTimed(tr.timed);
-        const takeEnd = words.length ? words[words.length - 1].end : 0;
+        // Last REAL sung word (Whisper hallucinates credits over outros).
+        const takeEnd = words.length ? (lastSungWordEnd(words) ?? words[words.length - 1].end) : 0;
         // Length: as-is only when CLOSE to the baseline (≤1.08×); anything longer
         // gets the end-trim rescue. The old ≤1.30× as-is ceiling shipped a 3:52
         // song as 4:49 untrimmed (owner complaint 2026-08-09).
@@ -1840,8 +1844,12 @@ function FixSongTab({ accessToken, showToast }) {
     setQueueBusyId(req.id);
     try {
       const d = await postQueue({ action: 'release', request_id: req.id });
-      if (d?.success) showToast('✅ Released. The customer\'s song now uses the corrected version.');
-      else showToast(`❌ ${d?.error || 'Could not release the fix.'}`);
+      if (d?.success) {
+        const stale = Array.isArray(d.stale_artifacts) ? d.stale_artifacts : [];
+        showToast(stale.length
+          ? `✅ Released. ⚠️ Paid add-ons still use the OLD audio and need a manual re-run: ${stale.join(', ')}.`
+          : '✅ Released. The customer\'s song now uses the corrected version.');
+      } else showToast(`❌ ${d?.error || 'Could not release the fix.'}`);
       await loadQueue();
     } finally { setQueueBusyId(null); }
   }

@@ -1343,6 +1343,10 @@ Deno.serve(async (req) => {
         kie_payload: b.kie_payload ?? null,
         provider: b.provider ?? null,
         lyrics_timestamps: b.lyrics_timestamps ?? null,
+        // The snapshot captured fix_corrections but the restore used to drop it —
+        // after an undo the song still claimed a correction its audio no longer
+        // contained, and every later fix demanded that phrase be sung.
+        fix_corrections: b.fix_corrections ?? null,
         // Restore the footprint to its pre-fix state (snapshot captured them).
         fixed_at: b.fixed_at ?? null,
         fix_count: Number(b.fix_count) || 0,

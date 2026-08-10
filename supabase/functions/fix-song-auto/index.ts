@@ -206,6 +206,18 @@ function timesInLyrics(lyrics: string, line: string): number {
   while (i !== -1) { count++; i = hay.indexOf(needle, i + needle.length); }
   return count;
 }
+// End time of the last REAL sung word, ignoring Whisper's trailing
+// hallucinations over instrumental outros ("Subtítulos … Amara.org", "gracias
+// por ver") — port of audioSplice.lastSungWordEnd. Counting them inflated
+// takeEnd past 1.08× on perfectly good takes.
+const HALLUC = new Set(['subtitulos', 'subtitulado', 'amara', 'org', 'gracias', 'por', 'ver', 'subscribe', 'suscribete', 'www', 'com']);
+function lastSungWordEnd(words: W[]): number | null {
+  for (let i = words.length - 1; i >= 0; i--) {
+    if (!HALLUC.has(norm(words[i].word))) return words[i].end;
+  }
+  return words.length ? words[words.length - 1].end : null;
+}
+
 function evalChecklist(words: W[], changes: any[], combinedLyrics: string, priorCorrections: any[]): { ok: boolean; fail: string | null } {
   for (const c of changes || []) {
     if (!c?.after) continue;
@@ -398,9 +410,20 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
   await setAuto(admin, r.id, {
     auto_task_id: sub.fixTaskId,
     auto_round: (r.auto_round || 0) + 1,
-    auto_plan: { ...plan, window: sub.window || null, sectionText: sub.sectionText || null, originalAudioUrl: sub.originalAudioUrl || null, fullLyrics: sub.fullLyrics || plan.approvedLyrics },
+    // submittedAt: the stall guard's clock. auto_updated_at can't serve — the
+    // per-tick claim bump refreshes it every 2 min, so it never ages past 25.
+    auto_plan: { ...plan, window: sub.window || null, sectionText: sub.sectionText || null, originalAudioUrl: sub.originalAudioUrl || null, fullLyrics: sub.fullLyrics || plan.approvedLyrics, submittedAt: new Date().toISOString() },
     auto_status: 'polling',
   });
+  // Marker row for the daily cap: counting every section/full-submit also
+  // counted the owner's MANUAL browser fixes, so a busy manual day silently
+  // starved the worker. The cap now counts only these auto-submit rows.
+  try {
+    await admin.from('song_fix_attempts').insert({
+      song_id: r.song_id, action: 'auto-submit', mode: plan.mode,
+      kie_task_id: sub.fixTaskId, outcome: 'submitted', detail: `round ${(r.auto_round || 0) + 1}`,
+    });
+  } catch { /* best effort */ }
 }
 
 async function stepPoll(admin: any, r: any): Promise<void> {
@@ -414,8 +437,11 @@ async function stepPoll(admin: any, r: any): Promise<void> {
     await setAuto(admin, r.id, { auto_status: 'generating', auto_error: `Kie ${d.status} on round ${r.auto_round}`.slice(0, 480) });
     return;
   }
-  // still running — 25-min stall guard
-  const age = Date.now() - new Date(r.auto_updated_at || r.updated_at).getTime();
+  // still running — 25-min stall guard, aged from the round's SUBMIT time (the
+  // per-tick claim bump keeps auto_updated_at forever fresh, and a null basis
+  // used to make the age NaN so the guard never fired).
+  const basis = r.auto_plan?.submittedAt || r.auto_updated_at || r.updated_at;
+  const age = basis ? Date.now() - new Date(basis).getTime() : 0;
   if (age > 25 * 60000) await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'poll timeout — retrying round' });
 }
 
@@ -473,7 +499,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // correctly and would satisfy checks for spots still wrong in the real song.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
-    const takeEnd = words[words.length - 1].end;
+    const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
     let trimAtS: number | null = null;
     let lenOk = takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08;
     if (!lenOk && takeEnd > origDur * 1.08) {
@@ -551,13 +577,21 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     auto_updated_at: new Date().toISOString(),
   }).eq('id', r.id);
 
-  // Ping the approvers (owner + Ivan) on WhatsApp.
+  // Ping the approvers (owner + Ivan) on WhatsApp. Best-effort but LOUD on
+  // failure — a swallowed error meant a staged fix could sit with nobody told
+  // and nothing in the logs saying why.
   const numbers = String(state.notify_numbers || ALERT_WHATSAPP_TO || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+  if (!numbers.length) {
+    console.error('[fix-song-auto] fix staged but NO notify numbers configured (fix_auto_state.notify_numbers / ALERT_WHATSAPP_TO) — nobody was pinged');
+  }
   const who = r.context?.customer_name || r.context?.phone || 'customer';
   for (const n of numbers) {
     try {
-      await sendWhatsApp(n, `🔧 Song fix ready for ${who} — ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
-    } catch { /* best effort */ }
+      const wa = await sendWhatsApp(n, `🔧 Song fix ready for ${who} — ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
+      if (!wa.ok) console.error(`[fix-song-auto] WhatsApp ping to ${n} failed: ${wa.error || wa.status || 'unknown'}`);
+    } catch (e) {
+      console.error(`[fix-song-auto] WhatsApp ping to ${n} threw: ${e instanceof Error ? e.message : e}`);
+    }
   }
 }
 
@@ -580,10 +614,12 @@ Deno.serve(async (req) => {
 
     if (!state?.enabled) return json({ ok: true, disabled: true });
 
-    // Daily budget guard: count today's generations (rounds started).
+    // Daily budget guard: count today's AUTO generations only (the 'auto-submit'
+    // marker rows stepGenerate writes). Counting every section/full-submit also
+    // counted manual browser work, which silently starved the worker.
     const { count: todayRounds } = await admin.from('song_fix_attempts')
       .select('id', { count: 'exact', head: true })
-      .in('action', ['section-submit', 'full-submit'])
+      .eq('action', 'auto-submit')
       .gt('created_at', new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString());
     if ((todayRounds || 0) >= (state.daily_cap || 40)) {
       return json({ ok: true, skipped: 'daily cap reached', todayRounds });
@@ -613,6 +649,18 @@ Deno.serve(async (req) => {
     const work = [...(fresh || []).map((r: any) => ({ ...r, auto_status: r.auto_status || 'linking' })), ...(mid || [])];
     const done: Record<string, string> = {};
     for (const r of work.slice(0, 3)) {
+      // Optimistic claim — cron fires every 2 min but a validating step (N song
+      // downloads + Whisper + a trim) can run longer, and nothing marked a row
+      // as in-flight, so an overlapping tick could pick the same row and submit
+      // a DUPLICATE Kie generation. The claim bumps auto_updated_at only if it
+      // hasn't moved since we read it; a lost race means another tick owns it.
+      let claim = admin.from('song_fix_requests')
+        .update({ auto_updated_at: new Date().toISOString() })
+        .eq('id', r.id)
+        .eq('status', 'pending');
+      claim = r.auto_updated_at ? claim.eq('auto_updated_at', r.auto_updated_at) : claim.is('auto_updated_at', null);
+      const { data: claimed } = await claim.select('id');
+      if (!claimed?.length) { done[r.id] = 'skipped: claimed by an overlapping tick'; continue; }
       try {
         if (r.auto_status === 'linking') await stepLink(admin, r);
         else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);

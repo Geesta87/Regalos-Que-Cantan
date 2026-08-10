@@ -46,7 +46,6 @@ function customerLabel(req) {
 function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease, onReject }) {
   const meta = STATUS_META[req.status] || STATUS_META.pending;
   const busy = busyId === req.id;
-  const isAdmin = role === 'admin';
   const recipient = req.song && req.song.recipient_name;
   const genre = req.song && (req.song.genre_name || req.song.genre);
   const [rejecting, setRejecting] = useState(false);

@@ -11,14 +11,16 @@
 //      existing Fix Song workflow, then STAGES the result here: the corrected
 //      audio is hosted in the `audio` bucket and recorded on the request, but
 //      the customer's live song is NOT touched (status='awaiting_approval').
-//   3. Only the OWNER (role='admin') can RELEASE it — that is the swap into the
-//      customer's live song, with the same fix_backup undo snapshot the direct
-//      Fix Song apply takes. Assistants can prepare fixes but never release them.
+//   3. The owner OR Ivan (assistant) RELEASES it — the swap into the customer's
+//      live song, with the same fix_backup undo snapshot the direct Fix Song
+//      apply takes. (Release was originally owner-only; owner decision
+//      2026-07-27 opened it to both admin_users roles.)
 //
 // Auth is identical to sms-admin / admin-songs: the platform gateway verifies
 // the Supabase Auth JWT (config.toml has [functions.song-fix-queue] verify_jwt =
-// true) and the handler requires a row in admin_users. 'assistant' may list /
-// claim / stage / reject; 'release' requires role='admin'.
+// true) and the handler requires a row in admin_users. Any admin_users row may
+// list / claim / stage / release / reject; only role='admin' may flip the
+// auto-fixer switch ('auto-toggle').
 //
 // Actions (POST JSON unless noted):
 //   GET or { action:'list' }                         → { success, role, requests }
@@ -105,7 +107,7 @@ function mergeCorrections(prevList: unknown, newList: unknown): Array<{ before: 
 // undone by a later julio→agosto fix on the same songs). Stitched/trimmed audio
 // is not a Kie track, so those releases still drop the Kie ids.
 // deno-lint-ignore no-explicit-any
-async function releaseCandidate(admin: any, reqRow: any, approver: string): Promise<{ audioUrl: string }> {
+async function releaseCandidate(admin: any, reqRow: any, approver: string): Promise<{ audioUrl: string; staleArtifacts: string[] }> {
   const songId = reqRow.song_id;
   const candidateUrl = reqRow.candidate_audio_url;
   if (!songId) throw new Error('This request has no song linked yet.');
@@ -113,9 +115,19 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
 
   const { data: prev } = await admin
     .from('songs')
-    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history')
+    .select('audio_url, preview_url, original_audio_url, image_url, lyrics, kie_task_id, task_id, kie_payload, kie_source, fix_corrections, provider, lyrics_timestamps, fixed_at, fix_count, fix_history, karaoke_url, lyric_video_url, karaoke_video_url, video_url')
     .eq('id', songId)
     .single();
+
+  // Paid audio-derived deliverables the release invalidates but cannot rebuild
+  // (no auto-rebuild exists for these) — reported back so staff re-run them by
+  // hand. The direct-apply path already did this; queue releases silently left
+  // a paid karaoke/lyric video rendered from the OLD audio with nobody told.
+  const staleArtifacts: string[] = [];
+  if (prev?.karaoke_url) staleArtifacts.push('karaoke');
+  if (prev?.lyric_video_url) staleArtifacts.push('lyric_video');
+  if (prev?.karaoke_video_url) staleArtifacts.push('karaoke_video');
+  if (prev?.video_url) staleArtifacts.push('video_addon');
 
   const now = new Date().toISOString();
   const meta = reqRow.candidate_meta || {};
@@ -181,7 +193,7 @@ async function releaseCandidate(admin: any, reqRow: any, approver: string): Prom
     resolved_at: now,
   }).eq('id', reqRow.id);
 
-  return { audioUrl: candidateUrl };
+  return { audioUrl: candidateUrl, staleArtifacts };
 }
 
 serve(async (req) => {
@@ -452,7 +464,7 @@ serve(async (req) => {
         } catch (notifyErr) {
           console.error('release notify failed:', notifyErr instanceof Error ? notifyErr.message : notifyErr);
         }
-        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified });
+        return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified, stale_artifacts: out.staleArtifacts });
       } catch (e) {
         return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
       }
