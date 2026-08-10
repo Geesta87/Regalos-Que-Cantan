@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Inbox, RefreshCw, Loader2, AlertTriangle, Check, X, ChevronRight,
-  MessageCircleQuestion, Send, ArrowUpRight,
+  MessageCircleQuestion, Send, ArrowUpRight, Clock, Undo2,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -18,14 +18,33 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const fnUrl = (name) => `${SUPABASE_URL}/functions/v1/${name}`;
 
-const DISMISS_KEY = 'rqc_inbox_dismissed_v1';
-const loadDismissed = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); }
+// Hidden/snoozed cards live in localStorage as { [key]: 0 | untilMs }:
+// 0 = hidden until the item leaves the feed, a timestamp = snoozed until then.
+// Exported so AdminDashboard's nav badge counts the same visible set.
+export const HIDDEN_KEY = 'rqc_inbox_hidden_v2';
+const LEGACY_DISMISS_KEY = 'rqc_inbox_dismissed_v1';
+export const loadHidden = () => {
+  try {
+    const map = JSON.parse(localStorage.getItem(HIDDEN_KEY) || 'null');
+    if (map && typeof map === 'object') return map;
+    // One-time migration from the v1 plain list (everything was hide-forever).
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_DISMISS_KEY) || '[]');
+    return Object.fromEntries(legacy.map((k) => [k, 0]));
+  } catch { return {}; }
 };
-const saveDismissed = (set) => {
-  // Keep the list bounded — old keys age out of the feed anyway.
-  try { localStorage.setItem(DISMISS_KEY, JSON.stringify([...set].slice(-500))); } catch { /* ignore */ }
+const saveHidden = (map) => {
+  // Keep the map bounded — old keys age out of the feed anyway.
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(Object.entries(map).slice(-500))));
+  } catch { /* ignore */ }
 };
+export const isHiddenNow = (hidden, key) => {
+  const until = hidden[key];
+  return until !== undefined && (until === 0 || until > Date.now());
+};
+// The tab announces its visible critical count so the sidebar badge updates
+// the moment something is approved/hidden, without waiting for the next poll.
+export const INBOX_COUNT_EVENT = 'rqc:inbox-critical';
 
 const SEVERITY = {
   critical: { label: 'Fix now', tone: 'red' },
@@ -45,7 +64,6 @@ const NAV_LABELS = {
 const TOPICS = [
   { id: 'chiefofstaff', label: 'Chief of Staff', sources: ['Chief of Staff'] },
   { id: 'seocoach', label: 'SEO Coach', sources: ['SEO Coach'] },
-  { id: 'csagent', label: 'CS Agent', sources: ['CS agent'] },
   { id: 'fixsong', label: 'Fix Song', sources: ['Fix Song'] },
   { id: 'ordersdelivery', label: 'Orders & Delivery', sources: ['Order pipeline', 'Delivery', 'Hot leads'] },
   { id: 'videos', label: 'Videos', sources: ['Animado', 'Video addon'] },
@@ -69,7 +87,8 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
-  const [dismissed, setDismissed] = useState(loadDismissed);
+  const [hidden, setHidden] = useState(loadHidden);
+  const [showHidden, setShowHidden] = useState(false);
   const [topic, setTopic] = useState('all');
 
   const call = useCallback(async (name, body) => {
@@ -94,7 +113,22 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const visible = useMemo(() => items.filter((i) => !dismissed.has(i.key)), [items, dismissed]);
+  // Silent auto-refresh so an open inbox never goes stale. Skips ticks while
+  // the browser tab is in the background.
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) load({ silent: true }); }, 90e3);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const visible = useMemo(() => items.filter((i) => !isHiddenNow(hidden, i.key)), [items, hidden]);
+  const hiddenItems = useMemo(() => items.filter((i) => isHiddenNow(hidden, i.key)), [items, hidden]);
+
+  // Keep the sidebar badge in sync with what's actually visible here.
+  useEffect(() => {
+    if (loading && items.length === 0) return; // first load pending — don't zero the badge
+    const critical = visible.filter((i) => i.severity === 'critical').length;
+    window.dispatchEvent(new CustomEvent(INBOX_COUNT_EVENT, { detail: { critical } }));
+  }, [visible, loading, items.length]);
 
   // Per-topic counts (and whether the topic holds anything critical) drive the
   // sub-tab pills; a topic with nothing waiting doesn't get a pill.
@@ -126,10 +160,14 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
     return g;
   }, [shown]);
 
-  const dismiss = (key) => {
-    const next = new Set(dismissed); next.add(key);
-    setDismissed(next); saveDismissed(next);
+  const setHiddenUntil = (key, until) => {
+    const next = { ...hidden };
+    if (until === null) delete next[key]; else next[key] = until;
+    setHidden(next); saveHidden(next);
   };
+  const hide = (key) => setHiddenUntil(key, 0);
+  const snooze = (key) => setHiddenUntil(key, Date.now() + 24 * 36e5);
+  const restore = (key) => setHiddenUntil(key, null);
 
   // One-tap approve/reject → the item's own existing endpoint.
   const act = async (item, kind) => {
@@ -204,9 +242,14 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
                       <p className="text-sm font-medium text-gray-900 mt-1.5">{item.title}</p>
                       {item.detail && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{item.detail}</p>}
                     </div>
-                    <button onClick={() => dismiss(item.key)} className={btn.iconGhost} title="Hide from inbox (stays in its own tab)">
-                      <X size={15} />
-                    </button>
+                    <div className="flex items-center shrink-0">
+                      <button onClick={() => snooze(item.key)} className={btn.iconGhost} title="Snooze until tomorrow">
+                        <Clock size={15} />
+                      </button>
+                      <button onClick={() => hide(item.key)} className={btn.iconGhost} title="Hide from inbox (stays in its own tab)">
+                        <X size={15} />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2.5">
                     {item.approve && (
@@ -228,6 +271,36 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
             </div>
           </div>
         ))}
+
+        {/* ---- Hidden & snoozed (undo lives here) ---- */}
+        {!loading && hiddenItems.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <button onClick={() => setShowHidden((v) => !v)}
+              className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors">
+              {showHidden ? 'Hide' : 'Show'} hidden & snoozed ({hiddenItems.length})
+            </button>
+            {showHidden && (
+              <div className="space-y-1.5 mt-2.5">
+                {hiddenItems.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 opacity-80">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <Badge>{item.source}</Badge>
+                      <p className="text-xs text-gray-600 truncate">{item.title}</p>
+                      {hidden[item.key] > 0 && (
+                        <span className="text-[11px] text-gray-400 shrink-0">
+                          snoozed until {new Date(hidden[item.key]).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => restore(item.key)} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 shrink-0 transition-colors">
+                      <Undo2 size={13} /> Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* ---- Ask the business ---- */}
