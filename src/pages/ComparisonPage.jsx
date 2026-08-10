@@ -1,4 +1,5 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AppContext } from '../App';
 import { createCheckout, supabase, checkSongStatus, validateCoupon } from '../services/api';
 import genres from '../config/genres';
@@ -1069,6 +1070,7 @@ export default function ComparisonPage() {
         @keyframes ctaGlow { 0%, 100% { box-shadow: 0 4px 18px rgba(225,29,116,0.45), 0 0 0 rgba(192,38,211,0); } 50% { box-shadow: 0 4px 34px rgba(225,29,116,0.85), 0 0 46px rgba(192,38,211,0.45); } }
         @keyframes sparkleFloat { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.5; } 50% { transform: translateY(-9px) scale(1.25); opacity: 1; } }
         @keyframes rowPop { 0% { opacity: 0; transform: translateY(14px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        .rqcUpsellScroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
       `}</style>
 
       {/* Audio elements (hidden) */}
@@ -2263,7 +2265,7 @@ export default function ComparisonPage() {
           // Compact animated preview thumbnails — same previews the upsell grid
           // uses (real animado sample, photo crossfade, EQ bars, synced lyrics),
           // shrunk to a 96×68 tile so every row SELLS, not just describes.
-          const thumbBase = { width: '96px', height: '68px', borderRadius: '10px', overflow: 'hidden', position: 'relative', flexShrink: 0, background: '#0d0a12', border: '1px solid rgba(255,255,255,0.1)' };
+          const thumbBase = { width: '86px', height: '60px', borderRadius: '10px', overflow: 'hidden', position: 'relative', flexShrink: 0, background: '#0d0a12', border: '1px solid rgba(255,255,255,0.1)' };
           const photoThumb = (
             <div style={thumbBase}>
               {[
@@ -2345,22 +2347,30 @@ export default function ComparisonPage() {
           const modalTotal = getCurrentPrice() + extrasTotal;
           const addedCount = modalItems.filter((it) => it.added).length;
           const proceedToPayment = () => { setShowUpsellModal(false); handleCheckout(); };
-          return (
+          // Mobile = bottom sheet with a sticky pay footer (total + CTAs always
+          // visible, no scrolling past the fold to find the pay button).
+          const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 520;
+          // Portal to <body>: position:fixed must anchor to the VIEWPORT. Any
+          // ancestor with a transform (e.g. the page wrapper mid entrance
+          // transition) would otherwise become the containing block and pin the
+          // modal to the page instead of the screen.
+          return createPortal(
             <div
               onClick={() => setShowUpsellModal(false)}
               style={{
-                position: 'fixed', inset: 0, zIndex: 1000,
+                position: 'fixed', inset: 0, zIndex: 100000,
                 background: 'rgba(8,5,10,0.78)', backdropFilter: 'blur(5px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '16px', animation: 'overlayIn 0.25s ease-out',
+                display: 'flex', alignItems: isNarrow ? 'flex-end' : 'center', justifyContent: 'center',
+                padding: isNarrow ? 0 : '16px', animation: 'overlayIn 0.25s ease-out',
               }}
             >
               {/* Animated gradient glow frame */}
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  width: '100%', maxWidth: '420px', maxHeight: '90vh',
-                  padding: '2.5px', borderRadius: '24px',
+                  width: '100%', maxWidth: isNarrow ? '100%' : '420px', maxHeight: isNarrow ? '92dvh' : '90vh',
+                  padding: isNarrow ? '2.5px 2.5px 0' : '2.5px',
+                  borderRadius: isNarrow ? '22px 22px 0 0' : '24px',
                   background: 'linear-gradient(120deg, #f20d80, #a855f7, #f5b942, #f20d80)',
                   backgroundSize: '300% 300%',
                   animation: 'modalIn 0.32s cubic-bezier(0.21, 1.02, 0.55, 1), gradientShift 4s linear infinite, ctaGlow 2.6s ease-in-out infinite',
@@ -2369,10 +2379,10 @@ export default function ComparisonPage() {
               >
               <div
                 style={{
-                  width: '100%', overflowY: 'auto',
+                  width: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden',
                   background: 'linear-gradient(170deg, #1c1219 0%, #140d12 100%)',
-                  borderRadius: '22px',
-                  padding: '22px 20px 18px', position: 'relative',
+                  borderRadius: isNarrow ? '20px 20px 0 0' : '22px',
+                  position: 'relative',
                 }}
               >
                 {/* Close */}
@@ -2380,7 +2390,7 @@ export default function ComparisonPage() {
                   onClick={() => setShowUpsellModal(false)}
                   aria-label="Cerrar"
                   style={{
-                    position: 'absolute', top: '12px', right: '12px',
+                    position: 'absolute', top: '12px', right: '12px', zIndex: 5,
                     width: '30px', height: '30px', borderRadius: '50%',
                     background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
                     color: 'rgba(255,255,255,0.55)', fontSize: '14px', cursor: 'pointer',
@@ -2390,88 +2400,104 @@ export default function ComparisonPage() {
                   ✕
                 </button>
 
+                {/* Scrollable region: header + add-on rows (footer stays pinned) */}
+                <div className="rqcUpsellScroll" style={{ overflowY: 'auto', minHeight: 0, flex: '1 1 auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', padding: isNarrow ? '16px 14px 4px' : '20px 18px 4px' }}>
+
                 {/* Header */}
-                <div style={{ textAlign: 'center', marginBottom: '16px', position: 'relative' }}>
-                  <span style={{ position: 'absolute', top: '-4px', left: '14%', fontSize: '13px', animation: 'sparkleFloat 2.2s ease-in-out infinite' }}>✨</span>
-                  <span style={{ position: 'absolute', top: '10px', right: '12%', fontSize: '11px', animation: 'sparkleFloat 2.8s ease-in-out 0.7s infinite' }}>✨</span>
-                  <div style={{ fontSize: '32px', marginBottom: '4px', display: 'inline-block', animation: 'giftBounce 1.8s ease-in-out infinite' }}>🎁</div>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '19px', fontWeight: 900, lineHeight: 1.25, background: 'linear-gradient(90deg, #fff, #f9a8d4, #fff)', backgroundSize: '200% auto', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', animation: 'gradientShift 3s linear infinite' }}>
+                <div style={{ textAlign: 'center', marginBottom: '12px', position: 'relative' }}>
+                  <span style={{ position: 'absolute', top: '-4px', left: '10%', fontSize: '13px', animation: 'sparkleFloat 2.2s ease-in-out infinite' }}>✨</span>
+                  <span style={{ position: 'absolute', top: '8px', right: '9%', fontSize: '11px', animation: 'sparkleFloat 2.8s ease-in-out 0.7s infinite' }}>✨</span>
+                  <div style={{ fontSize: '26px', marginBottom: '2px', display: 'inline-block', animation: 'giftBounce 1.8s ease-in-out infinite' }}>🎁</div>
+                  <h3 style={{ margin: '0 0 3px', fontSize: '17px', fontWeight: 900, lineHeight: 1.25, background: 'linear-gradient(90deg, #fff, #f9a8d4, #fff)', backgroundSize: '200% auto', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', animation: 'gradientShift 3s linear infinite' }}>
                     Antes de pagar… ¿algo más para {recipientName}?
                   </h3>
-                  <p style={{ margin: 0, fontSize: '12.5px', color: 'rgba(255,255,255,0.55)' }}>
-                    Precio especial solo en este paso · <span style={{ color: '#f9a8d4', fontWeight: 700 }}>agrega los que quieras</span> — se paga todo junto
+                  <p style={{ margin: 0, fontSize: '11.5px', color: 'rgba(255,255,255,0.55)' }}>
+                    Precio especial solo en este paso · <span style={{ color: '#f9a8d4', fontWeight: 700 }}>agrega los que quieras</span>
                   </p>
                 </div>
 
                 {/* One-tap add-on rows — tap to add/remove; pay via the CTA below */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', marginBottom: '16px', pointerEvents: isCheckingOut ? 'none' : 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', marginBottom: '4px', pointerEvents: isCheckingOut ? 'none' : 'auto' }}>
                   {modalItems.map((it, idx) => (
                     <div
                       key={it.key}
                       onClick={() => { if (!it.inGrid) it.toggle(); }}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: '11px',
-                        padding: '11px 12px', borderRadius: '13px',
+                        padding: '10px 11px', borderRadius: '13px',
                         background: it.added ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.045)',
                         border: it.added ? '1.5px solid rgba(34,197,94,0.55)' : '1.5px solid rgba(255,255,255,0.1)',
                         cursor: it.inGrid ? 'default' : 'pointer',
                         transition: 'all 0.2s',
                         boxShadow: it.added ? '0 0 18px rgba(34,197,94,0.3)' : 'none',
                         animation: `rowPop 0.4s ease-out ${0.08 + idx * 0.09}s both`,
+                        overflow: 'hidden',
                       }}
                     >
-                      {it.thumb}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 800, color: 'white', lineHeight: 1.2 }}>
-                          {it.title}
-                        </p>
-                        <p style={{ margin: '2px 0 0', fontSize: '10.5px', color: 'rgba(255,255,255,0.48)', lineHeight: 1.3 }}>
-                          {it.sub}
-                        </p>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '6px' }}>
-                          <p style={{ margin: 0, fontSize: '13px', fontWeight: 900, color: it.added ? '#4ade80' : '#f5b942', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            {it.was && (
-                              <span style={{ fontSize: '10.5px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
-                                ${it.was.toFixed(2)}
-                              </span>
-                            )}
-                            <span>+${it.price.toFixed(2)}</span>
-                            {it.was && (
-                              <span style={{
-                                fontSize: '9px', fontWeight: 800, color: '#4ade80',
-                                background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.3)',
-                                padding: '1px 5px', borderRadius: '5px', letterSpacing: '0.3px',
-                              }}>
-                                -{Math.round((1 - it.price / it.was) * 100)}%
-                              </span>
-                            )}
+                      {/* Tier 1: thumbnail + title/sub */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {it.thumb}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 800, color: 'white', lineHeight: 1.2 }}>
+                            {it.title}
                           </p>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); if (!it.inGrid) it.toggle(); }}
-                            style={{
-                              flexShrink: 0, padding: '6px 12px', borderRadius: '50px',
-                              border: it.added ? '2px solid #22c55e' : '2px solid #f74da6',
-                              background: it.added ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, rgba(242,13,128,0.18), rgba(192,38,211,0.18))',
-                              color: it.added ? 'white' : '#f9a8d4',
-                              fontSize: '11.5px', fontWeight: 800, cursor: it.inGrid ? 'default' : 'pointer',
-                              whiteSpace: 'nowrap', transition: 'all 0.2s',
-                              boxShadow: it.added ? '0 0 12px rgba(34,197,94,0.5)' : '0 0 10px rgba(242,13,128,0.25)',
-                            }}
-                          >
-                            {it.added ? '✓ Agregado' : '+ Agregar'}
-                          </button>
+                          <p style={{ margin: '3px 0 0', fontSize: '10.5px', color: 'rgba(255,255,255,0.48)', lineHeight: 1.35 }}>
+                            {it.sub}
+                          </p>
                         </div>
+                      </div>
+                      {/* Tier 2: full-width price bar + add button (never collides) */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '9px' }}>
+                        <p style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: it.added ? '#4ade80' : '#f5b942', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {it.was && (
+                            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
+                              ${it.was.toFixed(2)}
+                            </span>
+                          )}
+                          <span>+${it.price.toFixed(2)}</span>
+                          {it.was && (
+                            <span style={{
+                              fontSize: '9.5px', fontWeight: 800, color: '#4ade80',
+                              background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.3)',
+                              padding: '1px 6px', borderRadius: '5px', letterSpacing: '0.3px',
+                            }}>
+                              -{Math.round((1 - it.price / it.was) * 100)}%
+                            </span>
+                          )}
+                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!it.inGrid) it.toggle(); }}
+                          style={{
+                            flexShrink: 0, padding: '7px 14px', borderRadius: '50px',
+                            border: it.added ? '2px solid #22c55e' : '2px solid #f74da6',
+                            background: it.added ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, rgba(242,13,128,0.18), rgba(192,38,211,0.18))',
+                            color: it.added ? 'white' : '#f9a8d4',
+                            fontSize: '12px', fontWeight: 800, cursor: it.inGrid ? 'default' : 'pointer',
+                            whiteSpace: 'nowrap', transition: 'all 0.2s',
+                            boxShadow: it.added ? '0 0 12px rgba(34,197,94,0.5)' : '0 0 10px rgba(242,13,128,0.25)',
+                          }}
+                        >
+                          {it.added ? '✓ Agregado' : '+ Agregar'}
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
 
+                </div>{/* /scroll region */}
+
+                {/* Pinned pay footer — total + CTAs always visible */}
+                <div style={{
+                  flexShrink: 0,
+                  padding: isNarrow ? '10px 14px calc(12px + env(safe-area-inset-bottom))' : '10px 18px 14px',
+                  borderTop: '1px solid rgba(255,255,255,0.09)',
+                  background: 'rgba(18,11,16,0.98)',
+                }}>
                 {/* Total */}
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '11px 14px', marginBottom: '12px',
+                  padding: '8px 12px', marginBottom: '10px',
                   background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '12px',
+                  borderRadius: '11px',
                 }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.75)' }}>
                     Total{addedCount > 0 ? ` · ${addedCount} extra${addedCount > 1 ? 's' : ''}` : ''}
@@ -2486,10 +2512,10 @@ export default function ComparisonPage() {
                   onClick={proceedToPayment}
                   disabled={isCheckingOut}
                   style={{
-                    width: '100%', padding: '15px',
+                    width: '100%', padding: '14px',
                     background: 'linear-gradient(90deg, #e11d74, #c026d3)',
                     color: 'white', border: 'none', borderRadius: '12px',
-                    fontSize: '16px', fontWeight: 800, cursor: 'pointer',
+                    fontSize: '15.5px', fontWeight: 800, cursor: 'pointer',
                     position: 'relative', overflow: 'hidden',
                     animation: 'ctaGlow 2.2s ease-in-out infinite',
                   }}
@@ -2507,22 +2533,24 @@ export default function ComparisonPage() {
                   onClick={proceedToPayment}
                   disabled={isCheckingOut}
                   style={{
-                    width: '100%', padding: '13px', marginTop: '10px',
+                    width: '100%', padding: '11px', marginTop: '8px',
                     background: 'rgba(255,255,255,0.06)',
                     border: '1.5px solid rgba(255,255,255,0.22)', borderRadius: '12px',
-                    color: 'rgba(255,255,255,0.85)', fontSize: '14.5px', fontWeight: 700,
+                    color: 'rgba(255,255,255,0.85)', fontSize: '14px', fontWeight: 700,
                     cursor: 'pointer', transition: 'all 0.2s',
                   }}
                 >
                   No, gracias — continuar al pago →
                 </button>
 
-                <p style={{ textAlign: 'center', margin: '8px 0 0', fontSize: '10.5px', color: 'rgba(255,255,255,0.3)' }}>
+                <p style={{ textAlign: 'center', margin: '7px 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>
                   🔒 Pago seguro con Stripe · Todo en un solo cobro
                 </p>
+                </div>{/* /pay footer */}
               </div>
               </div>
-            </div>
+            </div>,
+            document.body
           );
         })()}
 
