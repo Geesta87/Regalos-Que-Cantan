@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Inbox, RefreshCw, Loader2, AlertTriangle, Check, X, ChevronRight,
-  MessageCircleQuestion, Send, ArrowUpRight,
+  MessageCircleQuestion, Send, ArrowUpRight, Clock, Undo2,
 } from 'lucide-react';
 import { Card, Badge, SectionLabel, btn } from './ui';
 
@@ -18,14 +18,33 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const fnUrl = (name) => `${SUPABASE_URL}/functions/v1/${name}`;
 
-const DISMISS_KEY = 'rqc_inbox_dismissed_v1';
-const loadDismissed = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')); } catch { return new Set(); }
+// Hidden/snoozed cards live in localStorage as { [key]: 0 | untilMs }:
+// 0 = hidden until the item leaves the feed, a timestamp = snoozed until then.
+// Exported so AdminDashboard's nav badge counts the same visible set.
+export const HIDDEN_KEY = 'rqc_inbox_hidden_v2';
+const LEGACY_DISMISS_KEY = 'rqc_inbox_dismissed_v1';
+export const loadHidden = () => {
+  try {
+    const map = JSON.parse(localStorage.getItem(HIDDEN_KEY) || 'null');
+    if (map && typeof map === 'object') return map;
+    // One-time migration from the v1 plain list (everything was hide-forever).
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_DISMISS_KEY) || '[]');
+    return Object.fromEntries(legacy.map((k) => [k, 0]));
+  } catch { return {}; }
 };
-const saveDismissed = (set) => {
-  // Keep the list bounded — old keys age out of the feed anyway.
-  try { localStorage.setItem(DISMISS_KEY, JSON.stringify([...set].slice(-500))); } catch { /* ignore */ }
+const saveHidden = (map) => {
+  // Keep the map bounded — old keys age out of the feed anyway.
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(Object.entries(map).slice(-500))));
+  } catch { /* ignore */ }
 };
+export const isHiddenNow = (hidden, key) => {
+  const until = hidden[key];
+  return until !== undefined && (until === 0 || until > Date.now());
+};
+// The tab announces its visible critical count so the sidebar badge updates
+// the moment something is approved/hidden, without waiting for the next poll.
+export const INBOX_COUNT_EVENT = 'rqc:inbox-critical';
 
 const SEVERITY = {
   critical: { label: 'Fix now', tone: 'red' },
@@ -38,6 +57,20 @@ const NAV_LABELS = {
   fixsong: 'Fix Song', animado: 'Animado', videos: 'Videos', seocoach: 'SEO Coach',
   chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing',
 };
+
+// Themed sub-tabs inside the inbox. Each card's `source` (set by the
+// action-inbox edge function) maps to one topic; unknown sources land in
+// "Other" so a new agent never silently disappears from the inbox.
+const TOPICS = [
+  { id: 'chiefofstaff', label: 'Chief of Staff', sources: ['Chief of Staff'] },
+  { id: 'seocoach', label: 'SEO Coach', sources: ['SEO Coach'] },
+  { id: 'fixsong', label: 'Fix Song', sources: ['Fix Song'] },
+  { id: 'ordersdelivery', label: 'Orders & Delivery', sources: ['Order pipeline', 'Delivery', 'Hot leads'] },
+  { id: 'videos', label: 'Videos', sources: ['Animado', 'Video addon'] },
+  { id: 'other', label: 'Other', sources: [] },
+];
+const topicForSource = (source) =>
+  (TOPICS.find((t) => t.sources.includes(source)) || TOPICS[TOPICS.length - 1]).id;
 
 const timeAgo = (iso) => {
   if (!iso) return '';
@@ -54,7 +87,9 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
-  const [dismissed, setDismissed] = useState(loadDismissed);
+  const [hidden, setHidden] = useState(loadHidden);
+  const [showHidden, setShowHidden] = useState(false);
+  const [topic, setTopic] = useState('all');
 
   const call = useCallback(async (name, body) => {
     const res = await fetch(fnUrl(name), {
@@ -78,17 +113,61 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const visible = useMemo(() => items.filter((i) => !dismissed.has(i.key)), [items, dismissed]);
-  const grouped = useMemo(() => {
-    const g = { critical: [], high: [], normal: [] };
-    visible.forEach((i) => (g[i.severity] || g.normal).push(i));
-    return g;
+  // Silent auto-refresh so an open inbox never goes stale. Skips ticks while
+  // the browser tab is in the background.
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) load({ silent: true }); }, 90e3);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const visible = useMemo(() => items.filter((i) => !isHiddenNow(hidden, i.key)), [items, hidden]);
+  const hiddenItems = useMemo(() => items.filter((i) => isHiddenNow(hidden, i.key)), [items, hidden]);
+
+  // Keep the sidebar badge in sync with what's actually visible here.
+  useEffect(() => {
+    if (loading && items.length === 0) return; // first load pending — don't zero the badge
+    const critical = visible.filter((i) => i.severity === 'critical').length;
+    window.dispatchEvent(new CustomEvent(INBOX_COUNT_EVENT, { detail: { critical } }));
+  }, [visible, loading, items.length]);
+
+  // Per-topic counts (and whether the topic holds anything critical) drive the
+  // sub-tab pills; a topic with nothing waiting doesn't get a pill.
+  const topicStats = useMemo(() => {
+    const stats = new Map();
+    visible.forEach((i) => {
+      const id = topicForSource(i.source);
+      const s = stats.get(id) || { count: 0, critical: 0 };
+      s.count += 1;
+      if (i.severity === 'critical') s.critical += 1;
+      stats.set(id, s);
+    });
+    return stats;
   }, [visible]);
 
-  const dismiss = (key) => {
-    const next = new Set(dismissed); next.add(key);
-    setDismissed(next); saveDismissed(next);
+  // If everything in the open topic gets approved/dismissed, fall back to All
+  // rather than stranding the owner on an empty tab with no pill.
+  useEffect(() => {
+    if (topic !== 'all' && !topicStats.has(topic)) setTopic('all');
+  }, [topic, topicStats]);
+
+  const shown = useMemo(
+    () => (topic === 'all' ? visible : visible.filter((i) => topicForSource(i.source) === topic)),
+    [visible, topic],
+  );
+  const grouped = useMemo(() => {
+    const g = { critical: [], high: [], normal: [] };
+    shown.forEach((i) => (g[i.severity] || g.normal).push(i));
+    return g;
+  }, [shown]);
+
+  const setHiddenUntil = (key, until) => {
+    const next = { ...hidden };
+    if (until === null) delete next[key]; else next[key] = until;
+    setHidden(next); saveHidden(next);
   };
+  const hide = (key) => setHiddenUntil(key, 0);
+  const snooze = (key) => setHiddenUntil(key, Date.now() + 24 * 36e5);
+  const restore = (key) => setHiddenUntil(key, null);
 
   // One-tap approve/reject → the item's own existing endpoint.
   const act = async (item, kind) => {
@@ -127,7 +206,21 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
           </div>
         )}
 
-        {!loading && !error && visible.length === 0 && (
+        {/* ---- Themed sub-tabs ---- */}
+        {!loading && !error && visible.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-4 overflow-x-auto pb-1 -mb-1">
+            <TopicPill active={topic === 'all'} onClick={() => setTopic('all')} label="All" count={visible.length} />
+            {TOPICS.filter((t) => topicStats.has(t.id)).map((t) => {
+              const s = topicStats.get(t.id);
+              return (
+                <TopicPill key={t.id} active={topic === t.id} onClick={() => setTopic(t.id)}
+                  label={t.label} count={s.count} critical={s.critical > 0} />
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && !error && shown.length === 0 && (
           <div className="py-10 text-center">
             <p className="text-sm font-medium text-gray-700">Nothing needs you right now.</p>
             <p className="text-xs text-gray-400 mt-1">New drafts, approvals and stuck orders will show up here.</p>
@@ -149,9 +242,14 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
                       <p className="text-sm font-medium text-gray-900 mt-1.5">{item.title}</p>
                       {item.detail && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{item.detail}</p>}
                     </div>
-                    <button onClick={() => dismiss(item.key)} className={btn.iconGhost} title="Hide from inbox (stays in its own tab)">
-                      <X size={15} />
-                    </button>
+                    <div className="flex items-center shrink-0">
+                      <button onClick={() => snooze(item.key)} className={btn.iconGhost} title="Snooze until tomorrow">
+                        <Clock size={15} />
+                      </button>
+                      <button onClick={() => hide(item.key)} className={btn.iconGhost} title="Hide from inbox (stays in its own tab)">
+                        <X size={15} />
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2.5">
                     {item.approve && (
@@ -173,11 +271,59 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
             </div>
           </div>
         ))}
+
+        {/* ---- Hidden & snoozed (undo lives here) ---- */}
+        {!loading && hiddenItems.length > 0 && (
+          <div className="mt-5 pt-4 border-t border-gray-100">
+            <button onClick={() => setShowHidden((v) => !v)}
+              className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors">
+              {showHidden ? 'Hide' : 'Show'} hidden & snoozed ({hiddenItems.length})
+            </button>
+            {showHidden && (
+              <div className="space-y-1.5 mt-2.5">
+                {hiddenItems.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 opacity-80">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <Badge>{item.source}</Badge>
+                      <p className="text-xs text-gray-600 truncate">{item.title}</p>
+                      {hidden[item.key] > 0 && (
+                        <span className="text-[11px] text-gray-400 shrink-0">
+                          snoozed until {new Date(hidden[item.key]).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => restore(item.key)} className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 shrink-0 transition-colors">
+                      <Undo2 size={13} /> Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* ---- Ask the business ---- */}
       <AnalystChat call={call} />
     </div>
+  );
+}
+
+// One sub-tab pill: label + count, red dot when the topic holds a critical item.
+function TopicPill({ active, onClick, label, count, critical }) {
+  return (
+    <button onClick={onClick}
+      className={`inline-flex items-center gap-1.5 shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+        active
+          ? 'bg-indigo-600 border-indigo-600 text-white'
+          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+      }`}>
+      {critical && <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : 'bg-red-500'}`} />}
+      {label}
+      <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+        {count}
+      </span>
+    </button>
   );
 }
 

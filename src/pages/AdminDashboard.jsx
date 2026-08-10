@@ -16,7 +16,9 @@ import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
 import SeoCoachTab from '../components/admin/SeoCoachTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
-import ActionInboxTab from '../components/admin/ActionInboxTab';
+import ActionInboxTab, {
+  loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
+} from '../components/admin/ActionInboxTab';
 import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
@@ -3999,6 +4001,36 @@ export default function AdminDashboard() {
     return phones.size;
   }, [songs]);
 
+  // Action Inbox critical count for the nav badge, visible from any tab.
+  // Polls the aggregator every 3 min; the inbox tab also broadcasts its live
+  // count (INBOX_COUNT_EVENT) so approvals/hides update the badge instantly.
+  // Hidden/snoozed cards are excluded using the same localStorage store the
+  // inbox itself reads.
+  const [inboxCriticalCount, setInboxCriticalCount] = useState(0);
+  useEffect(() => {
+    if (!accessToken || userRole !== 'admin') return;
+    let cancelled = false;
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/action-inbox`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'list' }),
+        });
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.items) return;
+        const hidden = loadInboxHidden();
+        setInboxCriticalCount(data.items.filter(i => i.severity === 'critical' && !isInboxHiddenNow(hidden, i.key)).length);
+      } catch { /* badge is best-effort — never surface polling errors */ }
+    };
+    poll();
+    const t = setInterval(poll, 3 * 60e3);
+    const onCount = (e) => setInboxCriticalCount(e.detail?.critical ?? 0);
+    window.addEventListener(INBOX_COUNT_EVENT, onCount);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener(INBOX_COUNT_EVENT, onCount); };
+  }, [accessToken, userRole]);
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleString('es-MX', {
@@ -4422,7 +4454,8 @@ export default function AdminDashboard() {
         <p className="text-[10px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 px-2">Daily ops</p>
         {userRole === 'admin' && (
         <button onClick={() => setActiveTab('inbox')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'inbox' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-          <Inbox size={18} className={`flex-shrink-0 ${activeTab === 'inbox' ? 'text-amber-400' : ''}`} /> Action Inbox
+          <Inbox size={18} className={`flex-shrink-0 ${activeTab === 'inbox' ? 'text-amber-400' : ''}`} /><span className="flex-1">Action Inbox</span>
+          {inboxCriticalCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">{inboxCriticalCount}</span>}
         </button>
         )}
         <button onClick={() => setActiveTab('orders')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'orders' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
@@ -5103,13 +5136,18 @@ export default function AdminDashboard() {
               {userRole === 'admin' && (
                 <button
                   onClick={() => setActiveTab('inbox')}
-                  className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  className={`px-5 py-2.5 rounded-xl font-medium transition relative ${
                     activeTab === 'inbox'
                       ? 'bg-amber-400 text-black'
                       : 'bg-white/5 text-gray-400 hover:bg-white/10'
                   }`}
                 >
                   📥 Action Inbox
+                  {inboxCriticalCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
+                      {inboxCriticalCount}
+                    </span>
+                  )}
                 </button>
               )}
               <button
