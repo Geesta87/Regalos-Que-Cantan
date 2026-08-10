@@ -109,18 +109,35 @@ function parseYear(t: string[], i: number): { year: number; next: number } | nul
   return null;
 }
 function buildTokenGroups(line: string): string[][] {
-  const t = String(line || '').split(/\s+/).map(norm).filter(Boolean);
-  const groups: string[][] = [];
+  // Raw tokens kept alongside normalized ones — proper-noun detection needs the
+  // original capitalization.
+  const pairs = String(line || '').split(/\s+/)
+    .map((raw) => ({ raw, n: norm(raw) }))
+    .filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  // PROPER NAMES ARE NOT REQUIRED TOKENS (2026-08-10) — mirror of the
+  // audioSplice.js fix. Whisper writes invented names however it hears them
+  // ("Saynee" → "Zaine"), so requiring the name token rejected perfect takes.
+  // A mid-line Capitalized token is treated as a name and skipped; the words
+  // around it prove the line. Guard: keep names if skipping them would leave
+  // fewer than 2 required groups.
+  const isNameAt = (i: number): boolean => {
+    if (i === 0) return false;
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged: Array<{ g: string[]; name: boolean }> = [];
   for (let i = 0; i < t.length;) {
     const y = parseYear(t, i);
-    if (y) { groups.push([String(y.year)]); i = y.next; continue; }
-    const w = t[i]; i++;
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    const w = t[i]; const idx = i; i++;
     if (w.length < 2 || FILLER.has(w)) continue;
     const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
-    if (numVal != null) { groups.push([w, String(numVal)]); continue; }
-    groups.push([w]);
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
+    flagged.push({ g: [w], name: isNameAt(idx) });
   }
-  return groups;
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
 }
 type Atom = { n: string; s: number; e: number };
 function collapseSpelledYears(atoms: Atom[]): Atom[] {
