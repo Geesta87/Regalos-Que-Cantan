@@ -587,7 +587,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const who = r.context?.customer_name || r.context?.phone || 'customer';
   for (const n of numbers) {
     try {
-      const wa = await sendWhatsApp(n, `🔧 Song fix ready for ${who} — ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
+      const wa = await sendWhatsApp(n, `🎧 Alfred here — fix ready for ${who}: ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
       if (!wa.ok) console.error(`[fix-song-auto] WhatsApp ping to ${n} failed: ${wa.error || wa.status || 'unknown'}`);
     } catch (e) {
       console.error(`[fix-song-auto] WhatsApp ping to ${n} threw: ${e instanceof Error ? e.message : e}`);

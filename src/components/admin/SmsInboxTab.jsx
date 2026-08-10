@@ -1829,9 +1829,9 @@ export default function SmsInboxTab({ accessToken }) {
                     <button
                       onClick={openFixModal}
                       className="flex-shrink-0 text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
-                      title="Send this song to the Fix Song queue for a correction"
+                      title="Send this correction to Alfred, the Fix Song specialist"
                     >
-                      🔧 Enviar a arreglar
+                      🎧 Send to Alfred
                     </button>
                   </div>
                   {/* Staged attachment preview — paste (Ctrl+V), drag-drop, or 📎. */}
@@ -2027,15 +2027,15 @@ export default function SmsInboxTab({ accessToken }) {
           <div className="absolute inset-0 bg-black/60" onClick={() => !fixModal.submitting && setFixModal(null)} />
           <div className="relative w-full max-w-lg bg-[#141922] border border-white/10 rounded-2xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold text-white">🔧 Send to Fix Song</h3>
+              <h3 className="text-base font-semibold text-white">🎧 Send to Alfred</h3>
               <button onClick={() => !fixModal.submitting && setFixModal(null)} className="text-gray-400 hover:text-white text-lg px-1" aria-label="Close">✕</button>
             </div>
 
             {fixModal.done ? (
               <div className="text-center py-6">
                 <p className="text-3xl mb-2">✅</p>
-                <p className="text-sm text-white font-medium mb-1">Added to the Fix Song queue.</p>
-                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When automation is on, the fix runs by itself and you'll get a WhatsApp when it's ready to approve — otherwise it's waiting in the <strong>Fix Song</strong> tab.</p>
+                <p className="text-sm text-white font-medium mb-1">Alfred has it.</p>
+                <p className="text-xs text-gray-400 mb-4">Song(s) linked and request confirmed. When his auto-mode is on, Alfred works the fix by himself and pings you on WhatsApp when it's ready to approve — otherwise it waits in the <strong>Fix Song</strong> tab.</p>
                 <button onClick={() => setFixModal(null)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition">Done</button>
               </div>
             ) : (
@@ -2190,7 +2190,7 @@ export default function SmsInboxTab({ accessToken }) {
                     disabled={fixModal.submitting || fixModal.loading || !fixModal.summary.trim() || !(fixModal.selectedSongs || []).length}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-400 text-black hover:bg-amber-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {fixModal.submitting ? 'Sending…' : '🔧 Send to Fix Song'}
+                    {fixModal.submitting ? 'Sending…' : '🎧 Send to Alfred'}
                   </button>
                 </div>
               </>

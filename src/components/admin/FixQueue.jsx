@@ -92,23 +92,23 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
         </p>
       )}
 
-      {/* Robot trail — before this the owner couldn't tell WHY the auto-fixer
+      {/* Alfred's trail — before this the owner couldn't tell WHY the agent
           gave up on a card (needs_human looked identical to a plain "New"). */}
       {req.auto_status === 'needs_human' && ['pending', 'in_progress'].includes(req.status) && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 mb-2">
-          <p className="text-[11px] text-amber-200 font-semibold">🤖 The auto-fixer stopped — needs a human:</p>
+          <p className="text-[11px] text-amber-200 font-semibold">🎧 Alfred stopped — he needs a human on this one:</p>
           <p className="text-[11px] text-amber-100/90 whitespace-pre-wrap break-words">{req.auto_error || 'No reason recorded.'}</p>
         </div>
       )}
       {req.auto_status && !['needs_human', 'staged', 'failed'].includes(req.auto_status) && req.status === 'pending' && (
-        <p className="text-[11px] text-sky-300 mb-2">🤖 Auto-fixer working on this ({req.auto_status})…</p>
+        <p className="text-[11px] text-sky-300 mb-2">🎧 Alfred is working on this ({req.auto_status})…</p>
       )}
 
       {/* Awaiting-approval: original vs corrected, side by side, for the owner. */}
       {req.status === 'awaiting_approval' && (
         <div className="rounded-lg bg-white/5 border border-white/10 p-3 mb-2 space-y-2">
           {req.candidate_summary && <p className="text-[11px] text-purple-100">📝 {req.candidate_summary}</p>}
-          {req.worked_by && <p className="text-[10px] text-gray-500">Prepared by {req.worked_by}</p>}
+          {req.worked_by && <p className="text-[10px] text-gray-500">Prepared by {req.worked_by === 'fix-song-auto' ? 'Alfred 🎧' : req.worked_by}</p>}
           {req.song && req.song.audio_url && (
             <div>
               <p className="text-[11px] text-gray-500 mb-1">Current (live) song:</p>
@@ -224,7 +224,7 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
   );
 }
 
-export default function FixQueue({ requests, role, busyId, loading, autoState, autoBusy, onToggleAuto, onClaim, onWork, onUnclaim, onRelease, onReject, onRefresh }) {
+export default function FixQueue({ requests, role, busyId, loading, onClaim, onWork, onUnclaim, onRelease, onReject, onRefresh }) {
   const groups = useMemo(() => {
     const g = { awaiting_approval: [], in_progress: [], pending: [], resolved: [] };
     for (const r of requests || []) {
@@ -257,30 +257,13 @@ export default function FixQueue({ requests, role, busyId, loading, autoState, a
             </span>
           )}
         </h3>
-        <div className="flex items-center gap-3">
-          {/* Robot switch — visible to everyone, flippable by the owner only
-              (the edge function enforces role='admin' on auto-toggle). */}
-          {autoState && (
-            <button
-              onClick={role === 'admin' ? onToggleAuto : undefined}
-              disabled={autoBusy || role !== 'admin'}
-              title={role === 'admin' ? 'Turn the auto-fixer on/off' : 'Only the owner can switch this'}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
-                autoState.enabled
-                  ? 'bg-green-500/15 text-green-300 border-green-500/30 hover:bg-green-500/25'
-                  : 'bg-gray-500/15 text-gray-400 border-gray-500/30 hover:bg-gray-500/25'
-              } ${role !== 'admin' ? 'cursor-default' : ''}`}
-            >
-              {autoBusy ? '…' : `🤖 Auto-fixer ${autoState.enabled ? 'ON' : 'OFF'}`}
-            </button>
-          )}
-          <button
-            onClick={onRefresh}
-            className="text-xs text-gray-400 hover:text-white transition"
-          >
-            🔄 Refresh
-          </button>
-        </div>
+        {/* The Alfred auto-mode switch lives in the hero card above the queue. */}
+        <button
+          onClick={onRefresh}
+          className="text-xs text-gray-400 hover:text-white transition"
+        >
+          🔄 Refresh
+        </button>
       </div>
 
       {loading && openCount === 0 ? (
