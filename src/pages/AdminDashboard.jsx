@@ -36,8 +36,9 @@ function useDebounce(value, delay = 350) {
 // the giant AdminDashboard component. Talks to the fix-song-section edge
 // function: action:'preview' (Whisper + Claude + Kie replace-section) returns
 // the fixed audio for review; action:'apply' swaps it into the customer's row.
-// Called with the anon key — fix-song-section is verify_jwt = false, same as
-// regenerate-paid-song-kie.
+// Called with the ADMIN SESSION token (accessToken) — fix-song-section checks
+// admin_users in-handler (verify_jwt stays false so fix-song-auto's service-key
+// calls keep working). The anon key alone is rejected since 2026-08-10.
 // ---------------------------------------------------------------------------
 // When `stageRequest` (a song_fix_requests row) is passed, the card is in
 // QUEUE / STAGING mode: instead of swapping the customer's song immediately, the
@@ -83,7 +84,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const staging = !!stageRequest;
   const postFn = (body) => fetch(FN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
     body: JSON.stringify(body),
   }).then((r) => r.json());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -263,7 +264,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
         body: JSON.stringify({ action: 'chat', songId: song.id, conversation: newMsgs, image: imagePayload() }),
       });
       const data = await res.json();
@@ -291,7 +292,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
         body: JSON.stringify({ action: 'plan', mode, songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
@@ -313,7 +314,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
         body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases }),
       });
       const data = await res.json();
@@ -1026,7 +1027,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         fd.append('fixTaskId', r.fixTaskId); fd.append('fixAudioId', r.fixAudioId);
         if (r.fixTrimAtS) fd.append('fixTrimAtS', String(r.fixTrimAtS));
       }
-      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
       const d = await resp.json();
       if (!d.ok) throw new Error(d.error || 'apply failed');
       if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
@@ -1079,7 +1080,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
     const post = (body) => fetch(FN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
@@ -1124,7 +1125,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
         body: JSON.stringify({ action: 'undo', songId: song.id }),
       });
       const data = await res.json();
@@ -1222,7 +1223,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           fd.append('fixTaskId', result.fixTaskId); fd.append('fixAudioId', result.fixAudioId);
           if (result.fixTrimAtS) fd.append('fixTrimAtS', String(result.fixTrimAtS));
         }
-        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, apikey: ANON }, body: fd });
+        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
         showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
@@ -1236,7 +1237,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON}`, 'apikey': ANON },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': ANON },
         body: JSON.stringify({
           action: 'apply',
           songId: song.id,
@@ -8055,6 +8056,7 @@ export default function AdminDashboard() {
                 <FixSongCard
                   song={selectedSong}
                   showToast={showToast}
+                  accessToken={accessToken}
                   onApplied={(newUrl, newLyrics) =>
                     setSelectedSong((prev) =>
                       prev ? { ...prev, audio_url: newUrl, ...(newLyrics ? { lyrics: newLyrics } : {}) } : prev

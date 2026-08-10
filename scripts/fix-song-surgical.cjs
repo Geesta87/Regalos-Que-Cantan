@@ -35,10 +35,10 @@
 //   --out <path>            Output file (default: ./fix-<songId>.mp3).
 //
 // Env:
-//   RQC_ANON_KEY (or SUPABASE_ANON_KEY)  Supabase anon key (Bearer; the fn is
-//                                        verify_jwt=false). Falls back to the
-//                                        project's published legacy anon key.
-//   SUPABASE_SERVICE_ROLE_KEY            Only needed for --apply.
+//   SUPABASE_SERVICE_ROLE_KEY  REQUIRED for every run since 2026-08-10 —
+//                              fix-song-section now rejects the anon key
+//                              (in-handler auth: service key or admin session).
+//   RQC_ANON_KEY (or SUPABASE_ANON_KEY)  Still sent as the apikey header.
 
 const fs = require('fs');
 const path = require('path');
@@ -69,7 +69,14 @@ if (!songId || !note) {
   process.exit(1);
 }
 
-const HEADERS = { 'Authorization': `Bearer ${ANON}`, 'apikey': ANON, 'Content-Type': 'application/json' };
+// fix-song-section requires the service-role key (or an admin session JWT) as
+// Bearer since 2026-08-10 — the anon key alone is rejected with 401.
+const SR_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SR_KEY) {
+  console.error('SUPABASE_SERVICE_ROLE_KEY is required in env (fix-song-section no longer accepts the anon key).');
+  process.exit(1);
+}
+const HEADERS = { 'Authorization': `Bearer ${SR_KEY}`, 'apikey': ANON, 'Content-Type': 'application/json' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fn(body) {
   const r = await fetch(FN_URL, { method: 'POST', headers: HEADERS, body: JSON.stringify(body) });

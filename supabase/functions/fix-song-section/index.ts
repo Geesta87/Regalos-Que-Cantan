@@ -32,10 +32,13 @@
 //     ~14 days (or made on Mureka) can't be section-fixed; the caller is told
 //     to use regenerate-paid-song-kie (full re-roll) instead.
 //
-// Auth: verify_jwt = false. Mirrors regenerate-paid-song-kie — invoked from the
-// admin dashboard / CLI with the anon (publishable) key as Bearer. The secrets
-// (KIE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY) only exist in the edge
-// runtime, which is why this is a function and not a browser-side script.
+// Auth: verify_jwt = false at the GATEWAY (fix-song-auto calls server-to-server
+// with the service key, which the gateway can't role-check), but the HANDLER
+// enforces auth itself: the service-role key OR an admin_users session JWT.
+// Before 2026-08-10 this function accepted the public anon key alone — anyone
+// holding the key shipped in the frontend bundle could apply/undo audio on any
+// song or burn Claude/Whisper/Kie credit. The dashboard and the CLI now send an
+// admin session token / the service key respectively.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -1088,6 +1091,27 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Auth gate (2026-08-10) — every action requires either the service-role
+    // key (fix-song-auto, CLI) or a logged-in admin_users session. The gateway
+    // can't do this for us (verify_jwt=false so service-key calls pass), so it
+    // lives here, before ANY body parsing or credit-spending work.
+    const authHeader = req.headers.get('Authorization') || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (bearer !== SUPABASE_SERVICE_ROLE_KEY) {
+      if (!bearer) return json({ ok: false, error: 'Missing Authorization header' }, 401);
+      const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) return json({ ok: false, error: 'Invalid session — sign in to the admin dashboard again.' }, 401);
+      const { data: roleRow } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', userData.user.id)
+        .single();
+      if (!roleRow) return json({ ok: false, error: 'No admin access' }, 403);
+    }
 
     // The admin dashboard stitches the surgical fix in the browser (Web Audio)
     // and POSTs the finished MP3 here as multipart/form-data to host + apply it.
