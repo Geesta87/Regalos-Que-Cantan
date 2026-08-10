@@ -43,13 +43,16 @@ function customerLabel(req) {
   return ctx(req, 'customer_name') || ctx(req, 'phone') || (req.song && req.song.recipient_name) || 'Customer';
 }
 
-function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease, onReject }) {
+function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease, onReject, onSendToAce }) {
   const meta = STATUS_META[req.status] || STATUS_META.pending;
   const busy = busyId === req.id;
   const recipient = req.song && req.song.recipient_name;
   const genre = req.song && (req.song.genre_name || req.song.genre);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  // "Send to Ace" hand-off — optional note becomes his extra guidance.
+  const [handing, setHanding] = useState(false);
+  const [aceNote, setAceNote] = useState('');
 
   return (
     <div className="bg-[#1a1f26] rounded-xl p-4 border border-white/10">
@@ -178,8 +181,21 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
           </>
         )}
 
+        {/* Send to Ace (any open state) — hand it to the auto pipeline with an
+            optional note. Covers needs_human retries, old manual-era cards, and
+            "close but redo it" verdicts after listening to a staged candidate. */}
+        {['pending', 'in_progress', 'awaiting_approval'].includes(req.status) && !handing && !rejecting && (
+          <button
+            onClick={() => setHanding(true)}
+            disabled={busy}
+            className="py-2 sm:py-1.5 px-3 bg-indigo-500/15 text-indigo-200 rounded-lg text-[13px] sm:text-xs font-medium hover:bg-indigo-500/25 transition disabled:opacity-60"
+          >
+            🎧 {req.auto_status ? 'Have Ace redo it' : 'Give it to Ace'}
+          </button>
+        )}
+
         {/* Reject (any open state) */}
-        {['pending', 'in_progress', 'awaiting_approval'].includes(req.status) && !rejecting && (
+        {['pending', 'in_progress', 'awaiting_approval'].includes(req.status) && !rejecting && !handing && (
           <button
             onClick={() => setRejecting(true)}
             disabled={busy}
@@ -196,6 +212,30 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
           <span className="text-[11px] text-green-300">Released {fmtWhen(req.resolved_at)}{req.approved_by ? ` by ${req.approved_by}` : ''}</span>
         )}
       </div>
+
+      {handing && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={aceNote}
+            onChange={(e) => setAceNote(e.target.value)}
+            placeholder="Optional note for Ace (e.g. 'the intro was too long')…"
+            className="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-400/50"
+          />
+          <button
+            onClick={() => { onSendToAce(req, aceNote); setHanding(false); setAceNote(''); }}
+            disabled={busy}
+            className="py-1.5 px-3 bg-indigo-500 text-white rounded-lg text-xs font-semibold hover:bg-indigo-400 transition disabled:opacity-60"
+          >
+            🎧 Send
+          </button>
+          <button
+            onClick={() => { setHanding(false); setAceNote(''); }}
+            className="py-1.5 px-2 text-xs text-gray-400 hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {rejecting && (
         <div className="mt-2 flex items-center gap-2">
@@ -224,7 +264,7 @@ function RequestCard({ req, role, busyId, onClaim, onWork, onUnclaim, onRelease,
   );
 }
 
-export default function FixQueue({ requests, role, busyId, loading, onClaim, onWork, onUnclaim, onRelease, onReject, onRefresh }) {
+export default function FixQueue({ requests, role, busyId, loading, onClaim, onWork, onUnclaim, onRelease, onReject, onSendToAce, onRefresh }) {
   const groups = useMemo(() => {
     const g = { awaiting_approval: [], in_progress: [], pending: [], resolved: [] };
     for (const r of requests || []) {
@@ -239,7 +279,7 @@ export default function FixQueue({ requests, role, busyId, loading, onClaim, onW
   const openCount = groups.awaiting_approval.length + groups.in_progress.length + groups.pending.length;
   const [showResolved, setShowResolved] = useState(false);
 
-  const cardProps = { role, busyId, onClaim, onWork, onUnclaim, onRelease, onReject };
+  const cardProps = { role, busyId, onClaim, onWork, onUnclaim, onRelease, onReject, onSendToAce };
 
   return (
     <div className="mb-6">

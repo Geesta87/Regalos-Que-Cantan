@@ -321,6 +321,47 @@ serve(async (req) => {
       return json({ success: true, enabled });
     }
 
+    // ── SEND TO ACE — hand any open request (back) to the auto pipeline ─────
+    // Replaces the SQL-only resets of 2026-08-10: needs_human cards, old
+    // manual-era cards, and do-over-after-listening all get a one-tap "have
+    // Ace redo it". An optional note becomes extra guidance for his
+    // understanding step (e.g. "the intro was too long", "put the new line in
+    // Verso 2"). Fully re-plans from scratch with fresh rounds.
+    if (action === 'send-to-ace') {
+      const id = body.request_id;
+      if (!id) return json({ success: false, error: 'request_id required' }, 400);
+      const { data: reqRow } = await admin.from('song_fix_requests').select('id, customer_request, status').eq('id', id).single();
+      if (!reqRow) return json({ success: false, error: 'Request not found' }, 404);
+      // Any open OR rejected request may be handed to Ace; only released ones can't.
+      if (reqRow.status === 'done') return json({ success: false, error: 'Already released — nothing for Ace to redo.' }, 409);
+      const note = String(body.note || '').trim();
+      const patch: Record<string, unknown> = {
+        status: 'pending',
+        intake_complete: true,
+        auto_status: null,
+        auto_round: 0,
+        auto_error: null,
+        auto_takes: [],
+        auto_plan: null,
+        auto_task_id: null,
+        fix_spec: null,
+        candidate_audio_url: null,
+        candidate_lyrics: null,
+        candidate_summary: null,
+        candidate_meta: null,
+        staged_at: null,
+        worked_by: null,
+        reject_reason: null,
+        // The worker only picks up requests newer than fix_auto_state.active_since
+        // (future-only rule). A hand-off IS a fresh instruction — re-stamp it.
+        created_at: new Date().toISOString(),
+      };
+      if (note) patch.customer_request = `${reqRow.customer_request || ''}\n\nNOTA DEL DUEÑO (reintento): ${note}`.trim();
+      const { error } = await admin.from('song_fix_requests').update(patch).eq('id', id);
+      if (error) return json({ success: false, error: error.message }, 500);
+      return json({ success: true });
+    }
+
     if (action === 'claim') {
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);

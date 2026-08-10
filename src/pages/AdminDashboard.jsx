@@ -1869,6 +1869,21 @@ function FixSongTab({ accessToken, showToast }) {
     try { await postQueue({ action: 'reject', request_id: req.id, reason }); await loadQueue(); }
     finally { setQueueBusyId(null); }
   }
+  // Hand a request (back) to Ace with fresh rounds; the note becomes extra
+  // guidance for his understanding step. Works on needs_human cards, old
+  // manual-era cards, and staged candidates the owner wants redone.
+  async function sendToAceReq(req, note) {
+    setQueueBusyId(req.id);
+    try {
+      const d = await postQueue({ action: 'send-to-ace', request_id: req.id, note: note || '' });
+      if (d?.success) {
+        showToast(autoState?.enabled
+          ? '🎧 Ace has it — he\'ll start within 2 minutes and ping you when it\'s staged.'
+          : '🎧 Queued for Ace — but his Auto-mode is OFF. Flip it ON above or he won\'t start.');
+      } else showToast(`❌ ${d?.error || 'Could not hand it to Ace.'}`);
+      await loadQueue();
+    } finally { setQueueBusyId(null); }
+  }
 
   // Clear the active request + refresh once a fix is staged.
   const onStaged = useCallback(() => {
@@ -2014,6 +2029,7 @@ function FixSongTab({ accessToken, showToast }) {
           onUnclaim={unclaimReq}
           onRelease={releaseReq}
           onReject={rejectReq}
+          onSendToAce={sendToAceReq}
           onRefresh={loadQueue}
         />
       )}
