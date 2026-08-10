@@ -1049,10 +1049,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const { fixTaskId, fullLyrics, changeSummary } = sub;
       if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
 
+      // Same-voice by default (2026-08-10): the server auto-uses the song's own
+      // cloned voice persona + pins the original length whenever the Kie source
+      // is alive. personaUsed tells us which kind of take is coming.
+      const voiceNote = sub.personaUsed
+        ? `🎤 SAME singer (cloned voice)${sub.pinnedDurationS ? ` · pinned to ~${Math.floor(sub.pinnedDurationS / 60)}:${String(Math.round(sub.pinnedDurationS % 60)).padStart(2, '0')}` : ''}`
+        : '⚠️ New voice (original recording no longer on Kie — persona unavailable)';
       let tracks = [];
       for (let i = 1; i <= 45; i++) {
         const d = await post({ action: 'diag', taskId: fixTaskId });
-        setSurgicalMsg(`Re-recording the full song… (${i})`);
+        setSurgicalMsg(`Re-recording the full song… ${voiceNote} (${i})`);
         if (d.status === 'SUCCESS') { tracks = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
           setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Reword and try again.' : `Generation failed (${d.status}).`);
@@ -1068,6 +1074,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         changeSummary: (typeof plan?.changeSummary === 'string' && plan.changeSummary) || changeSummary || '',
         originalAudioUrl: song.original_audio_url || song.audio_url,
         fullLyrics,
+        verifyNote: voiceNote,
         takes: tracks.map((t) => ({ audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified: null, lyrics: fullLyrics })),
       });
       setSelectedTakeIdx(0);
@@ -1475,7 +1482,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 <p className="text-[11px] whitespace-pre-wrap font-mono max-h-40 overflow-y-auto text-gray-300 mt-2 bg-black/20 rounded p-2">{plan.approvedLyrics}</p>
               </details>
               <p className="text-[11px] text-gray-500 mb-2">{pendingMode === 'full'
-                ? 'The full song will be redone. Takes 1-3 min.'
+                ? 'The full song will be redone — SAME singer (cloned voice) + original length when the recording is still on Kie. Takes 1-3 min.'
                 : plan.addLine
                   ? 'Adding a line redoes the FULL song with the new line included (whole takes only — never spliced). Same style & voice type, brand-new performance. Takes 1-3 min.'
                   : (Array.isArray(plan.changes) && plan.changes.length > 1
@@ -1485,7 +1492,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". The whole song is re-sung fresh with it — listen end-to-end before applying.</p>
               )}
               {offerFullReroll && pendingMode === 'section' && (
-                <p className="text-[11px] text-amber-300 mb-2">⚠️ Even fixing spot by spot, Suno couldn't land every correction cleanly. You can try again (fresh takes often land), or redo the full song to apply everything at once — same style & voice type, but a brand-new performance.</p>
+                <p className="text-[11px] text-amber-300 mb-2">⚠️ Even fixing spot by spot, Suno couldn't land every correction cleanly. You can try again (fresh takes often land), or redo the full song to apply everything at once — it re-sings with the SAME singer (cloned voice) pinned to the original length when the recording is still on Kie.</p>
               )}
               <div className="flex gap-2">
                 {offerFullReroll && pendingMode === 'section' ? (
@@ -1533,7 +1540,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   onClick={() => runFullReroll(plan.approvedLyrics, plan.verifyPhrases)}
                   className="w-full mt-2 py-2 px-4 bg-amber-500/90 text-black rounded-lg text-sm font-semibold hover:bg-amber-400 transition"
                 >
-                  🔄 Or redo the full song instead (fresh take — same style & voice)
+                  🔄 Or redo the full song instead (SAME singer — cloned voice + pinned length)
                 </button>
               )}
               {/* Bundle: correct BOTH versions at once (each in its own voice).
@@ -1647,7 +1654,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 <p className="text-[11px] text-amber-300 mb-2">🕐 Change{result.changeMarks.length > 1 ? 's' : ''} at {result.changeMarks.map((m) => mmss(m)).join(', ')} — jump there to check</p>
               )}
               {result.mode === 'full' ? (
-                <p className="text-[11px] text-gray-400 mb-2">🔁 Full song redone with the corrections</p>
+                <p className="text-[11px] text-gray-400 mb-2">🔁 Full song redone with the corrections{result.verifyNote ? <span className="block text-purple-200 mt-0.5">{result.verifyNote}</span> : null}</p>
               ) : result.window ? (
                 <p className="text-[11px] text-gray-400 mb-2">
                   Regenerated part: {Math.round(result.window.startS)}s – {Math.round(result.window.endS)}s

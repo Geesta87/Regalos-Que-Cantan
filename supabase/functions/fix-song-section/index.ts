@@ -1035,7 +1035,7 @@ async function applySplicedAudio(req: Request, supabase: any): Promise<Response>
 // audio URLs can rotate, so we always re-fetch rather than trust a stored URL.
 // createTimeMs is the TAKE's generation time — the ~14-day retention clock runs
 // from this, not from the song's created_at (each chained fix resets it).
-async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string; createTimeMs: number | null } | null> {
+async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioUrl: string; id: string; createTimeMs: number | null; durationS: number | null } | null> {
   if (!KIE_API_KEY || !taskId) return null;
   try {
     const resp = await fetch(`https://api.kie.ai/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, {
@@ -1047,7 +1047,8 @@ async function fetchKieTrack(taskId: string, audioId?: string): Promise<{ audioU
     const t = (audioId && tracks.find((x: any) => x.id === audioId)) || tracks[0];
     if (!t?.audioUrl) return null;
     const ct = Number(t.createTime ?? raw?.data?.createTime);
-    return { audioUrl: t.audioUrl, id: t.id, createTimeMs: Number.isFinite(ct) && ct > 0 ? ct : null };
+    const dur = Number(t.duration);
+    return { audioUrl: t.audioUrl, id: t.id, createTimeMs: Number.isFinite(ct) && ct > 0 ? ct : null, durationS: Number.isFinite(dur) && dur > 0 ? dur : null };
   } catch { return null; }
 }
 
@@ -1063,7 +1064,7 @@ function parseJsonMaybe(p: any): any {
 // it survives all future fixes. Returns the parent taskId, the per-track audioId,
 // and the CURRENT pristine audioUrl. null = no recoverable Kie source (Mureka, or
 // Kie purged the audio after ~14 days) → caller should offer a full re-roll.
-async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null> {
+async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null; durationS: number | null } | null> {
   // trimAtS travels ONLY on the chained candidate (kie_payload): when the applied
   // audio was an end-trimmed whole take, the Kie-hosted source is LONGER than the
   // live song, and every downstream consumer (Claude's window, the length checks)
@@ -1080,10 +1081,48 @@ async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: str
       if (!existing || existing.taskId !== c.taskId) {
         try { await supabase.from('songs').update({ kie_source: { taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ }
       }
-      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs };
+      return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs, durationS: track.durationS };
     }
   }
   return null;
+}
+
+// Mint (once — persisted in songs.kie_source.personaId, then always reused) or
+// reuse the song's Kie voice persona, and derive the live song's true length to
+// pin a full re-roll to (trimAtS of an end-trimmed chained take beats the
+// source take's raw duration). Used by action:'mint-persona' and — since
+// 2026-08-10, owner priority: multi-spot fixes must keep the SAME voice — by
+// 'full-submit' AUTOMATICALLY whenever the Kie source is alive, so "redo the
+// whole song" no longer changes the singer.
+async function ensurePersona(song: any, songId: string, supabase: any, opts: { vocalStart?: number; vocalEnd?: number } = {}): Promise<{ personaId: string | null; reused: boolean; durationS: number | null; error?: string }> {
+  const existing = parseJsonMaybe(song?.kie_source)?.personaId || null;
+  const src = await resolveKieSource(song, supabase);
+  const durationS = src ? (src.trimAtS || src.durationS || null) : null;
+  if (existing) return { personaId: existing, reused: true, durationS };
+  if (!src) return { personaId: null, reused: false, durationS: null, error: 'No Kie source available (Mureka song, or Kie purged the audio after ~14 days).' };
+  const resp = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      taskId: src.taskId,
+      audioId: src.audioId,
+      name: `voz-${String(songId).slice(0, 8)}`,
+      description: `Voz original de la canción para ${song.recipient_name || 'cliente'}. ${String(song.style_used || '').slice(0, 160)}`,
+      // 10-30s vocal sample window; verses start after the intro on our songs.
+      vocalStart: Number(opts.vocalStart) >= 0 ? Number(opts.vocalStart) : 12,
+      vocalEnd: Number(opts.vocalEnd) > 0 ? Number(opts.vocalEnd) : 40,
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  const personaId = data?.data?.personaId;
+  if (!resp.ok || data?.code !== 200 || !personaId) {
+    return { personaId: null, reused: false, durationS, error: `generate-persona ${resp.status} code=${data?.code}: ${String(data?.msg || 'no personaId').slice(0, 200)}` };
+  }
+  // Persist (one mint per audio, ever) — merge into kie_source.
+  const mergedSource = { ...(parseJsonMaybe(song.kie_source) || {}), taskId: src.taskId, audioId: src.audioId, personaId };
+  await supabase.from('songs').update({ kie_source: mergedSource }).eq('id', songId);
+  await logAttempt(supabase, { song_id: songId, action: 'mint-persona', kie_task_id: src.taskId, outcome: 'success', detail: `personaId=${personaId}` });
+  return { personaId, reused: false, durationS };
 }
 
 Deno.serve(async (req) => {
@@ -1142,35 +1181,9 @@ Deno.serve(async (req) => {
         .eq('id', songId)
         .single();
       if (!song) return json({ ok: false, error: 'song not found' });
-      // deno-lint-ignore no-explicit-any
-      const existing = (song.kie_source as any)?.personaId;
-      if (existing) return json({ ok: true, personaId: existing, reused: true });
-      const src = await resolveKieSource(song, supabase);
-      if (!src) return json({ ok: false, error: 'No Kie source available (Mureka song, or Kie purged the audio after ~14 days).' });
-      const resp = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId: src.taskId,
-          audioId: src.audioId,
-          name: `voz-${String(songId).slice(0, 8)}`,
-          description: `Voz original de la canción para ${song.recipient_name || 'cliente'}. ${String(song.style_used || '').slice(0, 160)}`,
-          // 10-30s vocal sample window; verses start after the intro on our songs.
-          vocalStart: Number(body?.vocalStart) >= 0 ? Number(body.vocalStart) : 12,
-          vocalEnd: Number(body?.vocalEnd) > 0 ? Number(body.vocalEnd) : 40,
-        }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      const personaId = data?.data?.personaId;
-      if (!resp.ok || data?.code !== 200 || !personaId) {
-        return json({ ok: false, error: `generate-persona ${resp.status} code=${data?.code}: ${String(data?.msg || 'no personaId').slice(0, 200)}` });
-      }
-      // Persist (one mint per audio, ever) — merge into kie_source.
-      // deno-lint-ignore no-explicit-any
-      const mergedSource = { ...((song.kie_source as any) || {}), taskId: src.taskId, audioId: src.audioId, personaId };
-      await supabase.from('songs').update({ kie_source: mergedSource }).eq('id', songId);
-      await logAttempt(supabase, { song_id: songId, action: 'mint-persona', kie_task_id: src.taskId, outcome: 'success', detail: `personaId=${personaId}` });
-      return json({ ok: true, personaId, reused: false });
+      const p = await ensurePersona(song, songId, supabase, { vocalStart: body?.vocalStart, vocalEnd: body?.vocalEnd });
+      if (!p.personaId) return json({ ok: false, error: p.error || 'mint failed' });
+      return json({ ok: true, personaId: p.personaId, reused: p.reused, durationS: p.durationS });
     }
 
     // -----------------------------------------------------------------
@@ -1551,12 +1564,27 @@ Deno.serve(async (req) => {
         try {
           let lyricsUsed = correctedLyrics as string;
           let taskId: string;
-          // Optional persona re-roll: personaId (from action 'mint-persona') sings
-          // with the original take's voice; durationS pins the length (V5_5).
-          const genOpts = {
+          // Persona re-roll: personaId sings with the original take's voice;
+          // durationS pins the length (V5_5). Explicit values win; otherwise —
+          // SAME-VOICE BY DEFAULT (2026-08-10, owner priority): whenever the Kie
+          // source is still alive, mint/reuse the song's own persona and pin the
+          // live song's length, so a full re-roll (the fallback when the section
+          // ladder can't land a multi-spot fix) no longer changes the singer.
+          // Opt out with body.usePersona === false.
+          const genOpts: { personaId?: string; durationS?: number } = {
             personaId: typeof body?.personaId === 'string' && body.personaId ? body.personaId : undefined,
             durationS: Number(body?.durationS) > 0 ? Number(body.durationS) : undefined,
           };
+          if (!genOpts.personaId && body?.usePersona !== false) {
+            const p = await ensurePersona(song, songId!, supabase);
+            if (p.personaId) {
+              genOpts.personaId = p.personaId;
+              if (!genOpts.durationS && p.durationS) genOpts.durationS = Math.round(p.durationS);
+            } else if (p.error) {
+              // Never block the re-roll — proceed voice-unpinned, but say so.
+              console.log(`[fix] full-submit WITHOUT persona (${p.error})`);
+            }
+          }
           try {
             taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {
@@ -1566,7 +1594,7 @@ Deno.serve(async (req) => {
             lyricsUsed = cleaned;
             taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           }
-          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: (correctedSummary || '').slice(0, 500) });
+          await logAttempt(supabase, { song_id: songId, action: 'full-submit', mode: 'full', complaint: complaint.slice(0, 2000), kie_task_id: taskId, outcome: 'submitted', detail: `${genOpts.personaId ? `persona=${genOpts.personaId} durationS=${genOpts.durationS || '-'} · ` : ''}${(correctedSummary || '').slice(0, 400)}` });
           return json({
             ok: true,
             submitted: true,
@@ -1576,6 +1604,10 @@ Deno.serve(async (req) => {
             changeSummary: correctedSummary,
             fullLyrics: correctedLyrics, // store the REAL corrected lyrics on apply
             verifyPhrases,
+            // Same-voice telemetry for the UI: true = the new take sings with the
+            // song's own cloned voice, pinned to the live song's length.
+            personaUsed: !!genOpts.personaId,
+            pinnedDurationS: genOpts.durationS || null,
             // The customer's current audio — the length yardstick for validating
             // the fresh takes. section-submit always returned this; full-submit
             // didn't, which made fix-song-auto's full-mode fallback reject EVERY
@@ -1596,7 +1628,7 @@ Deno.serve(async (req) => {
         let lastTaskId = '';
         const maxRounds = verifyPhrases.length ? 2 : 1;
         for (let round = 1; round <= maxRounds; round++) {
-          const r = await generateFullRound(correctedLyrics, title, song.style_used, song.voice_type, callbackUrl);
+          const r = await generateFullRound(correctedLyrics as string, title, song.style_used, song.voice_type, callbackUrl);
           lastTaskId = r.taskId;
           for (const t of r.tracks) { const a = await annotateTake(t, verifyPhrases, r.usedLyrics); if (a) takes.push(a); }
           if (!verifyPhrases.length || takes.some((t) => t.verified === true)) break;
@@ -1637,13 +1669,13 @@ Deno.serve(async (req) => {
     // sourceTrimAtS = its true musical end) so the next re-sing builds on it. If
     // the override take is gone from Kie, fail loudly — falling back to the DB
     // source would silently revert the earlier rounds' corrections.
-    let kieSrc: { taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null } | null;
+    let kieSrc: { taskId: string; audioId: string; pristineUrl: string; trimAtS: number | null; createTimeMs: number | null; durationS: number | null } | null;
     const srcTaskId: string | undefined = body?.sourceTaskId;
     const srcAudioId: string | undefined = body?.sourceAudioId;
     if (srcTaskId && srcAudioId) {
       const track = await fetchKieTrack(srcTaskId, srcAudioId);
       if (!track) return json({ ok: false, error: 'La toma fuente del paso anterior ya no está disponible en Kie. Vuelve a empezar el arreglo.' });
-      kieSrc = { taskId: srcTaskId, audioId: srcAudioId, pristineUrl: track.audioUrl, trimAtS: Number(body?.sourceTrimAtS) > 0 ? Number(body.sourceTrimAtS) : null, createTimeMs: track.createTimeMs };
+      kieSrc = { taskId: srcTaskId, audioId: srcAudioId, pristineUrl: track.audioUrl, trimAtS: Number(body?.sourceTrimAtS) > 0 ? Number(body.sourceTrimAtS) : null, createTimeMs: track.createTimeMs, durationS: track.durationS };
     } else {
       // Normal path: the live row ids -> kie_source -> fix_backup (recovers even
       // after applies, so repeat & multi-part fixes keep the same voice).

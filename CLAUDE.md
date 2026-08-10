@@ -132,13 +132,16 @@ or `src/utils/audioSplice.js`.
    rejected. (Pre-2026-08-06, fix #2 silently reverted fix #1 — never remove this.)
 3. Multi-spot fixes: the ladder drives spots sequentially (earliest first,
    chained, one final preview).
-4. **Persona re-roll — the escape hatch** when replace-section over-extends every
-   round (long structures / [Hablado] sections do this): `mint-persona` clones
-   the song's own singer (ONE mint per audioId EVER — persisted in
-   `songs.kie_source.personaId`, always reuse), then `full-submit` with
-   `personaId` + `durationS` = fresh full take, SAME voice, pinned length
-   (`duration` works on V5_5 only). It is still a new performance — owner ears
-   judge the A/B before applying.
+4. **Persona re-roll — ON BY DEFAULT for every full re-roll** (2026-08-10,
+   owner priority: multi-spot fixes must keep the same voice). `full-submit`
+   automatically mints (ONE mint per audioId EVER — persisted in
+   `songs.kie_source.personaId`, always reused) or reuses the song's own cloned
+   singer and pins `durationS` to the live song's length (trimAtS beats the raw
+   take duration; `duration` works on V5_5 only) whenever the Kie source is
+   alive. Opt out with `usePersona:false`. Response reports `personaUsed` /
+   `pinnedDurationS` and the UI shows it. If the source is purged (>14 days /
+   Mureka), the re-roll proceeds voice-unpinned and the UI warns. It is still a
+   new performance — owner ears judge the A/B before applying.
 
 ### Kie facts (verified against docs.kie.ai 2026-08-09)
 
