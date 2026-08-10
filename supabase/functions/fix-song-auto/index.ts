@@ -674,18 +674,24 @@ Deno.serve(async (req) => {
     const work = [...(fresh || []).map((r: any) => ({ ...r, auto_status: r.auto_status || 'linking' })), ...(mid || [])];
     const done: Record<string, string> = {};
     for (const r of work.slice(0, 3)) {
-      // Optimistic claim — cron fires every 2 min but a validating step (N song
+      // Overlap claim — cron fires every 2 min but a validating step (N song
       // downloads + Whisper + a trim) can run longer, and nothing marked a row
       // as in-flight, so an overlapping tick could pick the same row and submit
-      // a DUPLICATE Kie generation. The claim bumps auto_updated_at only if it
-      // hasn't moved since we read it; a lost race means another tick owns it.
+      // a DUPLICATE Kie generation. Claim = bump auto_updated_at, but only when
+      // the last touch is >110s old (a step started within the last 110s is
+      // still owned by that tick). NOT timestamp EQUALITY against the value we
+      // read — timestamptz microsecond precision never round-trips through
+      // JSON exactly, so the eq-claim matched nothing and every row DEADLOCKED
+      // after its first step (found live on Vicente's request, 2026-08-10).
       let claim = admin.from('song_fix_requests')
         .update({ auto_updated_at: new Date().toISOString() })
         .eq('id', r.id)
         .eq('status', 'pending');
-      claim = r.auto_updated_at ? claim.eq('auto_updated_at', r.auto_updated_at) : claim.is('auto_updated_at', null);
+      claim = r.auto_updated_at
+        ? claim.lt('auto_updated_at', new Date(Date.now() - 110_000).toISOString())
+        : claim.is('auto_updated_at', null);
       const { data: claimed } = await claim.select('id');
-      if (!claimed?.length) { done[r.id] = 'skipped: claimed by an overlapping tick'; continue; }
+      if (!claimed?.length) { done[r.id] = 'skipped: another tick is working it'; continue; }
       try {
         if (r.auto_status === 'linking') await stepLink(admin, r);
         else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);
