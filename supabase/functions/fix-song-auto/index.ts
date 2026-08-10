@@ -486,7 +486,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // LIVE audio — same length, and without a yardstick every take gets rejected
   // with "no pristine duration" and the round budget burns to needs_human.
   let origDur: number | null = plan.origDur || null;
-  if (!origDur) {
+  // origStart: when the ORIGINAL's vocals begin — the intro-length yardstick
+  // (see the intro guard below). Recomputed alongside origDur when missing.
+  let origStart: number | null = plan.origStart ?? null;
+  if (!origDur || origStart == null) {
     let yardstickUrl: string | null = plan.originalAudioUrl || null;
     if (!yardstickUrl) {
       const { data: songRow } = await admin.from('songs')
@@ -496,8 +499,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (yardstickUrl) {
       const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: yardstickUrl });
       const pw = parseTimed(pt?.timed || '');
-      origDur = pw.length ? pw[pw.length - 1].end : null;
-      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+      origDur = pw.length ? pw[pw.length - 1].end : origDur;
+      origStart = pw.length ? pw[0].start : origStart;
+      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
     }
   }
 
@@ -519,23 +523,37 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
+    // INTRO GUARD (2026-08-10, Vicente a4672f19): a full re-roll chose a ~30s
+    // instrumental intro on a song whose vocals start almost immediately —
+    // every word check passed, but the customer would hear a different song.
+    // An end-trim can't remove an intro (that would be a start-cut = surgery),
+    // so long-intro takes are rejected outright.
+    const takeStart = words[0].start;
+    const introDrift = origStart != null ? takeStart - origStart : 0;
+    if (introDrift > 12) {
+      diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
+      continue;
+    }
     // LENGTH FIRST (matches the manual path): the checklist must run on the
     // AUDIBLE part only — an over-extension tail often re-sings everything
     // correctly and would satisfy checks for spots still wrong in the real song.
+    // Bands and the true-end anchor are SHIFT-AWARE: a take that starts a few
+    // seconds late legitimately ends the same few seconds late.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
     let trimAtS: number | null = null;
-    let lenOk = takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08;
-    if (!lenOk && takeEnd > origDur * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, origDur);
-      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
+    let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
+    if (!lenOk && takeEnd > effOrig * 1.08) {
+      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig);
+      if (trueEnd != null && trueEnd >= effOrig * 0.80 && trueEnd <= effOrig * 1.15) {
         trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
         lenOk = true;
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > origDur * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
@@ -544,7 +562,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
       continue;
     }
-    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - origDur), trimAtS });
+    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS });
     diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });
   }
 
