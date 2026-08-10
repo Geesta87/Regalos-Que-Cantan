@@ -867,9 +867,10 @@ export default function ShareablePreviewPage() {
                   )}
                 </div>
 
-                {/* Song info */}
+                {/* Song info — use THIS song's recipient (a single link can hold
+                    songs for different people); falls back to the page default. */}
                 <h3 style={{fontSize: songs.length === 2 ? 'clamp(13px, 3.5vw, 18px)' : '18px', marginBottom: '4px', fontWeight: 'bold'}}>
-                  Para {recipientName}
+                  Para {song.recipient_name || recipientName}
                 </h3>
                 <p style={{color: '#f74da6', fontSize: '13px', marginBottom: '12px', fontWeight: '500'}}>
                   {(song.genre_name || song.genre || '').replace(/_/g, ' ')}
