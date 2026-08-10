@@ -260,7 +260,9 @@ serve(async (req: Request) => {
 
     // --- CAMPAIGN: approve / reject a task ---
     if (action === 'approve_task' || action === 'reject_task') {
-      const id = body.id;
+      // Accept both spellings: SeoCoachTab sends `id`, the Action Inbox
+      // (built in a parallel session) sends `task_id`.
+      const id = body.id || body.task_id;
       if (!id) return json({ success: false, error: 'missing task id' }, 400);
       const { data: task } = await admin.from('seo_plan_tasks').select('*').eq('id', id).single();
       if (!task) return json({ success: false, error: 'task not found' }, 404);
