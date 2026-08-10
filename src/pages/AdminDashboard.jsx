@@ -2602,6 +2602,26 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ACTIVELY keep the session fresh (2026-08-10). onAuthStateChange above only
+  // fires when supabase-js's own background timer runs — browsers throttle
+  // timers in backgrounded tabs, so a tab left open an hour came back with an
+  // expired token and every admin call 401'd ("Invalid session" mid-fix-flow;
+  // the admin-songs 401 bursts in the edge logs are the same failure).
+  // getSession() transparently refreshes an expiring session and triggers
+  // TOKEN_REFRESHED → setAccessToken. Run it on focus/visibility (the moment
+  // the owner comes back to the tab) and every 8 minutes as a floor.
+  useEffect(() => {
+    const nudge = () => { supabase.auth.getSession().catch(() => {}); };
+    window.addEventListener('focus', nudge);
+    document.addEventListener('visibilitychange', nudge);
+    const iv = setInterval(nudge, 8 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', nudge);
+      document.removeEventListener('visibilitychange', nudge);
+      clearInterval(iv);
+    };
+  }, []);
+
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
   useEffect(() => {
     let cancelled = false;
