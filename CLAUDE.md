@@ -170,6 +170,18 @@ the queue card shows the robot's reason.
 Splice/rehost/trim run on Cloud Run `rqc-video-renderer` (`/splice-audio`), which
 also hosts Clip Studio routes — deploy it only from an up-to-date main.
 
+### Ace — the personified fix agent (2026-08-10)
+
+The Fix Song pipeline is personified as **"Ace, Song Fix Specialist"** — an
+animated Pixar-style gentleman studio engineer. Owner + Ivan say "send it to
+Ace". Full-bleed hero on the Fix Song tab (always-animated: idle "at your
+command" loop when standing by, headphones-on loop while working); chat intake
+button is "Send to Ace"; his WhatsApp pings sign "Ace here". Assets in
+`public/agents/` (ace.png, ace-hero.png + the three mp4 loops), generated on
+Kie via `test-kie-video` (nano-banana image → seedance-2 loop, character kept
+consistent by passing the live portrait URL as `image_urls` reference). Keep
+the name consistent in any new fix-song UI or notification copy.
+
 ### Hardening (2026-08-10)
 
 - `fix-song-section` requires auth IN-HANDLER: the service-role key
