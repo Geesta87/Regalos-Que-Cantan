@@ -1046,7 +1046,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
-      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
+        // An added line needs a few extra seconds of pinned length.
+        ...(plan?.addLine ? { durationPadS: 8 } : {}) });
       if (!sub.ok) { setError(sub.reason || sub.error || 'Could not start the full re-roll.'); setPhase('plan'); return; }
       const { fixTaskId, fullLyrics, changeSummary } = sub;
       if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }

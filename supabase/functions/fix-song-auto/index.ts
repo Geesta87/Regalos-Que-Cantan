@@ -397,8 +397,14 @@ async function stepPlan(admin: any, r: any): Promise<void> {
     return;
   }
   const verify = [...new Set([...(spec.verify_phrases || []), ...(plan.verifyPhrases || [])])].slice(0, 3);
+  // ADD-A-LINE ⇒ FULL re-roll (2026-08-10): a new line can't ride a single
+  // replace-section window (and splicing is banned), so the whole song is
+  // re-sung with the line included — same cloned voice, a few extra seconds of
+  // pinned length (durationPadS below). Everything else stays section-first.
+  const addLine = plan.addLine || null;
+  const hasAdd = !!addLine || (spec.changes || []).some((c: any) => c.type === 'add_line');
   await setAuto(admin, r.id, {
-    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: 'section', summary: plan.changeSummary || spec.summary },
+    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: hasAdd ? 'full' : 'section', addLine: hasAdd, summary: plan.changeSummary || spec.summary },
     auto_status: 'generating',
   });
 }
@@ -414,6 +420,8 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     action, mode: plan.mode, songId: r.song_id,
     note: (plan.changes || []).map((c: any) => `"${c.before}" → "${c.after}"`).join('; '),
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
+    // An added line needs a few extra seconds — a tight length pin would crowd it.
+    ...(plan.addLine ? { durationPadS: 8 } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.

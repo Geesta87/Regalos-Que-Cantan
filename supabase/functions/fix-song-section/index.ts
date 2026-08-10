@@ -1585,6 +1585,10 @@ Deno.serve(async (req) => {
               console.log(`[fix] full-submit WITHOUT persona (${p.error})`);
             }
           }
+          // durationPadS: an ADDED line needs extra room — pinning to the exact
+          // original length would crowd or squeeze the new line out.
+          const durationPad = Math.max(0, Math.min(20, Number(body?.durationPadS) || 0));
+          if (durationPad && genOpts.durationS) genOpts.durationS = Math.min(360, genOpts.durationS + durationPad);
           try {
             taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {
