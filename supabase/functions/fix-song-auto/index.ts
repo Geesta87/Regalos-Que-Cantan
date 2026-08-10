@@ -9,9 +9,11 @@
 //   planning      → fix-song-section {action:'plan'} → approved lyrics + changes
 //   generating    → {action:'section-submit'} (or 'full-submit' if not eligible)
 //   polling       → {action:'diag'} until Kie SUCCESS / terminal error
-//   validating    → transcribe each take; require EVERY correction sung
-//                   (findCleanLine port), length in 0.80–1.30× band, or the
-//                   end-trim rescue (duplicated-tail); pick best; rehost; STAGE
+//   validating    → transcribe each take; length in 0.80–1.08× band (or the
+//                   end-trim rescue ≤1.15×, duplicated-tail), then the FULL
+//                   count-based checklist on the audible part (evalChecklist
+//                   port): every `after` sung ≥ its lyric count, every `before`
+//                   sung ZERO times, prior fixes intact; pick best; rehost; STAGE
 //   staged        → status='awaiting_approval' + WhatsApp ping to owner/Ivan
 //   needs_human / failed → card left in the queue with the reason
 //
@@ -174,6 +176,58 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number 
   const singles: number[] = [];
   for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
   return pick(singles);
+}
+
+// ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
+// (2026-08-10). The old auto check only required each `after` sung ONCE. That
+// is weaker than the manual path on three counts: the OLD wording could still
+// be sung somewhere, a chorus-wide fix could land in only one chorus, and a
+// take could silently REVERT an earlier fix. A take passes only when every
+// change's `after` is sung at least as many times as the stored lyrics carry
+// it, every `before` is sung ZERO times, and every still-current prior
+// correction is intact.
+function countCleanOccurrences(words: W[], phrase: string): number {
+  const groups = buildTokenGroups(phrase);
+  if (!groups.length) return 0;
+  let remaining = words, count = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    const hit = findCleanLine(remaining, groups);
+    if (!hit) break;
+    count++;
+    remaining = remaining.filter((w) => w.end <= hit.startS || w.start >= hit.endS);
+  }
+  return count;
+}
+function timesInLyrics(lyrics: string, line: string): number {
+  const normText = (s: string) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
+  const hay = normText(lyrics); const needle = normText(line);
+  if (!needle) return 0;
+  let count = 0; let i = hay.indexOf(needle);
+  while (i !== -1) { count++; i = hay.indexOf(needle, i + needle.length); }
+  return count;
+}
+function evalChecklist(words: W[], changes: any[], combinedLyrics: string, priorCorrections: any[]): { ok: boolean; fail: string | null } {
+  for (const c of changes || []) {
+    if (!c?.after) continue;
+    const need = Math.max(1, timesInLyrics(combinedLyrics, c.after));
+    const have = countCleanOccurrences(words, c.after);
+    if (have < need) return { ok: false, fail: `cantó "${c.after}" ${have}/${need} veces` };
+    // Stylization-only change: before/after collapse to the same sung tokens, so
+    // demanding the old wording absent would contradict demanding the new one.
+    const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
+    if (c.before && !cosmetic && countCleanOccurrences(words, c.before) > 0) {
+      return { ok: false, fail: `la letra vieja sigue sonando: "${c.before}"` };
+    }
+  }
+  for (const p of priorCorrections || []) {
+    if (!p?.after) continue;
+    if ((changes || []).some((c: any) => c?.after === p.after)) continue;
+    const need = Math.max(1, timesInLyrics(combinedLyrics, p.after));
+    if (countCleanOccurrences(words, p.after) < need) {
+      return { ok: false, fail: `revirtió una corrección anterior: "${p.after}"` };
+    }
+  }
+  return { ok: true, fail: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -396,8 +450,15 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     }
   }
 
-  const requireAll: string[] = (plan.changes || []).map((c: any) => c.after).filter(Boolean);
-  const groupsList = requireAll.map((p: string) => buildTokenGroups(p)).filter((g: string[][]) => g.length);
+  const combinedLyrics = plan.fullLyrics || plan.approvedLyrics || '';
+  // Prior corrections still present in the lyrics being stored — a take must
+  // keep singing these too, or it reverts an earlier fix (same filter
+  // fix-song-section applies for the manual ladder).
+  const { data: fixRow } = await admin.from('songs').select('fix_corrections').eq('id', r.song_id).single();
+  const normLine = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
+  const priors = (Array.isArray(fixRow?.fix_corrections) ? fixRow.fix_corrections : [])
+    .filter((c: any) => c && typeof c.after === 'string' && c.after.trim() && normLine(combinedLyrics).includes(normLine(c.after)));
+
   const diags: any[] = Array.isArray(r.auto_takes) ? r.auto_takes : [];
   type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
@@ -406,27 +467,34 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
-    const sang = groupsList.length ? groupsList.every((g) => !!findCleanLine(words, g)) : true;
-    if (!sang) { diags.push({ url, verdict: 'reject', reason: 'no cantó todas las correcciones', text: words.map((w) => w.word).join(' ').slice(0, 400) }); continue; }
-    const takeEnd = words[words.length - 1].end;
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
+    // LENGTH FIRST (matches the manual path): the checklist must run on the
+    // AUDIBLE part only — an over-extension tail often re-sings everything
+    // correctly and would satisfy checks for spots still wrong in the real song.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
-    if (takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08) {
-      cands.push({ url, kieId, drift: Math.abs(takeEnd - origDur), trimAtS: null });
-      diags.push({ url, verdict: 'clean', reason: 'in-band whole take' });
-    } else if (takeEnd > origDur * 1.08) {
-      // End-trim rescue: duplicated tail after the true ending.
-      const trueEnd = findLastLineEnd(words, plan.fullLyrics || plan.approvedLyrics || '', origDur);
+    const takeEnd = words[words.length - 1].end;
+    let trimAtS: number | null = null;
+    let lenOk = takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08;
+    if (!lenOk && takeEnd > origDur * 1.08) {
+      const trueEnd = findLastLineEnd(words, combinedLyrics, origDur);
       if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
-        cands.push({ url, kieId, drift: Math.abs(trueEnd - origDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
-        diags.push({ url, verdict: 'clean-trimmed', reason: `over-long, true end at ${trueEnd.toFixed(1)}s` });
-      } else {
-        diags.push({ url, verdict: 'reject', reason: 'demasiado larga, no true-end found' });
+        trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
+        lenOk = true;
       }
-    } else {
-      diags.push({ url, verdict: 'reject', reason: 'demasiado corta' });
     }
+    if (!lenOk) {
+      diags.push({ url, verdict: 'reject', reason: takeEnd > origDur * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      continue;
+    }
+    const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
+    const check = evalChecklist(audible, plan.changes || [], combinedLyrics, priors);
+    if (!check.ok) {
+      diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
+      continue;
+    }
+    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - origDur), trimAtS });
+    diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });
   }
 
   if (!cands.length) {
