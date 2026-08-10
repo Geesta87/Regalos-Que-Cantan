@@ -153,10 +153,30 @@ or `src/utils/audioSplice.js`.
 ### Auto-fix pipeline (ON since 2026-08-09)
 
 Chat → "Send to Fix Song" intake (auto-pulls the customer's email from the
-conversation) → `fix-song-auto` (pg_cron job 48, kill switch
-`fix_auto_state.enabled`) understands → plans → generates → validates → STAGES →
-WhatsApp ping to approvers → one-tap Release in `/admin?tab=fixsong` (releases
-auto-notify the customer). It never guesses: ambiguity ⇒ `needs_human`.
+conversation) → `fix-song-auto` (pg_cron job 48 — reconstructable from
+`supabase/functions/fix-song-auto/CRON_SETUP.sql`; kill switch
+`fix_auto_state.enabled`, toggleable via the 🤖 pill in the Fix Song queue
+header, owner-only) understands → plans → generates → validates (same
+count-based checklist as the manual ladder, on the audible part only) → STAGES
+(candidate_meta carries the winner's `fixTaskId`/`fixAudioId`/`fixTrimAtS` so
+release keeps the chain) → WhatsApp ping to approvers → one-tap Release in
+`/admin?tab=fixsong` (releases auto-notify the customer and report any paid
+stale artifacts to re-run). It never guesses: ambiguity ⇒ `needs_human`, and
+the queue card shows the robot's reason.
 
 Splice/rehost/trim run on Cloud Run `rqc-video-renderer` (`/splice-audio`), which
 also hosts Clip Studio routes — deploy it only from an up-to-date main.
+
+### Hardening (2026-08-10)
+
+- `fix-song-section` requires auth IN-HANDLER: the service-role key
+  (server-to-server) or a logged-in `admin_users` session. The public anon key
+  is rejected — never "simplify" the frontend back to `Bearer ${ANON}` for it.
+- **Add-a-line is a FULL re-roll** now. The old `runAddLine` splice graft
+  (spliceAddedTail) violated the whole-takes-only rule and was retired; do not
+  resurrect it.
+- The daily auto cap counts `song_fix_attempts.action='auto-submit'` marker
+  rows only; manual browser fixes don't starve the robot.
+- `fix_auto_state.active_since` must be non-NULL while enabled (a NULL makes
+  the worker silently process nothing). The `auto-toggle` action sets it on
+  first enable — keep that invariant.
