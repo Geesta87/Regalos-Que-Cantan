@@ -39,6 +39,21 @@ const NAV_LABELS = {
   chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing',
 };
 
+// Themed sub-tabs inside the inbox. Each card's `source` (set by the
+// action-inbox edge function) maps to one topic; unknown sources land in
+// "Other" so a new agent never silently disappears from the inbox.
+const TOPICS = [
+  { id: 'chiefofstaff', label: 'Chief of Staff', sources: ['Chief of Staff'] },
+  { id: 'seocoach', label: 'SEO Coach', sources: ['SEO Coach'] },
+  { id: 'csagent', label: 'CS Agent', sources: ['CS agent'] },
+  { id: 'fixsong', label: 'Fix Song', sources: ['Fix Song'] },
+  { id: 'ordersdelivery', label: 'Orders & Delivery', sources: ['Order pipeline', 'Delivery', 'Hot leads'] },
+  { id: 'videos', label: 'Videos', sources: ['Animado', 'Video addon'] },
+  { id: 'other', label: 'Other', sources: [] },
+];
+const topicForSource = (source) =>
+  (TOPICS.find((t) => t.sources.includes(source)) || TOPICS[TOPICS.length - 1]).id;
+
 const timeAgo = (iso) => {
   if (!iso) return '';
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -55,6 +70,7 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [dismissed, setDismissed] = useState(loadDismissed);
+  const [topic, setTopic] = useState('all');
 
   const call = useCallback(async (name, body) => {
     const res = await fetch(fnUrl(name), {
@@ -79,11 +95,36 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
   useEffect(() => { load(); }, [load]);
 
   const visible = useMemo(() => items.filter((i) => !dismissed.has(i.key)), [items, dismissed]);
+
+  // Per-topic counts (and whether the topic holds anything critical) drive the
+  // sub-tab pills; a topic with nothing waiting doesn't get a pill.
+  const topicStats = useMemo(() => {
+    const stats = new Map();
+    visible.forEach((i) => {
+      const id = topicForSource(i.source);
+      const s = stats.get(id) || { count: 0, critical: 0 };
+      s.count += 1;
+      if (i.severity === 'critical') s.critical += 1;
+      stats.set(id, s);
+    });
+    return stats;
+  }, [visible]);
+
+  // If everything in the open topic gets approved/dismissed, fall back to All
+  // rather than stranding the owner on an empty tab with no pill.
+  useEffect(() => {
+    if (topic !== 'all' && !topicStats.has(topic)) setTopic('all');
+  }, [topic, topicStats]);
+
+  const shown = useMemo(
+    () => (topic === 'all' ? visible : visible.filter((i) => topicForSource(i.source) === topic)),
+    [visible, topic],
+  );
   const grouped = useMemo(() => {
     const g = { critical: [], high: [], normal: [] };
-    visible.forEach((i) => (g[i.severity] || g.normal).push(i));
+    shown.forEach((i) => (g[i.severity] || g.normal).push(i));
     return g;
-  }, [visible]);
+  }, [shown]);
 
   const dismiss = (key) => {
     const next = new Set(dismissed); next.add(key);
@@ -127,7 +168,21 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
           </div>
         )}
 
-        {!loading && !error && visible.length === 0 && (
+        {/* ---- Themed sub-tabs ---- */}
+        {!loading && !error && visible.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-4 overflow-x-auto pb-1 -mb-1">
+            <TopicPill active={topic === 'all'} onClick={() => setTopic('all')} label="All" count={visible.length} />
+            {TOPICS.filter((t) => topicStats.has(t.id)).map((t) => {
+              const s = topicStats.get(t.id);
+              return (
+                <TopicPill key={t.id} active={topic === t.id} onClick={() => setTopic(t.id)}
+                  label={t.label} count={s.count} critical={s.critical > 0} />
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && !error && shown.length === 0 && (
           <div className="py-10 text-center">
             <p className="text-sm font-medium text-gray-700">Nothing needs you right now.</p>
             <p className="text-xs text-gray-400 mt-1">New drafts, approvals and stuck orders will show up here.</p>
@@ -178,6 +233,24 @@ export default function ActionInboxTab({ accessToken, showToast, onNavigate }) {
       {/* ---- Ask the business ---- */}
       <AnalystChat call={call} />
     </div>
+  );
+}
+
+// One sub-tab pill: label + count, red dot when the topic holds a critical item.
+function TopicPill({ active, onClick, label, count, critical }) {
+  return (
+    <button onClick={onClick}
+      className={`inline-flex items-center gap-1.5 shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+        active
+          ? 'bg-indigo-600 border-indigo-600 text-white'
+          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+      }`}>
+      {critical && <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : 'bg-red-500'}`} />}
+      {label}
+      <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+        {count}
+      </span>
+    </button>
   );
 }
 
