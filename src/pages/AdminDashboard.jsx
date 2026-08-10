@@ -1900,54 +1900,48 @@ function FixSongTab({ accessToken, showToast }) {
   const aceBusy = aceWorkingCount > 0;
 
   return (
-    <div className="max-w-3xl">
-      {/* ── Ace — CINEMATIC hero. A landscape studio shot of the agent fills the
-          banner (he stands right-of-frame; the dark left side carries the text
-          overlay). While he's working, the still swaps for the seedance-2 loop
-          and an EQ pulse appears. Assets generated on Kie (nano-banana 16:9 from
-          his portrait reference → seedance-2 loop, 2026-08-10), /public/agents. */}
-      <div className="mb-5 rounded-2xl border border-indigo-500/25 overflow-hidden relative">
-        {/* Backdrop — the studio itself. */}
-        {aceBusy ? (
-          <video
-            src="/agents/ace-hero-working.mp4"
-            poster="/agents/ace-hero.png"
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="w-full aspect-[16/9] sm:aspect-[21/9] object-cover object-right"
-          />
-        ) : (
-          <img
-            src="/agents/ace-hero.png"
-            alt="Ace, Song Fix Specialist, at his mixing console"
-            className="w-full aspect-[16/9] sm:aspect-[21/9] object-cover object-right"
-          />
-        )}
+    <div className="w-full">
+      {/* ── Ace — FULL-BLEED cinematic hero spanning the whole tab. He is ALWAYS
+          alive: an idle "at your command" loop while standing by (attentive nod,
+          hands on the console) and the headphones-on working loop while fixing.
+          He stands right-of-frame; the dark left side carries the text overlay.
+          Assets generated on Kie (nano-banana 16:9 from his portrait reference →
+          seedance-2 loops, 2026-08-10), /public/agents. */}
+      <div className="mb-5 rounded-2xl border border-indigo-500/25 overflow-hidden relative shadow-2xl shadow-indigo-950/40">
+        {/* Backdrop — the studio itself, always in motion. */}
+        <video
+          key={aceBusy ? 'working' : 'idle'}
+          src={aceBusy ? '/agents/ace-hero-working.mp4' : '/agents/ace-hero-idle.mp4'}
+          poster="/agents/ace-hero.png"
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-64 sm:h-80 lg:h-96 xl:h-[28rem] object-cover object-[72%_center]"
+        />
         {/* Readability gradient — strongest over the dark left half and bottom. */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/35 to-transparent" aria-hidden="true" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" aria-hidden="true" />
 
         {/* Overlay content — pinned to the left of the banner. */}
-        <div className="absolute inset-0 flex flex-col justify-between p-4 sm:p-6">
+        <div className="absolute inset-0 flex flex-col justify-between p-5 sm:p-8">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-2xl sm:text-4xl font-bold text-white drop-shadow">Ace</h2>
-              <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-semibold text-indigo-200 bg-indigo-500/25 border border-indigo-400/40 rounded-full px-2.5 py-0.5 backdrop-blur-sm">Song Fix Specialist</span>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-indigo-300/90 font-semibold mb-1 drop-shadow">Your Song Fix Specialist</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-4xl sm:text-6xl font-bold text-white drop-shadow-lg tracking-tight">Ace</h2>
               <span
-                className={`w-3 h-3 rounded-full ${aceBusy ? 'bg-amber-400 animate-pulse' : autoState?.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
+                className={`w-3.5 h-3.5 rounded-full mt-2 ${aceBusy ? 'bg-amber-400 animate-pulse' : autoState?.enabled ? 'bg-green-400' : 'bg-gray-500'}`}
                 title={aceBusy ? 'Working' : autoState?.enabled ? 'On duty' : 'Off duty'}
               />
             </div>
-            <p className="text-sm sm:text-base text-gray-100 mt-1.5 max-w-md drop-shadow">
+            <p className="text-sm sm:text-lg text-gray-100 mt-2 max-w-lg drop-shadow">
               {aceBusy
                 ? `Fixing ${aceWorkingCount === 1 ? 'a song' : `${aceWorkingCount} songs`} right now…`
                 : aceStagedCount > 0
-                  ? `${aceStagedCount} fix${aceStagedCount > 1 ? 'es' : ''} ready for your approval below.`
+                  ? `${aceStagedCount} fix${aceStagedCount > 1 ? 'es' : ''} ready for your approval, whenever you are.`
                   : aceWaitingCount > 0
-                    ? `${aceWaitingCount} request${aceWaitingCount > 1 ? 's' : ''} waiting in the queue.`
-                    : 'Standing by. Send him a fix from any chat, or search a song below.'}
+                    ? `${aceWaitingCount} request${aceWaitingCount > 1 ? 's' : ''} in the queue — say the word.`
+                    : 'At your command. Send me a fix from any chat, or pick a song below.'}
             </p>
             {/* EQ pulse while he's working. */}
             {aceBusy && (
@@ -1985,6 +1979,8 @@ function FixSongTab({ accessToken, showToast }) {
           </div>
         </div>
       </div>
+      {/* Everything under the full-bleed banner sits in a centered work column. */}
+      <div className="max-w-5xl mx-auto">
       {/* Console strip — the studio-at-a-glance numbers, right under the banner. */}
       <div className="grid grid-cols-3 gap-2 mb-5 -mt-2">
         <div className="rounded-xl bg-purple-500/10 border border-purple-500/25 px-3 py-2 text-center">
@@ -2117,6 +2113,7 @@ function FixSongTab({ accessToken, showToast }) {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
