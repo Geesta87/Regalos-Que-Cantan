@@ -368,8 +368,12 @@ async function stepPoll(admin: any, r: any): Promise<void> {
 async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const plan = r.auto_plan;
   const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
-  const urls: string[] = (d?.trackList || []).map((t: any) => t.audioUrl).filter(Boolean);
-  if (!urls.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
+  // Keep each take's Kie audioId alongside its URL — the winner's identity goes
+  // into candidate_meta so release CHAINS the next fix off the corrected take.
+  const takes: Array<{ url: string; kieId: string | null }> = (d?.trackList || [])
+    .filter((t: any) => t.audioUrl)
+    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null }));
+  if (!takes.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
 
   // Pristine duration (once) — the length yardstick for whole takes. When the
   // plan carries no URL (full-submit didn't return one until 2026-08-10, and
@@ -395,10 +399,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const requireAll: string[] = (plan.changes || []).map((c: any) => c.after).filter(Boolean);
   const groupsList = requireAll.map((p: string) => buildTokenGroups(p)).filter((g: string[][]) => g.length);
   const diags: any[] = Array.isArray(r.auto_takes) ? r.auto_takes : [];
-  type Cand = { url: string; drift: number; trimAtS: number | null };
+  type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
 
-  for (const url of urls) {
+  for (const { url, kieId } of takes) {
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
@@ -409,13 +413,13 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
     if (takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08) {
-      cands.push({ url, drift: Math.abs(takeEnd - origDur), trimAtS: null });
+      cands.push({ url, kieId, drift: Math.abs(takeEnd - origDur), trimAtS: null });
       diags.push({ url, verdict: 'clean', reason: 'in-band whole take' });
     } else if (takeEnd > origDur * 1.08) {
       // End-trim rescue: duplicated tail after the true ending.
       const trueEnd = findLastLineEnd(words, plan.fullLyrics || plan.approvedLyrics || '', origDur);
       if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
-        cands.push({ url, drift: Math.abs(trueEnd - origDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
+        cands.push({ url, kieId, drift: Math.abs(trueEnd - origDur), trimAtS: Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)) });
         diags.push({ url, verdict: 'clean-trimmed', reason: `over-long, true end at ${trueEnd.toFixed(1)}s` });
       } else {
         diags.push({ url, verdict: 'reject', reason: 'demasiado larga, no true-end found' });
@@ -458,7 +462,18 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     candidate_audio_url: hosted,
     candidate_lyrics: plan.fullLyrics || plan.approvedLyrics || null,
     candidate_summary: plan.summary || 'Automated fix (pending your approval)',
-    candidate_meta: { mode: plan.mode, corrections: plan.changes || [], scorecard },
+    // fixTaskId/fixAudioId/fixTrimAtS: the winner is always a whole Kie take, so
+    // release must CHAIN the next fix off it (song-fix-queue nulls kie_task_id
+    // when these are absent — which made the next fix re-sing from the pristine
+    // original and silently revert this one, the 2026-08-04 regression class).
+    candidate_meta: {
+      mode: plan.mode,
+      corrections: plan.changes || [],
+      scorecard,
+      fixTaskId: r.auto_task_id || null,
+      fixAudioId: win.kieId || null,
+      fixTrimAtS: win.trimAtS || null,
+    },
     status: 'awaiting_approval',
     worked_by: 'fix-song-auto',
     staged_at: new Date().toISOString(),
