@@ -48,6 +48,20 @@ function useDebounce(value, delay = 350) {
 // stages it; nothing goes live until the owner releases it from the queue). Used
 // for AI-queued customer fix requests. Without it, the card behaves exactly as
 // before — a direct owner fix that applies on click.
+// Fresh admin token at CALL time. Long fix flows (a two-version ladder runs
+// 10-20 min) capture the render-time token in their closure, and access tokens
+// die after ~1h no matter how diligently the dashboard refreshes its state —
+// the running loop never sees the new one (Alfredo bundle fix died mid-v1 with
+// "Invalid session", 2026-08-11 01:03Z, v2 already clean). getSession() returns
+// the CURRENT auto-refreshed token, so every request authenticates with a live
+// one regardless of how long the flow has been running.
+async function freshAdminToken(fallback) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || fallback;
+  } catch { return fallback; }
+}
+
 function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, onStaged }) {
   const [messages, setMessages] = useState([]); // {role:'user'|'assistant', text}
   const [input, setInput] = useState('');
@@ -84,9 +98,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const staging = !!stageRequest;
-  const postFn = (body) => fetch(FN_URL, {
+  const postFn = async (body) => fetch(FN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
     body: JSON.stringify(body),
   }).then((r) => r.json());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -266,7 +280,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'chat', songId: song.id, conversation: newMsgs, image: imagePayload() }),
       });
       const data = await res.json();
@@ -294,7 +308,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'plan', mode, songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
@@ -316,7 +330,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases }),
       });
       const data = await res.json();
@@ -989,7 +1003,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         fd.append('fixTaskId', r.fixTaskId); fd.append('fixAudioId', r.fixAudioId);
         if (r.fixTrimAtS) fd.append('fixTrimAtS', String(r.fixTrimAtS));
       }
-      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
+      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON }, body: fd });
       const d = await resp.json();
       if (!d.ok) throw new Error(d.error || 'apply failed');
       if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
@@ -1040,9 +1054,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setInput('');
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
-    const post = (body) => fetch(FN_URL, {
+    const post = async (body) => fetch(FN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
@@ -1096,7 +1110,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'undo', songId: song.id }),
       });
       const data = await res.json();
@@ -1135,14 +1149,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       const resp = await fetch(QUEUE_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: fd,
       });
       return resp.json();
     }
     const resp = await fetch(QUEUE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify({
         action: 'stage-remote', request_id: stageRequest.id, remote_audio_url: remoteUrl,
         songId: song.id, fullLyrics: fullLyrics || '', summary: summary || '', corrections: corrections || null, mode: mode || 'full',
@@ -1194,7 +1208,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           fd.append('fixTaskId', result.fixTaskId); fd.append('fixAudioId', result.fixAudioId);
           if (result.fixTrimAtS) fd.append('fixTrimAtS', String(result.fixTrimAtS));
         }
-        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
+        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
         showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
@@ -1208,7 +1222,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': ANON },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await freshAdminToken(accessToken)}`, 'apikey': ANON },
         body: JSON.stringify({
           action: 'apply',
           songId: song.id,
@@ -1766,7 +1780,7 @@ function FixSongTab({ accessToken, showToast }) {
   const postQueue = useCallback(async (payload) => {
     const res = await fetch(QUEUE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(payload),
     });
     return res.json();
