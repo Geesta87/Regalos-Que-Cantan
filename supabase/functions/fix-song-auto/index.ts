@@ -246,7 +246,14 @@ function evalChecklist(words: W[], changes: any[], combinedLyrics: string, prior
     // Stylization-only change: before/after collapse to the same sung tokens, so
     // demanding the old wording absent would contradict demanding the new one.
     const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
-    if (c.before && !cosmetic && countCleanOccurrences(words, c.before) > 0) {
+    // NAME-REMOVAL case (2026-08-11): after the name-skip rules, the before-line's
+    // checkable words can fit entirely INSIDE the after-line ("Miguel Ángel, el
+    // mundo…" → "mi amor, el mundo…") — singing the correction then "proves" the
+    // old wording still exists. Absence is unverifiable there; ears judge it.
+    const fakeAfter: W[] = String(c.after).split(/\s+/).map((w: string, i: number) => ({ word: w, start: i, end: i + 0.4 }));
+    const beforeGroups = c.before ? buildTokenGroups(c.before) : [];
+    const hidesInAfter = beforeGroups.length > 0 && !!findCleanLine(fakeAfter, beforeGroups, 99);
+    if (c.before && !cosmetic && !hidesInAfter && countCleanOccurrences(words, c.before) > 0) {
       return { ok: false, fail: `la letra vieja sigue sonando: "${c.before}"` };
     }
   }

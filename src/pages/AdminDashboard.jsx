@@ -511,6 +511,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             // Stylization-only change: before/after collapse to the same sung
             // tokens — absence of the "old" wording is unverifiable, skip it.
             if (c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after))) return true;
+            // Before-line hides inside the after-line (name removal) → unverifiable.
+            if (c.before && beforeHidesInAfter(c.before, c.after)) return true;
             return !c.before || countCleanOccurrences(audible, c.before) === 0;
           });
           if (sang && lenOk && !keptPrior && wholeOnly) {
@@ -725,6 +727,18 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     while (i !== -1) { n++; i = hay.indexOf(needle, i + needle.length); }
     return n;
   }
+  // The before-line's ABSENCE is unverifiable when its checkable words all fit
+  // (in order) inside the after-line — singing the correction then "proves" the
+  // old wording still exists and every good take gets rejected. Hit live on a
+  // NAME-REMOVAL fix (2026-08-11, "Miguel Ángel, el mundo…" → "mi amor, el
+  // mundo…"): the name-skip rule reduced the before-line to exactly the words
+  // the corrected line also sings. Ears judge those cases, like names.
+  function beforeHidesInAfter(beforeLine, afterLine) {
+    const g = buildTokenGroups(beforeLine);
+    if (!g.length) return true;
+    const fake = String(afterLine || '').split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
+    return !!findCleanLine(fake, g, { maxGapS: 99 });
+  }
   // Full checklist for a take: every change's `after` sung enough times, every
   // `before` fully gone, and every still-current prior correction intact.
   function evalChecklist(words, changes, combinedLyrics, priorCorrections) {
@@ -738,7 +752,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // absent would contradict demanding the new one present — skip the absence
       // check and just require the line sung (2026-08-08).
       const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
-      const beforeLeft = (c.before && !cosmetic) ? countCleanOccurrences(words, c.before) : 0;
+      const unverifiable = cosmetic || (c.before && beforeHidesInAfter(c.before, c.after));
+      const beforeLeft = (c.before && !unverifiable) ? countCleanOccurrences(words, c.before) : 0;
       items.push({ kind: 'change', after: c.after, need, have, beforeLeft, ok: have >= need && beforeLeft === 0 });
     }
     for (const p of (priorCorrections || [])) {
