@@ -121,8 +121,10 @@ function buildTokenGroups(line: string): string[][] {
   // A mid-line Capitalized token is treated as a name and skipped; the words
   // around it prove the line. Guard: keep names if skipping them would leave
   // fewer than 2 required groups.
+  // Line-initial capitals count too (2026-08-11: "Wilmington fue tu destino"
+  // false-rejected exactly like Saynee, just at position 0). The ≥2-remaining-
+  // groups guard keeps short lines fully matched.
   const isNameAt = (i: number): boolean => {
-    if (i === 0) return false;
     const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
     return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
   };
