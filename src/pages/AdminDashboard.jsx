@@ -106,6 +106,20 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
+  // QUEUE AUTO-PLAN (2026-08-11, owner ask): opening a queued request used to
+  // present an EMPTY card — the owner had to retype the complaint shown right
+  // above it. The customer's request now seeds the plan automatically, landing
+  // straight on the before/after confirmation: review, confirm, generate.
+  const autoPlannedRef = useRef(false);
+  useEffect(() => {
+    if (autoPlannedRef.current) return;
+    const reqText = stageRequest?.customer_request ? String(stageRequest.customer_request).trim() : '';
+    if (!reqText) return;
+    autoPlannedRef.current = true;
+    runPlan('section', reqText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Splice the re-sung correction onto the pristine song. Prefers the SERVER
   // recipe (fix-song-section 'splice' -> in-house ffmpeg Cloud Run: duration-match
   // + equal-power crossfade + gain-match, which removes the audible seam), and
@@ -295,9 +309,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
   // Step 1: cheap, instant — propose the lyric change for the owner to confirm
   // BEFORE spending any Kie credits / waiting on audio.
-  async function runPlan(mode = 'section') {
-    const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
+  async function runPlan(mode = 'section', seedText = null) {
+    // seedText: queue mode auto-plan — the customer's request from the card,
+    // used verbatim so the owner doesn't retype what's written right above.
+    const convo = seedText
+      ? [{ role: 'user', text: seedText }]
+      : [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
     if (convo.length === 0 && !image) { setError('Type what to fix, chat with the AI, or paste a screenshot.'); return; }
+    if (seedText) setMessages([{ role: 'user', text: seedText }]);
     setError('');
     setResult(null);
     setPlan(null);
