@@ -232,6 +232,32 @@ function findLastLineEnds(words: W[], lyricsText: string): number[] {
   return singles;
 }
 
+// FULL-STRUCTURE AUDIT (2026-08-11, Miguel Ángel take b62256fe): counting only
+// the closing line is beatable. Suno's replace-section inserted an entire extra
+// half-verse + chorus cycle mid-song, which simultaneously (a) satisfied the
+// closing-line count on a cut that beheaded the Bridge — the customer's name
+// reveal — and (b) pushed the real ending out of the trim band. The only
+// audit that catches both failure modes is line-by-line: every distinctive
+// lyric line must be sung EXACTLY as many times as the lyrics carry it.
+// Returns null when the structure is intact, else a human-readable reason.
+function auditStructure(audible: W[], lyricsText: string): string | null {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  const need = new Map<string, { line: string; n: number }>();
+  for (const l of lines) {
+    const groups = buildTokenGroups(l);
+    if (groups.length < 3) continue; // short lines are too ambiguous to count
+    const key = JSON.stringify(groups);
+    const e = need.get(key);
+    if (e) e.n++; else need.set(key, { line: l, n: 1 });
+  }
+  for (const { line, n } of need.values()) {
+    const have = countCleanOccurrences(audible, line);
+    if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
+    if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
+  }
+  return null;
+}
+
 // ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
 // (2026-08-10). The old auto check only required each `after` sung ONCE. That
 // is weaker than the manual path on three counts: the OLD wording could still
@@ -600,36 +626,36 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // it, everything is duplication.
     const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
-    const lyricLines = combinedLyrics.split('\n').map((s: string) => s.trim()).filter((l: string) => l && !/^\[.*\]$/.test(l));
-    const lastLine = lyricLines[lyricLines.length - 1] || '';
-    const lyricsAsWords: W[] = lyricLines.join(' ').split(/\s+/).map((w: string, i: number) => ({ word: w, start: i, end: i + 0.4 }));
-    const needLast = Math.max(1, countCleanOccurrences(lyricsAsWords, lastLine));
     let trimAtS: number | null = null;
+    let structFail: string | null = null;
     let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
-    if (!lenOk && takeEnd > effOrig * 1.08 && lastLine) {
+    if (lenOk) {
+      // In-band whole take: still must contain the whole song, no dup sections.
+      structFail = auditStructure(words, combinedLyrics);
+      if (structFail) lenOk = false;
+    } else if (takeEnd > effOrig * 1.08) {
+      // Over-long: try each closing-line occurrence (in band, earliest first)
+      // and accept the FIRST cut whose audible part passes the FULL structure
+      // audit — the whole song present, nothing duplicated. A take like
+      // b62256fe (extra mid-song cycle) has NO such cut and is rejected whole.
       const ends = findLastLineEnds(words, combinedLyrics)
         .filter((e) => e >= effOrig * 0.80 && e <= effOrig * 1.15)
         .sort((a, b) => a - b);
       for (const e of ends) {
         const aud = words.filter((w) => w.end <= e + 0.3);
-        if (countCleanOccurrences(aud, lastLine) >= needLast) {
+        structFail = auditStructure(aud, combinedLyrics);
+        if (!structFail) {
           trimAtS = Math.min(takeEnd, +(e + 2.5).toFixed(2));
           lenOk = true;
-          break; // earliest complete point — everything later is duplication
+          break;
         }
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte completo' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: structFail || (takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte estructuralmente completo' : 'demasiado corta') });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
-    // Belt on top of the anchor: the audible part must still contain the whole
-    // song (closing line sung its full count) — trimmed or not.
-    if (lastLine && countCleanOccurrences(audible, lastLine) < needLast) {
-      diags.push({ url, verdict: 'reject', reason: 'la toma no contiene la canción completa' });
-      continue;
-    }
     const check = evalChecklist(audible, plan.changes || [], combinedLyrics, priors);
     if (!check.ok) {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });

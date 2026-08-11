@@ -748,15 +748,25 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // and deleted the Puente + final chorus. The closing line must appear in the
   // audible (post-trim) part as many times as the lyrics carry it.
   function trimKeepsWholeSong(audibleWords, lyricsText) {
+    // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
+    // line counting alone is beatable — Suno inserted an extra half-verse +
+    // chorus cycle mid-song, which satisfied the closing-line count on a cut
+    // that deleted the Bridge (the name reveal). Every distinctive lyric line
+    // must be sung EXACTLY as many times as the lyrics carry it.
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-    const lastLine = lines[lines.length - 1] || '';
-    if (!lastLine) return true;
-    // need = how many times the closing line is SUNG across the full lyrics,
-    // counted with the same token matching as the audio side (punctuation-
-    // insensitive — "tú," vs "tú." must count as the same line).
-    const lyricsAsWords = lines.join(' ').split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
-    const need = Math.max(1, countCleanOccurrences(lyricsAsWords, lastLine));
-    return countCleanOccurrences(audibleWords, lastLine) >= need;
+    const need = new Map();
+    for (const l of lines) {
+      const groups = buildTokenGroups(l);
+      if (groups.length < 3) continue; // short lines are too ambiguous to count
+      const key = JSON.stringify(groups);
+      const e = need.get(key);
+      if (e) e.n++; else need.set(key, { line: l, n: 1 });
+    }
+    for (const { line, n } of need.values()) {
+      const have = countCleanOccurrences(audibleWords, line);
+      if (have !== n) return false; // missing section (<) or duplicated section (>)
+    }
+    return true;
   }
   // Full checklist for a take: every change's `after` sung enough times, every
   // `before` fully gone, and every still-current prior correction intact.
