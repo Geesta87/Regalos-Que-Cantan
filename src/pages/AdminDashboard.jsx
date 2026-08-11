@@ -751,7 +751,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
     const lastLine = lines[lines.length - 1] || '';
     if (!lastLine) return true;
-    const need = Math.max(1, timesInLyrics(lyricsText, lastLine));
+    // need = how many times the closing line is SUNG across the full lyrics,
+    // counted with the same token matching as the audio side (punctuation-
+    // insensitive — "tú," vs "tú." must count as the same line).
+    const lyricsAsWords = lines.join(' ').split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
+    const need = Math.max(1, countCleanOccurrences(lyricsAsWords, lastLine));
     return countCleanOccurrences(audibleWords, lastLine) >= need;
   }
   // Full checklist for a take: every change's `after` sung enough times, every

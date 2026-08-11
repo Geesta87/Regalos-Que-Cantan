@@ -210,6 +210,28 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: n
   return pick(singles);
 }
 
+// ALL closing-line occurrence end-times (ascending order of position) — the
+// earliest-complete trim anchor iterates these. Same matching as findLastLineEnd.
+function findLastLineEnds(words: W[], lyricsText: string): number[] {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  if (!lines.length || !words.length) return [];
+  const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
+  if (!tokens.length) return [];
+  const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const fulls: number[] = [];
+  for (let i = 0; i + tokens.length <= atoms.length; i++) {
+    let ok = true;
+    for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
+    if (ok) fulls.push(atoms[i + tokens.length - 1].end);
+  }
+  if (fulls.length) return fulls;
+  const last = tokens[tokens.length - 1];
+  const singles: number[] = [];
+  for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
+  return singles;
+}
+
 // ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
 // (2026-08-10). The old auto check only required each `after` sung ONCE. That
 // is weaker than the manual path on three counts: the OLD wording could still
@@ -566,35 +588,47 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // seconds late legitimately ends the same few seconds late.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    //
+    // TRIM ANCHOR = EARLIEST-COMPLETE (2026-08-11, two live incidents on Miguel
+    // Ángel 676a1f73): the closing line ends EVERY chorus, so "nearest to the
+    // original length" cut at Coro 2 (beheaded the song) and "latest in band"
+    // cut inside the duplicated tail (kept ~45s of junk repetition the owner
+    // heard at 3:12). The only correct cut is the EARLIEST closing-line
+    // occurrence by which the ENTIRE song has been sung — the closing line must
+    // have been heard as many times as the full lyrics sing it (token-count,
+    // punctuation-insensitive). Before that point the song is incomplete; after
+    // it, everything is duplication.
     const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
+    const lyricLines = combinedLyrics.split('\n').map((s: string) => s.trim()).filter((l: string) => l && !/^\[.*\]$/.test(l));
+    const lastLine = lyricLines[lyricLines.length - 1] || '';
+    const lyricsAsWords: W[] = lyricLines.join(' ').split(/\s+/).map((w: string, i: number) => ({ word: w, start: i, end: i + 0.4 }));
+    const needLast = Math.max(1, countCleanOccurrences(lyricsAsWords, lastLine));
     let trimAtS: number | null = null;
     let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
-    if (!lenOk && takeEnd > effOrig * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig, effOrig * 1.15);
-      if (trueEnd != null && trueEnd >= effOrig * 0.80 && trueEnd <= effOrig * 1.15) {
-        trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
-        lenOk = true;
+    if (!lenOk && takeEnd > effOrig * 1.08 && lastLine) {
+      const ends = findLastLineEnds(words, combinedLyrics)
+        .filter((e) => e >= effOrig * 0.80 && e <= effOrig * 1.15)
+        .sort((a, b) => a - b);
+      for (const e of ends) {
+        const aud = words.filter((w) => w.end <= e + 0.3);
+        if (countCleanOccurrences(aud, lastLine) >= needLast) {
+          trimAtS = Math.min(takeEnd, +(e + 2.5).toFixed(2));
+          lenOk = true;
+          break; // earliest complete point — everything later is duplication
+        }
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte completo' : 'demasiado corta' });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
-    // STRUCTURE GUARD (2026-08-11, Miguel Ángel 676a1f73): a trimmed take must
-    // still contain the WHOLE song. All correction checks passed on a take whose
-    // trim had deleted the Puente and final chorus (the corrections lived in
-    // Verso 1). The song's closing line must appear in the audible part as many
-    // times as the lyrics carry it — a cut before the real ending always fails.
-    if (trimAtS) {
-      const lyricLines = combinedLyrics.split('\n').map((s: string) => s.trim()).filter((l: string) => l && !/^\[.*\]$/.test(l));
-      const lastLine = lyricLines[lyricLines.length - 1] || '';
-      const needLast = Math.max(1, timesInLyrics(combinedLyrics, lastLine));
-      if (lastLine && countCleanOccurrences(audible, lastLine) < needLast) {
-        diags.push({ url, verdict: 'reject', reason: 'el recorte cortaría la canción antes del final real' });
-        continue;
-      }
+    // Belt on top of the anchor: the audible part must still contain the whole
+    // song (closing line sung its full count) — trimmed or not.
+    if (lastLine && countCleanOccurrences(audible, lastLine) < needLast) {
+      diags.push({ url, verdict: 'reject', reason: 'la toma no contiene la canción completa' });
+      continue;
     }
     const check = evalChecklist(audible, plan.changes || [], combinedLyrics, priors);
     if (!check.ok) {
