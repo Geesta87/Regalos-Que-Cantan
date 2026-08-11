@@ -120,7 +120,7 @@ const PRODUCTS = [
   {
     kind: 'song', cat: 'cancion', key: 'pack10', title: 'Paquete de 10 canciones', pack: true, packId: 'pack10', songs: 10,
     sub: 'Diez canciones — el mejor precio por canción',
-    was: 299.90, price: 139.99, badge: 'El mejor precio', art: '/images/album-art/grupera.jpg',
+    was: '299.90', price: 139.99, badge: 'El mejor precio', art: '/images/album-art/grupera.jpg',
     desc: 'Diez canciones con un solo pago — perfecto si te encanta regalar canciones o quieres tener detalles para todo el año. Cada una con su propia historia.',
     bullets: ['Diez canciones personalizadas completas', 'Ideal para fiestas, eventos y toda la familia', 'Sale a $14 por canción — el precio más bajo', 'Tu código llega al correo · 12 meses para usarlo'],
   },
