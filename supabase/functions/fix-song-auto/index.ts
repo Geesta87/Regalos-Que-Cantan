@@ -176,7 +176,13 @@ function findCleanLine(words: W[], tokenGroups: string[][], maxGapS = 3.5): { st
 }
 // End of the final lyric line, preferring the occurrence nearest `nearS` — the
 // disambiguator for Suno's duplicated-tail over-extension. Port of findLastLineEnd.
-function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number | null {
+// maxS (optional): prefer the LATEST match at or below this ceiling instead of
+// the one nearest to nearS. The nearest-pick released a beheaded song
+// (2026-08-11, Miguel Ángel 676a1f73): the last lyric line ended EVERY chorus,
+// the take was time-stretched, and "nearest to the original length" landed on
+// the SECOND chorus — the trim deleted the Puente and final chorus. The real
+// ending is always the LAST in-band occurrence.
+function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: number): number | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   if (!lines.length || !words.length) return null;
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
@@ -189,7 +195,14 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number 
     for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
     if (ok) fulls.push(atoms[i + tokens.length - 1].end);
   }
-  const pick = (c: number[]) => c.length ? c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b)) : null;
+  const pick = (c: number[]): number | null => {
+    if (!c.length) return null;
+    if (maxS != null) {
+      const inBand = c.filter((e) => e <= maxS);
+      if (inBand.length) return Math.max(...inBand);
+    }
+    return c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b));
+  };
   if (fulls.length) return pick(fulls);
   const last = tokens[tokens.length - 1];
   const singles: number[] = [];
@@ -558,7 +571,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     let trimAtS: number | null = null;
     let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
     if (!lenOk && takeEnd > effOrig * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig);
+      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig, effOrig * 1.15);
       if (trueEnd != null && trueEnd >= effOrig * 0.80 && trueEnd <= effOrig * 1.15) {
         trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
         lenOk = true;
@@ -569,6 +582,20 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
+    // STRUCTURE GUARD (2026-08-11, Miguel Ángel 676a1f73): a trimmed take must
+    // still contain the WHOLE song. All correction checks passed on a take whose
+    // trim had deleted the Puente and final chorus (the corrections lived in
+    // Verso 1). The song's closing line must appear in the audible part as many
+    // times as the lyrics carry it — a cut before the real ending always fails.
+    if (trimAtS) {
+      const lyricLines = combinedLyrics.split('\n').map((s: string) => s.trim()).filter((l: string) => l && !/^\[.*\]$/.test(l));
+      const lastLine = lyricLines[lyricLines.length - 1] || '';
+      const needLast = Math.max(1, timesInLyrics(combinedLyrics, lastLine));
+      if (lastLine && countCleanOccurrences(audible, lastLine) < needLast) {
+        diags.push({ url, verdict: 'reject', reason: 'el recorte cortaría la canción antes del final real' });
+        continue;
+      }
+    }
     const check = evalChecklist(audible, plan.changes || [], combinedLyrics, priors);
     if (!check.ok) {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });

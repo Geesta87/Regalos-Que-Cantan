@@ -2,13 +2,18 @@ import React, { useContext, useEffect } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
-// /pack-listo — shown after a successful "Paquete de 3 canciones" purchase.
-// The personal code is minted + emailed by stripe-webhook on payment, so this
-// page confirms the purchase and points the buyer at their inbox + the funnel.
+// /pack-listo — shown after a successful song-pack purchase (3/5/10 canciones;
+// create-checkout appends ?songs=N to the success URL). The personal code is
+// minted + emailed by stripe-webhook on payment, so this page confirms the
+// purchase and points the buyer at their inbox + the funnel.
 export default function PackReadyPage() {
   const { navigateTo } = useContext(AppContext);
+  const songs = (() => {
+    const n = parseInt(new URLSearchParams(window.location.search).get('songs'), 10);
+    return [3, 5, 10].includes(n) ? n : 3;
+  })();
 
-  useEffect(() => { trackStep('pack3_success'); }, []);
+  useEffect(() => { trackStep(`pack${songs}_success`); }, [songs]);
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center bg-landing-bg text-white antialiased px-6 py-16">
@@ -18,9 +23,9 @@ export default function PackReadyPage() {
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight">¡Gracias por tu compra! 🎵</h1>
         <p className="mt-3 text-slate-300 text-base leading-relaxed">
-          Tu <strong className="text-white">Paquete de 3 Canciones</strong> está listo. Te enviamos tu
+          Tu <strong className="text-white">Paquete de {songs} Canciones</strong> está listo. Te enviamos tu
           <strong className="text-landing-primary"> código personal por correo</strong> — sirve para crear
-          3 canciones personalizadas, una para cada persona, cuando tú quieras.
+          {' '}{songs} canciones personalizadas, una para cada persona, cuando tú quieras.
         </p>
 
         <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left">
@@ -29,7 +34,7 @@ export default function PackReadyPage() {
             <li>Revisa tu correo (y la carpeta de spam) — ahí está tu código.</li>
             <li>Crea tu canción: elige el género, el nombre y la historia.</li>
             <li>Al pagar, escribe tu código y esa canción te sale <strong className="text-white">gratis</strong>.</li>
-            <li>Repite hasta 3 veces — una canción distinta por persona. Tienes 12 meses.</li>
+            <li>Repite hasta {songs} veces — una canción distinta por persona. Tienes 12 meses.</li>
           </ol>
         </div>
 
