@@ -17,8 +17,9 @@
 // of this file — keep compressImage/ingestFile/onPickFile, the paste useEffect,
 // `attachments` in submit's deps, and the composer chip row.
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Target, Send, Loader2, RefreshCw, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText, Plus } from 'lucide-react';
+import { Target, Send, Loader2, Sparkles, Check, X, ImagePlus, Wand2, Paperclip, FileText, Plus } from 'lucide-react';
 import { btn, Badge } from './ui';
+import AgentHero from './AgentHero';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ads-coach`;
 // Typesetting lives in its own function: the resvg WASM it loads permanently
@@ -37,8 +38,8 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) images — up to 5 at once, like ad variants for me to compare — and I'll give you honest feedback, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
-const FACTORY_GREETING = "This is the Ad Factory — where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
+const COACH_GREETING = "Hi — I'm Max, your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) images — up to 5 at once, like ad variants for me to compare — and I'll give you honest feedback, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
+const FACTORY_GREETING = "Max here — welcome to my Ad Factory, where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
   const [tab, setTab] = useState('coach'); // 'coach' | 'factory'
@@ -383,30 +384,46 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const correct = resolved.filter((c) => c.status === 'correct').length;
   const graded = resolved.filter((c) => c.status !== 'dismissed').length;
 
+  // Max's chat avatar — his real portrait, not an icon.
   const AvatarSm = () => (
-    <div className="rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32 }}><Target size={15} className="text-indigo-600" /></div>
+    <img src="/agents/max.png" alt="Max" className="rounded-full object-cover object-top flex-shrink-0 border border-indigo-100" style={{ width: 32, height: 32 }} />
   );
 
   const messages = msgs[tab];
   const starters = tab === 'coach' ? COACH_STARTERS : FACTORY_STARTERS;
   const greeting = tab === 'coach' ? COACH_GREETING : FACTORY_GREETING;
 
-  return (
-    <div className="max-w-3xl">
-      {/* Header + workspace switcher */}
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0" style={{ width: 44, height: 44 }}>
-            <Target size={20} className="text-indigo-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Ads Coach</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Live account · verified Meta brain · advice-only on your account</p>
-          </div>
-        </div>
-        <button onClick={load} className={btn.iconGhost} title="Reload"><RefreshCw size={16} /></button>
-      </div>
+  // ── Max — the Meta Ads Coach's live status ──────────────────────────
+  const maxBusy = sending || generating || building || publishing || campBusy;
+  const maxStatus = building || generating
+    ? 'Building your ad right now…'
+    : publishing || campBusy
+      ? 'Setting it up in Meta (paused) …'
+      : sending
+        ? 'Reading your live account…'
+        : ads.length > 0
+          ? `${ads.length} ad${ads.length > 1 ? 's' : ''} in the gallery — say the word and I'll build the next one.`
+          : 'At your command. Ask me anything about your account, or send me a brief.';
 
+  return (
+    <div className="w-full">
+      {/* ── Max — full-bleed cinematic hero, same treatment as Ace. ── */}
+      <AgentHero
+        base="/agents/max"
+        name="Max"
+        role="Your Meta Ads Coach"
+        busy={maxBusy}
+        statusLine={maxStatus}
+        accent="indigo"
+        objectPosition="74% center"
+        onReload={load}
+      >
+        <span className="hidden sm:inline text-[11px] text-gray-300/90 drop-shadow">
+          Live account · verified Meta brain · he never touches your ads without your explicit confirm.
+        </span>
+      </AgentHero>
+
+      <div className="max-w-3xl">
       <div className="flex items-center gap-1.5 mb-4">
         <button onClick={() => setTab('coach')} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab === 'coach' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
           <Target size={14} /> Coach
@@ -692,9 +709,10 @@ export default function AdsCoachTab({ accessToken, showToast }) {
           </>
         )}
         <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
-          placeholder={tab === 'coach' ? 'Ask your ads coach… (or paste images for feedback)' : 'Tell the factory what you need… (e.g. "build me an ad for mamá\'s birthday")'}
+          placeholder={tab === 'coach' ? 'Ask Max… (or paste images for feedback)' : 'Tell Max what you need… (e.g. "build me an ad for mamá\'s birthday")'}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attachments.length))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
+      </div>
       </div>
     </div>
   );

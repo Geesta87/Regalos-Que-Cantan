@@ -9,10 +9,11 @@
 // Talks to the seo-coach edge function (campaign actions included).
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Search, Send, Loader2, RefreshCw, Sparkles, Check, X, Globe,
+  Send, Loader2, Sparkles, Check, X, Globe,
   CalendarDays, Play, ChevronDown, Clock, TrendingUp,
 } from 'lucide-react';
 import { btn, Badge } from './ui';
+import AgentHero from './AgentHero';
 
 const COACH = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/seo-coach`;
 
@@ -24,7 +25,7 @@ const STARTERS = [
   'What should our seasonal page plan be for the next 3 months?',
 ];
 
-const GREETING = "Hi — I'm your SEO coach. I can see your live Google Search Console data, read any page on your site or a competitor's, and I run an ongoing campaign with you: when we agree on a move, I save it as a task card you approve with one tap. A weekly agent tracks your rankings every Monday, checks what shipped, and reports what moved. Ask me anything — I'll always tell you the why, and I'm honest about how long SEO really takes.";
+const GREETING = "Hi — I'm Scout, your SEO coach. I can see your live Google Search Console data, read any page on your site or a competitor's, and I run an ongoing campaign with you: when we agree on a move, I save it as a task card you approve with one tap. A weekly agent tracks your rankings every Monday, checks what shipped, and reports what moved. Ask me anything — I'll always tell you the why, and I'm honest about how long SEO really takes.";
 
 const TASK_STATUS_TONE = {
   proposed: 'amber', approved: 'accent', implemented: 'accent',
@@ -165,8 +166,9 @@ export default function SeoCoachTab({ accessToken, showToast }) {
   const autopilot = !!campaign?.state?.autopilot;
   const lastRun = campaign?.state?.last_run_at ? new Date(campaign.state.last_run_at).toLocaleDateString() : null;
 
+  // Scout's chat avatar — her real portrait, not an icon.
   const AvatarSm = () => (
-    <div className="rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0" style={{ width: 32, height: 32 }}><Search size={15} className="text-indigo-600" /></div>
+    <img src="/agents/scout.png" alt="Scout" className="rounded-full object-cover object-top flex-shrink-0 border border-teal-100" style={{ width: 32, height: 32 }} />
   );
 
   const TaskCard = ({ t }) => {
@@ -215,22 +217,37 @@ export default function SeoCoachTab({ accessToken, showToast }) {
     );
   };
 
-  return (
-    <div className="max-w-3xl">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0" style={{ width: 44, height: 44 }}>
-            <Search size={20} className="text-indigo-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">SEO Coach</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Live Search Console · runs your SEO campaign · weekly reviews</p>
-          </div>
-        </div>
-        <button onClick={loadHistory} className={btn.iconGhost} title="Reload"><RefreshCw size={16} /></button>
-      </div>
+  // ── Scout — the SEO Coach's live status ─────────────────────────────
+  const scoutBusy = sending || runningWeekly;
+  const scoutStatus = runningWeekly
+    ? 'Running your weekly review — rankings, shipped work, what moved…'
+    : sending
+      ? 'Reading your live search data…'
+      : proposedTasks.length > 0
+        ? `${proposedTasks.length} task${proposedTasks.length > 1 ? 's' : ''} waiting for your approval, whenever you are.`
+        : activeTasks.length > 0
+          ? `${activeTasks.length} campaign task${activeTasks.length > 1 ? 's' : ''} in flight — I check every Monday what moved.`
+          : 'At your command. Ask me anything, or have me draft your next campaign.';
 
+  return (
+    <div className="w-full">
+      {/* ── Scout — full-bleed cinematic hero, same treatment as Ace. ── */}
+      <AgentHero
+        base="/agents/scout"
+        name="Scout"
+        role="Your SEO Coach"
+        busy={scoutBusy}
+        statusLine={scoutStatus}
+        accent="teal"
+        objectPosition="74% center"
+        onReload={loadHistory}
+      >
+        <span className="hidden sm:inline text-[11px] text-gray-300/90 drop-shadow">
+          Live Search Console · runs your SEO campaign · nothing changes on the site without your Approve.
+        </span>
+      </AgentHero>
+
+      <div className="max-w-3xl">
       {/* Campaign panel */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
         <div className="flex items-center justify-between gap-2 mb-1">
@@ -365,9 +382,10 @@ export default function SeoCoachTab({ accessToken, showToast }) {
 
       {/* Composer */}
       <div className="flex items-center gap-2 mt-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="Ask your SEO coach… (e.g. “draft a 90-day campaign”)" disabled={sending || loading}
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="Ask Scout… (e.g. “draft a 90-day campaign”)" disabled={sending || loading}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || loading || !input.trim()} className={btn.accent + ' !px-4'}><Send size={15} /></button>
+      </div>
       </div>
     </div>
   );
