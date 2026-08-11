@@ -982,8 +982,10 @@ serve(async (req) => {
         .map((w) => w.word.trim()).join(' ');
       const caption = await youtubeSeoCaption(clip.label || proj?.title || 'Clip', said);
 
-      // GHL needs a future schedule time; floor ~2 min out.
-      const scheduleDate = new Date(Date.now() + 150_000).toISOString();
+      // GHL needs a comfortably-future schedule time. 2.5 min was rejected
+      // with "Schedule Date must be after current date" (422, seen 2026-08-11);
+      // post-to-ghl's proven buffer is 15 min — use the same.
+      const scheduleDate = new Date(Date.now() + 900_000).toISOString();
       const { id: ghlId, error: postErr } = await ghlPostYouTube(acct.id, caption, clip.video_url, scheduleDate);
       if (!ghlId) return json({ success: false, error: postErr || 'YouTube post failed' }, 502);
 
