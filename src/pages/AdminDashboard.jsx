@@ -1046,7 +1046,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
-      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
+        // An added line needs a few extra seconds of pinned length.
+        ...(plan?.addLine ? { durationPadS: 8 } : {}) });
       if (!sub.ok) { setError(sub.reason || sub.error || 'Could not start the full re-roll.'); setPhase('plan'); return; }
       const { fixTaskId, fullLyrics, changeSummary } = sub;
       if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
@@ -1867,6 +1869,21 @@ function FixSongTab({ accessToken, showToast }) {
     try { await postQueue({ action: 'reject', request_id: req.id, reason }); await loadQueue(); }
     finally { setQueueBusyId(null); }
   }
+  // Hand a request (back) to Ace with fresh rounds; the note becomes extra
+  // guidance for his understanding step. Works on needs_human cards, old
+  // manual-era cards, and staged candidates the owner wants redone.
+  async function sendToAceReq(req, note) {
+    setQueueBusyId(req.id);
+    try {
+      const d = await postQueue({ action: 'send-to-ace', request_id: req.id, note: note || '' });
+      if (d?.success) {
+        showToast(autoState?.enabled
+          ? '🎧 Ace has it — he\'ll start within 2 minutes and ping you when it\'s staged.'
+          : '🎧 Queued for Ace — but his Auto-mode is OFF. Flip it ON above or he won\'t start.');
+      } else showToast(`❌ ${d?.error || 'Could not hand it to Ace.'}`);
+      await loadQueue();
+    } finally { setQueueBusyId(null); }
+  }
 
   // Clear the active request + refresh once a fix is staged.
   const onStaged = useCallback(() => {
@@ -2012,6 +2029,7 @@ function FixSongTab({ accessToken, showToast }) {
           onUnclaim={unclaimReq}
           onRelease={releaseReq}
           onReject={rejectReq}
+          onSendToAce={sendToAceReq}
           onRefresh={loadQueue}
         />
       )}
@@ -2598,6 +2616,26 @@ export default function AdminDashboard() {
     });
     return () => sub?.subscription?.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ACTIVELY keep the session fresh (2026-08-10). onAuthStateChange above only
+  // fires when supabase-js's own background timer runs — browsers throttle
+  // timers in backgrounded tabs, so a tab left open an hour came back with an
+  // expired token and every admin call 401'd ("Invalid session" mid-fix-flow;
+  // the admin-songs 401 bursts in the edge logs are the same failure).
+  // getSession() transparently refreshes an expiring session and triggers
+  // TOKEN_REFRESHED → setAccessToken. Run it on focus/visibility (the moment
+  // the owner comes back to the tab) and every 8 minutes as a floor.
+  useEffect(() => {
+    const nudge = () => { supabase.auth.getSession().catch(() => {}); };
+    window.addEventListener('focus', nudge);
+    document.addEventListener('visibilitychange', nudge);
+    const iv = setInterval(nudge, 8 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', nudge);
+      document.removeEventListener('visibilitychange', nudge);
+      clearInterval(iv);
+    };
   }, []);
 
   // Check auth on mount: real Supabase Auth session + admin_users role lookup

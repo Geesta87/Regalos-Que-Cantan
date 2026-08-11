@@ -165,7 +165,15 @@ count-based checklist as the manual ladder, on the audible part only) → STAGES
 release keeps the chain) → WhatsApp ping to approvers → one-tap Release in
 `/admin?tab=fixsong` (releases auto-notify the customer and report any paid
 stale artifacts to re-run). It never guesses: ambiguity ⇒ `needs_human`, and
-the queue card shows the robot's reason.
+the queue card shows the robot's reason. Any open card can be handed (back) to
+Ace via the "🎧 Give it to Ace / Have Ace redo it" button (`song-fix-queue`
+action `send-to-ace`: fresh rounds, full re-plan, owner's optional note becomes
+retry guidance) — never reset his rounds by SQL again.
+Full re-roll take rules learned 2026-08-10 (Vicente a4672f19): added lines go
+at the END OF A VERSE, never appended after the final chorus (duration-pinned
+takes drop them); takes whose vocals start >12s later than the original are
+rejected ("intro demasiado largo"); proper names are never required transcript
+tokens (Whisper mangles them — ears judge names).
 
 Splice/rehost/trim run on Cloud Run `rqc-video-renderer` (`/splice-audio`), which
 also hosts Clip Studio routes — deploy it only from an up-to-date main.

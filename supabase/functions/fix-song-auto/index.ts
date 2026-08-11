@@ -109,18 +109,35 @@ function parseYear(t: string[], i: number): { year: number; next: number } | nul
   return null;
 }
 function buildTokenGroups(line: string): string[][] {
-  const t = String(line || '').split(/\s+/).map(norm).filter(Boolean);
-  const groups: string[][] = [];
+  // Raw tokens kept alongside normalized ones — proper-noun detection needs the
+  // original capitalization.
+  const pairs = String(line || '').split(/\s+/)
+    .map((raw) => ({ raw, n: norm(raw) }))
+    .filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  // PROPER NAMES ARE NOT REQUIRED TOKENS (2026-08-10) — mirror of the
+  // audioSplice.js fix. Whisper writes invented names however it hears them
+  // ("Saynee" → "Zaine"), so requiring the name token rejected perfect takes.
+  // A mid-line Capitalized token is treated as a name and skipped; the words
+  // around it prove the line. Guard: keep names if skipping them would leave
+  // fewer than 2 required groups.
+  const isNameAt = (i: number): boolean => {
+    if (i === 0) return false;
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged: Array<{ g: string[]; name: boolean }> = [];
   for (let i = 0; i < t.length;) {
     const y = parseYear(t, i);
-    if (y) { groups.push([String(y.year)]); i = y.next; continue; }
-    const w = t[i]; i++;
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    const w = t[i]; const idx = i; i++;
     if (w.length < 2 || FILLER.has(w)) continue;
     const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
-    if (numVal != null) { groups.push([w, String(numVal)]); continue; }
-    groups.push([w]);
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
+    flagged.push({ g: [w], name: isNameAt(idx) });
   }
-  return groups;
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
 }
 type Atom = { n: string; s: number; e: number };
 function collapseSpelledYears(atoms: Atom[]): Atom[] {
@@ -370,9 +387,12 @@ async function stepUnderstand(admin: any, r: any): Promise<void> {
 
 async function stepPlan(admin: any, r: any): Promise<void> {
   const spec = r.fix_spec;
+  // Add-line placement: END OF A RELATED VERSE, never appended after the final
+  // chorus — with duration pinned, Suno drops a line appended at the very end
+  // (Vicente a4672f19: 4 takes dropped it; mid-verse landed round 1).
   const note = spec.changes.map((c: any) =>
     c.type === 'add_line'
-      ? `AGREGA esta línea nueva al final: "${c.after}"`
+      ? `AGREGA esta línea nueva AL FINAL DE UN VERSO relacionado (a media canción, NUNCA como última línea después del coro final): "${c.after}"`
       : `La línea "${c.before}" debe decir exactamente "${c.after}"`).join('. ');
   const plan = await callFn('fix-song-section', { action: 'plan', songId: r.song_id, note });
   if (!plan?.ok || !plan.approvedLyrics) {
@@ -380,8 +400,14 @@ async function stepPlan(admin: any, r: any): Promise<void> {
     return;
   }
   const verify = [...new Set([...(spec.verify_phrases || []), ...(plan.verifyPhrases || [])])].slice(0, 3);
+  // ADD-A-LINE ⇒ FULL re-roll (2026-08-10): a new line can't ride a single
+  // replace-section window (and splicing is banned), so the whole song is
+  // re-sung with the line included — same cloned voice, a few extra seconds of
+  // pinned length (durationPadS below). Everything else stays section-first.
+  const addLine = plan.addLine || null;
+  const hasAdd = !!addLine || (spec.changes || []).some((c: any) => c.type === 'add_line');
   await setAuto(admin, r.id, {
-    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: 'section', summary: plan.changeSummary || spec.summary },
+    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: hasAdd ? 'full' : 'section', addLine: hasAdd, summary: plan.changeSummary || spec.summary },
     auto_status: 'generating',
   });
 }
@@ -397,6 +423,8 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     action, mode: plan.mode, songId: r.song_id,
     note: (plan.changes || []).map((c: any) => `"${c.before}" → "${c.after}"`).join('; '),
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
+    // An added line needs a few extra seconds — a tight length pin would crowd it.
+    ...(plan.addLine ? { durationPadS: 8 } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -461,7 +489,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // LIVE audio — same length, and without a yardstick every take gets rejected
   // with "no pristine duration" and the round budget burns to needs_human.
   let origDur: number | null = plan.origDur || null;
-  if (!origDur) {
+  // origStart: when the ORIGINAL's vocals begin — the intro-length yardstick
+  // (see the intro guard below). Recomputed alongside origDur when missing.
+  let origStart: number | null = plan.origStart ?? null;
+  if (!origDur || origStart == null) {
     let yardstickUrl: string | null = plan.originalAudioUrl || null;
     if (!yardstickUrl) {
       const { data: songRow } = await admin.from('songs')
@@ -471,8 +502,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (yardstickUrl) {
       const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: yardstickUrl });
       const pw = parseTimed(pt?.timed || '');
-      origDur = pw.length ? pw[pw.length - 1].end : null;
-      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+      origDur = pw.length ? pw[pw.length - 1].end : origDur;
+      origStart = pw.length ? pw[0].start : origStart;
+      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
     }
   }
 
@@ -494,23 +526,37 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
+    // INTRO GUARD (2026-08-10, Vicente a4672f19): a full re-roll chose a ~30s
+    // instrumental intro on a song whose vocals start almost immediately —
+    // every word check passed, but the customer would hear a different song.
+    // An end-trim can't remove an intro (that would be a start-cut = surgery),
+    // so long-intro takes are rejected outright.
+    const takeStart = words[0].start;
+    const introDrift = origStart != null ? takeStart - origStart : 0;
+    if (introDrift > 12) {
+      diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
+      continue;
+    }
     // LENGTH FIRST (matches the manual path): the checklist must run on the
     // AUDIBLE part only — an over-extension tail often re-sings everything
     // correctly and would satisfy checks for spots still wrong in the real song.
+    // Bands and the true-end anchor are SHIFT-AWARE: a take that starts a few
+    // seconds late legitimately ends the same few seconds late.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
     let trimAtS: number | null = null;
-    let lenOk = takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08;
-    if (!lenOk && takeEnd > origDur * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, origDur);
-      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
+    let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
+    if (!lenOk && takeEnd > effOrig * 1.08) {
+      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig);
+      if (trueEnd != null && trueEnd >= effOrig * 0.80 && trueEnd <= effOrig * 1.15) {
         trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
         lenOk = true;
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > origDur * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
@@ -519,7 +565,7 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
       continue;
     }
-    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - origDur), trimAtS });
+    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS });
     diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });
   }
 
@@ -649,18 +695,24 @@ Deno.serve(async (req) => {
     const work = [...(fresh || []).map((r: any) => ({ ...r, auto_status: r.auto_status || 'linking' })), ...(mid || [])];
     const done: Record<string, string> = {};
     for (const r of work.slice(0, 3)) {
-      // Optimistic claim — cron fires every 2 min but a validating step (N song
+      // Overlap claim — cron fires every 2 min but a validating step (N song
       // downloads + Whisper + a trim) can run longer, and nothing marked a row
       // as in-flight, so an overlapping tick could pick the same row and submit
-      // a DUPLICATE Kie generation. The claim bumps auto_updated_at only if it
-      // hasn't moved since we read it; a lost race means another tick owns it.
+      // a DUPLICATE Kie generation. Claim = bump auto_updated_at, but only when
+      // the last touch is >110s old (a step started within the last 110s is
+      // still owned by that tick). NOT timestamp EQUALITY against the value we
+      // read — timestamptz microsecond precision never round-trips through
+      // JSON exactly, so the eq-claim matched nothing and every row DEADLOCKED
+      // after its first step (found live on Vicente's request, 2026-08-10).
       let claim = admin.from('song_fix_requests')
         .update({ auto_updated_at: new Date().toISOString() })
         .eq('id', r.id)
         .eq('status', 'pending');
-      claim = r.auto_updated_at ? claim.eq('auto_updated_at', r.auto_updated_at) : claim.is('auto_updated_at', null);
+      claim = r.auto_updated_at
+        ? claim.lt('auto_updated_at', new Date(Date.now() - 110_000).toISOString())
+        : claim.is('auto_updated_at', null);
       const { data: claimed } = await claim.select('id');
-      if (!claimed?.length) { done[r.id] = 'skipped: claimed by an overlapping tick'; continue; }
+      if (!claimed?.length) { done[r.id] = 'skipped: another tick is working it'; continue; }
       try {
         if (r.auto_status === 'linking') await stepLink(admin, r);
         else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);
