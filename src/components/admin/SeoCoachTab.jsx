@@ -25,7 +25,7 @@ const STARTERS = [
   'What should our seasonal page plan be for the next 3 months?',
 ];
 
-const GREETING = "Hi — I'm Scout, your SEO coach. I can see your live Google Search Console data, read any page on your site or a competitor's, and I run an ongoing campaign with you: when we agree on a move, I save it as a task card you approve with one tap. A weekly agent tracks your rankings every Monday, checks what shipped, and reports what moved. Ask me anything — I'll always tell you the why, and I'm honest about how long SEO really takes.";
+const GREETING = "Hi — I'm Nova, your SEO coach. I can see your live Google Search Console data, read any page on your site or a competitor's, and I run an ongoing campaign with you: when we agree on a move, I save it as a task card you approve with one tap. A weekly agent tracks your rankings every Monday, checks what shipped, and reports what moved. Ask me anything — I'll always tell you the why, and I'm honest about how long SEO really takes.";
 
 const TASK_STATUS_TONE = {
   proposed: 'amber', approved: 'accent', implemented: 'accent',
@@ -166,9 +166,9 @@ export default function SeoCoachTab({ accessToken, showToast }) {
   const autopilot = !!campaign?.state?.autopilot;
   const lastRun = campaign?.state?.last_run_at ? new Date(campaign.state.last_run_at).toLocaleDateString() : null;
 
-  // Scout's chat avatar — her real portrait, not an icon.
+  // Nova's chat avatar — her real portrait, not an icon.
   const AvatarSm = () => (
-    <img src="/agents/scout.png" alt="Scout" className="rounded-full object-cover object-top flex-shrink-0 border border-teal-100" style={{ width: 32, height: 32 }} />
+    <img src="/agents/nova.png" alt="Nova" className="rounded-full object-cover object-top flex-shrink-0 border border-teal-100" style={{ width: 32, height: 32 }} />
   );
 
   const TaskCard = ({ t }) => {
@@ -217,9 +217,9 @@ export default function SeoCoachTab({ accessToken, showToast }) {
     );
   };
 
-  // ── Scout — the SEO Coach's live status ─────────────────────────────
-  const scoutBusy = sending || runningWeekly;
-  const scoutStatus = runningWeekly
+  // ── Nova — the SEO Coach's live status ─────────────────────────────
+  const novaBusy = sending || runningWeekly;
+  const novaStatus = runningWeekly
     ? 'Running your weekly review — rankings, shipped work, what moved…'
     : sending
       ? 'Reading your live search data…'
@@ -231,13 +231,13 @@ export default function SeoCoachTab({ accessToken, showToast }) {
 
   return (
     <div className="w-full">
-      {/* ── Scout — full-bleed cinematic hero, same treatment as Ace. ── */}
+      {/* ── Nova — full-bleed cinematic hero, same treatment as Ace. ── */}
       <AgentHero
-        base="/agents/scout"
-        name="Scout"
+        base="/agents/nova"
+        name="Nova"
         role="Your SEO Coach"
-        busy={scoutBusy}
-        statusLine={scoutStatus}
+        busy={novaBusy}
+        statusLine={novaStatus}
         accent="teal"
         objectPosition="74% center"
         onReload={loadHistory}
@@ -382,7 +382,7 @@ export default function SeoCoachTab({ accessToken, showToast }) {
 
       {/* Composer */}
       <div className="flex items-center gap-2 mt-3">
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="Ask Scout… (e.g. “draft a 90-day campaign”)" disabled={sending || loading}
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="Ask Nova… (e.g. “draft a 90-day campaign”)" disabled={sending || loading}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || loading || !input.trim()} className={btn.accent + ' !px-4'}><Send size={15} /></button>
       </div>

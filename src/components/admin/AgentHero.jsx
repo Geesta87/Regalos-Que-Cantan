@@ -1,7 +1,7 @@
 // src/components/admin/AgentHero.jsx
 // Full-bleed cinematic hero for a personified AI staff member — the same
 // treatment Ace got on the Fix Song tab, shared so every named agent
-// (Max — Meta Ads Coach, Scout — SEO Coach, …) looks and behaves the same.
+// (Cruz — Meta Ads Coach, Nova — SEO Coach, …) looks and behaves the same.
 // The agent is ALWAYS alive: an idle "at your command" loop while standing
 // by and a working loop while their pipeline is actually doing something.
 // Assets live in /public/agents as `${base}-hero-idle.mp4`,
@@ -18,8 +18,8 @@ const ACCENTS = {
 };
 
 export default function AgentHero({
-  base,                      // asset base path, e.g. '/agents/max'
-  name,                      // 'Max'
+  base,                      // asset base path, e.g. '/agents/cruz'
+  name,                      // 'Cruz'
   role,                      // 'Your Meta Ads Coach'
   busy = false,              // switches to the working loop + amber pulse
   statusLine = '',           // one-liner under the name

@@ -38,8 +38,8 @@ const FACTORY_STARTERS = [
   'Build 2 distinct concepts to test against my best ad',
 ];
 
-const COACH_GREETING = "Hi — I'm Max, your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) images — up to 5 at once, like ad variants for me to compare — and I'll give you honest feedback, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
-const FACTORY_GREETING = "Max here — welcome to my Ad Factory, where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
+const COACH_GREETING = "Hi — I'm Cruz, your Meta ads coach. I can see your live account (spend, sales, real paid orders, individual ads and their creatives, 7 and 30-day trends), and I reason from how Meta's delivery actually works today. Ask me anything — I'll explain the why and give you the exact move. You can also attach (📎) or just paste (Ctrl+V) images — up to 5 at once, like ad variants for me to compare — and I'll give you honest feedback, or attach a document (PDF or text) and I'll tell you what it means for your ads.";
+const FACTORY_GREETING = "Cruz here — welcome to my Ad Factory, where I build finished, ready-to-run ads with everything I know about how Meta picks winners. Tell me what you need. If details matter (occasion, who it's for, the angle), I'll ask a couple of sharp questions first, like a creative director taking a brief — then I build: real photo, Spanish headline, subheadline, CTA and price, typeset in your brand style, quality-checked before you see it. Every ad comes with the reason it can win. Say \"you decide\" anytime and I'll make the calls.";
 
 export default function AdsCoachTab({ accessToken, showToast }) {
   const [tab, setTab] = useState('coach'); // 'coach' | 'factory'
@@ -384,18 +384,18 @@ export default function AdsCoachTab({ accessToken, showToast }) {
   const correct = resolved.filter((c) => c.status === 'correct').length;
   const graded = resolved.filter((c) => c.status !== 'dismissed').length;
 
-  // Max's chat avatar — his real portrait, not an icon.
+  // Cruz's chat avatar — his real portrait, not an icon.
   const AvatarSm = () => (
-    <img src="/agents/max.png" alt="Max" className="rounded-full object-cover object-top flex-shrink-0 border border-indigo-100" style={{ width: 32, height: 32 }} />
+    <img src="/agents/cruz.png" alt="Cruz" className="rounded-full object-cover object-top flex-shrink-0 border border-indigo-100" style={{ width: 32, height: 32 }} />
   );
 
   const messages = msgs[tab];
   const starters = tab === 'coach' ? COACH_STARTERS : FACTORY_STARTERS;
   const greeting = tab === 'coach' ? COACH_GREETING : FACTORY_GREETING;
 
-  // ── Max — the Meta Ads Coach's live status ──────────────────────────
-  const maxBusy = sending || generating || building || publishing || campBusy;
-  const maxStatus = building || generating
+  // ── Cruz — the Meta Ads Coach's live status ──────────────────────────
+  const cruzBusy = sending || generating || building || publishing || campBusy;
+  const cruzStatus = building || generating
     ? 'Building your ad right now…'
     : publishing || campBusy
       ? 'Setting it up in Meta (paused) …'
@@ -407,13 +407,13 @@ export default function AdsCoachTab({ accessToken, showToast }) {
 
   return (
     <div className="w-full">
-      {/* ── Max — full-bleed cinematic hero, same treatment as Ace. ── */}
+      {/* ── Cruz — full-bleed cinematic hero, same treatment as Ace. ── */}
       <AgentHero
-        base="/agents/max"
-        name="Max"
+        base="/agents/cruz"
+        name="Cruz"
         role="Your Meta Ads Coach"
-        busy={maxBusy}
-        statusLine={maxStatus}
+        busy={cruzBusy}
+        statusLine={cruzStatus}
         accent="indigo"
         objectPosition="74% center"
         onReload={load}
@@ -709,7 +709,7 @@ export default function AdsCoachTab({ accessToken, showToast }) {
           </>
         )}
         <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} disabled={sending || loading}
-          placeholder={tab === 'coach' ? 'Ask Max… (or paste images for feedback)' : 'Tell Max what you need… (e.g. "build me an ad for mamá\'s birthday")'}
+          placeholder={tab === 'coach' ? 'Ask Cruz… (or paste images for feedback)' : 'Tell Cruz what you need… (e.g. "build me an ad for mamá\'s birthday")'}
           className="flex-1 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-indigo-400 disabled:opacity-60" />
         <button onClick={() => submit()} disabled={sending || loading || (!input.trim() && !(tab === 'coach' && attachments.length))} className={btn.accent + ' !px-4'}><Send size={15} /></button>
       </div>
