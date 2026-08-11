@@ -81,10 +81,17 @@ function extractGhlPostId(d: any): string | null {
 }
 
 async function ghlPostYouTube(accountId: string, caption: string, mediaUrl: string, scheduleDate: string): Promise<{ id: string | null; error: string | null }> {
+  // The caption's first line is the search-optimized TITLE (youtubeSeoCaption's
+  // contract); the rest is the description. GHL's YouTube pipeline takes the
+  // title via youtubePostDetails.title — `summary` alone yields a junk title.
+  const lines = caption.split('\n');
+  const title = (lines[0] || 'Canción personalizada para regalar | Regalos Que Cantan').trim().slice(0, 100);
+  const description = lines.slice(1).join('\n').trim();
   const payload = {
     accountIds: [accountId], userId: GHL_USER_ID,
     media: [{ url: mediaUrl, type: 'video/mp4' }],
-    summary: caption, scheduleDate, type: 'post', status: 'scheduled',
+    summary: description || caption, scheduleDate, type: 'post', status: 'scheduled',
+    youtubePostDetails: { title, privacyLevel: 'public', type: 'video' },
   };
   const resp = await ghlFetch(`/social-media-posting/${GHL_LOCATION_ID}/posts`, { method: 'POST', body: JSON.stringify(payload) });
   if (!resp.ok) return { id: null, error: `youtube_${resp.status}: ${(await resp.text()).slice(0, 300)}` };
