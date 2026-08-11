@@ -167,13 +167,20 @@ Lista en 3 minutos. Desde $29.99 USD.
 // real Spanish search phrases we see in Search Console ("canción personalizada",
 // "para regalar", genre + "personalizado"), then a description with searchable
 // terms and occasions — not emoji/hashtag social copy. No keyword stuffing.
+// YouTube TITLE — sent via GHL's youtubePostDetails.title (the field YouTube
+// actually uses as the video title). Without it GHL invents a junk title and
+// the search-optimized text below never reaches the title slot.
+function buildYouTubeTitle(song: SongContext): string {
+  const g = getGenreMeta(song.genre);
+  return `${g.label} personalizado para regalar | Canción con su nombre 🎁`.slice(0, 100);
+}
+
+// YouTube DESCRIPTION — goes in `summary`. Title lives in youtubePostDetails.
 function buildYouTubeFeed(song: SongContext): string {
   const g = getGenreMeta(song.genre);
   const label = g.label; // e.g. "Corrido", "Bachata"
   return (
-`${label} personalizado para regalar | Canción con su nombre 🎁
-
-Una ${label} personalizada, hecha a medida con el nombre de esa persona y su historia. El regalo perfecto para cumpleaños, aniversarios, bodas, el Día de las Madres o para decir "te quiero". Escucha cómo suena una canción personalizada de verdad.
+`Una ${label} personalizada, hecha a medida con el nombre de esa persona y su historia. El regalo perfecto para cumpleaños, aniversarios, bodas, el Día de las Madres o para decir "te quiero". Escucha cómo suena una canción personalizada de verdad.
 
 Crea la tuya en minutos 👉 ${SITE_URL}
 
@@ -292,6 +299,7 @@ async function schedulePlatformPost(args: {
   videoUrl: string;
   thumbnailUrl?: string;         // optional — genre-branded thumbnail
   scheduleDate: string;
+  youtubeTitle?: string;         // YouTube only — becomes youtubePostDetails.title
 }): Promise<{ ghlPostId: string | null; error: string | null; response?: any }> {
   // Build the media object. When a thumbnail URL is provided, GHL uses it
   // as the preview image in the feed (instead of the video's first frame).
@@ -315,6 +323,13 @@ async function schedulePlatformPost(args: {
   // inside the video instead.
   if (args.variant === 'feed') {
     payload.summary = args.summary;
+  }
+
+  // YouTube needs its title in youtubePostDetails.title — `summary` is only
+  // the description there. type 'video' is the documented value; YouTube
+  // classifies short vertical videos as Shorts automatically.
+  if (args.youtubeTitle) {
+    payload.youtubePostDetails = { title: args.youtubeTitle, privacyLevel: 'public', type: 'video' };
   }
 
   const resp = await ghlFetch(
@@ -455,6 +470,7 @@ serve(async (req) => {
           videoUrl: post.social_video_url,
           thumbnailUrl,
           scheduleDate,
+          youtubeTitle: account.platform === 'youtube' ? buildYouTubeTitle(songCtx) : undefined,
         });
         feedResults[account.platform] = { id: result.ghlPostId, err: result.error };
         if (result.error) console.warn(`[post-to-ghl] feed/${account.platform} failed:`, result.error);
