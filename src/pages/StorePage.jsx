@@ -104,11 +104,25 @@ const PRODUCTS = [
     bullets: ['Dos canciones personalizadas completas', 'Dos géneros o dos versiones distintas', 'Ahorra frente a comprarlas por separado', 'Ambas listas en minutos · preview gratis'],
   },
   {
-    kind: 'song', cat: 'cancion', key: 'triple', title: 'Paquete de 3 canciones', pack: true,
-    sub: 'Tres canciones — el mejor precio por canción',
+    kind: 'song', cat: 'cancion', key: 'triple', title: 'Paquete de 3 canciones', pack: true, packId: 'pack3', songs: 3,
+    sub: 'Tres canciones — una para cada persona',
     was: 89.97, price: 49.99, badge: 'Mejor valor', art: '/images/album-art/cumbia.jpg',
     desc: 'Pagas una vez y recibes un código personal para crear 3 canciones — una para cada persona, cuando tú quieras. Diferente género, nombre e historia en cada una.',
-    bullets: ['Tres canciones personalizadas completas', 'Una para cada persona (género e historia distintos)', 'El precio más bajo por canción', 'Tu código llega al correo · 12 meses para usarlo'],
+    bullets: ['Tres canciones personalizadas completas', 'Una para cada persona (género e historia distintos)', 'Sale a $16.66 por canción', 'Tu código llega al correo · 12 meses para usarlo'],
+  },
+  {
+    kind: 'song', cat: 'cancion', key: 'pack5', title: 'Paquete de 5 canciones', pack: true, packId: 'pack5', songs: 5,
+    sub: 'Cinco canciones — para toda la familia',
+    was: 149.95, price: 74.99, badge: 'Nuevo', art: '/images/album-art/romantica.jpg',
+    desc: 'Un código personal para crear 5 canciones cuando tú quieras — cumpleaños, aniversarios, el Día de la Madre… cada una con su propia historia, nombre y género.',
+    bullets: ['Cinco canciones personalizadas completas', 'Cada una con su historia, nombre y género', 'Sale a $15 por canción', 'Tu código llega al correo · 12 meses para usarlo'],
+  },
+  {
+    kind: 'song', cat: 'cancion', key: 'pack10', title: 'Paquete de 10 canciones', pack: true, packId: 'pack10', songs: 10,
+    sub: 'Diez canciones — el mejor precio por canción',
+    was: 299.90, price: 139.99, badge: 'El mejor precio', art: '/images/album-art/grupera.jpg',
+    desc: 'Diez canciones con un solo pago — perfecto si te encanta regalar canciones o quieres tener detalles para todo el año. Cada una con su propia historia.',
+    bullets: ['Diez canciones personalizadas completas', 'Ideal para fiestas, eventos y toda la familia', 'Sale a $14 por canción — el precio más bajo', 'Tu código llega al correo · 12 meses para usarlo'],
   },
   {
     kind: 'extra', cat: 'cancion', key: 'otro_estilo', title: 'La misma historia, otro estilo', soon: true,
@@ -289,14 +303,14 @@ function DoorModal({ product, onClose, onNewSong, onHaveSong }) {
   );
 }
 
-// Buy flow for the 3-song pack: collect name + email, then Stripe. The webhook
-// mints + emails the personal NOMBRE-### code on payment.
-function PackModal({ open, onClose }) {
+// Buy flow for the song packs (3/5/10): collect name + email, then Stripe. The
+// webhook mints + emails the personal NOMBRE-### code on payment.
+function PackModal({ product, onClose }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  if (!open) return null;
+  if (!product) return null;
 
   const submit = async () => {
     setErr('');
@@ -304,7 +318,7 @@ function PackModal({ open, onClose }) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return setErr('Escribe un correo válido — ahí te enviamos el código.');
     setBusy(true);
     try {
-      const { url } = await createPackCheckout(name.trim(), email.trim());
+      const { url } = await createPackCheckout(name.trim(), email.trim(), product.packId);
       if (!url) throw new Error('No se pudo iniciar el pago.');
       window.location.href = url;
     } catch (e) {
@@ -319,16 +333,16 @@ function PackModal({ open, onClose }) {
     <div onClick={onClose} className="fixed inset-0 z-[9998] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-white/12 p-6 shadow-2xl" style={{ background: '#1c141a', animation: 'otuIn .22s ease-out both' }}>
         <div className="flex items-start justify-between gap-3 mb-1">
-          <h3 className="text-white text-lg font-extrabold leading-tight">Paquete de 3 Canciones</h3>
+          <h3 className="text-white text-lg font-extrabold leading-tight">Paquete de {product.songs} Canciones</h3>
           <button onClick={onClose} className="text-white/40 hover:text-white text-xl leading-none shrink-0">✕</button>
         </div>
-        <p className="text-slate-400 text-sm">Un solo pago de <span className="text-landing-primary font-extrabold">$49.99</span> · código para 3 canciones, una por persona.</p>
+        <p className="text-slate-400 text-sm">Un solo pago de <span className="text-landing-primary font-extrabold">${product.price}</span> · código para {product.songs} canciones, una por persona.</p>
         <p className="text-slate-300 text-sm mt-4 mb-3">Te enviamos tu código personal por correo — lo usas cuando quieras (12 meses).</p>
         <input className={inp + ' mb-2.5'} placeholder="Tu nombre" value={name} onChange={(e) => setName(e.target.value)} />
         <input className={inp} type="email" placeholder="Tu correo" value={email} onChange={(e) => setEmail(e.target.value)} />
         {err && <p className="text-[#f3a0a0] text-[12.5px] mt-2.5">{err}</p>}
         <button onClick={submit} disabled={busy} className="mt-4 w-full bg-landing-primary hover:bg-landing-primary/90 disabled:opacity-70 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-landing-primary/25 flex items-center justify-center gap-2">
-          {busy ? 'Abriendo el pago…' : '🎁 Pagar $49.99 y recibir mi código'}
+          {busy ? 'Abriendo el pago…' : `🎁 Pagar $${product.price} y recibir mi código`}
         </button>
         <p className="text-slate-500 text-[11px] text-center mt-2.5">🔒 Pago seguro con Stripe · tu código llega al instante</p>
       </div>
@@ -340,7 +354,7 @@ export default function StorePage() {
   const { navigateTo } = useContext(AppContext);
   const [cat, setCat] = useState('all');
   const [doorProduct, setDoorProduct] = useState(null); // extra awaiting the two-door choice
-  const [packOpen, setPackOpen] = useState(false); // 3-song pack buy modal
+  const [packProduct, setPackProduct] = useState(null); // song pack (3/5/10) awaiting the buy modal
 
   useEffect(() => { trackStep('store'); }, []);
 
@@ -360,7 +374,7 @@ export default function StorePage() {
   // song → funnel; extra → two-door.
   const actFor = (p) => {
     if (p.soon) return () => window.open(waLink(p.title), '_blank');
-    if (p.pack) return () => setPackOpen(true);
+    if (p.pack) return () => setPackProduct(p);
     if (p.kind === 'song') return start;
     return () => setDoorProduct(p);
   };
@@ -477,7 +491,7 @@ export default function StorePage() {
       </footer>
 
       <DoorModal product={doorProduct} onClose={() => setDoorProduct(null)} onNewSong={doorNewSong} onHaveSong={doorHaveSong} />
-      <PackModal open={packOpen} onClose={() => setPackOpen(false)} />
+      <PackModal product={packProduct} onClose={() => setPackProduct(null)} />
     </div>
   );
 }

@@ -41,29 +41,37 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // ─── 3-song pack ("Paquete de 3 canciones", $49.99) ──────────────────────
+    // ─── Song packs ("Paquete de 3/5/10 canciones") ──────────────────────────
     // A standalone purchase with NO song yet: the buyer pays once and receives a
-    // personal NOMBRE-### code worth 3 free single-song redemptions, minted +
+    // personal NOMBRE-### code worth N free single-song redemptions, minted +
     // emailed by stripe-webhook on payment. Returns early — none of the
     // song-checkout logic below applies (there is no songId).
-    if (body.pack === 'pack3') {
+    const SONG_PACKS: Record<string, { songs: number; cents: number; priceLabel: string }> = {
+      pack3: { songs: 3, cents: 4999, priceLabel: '$49.99' },
+      pack5: { songs: 5, cents: 7499, priceLabel: '$74.99' },
+      pack10: { songs: 10, cents: 13999, priceLabel: '$139.99' },
+    };
+    if (body.pack) {
+      const pack = SONG_PACKS[String(body.pack)];
+      if (!pack) {
+        return jsonResp(400, { error: 'pack_unknown', message: 'Paquete no disponible.' });
+      }
       const packEmail = String(body.email || '').trim().toLowerCase();
       const packName = String(body.buyerName || '').trim().slice(0, 40);
       if (!packEmail || !packEmail.includes('@')) {
         return jsonResp(400, { error: 'pack_missing_email', message: 'Necesitamos un correo válido para enviarte el código.' });
       }
-      const PACK3_PRICE_CENTS = 4999; // $49.99 — 3 songs (~$16.66 each)
       const packSession = await stripe.checkout.sessions.create({
         customer_email: packEmail,
         line_items: [{
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Paquete de 3 Canciones - RegalosQueCantan',
-              description: 'Un código personal para crear 3 canciones personalizadas — una para cada persona, cuando tú quieras.',
+              name: `Paquete de ${pack.songs} Canciones - RegalosQueCantan`,
+              description: `Un código personal para crear ${pack.songs} canciones personalizadas — una para cada persona, cuando tú quieras.`,
               images: ['https://regalosquecantan.com/og-image.jpg'],
             },
-            unit_amount: PACK3_PRICE_CENTS,
+            unit_amount: pack.cents,
           },
           quantity: 1,
         }],
@@ -72,13 +80,14 @@ serve(async (req) => {
         submit_type: 'pay',
         custom_text: {
           submit: {
-            message: '**3 canciones, un solo pago.** Recibes tu código por correo al instante y lo usas cuando quieras — una canción distinta para cada ser querido. Tu código no caduca pronto (12 meses) y cada canción incluye preview antes de quedar lista.',
+            message: `**${pack.songs} canciones, un solo pago.** Recibes tu código por correo al instante y lo usas cuando quieras — una canción distinta para cada ser querido. Tu código no caduca pronto (12 meses) y cada canción incluye preview antes de quedar lista.`,
           },
         },
-        success_url: `${BASE_URL}/pack-listo?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${BASE_URL}/pack-listo?session_id={CHECKOUT_SESSION_ID}&songs=${pack.songs}`,
         cancel_url: `${BASE_URL}/tienda`,
         metadata: {
-          type: 'pack3',
+          type: String(body.pack),
+          pack_songs: String(pack.songs),
           email: packEmail,
           buyer_name: packName,
         },
