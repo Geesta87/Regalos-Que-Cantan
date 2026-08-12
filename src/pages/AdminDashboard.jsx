@@ -738,17 +738,23 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // beats first-match: with repeated phrases (choruses) one correctly-sung
   // occurrence used to satisfy the check while other occurrences stayed wrong
   // (2026-08-06: "every chorus" fix that only fixed the final chorus).
-  function countCleanOccurrences(words, phrase) {
+  // Every clean occurrence of a phrase, WITH its timestamps, earliest first.
+  // The ladder needs the positions (not just the count) to point the next round
+  // at the occurrence that is still wrong (2026-08-12, Rafael 9dd5efe4).
+  function findPhraseHits(words, phrase) {
     const groups = buildTokenGroups(phrase);
-    if (!groups.length) return 0;
-    let remaining = words, count = 0;
+    if (!groups.length) return [];
+    let remaining = words; const hits = [];
     for (let guard = 0; guard < 30; guard++) {
       const hit = findCleanLine(remaining, groups, { maxGapS: 3.5 });
       if (!hit) break;
-      count++;
+      hits.push({ startS: hit.startS, endS: hit.endS });
       remaining = remaining.filter((w) => w.end <= hit.startS || w.start >= hit.endS);
     }
-    return count;
+    return hits.sort((a, b) => a.startS - b.startS);
+  }
+  function countCleanOccurrences(words, phrase) {
+    return findPhraseHits(words, phrase).length;
   }
   function timesInLyrics(lyrics, line) {
     const norm = (s) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -865,7 +871,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // PER-TARGET cap: one stubborn line may never eat more than 3 generations —
     // before this (2026-08-08) an unverifiable line burned the ENTIRE budget
     // (7 generations on one line) before failing with a generic message.
-    const MAX_SUBMITS = ordered.length * 2 + 1;
+    // Budget by SPOT, not by change: a single change whose line sits in three
+    // choruses is three windows to re-sing, and `ordered.length * 2 + 1` gave it
+    // the same 3 generations as a one-spot change — it ran out mid-song
+    // (2026-08-12, Rafael 9dd5efe4).
+    const totalSpots = ordered.reduce((n, c) => n + Math.max(1, timesInLyrics(combinedLyrics, c.after)), 0);
+    const MAX_SUBMITS = Math.min(12, totalSpots * 2 + 1);
     const MAX_PER_TARGET = 3;
     const perTarget = {};
     let submits = 0;
@@ -900,10 +911,26 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
       submits++;
       onMsg?.(`Arreglando "${(target.after || '').slice(0, 40)}…" (paso ${submits})`);
+      // WHICH occurrence? A chorus line lives in the song 2-3 times and a
+      // replace-section window only covers ONE of them, so round 2+ must be
+      // aimed at a spot that is still wrong — otherwise Claude re-picks the
+      // window it already fixed and the ladder spins (2026-08-12, Rafael
+      // 9dd5efe4: rounds 1-3 all re-fixed chorus 1 and chorus 2 shipped wrong).
+      let spotHint = '';
+      const tState = state?.items.find((x) => x.kind === 'change' && x.after === target.after);
+      if (best && tState && tState.have > 0) {
+        const stillBad = target.before ? findPhraseHits(best.words, target.before) : [];
+        const done = findPhraseHits(best.words, target.after);
+        const doneAt = done.map((h) => mmss(h.startS)).join(', ');
+        spotHint = stillBad.length
+          ? ` ATENCIÓN: esta línea se canta ${tState.need} veces y YA quedó bien en ${doneAt}. NO toques esas. La que TODAVÍA canta la versión antigua empieza en el segundo ${stillBad[0].startS.toFixed(1)} (${mmss(stillBad[0].startS)}) — la ventana debe cubrir ESA.`
+          : ` ATENCIÓN: esta línea se canta ${tState.need} veces y solo ${tState.have} quedaron bien (${doneAt}). Ubica la aparición que falta, DESPUÉS del segundo ${(done.length ? done[done.length - 1].endS : 0).toFixed(1)}, y corrige ESA.`;
+      }
       const note =
         `La LETRA ya está corregida, pero el AUDIO todavía canta la versión antigua en al menos un lugar. ` +
         `Donde el audio cante "${target.before || '(versión antigua)'}", debe cantar exactamente "${target.after}". ` +
-        `Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa parte.`;
+        `Re-canta la estrofa que contiene esa línea como un solo bloque continuo, en orden, sin repetir ni saltar líneas; cambia SOLO esa parte.` +
+        spotHint;
       const sub = await postFn({
         action: 'section-submit', mode: 'section', songId, note, conversation: [],
         approvedLyrics: combinedLyrics, verifyPhrases: [target.after],
@@ -1010,16 +1037,39 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const targetItem = chk.items.find((x) => x.kind === 'change' && x.after === target.after);
         const targetLanded = !!targetItem?.ok;
         const priorsOk = chk.items.filter((x) => x.kind === 'prior').every((x) => x.ok);
-        const reason = chk.ok && lenOk ? 'clean' : (!lenOk ? (lenFail || 'longitud fuera de rango') : (!targetLanded ? 'no cantó lo corregido' : (!priorsOk ? 'la toma revirtió una corrección anterior' : 'faltan otras correcciones')));
+        // PARTIAL PROGRESS IS PROGRESS (2026-08-12, Rafael 9dd5efe4). A line sung
+        // in two choruses needs `have >= 2`, but ONE replace-section window can
+        // only reach ONE chorus — so `targetLanded` is unreachable in a single
+        // round and the old rule (accept nothing else) threw the half-fixed take
+        // away, left `source` on the ORIGINAL audio, and made every following
+        // round repeat the same half-fix. Keep a take that moved the needle —
+        // one more corrected spot, or one less old-wording spot — as long as it
+        // broke nothing: the next round chains off it and finishes the job.
+        const prevOf = (it) => (state?.items || []).find((x) => x.kind === it.kind && x.after === it.after);
+        const noRegression = chk.items.every((it) => { const p = prevOf(it); return !p || it.have >= p.have; });
+        const tPrev = targetItem ? prevOf(targetItem) : null;
+        const progressed = !!targetItem && !targetLanded &&
+          (targetItem.have > (tPrev?.have || 0) || (!!tPrev && targetItem.beforeLeft < tPrev.beforeLeft));
+        const reason = chk.ok && lenOk ? 'clean'
+          : (!lenOk ? (lenFail || 'longitud fuera de rango')
+            : (!priorsOk ? 'la toma revirtió una corrección anterior'
+              : (!noRegression ? 'la toma perdió algo que ya estaba bien'
+                : (targetLanded ? 'faltan otras correcciones'
+                  : (progressed ? `avance: ${targetItem.have}/${targetItem.need} lugares corregidos (sigue el siguiente)` : 'no cantó lo corregido')))));
         lastTakesSeen.push({ url: t.audioUrl, text: audibleWords.map((w) => w.word).join(' '), reason });
-        const score = chk.items.filter((x) => x.ok).length + (lenOk ? 0.5 : 0);
-        if (targetLanded && lenOk && priorsOk && (!roundWinner || score > roundWinner.score)) {
-          roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score };
+        const score = chk.items.filter((x) => x.ok).length
+          + chk.items.reduce((n, it) => n + Math.min(it.have, it.need) / Math.max(1, it.need), 0) / 100
+          + (lenOk ? 0.5 : 0);
+        if ((targetLanded || progressed) && lenOk && priorsOk && noRegression && (!roundWinner || score > roundWinner.score)) {
+          roundWinner = { url: t.audioUrl, takeId: t.id || null, fixTaskId: sub.fixTaskId, words: audibleWords, dur: takeEnd, trimAtS, chk, score, partial: !targetLanded };
         }
         if (!roundWinner || !targetLanded) lastReason = reason;
       }
       if (!roundWinner) { reportOutcome('round-failed', `${lastReason || 'no clean take'} · paso ${submits}`); continue; }
 
+      // A round that landed a NEW spot earns the target a fresh budget — three
+      // tries per SPOT, not three tries for a line that has three spots.
+      if (roundWinner.partial) perTarget[target.after] = 0;
       best = roundWinner;
       if (Number(sub.window?.startS) > 0) changeMarks.push(Number(sub.window.startS));
       // Chain the NEXT round off this take; its true end caps the source so the

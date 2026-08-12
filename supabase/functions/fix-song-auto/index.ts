@@ -514,8 +514,21 @@ async function stepPlan(admin: any, r: any): Promise<void> {
   // pinned length (durationPadS below). Everything else stays section-first.
   const addLine = plan.addLine || null;
   const hasAdd = !!addLine || (spec.changes || []).some((c: any) => c.type === 'add_line');
+  // REPEATED LINE ⇒ FULL re-roll from the start (2026-08-12, Rafael 9dd5efe4).
+  // A corrected line that lives in TWO choruses cannot pass the checklist in
+  // section mode: one replace-section window reaches ONE chorus, so `have` maxes
+  // out at 1 of 2 and every round "fails". Ace burned its section rounds on an
+  // impossible target before escalating. A full re-roll re-sings the whole song
+  // in the SAME cloned voice, which fixes every occurrence at once.
+  const planChanges = plan.changes || spec.changes || [];
+  const spread = planChanges.some((c: any) => c?.after && timesInLyrics(plan.approvedLyrics, c.after) > 1);
   await setAuto(admin, r.id, {
-    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: hasAdd ? 'full' : 'section', addLine: hasAdd, summary: plan.changeSummary || spec.summary },
+    auto_plan: {
+      approvedLyrics: plan.approvedLyrics, changes: planChanges, verifyPhrases: verify,
+      mode: (hasAdd || spread) ? 'full' : 'section', addLine: hasAdd,
+      ...(spread && !hasAdd ? { spreadTarget: true } : {}),
+      summary: plan.changeSummary || spec.summary,
+    },
     auto_status: 'generating',
   });
 }
