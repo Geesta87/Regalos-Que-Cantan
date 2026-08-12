@@ -2,18 +2,10 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
 
-const relationships = [
-  { id: 'pareja', name: 'Pareja / Esposo(a)', icon: 'favorite' },
-  { id: 'madre', name: 'Madre', icon: 'face_4' },
-  { id: 'padre', name: 'Padre', icon: 'face' },
-  { id: 'hijo', name: 'Hijo / Hija', icon: 'child_care' },
-  { id: 'hermano', name: 'Hermano / Hermana', icon: 'group' },
-  { id: 'abuelo', name: 'Abuelo / Abuela', icon: 'elderly' },
-  { id: 'amigo', name: 'Amigo / Amiga', icon: 'diversity_3' },
-  { id: 'jefe', name: 'Jefe / Colega', icon: 'work' },
-  { id: 'yo_mismo', name: 'Para Mí', icon: 'person' },
-  { id: 'otro', name: 'Otra relación', icon: 'more_horiz' }
-];
+// Canonical list — shared with the admin "Make Song for Customer" brief so the
+// two can never drift apart. Ids/names/icons are unchanged from when this array
+// lived here. See src/config/songOptions.js.
+import { RELATIONSHIPS as relationships } from '../config/songOptions';
 
 export default function NamesStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);

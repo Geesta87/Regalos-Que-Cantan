@@ -1,6 +1,10 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
+// Canonical lists — shared with the admin "Make Song for Customer" brief so the
+// two can never drift apart. Ids/names/icons are unchanged from when these
+// arrays lived here. See src/config/songOptions.js.
+import { OCCASIONS as occasions, EMOTIONAL_TONES as emotionalTones } from '../config/songOptions';
 
 // Show Valentine's badge only Jan 15 - Feb 14
 const isValentineSeason = () => {
@@ -25,40 +29,6 @@ const isPadreSeason = () => {
   const day = now.getDate();
   return (month === 4 && day >= 11) || (month === 5 && day <= 21); // May 11-31 or June 1-21
 };
-
-const occasions = [
-  { id: 'cumpleanos', name: 'Cumpleaños', icon: 'cake' },
-  { id: 'aniversario', name: 'Aniversario', icon: 'favorite' },
-  { id: 'san_valentin', name: 'San Valentín 💘', icon: 'favorite_border' },
-  { id: 'boda', name: 'Boda', icon: 'celebration' },
-  { id: 'nacimiento', name: 'Nacimiento', icon: 'child_care' },
-  { id: 'dia_madre', name: 'Día de la Madre', icon: 'home' },
-  { id: 'dia_padre', name: 'Día del Padre', icon: 'potted_plant' },
-  { id: 'amor', name: 'Amor / Pareja', icon: 'volunteer_activism' },
-  { id: 'graduacion', name: 'Graduación', icon: 'school' },
-  { id: 'quinceanera', name: 'Quinceañera', icon: 'celebration' },
-  { id: 'bautizo', name: 'Bautizo', icon: 'church' },
-  { id: 'jubilacion', name: 'Jubilación', icon: 'beach_access' },
-  { id: 'negocio', name: 'Negocio Nuevo', icon: 'storefront' },
-  { id: 'amistad', name: 'Amistad', icon: 'diversity_3' },
-  { id: 'agradecimiento', name: 'Agradecimiento', icon: 'redeem' },
-  { id: 'mascota', name: 'Mascota', icon: 'pets' },
-  { id: 'memorial', name: 'En Memoria 🕊️', icon: 'local_florist' },
-  { id: 'dia_muertos', name: 'Día de Muertos', icon: 'skull' },
-  { id: 'navidad', name: 'Navidad / Reyes', icon: 'auto_awesome' },
-  { id: 'para_mi', name: 'Para Mí Mismo', icon: 'person' },
-  { id: 'otro', name: 'Otra Ocasión', icon: 'more_horiz' }
-];
-
-const emotionalTones = [
-  { id: 'celebracion', name: 'Celebración / Alegría', icon: 'celebration' },
-  { id: 'amor', name: 'Amor / Romance', icon: 'favorite' },
-  { id: 'agradecimiento', name: 'Agradecimiento', icon: 'volunteer_activism' },
-  { id: 'nostalgia', name: 'Nostalgia / Recuerdos', icon: 'history' },
-  { id: 'motivacion', name: 'Motivación / Superación', icon: 'trending_up' },
-  { id: 'despedida', name: 'Despedida / Tributo', icon: 'waving_hand' },
-  { id: 'humor', name: 'Humor / Diversión', icon: 'sentiment_very_satisfied' }
-];
 
 export default function OccasionStep() {
   const { formData, updateFormData, navigateTo } = useContext(AppContext);
