@@ -625,6 +625,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // On a stubborn failure (a single-line change the AI singer keeps refusing),
   // ask the backend for singable rewordings and show them as one-click chips.
   async function fetchRewordFor(e) {
+    // Only meaningful when the singer ACTUALLY attempted the line and missed it.
+    // A planner refusal (can_fix=false) produces no takes at all, and showing
+    // "the AI singer keeps refusing that wording" there is simply false — it
+    // sent the owner hunting for better phrasing when the real problem was
+    // routing (2026-08-12, Rafael 9dd5efe4).
+    if (!Array.isArray(e?.takes) || !e.takes.length) return;
     const change = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
     if (!change?.after) return;
     const sang = Array.isArray(e?.takes) && e.takes.length ? (e.takes[e.takes.length - 1]?.text || '') : '';
@@ -1359,6 +1365,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     ? result.takes
     : (result ? [{ audioUrl: result.fixedAudioUrl, id: result.fixAudioId, imageUrl: result.fixImageUrl, verified: result.verified, lyrics: result.fullLyrics }] : []);
   const take = takes[selectedTakeIdx] || takes[0] || null;
+  // SPREAD-OUT SINGLE CORRECTION (2026-08-12, Rafael 9dd5efe4): one change that
+  // is sung in SEVERAL places (e.g. the same chorus line at 1:18 and 2:23) needs
+  // the multi-spot ladder exactly as much as several different changes do — one
+  // contiguous window can't cover both, which is why the planner refused with
+  // "requires fixing multiple sections". Route by TARGET COUNT, not by how many
+  // change entries the planner happened to produce.
+  const spreadTargets = Array.isArray(plan?.changes)
+    ? plan.changes.reduce((n, c) => n + (c?.after ? Math.max(1, timesInLyrics(plan.approvedLyrics || '', c.after)) : 0), 0)
+    : 0;
+  const needsLadder = Array.isArray(plan?.changes) && plan.changes.length > 0 && (plan.changes.length > 1 || spreadTargets > 1);
   const curVerifyNote = take
     ? (take.verified === true
       ? '✅ Verified: the correction is sung.'
@@ -1588,8 +1604,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 ? 'The full song will be redone — SAME singer (cloned voice) + original length when the recording is still on Kie. Takes 1-3 min.'
                 : plan.addLine
                   ? 'Adding a line redoes the FULL song with the new line included (whole takes only — never spliced). Same style & voice type, brand-new performance. Takes 1-3 min.'
-                  : (Array.isArray(plan.changes) && plan.changes.length > 1
-                    ? `All ${plan.changes.length} corrections will be applied in the SAME voice (no splicing). The tool tries one take first; whatever doesn't land gets fixed automatically, spot by spot, building each round on the last. You review ONE final preview. Takes ~2 min per round.`
+                  : (needsLadder
+                    ? `All ${spreadTargets} spot${spreadTargets > 1 ? 's' : ''} will be corrected in the SAME voice (no splicing) — including the same line sung in more than one place. The tool fixes them automatically, one spot at a time, each round building on the last. You review ONE final preview. Takes ~2 min per round.`
                     : 'Only the affected part will be regenerated as a whole take (no splicing). Takes 1-3 min.')}</p>
               {pendingMode === 'section' && plan.addLine && (
                 <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". The whole song is re-sung fresh with it — listen end-to-end before applying.</p>
@@ -1614,7 +1630,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                         // and crossfaded audio — against the owner's whole-takes-only
                         // rule — and never passed a live test. Retired 2026-08-10.
                         ? runFullReroll(plan.approvedLyrics, plan.verifyPhrases)
-                        : (Array.isArray(plan.changes) && plan.changes.length > 1
+                        : (needsLadder
                           ? runMultiFix(plan.approvedLyrics, plan.changes)
                           : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)))
                       : runFullReroll(plan.approvedLyrics, plan.verifyPhrases))}
@@ -1622,8 +1638,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   >
                     {pendingMode === 'section' && plan.addLine
                       ? '✅ Add the line (redo full song)'
-                      : pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
-                        ? `✅ Fix all ${plan.changes.length} parts (same voice)`
+                      : pendingMode === 'section' && needsLadder
+                        ? `✅ Fix all ${spreadTargets} spots (same voice)`
                         : '✅ Confirm and generate'}
                   </button>
                 )}

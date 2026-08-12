@@ -260,7 +260,7 @@ const FIX_TOOL = {
     properties: {
       can_fix: {
         type: 'boolean',
-        description: 'true if the reported problem is localized to ONE contiguous stretch that is at most half the song; false if it is spread across the whole song or cannot be located in the transcript.',
+        description: 'true if this fix can be made by re-singing ONE contiguous stretch of at most half the song. IMPORTANT: if the SAME wording must change in SEVERAL separate places (e.g. a chorus line sung twice), that is still true — target the EARLIEST unfixed occurrence; the caller fixes the spots one at a time and calls again for the next. Only false when the change is diffuse across the whole song (most lines rewritten) or cannot be located in the transcript.',
       },
       reason: {
         type: 'string',
@@ -324,7 +324,8 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
   · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
   · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
 - AGREGAR UNA LÍNEA NUEVA (no reemplazar): solo es confiable en el BLOQUE FINAL / la despedida (ahí hay espacio instrumental y nada después que se desalinee). Si el dueño pide agregar una línea al final: inserta la línea EXACTA en su lugar dentro de section_text y de full_lyrics; define la ventana [infill_start_s, infill_end_s] = el bloque final completo (desde el inicio del último coro/despedida hasta el final del canto), y llena add_line = { text, anchor } con una palabra distintiva de la línea nueva. Si la canción tiene intro [Hablado] (los corridos), puedes agregarla como línea [Hablado] (lo hablado no necesita métrica → usa las palabras EXACTAS del cliente). Si la adición NO es al final (va a media canción), pon can_fix=false y explica que ese caso necesita rehacer la canción completa.
-- Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
+- VARIAS APARICIONES DE LA MISMA CORRECCIÓN (regla dura, 2026-08-12): si la palabra/línea a corregir se canta en VARIOS lugares separados (p. ej. el mismo verso del coro a 1:18 y a 2:23), NO pongas can_fix=false. El sistema arregla un punto a la vez y vuelve a llamarte para el siguiente: elige la aparición MÁS TEMPRANA que todavía esté mal, define la ventana ahí, y pon can_fix=true. En "reason" menciona cuántas apariciones detectaste.
+- Solo pon can_fix=false si el cambio es DIFUSO (hay que reescribir casi toda la letra) o si de plano no se puede ubicar en la transcripción; explica por qué y no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
 IDIOMA: change_summary y reason van en INGLÉS (el dueño habla inglés). Toda la LETRA (section_text, full_lyrics, verify_phrases) y los nombres/fechas cantados permanecen en ESPAÑOL — nunca traduzcas la letra.
