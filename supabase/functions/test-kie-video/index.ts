@@ -10,6 +10,12 @@
 //   { mode: 'create', model?, prompt, first_frame_url?, last_frame_url?, reference_image_urls?,
 //     resolution?, aspect_ratio?, duration?, generate_audio? }  -> returns { taskId, raw }
 //   { mode: 'status', taskId }                                  -> returns Kie recordInfo payload
+//   { mode: 'music', prompt (lyrics), style, title, vocalGender?, negativeTags? }
+//                                                               -> returns { taskId, raw }
+//   { mode: 'music-status', taskId }                            -> returns Kie record-info payload
+//   { mode: 'lyrics', taskId, audioId }                         -> Suno's ALIGNED lyric timings
+//   { mode: 'replace-section', taskId, audioId, prompt, tags, title,
+//     infillStartS, infillEndS, fullLyrics, negativeTags? }     -> returns { taskId, raw }
 //
 // Kie unified jobs API (mirrors how docs.kie.ai documents it):
 //   POST https://api.kie.ai/api/v1/jobs/createTask   { model, input, callBackUrl? }
@@ -42,38 +48,102 @@ serve(async (req) => {
       return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
-    // ---- MUSIC (house/marketing songs) ------------------------------------
-    // Kie's music API is a DIFFERENT base than the jobs API above:
-    //   POST https://api.kie.ai/api/v1/generate                  (submit)
-    //   GET  https://api.kie.ai/api/v1/generate/record-info?taskId=...  (poll)
-    // Kie REQUIRES callBackUrl (422 "Please enter callBackUrl." without it), but
-    // for house songs point it at a dead path — NEVER song-callback — so nothing
-    // writes a `songs` row. These are marketing assets, not customer orders, and
-    // must stay out of that table; poll music-status for the result instead.
-    //   { mode: 'music', prompt, style, title, vocalGender?, negativeTags?, model? }
-    //   { mode: 'music-status', taskId }
+    // --- Suno music (house tracks for ad builds) -----------------------------
+    // Kie's music API lives on a DIFFERENT base path than the unified jobs API
+    // above (/api/v1/generate, not /api/v1/jobs), so it needs its own branch.
+    // No callBackUrl: standalone one-off tracks are polled, not delivered to a
+    // song row. Never point this at a customer order — use generate-song.
     if (body.mode === 'music') {
-      if (!body.prompt || !body.style) throw new Error('Missing prompt (lyrics) or style');
-      const payload: Record<string, unknown> = {
-        prompt: body.prompt,
+      if (!body.prompt) throw new Error('Missing prompt (lyrics)');
+      const payload = {
+        prompt: String(body.prompt).substring(0, 5000),
         customMode: true,
         instrumental: false,
         model: body.model || Deno.env.get('KIE_MODEL') || 'V5_5',
-        style: body.style,
-        title: body.title || 'Untitled',
+        // Kie rejects the request without one, but a standalone house track has
+        // no song row to deliver to. Point it back at this same function: the
+        // callback arrives with no `mode`, throws "Missing prompt" and 500s.
+        // Deliberately NOT song-callback — that would touch real order rows.
+        callBackUrl: body.callBackUrl || 'https://yzbvajungshqcpusfiia.supabase.co/functions/v1/test-kie-video',
+        style: String(body.style || '').substring(0, 1000),
+        title: String(body.title || 'untitled').substring(0, 80),
+        vocalGender: body.vocalGender || 'f',
+        negativeTags: String(body.negativeTags || '').substring(0, 200),
         styleWeight: body.styleWeight ?? 0.85,
+        weirdnessConstraint: body.weirdnessConstraint ?? 0.3,
         audioWeight: body.audioWeight ?? 0.7,
       };
-      if (body.vocalGender) payload.vocalGender = body.vocalGender;
-      if (body.negativeTags) payload.negativeTags = body.negativeTags;
-      if (body.callBackUrl) payload.callBackUrl = body.callBackUrl;
       const r = await fetch('https://api.kie.ai/api/v1/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
-      return json(200, { http: r.status, taskId: raw?.data?.taskId || raw?.taskId || null, raw });
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // --- Replace-section passthrough (RESCUE tool) ---------------------------
+    // The fix-song pipeline owns the real flow (it plans the window with Claude,
+    // validates with Whisper, chains fixes and logs attempts) — use it, not this.
+    // This is the manual override for rescuing ONE already-generated take when
+    // the ladder has stalled and the owner is waiting: the operator supplies the
+    // window and the corrected section text directly.
+    //
+    // Why it earns its keep (2026-08-12, Rafael 9dd5efe4): a chorus line that
+    // repeats needs a SECOND window on the FIRST fix's take, and re-running the
+    // whole pipeline regenerates from scratch. Nothing here touches a song row —
+    // the result is a Kie-hosted take that still has to be previewed and applied
+    // through fix-song-section like any other.
+    if (body.mode === 'replace-section') {
+      for (const k of ['taskId', 'audioId', 'prompt', 'fullLyrics']) {
+        if (!body[k]) throw new Error(`Missing ${k}`);
+      }
+      const startS = Number(body.infillStartS);
+      const endS = Number(body.infillEndS);
+      if (!(endS > startS)) throw new Error('infillEndS must be greater than infillStartS');
+      // Kie's hard limits — fail loudly here rather than getting a vague 400.
+      const span = endS - startS;
+      if (span < 6 || span > 60) throw new Error(`window must be 6-60s (got ${span.toFixed(1)}s)`);
+      const payload = {
+        taskId: body.taskId,
+        audioId: body.audioId,
+        prompt: String(body.prompt).substring(0, 1000),
+        tags: String(body.tags || '').substring(0, 1000),
+        title: String(body.title || 'untitled').substring(0, 80),
+        infillStartS: startS,
+        infillEndS: endS,
+        fullLyrics: String(body.fullLyrics).substring(0, 5000),
+        negativeTags: String(body.negativeTags || '').substring(0, 200),
+        model: body.model || Deno.env.get('KIE_MODEL') || 'V5_5',
+        callBackUrl: body.callBackUrl || 'https://yzbvajungshqcpusfiia.supabase.co/functions/v1/test-kie-video',
+      };
+      const r = await fetch('https://api.kie.ai/api/v1/generate/replace-section', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // Word-level sung timings straight from Suno, for cutting a song to picture.
+    // transcribe-song does this too but only for a songId in the DB; ad tracks
+    // have no song row, so this takes the raw {taskId, audioId} instead.
+    //
+    // NOT A TRANSCRIPT (2026-08-12): Suno ALIGNS the lyric sheet it was given to
+    // the audio, so these words are what Suno was ASKED to sing. If the take
+    // dropped or changed a word, this endpoint still reports the sheet's version.
+    // Verifying a correction landed took a Whisper pass (transcribe-song with a
+    // raw {audioUrl}); this endpoint reported a fix in a chorus the audio never
+    // sang. Use it for TIMING and STRUCTURE, never to prove wording.
+    if (body.mode === 'lyrics') {
+      if (!body.taskId || !body.audioId) throw new Error('Missing taskId or audioId');
+      const r = await fetch('https://api.kie.ai/api/v1/generate/get-timestamped-lyrics', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: body.taskId, audioId: body.audioId }),
+      });
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
     if (body.mode === 'music-status') {
