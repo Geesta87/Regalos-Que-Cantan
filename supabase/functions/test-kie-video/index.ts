@@ -40,6 +40,19 @@ serve(async (req) => {
     if (!KIE_API_KEY) throw new Error('KIE_API_KEY not set');
     const body = await req.json();
 
+    // CALLBACK RECEIPT — must 200 (2026-08-12). Kie posts the finished job to
+    // callBackUrl; a callback that does not answer 2xx makes Kie mark the task
+    // GENERATE_AUDIO_FAILED / "Internal Error, Please try again later" even
+    // though the audio generated fine. This harness used to default callBackUrl
+    // to itself, where a mode-less body threw "Missing prompt" and returned 500
+    // — so every job submitted through it "failed", and because callBackUrl is
+    // NOT echoed in Kie's stored `param`, a field-by-field diff against a
+    // successful production task showed no difference. That cost an hour and a
+    // wrong "Kie is down" call. Swallow the callback quietly instead.
+    if (!body.mode && (body.data || body.code || body.msg)) {
+      return json(200, { ok: true, received: true });
+    }
+
     if (body.mode === 'status') {
       if (!body.taskId) throw new Error('Missing taskId');
       const r = await fetch(`${BASE}/recordInfo?taskId=${encodeURIComponent(body.taskId)}`, {
@@ -72,7 +85,15 @@ serve(async (req) => {
         styleWeight: body.styleWeight ?? 0.85,
         weirdnessConstraint: body.weirdnessConstraint ?? 0.3,
         audioWeight: body.audioWeight ?? 0.7,
-      };
+      } as Record<string, unknown>;
+      // Same-voice re-roll: pass the song's minted persona so the new take is
+      // sung by the ORIGINAL singer, not a fresh voice. Mirrors
+      // fix-song-section's submitFullGenerate exactly (personaModel is required
+      // alongside personaId; `duration` is V5_5-only length pinning). Pinning is
+      // OPTIONAL on purpose — a pinned take can pad the sheet with repeated
+      // sections, so unpinned is the escalation, not the fallback.
+      if (body.personaId) { payload.personaId = body.personaId; payload.personaModel = 'voice_persona'; }
+      if (body.durationS && body.durationS >= 10 && body.durationS <= 360) payload.duration = Math.round(body.durationS);
       const r = await fetch('https://api.kie.ai/api/v1/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -80,6 +101,31 @@ serve(async (req) => {
       });
       const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
       return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // --- Mint a voice persona from an existing take (RESCUE tool) ------------
+    // Kie clones the singer from a 10-30s vocal window of a finished take; the
+    // returned personaId then re-sings a whole song in THAT voice (mode 'music'
+    // with personaId). fix-song-section owns the real flow — it persists the id
+    // into songs.kie_source.personaId so a song is only ever minted ONCE. If you
+    // mint here, write the id back to that column yourself or the next full
+    // re-roll pays to mint a second one.
+    if (body.mode === 'mint-persona') {
+      if (!body.taskId || !body.audioId) throw new Error('Missing taskId or audioId');
+      const r = await fetch('https://api.kie.ai/api/v1/generate/generate-persona', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: body.taskId,
+          audioId: body.audioId,
+          name: String(body.name || 'voz').substring(0, 60),
+          description: String(body.description || '').substring(0, 300),
+          vocalStart: Number(body.vocalStart) >= 0 ? Number(body.vocalStart) : 12,
+          vocalEnd: Number(body.vocalEnd) > 0 ? Number(body.vocalEnd) : 40,
+        }),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, personaId: raw?.data?.personaId || null, raw });
     }
 
     // --- Replace-section passthrough (RESCUE tool) ---------------------------
@@ -103,7 +149,9 @@ serve(async (req) => {
       if (!(endS > startS)) throw new Error('infillEndS must be greater than infillStartS');
       // Kie's hard limits — fail loudly here rather than getting a vague 400.
       const span = endS - startS;
-      if (span < 6 || span > 60) throw new Error(`window must be 6-60s (got ${span.toFixed(1)}s)`);
+      // 10 is Kie's real floor (422 "Selected section must be between 10-480
+      // seconds"); 60 is our own ceiling, same as fix-song-section's.
+      if (span < 10 || span > 60) throw new Error(`window must be 10-60s (got ${span.toFixed(1)}s)`);
       const payload = {
         taskId: body.taskId,
         audioId: body.audioId,
