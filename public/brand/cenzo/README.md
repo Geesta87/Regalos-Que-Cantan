@@ -34,6 +34,28 @@ into an extraordinary song. He signs social posts "— Cenzo 🎶".
 | `cenzo-intro.mp4` | HIS OFFICIAL INTRO — 10s, VOICED: "¡Hola! Soy Cenzo…" (owner-chosen voice) |
 | `cenzo-voice-reference.mp3` | Canonical voice sample extracted from the intro — use for voice cloning / matching |
 
+## Brand kit
+
+| File | Use |
+|---|---|
+| `cenzo-avatar.png` | 1:1 social profile picture (all platforms) |
+| `cenzo-logo-lockup.png` | Logo + "Regalos Que Cantan" wordmark |
+| `cenzo-icon.png` | App icon / favicon (fan-wing mark on terracotta) |
+| `cenzo-mark-flat.png` | Flat mark v1 (deprecated — too close to the Twitter bird; prefer `cenzo-icon.png`) |
+| `cenzo-cover-banner.png` | Wide cover banner, text space on the left |
+| `cenzo-outro-9x16.png` | Reel/TikTok outro card (papel picado header + text space) |
+| `cenzo-reel-frame.png` | 9:16 overlay frame with Cenzo in the corner |
+| `cenzo-stickers.png` | 6 WhatsApp stickers (kiss, happy tears, singing, pointing, rose, celebration) — split into individual 512px stickers before use |
+| `cenzo-pattern.png` | Seamless feather/note pattern for backgrounds |
+| `cenzo-brand-board.png` | Brand board: character + palette + motifs |
+| `cenzo-merch-preview.png` | Mug + tote mockup |
+
+Palette (from the board): terracotta, marigold gold, magenta, turquoise, cream.
+
+**Never AI-render the wordmark.** The v1 lockup came back as "Regalos Rue Cantan".
+`cenzo-logo-lockup.png` (v2) is spelled correctly, but for any new lockup set the
+type in real fonts (Playfair Display) over the bird instead of generating text.
+
 ## Voice (owner-chosen 2026-08-11)
 
 Cenzo's voice is a **kind elderly male voice in Mexican Spanish, 70s, warm and
