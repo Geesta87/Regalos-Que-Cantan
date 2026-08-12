@@ -92,7 +92,7 @@ async function gptImage(prompt, refUrls, label) {
 
 // one scene image, resilient to content blocks: try as-written, then a strictly
 // child-safe rephrase, then give up (caller substitutes a fallback image).
-const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not photorealistic), faithful to the character in the reference. Depict exactly the people described — do NOT duplicate anyone or add unrelated people.';
+const PIXAR = ' Render as warm, fully-stylized Pixar-style 3D animation (not photorealistic), faithful to the character in the reference. Depict exactly the people described — do NOT duplicate anyone or add unrelated people. The reference image defines each character\'s IDENTITY (face, hair, build) only — do NOT copy its pose, framing, or camera angle; follow the shot direction stated at the start of this prompt.';
 async function genOneImage(id, prompt) {
   try {
     const url = await gptImage(prompt + PIXAR, [CHAR_REF], id);
