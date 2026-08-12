@@ -257,6 +257,16 @@ export default function ComparisonPage() {
   const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [lyricVideoAddon, setLyricVideoAddon] = useState(false);
   const lyricVideoPrice = 9.99;
+
+  // Paquete Definitivo ($79.99) — the everything bundle at the top of the
+  // upsell modal: 2 canciones + 2 videos con fotos + 2 instrumentales + video
+  // con letra + 1 película animada ($111.96 à la carte). It drives the SAME
+  // add-on state as picking each one by hand, so checkout metadata (and
+  // therefore fulfillment) is identical; only the price differs, via a single
+  // Stripe line item in create-checkout. Coupons don't stack on it.
+  const [ultimateBundle, setUltimateBundle] = useState(false);
+  const ultimateBundlePrice = 79.99;
+  const ultimateBundleList = 111.96;
   // Items already in the cart when the CTA is tapped are NOT offered again in
   // the modal (no re-selling what they already added). All four in the cart →
   // skip the modal entirely and go straight to checkout.
@@ -852,7 +862,7 @@ export default function ComparisonPage() {
         ? { enabled: true, ...gGift.payload }
         : null;
 
-      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', gVideoCount > 0, gVideoCount, gKaraoke, gKaraokeIds, gAnimadoCount, gAnimadoIds, giftSms, gLyric);
+      const result = await createCheckout(songIdsToCheckout, formData?.email || checkoutEmail, codeToSend, purchaseBoth, '', gVideoCount > 0, gVideoCount, gKaraoke, gKaraokeIds, gAnimadoCount, gAnimadoIds, giftSms, gLyric, ultimateBundle);
 
       if (result.url) {
         window.location.href = result.url;
@@ -875,6 +885,18 @@ export default function ComparisonPage() {
   };
 
   const selectSong = (songId) => {
+    // The bundle is a 2-song product — dropping to one song dissolves it
+    // (and the add-ons it had ticked) rather than leaving a 2-video,
+    // 2-instrumental cart on a single-song order.
+    if (ultimateBundle) {
+      setUltimateBundle(false);
+      setVideoAddonCount(0);
+      setKaraokeAddon(false);
+      setKaraokeVersionIds([]);
+      setLyricVideoAddon(false);
+      setAnimadoCount(0);
+      setAnimadoVideoSongId(null);
+    }
     setSelectedSongId(songId);
     setPurchaseBoth(false);
     // 🔥 Meta Pixel: AddToCart when user selects a song
@@ -953,10 +975,45 @@ export default function ComparisonPage() {
 
   // Reset the Animado selection whenever the song selection changes, so the
   // offer never carries a stale "both" choice into a single-song purchase.
+  // The Paquete Definitivo owns its own add-on selection (it sets purchaseBoth
+  // AND animadoCount in the same batch), so skip the reset while it's active
+  // or enabling the bundle would immediately clear the animado it includes.
   useEffect(() => {
+    if (ultimateBundle) return;
     setAnimadoVideoSongId(null);
     setAnimadoCount(0);
-  }, [selectedSongId, purchaseBoth]);
+  }, [selectedSongId, purchaseBoth, ultimateBundle]);
+
+  // Turn the bundle on: switch to the 2-song order and tick every included
+  // add-on. Turning it off clears exactly what it added.
+  const toggleUltimateBundle = () => {
+    const next = !ultimateBundle;
+    setUltimateBundle(next);
+    if (next) {
+      setPurchaseBoth(true);
+      setSelectedSongId(null);
+      setVideoAddonCount(2);
+      setKaraokeAddon(true);
+      setKaraokeVersionIds(songs.map((s) => s.id));
+      setLyricVideoAddon(true);
+      setAnimadoCount(1);
+      setAnimadoVideoSongId(songs[0]?.id || null);
+      trackStep('song_selected', { value: ultimateBundlePrice, content_ids: songs.map((s) => s.id), num_items: songs.length });
+    } else {
+      setVideoAddonCount(0);
+      setKaraokeAddon(false);
+      setKaraokeVersionIds([]);
+      setLyricVideoAddon(false);
+      setAnimadoCount(0);
+      setAnimadoVideoSongId(null);
+    }
+  };
+
+  // Editing any single add-on breaks the bundle definition — drop the flag so
+  // the order reverts to itemized pricing on BOTH sides (create-checkout
+  // applies the same rule server-side), and the quote can never diverge from
+  // the charge. The add-ons themselves stay as the buyer left them.
+  const breakUltimateBundle = () => { if (ultimateBundle) setUltimateBundle(false); };
 
   const getSelectionLabel = () => {
     const videoLabel = videoAddon ? ' + Video' : '';
@@ -970,6 +1027,9 @@ export default function ComparisonPage() {
 
   const getCurrentPrice = () => {
     if (isFree) return 0;
+    // Flat bundle price — coupons don't stack (same rule create-checkout
+    // enforces), so what the modal quotes is exactly what Stripe charges.
+    if (ultimateBundle) return ultimateBundlePrice + (giftState.enabled ? 5 : 0);
     let base = purchaseBoth ? bundlePrice : singlePrice;
     if (videoAddonCount === 2) base += videoDualAddonPrice;
     else if (videoAddonCount === 1) base += videoAddonPrice;
@@ -2086,6 +2146,32 @@ export default function ComparisonPage() {
           {hasSelection && (() => {
             const rows = [];
             const selectedVersion = songs.find(s => s.id === selectedSongId)?.version || 1;
+            // Bundle collapses to a single line — matching the one Stripe line item.
+            if (ultimateBundle) {
+              rows.push({ label: 'Paquete Definitivo · todo incluido', price: ultimateBundlePrice });
+              if (giftState.enabled) rows.push({ label: 'Envío sorpresa por mensaje', price: 5 });
+              return (
+                <div style={{ background: 'rgba(245,185,66,0.06)', border: '1px solid rgba(245,185,66,0.3)', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px' }}>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Tu pedido</p>
+                  {rows.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '7px' }}>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>{r.label}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>${r.price.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
+                    2 canciones · 2 videos con fotos · 2 pistas instrumentales · video con letra · película animada
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '11px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>Total</span>
+                    <span style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>${ultimateBundleList.toFixed(2)}</span>
+                      <span style={{ fontSize: '22px', fontWeight: 800, color: '#f5b942' }}>${(getCurrentPrice() + extrasTotal).toFixed(2)}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            }
             rows.push({ label: purchaseBoth ? 'Ambas versiones (1 + 2)' : `Canción · Versión ${selectedVersion}`, price: purchaseBoth ? bundlePrice : singlePrice });
             if (videoAddonCount === 2) rows.push({ label: 'Video con fotos · 2', price: videoDualAddonPrice });
             else if (videoAddonCount === 1) rows.push({ label: 'Video con fotos', price: videoAddonPrice });
@@ -2233,6 +2319,7 @@ export default function ComparisonPage() {
             {isCheckingOut ? '⏳ Procesando...'
               : !hasSelection ? '👆 Selecciona una opción'
               : isFree && extrasTotal === 0 ? '🎉 Descargar Gratis'
+              : ultimateBundle ? `💳 Paquete Definitivo — $${(getCurrentPrice() + extrasTotal).toFixed(2)}`
               : `💳 ${purchaseBoth ? 'Comprar Ambas' : 'Comprar Canción'}${videoAddonCount === 2 ? ' + 2 Videos' : videoAddonCount === 1 ? ' + Video' : ''}${checkoutExtras.length ? ` + ${checkoutExtras.length} extra${checkoutExtras.length > 1 ? 's' : ''}` : ''} — $${(getCurrentPrice() + extrasTotal).toFixed(2)}`
             }
           </button>
@@ -2416,12 +2503,118 @@ export default function ComparisonPage() {
                   </p>
                 </div>
 
+                {/* ── Paquete Definitivo — everything, one price. Needs 2 songs
+                    (it IS the 2-song product) and is hidden on free-coupon
+                    orders, where a flat bundle price makes no sense. ── */}
+                {songs.length >= 2 && !isFree && (
+                  <div
+                    onClick={toggleUltimateBundle}
+                    style={{
+                      position: 'relative', marginBottom: '14px', padding: '13px 12px 12px',
+                      borderRadius: '15px', cursor: 'pointer', transition: 'all 0.2s',
+                      background: ultimateBundle
+                        ? 'linear-gradient(150deg, rgba(34,197,94,0.16), rgba(20,13,18,0.9))'
+                        : 'linear-gradient(150deg, rgba(245,185,66,0.14), rgba(192,38,211,0.1))',
+                      border: ultimateBundle ? '2px solid #22c55e' : '2px solid rgba(245,185,66,0.6)',
+                      boxShadow: ultimateBundle
+                        ? '0 0 22px rgba(34,197,94,0.35)'
+                        : '0 0 22px rgba(245,185,66,0.25)',
+                      animation: 'rowPop 0.4s ease-out both',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Sweep */}
+                    <div style={{
+                      position: 'absolute', top: 0, width: '55%', height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent)',
+                      animation: 'glimmer 3s ease-in-out infinite', pointerEvents: 'none',
+                    }} />
+                    {/* Badge */}
+                    <div style={{
+                      position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
+                      background: ultimateBundle ? 'linear-gradient(90deg, #16a34a, #22c55e)' : 'linear-gradient(90deg, #f59e0b, #f5b942)',
+                      color: ultimateBundle ? 'white' : '#3a2a06', padding: '3px 14px', borderRadius: '0 0 9px 9px',
+                      fontSize: '9.5px', fontWeight: 900, letterSpacing: '0.6px', whiteSpace: 'nowrap',
+                    }}>
+                      {ultimateBundle ? '✓ EL MEJOR VALOR — AGREGADO' : '⭐ EL MEJOR VALOR'}
+                    </div>
+
+                    <p style={{ margin: '12px 0 2px', fontSize: '16px', fontWeight: 900, color: ultimateBundle ? '#4ade80' : '#f5b942', textAlign: 'center' }}>
+                      🎁 Paquete Definitivo
+                    </p>
+                    <p style={{ margin: '0 0 9px', fontSize: '11px', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 1.4 }}>
+                      Todo lo de abajo, incluido — el regalo completo para {recipientName}
+                    </p>
+
+                    {/* What's inside */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
+                      {[
+                        'Las 2 versiones de su canción',
+                        '2 videos con tus fotos (uno por canción)',
+                        '2 pistas instrumentales para cantar',
+                        'Video con la letra en pantalla',
+                        'Película animada estilo Pixar',
+                      ].map((line, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
+                          <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: 900, flexShrink: 0, marginTop: '1px' }}>✓</span>
+                          <span style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.8)', lineHeight: 1.35 }}>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Price + CTA */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <p style={{ margin: 0, display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.35)', textDecoration: 'line-through' }}>
+                          ${ultimateBundleList.toFixed(2)}
+                        </span>
+                        <span style={{ fontSize: '20px', fontWeight: 900, color: ultimateBundle ? '#4ade80' : '#f5b942' }}>
+                          ${ultimateBundlePrice.toFixed(2)}
+                        </span>
+                        <span style={{
+                          fontSize: '9.5px', fontWeight: 800, color: '#4ade80',
+                          background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.3)',
+                          padding: '1px 6px', borderRadius: '5px',
+                        }}>
+                          AHORRAS ${(ultimateBundleList - ultimateBundlePrice).toFixed(0)}
+                        </span>
+                      </p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleUltimateBundle(); }}
+                        style={{
+                          flexShrink: 0, padding: '9px 15px', borderRadius: '50px',
+                          border: ultimateBundle ? '2px solid #22c55e' : '2px solid #f5b942',
+                          background: ultimateBundle
+                            ? 'linear-gradient(135deg, #16a34a, #22c55e)'
+                            : 'linear-gradient(135deg, #f59e0b, #f5b942)',
+                          color: ultimateBundle ? 'white' : '#3a2a06',
+                          fontSize: '12.5px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap',
+                          boxShadow: ultimateBundle ? '0 0 14px rgba(34,197,94,0.5)' : '0 0 14px rgba(245,185,66,0.5)',
+                        }}
+                      >
+                        {ultimateBundle ? '✓ Agregado' : 'Lo quiero todo'}
+                      </button>
+                    </div>
+                    {ultimateBundle && (
+                      <p style={{ margin: '8px 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
+                        Precio de paquete — no se combina con cupones
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {songs.length >= 2 && !isFree && (
+                  <p style={{ margin: '0 0 8px', fontSize: '10px', letterSpacing: '1.2px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+                    o agrégalos por separado
+                  </p>
+                )}
+
                 {/* One-tap add-on rows — tap to add/remove; pay via the CTA below */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', marginBottom: '4px', pointerEvents: isCheckingOut ? 'none' : 'auto' }}>
                   {modalItems.map((it, idx) => (
                     <div
                       key={it.key}
-                      onClick={() => { if (!it.inGrid) it.toggle(); }}
+                      onClick={() => { if (!it.inGrid) { breakUltimateBundle(); it.toggle(); } }}
                       style={{
                         padding: '10px 11px', borderRadius: '13px',
                         background: it.added ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.045)',
@@ -2465,7 +2658,7 @@ export default function ComparisonPage() {
                           )}
                         </p>
                         <button
-                          onClick={(e) => { e.stopPropagation(); if (!it.inGrid) it.toggle(); }}
+                          onClick={(e) => { e.stopPropagation(); if (!it.inGrid) { breakUltimateBundle(); it.toggle(); } }}
                           style={{
                             flexShrink: 0, padding: '7px 14px', borderRadius: '50px',
                             border: it.added ? '2px solid #22c55e' : '2px solid #f74da6',

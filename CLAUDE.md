@@ -174,6 +174,16 @@ at the END OF A VERSE, never appended after the final chorus (duration-pinned
 takes drop them); takes whose vocals start >12s later than the original are
 rejected ("intro demasiado largo"); proper names are never required transcript
 tokens (Whisper mangles them — ears judge names).
+Learned 2026-08-11 (Miguel Ángel 676a1f73, 10 takes): the validator runs a
+FULL-STRUCTURE AUDIT — every distinctive lyric line must be sung EXACTLY its
+lyric count (fewer = missing section, more = duplicated; audit tokenization is
+case-blind, mid-line-name-skip only). The DURATION PIN can force Suno to pad
+the sheet with repeated sections (0/8 pinned vs 4/4 unpinned that night):
+`full-submit {pinDuration:false}` = SAME cloned voice, free length, and Ace
+AUTO-ESCALATES to it when pinned full takes fail structurally. Diagnose
+structural takes with Kie get-timestamped-lyrics (Suno's own word timings),
+not Whisper. `usePersona:false` (fresh voice) is a LAST resort — owner
+mandate: same song, same voice, edits only.
 
 Splice/rehost/trim run on Cloud Run `rqc-video-renderer` (`/splice-audio`), which
 also hosts Clip Studio routes — deploy it only from an up-to-date main.

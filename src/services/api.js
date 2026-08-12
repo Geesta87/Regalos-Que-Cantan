@@ -42,6 +42,18 @@ export const occasionPrompts = {
   mascota: "una canción tierna y alegre dedicada a una mascota muy querida, un miembro más de la familia",
   memorial: "una canción en memoria de un ser querido que falleció, un homenaje que celebra su vida y su legado con amor y dignidad",
   dia_muertos: "una canción para el Día de los Muertos honrando y recordando con cariño a quienes ya partieron",
+  // Added 2026-08-12. These seven ids have been live in OccasionStep.jsx for
+  // months but had no entry here, so `occasionPrompt` arrived at the edge
+  // function as `undefined` and the lyrics prompt fell back to the raw slug
+  // ("dia_madre"). Found while wiring the admin "Make Song for Customer" brief,
+  // which sends the same field. Keys MUST match OCCASIONS in config/songOptions.js.
+  san_valentin: "una canción romántica de San Valentín, una declaración de amor para el día de los enamorados",
+  nacimiento: "una canción tierna dando la bienvenida a un bebé recién nacido y celebrando a la nueva familia",
+  dia_madre: "una canción emotiva para el Día de la Madre, agradeciendo todo lo que ha hecho",
+  dia_padre: "una canción de admiración y cariño para el Día del Padre",
+  amor: "una canción de amor para la pareja, celebrando lo que sienten el uno por el otro",
+  agradecimiento: "una canción de agradecimiento sincero a alguien que hizo la diferencia",
+  navidad: "una canción navideña cálida y familiar para celebrar la Navidad o el Día de Reyes",
   otro: "una canción personalizada y emotiva"
 };
 
@@ -135,7 +147,7 @@ export async function generateSong(formData, overridePin = null) {
  * @param {string} couponCode - Optional coupon code
  * @param {boolean} purchaseBoth - Whether user is buying the bundle
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = [], giftSms = null, lyricVideoAddon = false) {
+export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = [], giftSms = null, lyricVideoAddon = false, ultimateBundle = false) {
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
@@ -194,6 +206,10 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       animadoSongIds,
       giftSms,
       lyricVideoAddon,
+      // Paquete Definitivo — server charges one $79.99 line item instead of
+      // the itemized add-ons. Only honored when the cart actually matches the
+      // bundle (see create-checkout), so quote and charge can't diverge.
+      ultimateBundle,
       fbc,
       fbp,
       ttclid,

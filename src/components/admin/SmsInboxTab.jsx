@@ -4,6 +4,7 @@ import {
   getCurrentSubscription,
   enablePushNotifications,
 } from '../../services/push';
+import MakeSongModal from './MakeSongModal';
 
 // ──────────────────────────────────────────────────────────────────────────
 // SMS Inbox (Admin)
@@ -267,6 +268,12 @@ export default function SmsInboxTab({ accessToken }) {
   // customer wants changed (editable), then queues it into the Fix-Song list.
   // { exchange, summary, loading, submitting, error, done }
   const [fixModal, setFixModal] = useState(null);
+
+  // "Make Song for Customer" — the OTHER direction: the customer wants us to
+  // build them a NEW song from what they told us in chat. Claude extracts the
+  // whole brief with evidence, a human confirms, then it runs through the normal
+  // generate-song pipeline. { turns, exchange }
+  const [makeSongModal, setMakeSongModal] = useState(null);
 
   useEffect(() => {
     const { supported, isIos, isStandalone } = getPushSupport();
@@ -572,6 +579,14 @@ export default function SmsInboxTab({ accessToken }) {
       // A failed summary is non-fatal — the owner can type the change themselves.
       setFixModal((m) => (m ? { ...m, summary: '', loading: false, error: 'AI summary unavailable — write what to fix below.' } : m));
     }
+  };
+
+  // Open the "Make Song for Customer" brief. Same conversation slice the fix
+  // intake uses — the extraction happens inside the modal.
+  const openMakeSongModal = () => {
+    if (!selected) return;
+    const turns = buildTurns(selected);
+    setMakeSongModal({ turns, exchange: turnsToText(turns) });
   };
 
   // Look up the customer's songs by email/phone + paid filter (recent first).
@@ -1833,6 +1848,15 @@ export default function SmsInboxTab({ accessToken }) {
                     >
                       🎧 Send to Ace
                     </button>
+                    {/* The other direction: build this customer a NEW song from
+                        what they described in the chat. */}
+                    <button
+                      onClick={openMakeSongModal}
+                      className="flex-shrink-0 text-xs bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 border border-indigo-500/40 rounded-full px-3 py-1.5 transition whitespace-nowrap font-medium"
+                      title="Build this customer's song from the conversation — AI fills the brief, you verify it"
+                    >
+                      🎵 Make Song
+                    </button>
                   </div>
                   {/* Staged attachment preview — paste (Ctrl+V), drag-drop, or 📎. */}
                   {attachment && (
@@ -2198,6 +2222,20 @@ export default function SmsInboxTab({ accessToken }) {
           </div>
         </div>
       )}
+
+      {/* ── "Make Song for Customer" — AI-extracted brief, human-confirmed ── */}
+      <MakeSongModal
+        open={!!makeSongModal}
+        onClose={() => setMakeSongModal(null)}
+        accessToken={accessToken}
+        conversation={selected}
+        turns={makeSongModal?.turns || []}
+        exchange={makeSongModal?.exchange || ''}
+        isDemo={isDemo}
+        // "Ask this in Spanish" drops the question straight into the composer so
+        // the missing detail gets chased instead of guessed.
+        onAskInSpanish={(text) => setReply(text)}
+      />
 
       {/* ── Admin "Ask AI" copilot — private, about the open order ── */}
       {copilotOpen && selected && (

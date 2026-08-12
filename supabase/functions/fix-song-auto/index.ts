@@ -240,18 +240,56 @@ function findLastLineEnds(words: W[], lyricsText: string): number[] {
 // audit that catches both failure modes is line-by-line: every distinctive
 // lyric line must be sung EXACTLY as many times as the lyrics carry it.
 // Returns null when the structure is intact, else a human-readable reason.
+// Audit tokenization: like buildTokenGroups but skips ONLY true mid-line proper
+// nouns — the line-INITIAL skip (needed for correction matching, Wilmington)
+// SPLITS case variants of the same chorus line ("Todavía quiero…" opener vs
+// "todavía quiero…" closer) into different signatures whose shorter form then
+// cross-matches both, producing phantom "sección duplicada 6/3" rejections
+// (take 5 of a84f274f). Structure counting is case-blind.
+function buildAuditGroups(line: string): string[][] {
+  const pairs = String(line || '').split(/\s+/).map((raw) => ({ raw, n: norm(raw) })).filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  const isMidName = (i: number): boolean => {
+    if (i === 0) return false;
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged: Array<{ g: string[]; name: boolean }> = [];
+  for (let i = 0; i < t.length;) {
+    const y = parseYear(t, i);
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    const w = t[i]; const idx = i; i++;
+    if (w.length < 2 || FILLER.has(w)) continue;
+    const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
+    flagged.push({ g: [w], name: isMidName(idx) });
+  }
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
+}
+function countByGroups(words: W[], groups: string[][]): number {
+  if (!groups.length) return 0;
+  let remaining = words, count = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    const hit = findCleanLine(remaining, groups);
+    if (!hit) break;
+    count++;
+    remaining = remaining.filter((w) => w.end <= hit.startS || w.start >= hit.endS);
+  }
+  return count;
+}
 function auditStructure(audible: W[], lyricsText: string): string | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-  const need = new Map<string, { line: string; n: number }>();
+  const need = new Map<string, { line: string; n: number; groups: string[][] }>();
   for (const l of lines) {
-    const groups = buildTokenGroups(l);
+    const groups = buildAuditGroups(l);
     if (groups.length < 3) continue; // short lines are too ambiguous to count
     const key = JSON.stringify(groups);
     const e = need.get(key);
-    if (e) e.n++; else need.set(key, { line: l, n: 1 });
+    if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
   }
-  for (const { line, n } of need.values()) {
-    const have = countCleanOccurrences(audible, line);
+  for (const { line, n, groups } of need.values()) {
+    const have = countByGroups(audible, groups);
     if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
     if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
   }
@@ -495,6 +533,14 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
     // An added line needs a few extra seconds — a tight length pin would crowd it.
     ...(plan.addLine ? { durationPadS: 8 } : {}),
+    // noPersona: fresh-song mode (2026-08-11, Miguel Ángel a84f274f) — the
+    // duration pin made Suno pad the lyrics with repeated lines on 4/4 pinned
+    // full takes; unpinned generation (how the original was made) follows the
+    // lyric sheet. Trade-off: new voice, judged by the owner's ears as always.
+    ...(plan.noPersona ? { usePersona: false } : {}),
+    // noPin: SAME cloned voice but free length — the owner's preferred repair
+    // when the pin fights the lyric sheet (same singer, complete performance).
+    ...(plan.noPin ? { pinDuration: false } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -548,9 +594,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
   // Keep each take's Kie audioId alongside its URL — the winner's identity goes
   // into candidate_meta so release CHAINS the next fix off the corrected take.
-  const takes: Array<{ url: string; kieId: string | null }> = (d?.trackList || [])
+  const takes: Array<{ url: string; kieId: string | null; dur: number | null }> = (d?.trackList || [])
     .filter((t: any) => t.audioUrl)
-    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null }));
+    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null, dur: Number(t.duration) > 0 ? Number(t.duration) : null }));
   if (!takes.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
 
   // Pristine duration (once) — the length yardstick for whole takes. When the
@@ -575,6 +621,12 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       origDur = pw.length ? pw[pw.length - 1].end : origDur;
       origStart = pw.length ? pw[0].start : origStart;
       if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
+      // A failed yardstick transcription is OUR outage, not a bad take — stop
+      // the round and say so instead of rejecting every take for "no duration".
+      else if (pt?.error) {
+        await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `No se pudo transcribir la canción original: ${String(pt.error).slice(0, 200)}` });
+        return;
+      }
     }
   }
 
@@ -591,10 +643,28 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
 
-  for (const { url, kieId } of takes) {
+  for (const { url, kieId, dur } of takes) {
+    // Absurd-length guard only (>3x). Raw duration CANNOT distinguish a
+    // rescuable take from a hopeless one (2026-08-12, Rafael 9dd5efe4): a 1.62x
+    // take sang the entire song correctly and then repeated verse+chorus+bridge
+    // as a TAIL, which the end-trim removes cleanly. Mid-song loops (Mariela
+    // 62fd68ed) look identical by duration and are caught by the structure
+    // audit AFTER transcription. Only an unusable 3x+ file dies early, purely
+    // to avoid a pointless multi-minute Whisper call.
+    if (origDur && dur && dur > origDur * 3) {
+      diags.push({ url, verdict: 'reject', reason: `toma irrecuperable (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
+      continue;
+    }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
-    if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
+    if (!words.length) {
+      // Surface WHY (2026-08-12): a bare "no transcription" hid an OpenAI-side
+      // failure — the transcribe action already returns a precise cause
+      // (billing, revoked key, rate limit, audio unreachable). Without it the
+      // card blamed the song for an outage on our side.
+      diags.push({ url, verdict: 'reject', reason: `sin transcripción${tr?.error ? `: ${String(tr.error).slice(0, 90)}` : ''}` });
+      continue;
+    }
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
     // INTRO GUARD (2026-08-10, Vicente a4672f19): a full re-roll chose a ~30s
     // instrumental intro on a song whose vocals start almost immediately —
@@ -603,7 +673,8 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // so long-intro takes are rejected outright.
     const takeStart = words[0].start;
     const introDrift = origStart != null ? takeStart - origStart : 0;
-    if (introDrift > 12) {
+    // Fresh performances (new voice OR unpinned same-voice) own their intros.
+    if (!plan.noPersona && !plan.noPin && introDrift > 12) {
       diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
       continue;
     }
@@ -666,6 +737,36 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   }
 
   if (!cands.length) {
+    // AUTO-ESCALATION (2026-08-11, Miguel Ángel): a PINNED full re-roll whose
+    // takes fail STRUCTURALLY (duplicated/missing sections) is the signature of
+    // the duration pin forcing Suno to pad the lyric sheet — retrying pinned
+    // burns rounds against a wall (0/8 pinned vs 4/4 unpinned that night). The
+    // next round automatically drops the pin but KEEPS the cloned voice.
+    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n|estructuralmente|duplicada/i.test(String(d?.reason || '')));
+    // SECTION → FULL escalation (2026-08-12, Mariela 62fd68ed): when the section
+    // ladder can't land after 2 rounds, retrying a 3rd rarely helps — the song
+    // itself is resisting replace-section. Move to the full re-roll ladder
+    // (same cloned voice), which the pin rule below then escalates to unpinned
+    // if needed. Happens once per request; the daily cap still bounds spend.
+    if (plan.mode !== 'full' && !plan.escalatedToFull && (r.auto_round || 0) >= 2) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, mode: 'full', escalatedToFull: true },
+        auto_round: 0,
+        auto_status: 'generating',
+        auto_error: 'section rounds failed — escalating to a full re-roll in the SAME cloned voice',
+      });
+      return;
+    }
+    if (plan.mode === 'full' && !plan.noPin && !plan.noPersona && structuralFail) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, noPin: true },
+        auto_status: 'generating',
+        auto_error: 'pinned takes failed structurally — retrying SAME VOICE without the length pin',
+      });
+      return;
+    }
     await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'generating', auto_error: 'no clean take this round' });
     return;
   }

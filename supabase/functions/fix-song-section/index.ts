@@ -119,9 +119,31 @@ function stripSpokenProsodyCue(lyrics: string): string {
     .replace(/[ \t]+$/gm, '');
 }
 
+// CUSTOM-LYRICS NORMALIZATION (2026-08-12, Mariela 62fd68ed).
+// Customer-pasted lyrics arrive as Markdown — a "# **Title**" heading, **bold**
+// spans — and with SPELLED-OUT section tags ("[Verso uno]", "[Verso dos]") that
+// englishifyLyricsMarkers' [Verso <digit>] rule never matched. Sent that way to
+// replace-section, Suno doesn't see a structured sheet and LOOPS it: 8/8 takes
+// came back at 1.9-2.1x the song's length (7:14-7:17 for a 3:30 song) — the same
+// ~8-minute looping signature un-tagged custom lyrics produce at generation
+// time. Normalize first and the model gets a clean structure to follow.
+const SPELLED_ORDINAL: Record<string, number> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8 };
+function normalizeCustomLyrics(lyrics: string): string {
+  return lyrics
+    // Markdown heading lines (the pasted song title) — never sung, pure noise.
+    .replace(/^[ \t]*#{1,6}[ \t]*.*$/gm, '')
+    // Bold/italic emphasis markers.
+    .replace(/\*\*|__/g, '')
+    // [Verso uno] -> [Verso 1] so the englishify rules below can convert it.
+    .replace(/\[\s*Verso\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho)\s*\]/gi,
+      (_m, w: string) => `[Verso ${SPELLED_ORDINAL[w.toLowerCase()]}]`)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
-  return stripSpokenProsodyCue(lyrics)
+  return normalizeCustomLyrics(stripSpokenProsodyCue(lyrics))
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
     .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
     .replace(/\[Verso\]/gi, '[Verse]')
@@ -238,7 +260,7 @@ const FIX_TOOL = {
     properties: {
       can_fix: {
         type: 'boolean',
-        description: 'true if the reported problem is localized to ONE contiguous stretch that is at most half the song; false if it is spread across the whole song or cannot be located in the transcript.',
+        description: 'true if this fix can be made by re-singing ONE contiguous stretch of at most half the song. IMPORTANT: if the SAME wording must change in SEVERAL separate places (e.g. a chorus line sung twice), that is still true — target the EARLIEST unfixed occurrence; the caller fixes the spots one at a time and calls again for the next. Only false when the change is diffuse across the whole song (most lines rewritten) or cannot be located in the transcript.',
       },
       reason: {
         type: 'string',
@@ -302,7 +324,8 @@ Tu trabajo es localizar el problema y proponer un arreglo QUIRÚRGICO de una sol
   · Fechas: escribe los números SIEMPRE en palabras y de forma natural en español (p. ej. "el catorce de marzo de dos mil catorce", nunca "14/03/2014" ni "2014"). El año va deletreado completo.
   · No repitas el coro ni la despedida dentro de la ventana; re-canta el bloque UNA sola vez, en orden, sin saltar ni duplicar líneas.
 - AGREGAR UNA LÍNEA NUEVA (no reemplazar): solo es confiable en el BLOQUE FINAL / la despedida (ahí hay espacio instrumental y nada después que se desalinee). Si el dueño pide agregar una línea al final: inserta la línea EXACTA en su lugar dentro de section_text y de full_lyrics; define la ventana [infill_start_s, infill_end_s] = el bloque final completo (desde el inicio del último coro/despedida hasta el final del canto), y llena add_line = { text, anchor } con una palabra distintiva de la línea nueva. Si la canción tiene intro [Hablado] (los corridos), puedes agregarla como línea [Hablado] (lo hablado no necesita métrica → usa las palabras EXACTAS del cliente). Si la adición NO es al final (va a media canción), pon can_fix=false y explica que ese caso necesita rehacer la canción completa.
-- Si el problema abarca toda la canción o no se puede ubicar, pon can_fix=false y explica por qué; no inventes una ventana.
+- VARIAS APARICIONES DE LA MISMA CORRECCIÓN (regla dura, 2026-08-12): si la palabra/línea a corregir se canta en VARIOS lugares separados (p. ej. el mismo verso del coro a 1:18 y a 2:23), NO pongas can_fix=false. El sistema arregla un punto a la vez y vuelve a llamarte para el siguiente: elige la aparición MÁS TEMPRANA que todavía esté mal, define la ventana ahí, y pon can_fix=true. En "reason" menciona cuántas apariciones detectaste.
+- Solo pon can_fix=false si el cambio es DIFUSO (hay que reescribir casi toda la letra) o si de plano no se puede ubicar en la transcripción; explica por qué y no inventes una ventana.
 - La queja puede incluir una conversación con el dueño y/o una captura de pantalla (WhatsApp) del mensaje del cliente. Lee la imagen si viene adjunta y usa todo el contexto para entender exactamente qué corregir.
 
 IDIOMA: change_summary y reason van en INGLÉS (el dueño habla inglés). Toda la LETRA (section_text, full_lyrics, verify_phrases) y los nombres/fechas cantados permanecen en ESPAÑOL — nunca traduzcas la letra.
@@ -1212,10 +1235,17 @@ Deno.serve(async (req) => {
         // Full track list (audioUrl/id/imageUrl) so a slow replace-section job
         // whose original request hit the 150s gateway timeout can still be
         // collected out-of-band by polling this action with the taskId.
+        // duration: Kie reports each take's length. Callers use it to REJECT a
+        // hopeless take (>1.15x the original can never pass, even trimmed)
+        // BEFORE paying for a Whisper transcription of it — on the Mariela
+        // corrido (62fd68ed) Suno returned 6:30-7:17 takes for a 3:30 song and
+        // transcribing those ~10MB files is the longest, most failure-prone
+        // call in the whole flow (it died with a browser "Failed to fetch").
         trackList: (raw?.data?.response?.sunoData ?? []).map((t: any) => ({
           id: t.id ?? null,
           audioUrl: t.audioUrl ?? null,
           imageUrl: t.imageUrl ?? null,
+          duration: Number(t.duration) > 0 ? Number(t.duration) : null,
         })),
       });
     }
@@ -1589,6 +1619,12 @@ Deno.serve(async (req) => {
           // original length would crowd or squeeze the new line out.
           const durationPad = Math.max(0, Math.min(20, Number(body?.durationPadS) || 0));
           if (durationPad && genOpts.durationS) genOpts.durationS = Math.min(360, genOpts.durationS + durationPad);
+          // pinDuration:false — SAME cloned voice, FREE length (2026-08-11,
+          // Miguel Ángel): the pin makes Suno pad the lyric sheet with repeated
+          // lines on some songs (4/4 pinned takes hallucinated; unpinned sang
+          // the sheet 2/2). This keeps the singer and lets the take breathe;
+          // the validator still bounds length and audits structure.
+          if (body?.pinDuration === false) genOpts.durationS = undefined;
           try {
             taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {

@@ -464,7 +464,24 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       for (const take of takeList) {
         const url = take.audioUrl;
         const takeId = take.id || null;
-        const tr = await postFn({ action: 'transcribe', audioUrl: url });
+        // Same cheap pre-filter as the ladder: a whole-take run can never use a
+        // take longer than 1.15x, so don't pay for its transcription.
+        // >3x only — see the ladder's note: a long take is usually a repeated
+        // TAIL that the end-trim removes, and only the transcript can tell.
+        if (wholeOnly && origFullDur && take.duration > origFullDur * 3) {
+          lastReason = `la toma salió de ${mmss(take.duration)} (${(take.duration / origFullDur).toFixed(1)}× lo normal — irrecuperable)`;
+          lastTakesSeen.push({ url, text: '(no transcrita — demasiado larga)', reason: lastReason });
+          continue;
+        }
+        // Same transient-Whisper protection as the ladder: retry once, and if
+        // the transcription still fails say so instead of dropping the take.
+        let tr = await postFn({ action: 'transcribe', audioUrl: url });
+        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: url }); }
+        if (!tr.ok) {
+          lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
+          lastTakesSeen.push({ url, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
+          continue;
+        }
         const words = parseTimed(tr.timed);
         // WHOLE-TAKE (owner rule: ship Suno's whole re-sing, NEVER splice). Accept the
         // entire take whenever it sang the corrected line and its length is CLOSE to
@@ -487,8 +504,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
             if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
-            // Structure guard: reject a trim that would cut before the real ending.
-            if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), fullLyrics)) { trimAtS = null; lenOk = false; }
+            // Structure guard: the trim must keep the WHOLE song (no section
+            // missing or duplicated). Correction lines excluded — a take being
+            // judged here may still be mid-way through the corrections.
+            if (trimAtS && !trimKeepsWholeSong(
+              words.filter((w) => w.end <= trimAtS),
+              fullLyrics,
+              [...(requireAll || []), ...(priorAfters || [])],
+            )) { trimAtS = null; lenOk = false; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -618,6 +641,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // On a stubborn failure (a single-line change the AI singer keeps refusing),
   // ask the backend for singable rewordings and show them as one-click chips.
   async function fetchRewordFor(e) {
+    // Only meaningful when the singer ACTUALLY attempted the line and missed it.
+    // A planner refusal (can_fix=false) produces no takes at all, and showing
+    // "the AI singer keeps refusing that wording" there is simply false — it
+    // sent the owner hunting for better phrasing when the real problem was
+    // routing (2026-08-12, Rafael 9dd5efe4).
+    if (!Array.isArray(e?.takes) || !e.takes.length) return;
     const change = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
     if (!change?.after) return;
     const sang = Array.isArray(e?.takes) && e.takes.length ? (e.takes[e.takes.length - 1]?.text || '') : '';
@@ -747,18 +776,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // length" can land on a MID-SONG chorus — a released fix once cut at Coro 2
   // and deleted the Puente + final chorus. The closing line must appear in the
   // audible (post-trim) part as many times as the lyrics carry it.
-  function trimKeepsWholeSong(audibleWords, lyricsText) {
+  // `exclude`: the correction lines themselves (the `after` texts). They are
+  // legitimately IN PROGRESS while the ladder walks spot by spot — a round-1
+  // take that fixed chorus 1 but not chorus 2 sings the corrected line 1 of 2
+  // times, which is expected, not a broken structure. Counting them here made
+  // the guard reject every partially-fixed take and report it as "longitud
+  // fuera de rango", stalling the ladder (2026-08-12, Rafael 9dd5efe4). The
+  // checklist already tracks correction progress; this guard only watches for
+  // MISSING or DUPLICATED sections.
+  function trimKeepsWholeSong(audibleWords, lyricsText, exclude = []) {
     // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
     // line counting alone is beatable — Suno inserted an extra half-verse +
     // chorus cycle mid-song, which satisfied the closing-line count on a cut
     // that deleted the Bridge (the name reveal). Every distinctive lyric line
     // must be sung EXACTLY as many times as the lyrics carry it.
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+    const skip = new Set((exclude || []).filter(Boolean).map((t) => JSON.stringify(buildTokenGroups(t))));
     const need = new Map();
     for (const l of lines) {
       const groups = buildTokenGroups(l);
       if (groups.length < 3) continue; // short lines are too ambiguous to count
       const key = JSON.stringify(groups);
+      if (skip.has(key)) continue; // a correction line — the checklist owns it
       const e = need.get(key);
       if (e) e.n++; else need.set(key, { line: l, n: 1 });
     }
@@ -908,8 +947,36 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       lastTakesSeen = [];
       let roundWinner = null;
       for (const t of takeList) {
-        const tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
-        if (!tr.ok) continue;
+        // CHEAP PRE-FILTER (2026-08-12, Mariela 62fd68ed): Kie tells us each
+        // take's length. A take longer than 1.15x can never pass (that's the
+        // trimmed ceiling), so reject it WITHOUT transcribing — Whispering a
+        // 7-minute take is the longest, most fragile call in the flow and it
+        // killed a run with a browser "Failed to fetch".
+        // ONLY absurd lengths die here (>3x). Raw duration CANNOT tell a
+        // rescuable take from a hopeless one (2026-08-12, Rafael 9dd5efe4): its
+        // 1.62x take sang the whole song correctly — both "Jehová" spots — and
+        // then repeated verse+chorus+bridge as a TAIL, which the end-trim
+        // removes. A 1.5x gate threw that away unheard. Mid-song loops (Mariela)
+        // are caught by the structure audit AFTER transcription, where the
+        // difference is actually visible.
+        if (baselineDur && t.duration > baselineDur * 3) {
+          lastReason = `la toma salió de ${mmss(t.duration)} (${(t.duration / baselineDur).toFixed(1)}× lo normal — irrecuperable)`;
+          lastTakesSeen.push({ url: t.audioUrl, text: '(no transcrita — demasiado larga)', reason: lastReason });
+          continue;
+        }
+        // A take whose TRANSCRIPTION fails used to be dropped silently — no
+        // reason, no retry — so a perfectly good take could disappear and the
+        // round would report the OTHER take's failure instead (2026-08-12,
+        // Rafael 9dd5efe4: an in-band take singing both "Jehová" spots vanished
+        // this way while the error blamed a 6:01 take). Whisper hiccups are
+        // transient, so retry once and, if it still fails, say so out loud.
+        let tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
+        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl }); }
+        if (!tr.ok) {
+          lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
+          lastTakesSeen.push({ url: t.audioUrl, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
+          continue;
+        }
         const words = parseTimed(tr.timed);
         // Last REAL sung word (Whisper hallucinates credits over outros).
         const takeEnd = words.length ? (lastSungWordEnd(words) ?? words[words.length - 1].end) : 0;
@@ -917,13 +984,22 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // gets the end-trim rescue. The old ≤1.30× as-is ceiling shipped a 3:52
         // song as 4:49 untrimmed (owner complaint 2026-08-09).
         let trimAtS = null;
+        let lenFail = '';
         let lenOk = takeEnd >= baselineDur * 0.80 && takeEnd <= baselineDur * 1.08;
+        if (!lenOk && takeEnd < baselineDur * 0.80) lenFail = `la toma salió corta (${mmss(takeEnd)} vs ${mmss(baselineDur)})`;
         if (!lenOk && takeEnd > baselineDur * 1.08) {
           const lyricLines = String(combinedLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
           const trueEnd = findLastLineEnd(words, lyricLines, baselineDur);
           if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
-          // Structure guard: reject a trim that would cut before the real ending.
-          if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), combinedLyrics)) { trimAtS = null; lenOk = false; }
+          else lenFail = `la toma salió larga (${mmss(takeEnd)}) y no se ubicó el final real para recortarla`;
+          // Structure guard: the trimmed part must still be the WHOLE song — no
+          // section missing or duplicated. Correction lines are excluded: the
+          // ladder is mid-way through fixing them by design.
+          if (trimAtS && !trimKeepsWholeSong(
+            words.filter((w) => w.end <= trimAtS),
+            combinedLyrics,
+            [...ordered.map((c) => c?.after), ...(priorCorrections || []).map((p) => p?.after)],
+          )) { trimAtS = null; lenOk = false; lenFail = 'el recorte dejaría secciones repetidas o faltantes'; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing
@@ -934,7 +1010,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const targetItem = chk.items.find((x) => x.kind === 'change' && x.after === target.after);
         const targetLanded = !!targetItem?.ok;
         const priorsOk = chk.items.filter((x) => x.kind === 'prior').every((x) => x.ok);
-        const reason = chk.ok && lenOk ? 'clean' : (!lenOk ? 'longitud fuera de rango' : (!targetLanded ? 'no cantó lo corregido' : (!priorsOk ? 'la toma revirtió una corrección anterior' : 'faltan otras correcciones')));
+        const reason = chk.ok && lenOk ? 'clean' : (!lenOk ? (lenFail || 'longitud fuera de rango') : (!targetLanded ? 'no cantó lo corregido' : (!priorsOk ? 'la toma revirtió una corrección anterior' : 'faltan otras correcciones')));
         lastTakesSeen.push({ url: t.audioUrl, text: audibleWords.map((w) => w.word).join(' '), reason });
         const score = chk.items.filter((x) => x.ok).length + (lenOk ? 0.5 : 0);
         if (targetLanded && lenOk && priorsOk && (!roundWinner || score > roundWinner.score)) {
@@ -1339,6 +1415,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     ? result.takes
     : (result ? [{ audioUrl: result.fixedAudioUrl, id: result.fixAudioId, imageUrl: result.fixImageUrl, verified: result.verified, lyrics: result.fullLyrics }] : []);
   const take = takes[selectedTakeIdx] || takes[0] || null;
+  // SPREAD-OUT SINGLE CORRECTION (2026-08-12, Rafael 9dd5efe4): one change that
+  // is sung in SEVERAL places (e.g. the same chorus line at 1:18 and 2:23) needs
+  // the multi-spot ladder exactly as much as several different changes do — one
+  // contiguous window can't cover both, which is why the planner refused with
+  // "requires fixing multiple sections". Route by TARGET COUNT, not by how many
+  // change entries the planner happened to produce.
+  const spreadTargets = Array.isArray(plan?.changes)
+    ? plan.changes.reduce((n, c) => n + (c?.after ? Math.max(1, timesInLyrics(plan.approvedLyrics || '', c.after)) : 0), 0)
+    : 0;
+  const needsLadder = Array.isArray(plan?.changes) && plan.changes.length > 0 && (plan.changes.length > 1 || spreadTargets > 1);
   const curVerifyNote = take
     ? (take.verified === true
       ? '✅ Verified: the correction is sung.'
@@ -1568,8 +1654,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                 ? 'The full song will be redone — SAME singer (cloned voice) + original length when the recording is still on Kie. Takes 1-3 min.'
                 : plan.addLine
                   ? 'Adding a line redoes the FULL song with the new line included (whole takes only — never spliced). Same style & voice type, brand-new performance. Takes 1-3 min.'
-                  : (Array.isArray(plan.changes) && plan.changes.length > 1
-                    ? `All ${plan.changes.length} corrections will be applied in the SAME voice (no splicing). The tool tries one take first; whatever doesn't land gets fixed automatically, spot by spot, building each round on the last. You review ONE final preview. Takes ~2 min per round.`
+                  : (needsLadder
+                    ? `All ${spreadTargets} spot${spreadTargets > 1 ? 's' : ''} will be corrected in the SAME voice (no splicing) — including the same line sung in more than one place. The tool fixes them automatically, one spot at a time, each round building on the last. You review ONE final preview. Takes ~2 min per round.`
                     : 'Only the affected part will be regenerated as a whole take (no splicing). Takes 1-3 min.')}</p>
               {pendingMode === 'section' && plan.addLine && (
                 <p className="text-[11px] text-amber-300/90 mb-2">➕ Adding a new line: "{plan.addLine.text}". The whole song is re-sung fresh with it — listen end-to-end before applying.</p>
@@ -1594,7 +1680,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                         // and crossfaded audio — against the owner's whole-takes-only
                         // rule — and never passed a live test. Retired 2026-08-10.
                         ? runFullReroll(plan.approvedLyrics, plan.verifyPhrases)
-                        : (Array.isArray(plan.changes) && plan.changes.length > 1
+                        : (needsLadder
                           ? runMultiFix(plan.approvedLyrics, plan.changes)
                           : runSectionSurgical(plan.approvedLyrics, plan.verifyPhrases)))
                       : runFullReroll(plan.approvedLyrics, plan.verifyPhrases))}
@@ -1602,8 +1688,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   >
                     {pendingMode === 'section' && plan.addLine
                       ? '✅ Add the line (redo full song)'
-                      : pendingMode === 'section' && Array.isArray(plan.changes) && plan.changes.length > 1
-                        ? `✅ Fix all ${plan.changes.length} parts (same voice)`
+                      : pendingMode === 'section' && needsLadder
+                        ? `✅ Fix all ${spreadTargets} spots (same voice)`
                         : '✅ Confirm and generate'}
                   </button>
                 )}
