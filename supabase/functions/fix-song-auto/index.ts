@@ -639,10 +639,15 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
 
   for (const { url, kieId, dur } of takes) {
     // Cheap pre-filter (2026-08-12, Mariela 62fd68ed): Kie reports each take's
-    // length; anything past the trimmed ceiling can never pass, so reject it
-    // without paying for (and risking) a Whisper call on a 7-minute file.
-    if (origDur && dur && dur > origDur * 1.15) {
-      diags.push({ url, verdict: 'reject', reason: `demasiado larga (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
+    // length; a LOOPED take can never pass, so reject it without paying for
+    // (and risking) a Whisper call on a 7-minute file.
+    // Threshold is 1.5x, NOT the 1.15x trim ceiling: Kie's number is the RAW
+    // file length (sung part + instrumental outro), while every band below is
+    // measured on SUNG length. A 1.16x raw take is routinely trimmable — the
+    // first normalized Mariela take was exactly that and a 1.15x cut here would
+    // have thrown it away unheard. Only clear duplication (1.5x+) dies early.
+    if (origDur && dur && dur > origDur * 1.5) {
+      diags.push({ url, verdict: 'reject', reason: `toma duplicada (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
       continue;
     }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });

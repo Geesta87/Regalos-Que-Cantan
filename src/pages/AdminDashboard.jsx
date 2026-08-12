@@ -466,8 +466,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const takeId = take.id || null;
         // Same cheap pre-filter as the ladder: a whole-take run can never use a
         // take longer than 1.15x, so don't pay for its transcription.
-        if (wholeOnly && origFullDur && take.duration > origFullDur * 1.15) {
-          lastReason = `la toma salió de ${mmss(take.duration)} (casi ${(take.duration / origFullDur).toFixed(1)}× lo normal)`;
+        if (wholeOnly && origFullDur && take.duration > origFullDur * 1.5) {
+          lastReason = `la toma salió de ${mmss(take.duration)} (casi ${(take.duration / origFullDur).toFixed(1)}× lo normal — duplicada)`;
           lastTakesSeen.push({ url, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
@@ -920,8 +920,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // trimmed ceiling), so reject it WITHOUT transcribing — Whispering a
         // 7-minute take is the longest, most fragile call in the flow and it
         // killed a run with a browser "Failed to fetch".
-        if (baselineDur && t.duration > baselineDur * 1.15) {
-          lastReason = `la toma salió de ${mmss(t.duration)} (casi ${(t.duration / baselineDur).toFixed(1)}× lo normal)`;
+        // 1.5x, not the 1.15x trim ceiling: Kie's duration is the RAW file
+        // (sung + instrumental outro) while the bands measure SUNG length, so a
+        // 1.16x take is routinely trimmable. Only clear duplication dies early.
+        if (baselineDur && t.duration > baselineDur * 1.5) {
+          lastReason = `la toma salió de ${mmss(t.duration)} (casi ${(t.duration / baselineDur).toFixed(1)}× lo normal — duplicada)`;
           lastTakesSeen.push({ url: t.audioUrl, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
