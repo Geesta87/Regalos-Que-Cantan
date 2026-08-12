@@ -1631,8 +1631,8 @@ function appendBrandOutro(dir, geo, log) {
   fs.copyFileSync(SERIF, path.join(dir, 'outro-serif.ttf'));
   const audio = probeAudio(dir, 'clip.mp4');
 
-  // White card so the full-color circular badge sits naturally; site name in
-  // the logo's own navy underneath.
+  // White card so the full-color badge sits naturally; site name underneath in
+  // the brand's warm ink (was the legacy logo's navy, off-palette against Cenzo).
   const logoW = Math.round(geo.w * 0.46);
   const textSize = Math.round(geo.w * 0.05);
   const logoY = `(H-h)/2-${Math.round(geo.h * 0.05)}`;
@@ -1640,7 +1640,7 @@ function appendBrandOutro(dir, geo, log) {
   const filter = [
     `[1:v]scale=${logoW}:-1[logo]`,
     `[0:v][logo]overlay=(W-w)/2:${logoY}[bg]`,
-    `[bg]drawtext=fontfile=outro-serif.ttf:text='regalosquecantan.com':fontcolor=0x1B2653:fontsize=${textSize}:x=(w-text_w)/2:y=${textY},fade=t=in:st=0:d=0.3:color=white,fps=30[vout]`,
+    `[bg]drawtext=fontfile=outro-serif.ttf:text='regalosquecantan.com':fontcolor=0x3A2A22:fontsize=${textSize}:x=(w-text_w)/2:y=${textY},fade=t=in:st=0:d=0.3:color=white,fps=30[vout]`,
   ].join(';');
 
   const args = [

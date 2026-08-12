@@ -657,17 +657,22 @@ export default function GeneratingPage() {
           
           {/* Hero Section */}
           <div className="text-center mb-8">
-            {/* Animated Album Art Placeholder */}
+            {/* Cenzo listens while the song is being made */}
             <div className="relative w-40 h-40 mx-auto mb-6">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-gold/30 to-bougainvillea/30 animate-pulse"></div>
-              <div className="absolute inset-2 rounded-xl bg-forest flex items-center justify-center">
-                <div className="relative">
-                  <span className="material-symbols-outlined text-6xl text-gold animate-bounce">
-                    {steps[currentStep].icon}
-                  </span>
-                  {/* Ripple effect */}
-                  <div className="absolute inset-0 rounded-full bg-gold/20 animate-ping"></div>
-                </div>
+              <div className="absolute inset-0 rounded-full bg-gold/20 animate-ping"></div>
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-gold/40 to-bougainvillea/40 animate-pulse"></div>
+              <div className="absolute inset-1 rounded-full overflow-hidden border-2 border-gold/40 bg-forest">
+                <img
+                  src="/brand/cenzo/cenzo-wave.png"
+                  alt="Cenzo, el cenzontle de las 400 voces"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {/* Current step badge */}
+              <div className="absolute -top-1 -right-1 w-11 h-11 rounded-full bg-forest border-2 border-gold/50 flex items-center justify-center">
+                <span className="material-symbols-outlined text-gold text-xl animate-pulse">
+                  {steps[currentStep].icon}
+                </span>
               </div>
               {/* Song version indicators */}
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
@@ -687,6 +692,9 @@ export default function GeneratingPage() {
             </h1>
             <p className="text-white/60 text-lg">
               {genreName}{subGenreName ? ` • ${subGenreName}` : ''}
+            </p>
+            <p className="text-gold/70 text-sm italic mt-3">
+              «Estoy oyendo tu historia…» <span className="not-italic">— Cenzo 🎶</span>
             </p>
           </div>
 
