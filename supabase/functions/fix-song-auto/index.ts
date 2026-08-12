@@ -730,7 +730,22 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // the duration pin forcing Suno to pad the lyric sheet — retrying pinned
     // burns rounds against a wall (0/8 pinned vs 4/4 unpinned that night). The
     // next round automatically drops the pin but KEEPS the cloned voice.
-    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n/i.test(String(d?.reason || '')));
+    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n|estructuralmente|duplicada/i.test(String(d?.reason || '')));
+    // SECTION → FULL escalation (2026-08-12, Mariela 62fd68ed): when the section
+    // ladder can't land after 2 rounds, retrying a 3rd rarely helps — the song
+    // itself is resisting replace-section. Move to the full re-roll ladder
+    // (same cloned voice), which the pin rule below then escalates to unpinned
+    // if needed. Happens once per request; the daily cap still bounds spend.
+    if (plan.mode !== 'full' && !plan.escalatedToFull && (r.auto_round || 0) >= 2) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, mode: 'full', escalatedToFull: true },
+        auto_round: 0,
+        auto_status: 'generating',
+        auto_error: 'section rounds failed — escalating to a full re-roll in the SAME cloned voice',
+      });
+      return;
+    }
     if (plan.mode === 'full' && !plan.noPin && !plan.noPersona && structuralFail) {
       await setAuto(admin, r.id, {
         auto_takes: diags.slice(-12),
