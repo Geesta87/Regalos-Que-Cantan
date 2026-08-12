@@ -644,16 +644,15 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const cands: Cand[] = [];
 
   for (const { url, kieId, dur } of takes) {
-    // Cheap pre-filter (2026-08-12, Mariela 62fd68ed): Kie reports each take's
-    // length; a LOOPED take can never pass, so reject it without paying for
-    // (and risking) a Whisper call on a 7-minute file.
-    // Threshold is 1.5x, NOT the 1.15x trim ceiling: Kie's number is the RAW
-    // file length (sung part + instrumental outro), while every band below is
-    // measured on SUNG length. A 1.16x raw take is routinely trimmable — the
-    // first normalized Mariela take was exactly that and a 1.15x cut here would
-    // have thrown it away unheard. Only clear duplication (1.5x+) dies early.
-    if (origDur && dur && dur > origDur * 1.5) {
-      diags.push({ url, verdict: 'reject', reason: `toma duplicada (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
+    // Absurd-length guard only (>3x). Raw duration CANNOT distinguish a
+    // rescuable take from a hopeless one (2026-08-12, Rafael 9dd5efe4): a 1.62x
+    // take sang the entire song correctly and then repeated verse+chorus+bridge
+    // as a TAIL, which the end-trim removes cleanly. Mid-song loops (Mariela
+    // 62fd68ed) look identical by duration and are caught by the structure
+    // audit AFTER transcription. Only an unusable 3x+ file dies early, purely
+    // to avoid a pointless multi-minute Whisper call.
+    if (origDur && dur && dur > origDur * 3) {
+      diags.push({ url, verdict: 'reject', reason: `toma irrecuperable (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
       continue;
     }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });

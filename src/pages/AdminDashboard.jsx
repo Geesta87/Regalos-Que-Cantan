@@ -466,8 +466,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const takeId = take.id || null;
         // Same cheap pre-filter as the ladder: a whole-take run can never use a
         // take longer than 1.15x, so don't pay for its transcription.
-        if (wholeOnly && origFullDur && take.duration > origFullDur * 1.5) {
-          lastReason = `la toma salió de ${mmss(take.duration)} (casi ${(take.duration / origFullDur).toFixed(1)}× lo normal — duplicada)`;
+        // >3x only — see the ladder's note: a long take is usually a repeated
+        // TAIL that the end-trim removes, and only the transcript can tell.
+        if (wholeOnly && origFullDur && take.duration > origFullDur * 3) {
+          lastReason = `la toma salió de ${mmss(take.duration)} (${(take.duration / origFullDur).toFixed(1)}× lo normal — irrecuperable)`;
           lastTakesSeen.push({ url, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
@@ -926,11 +928,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // trimmed ceiling), so reject it WITHOUT transcribing — Whispering a
         // 7-minute take is the longest, most fragile call in the flow and it
         // killed a run with a browser "Failed to fetch".
-        // 1.5x, not the 1.15x trim ceiling: Kie's duration is the RAW file
-        // (sung + instrumental outro) while the bands measure SUNG length, so a
-        // 1.16x take is routinely trimmable. Only clear duplication dies early.
-        if (baselineDur && t.duration > baselineDur * 1.5) {
-          lastReason = `la toma salió de ${mmss(t.duration)} (casi ${(t.duration / baselineDur).toFixed(1)}× lo normal — duplicada)`;
+        // ONLY absurd lengths die here (>3x). Raw duration CANNOT tell a
+        // rescuable take from a hopeless one (2026-08-12, Rafael 9dd5efe4): its
+        // 1.62x take sang the whole song correctly — both "Jehová" spots — and
+        // then repeated verse+chorus+bridge as a TAIL, which the end-trim
+        // removes. A 1.5x gate threw that away unheard. Mid-song loops (Mariela)
+        // are caught by the structure audit AFTER transcription, where the
+        // difference is actually visible.
+        if (baselineDur && t.duration > baselineDur * 3) {
+          lastReason = `la toma salió de ${mmss(t.duration)} (${(t.duration / baselineDur).toFixed(1)}× lo normal — irrecuperable)`;
           lastTakesSeen.push({ url: t.audioUrl, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
