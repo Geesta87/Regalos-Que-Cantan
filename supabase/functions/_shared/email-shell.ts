@@ -90,11 +90,8 @@ function banner(c: Tokens): string {
   const src = `${ASSET_BASE}/papel-${c.papel}.png`;
   return `<tr><td style="padding:0;line-height:0;background:${c.strip};" bgcolor="${c.strip}"><img src="${src}" width="600" alt="" style="display:block;width:100%;height:auto;border:0;"></td></tr>`;
 }
-// Cenzo, the brand mascot, sits above the wordmark. Served from the site (not the
-// email-assets bucket) because public/brand/cenzo/ ships with the frontend deploy.
-const CENZO_AVATAR = 'https://regalosquecantan.com/brand/cenzo/cenzo-avatar.png';
 function wordmark(): string {
-  return `<tr><td align="center" style="padding:22px 26px 0;"><img src="${CENZO_AVATAR}" width="52" height="52" alt="Cenzo" style="display:block;margin:0 auto 10px;width:52px;height:52px;border-radius:26px;border:0;"><span style="font-size:11px;letter-spacing:4px;color:${WORD};font-weight:bold;">R E G A L O S &nbsp; Q U E &nbsp; C A N T A N</span></td></tr>`;
+  return `<tr><td align="center" style="padding:26px 26px 0;"><span style="font-size:11px;letter-spacing:4px;color:${WORD};font-weight:bold;">R E G A L O S &nbsp; Q U E &nbsp; C A N T A N</span></td></tr>`;
 }
 function hero(c: Tokens, h: Hero, palette: Palette, eyebrow?: string): string {
   const src = `${ASSET_BASE}/${heroAsset(h, palette)}`;
