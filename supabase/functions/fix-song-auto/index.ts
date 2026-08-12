@@ -533,6 +533,11 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
     // An added line needs a few extra seconds — a tight length pin would crowd it.
     ...(plan.addLine ? { durationPadS: 8 } : {}),
+    // noPersona: fresh-song mode (2026-08-11, Miguel Ángel a84f274f) — the
+    // duration pin made Suno pad the lyrics with repeated lines on 4/4 pinned
+    // full takes; unpinned generation (how the original was made) follows the
+    // lyric sheet. Trade-off: new voice, judged by the owner's ears as always.
+    ...(plan.noPersona ? { usePersona: false } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -641,7 +646,8 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // so long-intro takes are rejected outright.
     const takeStart = words[0].start;
     const introDrift = origStart != null ? takeStart - origStart : 0;
-    if (introDrift > 12) {
+    // Fresh-song mode is a NEW performance — its intro legitimately differs.
+    if (!plan.noPersona && introDrift > 12) {
       diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
       continue;
     }
