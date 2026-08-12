@@ -496,8 +496,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
             if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
-            // Structure guard: reject a trim that would cut before the real ending.
-            if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), fullLyrics)) { trimAtS = null; lenOk = false; }
+            // Structure guard: the trim must keep the WHOLE song (no section
+            // missing or duplicated). Correction lines excluded — a take being
+            // judged here may still be mid-way through the corrections.
+            if (trimAtS && !trimKeepsWholeSong(
+              words.filter((w) => w.end <= trimAtS),
+              fullLyrics,
+              [...(requireAll || []), ...(priorAfters || [])],
+            )) { trimAtS = null; lenOk = false; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -762,18 +768,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   // length" can land on a MID-SONG chorus — a released fix once cut at Coro 2
   // and deleted the Puente + final chorus. The closing line must appear in the
   // audible (post-trim) part as many times as the lyrics carry it.
-  function trimKeepsWholeSong(audibleWords, lyricsText) {
+  // `exclude`: the correction lines themselves (the `after` texts). They are
+  // legitimately IN PROGRESS while the ladder walks spot by spot — a round-1
+  // take that fixed chorus 1 but not chorus 2 sings the corrected line 1 of 2
+  // times, which is expected, not a broken structure. Counting them here made
+  // the guard reject every partially-fixed take and report it as "longitud
+  // fuera de rango", stalling the ladder (2026-08-12, Rafael 9dd5efe4). The
+  // checklist already tracks correction progress; this guard only watches for
+  // MISSING or DUPLICATED sections.
+  function trimKeepsWholeSong(audibleWords, lyricsText, exclude = []) {
     // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
     // line counting alone is beatable — Suno inserted an extra half-verse +
     // chorus cycle mid-song, which satisfied the closing-line count on a cut
     // that deleted the Bridge (the name reveal). Every distinctive lyric line
     // must be sung EXACTLY as many times as the lyrics carry it.
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+    const skip = new Set((exclude || []).filter(Boolean).map((t) => JSON.stringify(buildTokenGroups(t))));
     const need = new Map();
     for (const l of lines) {
       const groups = buildTokenGroups(l);
       if (groups.length < 3) continue; // short lines are too ambiguous to count
       const key = JSON.stringify(groups);
+      if (skip.has(key)) continue; // a correction line — the checklist owns it
       const e = need.get(key);
       if (e) e.n++; else need.set(key, { line: l, n: 1 });
     }
@@ -949,13 +965,22 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // gets the end-trim rescue. The old ≤1.30× as-is ceiling shipped a 3:52
         // song as 4:49 untrimmed (owner complaint 2026-08-09).
         let trimAtS = null;
+        let lenFail = '';
         let lenOk = takeEnd >= baselineDur * 0.80 && takeEnd <= baselineDur * 1.08;
+        if (!lenOk && takeEnd < baselineDur * 0.80) lenFail = `la toma salió corta (${mmss(takeEnd)} vs ${mmss(baselineDur)})`;
         if (!lenOk && takeEnd > baselineDur * 1.08) {
           const lyricLines = String(combinedLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
           const trueEnd = findLastLineEnd(words, lyricLines, baselineDur);
           if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
-          // Structure guard: reject a trim that would cut before the real ending.
-          if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), combinedLyrics)) { trimAtS = null; lenOk = false; }
+          else lenFail = `la toma salió larga (${mmss(takeEnd)}) y no se ubicó el final real para recortarla`;
+          // Structure guard: the trimmed part must still be the WHOLE song — no
+          // section missing or duplicated. Correction lines are excluded: the
+          // ladder is mid-way through fixing them by design.
+          if (trimAtS && !trimKeepsWholeSong(
+            words.filter((w) => w.end <= trimAtS),
+            combinedLyrics,
+            [...ordered.map((c) => c?.after), ...(priorCorrections || []).map((p) => p?.after)],
+          )) { trimAtS = null; lenOk = false; lenFail = 'el recorte dejaría secciones repetidas o faltantes'; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing
@@ -966,7 +991,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         const targetItem = chk.items.find((x) => x.kind === 'change' && x.after === target.after);
         const targetLanded = !!targetItem?.ok;
         const priorsOk = chk.items.filter((x) => x.kind === 'prior').every((x) => x.ok);
-        const reason = chk.ok && lenOk ? 'clean' : (!lenOk ? 'longitud fuera de rango' : (!targetLanded ? 'no cantó lo corregido' : (!priorsOk ? 'la toma revirtió una corrección anterior' : 'faltan otras correcciones')));
+        const reason = chk.ok && lenOk ? 'clean' : (!lenOk ? (lenFail || 'longitud fuera de rango') : (!targetLanded ? 'no cantó lo corregido' : (!priorsOk ? 'la toma revirtió una corrección anterior' : 'faltan otras correcciones')));
         lastTakesSeen.push({ url: t.audioUrl, text: audibleWords.map((w) => w.word).join(' '), reason });
         const score = chk.items.filter((x) => x.ok).length + (lenOk ? 0.5 : 0);
         if (targetLanded && lenOk && priorsOk && (!roundWinner || score > roundWinner.score)) {
