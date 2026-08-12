@@ -135,7 +135,7 @@ export async function generateSong(formData, overridePin = null) {
  * @param {string} couponCode - Optional coupon code
  * @param {boolean} purchaseBoth - Whether user is buying the bundle
  */
-export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = [], giftSms = null, lyricVideoAddon = false) {
+export async function createCheckout(songIds, email, couponCode = null, purchaseBoth = false, pricingTier = '', videoAddon = false, videoAddonCount = 0, karaokeAddon = false, karaokeSongIds = [], animadoCount = 0, animadoSongIds = [], giftSms = null, lyricVideoAddon = false, ultimateBundle = false) {
   // Normalize to array
   const idsArray = Array.isArray(songIds) ? songIds : [songIds];
   
@@ -194,6 +194,10 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
       animadoSongIds,
       giftSms,
       lyricVideoAddon,
+      // Paquete Definitivo — server charges one $79.99 line item instead of
+      // the itemized add-ons. Only honored when the cart actually matches the
+      // bundle (see create-checkout), so quote and charge can't diverge.
+      ultimateBundle,
       fbc,
       fbp,
       ttclid,
