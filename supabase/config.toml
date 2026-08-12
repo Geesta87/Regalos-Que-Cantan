@@ -1017,3 +1017,8 @@ verify_jwt = true
 # JWT (admin_users gate inside); default gate stays ON.
 [functions.business-analyst]
 verify_jwt = true
+
+# Creative auto-poster — driven by pg_cron (jobs 45/46/49: 6am + 2pm + 7pm PT).
+# pg_cron carries no Supabase JWT, so the gate must stay OFF or every slot 401s.
+[functions.creative-auto-post]
+verify_jwt = false
