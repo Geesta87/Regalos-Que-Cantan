@@ -1589,6 +1589,12 @@ Deno.serve(async (req) => {
           // original length would crowd or squeeze the new line out.
           const durationPad = Math.max(0, Math.min(20, Number(body?.durationPadS) || 0));
           if (durationPad && genOpts.durationS) genOpts.durationS = Math.min(360, genOpts.durationS + durationPad);
+          // pinDuration:false — SAME cloned voice, FREE length (2026-08-11,
+          // Miguel Ángel): the pin makes Suno pad the lyric sheet with repeated
+          // lines on some songs (4/4 pinned takes hallucinated; unpinned sang
+          // the sheet 2/2). This keeps the singer and lets the take breathe;
+          // the validator still bounds length and audits structure.
+          if (body?.pinDuration === false) genOpts.durationS = undefined;
           try {
             taskId = await submitFullGenerate(lyricsUsed, title, song.style_used, song.voice_type, callbackUrl, genOpts);
           } catch (e) {

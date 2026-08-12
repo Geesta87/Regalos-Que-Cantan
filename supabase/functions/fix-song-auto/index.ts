@@ -240,18 +240,56 @@ function findLastLineEnds(words: W[], lyricsText: string): number[] {
 // audit that catches both failure modes is line-by-line: every distinctive
 // lyric line must be sung EXACTLY as many times as the lyrics carry it.
 // Returns null when the structure is intact, else a human-readable reason.
+// Audit tokenization: like buildTokenGroups but skips ONLY true mid-line proper
+// nouns — the line-INITIAL skip (needed for correction matching, Wilmington)
+// SPLITS case variants of the same chorus line ("Todavía quiero…" opener vs
+// "todavía quiero…" closer) into different signatures whose shorter form then
+// cross-matches both, producing phantom "sección duplicada 6/3" rejections
+// (take 5 of a84f274f). Structure counting is case-blind.
+function buildAuditGroups(line: string): string[][] {
+  const pairs = String(line || '').split(/\s+/).map((raw) => ({ raw, n: norm(raw) })).filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  const isMidName = (i: number): boolean => {
+    if (i === 0) return false;
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged: Array<{ g: string[]; name: boolean }> = [];
+  for (let i = 0; i < t.length;) {
+    const y = parseYear(t, i);
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    const w = t[i]; const idx = i; i++;
+    if (w.length < 2 || FILLER.has(w)) continue;
+    const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
+    flagged.push({ g: [w], name: isMidName(idx) });
+  }
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
+}
+function countByGroups(words: W[], groups: string[][]): number {
+  if (!groups.length) return 0;
+  let remaining = words, count = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    const hit = findCleanLine(remaining, groups);
+    if (!hit) break;
+    count++;
+    remaining = remaining.filter((w) => w.end <= hit.startS || w.start >= hit.endS);
+  }
+  return count;
+}
 function auditStructure(audible: W[], lyricsText: string): string | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-  const need = new Map<string, { line: string; n: number }>();
+  const need = new Map<string, { line: string; n: number; groups: string[][] }>();
   for (const l of lines) {
-    const groups = buildTokenGroups(l);
+    const groups = buildAuditGroups(l);
     if (groups.length < 3) continue; // short lines are too ambiguous to count
     const key = JSON.stringify(groups);
     const e = need.get(key);
-    if (e) e.n++; else need.set(key, { line: l, n: 1 });
+    if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
   }
-  for (const { line, n } of need.values()) {
-    const have = countCleanOccurrences(audible, line);
+  for (const { line, n, groups } of need.values()) {
+    const have = countByGroups(audible, groups);
     if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
     if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
   }
@@ -495,6 +533,14 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
     // An added line needs a few extra seconds — a tight length pin would crowd it.
     ...(plan.addLine ? { durationPadS: 8 } : {}),
+    // noPersona: fresh-song mode (2026-08-11, Miguel Ángel a84f274f) — the
+    // duration pin made Suno pad the lyrics with repeated lines on 4/4 pinned
+    // full takes; unpinned generation (how the original was made) follows the
+    // lyric sheet. Trade-off: new voice, judged by the owner's ears as always.
+    ...(plan.noPersona ? { usePersona: false } : {}),
+    // noPin: SAME cloned voice but free length — the owner's preferred repair
+    // when the pin fights the lyric sheet (same singer, complete performance).
+    ...(plan.noPin ? { pinDuration: false } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -603,7 +649,8 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // so long-intro takes are rejected outright.
     const takeStart = words[0].start;
     const introDrift = origStart != null ? takeStart - origStart : 0;
-    if (introDrift > 12) {
+    // Fresh performances (new voice OR unpinned same-voice) own their intros.
+    if (!plan.noPersona && !plan.noPin && introDrift > 12) {
       diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
       continue;
     }
