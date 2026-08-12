@@ -121,8 +121,10 @@ function buildTokenGroups(line: string): string[][] {
   // A mid-line Capitalized token is treated as a name and skipped; the words
   // around it prove the line. Guard: keep names if skipping them would leave
   // fewer than 2 required groups.
+  // Line-initial capitals count too (2026-08-11: "Wilmington fue tu destino"
+  // false-rejected exactly like Saynee, just at position 0). The ≥2-remaining-
+  // groups guard keeps short lines fully matched.
   const isNameAt = (i: number): boolean => {
-    if (i === 0) return false;
     const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
     return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
   };
@@ -174,7 +176,13 @@ function findCleanLine(words: W[], tokenGroups: string[][], maxGapS = 3.5): { st
 }
 // End of the final lyric line, preferring the occurrence nearest `nearS` — the
 // disambiguator for Suno's duplicated-tail over-extension. Port of findLastLineEnd.
-function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number | null {
+// maxS (optional): prefer the LATEST match at or below this ceiling instead of
+// the one nearest to nearS. The nearest-pick released a beheaded song
+// (2026-08-11, Miguel Ángel 676a1f73): the last lyric line ended EVERY chorus,
+// the take was time-stretched, and "nearest to the original length" landed on
+// the SECOND chorus — the trim deleted the Puente and final chorus. The real
+// ending is always the LAST in-band occurrence.
+function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: number): number | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   if (!lines.length || !words.length) return null;
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
@@ -187,12 +195,105 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number 
     for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
     if (ok) fulls.push(atoms[i + tokens.length - 1].end);
   }
-  const pick = (c: number[]) => c.length ? c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b)) : null;
+  const pick = (c: number[]): number | null => {
+    if (!c.length) return null;
+    if (maxS != null) {
+      const inBand = c.filter((e) => e <= maxS);
+      if (inBand.length) return Math.max(...inBand);
+    }
+    return c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b));
+  };
   if (fulls.length) return pick(fulls);
   const last = tokens[tokens.length - 1];
   const singles: number[] = [];
   for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
   return pick(singles);
+}
+
+// ALL closing-line occurrence end-times (ascending order of position) — the
+// earliest-complete trim anchor iterates these. Same matching as findLastLineEnd.
+function findLastLineEnds(words: W[], lyricsText: string): number[] {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  if (!lines.length || !words.length) return [];
+  const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
+  if (!tokens.length) return [];
+  const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const fulls: number[] = [];
+  for (let i = 0; i + tokens.length <= atoms.length; i++) {
+    let ok = true;
+    for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
+    if (ok) fulls.push(atoms[i + tokens.length - 1].end);
+  }
+  if (fulls.length) return fulls;
+  const last = tokens[tokens.length - 1];
+  const singles: number[] = [];
+  for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
+  return singles;
+}
+
+// FULL-STRUCTURE AUDIT (2026-08-11, Miguel Ángel take b62256fe): counting only
+// the closing line is beatable. Suno's replace-section inserted an entire extra
+// half-verse + chorus cycle mid-song, which simultaneously (a) satisfied the
+// closing-line count on a cut that beheaded the Bridge — the customer's name
+// reveal — and (b) pushed the real ending out of the trim band. The only
+// audit that catches both failure modes is line-by-line: every distinctive
+// lyric line must be sung EXACTLY as many times as the lyrics carry it.
+// Returns null when the structure is intact, else a human-readable reason.
+// Audit tokenization: like buildTokenGroups but skips ONLY true mid-line proper
+// nouns — the line-INITIAL skip (needed for correction matching, Wilmington)
+// SPLITS case variants of the same chorus line ("Todavía quiero…" opener vs
+// "todavía quiero…" closer) into different signatures whose shorter form then
+// cross-matches both, producing phantom "sección duplicada 6/3" rejections
+// (take 5 of a84f274f). Structure counting is case-blind.
+function buildAuditGroups(line: string): string[][] {
+  const pairs = String(line || '').split(/\s+/).map((raw) => ({ raw, n: norm(raw) })).filter((p) => p.n);
+  const t = pairs.map((p) => p.n);
+  const isMidName = (i: number): boolean => {
+    if (i === 0) return false;
+    const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
+    return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
+  };
+  const flagged: Array<{ g: string[]; name: boolean }> = [];
+  for (let i = 0; i < t.length;) {
+    const y = parseYear(t, i);
+    if (y) { flagged.push({ g: [String(y.year)], name: false }); i = y.next; continue; }
+    const w = t[i]; const idx = i; i++;
+    if (w.length < 2 || FILLER.has(w)) continue;
+    const numVal = COMPOUND[w] ?? TEENS[w] ?? TENS[w] ?? UNITS[w];
+    if (numVal != null) { flagged.push({ g: [w, String(numVal)], name: false }); continue; }
+    flagged.push({ g: [w], name: isMidName(idx) });
+  }
+  const nonName = flagged.filter((x) => !x.name);
+  return (nonName.length >= 2 ? nonName : flagged).map((x) => x.g);
+}
+function countByGroups(words: W[], groups: string[][]): number {
+  if (!groups.length) return 0;
+  let remaining = words, count = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    const hit = findCleanLine(remaining, groups);
+    if (!hit) break;
+    count++;
+    remaining = remaining.filter((w) => w.end <= hit.startS || w.start >= hit.endS);
+  }
+  return count;
+}
+function auditStructure(audible: W[], lyricsText: string): string | null {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  const need = new Map<string, { line: string; n: number; groups: string[][] }>();
+  for (const l of lines) {
+    const groups = buildAuditGroups(l);
+    if (groups.length < 3) continue; // short lines are too ambiguous to count
+    const key = JSON.stringify(groups);
+    const e = need.get(key);
+    if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
+  }
+  for (const { line, n, groups } of need.values()) {
+    const have = countByGroups(audible, groups);
+    if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
+    if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
+  }
+  return null;
 }
 
 // ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
@@ -244,7 +345,14 @@ function evalChecklist(words: W[], changes: any[], combinedLyrics: string, prior
     // Stylization-only change: before/after collapse to the same sung tokens, so
     // demanding the old wording absent would contradict demanding the new one.
     const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
-    if (c.before && !cosmetic && countCleanOccurrences(words, c.before) > 0) {
+    // NAME-REMOVAL case (2026-08-11): after the name-skip rules, the before-line's
+    // checkable words can fit entirely INSIDE the after-line ("Miguel Ángel, el
+    // mundo…" → "mi amor, el mundo…") — singing the correction then "proves" the
+    // old wording still exists. Absence is unverifiable there; ears judge it.
+    const fakeAfter: W[] = String(c.after).split(/\s+/).map((w: string, i: number) => ({ word: w, start: i, end: i + 0.4 }));
+    const beforeGroups = c.before ? buildTokenGroups(c.before) : [];
+    const hidesInAfter = beforeGroups.length > 0 && !!findCleanLine(fakeAfter, beforeGroups, 99);
+    if (c.before && !cosmetic && !hidesInAfter && countCleanOccurrences(words, c.before) > 0) {
       return { ok: false, fail: `la letra vieja sigue sonando: "${c.before}"` };
     }
   }
@@ -387,9 +495,12 @@ async function stepUnderstand(admin: any, r: any): Promise<void> {
 
 async function stepPlan(admin: any, r: any): Promise<void> {
   const spec = r.fix_spec;
+  // Add-line placement: END OF A RELATED VERSE, never appended after the final
+  // chorus — with duration pinned, Suno drops a line appended at the very end
+  // (Vicente a4672f19: 4 takes dropped it; mid-verse landed round 1).
   const note = spec.changes.map((c: any) =>
     c.type === 'add_line'
-      ? `AGREGA esta línea nueva al final: "${c.after}"`
+      ? `AGREGA esta línea nueva AL FINAL DE UN VERSO relacionado (a media canción, NUNCA como última línea después del coro final): "${c.after}"`
       : `La línea "${c.before}" debe decir exactamente "${c.after}"`).join('. ');
   const plan = await callFn('fix-song-section', { action: 'plan', songId: r.song_id, note });
   if (!plan?.ok || !plan.approvedLyrics) {
@@ -397,8 +508,14 @@ async function stepPlan(admin: any, r: any): Promise<void> {
     return;
   }
   const verify = [...new Set([...(spec.verify_phrases || []), ...(plan.verifyPhrases || [])])].slice(0, 3);
+  // ADD-A-LINE ⇒ FULL re-roll (2026-08-10): a new line can't ride a single
+  // replace-section window (and splicing is banned), so the whole song is
+  // re-sung with the line included — same cloned voice, a few extra seconds of
+  // pinned length (durationPadS below). Everything else stays section-first.
+  const addLine = plan.addLine || null;
+  const hasAdd = !!addLine || (spec.changes || []).some((c: any) => c.type === 'add_line');
   await setAuto(admin, r.id, {
-    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: 'section', summary: plan.changeSummary || spec.summary },
+    auto_plan: { approvedLyrics: plan.approvedLyrics, changes: plan.changes || spec.changes, verifyPhrases: verify, mode: hasAdd ? 'full' : 'section', addLine: hasAdd, summary: plan.changeSummary || spec.summary },
     auto_status: 'generating',
   });
 }
@@ -414,6 +531,16 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     action, mode: plan.mode, songId: r.song_id,
     note: (plan.changes || []).map((c: any) => `"${c.before}" → "${c.after}"`).join('; '),
     approvedLyrics: plan.approvedLyrics, verifyPhrases: plan.verifyPhrases,
+    // An added line needs a few extra seconds — a tight length pin would crowd it.
+    ...(plan.addLine ? { durationPadS: 8 } : {}),
+    // noPersona: fresh-song mode (2026-08-11, Miguel Ángel a84f274f) — the
+    // duration pin made Suno pad the lyrics with repeated lines on 4/4 pinned
+    // full takes; unpinned generation (how the original was made) follows the
+    // lyric sheet. Trade-off: new voice, judged by the owner's ears as always.
+    ...(plan.noPersona ? { usePersona: false } : {}),
+    // noPin: SAME cloned voice but free length — the owner's preferred repair
+    // when the pin fights the lyric sheet (same singer, complete performance).
+    ...(plan.noPin ? { pinDuration: false } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -478,7 +605,10 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // LIVE audio — same length, and without a yardstick every take gets rejected
   // with "no pristine duration" and the round budget burns to needs_human.
   let origDur: number | null = plan.origDur || null;
-  if (!origDur) {
+  // origStart: when the ORIGINAL's vocals begin — the intro-length yardstick
+  // (see the intro guard below). Recomputed alongside origDur when missing.
+  let origStart: number | null = plan.origStart ?? null;
+  if (!origDur || origStart == null) {
     let yardstickUrl: string | null = plan.originalAudioUrl || null;
     if (!yardstickUrl) {
       const { data: songRow } = await admin.from('songs')
@@ -488,8 +618,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (yardstickUrl) {
       const pt = await callFn('fix-song-section', { action: 'transcribe', audioUrl: yardstickUrl });
       const pw = parseTimed(pt?.timed || '');
-      origDur = pw.length ? pw[pw.length - 1].end : null;
-      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur } });
+      origDur = pw.length ? pw[pw.length - 1].end : origDur;
+      origStart = pw.length ? pw[0].start : origStart;
+      if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
     }
   }
 
@@ -511,23 +642,64 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
+    // INTRO GUARD (2026-08-10, Vicente a4672f19): a full re-roll chose a ~30s
+    // instrumental intro on a song whose vocals start almost immediately —
+    // every word check passed, but the customer would hear a different song.
+    // An end-trim can't remove an intro (that would be a start-cut = surgery),
+    // so long-intro takes are rejected outright.
+    const takeStart = words[0].start;
+    const introDrift = origStart != null ? takeStart - origStart : 0;
+    // Fresh performances (new voice OR unpinned same-voice) own their intros.
+    if (!plan.noPersona && !plan.noPin && introDrift > 12) {
+      diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
+      continue;
+    }
     // LENGTH FIRST (matches the manual path): the checklist must run on the
     // AUDIBLE part only — an over-extension tail often re-sings everything
     // correctly and would satisfy checks for spots still wrong in the real song.
+    // Bands and the true-end anchor are SHIFT-AWARE: a take that starts a few
+    // seconds late legitimately ends the same few seconds late.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    //
+    // TRIM ANCHOR = EARLIEST-COMPLETE (2026-08-11, two live incidents on Miguel
+    // Ángel 676a1f73): the closing line ends EVERY chorus, so "nearest to the
+    // original length" cut at Coro 2 (beheaded the song) and "latest in band"
+    // cut inside the duplicated tail (kept ~45s of junk repetition the owner
+    // heard at 3:12). The only correct cut is the EARLIEST closing-line
+    // occurrence by which the ENTIRE song has been sung — the closing line must
+    // have been heard as many times as the full lyrics sing it (token-count,
+    // punctuation-insensitive). Before that point the song is incomplete; after
+    // it, everything is duplication.
+    const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
     let trimAtS: number | null = null;
-    let lenOk = takeEnd >= origDur * 0.80 && takeEnd <= origDur * 1.08;
-    if (!lenOk && takeEnd > origDur * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, origDur);
-      if (trueEnd != null && trueEnd >= origDur * 0.80 && trueEnd <= origDur * 1.15) {
-        trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
-        lenOk = true;
+    let structFail: string | null = null;
+    let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
+    if (lenOk) {
+      // In-band whole take: still must contain the whole song, no dup sections.
+      structFail = auditStructure(words, combinedLyrics);
+      if (structFail) lenOk = false;
+    } else if (takeEnd > effOrig * 1.08) {
+      // Over-long: try each closing-line occurrence (in band, earliest first)
+      // and accept the FIRST cut whose audible part passes the FULL structure
+      // audit — the whole song present, nothing duplicated. A take like
+      // b62256fe (extra mid-song cycle) has NO such cut and is rejected whole.
+      const ends = findLastLineEnds(words, combinedLyrics)
+        .filter((e) => e >= effOrig * 0.80 && e <= effOrig * 1.15)
+        .sort((a, b) => a - b);
+      for (const e of ends) {
+        const aud = words.filter((w) => w.end <= e + 0.3);
+        structFail = auditStructure(aud, combinedLyrics);
+        if (!structFail) {
+          trimAtS = Math.min(takeEnd, +(e + 2.5).toFixed(2));
+          lenOk = true;
+          break;
+        }
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > origDur * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: structFail || (takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte estructuralmente completo' : 'demasiado corta') });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
@@ -536,11 +708,26 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       diags.push({ url, verdict: 'reject', reason: check.fail, text: audible.map((w) => w.word).join(' ').slice(0, 400) });
       continue;
     }
-    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - origDur), trimAtS });
+    cands.push({ url, kieId, drift: Math.abs((trimAtS || takeEnd) - effOrig) + Math.max(0, introDrift), trimAtS });
     diags.push({ url, verdict: trimAtS ? 'clean-trimmed' : 'clean', reason: trimAtS ? `over-long, trimmed at ${trimAtS.toFixed(1)}s` : 'in-band whole take' });
   }
 
   if (!cands.length) {
+    // AUTO-ESCALATION (2026-08-11, Miguel Ángel): a PINNED full re-roll whose
+    // takes fail STRUCTURALLY (duplicated/missing sections) is the signature of
+    // the duration pin forcing Suno to pad the lyric sheet — retrying pinned
+    // burns rounds against a wall (0/8 pinned vs 4/4 unpinned that night). The
+    // next round automatically drops the pin but KEEPS the cloned voice.
+    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n/i.test(String(d?.reason || '')));
+    if (plan.mode === 'full' && !plan.noPin && !plan.noPersona && structuralFail) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, noPin: true },
+        auto_status: 'generating',
+        auto_error: 'pinned takes failed structurally — retrying SAME VOICE without the length pin',
+      });
+      return;
+    }
     await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'generating', auto_error: 'no clean take this round' });
     return;
   }
@@ -666,18 +853,24 @@ Deno.serve(async (req) => {
     const work = [...(fresh || []).map((r: any) => ({ ...r, auto_status: r.auto_status || 'linking' })), ...(mid || [])];
     const done: Record<string, string> = {};
     for (const r of work.slice(0, 3)) {
-      // Optimistic claim — cron fires every 2 min but a validating step (N song
+      // Overlap claim — cron fires every 2 min but a validating step (N song
       // downloads + Whisper + a trim) can run longer, and nothing marked a row
       // as in-flight, so an overlapping tick could pick the same row and submit
-      // a DUPLICATE Kie generation. The claim bumps auto_updated_at only if it
-      // hasn't moved since we read it; a lost race means another tick owns it.
+      // a DUPLICATE Kie generation. Claim = bump auto_updated_at, but only when
+      // the last touch is >110s old (a step started within the last 110s is
+      // still owned by that tick). NOT timestamp EQUALITY against the value we
+      // read — timestamptz microsecond precision never round-trips through
+      // JSON exactly, so the eq-claim matched nothing and every row DEADLOCKED
+      // after its first step (found live on Vicente's request, 2026-08-10).
       let claim = admin.from('song_fix_requests')
         .update({ auto_updated_at: new Date().toISOString() })
         .eq('id', r.id)
         .eq('status', 'pending');
-      claim = r.auto_updated_at ? claim.eq('auto_updated_at', r.auto_updated_at) : claim.is('auto_updated_at', null);
+      claim = r.auto_updated_at
+        ? claim.lt('auto_updated_at', new Date(Date.now() - 110_000).toISOString())
+        : claim.is('auto_updated_at', null);
       const { data: claimed } = await claim.select('id');
-      if (!claimed?.length) { done[r.id] = 'skipped: claimed by an overlapping tick'; continue; }
+      if (!claimed?.length) { done[r.id] = 'skipped: another tick is working it'; continue; }
       try {
         if (r.auto_status === 'linking') await stepLink(admin, r);
         else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);

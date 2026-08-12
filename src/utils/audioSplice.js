@@ -455,8 +455,13 @@ export function buildTokenGroups(correctedLine) {
   // judge the name itself in the preview. Guard: if skipping names would leave
   // fewer than 2 required groups (e.g. the phrase IS the name), keep them all —
   // an empty matcher is worse than a fuzzy one.
+  // Line-INITIAL capitals count too (2026-08-11, Jesús Washington→Wilmington):
+  // "Wilmington fue tu destino" put the city as the line's first word and the
+  // matcher demanded it letter-for-letter — same false-reject as Saynee, new
+  // position. Every line starts capitalized, so this skips the first word of
+  // ordinary lines as well; that's safe — the ≥2-remaining-groups guard keeps
+  // short lines fully matched, and the surrounding words anchor long ones.
   const isNameAt = (i) => {
-    if (i === 0) return false; // line-initial capitals are just sentence case
     const lead = pairs[i].raw.replace(/^[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]+/, '');
     return /^[A-ZÁÉÍÓÚÑÜ]/.test(lead);
   };

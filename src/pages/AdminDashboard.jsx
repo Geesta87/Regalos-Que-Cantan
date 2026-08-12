@@ -48,6 +48,20 @@ function useDebounce(value, delay = 350) {
 // stages it; nothing goes live until the owner releases it from the queue). Used
 // for AI-queued customer fix requests. Without it, the card behaves exactly as
 // before — a direct owner fix that applies on click.
+// Fresh admin token at CALL time. Long fix flows (a two-version ladder runs
+// 10-20 min) capture the render-time token in their closure, and access tokens
+// die after ~1h no matter how diligently the dashboard refreshes its state —
+// the running loop never sees the new one (Alfredo bundle fix died mid-v1 with
+// "Invalid session", 2026-08-11 01:03Z, v2 already clean). getSession() returns
+// the CURRENT auto-refreshed token, so every request authenticates with a live
+// one regardless of how long the flow has been running.
+async function freshAdminToken(fallback) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || fallback;
+  } catch { return fallback; }
+}
+
 function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, onStaged }) {
   const [messages, setMessages] = useState([]); // {role:'user'|'assistant', text}
   const [input, setInput] = useState('');
@@ -84,13 +98,27 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
   const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const staging = !!stageRequest;
-  const postFn = (body) => fetch(FN_URL, {
+  const postFn = async (body) => fetch(FN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
     body: JSON.stringify(body),
   }).then((r) => r.json());
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mmss = (s) => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+
+  // QUEUE AUTO-PLAN (2026-08-11, owner ask): opening a queued request used to
+  // present an EMPTY card — the owner had to retype the complaint shown right
+  // above it. The customer's request now seeds the plan automatically, landing
+  // straight on the before/after confirmation: review, confirm, generate.
+  const autoPlannedRef = useRef(false);
+  useEffect(() => {
+    if (autoPlannedRef.current) return;
+    const reqText = stageRequest?.customer_request ? String(stageRequest.customer_request).trim() : '';
+    if (!reqText) return;
+    autoPlannedRef.current = true;
+    runPlan('section', reqText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Splice the re-sung correction onto the pristine song. Prefers the SERVER
   // recipe (fix-song-section 'splice' -> in-house ffmpeg Cloud Run: duration-match
@@ -266,7 +294,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'chat', songId: song.id, conversation: newMsgs, image: imagePayload() }),
       });
       const data = await res.json();
@@ -281,9 +309,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
   // Step 1: cheap, instant — propose the lyric change for the owner to confirm
   // BEFORE spending any Kie credits / waiting on audio.
-  async function runPlan(mode = 'section') {
-    const convo = [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
+  async function runPlan(mode = 'section', seedText = null) {
+    // seedText: queue mode auto-plan — the customer's request from the card,
+    // used verbatim so the owner doesn't retype what's written right above.
+    const convo = seedText
+      ? [{ role: 'user', text: seedText }]
+      : [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
     if (convo.length === 0 && !image) { setError('Type what to fix, chat with the AI, or paste a screenshot.'); return; }
+    if (seedText) setMessages([{ role: 'user', text: seedText }]);
     setError('');
     setResult(null);
     setPlan(null);
@@ -294,7 +327,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'plan', mode, songId: song.id, conversation: convo, image: imagePayload() }),
       });
       const data = await res.json();
@@ -316,7 +349,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'preview', mode, songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases }),
       });
       const data = await res.json();
@@ -454,6 +487,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
             if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+            // Structure guard: reject a trim that would cut before the real ending.
+            if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), fullLyrics)) { trimAtS = null; lenOk = false; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -478,6 +513,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             // Stylization-only change: before/after collapse to the same sung
             // tokens — absence of the "old" wording is unverifiable, skip it.
             if (c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after))) return true;
+            // Before-line hides inside the after-line (name removal) → unverifiable.
+            if (c.before && beforeHidesInAfter(c.before, c.after)) return true;
             return !c.before || countCleanOccurrences(audible, c.before) === 0;
           });
           if (sang && lenOk && !keptPrior && wholeOnly) {
@@ -692,6 +729,45 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     while (i !== -1) { n++; i = hay.indexOf(needle, i + needle.length); }
     return n;
   }
+  // The before-line's ABSENCE is unverifiable when its checkable words all fit
+  // (in order) inside the after-line — singing the correction then "proves" the
+  // old wording still exists and every good take gets rejected. Hit live on a
+  // NAME-REMOVAL fix (2026-08-11, "Miguel Ángel, el mundo…" → "mi amor, el
+  // mundo…"): the name-skip rule reduced the before-line to exactly the words
+  // the corrected line also sings. Ears judge those cases, like names.
+  function beforeHidesInAfter(beforeLine, afterLine) {
+    const g = buildTokenGroups(beforeLine);
+    if (!g.length) return true;
+    const fake = String(afterLine || '').split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
+    return !!findCleanLine(fake, g, { maxGapS: 99 });
+  }
+  // STRUCTURE GUARD (2026-08-11, Miguel Ángel): an end-trim must keep the WHOLE
+  // song. The trim anchor hunts the lyrics' closing line, but when that line
+  // ends every chorus and the take is time-stretched, "nearest to the original
+  // length" can land on a MID-SONG chorus — a released fix once cut at Coro 2
+  // and deleted the Puente + final chorus. The closing line must appear in the
+  // audible (post-trim) part as many times as the lyrics carry it.
+  function trimKeepsWholeSong(audibleWords, lyricsText) {
+    // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
+    // line counting alone is beatable — Suno inserted an extra half-verse +
+    // chorus cycle mid-song, which satisfied the closing-line count on a cut
+    // that deleted the Bridge (the name reveal). Every distinctive lyric line
+    // must be sung EXACTLY as many times as the lyrics carry it.
+    const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+    const need = new Map();
+    for (const l of lines) {
+      const groups = buildTokenGroups(l);
+      if (groups.length < 3) continue; // short lines are too ambiguous to count
+      const key = JSON.stringify(groups);
+      const e = need.get(key);
+      if (e) e.n++; else need.set(key, { line: l, n: 1 });
+    }
+    for (const { line, n } of need.values()) {
+      const have = countCleanOccurrences(audibleWords, line);
+      if (have !== n) return false; // missing section (<) or duplicated section (>)
+    }
+    return true;
+  }
   // Full checklist for a take: every change's `after` sung enough times, every
   // `before` fully gone, and every still-current prior correction intact.
   function evalChecklist(words, changes, combinedLyrics, priorCorrections) {
@@ -705,7 +781,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // absent would contradict demanding the new one present — skip the absence
       // check and just require the line sung (2026-08-08).
       const cosmetic = c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after));
-      const beforeLeft = (c.before && !cosmetic) ? countCleanOccurrences(words, c.before) : 0;
+      const unverifiable = cosmetic || (c.before && beforeHidesInAfter(c.before, c.after));
+      const beforeLeft = (c.before && !unverifiable) ? countCleanOccurrences(words, c.before) : 0;
       items.push({ kind: 'change', after: c.after, need, have, beforeLeft, ok: have >= need && beforeLeft === 0 });
     }
     for (const p of (priorCorrections || [])) {
@@ -845,6 +922,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           const lyricLines = String(combinedLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
           const trueEnd = findLastLineEnd(words, lyricLines, baselineDur);
           if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+          // Structure guard: reject a trim that would cut before the real ending.
+          if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), combinedLyrics)) { trimAtS = null; lenOk = false; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing
@@ -989,7 +1068,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         fd.append('fixTaskId', r.fixTaskId); fd.append('fixAudioId', r.fixAudioId);
         if (r.fixTrimAtS) fd.append('fixTrimAtS', String(r.fixTrimAtS));
       }
-      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
+      const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON }, body: fd });
       const d = await resp.json();
       if (!d.ok) throw new Error(d.error || 'apply failed');
       if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
@@ -1040,13 +1119,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setInput('');
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
-    const post = (body) => fetch(FN_URL, {
+    const post = async (body) => fetch(FN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
-      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases });
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
+        // An added line needs a few extra seconds of pinned length.
+        ...(plan?.addLine ? { durationPadS: 8 } : {}) });
       if (!sub.ok) { setError(sub.reason || sub.error || 'Could not start the full re-roll.'); setPhase('plan'); return; }
       const { fixTaskId, fullLyrics, changeSummary } = sub;
       if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
@@ -1094,7 +1175,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     try {
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'undo', songId: song.id }),
       });
       const data = await res.json();
@@ -1133,14 +1214,14 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       const resp = await fetch(QUEUE_URL, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: fd,
       });
       return resp.json();
     }
     const resp = await fetch(QUEUE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify({
         action: 'stage-remote', request_id: stageRequest.id, remote_audio_url: remoteUrl,
         songId: song.id, fullLyrics: fullLyrics || '', summary: summary || '', corrections: corrections || null, mode: mode || 'full',
@@ -1192,7 +1273,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           fd.append('fixTaskId', result.fixTaskId); fd.append('fixAudioId', result.fixAudioId);
           if (result.fixTrimAtS) fd.append('fixTrimAtS', String(result.fixTrimAtS));
         }
-        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, apikey: ANON }, body: fd });
+        const resp = await fetch(FN_URL, { method: 'POST', headers: { Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON }, body: fd });
         const d = await resp.json();
         if (!d.ok) { setError(d.error || 'Could not apply the fix.'); setPhase('preview'); return; }
         showToast('✅ Fix applied. The customer\'s song now uses the corrected version.');
@@ -1206,7 +1287,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       const res = await fetch(FN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'apikey': ANON },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await freshAdminToken(accessToken)}`, 'apikey': ANON },
         body: JSON.stringify({
           action: 'apply',
           songId: song.id,
@@ -1764,7 +1845,7 @@ function FixSongTab({ accessToken, showToast }) {
   const postQueue = useCallback(async (payload) => {
     const res = await fetch(QUEUE_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(payload),
     });
     return res.json();
@@ -1866,6 +1947,21 @@ function FixSongTab({ accessToken, showToast }) {
     setQueueBusyId(req.id);
     try { await postQueue({ action: 'reject', request_id: req.id, reason }); await loadQueue(); }
     finally { setQueueBusyId(null); }
+  }
+  // Hand a request (back) to Ace with fresh rounds; the note becomes extra
+  // guidance for his understanding step. Works on needs_human cards, old
+  // manual-era cards, and staged candidates the owner wants redone.
+  async function sendToAceReq(req, note) {
+    setQueueBusyId(req.id);
+    try {
+      const d = await postQueue({ action: 'send-to-ace', request_id: req.id, note: note || '' });
+      if (d?.success) {
+        showToast(autoState?.enabled
+          ? '🎧 Ace has it — he\'ll start within 2 minutes and ping you when it\'s staged.'
+          : '🎧 Queued for Ace — but his Auto-mode is OFF. Flip it ON above or he won\'t start.');
+      } else showToast(`❌ ${d?.error || 'Could not hand it to Ace.'}`);
+      await loadQueue();
+    } finally { setQueueBusyId(null); }
   }
 
   // Clear the active request + refresh once a fix is staged.
@@ -2012,6 +2108,7 @@ function FixSongTab({ accessToken, showToast }) {
           onUnclaim={unclaimReq}
           onRelease={releaseReq}
           onReject={rejectReq}
+          onSendToAce={sendToAceReq}
           onRefresh={loadQueue}
         />
       )}
@@ -2598,6 +2695,26 @@ export default function AdminDashboard() {
     });
     return () => sub?.subscription?.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ACTIVELY keep the session fresh (2026-08-10). onAuthStateChange above only
+  // fires when supabase-js's own background timer runs — browsers throttle
+  // timers in backgrounded tabs, so a tab left open an hour came back with an
+  // expired token and every admin call 401'd ("Invalid session" mid-fix-flow;
+  // the admin-songs 401 bursts in the edge logs are the same failure).
+  // getSession() transparently refreshes an expiring session and triggers
+  // TOKEN_REFRESHED → setAccessToken. Run it on focus/visibility (the moment
+  // the owner comes back to the tab) and every 8 minutes as a floor.
+  useEffect(() => {
+    const nudge = () => { supabase.auth.getSession().catch(() => {}); };
+    window.addEventListener('focus', nudge);
+    document.addEventListener('visibilitychange', nudge);
+    const iv = setInterval(nudge, 8 * 60 * 1000);
+    return () => {
+      window.removeEventListener('focus', nudge);
+      document.removeEventListener('visibilitychange', nudge);
+      clearInterval(iv);
+    };
   }, []);
 
   // Check auth on mount: real Supabase Auth session + admin_users role lookup
