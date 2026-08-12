@@ -473,7 +473,15 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           lastTakesSeen.push({ url, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
-        const tr = await postFn({ action: 'transcribe', audioUrl: url });
+        // Same transient-Whisper protection as the ladder: retry once, and if
+        // the transcription still fails say so instead of dropping the take.
+        let tr = await postFn({ action: 'transcribe', audioUrl: url });
+        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: url }); }
+        if (!tr.ok) {
+          lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
+          lastTakesSeen.push({ url, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
+          continue;
+        }
         const words = parseTimed(tr.timed);
         // WHOLE-TAKE (owner rule: ship Suno's whole re-sing, NEVER splice). Accept the
         // entire take whenever it sang the corrected line and its length is CLOSE to
@@ -956,8 +964,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           lastTakesSeen.push({ url: t.audioUrl, text: '(no transcrita — demasiado larga)', reason: lastReason });
           continue;
         }
-        const tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
-        if (!tr.ok) continue;
+        // A take whose TRANSCRIPTION fails used to be dropped silently — no
+        // reason, no retry — so a perfectly good take could disappear and the
+        // round would report the OTHER take's failure instead (2026-08-12,
+        // Rafael 9dd5efe4: an in-band take singing both "Jehová" spots vanished
+        // this way while the error blamed a 6:01 take). Whisper hiccups are
+        // transient, so retry once and, if it still fails, say so out loud.
+        let tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
+        if (!tr.ok) { await sleep(4000); tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl }); }
+        if (!tr.ok) {
+          lastReason = `no se pudo transcribir la toma${tr?.error ? `: ${String(tr.error).slice(0, 70)}` : ''}`;
+          lastTakesSeen.push({ url: t.audioUrl, text: '(sin transcripción — no es culpa de la toma)', reason: lastReason });
+          continue;
+        }
         const words = parseTimed(tr.timed);
         // Last REAL sung word (Whisper hallucinates credits over outros).
         const takeEnd = words.length ? (lastSungWordEnd(words) ?? words[words.length - 1].end) : 0;
