@@ -69,7 +69,7 @@ serve(async (req) => {
             product_data: {
               name: `Paquete de ${pack.songs} Canciones - RegalosQueCantan`,
               description: `Un código personal para crear ${pack.songs} canciones personalizadas — una para cada persona, cuando tú quieras.`,
-              images: ['https://regalosquecantan.com/og-image.jpg'],
+              images: ['https://regalosquecantan.com/images/og-image.jpg'],
             },
             unit_amount: pack.cents,
           },
@@ -461,7 +461,7 @@ serve(async (req) => {
             description: songCount > 1
               ? `${songCount} canciones completas en MP3, descarga ilimitada`
               : 'Canción completa en MP3, descarga ilimitada',
-            images: ['https://regalosquecantan.com/og-image.jpg'],
+            images: ['https://regalosquecantan.com/images/og-image.jpg'],
           },
           unit_amount: priceInCents,
         },
