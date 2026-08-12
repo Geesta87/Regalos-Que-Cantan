@@ -713,6 +713,21 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   }
 
   if (!cands.length) {
+    // AUTO-ESCALATION (2026-08-11, Miguel Ángel): a PINNED full re-roll whose
+    // takes fail STRUCTURALLY (duplicated/missing sections) is the signature of
+    // the duration pin forcing Suno to pad the lyric sheet — retrying pinned
+    // burns rounds against a wall (0/8 pinned vs 4/4 unpinned that night). The
+    // next round automatically drops the pin but KEEPS the cloned voice.
+    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n/i.test(String(d?.reason || '')));
+    if (plan.mode === 'full' && !plan.noPin && !plan.noPersona && structuralFail) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, noPin: true },
+        auto_status: 'generating',
+        auto_error: 'pinned takes failed structurally — retrying SAME VOICE without the length pin',
+      });
+      return;
+    }
     await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'generating', auto_error: 'no clean take this round' });
     return;
   }
