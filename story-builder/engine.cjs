@@ -175,7 +175,13 @@ async function genHeroes(flat) {
       // Seedance call entirely — only the freeze-extend wrap is redone.
       if (!fs.existsSync(path.join(DIR, `motion-${id}.mp4`))) {
         console.log(`animating hero ${id} (window ${L}s)...`);
-        const motionUrl = await kieRun('bytedance/seedance-2', 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, keep the character identical, no distortion.', { first_frame_url: url, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }, `${id}-motion`);
+        // per-scene motion direction from the storyboard when present (hero scenes
+        // carry a one-line camera/subject move); generic gentle motion otherwise.
+        const custom = (sb.scenes.find((s) => s.image_id === id && s.motion_prompt)?.motion_prompt || '').trim();
+        const motionPrompt = custom
+          ? `${custom.replace(/\.?\s*$/, '.')} Subtle and natural, Pixar 3D animation, keep the character identical, no distortion.`
+          : 'Gentle warm cinematic motion that suits the scene, subtle and natural, soft camera, Pixar 3D animation, keep the character identical, no distortion.';
+        const motionUrl = await kieRun('bytedance/seedance-2', motionPrompt, { first_frame_url: url, resolution: '720p', aspect_ratio: '9:16', duration: 5, generate_audio: false }, `${id}-motion`);
         dl(motionUrl, `motion-${id}.mp4`);
       } else {
         console.log(`  hero ${id}: reusing existing motion clip`);
