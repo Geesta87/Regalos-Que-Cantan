@@ -145,7 +145,15 @@ or `src/utils/audioSplice.js`.
 
 ### Kie facts (verified against docs.kie.ai 2026-08-09)
 
-- replace-section window: 6–60s, ≤50% of song, **no length-control parameter**.
+- replace-section window: **10–480s** per Kie (we cap at 60), ≤50% of song, **no
+  length-control parameter**. A window under 10s is a hard 422 — we shipped a 6s
+  floor for months (fixed 2026-08-12).
+- **One window reaches ONE spot.** A corrected line that repeats (chorus) needs a
+  window PER occurrence: the ladder keeps a partially-fixed take and chains the
+  next round off it. Ace goes straight to a full re-roll for repeated lines.
+- Kie `get-timestamped-lyrics` ALIGNS the submitted sheet — it is NOT a
+  transcript and cannot prove a word was sung. Prove wording with Whisper
+  (`transcribe-song` takes a raw `{audioUrl}`); use Kie timings for structure.
 - Source audio is purged ~14 days per take; every applied fix is a fresh take,
   which resets that clock.
 - Whisper gotchas when validating: numbers/years transcribe as DIGITS ("13",
