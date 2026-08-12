@@ -594,9 +594,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
   // Keep each take's Kie audioId alongside its URL — the winner's identity goes
   // into candidate_meta so release CHAINS the next fix off the corrected take.
-  const takes: Array<{ url: string; kieId: string | null }> = (d?.trackList || [])
+  const takes: Array<{ url: string; kieId: string | null; dur: number | null }> = (d?.trackList || [])
     .filter((t: any) => t.audioUrl)
-    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null }));
+    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null, dur: Number(t.duration) > 0 ? Number(t.duration) : null }));
   if (!takes.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
 
   // Pristine duration (once) — the length yardstick for whole takes. When the
@@ -637,7 +637,19 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
 
-  for (const { url, kieId } of takes) {
+  for (const { url, kieId, dur } of takes) {
+    // Cheap pre-filter (2026-08-12, Mariela 62fd68ed): Kie reports each take's
+    // length; a LOOPED take can never pass, so reject it without paying for
+    // (and risking) a Whisper call on a 7-minute file.
+    // Threshold is 1.5x, NOT the 1.15x trim ceiling: Kie's number is the RAW
+    // file length (sung part + instrumental outro), while every band below is
+    // measured on SUNG length. A 1.16x raw take is routinely trimmable — the
+    // first normalized Mariela take was exactly that and a 1.15x cut here would
+    // have thrown it away unheard. Only clear duplication (1.5x+) dies early.
+    if (origDur && dur && dur > origDur * 1.5) {
+      diags.push({ url, verdict: 'reject', reason: `toma duplicada (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
+      continue;
+    }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
@@ -718,7 +730,22 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // the duration pin forcing Suno to pad the lyric sheet — retrying pinned
     // burns rounds against a wall (0/8 pinned vs 4/4 unpinned that night). The
     // next round automatically drops the pin but KEEPS the cloned voice.
-    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n/i.test(String(d?.reason || '')));
+    const structuralFail = diags.slice(-2).some((d: any) => /secci[oó]n|no contiene la canci[oó]n|estructuralmente|duplicada/i.test(String(d?.reason || '')));
+    // SECTION → FULL escalation (2026-08-12, Mariela 62fd68ed): when the section
+    // ladder can't land after 2 rounds, retrying a 3rd rarely helps — the song
+    // itself is resisting replace-section. Move to the full re-roll ladder
+    // (same cloned voice), which the pin rule below then escalates to unpinned
+    // if needed. Happens once per request; the daily cap still bounds spend.
+    if (plan.mode !== 'full' && !plan.escalatedToFull && (r.auto_round || 0) >= 2) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_plan: { ...plan, mode: 'full', escalatedToFull: true },
+        auto_round: 0,
+        auto_status: 'generating',
+        auto_error: 'section rounds failed — escalating to a full re-roll in the SAME cloned voice',
+      });
+      return;
+    }
     if (plan.mode === 'full' && !plan.noPin && !plan.noPersona && structuralFail) {
       await setAuto(admin, r.id, {
         auto_takes: diags.slice(-12),

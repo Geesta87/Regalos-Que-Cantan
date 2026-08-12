@@ -464,6 +464,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       for (const take of takeList) {
         const url = take.audioUrl;
         const takeId = take.id || null;
+        // Same cheap pre-filter as the ladder: a whole-take run can never use a
+        // take longer than 1.15x, so don't pay for its transcription.
+        if (wholeOnly && origFullDur && take.duration > origFullDur * 1.5) {
+          lastReason = `la toma salió de ${mmss(take.duration)} (casi ${(take.duration / origFullDur).toFixed(1)}× lo normal — duplicada)`;
+          lastTakesSeen.push({ url, text: '(no transcrita — demasiado larga)', reason: lastReason });
+          continue;
+        }
         const tr = await postFn({ action: 'transcribe', audioUrl: url });
         const words = parseTimed(tr.timed);
         // WHOLE-TAKE (owner rule: ship Suno's whole re-sing, NEVER splice). Accept the
@@ -908,6 +915,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       lastTakesSeen = [];
       let roundWinner = null;
       for (const t of takeList) {
+        // CHEAP PRE-FILTER (2026-08-12, Mariela 62fd68ed): Kie tells us each
+        // take's length. A take longer than 1.15x can never pass (that's the
+        // trimmed ceiling), so reject it WITHOUT transcribing — Whispering a
+        // 7-minute take is the longest, most fragile call in the flow and it
+        // killed a run with a browser "Failed to fetch".
+        // 1.5x, not the 1.15x trim ceiling: Kie's duration is the RAW file
+        // (sung + instrumental outro) while the bands measure SUNG length, so a
+        // 1.16x take is routinely trimmable. Only clear duplication dies early.
+        if (baselineDur && t.duration > baselineDur * 1.5) {
+          lastReason = `la toma salió de ${mmss(t.duration)} (casi ${(t.duration / baselineDur).toFixed(1)}× lo normal — duplicada)`;
+          lastTakesSeen.push({ url: t.audioUrl, text: '(no transcrita — demasiado larga)', reason: lastReason });
+          continue;
+        }
         const tr = await postFn({ action: 'transcribe', audioUrl: t.audioUrl });
         if (!tr.ok) continue;
         const words = parseTimed(tr.timed);
