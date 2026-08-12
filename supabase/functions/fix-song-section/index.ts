@@ -25,7 +25,9 @@
 //   action: 'apply'             -> swaps the approved fixed audio into the row
 //
 // Hard constraints from Kie (enforced/clamped here):
-//   - replaced window must be 6-60 seconds AND <= 50% of the song length
+//   - replaced window must be 10-480 seconds AND <= 50% of the song length.
+//     We are stricter than Kie on the ceiling (MAX_WINDOW_S = 60) because a
+//     long window re-sings more of the song than a fix needs.
 //   - the source song must still be on Kie's servers (audio is purged after
 //     ~14 days) — needs the parent kie_task_id + the per-track audioId, which
 //     we read from songs.kie_task_id + songs.kie_payload.id. Songs older than
@@ -66,7 +68,13 @@ const CLAUDE_PRIMARY_MODEL = 'claude-opus-4-8';
 const CLAUDE_FALLBACK_MODEL = 'claude-sonnet-4-6';
 
 // Kie hard limits for replace-section.
-const MIN_WINDOW_S = 6;
+// The FLOOR IS 10, not 6 (verified live 2026-08-12 — a 9.7s window came back
+// `422 Selected section must be between 10-480 seconds`). We shipped 6 for
+// months: any change whose window snapped under 10s was rejected outright and
+// the owner just saw "submit failed" with no usable reason. Kie's ceiling is
+// actually 480s; MAX_WINDOW_S below stays 60 as OUR quality cap, because a long
+// window re-sings more of the song than the fix needs.
+const MIN_WINDOW_S = 10;
 const MAX_WINDOW_S = 60;
 
 // ---------------------------------------------------------------------------
@@ -272,7 +280,7 @@ const FIX_TOOL = {
       },
       infill_end_s: {
         type: 'number',
-        description: 'End time, in seconds, of the slice to regenerate. End at the END of the last full lyric line of the passage (just after its last word) — never mid-line. Choose a whole phrase, not just the wrong word: aim for a 10-15 second window covering the complete line(s) the error sits in. Hard limits: 6-60 seconds and no more than half the song duration.',
+        description: 'End time, in seconds, of the slice to regenerate. End at the END of the last full lyric line of the passage (just after its last word) — never mid-line. Choose a whole phrase, not just the wrong word: aim for a 10-15 second window covering the complete line(s) the error sits in. Hard limits: 10-60 seconds and no more than half the song duration — a window shorter than 10 seconds is rejected outright by the music API.',
       },
       section_text: {
         type: 'string',
@@ -751,7 +759,7 @@ async function generateFullRound(lyrics: string, title: string, styleUsed: strin
   }
 }
 
-// Keep Claude's window inside Kie's 6-60s / <=50%-of-song rule.
+// Keep Claude's window inside the 10-60s / <=50%-of-song rule.
 function clampWindow(startIn: number, endIn: number, duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
   const maxLen = Math.max(MIN_WINDOW_S, Math.min(MAX_WINDOW_S, dur * 0.5));
@@ -804,7 +812,7 @@ function snapToGap(t: number, words: WhisperWord[], dur: number, search = 1.3): 
 }
 
 // Expand a window to a phrase-length minimum (centered), snap edges to natural
-// breaths, then enforce Kie's 6-60s / <=50% rule via clampWindow.
+// breaths, then enforce the 10-60s / <=50% rule via clampWindow.
 function snapWindowToPhrase(startIn: number, endIn: number, words: WhisperWord[], duration: number): { start: number; end: number } {
   const dur = duration > 0 ? duration : 180;
   let start = Math.max(0, Math.min(startIn, dur));
