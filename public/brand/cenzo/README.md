@@ -36,12 +36,14 @@ into an extraordinary song. He signs social posts "— Cenzo 🎶".
 
 ## Voice (owner-chosen 2026-08-11)
 
-Cenzo's voice is a **bright, playful young male voice in Mexican Spanish, early
-20s, quick and cheeky with infectious energy, like a charismatic TikTok creator
-from CDMX — fun, modern, a smile in the voice.** Use that exact description in
-every Seedance `generate_audio` prompt, and A/B the result by ear against
+Cenzo's voice is a **kind elderly male voice in Mexican Spanish, 70s, warm and
+grandfatherly like an abuelo telling stories in the plaza — slightly raspy,
+wise, affectionate, unhurried.** Use that exact description in every Seedance
+`generate_audio` prompt, and A/B the result by ear against
 `cenzo-voice-reference.mp3`. Seedance voices drift between generations; for
 strict consistency, clone the reference mp3 into a fixed TTS voice.
+(Owner first picked the playful-young voice, then switched to this elder voice
+same day — the elder is final.)
 
 ## How to generate more Cenzo (the recipe that made all of this)
 
