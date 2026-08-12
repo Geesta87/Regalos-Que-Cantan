@@ -538,6 +538,9 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
     // full takes; unpinned generation (how the original was made) follows the
     // lyric sheet. Trade-off: new voice, judged by the owner's ears as always.
     ...(plan.noPersona ? { usePersona: false } : {}),
+    // noPin: SAME cloned voice but free length — the owner's preferred repair
+    // when the pin fights the lyric sheet (same singer, complete performance).
+    ...(plan.noPin ? { pinDuration: false } : {}),
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
@@ -646,8 +649,8 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // so long-intro takes are rejected outright.
     const takeStart = words[0].start;
     const introDrift = origStart != null ? takeStart - origStart : 0;
-    // Fresh-song mode is a NEW performance — its intro legitimately differs.
-    if (!plan.noPersona && introDrift > 12) {
+    // Fresh performances (new voice OR unpinned same-voice) own their intros.
+    if (!plan.noPersona && !plan.noPin && introDrift > 12) {
       diags.push({ url, verdict: 'reject', reason: `intro demasiado largo (empieza +${introDrift.toFixed(0)}s tarde vs original)` });
       continue;
     }
