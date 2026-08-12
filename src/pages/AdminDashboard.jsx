@@ -487,6 +487,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
             if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+            // Structure guard: reject a trim that would cut before the real ending.
+            if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), fullLyrics)) { trimAtS = null; lenOk = false; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -739,6 +741,33 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const fake = String(afterLine || '').split(/\s+/).map((w, i) => ({ word: w, start: i, end: i + 0.4 }));
     return !!findCleanLine(fake, g, { maxGapS: 99 });
   }
+  // STRUCTURE GUARD (2026-08-11, Miguel Ángel): an end-trim must keep the WHOLE
+  // song. The trim anchor hunts the lyrics' closing line, but when that line
+  // ends every chorus and the take is time-stretched, "nearest to the original
+  // length" can land on a MID-SONG chorus — a released fix once cut at Coro 2
+  // and deleted the Puente + final chorus. The closing line must appear in the
+  // audible (post-trim) part as many times as the lyrics carry it.
+  function trimKeepsWholeSong(audibleWords, lyricsText) {
+    // FULL line-by-line audit (2026-08-11, Miguel Ángel take b62256fe): closing-
+    // line counting alone is beatable — Suno inserted an extra half-verse +
+    // chorus cycle mid-song, which satisfied the closing-line count on a cut
+    // that deleted the Bridge (the name reveal). Every distinctive lyric line
+    // must be sung EXACTLY as many times as the lyrics carry it.
+    const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+    const need = new Map();
+    for (const l of lines) {
+      const groups = buildTokenGroups(l);
+      if (groups.length < 3) continue; // short lines are too ambiguous to count
+      const key = JSON.stringify(groups);
+      const e = need.get(key);
+      if (e) e.n++; else need.set(key, { line: l, n: 1 });
+    }
+    for (const { line, n } of need.values()) {
+      const have = countCleanOccurrences(audibleWords, line);
+      if (have !== n) return false; // missing section (<) or duplicated section (>)
+    }
+    return true;
+  }
   // Full checklist for a take: every change's `after` sung enough times, every
   // `before` fully gone, and every still-current prior correction intact.
   function evalChecklist(words, changes, combinedLyrics, priorCorrections) {
@@ -893,6 +922,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           const lyricLines = String(combinedLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
           const trueEnd = findLastLineEnd(words, lyricLines, baselineDur);
           if (trueEnd != null && trueEnd >= baselineDur * 0.80 && trueEnd <= baselineDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+          // Structure guard: reject a trim that would cut before the real ending.
+          if (trimAtS && !trimKeepsWholeSong(words.filter((w) => w.end <= trimAtS), combinedLyrics)) { trimAtS = null; lenOk = false; }
         }
         // CRITICAL: evaluate the checklist only on the part the customer will
         // hear. Over-extended takes append extra repetitions that often sing

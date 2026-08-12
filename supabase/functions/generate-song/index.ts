@@ -2445,7 +2445,12 @@ REGLAS DE COMPOSICIÓN (OBLIGATORIAS):
    - CORO ([Coro], [Coro Final], [Pre-Coro]): 4-7 sílabas por línea. CORTAS, PUNZANTES. Líneas largas en el coro NO se pueden gritar en grupo. La línea-gancho debe ser tan corta que se grabe en la cabeza después de UNA escucha. Si una línea del coro pasa de 7 sílabas, RECÓRTALA.
    Español mexicano COLOQUIAL, no literario ni poético rebuscado. Escribe como se HABLA en México.
 
-6. RIMA. Usa rima consonante o asonante natural. No fuerces rimas artificiales. Esquema por estrofa: ABAB o AABB.
+6. RIMA — OBLIGATORIA Y AUDIBLE (regla de negocio 2026-08-11: "la letra no rima" es una queja real de clientes pagados; la rima debe OÍRSE a la primera escucha, no justificarse técnicamente).
+   - En CADA estrofa, las líneas 2 y 4 DEBEN rimar entre sí. Esquema ABAB, AABB o ABCB — NUNCA una estrofa sin rima.
+   - Prefiere rima CONSONANTE (terminación completa igual desde la vocal tónica: -ado/-ado, -ón/-ón, -ero/-ero). La asonante (solo vocales) se permite ocasionalmente, nunca en dos estrofas seguidas.
+   - PROHIBIDO: rimar una palabra consigo misma ("siempre/siempre"), rimar palabras de la misma raíz ("trabajo/trabajadores"), o dejar una línea colgada sin pareja de rima.
+   - CORO: si la línea-gancho se repite al inicio y al final del coro, las líneas de en medio deben rimar ENTRE SÍ. El coro se escucha 3+ veces — una rima floja ahí se nota triple.
+   - AUTO-VERIFICACIÓN: antes de entregar, lee SOLO las palabras finales de cada línea; si en alguna estrofa las líneas 2 y 4 no comparten una terminación sonora clara, reescribe esa estrofa. (Los hechos del cliente siempre pesan más que la rima — si chocan, cambia la frase, no el hecho.)
 
 7. PUENTE = GIRO EMOCIONAL. Cambio de perspectiva, confesión íntima, o el momento más vulnerable. NO repetir la misma idea de los versos.
 
@@ -3033,7 +3038,7 @@ CONVENCIONES OBLIGATORIAS DEL CORRIDO TRADICIONAL (90s rural Sinaloa) — ESTAS 
 
 1. MÉTRICA OCTOSILÁBICA (ESTRICTA). TODAS las líneas (versos, pre-coro si existe, coro, coro final) DEBEN tener exactamente 8 sílabas. Esta es la métrica tradicional del corrido mexicano desde el siglo XIX. OVERRIDE la regla universal de 4-7 sílabas en coro — para corrido tradicional el coro también es 8 sílabas. Cuenta las sílabas LITERALMENTE (no las poéticas) — si tienes 7 o 9 sílabas, ajusta.
 
-2. ESTROFAS DE CUARTETA. Cada verso ([Verso 1], [Verso 2], [Puente]) debe ser una cuarteta de 4 líneas con rima ABAB o ABCB. La rima es CONSONANTE preferentemente. No improvises estrofas de 5 o 6 líneas — siempre 4.
+2. ESTROFAS DE CUARTETA CON RIMA CONSONANTE (ESTRICTA). Cada verso ([Verso 1], [Verso 2], [Puente]) debe ser una cuarteta de 4 líneas, esquema ABAB o ABCB. Las líneas 2 y 4 de CADA cuarteta DEBEN rimar en CONSONANTE — terminación idéntica desde la vocal tónica: -ón/-ón, -ado/-ado, -ero/-ero, -ar/-ar, -ido/-ido. En corrido tradicional la asonante NO basta: los clásicos del género riman fuerte y el cliente lo espera ("no rima" = queja de cliente pagado, 2026-08-11). PROHIBIDO rimar una palabra consigo misma o con su misma raíz, y prohibido dejar una línea sin pareja de rima. En el coro con gancho repetido (línea 1 = línea 4 = el gancho), las líneas 2 y 3 riman entre sí en consonante. No improvises estrofas de 5 o 6 líneas — siempre 4. VERIFICACIÓN OBLIGATORIA antes de entregar: lista las palabras finales de cada cuarteta y confirma cada pareja consonante; si una falla, reescribe esa cuarteta.
 
 3. FÓRMULA TRADICIONAL DE APERTURA. El [Verso 1] (o el [Hablado] inicial si existe) DEBE abrir con una de estas fórmulas clásicas del corrido (escoge la más natural para el caso). IMPORTANTE: rellena los datos con el valor real (año, lugar) ya escrito — NUNCA dejes corchetes ni instrucciones en la letra:
    - "Voy a cantarles señores..."

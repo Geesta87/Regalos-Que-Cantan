@@ -176,7 +176,13 @@ function findCleanLine(words: W[], tokenGroups: string[][], maxGapS = 3.5): { st
 }
 // End of the final lyric line, preferring the occurrence nearest `nearS` — the
 // disambiguator for Suno's duplicated-tail over-extension. Port of findLastLineEnd.
-function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number | null {
+// maxS (optional): prefer the LATEST match at or below this ceiling instead of
+// the one nearest to nearS. The nearest-pick released a beheaded song
+// (2026-08-11, Miguel Ángel 676a1f73): the last lyric line ended EVERY chorus,
+// the take was time-stretched, and "nearest to the original length" landed on
+// the SECOND chorus — the trim deleted the Puente and final chorus. The real
+// ending is always the LAST in-band occurrence.
+function findLastLineEnd(words: W[], lyricsText: string, nearS: number, maxS?: number): number | null {
   const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
   if (!lines.length || !words.length) return null;
   const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
@@ -189,12 +195,67 @@ function findLastLineEnd(words: W[], lyricsText: string, nearS: number): number 
     for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
     if (ok) fulls.push(atoms[i + tokens.length - 1].end);
   }
-  const pick = (c: number[]) => c.length ? c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b)) : null;
+  const pick = (c: number[]): number | null => {
+    if (!c.length) return null;
+    if (maxS != null) {
+      const inBand = c.filter((e) => e <= maxS);
+      if (inBand.length) return Math.max(...inBand);
+    }
+    return c.reduce((b, e) => (Math.abs(e - nearS) < Math.abs(b - nearS) ? e : b));
+  };
   if (fulls.length) return pick(fulls);
   const last = tokens[tokens.length - 1];
   const singles: number[] = [];
   for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
   return pick(singles);
+}
+
+// ALL closing-line occurrence end-times (ascending order of position) — the
+// earliest-complete trim anchor iterates these. Same matching as findLastLineEnd.
+function findLastLineEnds(words: W[], lyricsText: string): number[] {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  if (!lines.length || !words.length) return [];
+  const tokens = lines[lines.length - 1].split(/\s+/).map(norm).filter((t) => t.length > 1);
+  if (!tokens.length) return [];
+  const atoms = words.map((w) => ({ n: norm(w.word), end: w.end }));
+  const eq = (a: string, b: string) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+  const fulls: number[] = [];
+  for (let i = 0; i + tokens.length <= atoms.length; i++) {
+    let ok = true;
+    for (let j = 0; j < tokens.length; j++) { if (!eq(atoms[i + j].n, tokens[j])) { ok = false; break; } }
+    if (ok) fulls.push(atoms[i + tokens.length - 1].end);
+  }
+  if (fulls.length) return fulls;
+  const last = tokens[tokens.length - 1];
+  const singles: number[] = [];
+  for (const a of atoms) if (eq(a.n, last)) singles.push(a.end);
+  return singles;
+}
+
+// FULL-STRUCTURE AUDIT (2026-08-11, Miguel Ángel take b62256fe): counting only
+// the closing line is beatable. Suno's replace-section inserted an entire extra
+// half-verse + chorus cycle mid-song, which simultaneously (a) satisfied the
+// closing-line count on a cut that beheaded the Bridge — the customer's name
+// reveal — and (b) pushed the real ending out of the trim band. The only
+// audit that catches both failure modes is line-by-line: every distinctive
+// lyric line must be sung EXACTLY as many times as the lyrics carry it.
+// Returns null when the structure is intact, else a human-readable reason.
+function auditStructure(audible: W[], lyricsText: string): string | null {
+  const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+  const need = new Map<string, { line: string; n: number }>();
+  for (const l of lines) {
+    const groups = buildTokenGroups(l);
+    if (groups.length < 3) continue; // short lines are too ambiguous to count
+    const key = JSON.stringify(groups);
+    const e = need.get(key);
+    if (e) e.n++; else need.set(key, { line: l, n: 1 });
+  }
+  for (const { line, n } of need.values()) {
+    const have = countCleanOccurrences(audible, line);
+    if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
+    if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
+  }
+  return null;
 }
 
 // ── Count-based take checklist — port of AdminDashboard's evalChecklist ──────
@@ -553,19 +614,45 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // seconds late legitimately ends the same few seconds late.
     // As-is ceiling is TIGHT (≤1.08×): the old ≤1.30× let a 3:52 song ship as
     // 4:49 untrimmed (owner complaint 2026-08-09). Over 1.08× → end-trim rescue.
+    //
+    // TRIM ANCHOR = EARLIEST-COMPLETE (2026-08-11, two live incidents on Miguel
+    // Ángel 676a1f73): the closing line ends EVERY chorus, so "nearest to the
+    // original length" cut at Coro 2 (beheaded the song) and "latest in band"
+    // cut inside the duplicated tail (kept ~45s of junk repetition the owner
+    // heard at 3:12). The only correct cut is the EARLIEST closing-line
+    // occurrence by which the ENTIRE song has been sung — the closing line must
+    // have been heard as many times as the full lyrics sing it (token-count,
+    // punctuation-insensitive). Before that point the song is incomplete; after
+    // it, everything is duplication.
     const effOrig = origDur + Math.max(0, introDrift);
     const takeEnd = lastSungWordEnd(words) ?? words[words.length - 1].end;
     let trimAtS: number | null = null;
+    let structFail: string | null = null;
     let lenOk = takeEnd >= effOrig * 0.80 && takeEnd <= effOrig * 1.08;
-    if (!lenOk && takeEnd > effOrig * 1.08) {
-      const trueEnd = findLastLineEnd(words, combinedLyrics, effOrig);
-      if (trueEnd != null && trueEnd >= effOrig * 0.80 && trueEnd <= effOrig * 1.15) {
-        trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2));
-        lenOk = true;
+    if (lenOk) {
+      // In-band whole take: still must contain the whole song, no dup sections.
+      structFail = auditStructure(words, combinedLyrics);
+      if (structFail) lenOk = false;
+    } else if (takeEnd > effOrig * 1.08) {
+      // Over-long: try each closing-line occurrence (in band, earliest first)
+      // and accept the FIRST cut whose audible part passes the FULL structure
+      // audit — the whole song present, nothing duplicated. A take like
+      // b62256fe (extra mid-song cycle) has NO such cut and is rejected whole.
+      const ends = findLastLineEnds(words, combinedLyrics)
+        .filter((e) => e >= effOrig * 0.80 && e <= effOrig * 1.15)
+        .sort((a, b) => a - b);
+      for (const e of ends) {
+        const aud = words.filter((w) => w.end <= e + 0.3);
+        structFail = auditStructure(aud, combinedLyrics);
+        if (!structFail) {
+          trimAtS = Math.min(takeEnd, +(e + 2.5).toFixed(2));
+          lenOk = true;
+          break;
+        }
       }
     }
     if (!lenOk) {
-      diags.push({ url, verdict: 'reject', reason: takeEnd > effOrig * 1.08 ? 'demasiado larga, no true-end found' : 'demasiado corta' });
+      diags.push({ url, verdict: 'reject', reason: structFail || (takeEnd > effOrig * 1.08 ? 'demasiado larga, sin punto de corte estructuralmente completo' : 'demasiado corta') });
       continue;
     }
     const audible = trimAtS ? words.filter((w) => w.end <= trimAtS) : words;
