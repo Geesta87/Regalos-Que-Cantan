@@ -594,9 +594,9 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   const d = await callFn('fix-song-section', { action: 'diag', taskId: r.auto_task_id });
   // Keep each take's Kie audioId alongside its URL — the winner's identity goes
   // into candidate_meta so release CHAINS the next fix off the corrected take.
-  const takes: Array<{ url: string; kieId: string | null }> = (d?.trackList || [])
+  const takes: Array<{ url: string; kieId: string | null; dur: number | null }> = (d?.trackList || [])
     .filter((t: any) => t.audioUrl)
-    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null }));
+    .map((t: any) => ({ url: t.audioUrl, kieId: t.id || null, dur: Number(t.duration) > 0 ? Number(t.duration) : null }));
   if (!takes.length) { await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'no takes returned' }); return; }
 
   // Pristine duration (once) — the length yardstick for whole takes. When the
@@ -637,7 +637,14 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   type Cand = { url: string; kieId: string | null; drift: number; trimAtS: number | null };
   const cands: Cand[] = [];
 
-  for (const { url, kieId } of takes) {
+  for (const { url, kieId, dur } of takes) {
+    // Cheap pre-filter (2026-08-12, Mariela 62fd68ed): Kie reports each take's
+    // length; anything past the trimmed ceiling can never pass, so reject it
+    // without paying for (and risking) a Whisper call on a 7-minute file.
+    if (origDur && dur && dur > origDur * 1.15) {
+      diags.push({ url, verdict: 'reject', reason: `demasiado larga (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
+      continue;
+    }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
     if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }

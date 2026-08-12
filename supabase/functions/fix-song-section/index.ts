@@ -1212,10 +1212,17 @@ Deno.serve(async (req) => {
         // Full track list (audioUrl/id/imageUrl) so a slow replace-section job
         // whose original request hit the 150s gateway timeout can still be
         // collected out-of-band by polling this action with the taskId.
+        // duration: Kie reports each take's length. Callers use it to REJECT a
+        // hopeless take (>1.15x the original can never pass, even trimmed)
+        // BEFORE paying for a Whisper transcription of it — on the Mariela
+        // corrido (62fd68ed) Suno returned 6:30-7:17 takes for a 3:30 song and
+        // transcribing those ~10MB files is the longest, most failure-prone
+        // call in the whole flow (it died with a browser "Failed to fetch").
         trackList: (raw?.data?.response?.sunoData ?? []).map((t: any) => ({
           id: t.id ?? null,
           audioUrl: t.audioUrl ?? null,
           imageUrl: t.imageUrl ?? null,
+          duration: Number(t.duration) > 0 ? Number(t.duration) : null,
         })),
       });
     }
