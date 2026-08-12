@@ -621,6 +621,12 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       origDur = pw.length ? pw[pw.length - 1].end : origDur;
       origStart = pw.length ? pw[0].start : origStart;
       if (origDur) await setAuto(admin, r.id, { auto_plan: { ...plan, origDur, origStart } });
+      // A failed yardstick transcription is OUR outage, not a bad take — stop
+      // the round and say so instead of rejecting every take for "no duration".
+      else if (pt?.error) {
+        await setAuto(admin, r.id, { auto_status: 'needs_human', auto_error: `No se pudo transcribir la canción original: ${String(pt.error).slice(0, 200)}` });
+        return;
+      }
     }
   }
 
@@ -652,7 +658,14 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
-    if (!words.length) { diags.push({ url, verdict: 'reject', reason: 'no transcription' }); continue; }
+    if (!words.length) {
+      // Surface WHY (2026-08-12): a bare "no transcription" hid an OpenAI-side
+      // failure — the transcribe action already returns a precise cause
+      // (billing, revoked key, rate limit, audio unreachable). Without it the
+      // card blamed the song for an outage on our side.
+      diags.push({ url, verdict: 'reject', reason: `sin transcripción${tr?.error ? `: ${String(tr.error).slice(0, 90)}` : ''}` });
+      continue;
+    }
     if (!origDur) { diags.push({ url, verdict: 'reject', reason: 'no pristine duration' }); continue; }
     // INTRO GUARD (2026-08-10, Vicente a4672f19): a full re-roll chose a ~30s
     // instrumental intro on a song whose vocals start almost immediately —
