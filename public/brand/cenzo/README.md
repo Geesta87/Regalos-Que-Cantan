@@ -31,6 +31,17 @@ into an extraordinary song. He signs social posts "— Cenzo 🎶".
 | `cenzo-expressions.png` | 2x2 expression sheet: laugh / tender / surprised / proud-singing |
 | `cenzo-sing.mp4` | 5s acting test: sings to camera (silent) |
 | `cenzo-talk.mp4` | 5s acting test: talks/hosts to camera (silent) |
+| `cenzo-intro.mp4` | HIS OFFICIAL INTRO — 10s, VOICED: "¡Hola! Soy Cenzo…" (owner-chosen voice) |
+| `cenzo-voice-reference.mp3` | Canonical voice sample extracted from the intro — use for voice cloning / matching |
+
+## Voice (owner-chosen 2026-08-11)
+
+Cenzo's voice is a **bright, playful young male voice in Mexican Spanish, early
+20s, quick and cheeky with infectious energy, like a charismatic TikTok creator
+from CDMX — fun, modern, a smile in the voice.** Use that exact description in
+every Seedance `generate_audio` prompt, and A/B the result by ear against
+`cenzo-voice-reference.mp3`. Seedance voices drift between generations; for
+strict consistency, clone the reference mp3 into a fixed TTS voice.
 
 ## How to generate more Cenzo (the recipe that made all of this)
 
