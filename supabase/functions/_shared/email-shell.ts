@@ -90,12 +90,12 @@ function banner(c: Tokens): string {
   const src = `${ASSET_BASE}/papel-${c.papel}.png`;
   return `<tr><td style="padding:0;line-height:0;background:${c.strip};" bgcolor="${c.strip}"><img src="${src}" width="600" alt="" style="display:block;width:100%;height:auto;border:0;"></td></tr>`;
 }
-// The flat two-colour Cenzo mark sits above the wordmark. It is a self-contained
-// circle with a transparent surround, so it reads correctly on all 7 palettes.
-// Served from the site because public/brand/cenzo/ ships with the frontend deploy.
+// Cenzo himself sits above the wordmark — the square crop of the master art, so
+// his face and painted wings are what people see. Served from the site because
+// public/brand/cenzo/ ships with the frontend deploy.
 const CENZO_MARK = 'https://regalosquecantan.com/brand/cenzo/cenzo-mark.png';
 function wordmark(): string {
-  return `<tr><td align="center" style="padding:24px 26px 0;"><img src="${CENZO_MARK}" width="46" height="46" alt="" style="display:block;margin:0 auto 12px;width:46px;height:46px;border:0;"><span style="font-size:11px;letter-spacing:4px;color:${WORD};font-weight:bold;">R E G A L O S &nbsp; Q U E &nbsp; C A N T A N</span></td></tr>`;
+  return `<tr><td align="center" style="padding:24px 26px 0;"><img src="${CENZO_MARK}" width="72" height="72" alt="Cenzo" style="display:block;margin:0 auto 12px;width:72px;height:72px;border-radius:10px;border:0;"><span style="font-size:11px;letter-spacing:4px;color:${WORD};font-weight:bold;">R E G A L O S &nbsp; Q U E &nbsp; C A N T A N</span></td></tr>`;
 }
 function hero(c: Tokens, h: Hero, palette: Palette, eyebrow?: string): string {
   const src = `${ASSET_BASE}/${heroAsset(h, palette)}`;
