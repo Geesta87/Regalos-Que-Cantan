@@ -878,6 +878,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const totalSpots = ordered.reduce((n, c) => n + Math.max(1, timesInLyrics(combinedLyrics, c.after)), 0);
     const MAX_SUBMITS = Math.min(12, totalSpots * 2 + 1);
     const MAX_PER_TARGET = 3;
+    // Kie server errors get their OWN budget — they are not attempts at the line.
+    const MAX_INFRA_RETRIES = 10;
+    let infraRetries = 0;
     const perTarget = {};
     let submits = 0;
     let source = null;           // { taskId, audioId, trimAtS } of the previous round's winner
@@ -957,15 +960,51 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
 
       // Poll Kie until the round's takes are ready.
       let takeList = [];
+      let infraFail = false;   // Kie's servers died — NOT a verdict on this take
       for (let i = 1; i <= 40; i++) {
         const d = await postFn({ action: 'diag', taskId: sub.fixTaskId });
         onMsg?.(`Generando la voz corregida… (paso ${submits}.${i})`);
         if (d.status === 'SUCCESS') { takeList = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
-          lastReason = d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright)' : `generation failed (${d.status})`;
+          // TWO DIFFERENT FAILURES WEARING ONE COAT (2026-08-12). Kie's own codes
+          // separate them: 400 = the lyrics were refused (content — our problem,
+          // retrying is pointless), 5xx/none = their server fell over mid-job
+          // (infrastructure — retrying is the ONLY thing that helps). We used to
+          // treat both as "this take failed" and burn one of the three attempts
+          // the line gets. On a bad night that spends the whole budget without
+          // ever hearing a single take: song 5f2b30cc died "after 3 tries" when
+          // all three were errorCode 500, and Rafael's fix needed SIXTEEN
+          // submissions before Kie produced audio at all.
+          const code = Number(d.errorCode);
+          infraFail = d.status !== 'SENSITIVE_WORD_ERROR' && (!code || code >= 500);
+          lastReason = d.status === 'SENSITIVE_WORD_ERROR'
+            ? 'Suno blocked the lyrics (copyright)'
+            : (infraFail
+              ? `Kie falló del lado del servidor (${d.errorMessage || d.status})`
+              : `generation failed (${d.status})`);
           break;
         }
         await sleep(9000);
+      }
+      // Refund an infrastructure failure: it cost us a Kie call, not a chance at
+      // this line. Song generation already survives these nights by resubmitting
+      // (kie-recovery: Kie, Kie again, then Mureka); the fix ladder gave up after
+      // one. Same storm, and only one boat had a bailer.
+      if (!takeList.length && infraFail) {
+        infraRetries++;
+        if (infraRetries > MAX_INFRA_RETRIES) {
+          reportOutcome('failed', `Kie server errors x${infraRetries} — abandoning`, false);
+          const err = new Error(
+            `Kie está fallando del lado del servidor (${lastReason}). Reintenté ${infraRetries} veces sin que devolviera audio. ` +
+            `No es la canción ni la letra — vuelve a intentarlo en un rato.`);
+          err.kieDown = true;
+          throw err;
+        }
+        perTarget[target.after] = Math.max(0, (perTarget[target.after] || 1) - 1);
+        submits = Math.max(0, submits - 1);
+        onMsg?.(`Kie falló del lado del servidor — reintentando (${infraRetries}/${MAX_INFRA_RETRIES})…`);
+        await sleep(6000);
+        continue;
       }
       if (!takeList.length) { lastReason = lastReason || 'timed out'; continue; }
 

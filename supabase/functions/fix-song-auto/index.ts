@@ -41,6 +41,10 @@ const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO') || '';
 const ADMIN_FIX_URL = 'https://regalosquecantan.com/admin?tab=fixsong';
 
 const CLAUDE_MODEL = 'claude-opus-4-8';
+// Kie server errors (errorCode 5xx) get their own budget — they are not attempts
+// at the lyric line. Kept modest here because Ace shares one daily cap across
+// every request; the browser ladder, which a human is watching, retries harder.
+const MAX_INFRA_RETRIES = 5;
 const CLAUDE_FALLBACK = 'claude-sonnet-4-6';
 
 const FN_BASE = `${SUPABASE_URL}/functions/v1`;
@@ -590,7 +594,38 @@ async function stepPoll(admin: any, r: any): Promise<void> {
     return;
   }
   if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d?.status)) {
-    // Terminal Kie failure → next round (stepGenerate enforces the cap).
+    // A KIE SERVER ERROR IS NOT A ROUND (2026-08-12). Kie's codes separate the
+    // two cases: 400 = lyrics refused (content — a real strike against this
+    // attempt), 5xx/none = their server died mid-job (infrastructure — says
+    // nothing about our request). Counting a 500 as a round spent Ace's three
+    // rounds without ever hearing a take: song 5f2b30cc gave up "after 3 tries"
+    // on three straight errorCode 500s, during a night when the manual ladder
+    // needed 16 submissions to get audio at all. Refund the round and resubmit;
+    // the daily cap still bounds total spend.
+    const code = Number(d?.errorCode);
+    const infra = d?.status !== 'SENSITIVE_WORD_ERROR' && (!code || code >= 500);
+    const infraTries = Number(r.auto_plan?.infraRetries || 0) + 1;
+    if (infra && infraTries <= MAX_INFRA_RETRIES) {
+      // Refund the DAILY CAP too, not just the round. The cap counts
+      // action='auto-submit' marker rows, so leaving this one tagged would let
+      // an outage spend the whole day's budget on submissions that never
+      // produced audio — three requests x 13 submissions = 39 of 40, and the
+      // worker then skips generating for every request until UTC midnight, long
+      // after Kie recovers. Re-tag instead of delete: the row still shows what
+      // happened, it just stops counting as an attempt.
+      try {
+        await admin.from('song_fix_attempts')
+          .update({ action: 'auto-submit-infra', outcome: 'kie-server-error' })
+          .eq('kie_task_id', r.auto_task_id).eq('action', 'auto-submit');
+      } catch { /* best effort — accounting only */ }
+      await setAuto(admin, r.id, {
+        auto_status: 'generating',
+        auto_round: Math.max(0, (r.auto_round || 1) - 1),
+        auto_plan: { ...(r.auto_plan || {}), infraRetries: infraTries },
+        auto_error: `Kie server error (${d.errorMessage || d.status}) — retry ${infraTries}/${MAX_INFRA_RETRIES}, round refunded`.slice(0, 480),
+      });
+      return;
+    }
     await setAuto(admin, r.id, { auto_status: 'generating', auto_error: `Kie ${d.status} on round ${r.auto_round}`.slice(0, 480) });
     return;
   }
@@ -877,9 +912,12 @@ Deno.serve(async (req) => {
       .select('id', { count: 'exact', head: true })
       .eq('action', 'auto-submit')
       .gt('created_at', new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString());
-    if ((todayRounds || 0) >= (state.daily_cap || 40)) {
-      return json({ ok: true, skipped: 'daily cap reached', todayRounds });
-    }
+    // The cap gates SUBMITTING, not the whole tick (2026-08-12). Returning here
+    // froze every other step too — linking, understanding, planning, validating,
+    // staging — so a request that already had a good take sat unstaged and
+    // unpinged until UTC midnight. Only stepGenerate spends; everything else is
+    // free and must keep running.
+    const capReached = (todayRounds || 0) >= (state.daily_cap || 40);
 
     // Pick up work: pending requests not claimed by a human, or mid-pipeline ones.
     // NOTE: never touch status='in_progress' (a person owns those).
@@ -927,7 +965,10 @@ Deno.serve(async (req) => {
         if (r.auto_status === 'linking') await stepLink(admin, r);
         else if (r.auto_status === 'understanding') await stepUnderstand(admin, r);
         else if (r.auto_status === 'planning') await stepPlan(admin, r);
-        else if (r.auto_status === 'generating') await stepGenerate(admin, r, state);
+        else if (r.auto_status === 'generating') {
+          if (capReached) { done[r.id] = 'skipped: daily cap reached'; continue; }
+          await stepGenerate(admin, r, state);
+        }
         else if (r.auto_status === 'polling') await stepPoll(admin, r);
         else if (r.auto_status === 'validating') await stepValidate(admin, r, state);
         done[r.id] = r.auto_status;

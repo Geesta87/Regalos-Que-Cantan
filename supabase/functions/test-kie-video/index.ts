@@ -103,6 +103,30 @@ serve(async (req) => {
       return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
     }
 
+    // --- Account credit balance ---------------------------------------------
+    // Read-only. "Credits insufficient" is normally transient here (the account
+    // auto-tops-up), so a low balance is easy to ASSUME rather than check —
+    // which is exactly why this exists. Tries the known credit paths and reports
+    // whichever answers.
+    if (body.mode === 'credits') {
+      const paths = [
+        'https://api.kie.ai/api/v1/chat/credit',
+        'https://api.kie.ai/api/v1/common/credit',
+        'https://api.kie.ai/api/v1/generate/credit',
+      ];
+      const out: unknown[] = [];
+      for (const p of paths) {
+        try {
+          const r = await fetch(p, { headers: { Authorization: `Bearer ${KIE_API_KEY}` } });
+          const txt = await r.text();
+          out.push({ path: p, http: r.status, body: txt.slice(0, 300) });
+        } catch (e) {
+          out.push({ path: p, error: String((e as Error).message).slice(0, 120) });
+        }
+      }
+      return json(200, { results: out });
+    }
+
     // --- Mint a voice persona from an existing take (RESCUE tool) ------------
     // Kie clones the singer from a 10-30s vocal window of a finished take; the
     // returned personaId then re-sings a whole song in THAT voice (mode 'music'
@@ -141,8 +165,15 @@ serve(async (req) => {
     // the result is a Kie-hosted take that still has to be previewed and applied
     // through fix-song-section like any other.
     if (body.mode === 'replace-section') {
-      for (const k of ['taskId', 'audioId', 'prompt', 'fullLyrics']) {
+      for (const k of ['prompt', 'fullLyrics']) {
         if (!body[k]) throw new Error(`Missing ${k}`);
+      }
+      // Kie takes the source as EITHER {taskId + audioId} (a track it already
+      // hosts) OR {uploadUrl + model} (audio we hand it). Same infill either
+      // way — everything outside the window stays the source audio.
+      const byUpload = !!body.uploadUrl;
+      if (!byUpload && !(body.taskId && body.audioId)) {
+        throw new Error('Need taskId+audioId, or uploadUrl');
       }
       const startS = Number(body.infillStartS);
       const endS = Number(body.infillEndS);
@@ -152,9 +183,8 @@ serve(async (req) => {
       // 10 is Kie's real floor (422 "Selected section must be between 10-480
       // seconds"); 60 is our own ceiling, same as fix-song-section's.
       if (span < 10 || span > 60) throw new Error(`window must be 10-60s (got ${span.toFixed(1)}s)`);
-      const payload = {
-        taskId: body.taskId,
-        audioId: body.audioId,
+      const payload: Record<string, unknown> = {
+        ...(byUpload ? { uploadUrl: body.uploadUrl } : { taskId: body.taskId, audioId: body.audioId }),
         prompt: String(body.prompt).substring(0, 1000),
         tags: String(body.tags || '').substring(0, 1000),
         title: String(body.title || 'untitled').substring(0, 80),
