@@ -119,9 +119,31 @@ function stripSpokenProsodyCue(lyrics: string): string {
     .replace(/[ \t]+$/gm, '');
 }
 
+// CUSTOM-LYRICS NORMALIZATION (2026-08-12, Mariela 62fd68ed).
+// Customer-pasted lyrics arrive as Markdown — a "# **Title**" heading, **bold**
+// spans — and with SPELLED-OUT section tags ("[Verso uno]", "[Verso dos]") that
+// englishifyLyricsMarkers' [Verso <digit>] rule never matched. Sent that way to
+// replace-section, Suno doesn't see a structured sheet and LOOPS it: 8/8 takes
+// came back at 1.9-2.1x the song's length (7:14-7:17 for a 3:30 song) — the same
+// ~8-minute looping signature un-tagged custom lyrics produce at generation
+// time. Normalize first and the model gets a clean structure to follow.
+const SPELLED_ORDINAL: Record<string, number> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8 };
+function normalizeCustomLyrics(lyrics: string): string {
+  return lyrics
+    // Markdown heading lines (the pasted song title) — never sung, pure noise.
+    .replace(/^[ \t]*#{1,6}[ \t]*.*$/gm, '')
+    // Bold/italic emphasis markers.
+    .replace(/\*\*|__/g, '')
+    // [Verso uno] -> [Verso 1] so the englishify rules below can convert it.
+    .replace(/\[\s*Verso\s+(uno|dos|tres|cuatro|cinco|seis|siete|ocho)\s*\]/gi,
+      (_m, w: string) => `[Verso ${SPELLED_ORDINAL[w.toLowerCase()]}]`)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
-  return stripSpokenProsodyCue(lyrics)
+  return normalizeCustomLyrics(stripSpokenProsodyCue(lyrics))
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
     .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
     .replace(/\[Verso\]/gi, '[Verse]')
