@@ -93,6 +93,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const [failedTakes, setFailedTakes] = useState(null); // what Kie sang on a failed fix (diagnostic)
   const [showFailedTakes, setShowFailedTakes] = useState(false);
   const [rewordSuggestions, setRewordSuggestions] = useState(null); // singable alternatives when a word keeps failing
+  const [handingOff, setHandingOff] = useState(false); // "Send to Ace" request in flight (keeps the confirm card mounted)
 
   const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-song-section`;
   const QUEUE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/song-fix-queue`;
@@ -1404,6 +1405,69 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     return resp.json();
   }
 
+  // HAND THE CONFIRMED PLAN TO ACE (2026-08-12) — the fix stops living in this
+  // tab. Ace generates, validates and stages it, then WhatsApps when a take is
+  // ready; the owner still releases it by hand.
+  //
+  // Why: this card runs the whole fix inside the browser. Close the tab, sleep
+  // the laptop, lose wifi — the work dies, and it gives up after a few tries.
+  // On 2026-08-12 Kie failed most requests for hours and three paid songs took
+  // 16, ~30 and ~20 submissions to land. Nobody watches that, and no tab
+  // survives it. Failed Kie jobs are free, so the worker can simply out-wait a
+  // bad night.
+  async function handOffToAce() {
+    if (!plan?.approvedLyrics || handingOff) return;
+    // NOT setPhase('applying') — that phase only renders in combination with
+    // `result`/`bothResults`, so borrowing it blanked the whole card mid-request.
+    setHandingOff(true);
+    setError('');
+    try {
+      const resp = await fetch(QUEUE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
+        body: JSON.stringify({
+          action: 'handoff-plan',
+          request_id: stageRequest?.id || null,
+          song_id: song.id,
+          approvedLyrics: plan.approvedLyrics,
+          changes: (plan.changes || []).filter((c) => c?.after),
+          verifyPhrases: plan.verifyPhrases || [],
+          mode: pendingMode === 'full' ? 'full' : 'section',
+          addLine: !!plan.addLine,
+          summary: plan.changeSummary || '',
+          // The queue card, the WhatsApp ping and a later "give it to Ace" all
+          // read customer_request — and send-to-ace RE-PLANS from it. Falling
+          // straight to a placeholder would strand a chat-driven fix with no
+          // record of what was asked for.
+          customer_request: (input || '').trim()
+            || stageRequest?.customer_request
+            || [...messages].reverse().find((m) => m.role === 'user')?.text
+            || plan.changeSummary
+            || '',
+          // The owner approved THIS mode. Ace may not quietly promote a section
+          // fix into a whole new performance — that is the one thing they have
+          // been clearest about.
+          allowFullReroll: pendingMode === 'full',
+        }),
+      });
+      const d = await resp.json();
+      if (!d?.success) { setError(d?.error || 'Could not hand this to Ace.'); return; }
+      showToast(d.autoEnabled
+        ? '🎧 Ace took it. He\'ll keep trying and WhatsApp you when a take is ready to review.'
+        : '🎧 Handed to Ace — but his Auto-mode is OFF. Flip the 🤖 pill ON in the Fix Song tab or he won\'t start.');
+      // Clear the FAILURE surfaces too — a red error or a failed-takes panel
+      // left over from an earlier attempt would sit under a success toast.
+      setError(''); setFailedTakes(null); setShowFailedTakes(false);
+      setRewordSuggestions(null); setOfferFullReroll(false);
+      setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+      if (onStaged) onStaged();
+    } catch (e) {
+      setError('Network error handing off: ' + (e?.message || 'unknown'));
+    } finally {
+      setHandingOff(false);
+    }
+  }
+
   // Save the previewed fix for the owner's approval instead of applying it.
   async function stageCurrentFix() {
     if (!result) return;
@@ -1797,6 +1861,21 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   ✏️ Keep editing
                 </button>
               </div>
+              {/* Hand it to Ace instead of running it in this tab. The tab-bound
+                  fix dies if the window closes and gives up after a few tries;
+                  Ace keeps going for hours (failed Kie jobs are free), validates
+                  every take, and WhatsApps when one is ready. Release stays
+                  manual either way. */}
+              <button
+                onClick={handOffToAce}
+                disabled={handingOff}
+                className="w-full mt-2 py-2 px-4 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-500 transition disabled:opacity-60"
+              >
+                {handingOff ? '🎧 Handing it over…' : '🎧 Send to Ace — keeps trying in the background, pings you when ready'}
+              </button>
+              <p className="text-[11px] text-purple-200 mt-1">
+                Use this when Kie is struggling or you don't want to wait. You can close this window; nothing reaches the customer until you release it.
+              </p>
               {/* Always-available alternative: a full re-roll (fresh take, same
                   style & voice). Works even when the surgical fix can't (a change
                   spread across the song, OR a song older than ~14 days whose Kie

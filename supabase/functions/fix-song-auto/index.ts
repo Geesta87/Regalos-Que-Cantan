@@ -40,11 +40,35 @@ const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO') || '';
 // tap away from Release; bare /admin landed on the Action Inbox instead.
 const ADMIN_FIX_URL = 'https://regalosquecantan.com/admin?tab=fixsong';
 
+// Tell the approvers something happened. Used for BOTH outcomes: a staged fix
+// ready to review, and a request that gave up. Before 2026-08-12 only success
+// pinged, so a handed-off fix that died just sat in the queue — and the whole
+// point of handing it off is that nobody is watching the screen. Best-effort,
+// but loud in the logs on failure.
+async function pingApprovers(state: any, text: string): Promise<void> {
+  const numbers = String(state?.notify_numbers || ALERT_WHATSAPP_TO || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+  if (!numbers.length) {
+    console.error('[fix-song-auto] wanted to ping approvers but NO notify numbers configured (fix_auto_state.notify_numbers / ALERT_WHATSAPP_TO)');
+    return;
+  }
+  for (const n of numbers) {
+    try {
+      const wa = await sendWhatsApp(n, text);
+      if (!wa.ok) console.error(`[fix-song-auto] WhatsApp ping to ${n} failed: ${wa.error || wa.status || 'unknown'}`);
+    } catch (e) {
+      console.error(`[fix-song-auto] WhatsApp ping to ${n} threw: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+}
+
 const CLAUDE_MODEL = 'claude-opus-4-8';
 // Kie server errors (errorCode 5xx) get their own budget — they are not attempts
-// at the lyric line. Kept modest here because Ace shares one daily cap across
-// every request; the browser ladder, which a human is watching, retries harder.
-const MAX_INFRA_RETRIES = 5;
+// at the lyric line. Generous on purpose: a failed Kie job costs 0 credits (only
+// delivered takes bill, at 5), so out-waiting an outage is FREE. On 2026-08-12
+// three paid songs were rescued at 16, ~30 and ~20 submissions each, entirely
+// during a spell that would have exhausted any small budget. This ceiling exists
+// to stop a runaway loop, not to save money — do not lower it to "cut costs".
+const MAX_INFRA_RETRIES = 40;
 const CLAUDE_FALLBACK = 'claude-sonnet-4-6';
 
 const FN_BASE = `${SUPABASE_URL}/functions/v1`;
@@ -448,6 +472,24 @@ async function buildFixSpec(lyrics: string, request: string, extraContext: strin
 // ---------------------------------------------------------------------------
 async function setAuto(admin: any, id: string, patch: Record<string, unknown>) {
   await admin.from('song_fix_requests').update({ ...patch, auto_updated_at: new Date().toISOString() }).eq('id', id);
+  // FAILURE IS ALSO NEWS (2026-08-12). Every needs_human exit used to be silent
+  // — only a staged take pinged. That is survivable while a person is watching
+  // the screen, and useless once the fix is handed off precisely so nobody has
+  // to. Ping only for handed-off requests (auto_plan.handoff), and only once,
+  // recorded as auto_plan.failPinged so a later tick can't re-send.
+  if (patch.auto_status !== 'needs_human') return;
+  try {
+    const { data: row } = await admin.from('song_fix_requests')
+      .select('id, auto_plan, auto_error, song_id, context').eq('id', id).single();
+    const plan = row?.auto_plan || {};
+    if (!plan.handoff || plan.failPinged) return;
+    const { data: state } = await admin.from('fix_auto_state').select('notify_numbers').eq('id', 1).single();
+    const who = row?.context?.customer_name || row?.context?.phone || 'a customer';
+    await pingApprovers(state, `🎧 Ace here — I couldn't land the fix for ${who}. Reason: ${String(row?.auto_error || 'unknown').slice(0, 160)}. It's waiting for you in the Fix Song tab: ${ADMIN_FIX_URL}`);
+    await admin.from('song_fix_requests').update({ auto_plan: { ...plan, failPinged: true } }).eq('id', id);
+  } catch (e) {
+    console.error(`[fix-song-auto] needs_human ping failed for ${id}: ${e instanceof Error ? e.message : e}`);
+  }
 }
 
 // Auto-link: phone → recent songs → prefer paid + recipient-name mention.
@@ -561,7 +603,20 @@ async function stepGenerate(admin: any, r: any, state: any): Promise<void> {
   });
   if (!sub?.ok) {
     // Section not eligible (Mureka / >14 days / can't isolate) → switch to full re-roll once.
-    if (plan.mode !== 'full' && (sub?.eligible === false || sub?.canFix === false || sub?.tooOld)) {
+    const notEligible = sub?.eligible === false || sub?.canFix === false || sub?.tooOld;
+    // OWNER RULE (2026-08-12) — THE SECOND DOOR. The round-exhaustion escalation
+    // in stepValidate honors noAutoFull, but this submit-time one did not, so an
+    // owner-approved SECTION fix on a song Kie can't infill (Mureka source, or
+    // older than ~14 days) was still silently promoted to a whole new
+    // performance. Both doors must be locked or the rule is decorative.
+    if (plan.mode !== 'full' && notEligible && plan.noAutoFull) {
+      await setAuto(admin, r.id, {
+        auto_status: 'needs_human',
+        auto_error: `This song can't be section-fixed (${sub?.reason || 'source unavailable'}). Only a full re-roll would work — that re-sings the whole song, so it needs your OK.`.slice(0, 480),
+      });
+      return;
+    }
+    if (plan.mode !== 'full' && notEligible) {
       await setAuto(admin, r.id, { auto_plan: { ...plan, mode: 'full' }, auto_status: 'generating' });
       return;
     }
@@ -605,19 +660,19 @@ async function stepPoll(admin: any, r: any): Promise<void> {
     const code = Number(d?.errorCode);
     const infra = d?.status !== 'SENSITIVE_WORD_ERROR' && (!code || code >= 500);
     const infraTries = Number(r.auto_plan?.infraRetries || 0) + 1;
+    // COUNT WHAT KIE BILLS, NOT WHAT WE SUBMIT (2026-08-12, verified on the Kie
+    // dashboard: a FAILED task consumes 0 credits; only delivered takes charge,
+    // at 5 credits). The daily cap counts action='auto-submit' marker rows, so a
+    // job that returned nothing was inflating a budget it never spent. Re-tag
+    // EVERY terminal Kie failure — server errors and content blocks alike, since
+    // neither delivers audio. Re-tag rather than delete: the attempt stays
+    // visible in the audit trail, it just stops counting as spend.
+    try {
+      await admin.from('song_fix_attempts')
+        .update({ action: 'auto-submit-nocharge', outcome: infra ? 'kie-server-error' : 'kie-content-block' })
+        .eq('kie_task_id', r.auto_task_id).eq('action', 'auto-submit');
+    } catch { /* best effort — accounting only */ }
     if (infra && infraTries <= MAX_INFRA_RETRIES) {
-      // Refund the DAILY CAP too, not just the round. The cap counts
-      // action='auto-submit' marker rows, so leaving this one tagged would let
-      // an outage spend the whole day's budget on submissions that never
-      // produced audio — three requests x 13 submissions = 39 of 40, and the
-      // worker then skips generating for every request until UTC midnight, long
-      // after Kie recovers. Re-tag instead of delete: the row still shows what
-      // happened, it just stops counting as an attempt.
-      try {
-        await admin.from('song_fix_attempts')
-          .update({ action: 'auto-submit-infra', outcome: 'kie-server-error' })
-          .eq('kie_task_id', r.auto_task_id).eq('action', 'auto-submit');
-      } catch { /* best effort — accounting only */ }
       await setAuto(admin, r.id, {
         auto_status: 'generating',
         auto_round: Math.max(0, (r.auto_round || 1) - 1),
@@ -796,7 +851,21 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     // itself is resisting replace-section. Move to the full re-roll ladder
     // (same cloned voice), which the pin rule below then escalates to unpinned
     // if needed. Happens once per request; the daily cap still bounds spend.
-    if (plan.mode !== 'full' && !plan.escalatedToFull && (r.auto_round || 0) >= 2) {
+    // OWNER RULE (2026-08-12): a full re-roll is a NEW PERFORMANCE, not an edit.
+    // When the owner approved a SECTION fix and handed it over, escalating to a
+    // re-roll behind their back returns something they explicitly refused —
+    // "the whole reason for your help is to keep the same song and tone and
+    // voice, and make edits". handoff-plan sets noAutoFull unless the owner
+    // opted in; park it for a human instead.
+    if (plan.mode !== 'full' && plan.noAutoFull && (r.auto_round || 0) >= (state.max_rounds || 3)) {
+      await setAuto(admin, r.id, {
+        auto_takes: diags.slice(-12),
+        auto_status: 'needs_human',
+        auto_error: 'Section fix could not land cleanly. A full re-roll would re-sing the whole song (new performance) — needs your OK.',
+      });
+      return;
+    }
+    if (plan.mode !== 'full' && !plan.noAutoFull && !plan.escalatedToFull && (r.auto_round || 0) >= 2) {
       await setAuto(admin, r.id, {
         auto_takes: diags.slice(-12),
         auto_plan: { ...plan, mode: 'full', escalatedToFull: true },
@@ -871,19 +940,8 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
   // Ping the approvers (owner + Ivan) on WhatsApp. Best-effort but LOUD on
   // failure — a swallowed error meant a staged fix could sit with nobody told
   // and nothing in the logs saying why.
-  const numbers = String(state.notify_numbers || ALERT_WHATSAPP_TO || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-  if (!numbers.length) {
-    console.error('[fix-song-auto] fix staged but NO notify numbers configured (fix_auto_state.notify_numbers / ALERT_WHATSAPP_TO) — nobody was pinged');
-  }
   const who = r.context?.customer_name || r.context?.phone || 'customer';
-  for (const n of numbers) {
-    try {
-      const wa = await sendWhatsApp(n, `🎧 Ace here — fix ready for ${who}: ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
-      if (!wa.ok) console.error(`[fix-song-auto] WhatsApp ping to ${n} failed: ${wa.error || wa.status || 'unknown'}`);
-    } catch (e) {
-      console.error(`[fix-song-auto] WhatsApp ping to ${n} threw: ${e instanceof Error ? e.message : e}`);
-    }
-  }
+  await pingApprovers(state, `🎧 Ace here — fix ready for ${who}: ${plan.summary || 'correction staged'}${win.trimAtS ? ' (end-trimmed)' : ''}. Listen & release in the Fix Song tab: ${ADMIN_FIX_URL}`);
 }
 
 // ---------------------------------------------------------------------------
