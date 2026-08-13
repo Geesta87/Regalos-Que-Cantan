@@ -494,11 +494,17 @@ export default function SuccessPage() {
   // exists, so repeat calls are cheap.
   useEffect(() => {
     const sessionId = urlParams.get('session_id');
-    if (!sessionId) return;
+    // The links customers KEEP (WhatsApp / email) carry song ids and no
+    // session_id — that parameter authorizes charge-upsell against the saved
+    // card, so it must never travel in a message. Ask by song id instead, or
+    // the film is invisible on the only link they still have.
+    const songIdsParam = urlParams.get('song_ids') || urlParams.get('song_id');
+    if (!sessionId && !songIdsParam) return;
+    const reqBody = sessionId ? { session_id: sessionId } : { song_ids: songIdsParam };
     let cancelled = false;
     let timer = null;
     const pull = () => {
-      supabase.functions.invoke('confirm-animado-order', { body: { session_id: sessionId } })
+      supabase.functions.invoke('confirm-animado-order', { body: reqBody })
         .then(({ data }) => {
           if (cancelled) return;
           if (data?.eligible && Array.isArray(data.orders) && data.orders.length) {
