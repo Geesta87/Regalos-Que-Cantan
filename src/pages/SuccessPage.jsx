@@ -2061,10 +2061,15 @@ export default function SuccessPage() {
 
                 {delivered ? (
                   <>
+                    {/* Films render 9:16, so an uncapped width:100% player is
+                        taller than the viewport and buries the rest of the page. */}
                     <video
                       src={animadoVideoUrl(o.order_id)}
-                      controls playsInline
-                      style={{ width: '100%', borderRadius: '14px', marginBottom: '12px', background: '#000' }}
+                      controls playsInline preload="metadata"
+                      style={{
+                        width: '100%', maxHeight: '60vh', objectFit: 'contain',
+                        borderRadius: '14px', marginBottom: '12px', background: '#000',
+                      }}
                     />
                     <a href={animadoVideoUrl(o.order_id)} download={`pelicula-animada-${name}.mp4`}
                       style={{
