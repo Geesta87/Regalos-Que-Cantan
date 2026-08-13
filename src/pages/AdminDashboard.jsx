@@ -11,6 +11,7 @@ import FixQueue from '../components/admin/FixQueue';
 import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import ClipStudioTab from '../components/admin/ClipStudioTab';
+import CharacterStudioTab from '../components/admin/CharacterStudioTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
@@ -19,7 +20,7 @@ import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -2579,7 +2580,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['inbox', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio'];
+    const valid = ['inbox', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio'];
     // The Action Inbox is the admin home: one ranked queue of everything
     // waiting on the owner. Assistants get bounced to Orders (effect below).
     return valid.includes(tab) ? tab : 'inbox';
@@ -4908,6 +4909,11 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('clipstudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'clipstudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Scissors size={18} className={`flex-shrink-0 ${activeTab === 'clipstudio' ? 'text-amber-400' : ''}`} /> Clip Studio
         </button>
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('characterstudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'characterstudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Contact size={18} className={`flex-shrink-0 ${activeTab === 'characterstudio' ? 'text-amber-400' : ''}`} /> Character Studio
+        </button>
+        )}
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
@@ -4994,7 +5000,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio', characterstudio: 'Character Studio' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -5751,6 +5757,18 @@ export default function AdminDashboard() {
               >
                 ✂️ Clip Studio
               </button>
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('characterstudio')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'characterstudio'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎭 Character Studio
+              </button>
+              )}
             </div>
           </div>
         </div>
@@ -7624,6 +7642,12 @@ export default function AdminDashboard() {
           /* Clip Studio — standalone auto-caption tool (upload video → Whisper
              transcript → burned animated captions). clip-studio edge function. */
           <ClipStudioTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'characterstudio' && userRole === 'admin') ? (
+          /* Character Studio — in-house AI influencer / brand-character builder
+             (the Eromify replacement). Identity-locked images & videos via Kie
+             (nano-banana / nano-banana-edit / seedance-2). Spends Kie credits →
+             admin-only; character-studio edge function enforces server-side. */
+          <CharacterStudioTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 
