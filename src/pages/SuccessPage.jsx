@@ -265,6 +265,14 @@ function CountdownOverlay({ onComplete, recipientName }) {
   );
 }
 
+// Animado (story video) states that need no further work from us or the buyer.
+// Everything else — generating_likeness, building — is "in production" and keeps
+// the status card (and its poll) alive.
+const ANIMADO_TERMINAL = new Set(['delivered', 'deleted']);
+// Branded link for a finished film. vercel.json rewrites /animado/:orderId to the
+// final.mp4 in public storage, so this doubles as a <video> src and a download href.
+const animadoVideoUrl = (orderId) => `https://regalosquecantan.com/animado/${orderId}`;
+
 // ============================================================
 // MAIN SUCCESS PAGE
 // ============================================================
@@ -480,18 +488,37 @@ export default function SuccessPage() {
   // ------ ANIMADO: confirm the paid order(s) + handle photo upload ------
   // confirm-animado-order verifies (server-side, via Stripe) that this session
   // paid for Animado and returns the order(s) so we can ask for the photo.
+  // Re-polled while the film is still in production so the card below tracks it
+  // from photo upload → building → delivered without a page reload. The function's
+  // existing-order shortcut returns before any Stripe round-trip once the row
+  // exists, so repeat calls are cheap.
   useEffect(() => {
     const sessionId = urlParams.get('session_id');
-    if (!sessionId) return;
+    // The links customers KEEP (WhatsApp / email) carry song ids and no
+    // session_id — that parameter authorizes charge-upsell against the saved
+    // card, so it must never travel in a message. Ask by song id instead, or
+    // the film is invisible on the only link they still have.
+    const songIdsParam = urlParams.get('song_ids') || urlParams.get('song_id');
+    if (!sessionId && !songIdsParam) return;
+    const reqBody = sessionId ? { session_id: sessionId } : { song_ids: songIdsParam };
     let cancelled = false;
-    supabase.functions.invoke('confirm-animado-order', { body: { session_id: sessionId } })
-      .then(({ data }) => {
-        if (!cancelled && data?.eligible && Array.isArray(data.orders) && data.orders.length) {
-          setAnimadoOrders(data.orders.filter((o) => o.order_id));
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    let timer = null;
+    const pull = () => {
+      supabase.functions.invoke('confirm-animado-order', { body: reqBody })
+        .then(({ data }) => {
+          if (cancelled) return;
+          if (data?.eligible && Array.isArray(data.orders) && data.orders.length) {
+            const orders = data.orders.filter((o) => o.order_id);
+            setAnimadoOrders(orders);
+            if (orders.some((o) => !ANIMADO_TERMINAL.has(o.state))) {
+              timer = setTimeout(pull, 30000);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    pull();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, []);
 
   const uploadAnimadoFile = async (orderId, which, file) => {
@@ -1942,6 +1969,8 @@ export default function SuccessPage() {
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes shimmerAccent { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        /* The reveal screen defines its own spin, but that style tag unmounts with it. */
+        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes glowPulse {
           0%, 100% { box-shadow: 0 0 20px rgba(${ts.accentRgb},0.2), 0 0 60px rgba(${ts.accentRgb},0.08); }
           50% { box-shadow: 0 0 35px rgba(${ts.accentRgb},0.4), 0 0 80px rgba(${ts.accentRgb},0.15); }
@@ -1988,21 +2017,98 @@ export default function SuccessPage() {
           position: 'relative', zIndex: 10,
         }}>
 
-          {/* ===== ANIMADO photo upload — shown when the customer bought the
-              animated story video. Time-sensitive, so it sits at the top. ===== */}
-          {animadoOrders.filter((o) => o.state === 'awaiting_photo').map((o) => (
-            <div key={o.order_id} style={{ marginBottom: '28px' }}>
-              <AnimadoPhotoUpload
-                recipientName={o.recipient_name || 'tu ser querido'}
-                isFamily={o.is_family !== false}
-                otherPeople={o.other_people || []}
-                askPhone={!o.has_phone}
-                onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
-                onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
-                onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
-              />
-            </div>
-          ))}
+          {/* ===== ANIMADO — the animated story video, in EVERY state =====
+              awaiting_photo shows the uploader (time-sensitive, hence the top of
+              the page). Previously that was the only state rendered, so the film
+              disappeared from the page the moment photos were uploaded and never
+              came back — the buyer's most expensive item became invisible on the
+              one page they were told holds everything. Now production and delivery
+              keep a slot here too. ===== */}
+          {animadoOrders.map((o) => {
+            if (o.state === 'deleted') return null;
+            if (o.state === 'awaiting_photo') {
+              return (
+                <div key={o.order_id} id="rqc-animado" style={{ marginBottom: '28px' }}>
+                  <AnimadoPhotoUpload
+                    recipientName={o.recipient_name || 'tu ser querido'}
+                    isFamily={o.is_family !== false}
+                    otherPeople={o.other_people || []}
+                    askPhone={!o.has_phone}
+                    onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
+                    onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
+                    onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
+                  />
+                </div>
+              );
+            }
+
+            const delivered = o.state === 'delivered';
+            const name = o.recipient_name || 'tu ser querido';
+            return (
+              <div key={o.order_id} id="rqc-animado" style={{
+                marginBottom: '28px', padding: '20px',
+                borderRadius: '20px',
+                background: isLight
+                  ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
+                  : 'linear-gradient(160deg, rgba(109,40,217,0.16) 0%, rgba(79,70,229,0.08) 100%)',
+                border: `1.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(139,92,246,0.35)'}`,
+              }}>
+                <p style={{
+                  margin: '0 0 6px', fontSize: '15px', fontWeight: 900,
+                  color: isLight ? '#5b21b6' : '#c4b5fd',
+                }}>
+                  🎬 {delivered ? `La película animada de ${name} ya está lista` : `Estamos creando la película animada de ${name}`}
+                </p>
+                <p style={{ margin: '0 0 14px', fontSize: '13px', color: ts.textSecondary, lineHeight: 1.5 }}>
+                  {delivered
+                    ? 'Tu película estilo Pixar quedó lista. Descárgala o compártela cuando quieras.'
+                    : 'Ya recibimos tus fotos. Nuestro equipo la revisa a mano antes de enviártela — te avisamos por correo y WhatsApp en cuanto esté. Puedes cerrar esta página sin problema.'}
+                </p>
+
+                {delivered ? (
+                  <>
+                    {/* Films render 9:16, so an uncapped width:100% player is
+                        taller than the viewport and buries the rest of the page. */}
+                    <video
+                      src={animadoVideoUrl(o.order_id)}
+                      controls playsInline preload="metadata"
+                      style={{
+                        width: '100%', maxHeight: '60vh', objectFit: 'contain',
+                        borderRadius: '14px', marginBottom: '12px', background: '#000',
+                      }}
+                    />
+                    <a href={animadoVideoUrl(o.order_id)} download={`pelicula-animada-${name}.mp4`}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        width: '100%', padding: '15px', boxSizing: 'border-box',
+                        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                        color: 'white', fontWeight: 800, fontSize: '16px',
+                        borderRadius: '14px', textDecoration: 'none', fontFamily: ts.font,
+                        boxShadow: '0 8px 24px rgba(124,58,237,0.3)',
+                      }}>
+                      ⬇️ Descargar Película Animada (MP4)
+                    </a>
+                  </>
+                ) : (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '12px 14px', borderRadius: '12px',
+                    background: isLight ? 'rgba(124,58,237,0.08)' : 'rgba(139,92,246,0.12)',
+                  }}>
+                    <span style={{
+                      width: '18px', height: '18px', flexShrink: 0, borderRadius: '50%',
+                      border: `2.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(196,181,253,0.3)'}`,
+                      borderTopColor: isLight ? '#7c3aed' : '#c4b5fd',
+                      animation: 'spin 0.9s linear infinite',
+                    }} />
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: isLight ? '#5b21b6' : '#c4b5fd' }}>
+                      En producción · normalmente 24–48 h
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {/* ===== HERO HEADER ===== */}
           <div style={{ textAlign: 'center', marginBottom: '32px', animation: 'fadeInUp 0.7s ease-out' }}>
@@ -2126,6 +2232,151 @@ export default function SuccessPage() {
               </div>
             </div>
           )}
+
+          {/* ===== ORDER MANIFEST — every item the customer paid for, with live
+                status, on this one page. A Paquete Definitivo is six deliverables
+                across four sections that each appear only once their own data is
+                ready, so without this the buyer has no way to know whether an item
+                is missing or merely still rendering. Rows scroll to the section
+                that owns the item (and switch songs when that item belongs to the
+                other song). Only shown for genuinely multi-item orders — a single
+                song with no add-ons doesn't need a checklist. ===== */}
+          {(() => {
+            const READY = { label: 'Listo', color: '#22c55e' };
+            const WORKING = { label: 'En proceso', color: '#f59e0b' };
+            const ACTION = { label: 'Te toca a ti', color: '#38bdf8' };
+            const FAILED = { label: 'Lo estamos revisando', color: '#f87171' };
+            const pill = (s) => (s === 'ready' ? READY : s === 'working' ? WORKING : s === 'action' ? ACTION : FAILED);
+
+            const multi = songs.length > 1;
+            const tag = (i) => (multi ? ` ${i + 1}` : '');
+            const items = [];
+
+            // Jump to a section, switching the active song first when the item
+            // lives on the song that isn't currently selected.
+            const jump = (anchor, songIdx) => () => {
+              if (typeof songIdx === 'number' && songs[songIdx]) {
+                setCurrentSong(songs[songIdx]);
+                setSelectedVideoSongIdx(songIdx);
+              }
+              setTimeout(() => {
+                document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 60);
+            };
+
+            songs.forEach((s, i) => {
+              items.push({
+                key: `song-${s.id}`, icon: '🎵', label: `Canción${tag(i)}`,
+                status: s.audio_url ? 'ready' : 'working',
+                onClick: s.audio_url ? () => handleDownload(s) : undefined,
+                cta: s.audio_url ? 'Descargar' : null,
+              });
+            });
+            songs.forEach((s, i) => {
+              const vo = videoOrdersMap[s.id];
+              if (!vo) return;
+              const status = vo.status === 'completed' ? 'ready'
+                : vo.status === 'failed' ? 'failed'
+                : (vo.status === 'pending' && !(vo.photo_count > 0)) ? 'action'
+                : 'working';
+              items.push({
+                key: `vid-${s.id}`, icon: '🎬', label: `Video con fotos${tag(i)}`,
+                status,
+                hint: status === 'action' ? 'Sube tus fotos' : null,
+                onClick: jump('rqc-video', i), cta: 'Ver',
+              });
+            });
+            songs.forEach((s, i) => {
+              if (!s.karaoke_status) return;
+              items.push({
+                key: `kar-${s.id}`, icon: '🎤', label: `Pista instrumental${tag(i)}`,
+                status: s.karaoke_status === 'ready' ? 'ready' : s.karaoke_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-karaoke'), cta: 'Ver',
+              });
+            });
+            const lyricSong = songs.find((s) => s?.lyric_video_status);
+            if (lyricSong) {
+              items.push({
+                key: 'lyricvid', icon: '📝', label: 'Video con letra',
+                status: lyricSong.lyric_video_status === 'ready' ? 'ready' : lyricSong.lyric_video_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-musicvideo'), cta: 'Ver',
+              });
+            }
+            const karVidSong = songs.find((s) => s?.karaoke_video_status);
+            if (karVidSong) {
+              items.push({
+                key: 'karvid', icon: '🎤', label: 'Video karaoke',
+                status: karVidSong.karaoke_video_status === 'ready' ? 'ready' : karVidSong.karaoke_video_status === 'failed' ? 'failed' : 'working',
+                onClick: jump('rqc-musicvideo'), cta: 'Ver',
+              });
+            }
+            animadoOrders.forEach((o) => {
+              if (o.state === 'deleted') return;
+              items.push({
+                key: `animado-${o.order_id}`, icon: '🎬', label: 'Película animada',
+                status: o.state === 'delivered' ? 'ready' : o.state === 'awaiting_photo' ? 'action' : 'working',
+                hint: o.state === 'awaiting_photo' ? 'Sube tus fotos' : null,
+                onClick: jump('rqc-animado'), cta: 'Ver',
+              });
+            });
+
+            if (items.length < 3) return null;
+            const pending = items.filter((it) => it.status !== 'ready').length;
+
+            return (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(16,10,30,0.95), rgba(10,20,16,0.95))',
+                borderRadius: '24px', padding: '20px 16px 16px',
+                marginBottom: '20px',
+                border: '2px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              }}>
+                <p style={{ margin: '0 0 3px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                  ✨ Todo tu paquete, aquí mismo
+                </p>
+                <p style={{ margin: '0 0 14px', textAlign: 'center', fontSize: '13px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.45 }}>
+                  {pending === 0
+                    ? 'Todo está listo — descarga lo que quieras desde esta página.'
+                    : 'Nada se pierde: lo que aún no está listo aparece aquí en cuanto lo esté.'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {items.map((it) => {
+                    const p = pill(it.status);
+                    return (
+                      <button key={it.key} onClick={it.onClick} disabled={!it.onClick}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          width: '100%', padding: '12px 14px', borderRadius: '14px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${it.status === 'action' ? 'rgba(56,189,248,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                          cursor: it.onClick ? 'pointer' : 'default',
+                          fontFamily: ts.font, textAlign: 'left',
+                        }}>
+                        <span style={{ fontSize: '20px', flexShrink: 0 }}>{it.icon}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: '14px', fontWeight: 700, color: '#fff' }}>
+                            {it.label}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: p.color, marginTop: '2px' }}>
+                            {it.status === 'ready' ? '✅' : it.status === 'action' ? '👉' : '⏳'} {it.hint || p.label}
+                          </span>
+                        </span>
+                        {it.cta && it.onClick && (
+                          <span style={{
+                            flexShrink: 0, fontSize: '12px', fontWeight: 800,
+                            color: 'rgba(255,255,255,0.85)', padding: '7px 12px',
+                            borderRadius: '999px', background: 'rgba(255,255,255,0.1)',
+                          }}>
+                            {it.cta}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ===== SHARE VIDEO — the auto-rendered branded gift video
                 (songs.share_video_url). When it exists it IS the player: the
@@ -2383,6 +2634,7 @@ export default function SuccessPage() {
                 Shows only when the customer bought the karaoke add-on
                 (karaoke_status will be 'pending' → 'ready' → optionally 'failed').
                 Polled by the useEffect above so 'pending' auto-updates. */}
+          <div id="rqc-karaoke">
             {(() => {
               // One box per song that has the instrumental add-on. A 2-song order
               // can have an instrumental for each song (chosen at checkout), so we
@@ -2483,7 +2735,9 @@ export default function SuccessPage() {
                 return null;
               });
             })()}
+          </div>{/* end #rqc-karaoke */}
 
+          <div id="rqc-musicvideo">
             {/* ===== MUSIC VIDEO DELIVERY (lyric + karaoke video addons) =====
                 Each shows only if purchased: status 'pending' → 'ready' → 'failed'.
                 Attached to the FIRST song in the order (per stripe-webhook),
@@ -2588,6 +2842,7 @@ export default function SuccessPage() {
                 return null;
               });
             })()}
+          </div>{/* end #rqc-musicvideo */}
 
           {!currentSong?.has_video_addon && (
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
@@ -2702,7 +2957,7 @@ export default function SuccessPage() {
           )}
 
           {/* ===== VIDEO UPSELL SECTION ===== */}
-          <div style={{
+          <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
             border: '1px solid rgba(139,92,246,0.25)',
             marginBottom: '24px',

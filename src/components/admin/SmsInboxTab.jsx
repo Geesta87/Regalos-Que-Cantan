@@ -70,6 +70,19 @@ function formatTime(iso) {
     ' · ' + d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
 }
 
+// How long a customer has been waiting on a human, for the Pending tab. Short
+// and glanceable ("3h", "1d 4h") — this is a triage cue, not a precise clock.
+function formatWait(iso) {
+  if (!iso) return '';
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const rem = hours % 24;
+  return rem ? `${days}d ${rem}h` : `${days}d`;
+}
+
 function formatPhone(p) {
   if (!p) return '';
   const d = p.replace(/\D/g, '');
@@ -418,6 +431,19 @@ export default function SmsInboxTab({ accessToken }) {
     const q = search.trim().toLowerCase();
     // "Unread" pools both channels: any conversation with unread messages.
     // "Pinned" pools both channels too: every chat the owner pinned.
+    // "Pending" = wrote in while we were out of office and no human has replied
+    // yet. Oldest wait FIRST — the person who has been waiting since 9pm gets
+    // answered before the one who wrote ten minutes ago.
+    if (channelTab === 'pending') {
+      const waiting = conversations
+        .filter((c) => !!c.awaiting_reply_since)
+        .sort((a, b) => new Date(a.awaiting_reply_since) - new Date(b.awaiting_reply_since));
+      if (!q) return waiting;
+      return waiting.filter((c) =>
+        (c.customer_name || '').toLowerCase().includes(q) ||
+        (c.phone || '').includes(q)
+      );
+    }
     const inChannel = channelTab === 'unread'
       ? conversations.filter((c) => (c.unread || 0) > 0)
       : channelTab === 'pinned'
@@ -489,6 +515,12 @@ export default function SmsInboxTab({ accessToken }) {
   // Pinned chats — for the Pinned tab badge.
   const totalPinned = useMemo(
     () => conversations.reduce((n, c) => n + (c.pinned_at ? 1 : 0), 0),
+    [conversations]
+  );
+
+  // People who wrote in while we were away and still owe a human reply.
+  const totalPending = useMemo(
+    () => conversations.reduce((n, c) => n + (c.awaiting_reply_since ? 1 : 0), 0),
     [conversations]
   );
 
@@ -1203,8 +1235,8 @@ export default function SmsInboxTab({ accessToken }) {
             onClick={() => saveOutOfOffice(!outOfOffice)}
             disabled={ooBusy}
             title={outOfOffice
-              ? 'Out of office is ON — customers get an auto-reply. Click to turn off.'
-              : 'Turn on to auto-reply to customers while you are away.'}
+              ? 'Out of office is ON — the AI bot is paused and customers get only the away message. Click to turn off.'
+              : 'Turn on to pause the AI bot and auto-reply to customers while you are away.'}
             className={`px-3 py-2 rounded-xl text-sm font-medium transition disabled:opacity-60 ${
               outOfOffice
                 ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40 hover:bg-amber-400/30'
@@ -1251,12 +1283,15 @@ export default function SmsInboxTab({ accessToken }) {
       <div className="flex items-center gap-2 mb-4">
         {[
           { key: 'unread', label: '📬 Unread' },
+          { key: 'pending', label: '🕓 Pending' },
           { key: 'sms', label: '💬 SMS' },
           { key: 'whatsapp', label: '🟢 WhatsApp' },
           { key: 'pinned', label: '📌 Pinned' },
         ].map((t) => {
           const stats = t.key === 'unread'
             ? { unread: totalUnread, drafts: totalDrafts }
+            : t.key === 'pending'
+            ? { unread: 0, drafts: 0, pending: totalPending }
             : t.key === 'pinned'
             ? { unread: 0, drafts: 0, pinned: totalPinned }
             : (channelStats[t.key] || { unread: 0, drafts: 0 });
@@ -1272,6 +1307,13 @@ export default function SmsInboxTab({ accessToken }) {
               }`}
             >
               {t.label}
+              {(stats.pending || 0) > 0 && (
+                <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
+                  activeTab ? 'bg-black/20 text-black' : 'bg-amber-500 text-black'
+                }`}>
+                  {stats.pending}
+                </span>
+              )}
               {(stats.pinned || 0) > 0 && (
                 <span className={`text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center ${
                   activeTab ? 'bg-black/20 text-black' : 'bg-amber-400/25 text-amber-200'
@@ -1305,9 +1347,12 @@ export default function SmsInboxTab({ accessToken }) {
           {!ooEditing ? (
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-amber-200 mb-0.5">🌙 Out of office is on</div>
+                <div className="font-semibold text-amber-200 mb-0.5">
+                  🌙 Out of office is on — the AI bot is paused
+                </div>
                 <div className="text-amber-100/80 text-xs">
-                  New customers get this auto-reply (once each, until you turn it off):
+                  The bot sends nothing while you are away. Customers get only this
+                  auto-reply (once each per 8 hours), then wait for you:
                 </div>
                 <div className="mt-1 text-amber-50/90 italic">“{ooMessage}”</div>
               </div>
@@ -1393,6 +1438,8 @@ export default function SmsInboxTab({ accessToken }) {
               <div className="p-6 text-center text-gray-500 text-sm">
                 {channelTab === 'unread'
                   ? '✅ All caught up — no unread messages.'
+                  : channelTab === 'pending'
+                  ? '✅ Nobody waiting. Everyone who wrote in while we were out of office has been answered.'
                   : channelTab === 'pinned'
                   ? '📌 No pinned chats. Open a conversation and tap "Pin" to keep it here.'
                   : 'No conversations yet.'}
@@ -1402,7 +1449,7 @@ export default function SmsInboxTab({ accessToken }) {
                 const msgs = c.messages || [];
                 // Preview the last message ON THIS TAB's channel. On the mixed
                 // tabs (Unread, Pinned) just preview the overall last message.
-                const mixedTab = channelTab === 'unread' || channelTab === 'pinned';
+                const mixedTab = channelTab === 'unread' || channelTab === 'pinned' || channelTab === 'pending';
                 const last = mixedTab
                   ? msgs[msgs.length - 1]
                   : ([...msgs].reverse().find((m) => msgChannel(m) === channelTab)
@@ -1461,6 +1508,14 @@ export default function SmsInboxTab({ accessToken }) {
                           )}
                         </div>
                       </div>
+                      {c.awaiting_reply_since && (
+                        <span
+                          title={`Wrote in while we were out of office — waiting since ${formatTime(c.awaiting_reply_since)}`}
+                          className="inline-block mt-1 mr-1 text-[10px] text-amber-200 bg-amber-500/15 border border-amber-500/30 rounded px-1.5 py-0.5"
+                        >
+                          🕓 Waiting {formatWait(c.awaiting_reply_since)}
+                        </span>
+                      )}
                       {c.opted_out && (
                         <span className="inline-block mt-1 text-[10px] text-red-300 bg-red-500/15 border border-red-500/25 rounded px-1.5 py-0.5">
                           Opted out (STOP)

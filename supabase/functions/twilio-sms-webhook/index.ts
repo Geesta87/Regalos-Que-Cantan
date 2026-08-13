@@ -222,9 +222,9 @@ serve(async (req) => {
         lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
       });
     } else if (replyable) {
-      // Out-of-office: if the owner is away, auto-reply ONCE (throttled) and skip
-      // the AI draft — the customer already got an answer. Runs in the background
-      // so it doesn't slow the Twilio ack.
+      // Out-of-office: if the owner is away, auto-reply ONCE (throttled) and the
+      // AI bot stays silent for the whole away period. Runs in the background so
+      // it doesn't slow the Twilio ack.
       runInBackground(
         maybeSendOutOfOffice(admin, {
           conversationId,
@@ -232,8 +232,10 @@ serve(async (req) => {
           channel: 'sms',
           lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
         }).then((r) => {
-          // Only fall through to the AI draft when we did NOT auto-reply.
-          if (!r.sent) return triggerCsAgent(conversationId);
+          // Gate on `active`, NOT `sent` — a throttled or failed away message
+          // still means the owner is away. See _shared/out-of-office.ts.
+          if (r.active) return;
+          return triggerCsAgent(conversationId);
         }),
       );
     }
