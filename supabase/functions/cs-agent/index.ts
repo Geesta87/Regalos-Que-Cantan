@@ -561,6 +561,16 @@ serve(async (req) => {
     if (!settings?.enabled) {
       return json({ ok: true, skipped: 'cs agent disabled' });
     }
+    // Out of office — the owner is away. Bail HERE, before any Claude call: no
+    // send, and no draft either. Drafting while away would burn Claude tokens on
+    // replies nobody will read (owner, 2026-08-13: "no drafts should be
+    // generated to save claude responses"). The away auto-reply is the ONLY
+    // thing that goes out while the toggle is on, and the inbound webhooks send
+    // that themselves — see _shared/out-of-office.ts. They also skip calling us
+    // entirely; this is the backstop for every other way cs-agent gets woken.
+    if (settings?.out_of_office === true) {
+      return json({ ok: true, skipped: 'out of office' });
+    }
     // Owner-editable knowledge (Bot Training panel). Falls back to the file
     // default when the owner hasn't customized it yet.
     const knowledge = (settings?.knowledge_doc || '').trim() || CS_KNOWLEDGE;
@@ -1056,14 +1066,6 @@ serve(async (req) => {
       autoBlockers.length = 0;
       if (settings?.auto_send_enabled !== true) autoBlockers.push('master switch off');
     }
-
-    // OUT OF OFFICE beats everything, including the opener fast path — which is
-    // why it sits AFTER the reset above. While the owner is away the bot never
-    // puts anything on the wire; the reply still becomes a draft so there is
-    // something to approve in the morning. The inbound webhooks already skip
-    // calling us when the toggle is on — this is the backstop for every other
-    // way cs-agent can be woken up.
-    if (settings?.out_of_office === true) autoBlockers.push('out of office');
 
     const canAuto = autoBlockers.length === 0;
 

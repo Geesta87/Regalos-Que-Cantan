@@ -101,8 +101,8 @@ export async function maybeSendOutOfOffice(
   } catch (e) {
     // Fail CLOSED. We only reach here with the toggle unread (the settings
     // query blew up) or already known to be ON. Reporting `active: true` keeps
-    // the bot quiet; the cost is a draft waiting for the owner, which is the
-    // status quo. Reporting false could text a customer while the owner is away.
+    // the bot quiet; the cost is a message waiting unanswered until a human
+    // opens the inbox. Reporting false could text a customer while nobody's in.
     console.warn('out-of-office: auto-reply failed — treating as AWAY', e);
     return { active: true, sent: false };
   }
