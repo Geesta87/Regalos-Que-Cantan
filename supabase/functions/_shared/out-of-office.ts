@@ -66,6 +66,16 @@ export async function maybeSendOutOfOffice(
     if (error) throw new Error(error.message);
     if (!settings?.out_of_office) return { active: false, sent: false };
 
+    // This customer wrote in while nobody was home, so a human owes them a
+    // reply — that's the Pending tab. Guarded on `is null` so repeat texts keep
+    // the ORIGINAL wait start; the age of this stamp is what tells Ivan who has
+    // been waiting longest. Cleared by sms-admin when a human replies.
+    await admin
+      .from('sms_conversations')
+      .update({ awaiting_reply_since: new Date().toISOString() })
+      .eq('id', opts.conversationId)
+      .is('awaiting_reply_since', null);
+
     // Throttle: at most one auto-reply per conversation per window. Still
     // `active` — the customer gets silence, not a bot answer.
     if (opts.lastAutoReplyAt) {
