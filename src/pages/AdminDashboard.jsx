@@ -63,6 +63,41 @@ async function freshAdminToken(fallback) {
   } catch { return fallback; }
 }
 
+// ── Fix sessions that outlive the card (2026-08-13) ─────────────────────────
+// Switching admin tabs unmounts FixSongTab (`activeTab === 'fixsong' ? …`), and
+// with it this card. The async fix ladder KEPT RUNNING — closures don't die —
+// but every setState it made landed on a dead component, so the remounted card
+// came back blank at 'idle' and the owner read it as "the fix reset". Rafael's
+// ladder ran 20+ minutes; nobody stays glued to one tab that long.
+//
+// The durable facts of a run (progress line, plan, finished preview, failure)
+// now live HERE, module scope, keyed by song id. Runners write to the session;
+// a mounting card re-attaches and replays it into local state. Dies only on a
+// full page reload — the beforeunload guard warns about that, and "Send to
+// Ace" is the path that survives even a closed browser.
+const FIX_SESSIONS = new Map();
+const FIX_SESSION_WATCHERS = new Set(); // tab-level UI (resume banner)
+function fixSessionsChanged() { for (const fn of [...FIX_SESSION_WATCHERS]) { try { fn(); } catch { /* watcher unmounted */ } } }
+function fixSessionStart(songId, fields) {
+  const s = {
+    status: 'working', // working | preview | bothPreview | error
+    kind: 'single',    // single | both
+    msg: '', error: '', failedTakes: null, offerFullReroll: false,
+    plan: null, pendingMode: 'section', result: null, bothResults: null,
+    songName: '', startedAt: Date.now(), listeners: new Set(),
+    ...fields,
+  };
+  FIX_SESSIONS.set(songId, s);
+  fixSessionsChanged();
+  return s;
+}
+function fixSessionPatch(s, patch) {
+  Object.assign(s, patch);
+  for (const fn of [...s.listeners]) { try { fn(); } catch { /* card unmounted mid-notify */ } }
+  fixSessionsChanged();
+}
+function fixSessionEnd(songId) { if (FIX_SESSIONS.delete(songId)) fixSessionsChanged(); }
+
 function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, onStaged }) {
   const [messages, setMessages] = useState([]); // {role:'user'|'assistant', text}
   const [input, setInput] = useState('');
@@ -115,12 +150,61 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   const autoPlannedRef = useRef(false);
   useEffect(() => {
     if (autoPlannedRef.current) return;
+    // A session for this song IN THIS CONTEXT means a run (or its result) is
+    // waiting to re-attach — auto-planning over it would bury a 20-minute fix
+    // under a fresh blank plan. A session from a DIFFERENT context (a direct
+    // fix, or another queue request) must NOT suppress planning for this one.
+    { const st0 = FIX_SESSIONS.get(song.id); if (st0 && (st0.stageRequestId || null) === (stageRequest?.id || null)) return; }
     const reqText = stageRequest?.customer_request ? String(stageRequest.customer_request).trim() : '';
     if (!reqText) return;
     autoPlannedRef.current = true;
     runPlan('section', reqText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Re-attach to a fix that outlived this card ────────────────────────────
+  // On mount: if a session exists for this song, replay its state (progress,
+  // preview, or failure) into the fresh component and subscribe for the rest of
+  // the run. The runner keeps writing to the session whether or not any card is
+  // listening.
+  useEffect(() => {
+    const sess = FIX_SESSIONS.get(song.id);
+    if (!sess) return undefined;
+    // CONTEXT MUST MATCH (safety). A session records whether it was run in
+    // queue/staging mode (stageRequestId) or as a direct owner fix. Re-attaching
+    // a STAGED run into a card without the request would flip its Apply button
+    // from "save for approval" to a DIRECT swap of the customer's live song —
+    // the release gate silently bypassed. Mismatched context: don't re-attach;
+    // the tab banner reopens the song under the right request.
+    if ((sess.stageRequestId || null) !== (stageRequest?.id || null)) return undefined;
+    const pull = () => {
+      if (sess.plan) setPlan(sess.plan);
+      if (sess.pendingMode) setPendingMode(sess.pendingMode);
+      if (sess.status === 'working') {
+        setSurgicalMsg(sess.msg || '');
+        setPhase(sess.kind === 'both' ? 'bothWorking' : 'working');
+      } else if (sess.status === 'preview' && sess.result) {
+        setResult(sess.result); setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+      } else if (sess.status === 'bothPreview' && sess.bothResults) {
+        setBothResults(sess.bothResults);
+        // Restore which versions were ALREADY applied — without this, a
+        // re-attached preview offered Apply again on an applied version, and a
+        // double-apply overwrites the undo backup with the fixed audio.
+        setAppliedBothIds(sess.appliedBothIds || []);
+        setSurgicalMsg(''); setPhase('bothPreview');
+      } else if (sess.status === 'error') {
+        setError(sess.error || 'unknown');
+        if (sess.failedTakes) setFailedTakes(sess.failedTakes);
+        if (sess.offerFullReroll) setOfferFullReroll(true);
+        setSurgicalMsg('');
+        setPhase(sess.plan ? 'plan' : 'idle');
+      }
+    };
+    pull();
+    sess.listeners.add(pull);
+    return () => sess.listeners.delete(pull);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [song.id]);
 
   // Splice the re-sung correction onto the pristine song. Prefers the SERVER
   // recipe (fix-song-section 'splice' -> in-house ffmpeg Cloud Run: duration-match
@@ -217,9 +301,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     if (!applied.length) { showToast('No hay correcciones aplicables a esta versión.'); return; }
     setError(''); setResult(null); setInput('');
     setPhase('working');
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
     try {
-      const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, setSurgicalMsg);
-      setResult({
+      const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
+      const res = {
         surgical: true,
         splicedBlob: one.splicedBlob,
         changeSummary: `Replicadas ${applied.length} corrección(es) de la versión ${fromVersion ?? 'hermana'}`,
@@ -231,13 +316,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: one.changeMarks,
         takes: [{ audioUrl: one.correctedUrl, verified: true, lyrics }],
-      });
+      };
+      setResult(res);
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+      fixSessionPatch(sess, { status: 'preview', result: res, msg: '' });
     } catch (e) {
       setOfferFullReroll(true);
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       // Back to idle (not 'plan' — a replay has no plan object to render).
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('idle');
+      fixSessionPatch(sess, { status: 'error', error: e?.message || 'unknown', failedTakes: Array.isArray(e?.takes) && e.takes.length ? e.takes : null, offerFullReroll: true, msg: '' });
     }
   }
 
@@ -319,6 +407,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       : [...messages, ...(input.trim() ? [{ role: 'user', text: input.trim() }] : [])];
     if (convo.length === 0 && !image) { setError('Type what to fix, chat with the AI, or paste a screenshot.'); return; }
     if (seedText) setMessages([{ role: 'user', text: seedText }]);
+    // A NEW plan supersedes a finished/failed session for this song — without
+    // this, a stale preview would resurrect over the fresh plan on remount. A
+    // RUNNING session is left alone: planning while a fix cooks is fine, and
+    // its own runner will replace the session when (if) it's re-run.
+    { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working') fixSessionEnd(song.id); }
     setError('');
     setResult(null);
     setPlan(null);
@@ -675,6 +768,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setError(''); setResult(null); setInput('');
     setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, msg: 'Regenerating the corrected part…' });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
       const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
@@ -683,8 +777,8 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // if it sang the correction, else offer a full re-roll. No atempo speed-fit.
       // `consistency` = the plan's changes: the take must sing each changed line as
       // many times as the stored lyrics contain it (text can't outrun the audio).
-      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace, wholeOnly: true, consistency: (plan?.changes || []).filter((c) => c?.after) }, setSurgicalMsg);
-      setSurgicalMsg('Saving the corrected version…');
+      const r = await resingOne({ note: '', approvedLyrics, verifyPhrases, correctedText, lineReplace, wholeOnly: true, consistency: (plan?.changes || []).filter((c) => c?.after) }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
+      setSurgicalMsg('Saving the corrected version…'); fixSessionPatch(sess, { msg: 'Saving the corrected version…' });
       let url; let blob = null;
       if (r.trimAtS) {
         // Over-extended take rescued by end-trim: cut at the true ending + fade.
@@ -699,7 +793,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         url = (rh?.ok && rh.url) ? rh.url : r.resungUrl;
         try { const resp = await fetch(url); if (resp.ok) blob = await resp.blob(); } catch { /* preview still plays via url */ }
       }
-      setResult({
+      const res = {
         surgical: true,
         wholeTake: true,
         splicedBlob: blob,
@@ -718,13 +812,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: r.startS > 0 ? [r.startS] : [],
         takes: [{ audioUrl: url, verified: true, lyrics: r.fullLyrics }],
-      });
+      };
+      setResult(res);
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+      fixSessionPatch(sess, { status: 'preview', result: res, msg: '' });
     } catch (e) {
       setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+      fixSessionPatch(sess, { status: 'error', error: e?.message || 'unknown', failedTakes: Array.isArray(e?.takes) && e.takes.length ? e.takes : null, offerFullReroll: true, msg: '' });
     }
   }
 
@@ -1163,9 +1260,10 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   async function runMultiFix(combinedLyrics, changes) {
     setError(''); setResult(null); setInput('');
     setPhase('working');
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
     try {
-      const one = await fixOneSong(song.id, { changes, combinedLyrics }, setSurgicalMsg);
-      setResult({
+      const one = await fixOneSong(song.id, { changes, combinedLyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
+      const res = {
         surgical: true,
         splicedBlob: one.splicedBlob,
         changeSummary: (plan?.changeSummary) || `${changes.length} correcciones`,
@@ -1177,13 +1275,16 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         originalAudioUrl: song.original_audio_url || song.audio_url,
         changeMarks: one.changeMarks,
         takes: [{ audioUrl: one.correctedUrl, verified: true, lyrics: combinedLyrics }],
-      });
+      };
+      setResult(res);
       setSelectedTakeIdx(0); setSurgicalMsg(''); setPhase('preview');
+      fixSessionPatch(sess, { status: 'preview', result: res, msg: '' });
     } catch (e) {
       setOfferFullReroll(true); // auto-fallback: a failed surgical fix always offers the full re-roll
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       fetchRewordFor(e); // offer singable rewordings for a stubborn single-line change
       setError(e?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+      fixSessionPatch(sess, { status: 'error', error: e?.message || 'unknown', failedTakes: Array.isArray(e?.takes) && e.takes.length ? e.takes : null, offerFullReroll: true, msg: '' });
     }
   }
 
@@ -1201,11 +1302,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       { id: song.id, version: song.version, recipient_name: song.recipient_name, paid: song.paid, audio_url: song.original_audio_url || song.audio_url },
       ...siblings,
     ];
+    const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
     const results = [];
     let lastErr = null;
     for (const t of targets) {
       try {
-        const one = await fixOneSong(t.id, { changes, combinedLyrics }, (m) => setSurgicalMsg(`Versión ${t.version ?? '?'}: ${m}`));
+        const one = await fixOneSong(t.id, { changes, combinedLyrics }, (m) => { const msg = `Versión ${t.version ?? '?'}: ${m}`; setSurgicalMsg(msg); fixSessionPatch(sess, { msg }); });
         results.push({ ...t, ...one, corrections: changes.map((c) => ({ before: c.before, after: c.after })) });
       } catch (e) {
         lastErr = e;
@@ -1218,10 +1320,12 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       setOfferFullReroll(true);
       fetchRewordFor(lastErr);
       setError(lastErr?.message || 'unknown'); setSurgicalMsg(''); setPhase('plan');
+      fixSessionPatch(sess, { status: 'error', error: lastErr?.message || 'unknown', failedTakes: Array.isArray(lastErr?.takes) && lastErr.takes.length ? lastErr.takes : null, offerFullReroll: true, msg: '' });
       return;
     }
     setBothResults(results);
     setSurgicalMsg(''); setPhase('bothPreview');
+    fixSessionPatch(sess, { status: 'bothPreview', bothResults: results, msg: '' });
   }
 
   // Apply ONE bundle version to its own /song/<id> link. Per-version so the owner
@@ -1248,6 +1352,20 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (!d.ok) throw new Error(d.error || 'apply failed');
       if (r.id === song.id && onApplied) onApplied(d.audioUrl, r.fullLyrics);
       setAppliedBothIds((s) => [...new Set([...s, r.id])]);
+      // Mirror into the session so a re-attach knows this version is done —
+      // without this, a re-attached preview offered Apply AGAIN on an applied
+      // version, and the double-apply overwrites the undo backup with the
+      // already-fixed audio (the pre-fix song becomes unrecoverable).
+      {
+        const s2 = FIX_SESSIONS.get(song.id);
+        if (s2) {
+          const applied = [...new Set([...(s2.appliedBothIds || []), r.id])];
+          fixSessionPatch(s2, { appliedBothIds: applied });
+          // Every version that could be applied has been — the flow is DONE;
+          // clear the session so the banner stops advertising it.
+          if ((s2.bothResults || []).every((x) => x.failed || applied.includes(x.id))) fixSessionEnd(song.id);
+        }
+      }
       setCanUndo(true);
       stampFix(new Date().toISOString(), (fixStamp.count || 0) + 1, summary, 'section');
       showToast(`✅ Version ${r.version ?? '?'} corrected — its /song link is updated.`);
@@ -1263,13 +1381,23 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   async function redoOneBoth(r) {
     if (!plan?.changes) return;
     setBusyBothId(r.id); setError(''); setFailedTakes(null);
+    // A redo is a minutes-long ladder like any other run — the session must know
+    // (banner shows progress, beforeunload warns) and must get the retried
+    // result even if the card unmounts mid-run. Never persist via a setState
+    // updater side effect: on an unmounted card the updater simply never runs.
+    const sess = FIX_SESSIONS.get(song.id);
+    if (sess) fixSessionPatch(sess, { status: 'working', msg: `Versión ${r.version ?? '?'}: reintentando…` });
     try {
-      const one = await fixOneSong(r.id, { changes: plan.changes, combinedLyrics: plan.approvedLyrics }, (m) => setSurgicalMsg(`Versión ${r.version ?? '?'}: ${m}`));
-      setBothResults((list) => (list || []).map((x) => (x.id === r.id ? { ...x, ...one, failed: false, failReason: null } : x)));
+      const one = await fixOneSong(r.id, { changes: plan.changes, combinedLyrics: plan.approvedLyrics }, (m) => { const msg = `Versión ${r.version ?? '?'}: ${m}`; setSurgicalMsg(msg); if (sess) fixSessionPatch(sess, { msg }); });
+      const upd = (list) => (list || []).map((x) => (x.id === r.id ? { ...x, ...one, failed: false, failReason: null } : x));
+      if (sess) fixSessionPatch(sess, { status: 'bothPreview', bothResults: upd(sess.bothResults), msg: '' });
+      setBothResults(upd);
       setSurgicalMsg('');
     } catch (e) {
       if (Array.isArray(e?.takes) && e.takes.length) setFailedTakes(e.takes);
       setError(`Versión ${r.version ?? '?'}: ${e?.message || 'redo failed'}`); setSurgicalMsg('');
+      // Back to the preview state — the OTHER version's take is still valid.
+      if (sess) fixSessionPatch(sess, { status: 'bothPreview', msg: '' });
     } finally {
       setBusyBothId(null);
     }
@@ -1294,6 +1422,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setInput('');
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, msg: 'Re-recording the full song… (1–3 min)' });
     const post = async (body) => fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
@@ -1303,9 +1432,9 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
         // An added line needs a few extra seconds of pinned length.
         ...(plan?.addLine ? { durationPadS: 8 } : {}) });
-      if (!sub.ok) { setError(sub.reason || sub.error || 'Could not start the full re-roll.'); setPhase('plan'); return; }
+      if (!sub.ok) { const em = sub.reason || sub.error || 'Could not start the full re-roll.'; setError(em); setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: em, msg: '' }); return; }
       const { fixTaskId, fullLyrics, changeSummary } = sub;
-      if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); return; }
+      if (!fixTaskId) { setError('Incomplete response from the server.'); setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: 'Incomplete response from the server.', msg: '' }); return; }
 
       // Same-voice by default (2026-08-10): the server auto-uses the song's own
       // cloned voice persona + pins the original length whenever the Kie source
@@ -1316,17 +1445,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       let tracks = [];
       for (let i = 1; i <= 45; i++) {
         const d = await post({ action: 'diag', taskId: fixTaskId });
-        setSurgicalMsg(`Re-recording the full song… ${voiceNote} (${i})`);
+        const pm = `Re-recording the full song… ${voiceNote} (${i})`;
+        setSurgicalMsg(pm); fixSessionPatch(sess, { msg: pm });
         if (d.status === 'SUCCESS') { tracks = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
-          setError(d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Reword and try again.' : `Generation failed (${d.status}).`);
-          setPhase('plan'); return;
+          const em = d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright). Reword and try again.' : `Generation failed (${d.status}).`;
+          setError(em);
+          setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: em, msg: '' }); return;
         }
         await new Promise((r) => setTimeout(r, 9000));
       }
-      if (!tracks.length) { setError('Timed out waiting for the re-recording.'); setPhase('plan'); return; }
+      if (!tracks.length) { setError('Timed out waiting for the re-recording.'); setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: 'Timed out waiting for the re-recording.', msg: '' }); return; }
 
-      setResult({
+      const res = {
         mode: 'full',
         fixTaskId,
         changeSummary: (typeof plan?.changeSummary === 'string' && plan.changeSummary) || changeSummary || '',
@@ -1334,14 +1465,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         fullLyrics,
         verifyNote: voiceNote,
         takes: tracks.map((t) => ({ audioUrl: t.audioUrl, id: t.id || null, imageUrl: t.imageUrl || null, verified: null, lyrics: fullLyrics })),
-      });
+      };
+      setResult(res);
       setSelectedTakeIdx(0);
       setSurgicalMsg('');
       setPhase('preview');
+      fixSessionPatch(sess, { status: 'preview', result: res, msg: '' });
     } catch (e) {
       setError('Error: ' + (e?.message || 'unknown'));
       setSurgicalMsg('');
       setPhase('plan');
+      fixSessionPatch(sess, { status: 'error', error: 'Error: ' + (e?.message || 'unknown'), msg: '' });
     }
   }
 
@@ -1460,7 +1594,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // left over from an earlier attempt would sit under a success toast.
       setError(''); setFailedTakes(null); setShowFailedTakes(false);
       setRewordSuggestions(null); setOfferFullReroll(false);
-      setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+      fixSessionEnd(song.id); setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
       if (onStaged) onStaged();
     } catch (e) {
       setError('Network error handing off: ' + (e?.message || 'unknown'));
@@ -1484,7 +1618,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
       if (!d?.success) { setError(d?.error || 'Could not save the fix for approval.'); setPhase('preview'); return; }
       showToast('📥 Saved for approval. The owner will confirm before it replaces the customer\'s song.');
-      setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+      fixSessionEnd(song.id); setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
       if (onStaged) onStaged();
     } catch (e) {
       setError('Network error while saving: ' + (e?.message || 'unknown'));
@@ -1520,7 +1654,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         // Keep the bundle-drift banner honest without a refetch.
         if (Array.isArray(result.corrections) && result.corrections.length) setMyCorrections((prev) => [...(prev || []), ...result.corrections]);
         stampFix(d.fixedAt, d.fixCount, result.changeSummary, 'section');
-        setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
+        fixSessionEnd(song.id); setPhase('idle'); setResult(null); setPlan(null); setMessages([]); setImage(null); setInput(''); setSectionParams(null);
         return;
       }
       const res = await fetch(FN_URL, {
@@ -1549,6 +1683,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       if (onApplied) onApplied(take.audioUrl, take.lyrics || result.fullLyrics);
       setCanUndo(true);
       stampFix(data.fixedAt, data.fixCount, result.changeSummary, 'full');
+      fixSessionEnd(song.id);
       setPhase('idle');
       setResult(null);
       setPlan(null);
@@ -1856,7 +1991,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   </button>
                 )}
                 <button
-                  onClick={() => { setPlan(null); setPhase('idle'); setOfferFullReroll(false); }}
+                  onClick={() => { { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working') fixSessionEnd(song.id); } setPlan(null); setPhase('idle'); setOfferFullReroll(false); }}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                 >
                   ✏️ Keep editing
@@ -1981,7 +2116,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   </button>
                 )}
                 <button
-                  onClick={() => { setBothResults(null); setAppliedBothIds([]); setPhase(appliedBothIds.length ? 'idle' : 'plan'); if (appliedBothIds.length) { setPlan(null); setMessages([]); setImage(null); setInput(''); } }}
+                  onClick={() => { fixSessionEnd(song.id); setBothResults(null); setAppliedBothIds([]); setPhase(appliedBothIds.length ? 'idle' : 'plan'); if (appliedBothIds.length) { setPlan(null); setMessages([]); setImage(null); setInput(''); } }}
                   disabled={!!busyBothId}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
@@ -2053,7 +2188,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   </button>
                 )}
                 <button
-                  onClick={() => { setResult(null); setPlan(null); setPhase('idle'); }}
+                  onClick={() => { fixSessionEnd(song.id); setResult(null); setPlan(null); setPhase('idle'); }}
                   disabled={phase === 'applying'}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition disabled:opacity-60"
                 >
@@ -2260,6 +2395,16 @@ function FixSongTab({ accessToken, showToast }) {
   const aceWaitingCount = queue.filter((r) => r.status === 'pending' && !ACE_ACTIVE.includes(r.auto_status)).length;
   const aceBusy = aceWorkingCount > 0;
 
+  // Browser-run fixes that outlived their card (FIX_SESSIONS is module scope) —
+  // re-render whenever any session starts, progresses, finishes or is cleared.
+  const [, setFixSessionTick] = useState(0);
+  useEffect(() => {
+    const fn = () => setFixSessionTick((n) => n + 1);
+    FIX_SESSION_WATCHERS.add(fn);
+    return () => FIX_SESSION_WATCHERS.delete(fn);
+  }, []);
+  const liveFixSessions = [...FIX_SESSIONS.entries()];
+
   return (
     <div className="w-full">
       {/* ── Ace — FULL-BLEED cinematic hero spanning the whole tab. He is ALWAYS
@@ -2385,6 +2530,40 @@ function FixSongTab({ accessToken, showToast }) {
         </div>
       )}
 
+      {/* Fixes that are still cooking (or waiting) in THIS browser — the ladder
+          survives tab switches now, but only if the owner can find the way back
+          to it. One click re-opens the song and the card re-attaches. */}
+      {liveFixSessions.filter(([id]) => id !== selected?.id).map(([id, s]) => (
+        <button
+          key={id}
+          onClick={() => {
+            // Reopen the fix under the SAME context it was started in. A staged
+            // run must come back with its queue request (or its Apply becomes a
+            // direct swap of the live song), and a direct run must not inherit
+            // whatever unrelated request happens to be active.
+            if (s.stageRequestId) {
+              const row = queue.find((x) => x.id === s.stageRequestId);
+              if (!row) { showToast('Ese arreglo pertenece a una solicitud ya resuelta — su vista previa quedó descartada.'); fixSessionEnd(id); return; }
+              setActiveRequest(row);
+              pick(id, row);
+              return;
+            }
+            setActiveRequest(null);
+            pick(id);
+          }}
+          className={`w-full text-left mb-2 px-3 py-2.5 rounded-xl border text-sm transition ${
+            s.status === 'working' ? 'bg-amber-500/10 border-amber-400/40 text-amber-200 hover:bg-amber-500/20'
+            : s.status === 'error' ? 'bg-red-500/10 border-red-400/40 text-red-200 hover:bg-red-500/20'
+            : 'bg-green-500/10 border-green-400/40 text-green-200 hover:bg-green-500/20'}`}
+        >
+          {s.status === 'working'
+            ? <>⏳ <span className="font-semibold">Fix in progress</span> for {s.songName || 'a song'} — {s.msg || 'working…'} <span className="opacity-70">(tap to watch)</span></>
+            : s.status === 'error'
+              ? <>❌ <span className="font-semibold">Fix failed</span> for {s.songName || 'a song'} — tap to see why</>
+              : <>✅ <span className="font-semibold">Fix ready to review</span> for {s.songName || 'a song'} — tap to listen</>}
+        </button>
+      ))}
+
       {/* Search — its own labeled studio zone. */}
       {!selected && (
         <p className="text-[10px] uppercase tracking-widest font-bold text-gray-500 mb-1.5">▸ Find a song to fix</p>
@@ -2429,7 +2608,11 @@ function FixSongTab({ accessToken, showToast }) {
                 song={selected}
                 showToast={showToast}
                 accessToken={accessToken}
-                stageRequest={activeRequest}
+                // A request LINKED to another song must not put this card in
+                // staging mode — its stage would land on the wrong request. A
+                // request with no song yet keeps staging any picked song (the
+                // intentional attach flow, which links it on pick).
+                stageRequest={activeRequest && (!activeRequest.song_id || String(activeRequest.song_id) === String(selected.id)) ? activeRequest : null}
                 onStaged={onStaged}
                 onApplied={(newUrl, newLyrics) => setSelected((p) => (p ? { ...p, audio_url: newUrl, ...(newLyrics ? { lyrics: newLyrics } : {}) } : p))}
               />
@@ -2564,6 +2747,23 @@ export default function AdminDashboard() {
   const { navigateTo } = useContext(AppContext);
   const [userRole, setUserRole] = useState(null); // 'admin' | 'assistant' | null
   const [accessToken, setAccessToken] = useState(null);
+
+  // A browser-run fix survives tab SWITCHES (FIX_SESSIONS), but a page reload
+  // or window close kills the JavaScript it runs on — warn before that. "Send
+  // to Ace" is the path that survives even this.
+  useEffect(() => {
+    const h = (e) => {
+      for (const s of FIX_SESSIONS.values()) {
+        if (s.status === 'working') {
+          e.preventDefault();
+          e.returnValue = 'A song fix is still running and will die if you leave. Use "Send to Ace" to run it in the background instead.';
+          return;
+        }
+      }
+    };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, []);
   // isAuthChecking gates the full-page spinner. Once auth is verified the
   // dashboard renders even if the songs fetch is still in flight (the songs
   // payload is multi-MB and used to wedge the whole UI behind it).
