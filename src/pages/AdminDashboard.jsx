@@ -959,9 +959,17 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       }
 
       // Poll Kie until the round's takes are ready.
+      // BUDGET 15 MIN, NOT 6 (2026-08-12). A healthy Kie returns takes in ~90s,
+      // so 40x9s felt generous — but the same degraded spells that fail most
+      // jobs also SLOW the survivors: tonight's successful jobs ran 234-337s,
+      // and a throwaway retry script with a 225s ceiling declared 5 finished
+      // takes "failed" and discarded them. At 6 minutes this loop had 23
+      // seconds of margin over the slowest real job. Giving up early is
+      // indistinguishable from a failure to the caller, and costs a take we
+      // already paid for.
       let takeList = [];
       let infraFail = false;   // Kie's servers died — NOT a verdict on this take
-      for (let i = 1; i <= 40; i++) {
+      for (let i = 1; i <= 100; i++) {
         const d = await postFn({ action: 'diag', taskId: sub.fixTaskId });
         onMsg?.(`Generando la voz corregida… (paso ${submits}.${i})`);
         if (d.status === 'SUCCESS') { takeList = (d.trackList || []).filter((t) => t.audioUrl); break; }
