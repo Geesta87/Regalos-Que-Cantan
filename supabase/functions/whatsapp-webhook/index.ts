@@ -205,8 +205,8 @@ serve(async (req) => {
       });
     } else if (replyable) {
       // Out-of-office: auto-reply ONCE (throttled) when the owner is away, and
-      // skip the AI draft. Otherwise draft an AI reply in the background (no-ops
-      // unless the bot is switched on; never sends).
+      // the AI bot stays silent for the whole away period. Otherwise draft an AI
+      // reply in the background (no-ops unless the bot is switched on).
       runInBackground(
         maybeSendOutOfOffice(admin, {
           conversationId,
@@ -214,7 +214,10 @@ serve(async (req) => {
           channel: 'whatsapp',
           lastAutoReplyAt: existing?.oo_auto_replied_at ?? null,
         }).then((r) => {
-          if (!r.sent) return triggerCsAgent(conversationId);
+          // Gate on `active`, NOT `sent` — a throttled or failed away message
+          // still means the owner is away. See _shared/out-of-office.ts.
+          if (r.active) return;
+          return triggerCsAgent(conversationId);
         }),
       );
     }

@@ -25,12 +25,29 @@ export const DEFAULT_OO_MESSAGE =
 // deno-lint-ignore no-explicit-any
 type Admin = any;
 
+export interface OutOfOfficeResult {
+  // The owner has the out-of-office toggle ON. While this is true the AI bot
+  // must stay SILENT — see the caller contract below.
+  active: boolean;
+  // We actually put the away message on the wire this time.
+  sent: boolean;
+}
+
 // Send the out-of-office auto-reply if (and only if) the toggle is on AND we
 // haven't already auto-replied to this conversation recently. Records the
 // outbound message in the thread and stamps the throttle timestamp.
 //
-// Returns { sent: true } when an auto-reply went out — the caller should then
-// skip the normal cs-agent draft (the customer already got an answer).
+// CALLER CONTRACT — gate on `active`, never on `sent`:
+//
+//   if (r.active) return;              // owner is away → bot says NOTHING
+//   return triggerCsAgent(convoId);    // owner is around → draft as usual
+//
+// `sent` is false in three different ways that all still mean "the owner is
+// away": throttled, the Twilio send failed, or the settings read threw. Gating
+// the bot on `sent` (the pre-2026-08-13 code did) meant the FIRST text of the
+// evening got the away message and every text for the next 8 hours fell through
+// to the AI bot, which auto-sent to customers while the owner was asleep — 90
+// bot messages across 43 conversations in one 3-day away period. Never again.
 export async function maybeSendOutOfOffice(
   admin: Admin,
   opts: {
@@ -39,19 +56,21 @@ export async function maybeSendOutOfOffice(
     channel: 'sms' | 'whatsapp';
     lastAutoReplyAt?: string | null;
   },
-): Promise<{ sent: boolean }> {
+): Promise<OutOfOfficeResult> {
   try {
-    const { data: settings } = await admin
+    const { data: settings, error } = await admin
       .from('cs_agent_settings')
       .select('out_of_office, out_of_office_message')
       .eq('id', 1)
       .maybeSingle();
-    if (!settings?.out_of_office) return { sent: false };
+    if (error) throw new Error(error.message);
+    if (!settings?.out_of_office) return { active: false, sent: false };
 
-    // Throttle: at most one auto-reply per conversation per window.
+    // Throttle: at most one auto-reply per conversation per window. Still
+    // `active` — the customer gets silence, not a bot answer.
     if (opts.lastAutoReplyAt) {
       const ageMs = Date.now() - new Date(opts.lastAutoReplyAt).getTime();
-      if (ageMs < THROTTLE_HOURS * 3600_000) return { sent: false };
+      if (ageMs < THROTTLE_HOURS * 3600_000) return { active: true, sent: false };
     }
 
     const message = (settings.out_of_office_message || '').trim() || DEFAULT_OO_MESSAGE;
@@ -78,9 +97,13 @@ export async function maybeSendOutOfOffice(
       .update({ oo_auto_replied_at: nowIso, last_message_at: nowIso })
       .eq('id', opts.conversationId);
 
-    return { sent: result.ok };
+    return { active: true, sent: result.ok };
   } catch (e) {
-    console.warn('out-of-office: auto-reply failed', e);
-    return { sent: false };
+    // Fail CLOSED. We only reach here with the toggle unread (the settings
+    // query blew up) or already known to be ON. Reporting `active: true` keeps
+    // the bot quiet; the cost is a draft waiting for the owner, which is the
+    // status quo. Reporting false could text a customer while the owner is away.
+    console.warn('out-of-office: auto-reply failed — treating as AWAY', e);
+    return { active: true, sent: false };
   }
 }

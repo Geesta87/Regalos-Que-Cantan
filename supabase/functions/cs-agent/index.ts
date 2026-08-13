@@ -555,7 +555,7 @@ serve(async (req) => {
     // Master switch — do nothing unless the owner has turned the bot on.
     const { data: settings } = await admin
       .from('cs_agent_settings')
-      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories')
+      .select('enabled, knowledge_doc, auto_send_enabled, auto_categories, out_of_office')
       .eq('id', 1)
       .maybeSingle();
     if (!settings?.enabled) {
@@ -1056,6 +1056,14 @@ serve(async (req) => {
       autoBlockers.length = 0;
       if (settings?.auto_send_enabled !== true) autoBlockers.push('master switch off');
     }
+
+    // OUT OF OFFICE beats everything, including the opener fast path — which is
+    // why it sits AFTER the reset above. While the owner is away the bot never
+    // puts anything on the wire; the reply still becomes a draft so there is
+    // something to approve in the morning. The inbound webhooks already skip
+    // calling us when the toggle is on — this is the backstop for every other
+    // way cs-agent can be woken up.
+    if (settings?.out_of_office === true) autoBlockers.push('out of office');
 
     const canAuto = autoBlockers.length === 0;
 

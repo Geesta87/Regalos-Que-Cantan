@@ -1203,8 +1203,8 @@ export default function SmsInboxTab({ accessToken }) {
             onClick={() => saveOutOfOffice(!outOfOffice)}
             disabled={ooBusy}
             title={outOfOffice
-              ? 'Out of office is ON — customers get an auto-reply. Click to turn off.'
-              : 'Turn on to auto-reply to customers while you are away.'}
+              ? 'Out of office is ON — the AI bot is paused and customers get only the away message. Click to turn off.'
+              : 'Turn on to pause the AI bot and auto-reply to customers while you are away.'}
             className={`px-3 py-2 rounded-xl text-sm font-medium transition disabled:opacity-60 ${
               outOfOffice
                 ? 'bg-amber-400/20 text-amber-200 border border-amber-400/40 hover:bg-amber-400/30'
@@ -1305,9 +1305,12 @@ export default function SmsInboxTab({ accessToken }) {
           {!ooEditing ? (
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-semibold text-amber-200 mb-0.5">🌙 Out of office is on</div>
+                <div className="font-semibold text-amber-200 mb-0.5">
+                  🌙 Out of office is on — the AI bot is paused
+                </div>
                 <div className="text-amber-100/80 text-xs">
-                  New customers get this auto-reply (once each, until you turn it off):
+                  The bot sends nothing while you are away. Customers get only this
+                  auto-reply (once each per 8 hours), then wait for you:
                 </div>
                 <div className="mt-1 text-amber-50/90 italic">“{ooMessage}”</div>
               </div>
