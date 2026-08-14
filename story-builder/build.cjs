@@ -55,10 +55,17 @@ const post = async (fn, body) => {
     }
     if (ctx.morph_asset) execFileSync('curl', ['-s', '-o', path.join(dir, 'BOOKEND.mp4'), ctx.morph_asset]);
     fs.writeFileSync(path.join(dir, 'seed-urls.json'), JSON.stringify(seedUrls));
+    // full asset map + morph url so the engine's incremental checkpoints preserve
+    // clips this run reuses rather than regenerates
+    fs.writeFileSync(path.join(dir, 'seed-assets.json'), JSON.stringify(ctx.scene_assets || []));
+    if (ctx.morph_asset) fs.writeFileSync(path.join(dir, 'seed-morph.txt'), ctx.morph_asset);
     if (Object.keys(seedUrls).length) console.log(`[build] seeded ${Object.keys(seedUrls).length} existing scene(s)${ctx.morph_asset ? ' + morph' : ''}`);
 
     console.log('[build] running engine (storyboard -> scenes -> motion -> morph -> render)...');
-    execFileSync('node', [path.join(__dirname, 'engine.cjs'), dir, '--motion'], { stdio: 'inherit', env: process.env });
+    // STORY_ORDER_ID switches on the engine's incremental checkpointing: every
+    // scene image, hero motion clip and the morph is persisted the moment it
+    // exists, so a crash mid-build never throws away paid generation again.
+    execFileSync('node', [path.join(__dirname, 'engine.cjs'), dir, '--motion'], { stdio: 'inherit', env: { ...process.env, STORY_ORDER_ID: orderId } });
 
     const final = path.join(dir, 'FINAL-AUTO.mp4');
     if (!fs.existsSync(final)) throw new Error('engine produced no FINAL-AUTO.mp4');
@@ -76,20 +83,31 @@ const post = async (fn, body) => {
     // Best-effort: an asset-save hiccup must not fail a finished build.
     try {
       console.log('[build] persisting scene assets...');
-      const outUrls = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'out-urls.json'), 'utf8')); } catch { return seedUrls; } })();
-      const sb = ctx.storyboard;
-      const heroIds = new Set((sb.scenes || []).filter((s) => s.hero).map((s) => s.image_id));
-      const sceneAssets = [];
-      for (const id of [...new Set((sb.scenes || []).map((s) => s.image_id).filter(Boolean))]) {
-        const entry = { image_id: id, image_url: outUrls[id] || null, motion_url: null };
-        const rawMotion = path.join(dir, `motion-${id}.mp4`);
-        if (heroIds.has(id) && fs.existsSync(rawMotion)) entry.motion_url = await putFile(rawMotion, 'video/mp4');
-        sceneAssets.push(entry);
+      // The engine now checkpoints every artifact as it is produced and writes the
+      // resolved map to out-assets.json — reuse those hosted urls so we don't
+      // upload the same clips a second time. Older/local runs fall back to the
+      // upload-here path below.
+      const out = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'out-assets.json'), 'utf8')); } catch { return null; } })();
+      if (out && Array.isArray(out.scene_assets) && out.scene_assets.length) {
+        const saved = await post('story-build-finalize', { mode: 'save-assets', story_video_order_id: orderId, scene_assets: out.scene_assets, morph_asset: out.morph_asset || ctx.morph_asset || null });
+        if (!saved.success) console.error('[build] save-assets failed (non-fatal):', saved.error);
+        else console.log(`[build] assets already checkpointed (${out.scene_assets.length} scenes) — no re-upload`);
+      } else {
+        const outUrls = (() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'out-urls.json'), 'utf8')); } catch { return seedUrls; } })();
+        const sb = ctx.storyboard;
+        const heroIds = new Set((sb.scenes || []).filter((s) => s.hero).map((s) => s.image_id));
+        const sceneAssets = [];
+        for (const id of [...new Set((sb.scenes || []).map((s) => s.image_id).filter(Boolean))]) {
+          const entry = { image_id: id, image_url: outUrls[id] || null, motion_url: null };
+          const rawMotion = path.join(dir, `motion-${id}.mp4`);
+          if (heroIds.has(id) && fs.existsSync(rawMotion)) entry.motion_url = await putFile(rawMotion, 'video/mp4');
+          sceneAssets.push(entry);
+        }
+        let morphUrl = ctx.morph_asset || null;
+        if (!morphUrl && fs.existsSync(path.join(dir, 'BOOKEND.mp4'))) morphUrl = await putFile(path.join(dir, 'BOOKEND.mp4'), 'video/mp4');
+        const saved = await post('story-build-finalize', { mode: 'save-assets', story_video_order_id: orderId, scene_assets: sceneAssets, morph_asset: morphUrl });
+        if (!saved.success) console.error('[build] save-assets failed (non-fatal):', saved.error);
       }
-      let morphUrl = ctx.morph_asset || null;
-      if (!morphUrl && fs.existsSync(path.join(dir, 'BOOKEND.mp4'))) morphUrl = await putFile(path.join(dir, 'BOOKEND.mp4'), 'video/mp4');
-      const saved = await post('story-build-finalize', { mode: 'save-assets', story_video_order_id: orderId, scene_assets: sceneAssets, morph_asset: morphUrl });
-      if (!saved.success) console.error('[build] save-assets failed (non-fatal):', saved.error);
     } catch (e) { console.error('[build] asset persistence failed (non-fatal):', e.message); }
 
     console.log('[build] uploading final video...');
