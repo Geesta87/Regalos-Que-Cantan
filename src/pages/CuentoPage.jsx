@@ -59,7 +59,10 @@ const CSS = `
   .cu-audio{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--tinta);color:var(--crema);
     border:none;border-radius:999px;padding:10px 20px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;
     box-shadow:0 8px 24px rgba(46,31,26,.35);cursor:pointer;z-index:50}
-  .cu-note{font-size:11.5px;color:var(--tinta2);text-align:center;margin-top:16px;max-width:46ch;line-height:1.5}
+  .cu-auto{margin-top:14px;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;
+    border:1.5px solid var(--linea);background:var(--papel);color:var(--tinta2)}
+  .cu-auto.on{border-color:var(--teal);background:var(--teal);color:var(--papel)}
+  .cu-note{font-size:11.5px;color:var(--tinta2);text-align:center;margin-top:10px;max-width:46ch;line-height:1.5}
   .cu-center{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:var(--tinta2)}
   @media print{
     .cu-nav,.cu-audio,.cu-share a,.cu-note{display:none!important}
@@ -77,8 +80,14 @@ export default function CuentoPage() {
   const [cuento, setCuento] = useState(null);
   const [page, setPage] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [auto, setAuto] = useState(true); // pages follow the song until the reader takes over
   const audioRef = useRef(null);
   const touchX = useRef(null);
+  const autoRef = useRef(true);
+  const pageRef = useRef(0);
+  const timesRef = useRef([]); // effective start time (s) per stanza page
+  useEffect(() => { autoRef.current = auto; }, [auto]);
+  useEffect(() => { pageRef.current = page; }, [page]);
 
   useEffect(() => {
     if (!token) { setState('notfound'); return; }
@@ -114,12 +123,73 @@ export default function CuentoPage() {
     if (!a) return;
     if (a.paused) { a.play().then(() => setPlaying(true)).catch(() => {}); } else { a.pause(); setPlaying(false); }
   };
-  const go = (n) => setPage(Math.max(0, Math.min(pages.length - 1, n)));
+  const go = (n, manual = false) => {
+    if (manual) setAuto(false); // the reader took the wheel — stop auto-turning
+    setPage(Math.max(0, Math.min(pages.length - 1, n)));
+  };
+
+  // Auto-turn: pages follow the song. Sung timings (stanzas[].startS, from Kie's
+  // aligned lyrics) when we have them — gaps interpolated between known
+  // neighbors — otherwise even pacing across the audio duration. The final
+  // (dedication) page waits for the song to end.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !cuento) return undefined;
+    const stanzas = cuento.stanzas || [];
+    const buildTimes = () => {
+      const dur = a.duration;
+      if (!Number.isFinite(dur) || dur <= 0 || !stanzas.length) return;
+      const known = stanzas.map((s) => (Number.isFinite(Number(s.startS)) ? Number(s.startS) : null));
+      const timedCount = known.filter((t) => t !== null).length;
+      const times = [...known];
+      if (timedCount >= 2) {
+        // interpolate the gaps so untimed stanzas still get their moment
+        for (let i = 0; i < times.length; i++) {
+          if (times[i] !== null) continue;
+          let lo = i - 1; while (lo >= 0 && times[lo] === null) lo--;
+          let hi = i + 1; while (hi < times.length && times[hi] === null) hi++;
+          const loT = lo >= 0 ? times[lo] : 0;
+          const hiT = hi < times.length ? times[hi] : dur;
+          const loI = lo >= 0 ? lo : -1;
+          const hiI = hi < times.length ? hi : times.length;
+          times[i] = loT + ((hiT - loT) * (i - loI)) / (hiI - loI);
+        }
+      } else {
+        // no usable timings — spread pages evenly, cover keeps the intro
+        for (let i = 0; i < times.length; i++) times[i] = (dur * (i + 1)) / (times.length + 2);
+      }
+      timesRef.current = times;
+    };
+    const onTime = () => {
+      if (!autoRef.current) return;
+      const times = timesRef.current;
+      if (!times.length) return;
+      const t = a.currentTime;
+      let target = 0; // cover until the first stanza is sung
+      for (let i = 0; i < times.length; i++) { if (t >= times[i]) target = i + 1; }
+      if (target !== pageRef.current && pageRef.current !== times.length + 1) {
+        setPage(target);
+      }
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      if (autoRef.current) setPage(stanzas.length + 1); // dedication + share
+    };
+    a.addEventListener('loadedmetadata', buildTimes);
+    a.addEventListener('timeupdate', onTime);
+    a.addEventListener('ended', onEnded);
+    if (a.readyState >= 1) buildTimes();
+    return () => {
+      a.removeEventListener('loadedmetadata', buildTimes);
+      a.removeEventListener('timeupdate', onTime);
+      a.removeEventListener('ended', onEnded);
+    };
+  }, [cuento, state]);
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'ArrowLeft') go(page - 1);
-      if (e.key === 'ArrowRight') go(page + 1);
+      if (e.key === 'ArrowLeft') go(page - 1, true);
+      if (e.key === 'ArrowRight') go(page + 1, true);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -165,7 +235,7 @@ export default function CuentoPage() {
       onTouchEnd={(e) => {
         if (touchX.current === null) return;
         const dx = e.changedTouches[0].clientX - touchX.current;
-        if (Math.abs(dx) > 45) go(page + (dx < 0 ? 1 : -1));
+        if (Math.abs(dx) > 45) go(page + (dx < 0 ? 1 : -1), true);
         touchX.current = null;
       }}>
       {pages.map((pg, i) => (
@@ -206,15 +276,18 @@ export default function CuentoPage() {
       ))}
     </div>
     <div className="cu-nav">
-      <button className="cu-arrow" onClick={() => go(page - 1)} disabled={page === 0} aria-label="Página anterior">‹</button>
+      <button className="cu-arrow" onClick={() => go(page - 1, true)} disabled={page === 0} aria-label="Página anterior">‹</button>
       <div className="cu-dots">
         {pages.map((_, i) => (
-          <button key={i} className={`cu-dot ${i === page ? 'on' : ''}`} onClick={() => go(i)} aria-label={`Ir a la página ${i + 1}`} />
+          <button key={i} className={`cu-dot ${i === page ? 'on' : ''}`} onClick={() => go(i, true)} aria-label={`Ir a la página ${i + 1}`} />
         ))}
       </div>
-      <button className="cu-arrow" onClick={() => go(page + 1)} disabled={page === pages.length - 1} aria-label="Página siguiente">›</button>
+      <button className="cu-arrow" onClick={() => go(page + 1, true)} disabled={page === pages.length - 1} aria-label="Página siguiente">›</button>
     </div>
-    <div className="cu-note">Desliza para pasar las páginas. La canción sigue sonando mientras lees.</div>
+    <button className={`cu-auto ${auto ? 'on' : ''}`} onClick={() => setAuto(!auto)}>
+      {auto ? '♪ Las páginas siguen la canción' : '♪ Activar páginas automáticas'}
+    </button>
+    <div className="cu-note">{auto ? 'Toca una flecha o desliza para leer a tu ritmo.' : 'Desliza para pasar las páginas. La canción sigue sonando mientras lees.'}</div>
     {cuento?.audio_url && (
       <button className="cu-audio" onClick={toggleAudio}>{playing ? '❚❚  Pausar canción' : '►  Escuchar la canción'}</button>
     )}
