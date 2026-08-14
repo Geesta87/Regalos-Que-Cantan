@@ -1961,6 +1961,90 @@ export default function SuccessPage() {
     return res;
   };
 
+  // Video entitlement, page-wide: paid for N photo videos → the page renders N.
+  // Leftover idle orders past the cap (pre-2026-08-13 duplicate-order bug) must
+  // not draw an upload flow — the upload would be refused, so inviting it is a
+  // dead-end CTA (audit 2026-08-14, Gladys cs_live_b1Ih…).
+  const videoEntitled = songs.some((s) => s?.has_video_addon)
+    ? (songs.find((s) => s?.has_video_addon)?.video_addon_count ?? 1)
+    : 0;
+  const consumedVideoCount = Object.values(videoOrdersMap)
+    .filter((o) => o && o.status !== 'pending' && o.status !== 'failed').length;
+  // True when the current selection's order is an excess idle row we won't serve.
+  const videoOrderIsExcess = !!(videoOrder && videoOrder.status === 'pending'
+    && !(videoOrder.photo_count > 0) && videoEntitled > 0 && consumedVideoCount >= videoEntitled);
+
+  // Animado production/delivered card — rendered in the DELIVERABLES flow (the
+  // awaiting_photo uploader alone stays pinned to the top of the page).
+  const renderAnimadoStatusCards = () => animadoOrders.map((o) => {
+    if (o.state === 'deleted' || o.state === 'awaiting_photo') return null;
+    const delivered = o.state === 'delivered';
+    const name = o.recipient_name || 'tu ser querido';
+    return (
+      <div key={o.order_id} id="rqc-animado" style={{
+        marginBottom: '24px', padding: '20px',
+        borderRadius: '20px',
+        background: isLight
+          ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
+          : 'linear-gradient(160deg, rgba(109,40,217,0.16) 0%, rgba(79,70,229,0.08) 100%)',
+        border: `1.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(139,92,246,0.35)'}`,
+      }}>
+        <p style={{
+          margin: '0 0 6px', fontSize: '15px', fontWeight: 900,
+          color: isLight ? '#5b21b6' : '#c4b5fd',
+        }}>
+          🎬 {delivered ? `La película animada de ${name} ya está lista` : `Estamos creando la película animada de ${name}`}
+        </p>
+        <p style={{ margin: '0 0 14px', fontSize: '13px', color: ts.textSecondary, lineHeight: 1.5 }}>
+          {delivered
+            ? 'Tu película estilo Pixar quedó lista. Descárgala o compártela cuando quieras.'
+            : 'Ya recibimos tus fotos. Nuestro equipo la revisa a mano antes de enviártela — te avisamos por correo y WhatsApp en cuanto esté. Puedes cerrar esta página sin problema.'}
+        </p>
+        {delivered ? (
+          <>
+            {/* Films render 9:16, so an uncapped width:100% player is taller
+                than the viewport and buries the rest of the page. */}
+            <video
+              src={animadoVideoUrl(o.order_id)}
+              controls playsInline preload="metadata"
+              style={{
+                width: '100%', maxHeight: '60vh', objectFit: 'contain',
+                borderRadius: '14px', marginBottom: '12px', background: '#000',
+              }}
+            />
+            <a href={animadoVideoUrl(o.order_id)} download={`pelicula-animada-${name}.mp4`}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                width: '100%', padding: '15px', boxSizing: 'border-box',
+                background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                color: 'white', fontWeight: 800, fontSize: '16px',
+                borderRadius: '14px', textDecoration: 'none', fontFamily: ts.font,
+                boxShadow: '0 8px 24px rgba(124,58,237,0.3)',
+              }}>
+              ⬇️ Descargar Película Animada (MP4)
+            </a>
+          </>
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '12px 14px', borderRadius: '12px',
+            background: isLight ? 'rgba(124,58,237,0.08)' : 'rgba(139,92,246,0.12)',
+          }}>
+            <span style={{
+              width: '18px', height: '18px', flexShrink: 0, borderRadius: '50%',
+              border: `2.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(196,181,253,0.3)'}`,
+              borderTopColor: isLight ? '#7c3aed' : '#c4b5fd',
+              animation: 'spin 0.9s linear infinite',
+            }} />
+            <span style={{ fontSize: '13px', fontWeight: 700, color: isLight ? '#5b21b6' : '#c4b5fd' }}>
+              En producción · normalmente 24–48 h
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  });
+
   // ==================== MAIN SUCCESS PAGE ====================
   return (
     <div style={{
@@ -2052,95 +2136,25 @@ export default function SuccessPage() {
           position: 'relative', zIndex: 10,
         }}>
 
-          {/* ===== ANIMADO — the animated story video, in EVERY state =====
-              awaiting_photo shows the uploader (time-sensitive, hence the top of
-              the page). Previously that was the only state rendered, so the film
-              disappeared from the page the moment photos were uploaded and never
-              came back — the buyer's most expensive item became invisible on the
-              one page they were told holds everything. Now production and delivery
-              keep a slot here too. ===== */}
+          {/* ===== ANIMADO — needs-your-photo state ONLY up here =====
+              The uploader is the one thing that blocks fulfillment, so it's the
+              only content allowed above the congratulation. Production/delivered
+              cards render further down, with the other deliverables (audit
+              2026-08-14: opening the page with a product card instead of the
+              greeting read as disorganized). ===== */}
           {animadoOrders.map((o) => {
-            if (o.state === 'deleted') return null;
-            if (o.state === 'awaiting_photo') {
-              return (
-                <div key={o.order_id} id="rqc-animado" style={{ marginBottom: '28px' }}>
-                  <AnimadoPhotoUpload
-                    recipientName={o.recipient_name || 'tu ser querido'}
-                    isFamily={o.is_family !== false}
-                    otherPeople={o.other_people || []}
-                    askPhone={!o.has_phone}
-                    onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
-                    onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
-                    onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
-                  />
-                </div>
-              );
-            }
-
-            const delivered = o.state === 'delivered';
-            const name = o.recipient_name || 'tu ser querido';
+            if (o.state !== 'awaiting_photo') return null;
             return (
-              <div key={o.order_id} id="rqc-animado" style={{
-                marginBottom: '28px', padding: '20px',
-                borderRadius: '20px',
-                background: isLight
-                  ? 'linear-gradient(160deg, #f5f0ff 0%, #ede8ff 100%)'
-                  : 'linear-gradient(160deg, rgba(109,40,217,0.16) 0%, rgba(79,70,229,0.08) 100%)',
-                border: `1.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(139,92,246,0.35)'}`,
-              }}>
-                <p style={{
-                  margin: '0 0 6px', fontSize: '15px', fontWeight: 900,
-                  color: isLight ? '#5b21b6' : '#c4b5fd',
-                }}>
-                  🎬 {delivered ? `La película animada de ${name} ya está lista` : `Estamos creando la película animada de ${name}`}
-                </p>
-                <p style={{ margin: '0 0 14px', fontSize: '13px', color: ts.textSecondary, lineHeight: 1.5 }}>
-                  {delivered
-                    ? 'Tu película estilo Pixar quedó lista. Descárgala o compártela cuando quieras.'
-                    : 'Ya recibimos tus fotos. Nuestro equipo la revisa a mano antes de enviártela — te avisamos por correo y WhatsApp en cuanto esté. Puedes cerrar esta página sin problema.'}
-                </p>
-
-                {delivered ? (
-                  <>
-                    {/* Films render 9:16, so an uncapped width:100% player is
-                        taller than the viewport and buries the rest of the page. */}
-                    <video
-                      src={animadoVideoUrl(o.order_id)}
-                      controls playsInline preload="metadata"
-                      style={{
-                        width: '100%', maxHeight: '60vh', objectFit: 'contain',
-                        borderRadius: '14px', marginBottom: '12px', background: '#000',
-                      }}
-                    />
-                    <a href={animadoVideoUrl(o.order_id)} download={`pelicula-animada-${name}.mp4`}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        width: '100%', padding: '15px', boxSizing: 'border-box',
-                        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-                        color: 'white', fontWeight: 800, fontSize: '16px',
-                        borderRadius: '14px', textDecoration: 'none', fontFamily: ts.font,
-                        boxShadow: '0 8px 24px rgba(124,58,237,0.3)',
-                      }}>
-                      ⬇️ Descargar Película Animada (MP4)
-                    </a>
-                  </>
-                ) : (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '12px 14px', borderRadius: '12px',
-                    background: isLight ? 'rgba(124,58,237,0.08)' : 'rgba(139,92,246,0.12)',
-                  }}>
-                    <span style={{
-                      width: '18px', height: '18px', flexShrink: 0, borderRadius: '50%',
-                      border: `2.5px solid ${isLight ? 'rgba(124,58,237,0.25)' : 'rgba(196,181,253,0.3)'}`,
-                      borderTopColor: isLight ? '#7c3aed' : '#c4b5fd',
-                      animation: 'spin 0.9s linear infinite',
-                    }} />
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: isLight ? '#5b21b6' : '#c4b5fd' }}>
-                      En producción · normalmente 24–48 h
-                    </span>
-                  </div>
-                )}
+              <div key={o.order_id} id="rqc-animado" style={{ marginBottom: '28px' }}>
+                <AnimadoPhotoUpload
+                  recipientName={o.recipient_name || 'tu ser querido'}
+                  isFamily={o.is_family !== false}
+                  otherPeople={o.other_people || []}
+                  askPhone={!o.has_phone}
+                  onSubmit={(files) => submitAnimadoPhotos(o.order_id, files)}
+                  onAnalyze={(files) => analyzeAnimadoPhotos(o.order_id, files)}
+                  onConfirm={(payload) => confirmAnimadoCast(o.order_id, payload)}
+                />
               </div>
             );
           })}
@@ -2254,7 +2268,7 @@ export default function SuccessPage() {
                       </div>
                       {isActive ? (
                         <div style={{ fontSize: '12px', color, marginTop: '6px', fontWeight: '800', letterSpacing: '0.5px' }}>
-                          ▶ Escuchando ahora
+                          {isPlaying ? '▶ Escuchando ahora' : '✓ Seleccionada'}
                         </div>
                       ) : (
                         <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginTop: '6px', fontWeight: '700' }}>
@@ -2310,6 +2324,11 @@ export default function SuccessPage() {
             songs.forEach((s, i) => {
               const vo = videoOrdersMap[s.id];
               if (!vo) return;
+              // Excess idle order beyond the paid entitlement (duplicate-order
+              // bug residue): don't list it — a "Sube tus fotos" row for a video
+              // they can't make is a dead-end prompt.
+              if (vo.status === 'pending' && !(vo.photo_count > 0)
+                && videoEntitled > 0 && consumedVideoCount >= videoEntitled) return;
               const status = vo.status === 'completed' ? 'ready'
                 : vo.status === 'failed' ? 'failed'
                 : (vo.status === 'pending' && !(vo.photo_count > 0)) ? 'action'
@@ -2485,9 +2504,13 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== PLAYER CARD — hidden when has_video_addon OR when the share
-                video is present (in both cases a video replaces it) ===== */}
-          {!currentSong?.has_video_addon && !currentSong?.share_video_url && (<>
+          {/* ===== PLAYER CARD — the song always plays here. Video buyers used
+                to lose this card entirely ("the video IS the player"), which
+                left full bundles with NO way to hear the song by itself and a
+                tab claiming "Escuchando ahora" over nothing (audit 2026-08-14).
+                Only the auto-rendered share video still replaces it — that one
+                is the same song, just wrapped in branding. ===== */}
+          {!currentSong?.share_video_url && (<>
           <div style={{
             background: ts.cardBg,
             borderRadius: '24px', padding: '28px 24px',
@@ -2596,8 +2619,11 @@ export default function SuccessPage() {
 
           </>)}{/* end player card conditional */}
 
-          {/* ===== DOWNLOAD & SHARE SECTION — hidden entirely when has_video_addon ===== */}
-          {!currentSong?.has_video_addon && (
+          {/* ===== DOWNLOAD & SHARE SECTION — for EVERYONE. This is the MP3's one
+                home (Paso 1) . Video buyers used to get their MP3 through a
+                different button inside the video card instead — third door to
+                the same file (audit 2026-08-14). ===== */}
+          {(
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
 
             {/* Step indicator header */}
@@ -2879,9 +2905,9 @@ export default function SuccessPage() {
             })()}
           </div>{/* end #rqc-musicvideo */}
 
-          {!currentSong?.has_video_addon && (
+          {(
           <div style={{ marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.35s both' }}>
-            {/* WhatsApp Share - Step 2 */}
+            {/* WhatsApp Share - Step 2 — the ONE share block on the page */}
             <div style={{
               textAlign: 'center', marginTop: '16px',
               padding: '12px 16px',
@@ -2936,23 +2962,8 @@ export default function SuccessPage() {
           </div>
           )}{/* end download section conditional */}
 
-          {/* ===== ONE-TAP SECONDARY UPSELL (Animado / instrumental) — saved-card,
-              no second checkout. The song/reveal lands first; this sits below it.
-              Gated on session_id (the post-purchase moment + the charge's auth). ===== */}
-          {oneTapSessionId && oneTapItems.length > 0 && (
-            <div style={{ marginBottom: '28px' }}>
-              <OneTapUpsell
-                recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
-                senderName={oneTapSong?.sender_name || ''}
-                last4={oneTapSong?.stripe_card_last4 || ''}
-                items={oneTapItems}
-                onCharge={handleUpsellCharge}
-              />
-            </div>
-          )}
-
           {/* Step timeline for video addon flow */}
-          {currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
+          {!videoOrderIsExcess && currentSong?.has_video_addon && videoOrder && videoOrder.status === 'pending' && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '0', marginBottom: '20px', padding: '0 10px',
@@ -2991,7 +3002,11 @@ export default function SuccessPage() {
             </div>
           )}
 
-          {/* ===== VIDEO UPSELL SECTION ===== */}
+          {/* ===== VIDEO UPSELL SECTION =====
+              Hidden when the selected song's order is an excess idle row beyond
+              the paid entitlement — rendering it invites an upload the
+              entitlement rule will refuse (dead-end CTA, audit 2026-08-14). ===== */}
+          {!videoOrderIsExcess && (
           <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
             border: '1px solid rgba(139,92,246,0.25)',
@@ -3012,46 +3027,9 @@ export default function SuccessPage() {
               animation: 'shimmerAccent 3s linear infinite',
             }} />
 
-            {/* ===== SONG IS ALWAYS DOWNLOADABLE =====
-                The main download & share section (above) is hidden for video-addon
-                buyers, so without this card they'd have NO way to get the MP3 until
-                the video is finished. Show it in every not-yet-done state (pending /
-                photos_uploaded / processing) so the song is available even before any
-                photos are uploaded. The 'completed' state has its own MP3 button. */}
-            {currentSong?.audio_url && videoOrder
-              && videoOrder.status !== 'completed' && videoOrder.status !== 'failed' && (
-              <div style={{
-                background: isLight ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.10)',
-                border: `1.5px solid ${isLight ? 'rgba(34,197,94,0.28)' : 'rgba(34,197,94,0.4)'}`,
-                borderRadius: '16px', padding: '16px', marginBottom: '20px',
-              }}>
-                <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 800, color: isLight ? '#166534' : '#4ade80' }}>
-                  ✅ Tu canción ya está lista
-                </p>
-                <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: ts.textSecondary, lineHeight: 1.45 }}>
-                  Puedes descargarla ahora mismo — no necesitas esperar al video. Tu video se generará abajo cuando subas tus fotos.
-                </p>
-                <button onClick={() => handleDownload(currentSong)} disabled={downloading}
-                  style={{
-                    width: '100%', padding: '15px',
-                    background: downloadComplete[currentSong?.id]
-                      ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                      : 'linear-gradient(135deg, #22c55e, #16a34a)',
-                    color: 'white', fontWeight: 800, fontSize: '16px',
-                    border: 'none', borderRadius: '14px', cursor: downloading ? 'wait' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    boxShadow: '0 8px 24px rgba(34,197,94,0.3)',
-                    opacity: downloading ? 0.7 : 1, transition: 'all 0.3s', fontFamily: ts.font,
-                  }}>
-                  {downloading ? '⏳ Descargando...' : downloadComplete[currentSong?.id] ? '✅ Descargar de nuevo' : '⬇️ Descargar tu canción (MP3)'}
-                </button>
-                {isInAppBrowser() && (
-                  <p style={{ fontSize: '11.5px', color: ts.textSecondary, margin: '10px 0 0', textAlign: 'center', lineHeight: 1.4 }}>
-                    💡 ¿No se descarga? Toca el menú <strong>⋯</strong> arriba y elige <strong>"Abrir en el navegador"</strong>
-                  </p>
-                )}
-              </div>
-            )}
+            {/* (The green "Tu canción ya está lista" MP3 card that lived here was
+                removed 2026-08-14 — the main download section above now renders
+                for video buyers too, so this was a second door to the same file.) */}
 
             {/* STATE: No video order yet — Show upsell CTA */}
             {!videoOrder && (
@@ -3994,38 +3972,12 @@ export default function SuccessPage() {
                   {!videoDownloading && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
                 </button>
 
-                {/* MP3 download — also available when video is complete */}
-                {currentSong?.audio_url && (
-                  <a href={currentSong.audio_url} download={`cancion-para-${recipientName}.mp3`}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                      width: '100%', padding: '14px 24px', marginTop: '10px',
-                      background: isLight ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.1)',
-                      color: '#a78bfa', fontWeight: '700', fontSize: '15px',
-                      border: '1.5px solid rgba(139,92,246,0.2)', borderRadius: '14px',
-                      textDecoration: 'none', fontFamily: ts.font,
-                      transition: 'all 0.3s',
-                    }}>
-                    <span style={{ fontSize: '18px' }}>🎵</span>
-                    <span>Descargar Canción MP3</span>
-                  </a>
-                )}
-
-                {/* Share via WhatsApp — one-touch (video view had no button before) */}
-                <button onClick={handleShareWhatsAppSingle}
-                  style={{
-                    width: '100%', padding: '14px 24px', marginTop: '10px',
-                    background: 'linear-gradient(135deg, #25d366, #128c7e)',
-                    color: 'white', fontWeight: '800', fontSize: '15px',
-                    border: 'none', borderRadius: '14px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: '0 6px 20px rgba(37,211,102,0.35)',
-                    transition: 'all 0.3s', fontFamily: ts.font,
-                  }}>
-                  💬 Compartir por WhatsApp
-                </button>
+                {/* (The MP3 and WhatsApp-share buttons that lived here were removed
+                    2026-08-14 — the MP3's one home is Paso 1 above, and the page's
+                    single share block is Paso 2. This card keeps ONE primary
+                    action: download the video.) */}
                 <p style={{ textAlign: 'center', fontSize: '12px', color: ts.textSecondary, marginTop: '10px', fontWeight: 600 }}>
-                  💡 Descarga el video para enviarlo, o comparte el enlace para sorprender a {recipientName}
+                  💡 Descarga el video para enviarlo — tu canción MP3 y el botón de compartir están arriba
                 </p>
               </>
             )}
@@ -4116,16 +4068,34 @@ export default function SuccessPage() {
               </>
             )}
           </div>
+          )}{/* end videoOrderIsExcess conditional */}
 
-          {/* Share + Template sections removed */}
+          {/* ===== ANIMADO — in production / delivered (deliverables flow) ===== */}
+          {renderAnimadoStatusCards()}
 
-          {/* ===== GIFT TEXT UPSELL ($5) — scheduled surprise SMS to a loved one ===== */}
-          {currentSong?.id && (currentSong?.paid || currentSong?.payment_status === 'paid') && (
+          {/* ===== THE upsell — exactly one, and only after every deliverable =====
+              Audit 2026-08-14: the page pitched the $5 gift message TWICE (this
+              one-tap card mid-page + the old GiftTextUpsell at the bottom) and
+              the mid-page placement put an ad between the buyer and their photo
+              video. One pitch, after everything is delivered. When there's no
+              session (durable email link), fall back to the old gift card so
+              the offer still exists — but never both. ===== */}
+          {oneTapSessionId && oneTapItems.length > 0 ? (
+            <div style={{ marginBottom: '28px' }}>
+              <OneTapUpsell
+                recipientName={oneTapSong?.recipient_name || 'tu ser querido'}
+                senderName={oneTapSong?.sender_name || ''}
+                last4={oneTapSong?.stripe_card_last4 || ''}
+                items={oneTapItems}
+                onCharge={handleUpsellCharge}
+              />
+            </div>
+          ) : (currentSong?.id && (currentSong?.paid || currentSong?.payment_status === 'paid') && (
             <GiftTextUpsell song={currentSong} supabaseUrl={SUPABASE_URL} anonKey={SUPABASE_ANON_KEY} />
-          )}
+          ))}
 
           {/* ===== FOOTER ===== */}
-          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
+          {!(currentSong?.has_video_addon && videoOrder && !videoOrderIsExcess && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{ textAlign: 'center', marginBottom: '24px', animation: 'fadeInUp 0.7s ease-out 0.65s both' }}>
             <p style={{
               fontSize: '15px', color: ts.textSecondary,
@@ -4138,7 +4108,7 @@ export default function SuccessPage() {
           )}
 
           {/* ===== CREATE ANOTHER SONG CTA — hidden during video upload flow ===== */}
-          {!(currentSong?.has_video_addon && videoOrder && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
+          {!(currentSong?.has_video_addon && videoOrder && !videoOrderIsExcess && videoOrder.status !== 'completed' && videoOrder.status !== 'failed') && (
           <div style={{
             background: ts.cardBg, borderRadius: '24px', padding: '24px',
             border: `1px solid ${ts.cardBorder}`, marginBottom: '24px',
