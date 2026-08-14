@@ -3035,10 +3035,13 @@ export default function SuccessPage() {
           )}
 
           {/* ===== VIDEO UPSELL SECTION =====
-              Hidden when the selected song's order is an excess idle row beyond
-              the paid entitlement — rendering it invites an upload the
-              entitlement rule will refuse (dead-end CTA, audit 2026-08-14). ===== */}
-          {!videoOrderIsExcess && (
+              When the selected song's order is an excess idle row beyond the
+              paid entitlement, the upload/upsell states are suppressed (the
+              entitlement rule would refuse the upload — dead-end CTA, audit
+              2026-08-14). But FINISHED videos always render, regardless of
+              which song is selected — the completed stack below is keyed to
+              the whole bundle, not the selection. ===== */}
+          {(!videoOrderIsExcess || Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url)) && (
           <div id="rqc-video" style={{
             borderRadius: '24px', padding: '24px',
             border: '1px solid rgba(139,92,246,0.25)',
@@ -3064,7 +3067,7 @@ export default function SuccessPage() {
                 for video buyers too, so this was a second door to the same file.) */}
 
             {/* STATE: No video order yet — Show upsell CTA */}
-            {!videoOrder && (
+            {!videoOrderIsExcess && !videoOrder && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
@@ -3362,7 +3365,7 @@ export default function SuccessPage() {
             )}
 
             {/* STATE: Paid, pending photos (status: pending) */}
-            {videoOrder && videoOrder.status === 'pending' && (
+            {!videoOrderIsExcess && videoOrder && videoOrder.status === 'pending' && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
@@ -3929,8 +3932,11 @@ export default function SuccessPage() {
             {/* STATE: Completed — EVERY finished video, stacked =====
                 Owner call 2026-08-14: each song's video gets its own player and
                 its own download, visible together — no switching songs 2,000px
-                up just to reach video #2. The selected song's video leads. */}
-            {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
+                up just to reach video #2. The selected song's video leads.
+                Keyed to the BUNDLE (any completed order), not the selected song —
+                otherwise a selection sitting on a pending/excess order hid every
+                finished video (Gladys's page opened on exactly that). */}
+            {Object.values(videoOrdersMap).some((o) => o?.status === 'completed' && o?.video_url) && (
               <>
                 {/* Film strip decoration */}
                 <div style={{ display: 'flex', gap: '3px', marginBottom: '18px', overflow: 'hidden', height: '6px', opacity: 0.35 }}>
