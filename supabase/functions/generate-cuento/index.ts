@@ -94,6 +94,59 @@ async function rehost(admin: any, kieUrl: string, path: string): Promise<string>
 }
 
 // ---------------------------------------------------------------------------
+// Stanza timings — when each page's stanza starts being SUNG, so the reader
+// can turn pages in sync with the song. Kie's get-timestamped-lyrics ALIGNS
+// the submitted sheet (fine for TIMING, never proof of wording — house rule).
+// Missing task/audio ids, purged sources, or failed matches all degrade to
+// null → the reader falls back to even pacing. Never blocks generation.
+// ---------------------------------------------------------------------------
+const normWord = (w: string) =>
+  String(w || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ]/g, '');
+
+async function stanzaTimings(song: any, stanzas: { text: string }[]): Promise<(number | null)[]> {
+  const nulls = stanzas.map(() => null);
+  try {
+    const audioId = (song.kie_payload as any)?.id;
+    if (!song.kie_task_id || !audioId) return nulls;
+    const r = await fetch('https://api.kie.ai/api/v1/generate/get-timestamped-lyrics', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: song.kie_task_id, audioId }),
+    });
+    const j = await r.json().catch(() => ({}));
+    const aligned = j?.data?.alignedWords || j?.data?.aligned_words || [];
+    // One atom per sung word; section tags ("[Coro]") never match normWord.
+    const atoms = aligned
+      .map((w: any) => ({
+        n: normWord(w.word),
+        s: Number(w.startS ?? w.start_s ?? w.start),
+      }))
+      .filter((a: any) => a.n && Number.isFinite(a.s));
+    if (atoms.length < 10) return nulls;
+
+    const out: (number | null)[] = [];
+    let cursor = 0; // search forward only, so a repeated chorus maps in order
+    for (const st of stanzas) {
+      const tokens = String(st.text).split(/\s+/).map(normWord).filter(Boolean).slice(0, 6);
+      let found: number | null = null;
+      if (tokens.length >= 3) {
+        for (let i = cursor; i <= atoms.length - tokens.length; i++) {
+          let ok = true;
+          for (let k = 0; k < tokens.length; k++) {
+            if (atoms[i + k].n !== tokens[k]) { ok = false; break; }
+          }
+          if (ok) { found = atoms[i].s; cursor = i + tokens.length; break; }
+        }
+      }
+      out.push(found);
+    }
+    return out;
+  } catch {
+    return nulls;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Claude plan: split the lyrics into stanzas + write one scene per stanza
 // ---------------------------------------------------------------------------
 const PLAN_TOOL = {
@@ -249,20 +302,21 @@ Deno.serve(async (req) => {
       const songId = String(body.songId || '');
       if (!songId) return json({ success: false, error: 'Missing songId' });
       const { data: song, error: songErr } = await admin.from('songs')
-        .select('id, lyrics, details, audio_url, recipient_name, sender_name, occasion, genre')
+        .select('id, lyrics, details, audio_url, recipient_name, sender_name, occasion, genre, kie_task_id, kie_payload')
         .eq('id', songId).single();
       if (songErr || !song) return json({ success: false, error: 'Song not found' });
       if (!song.lyrics || !song.audio_url) return json({ success: false, error: 'Song has no lyrics or audio yet' });
 
       const plan = await planCuento(song);
       const pages = (plan.pages || []).slice(0, MAX_PAGES);
+      const timings = await stanzaTimings(song, pages);
       const coverPrompt = `${STYLE} Storybook cover art. Characters: ${plan.character_sheet} Scene: ${plan.cover_scene} Soft empty space at the top of the frame.`;
       const anchorTask = await kieCreate(IMAGE_MODEL, { prompt: coverPrompt, aspect_ratio: '3:4', output_format: 'png' });
 
       const { data: row, error: insErr } = await admin.from('cuentos').insert({
         song_id: song.id, status: 'generating', share_token: shareToken(),
         character_sheet: plan.character_sheet,
-        stanzas: pages.map((p: any, i: number) => ({ n: i + 1, text: p.text, scene: p.scene })),
+        stanzas: pages.map((p: any, i: number) => ({ n: i + 1, text: p.text, scene: p.scene, startS: timings[i] })),
         kie_tasks: { anchor: anchorTask, pages: {}, retries: {}, title: plan.title || 'Nuestra Canción' },
         page_urls: pages.map(() => null),
       }).select().single();
