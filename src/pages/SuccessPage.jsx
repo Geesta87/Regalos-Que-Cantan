@@ -778,6 +778,26 @@ export default function SuccessPage() {
     }
   };
 
+  // One-tap download with visible feedback, for EVERY descargar button.
+  // Owner rule (2026-08-14): tapping "Descargar" saves the file right there —
+  // ⏳ while it saves, ✅ when done — never a hop to another page. Keyed per
+  // button so two downloads can run without sharing a spinner.
+  const [dlState, setDlState] = useState({}); // key -> 'busy' | 'done'
+  const downloadWithFeedback = async (key, url, filename) => {
+    if (!url || dlState[key] === 'busy') return;
+    setDlState((p) => ({ ...p, [key]: 'busy' }));
+    try {
+      await forceDownload(url, filename);
+    } catch {
+      window.open(url, '_blank'); // last resort — better than a dead button
+    }
+    setDlState((p) => ({ ...p, [key]: 'done' }));
+  };
+  const dlLabel = (key, idle) =>
+    dlState[key] === 'busy' ? '⏳ Descargando…'
+    : dlState[key] === 'done' ? '✅ Descargado · otra vez'
+    : idle;
+
   const handleDownloadAll = async () => {
     for (const song of songs) {
       await handleDownload(song);
@@ -2012,17 +2032,22 @@ export default function SuccessPage() {
                 borderRadius: '14px', marginBottom: '12px', background: '#000',
               }}
             />
-            <a href={animadoVideoUrl(o.order_id)} download={`pelicula-animada-${name}.mp4`}
+            <button
+              onClick={() => downloadWithFeedback(`animado-${o.order_id}`, animadoVideoUrl(o.order_id), `pelicula-animada-${name}.mp4`)}
+              disabled={dlState[`animado-${o.order_id}`] === 'busy'}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 width: '100%', padding: '15px', boxSizing: 'border-box',
-                background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                background: dlState[`animado-${o.order_id}`] === 'done'
+                  ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                  : 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
                 color: 'white', fontWeight: 800, fontSize: '16px',
-                borderRadius: '14px', textDecoration: 'none', fontFamily: ts.font,
+                border: 'none', borderRadius: '14px', cursor: 'pointer', fontFamily: ts.font,
+                opacity: dlState[`animado-${o.order_id}`] === 'busy' ? 0.75 : 1,
                 boxShadow: '0 8px 24px rgba(124,58,237,0.3)',
               }}>
-              ⬇️ Descargar Película Animada (MP4)
-            </a>
+              {dlLabel(`animado-${o.order_id}`, '⬇️ Descargar Película Animada (MP4)')}
+            </button>
           </>
         ) : (
           <div style={{
@@ -2318,7 +2343,10 @@ export default function SuccessPage() {
                 key: `song-${s.id}`, icon: '🎵', label: `Canción${tag(i)}`,
                 status: s.audio_url ? 'ready' : 'working',
                 onClick: s.audio_url ? () => handleDownload(s) : undefined,
-                cta: s.audio_url ? 'Descargar' : null,
+                cta: !s.audio_url ? null
+                  : downloading ? '⏳…'
+                  : downloadComplete[s.id] ? '✅ Guardada'
+                  : 'Descargar',
               });
             });
             songs.forEach((s, i) => {
@@ -2733,23 +2761,23 @@ export default function SuccessPage() {
                       }}>
                         La canción sin la voz — para cantarla tú en familia, fiestas o redes.
                       </p>
-                      <a href={url}
-                         onClick={(e) => {
-                           e.preventDefault();
-                           handleDownloadFile(url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`);
-                         }}
+                      <button
+                         onClick={() => downloadWithFeedback(`kar-${ks.id}`, url, `pista-instrumental-${fileTag}para-${ks.recipient_name || 'ti'}.mp3`)}
+                         disabled={dlState[`kar-${ks.id}`] === 'busy'}
                          style={{
                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                            width: '100%', padding: '14px',
-                           background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                           background: dlState[`kar-${ks.id}`] === 'done'
+                             ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                             : 'linear-gradient(135deg, #f59e0b, #fbbf24)',
                            color: 'white', fontWeight: 800, fontSize: '15px',
-                           border: 'none', borderRadius: '14px',
-                           textDecoration: 'none',
+                           border: 'none', borderRadius: '14px', cursor: 'pointer',
                            boxShadow: '0 6px 20px rgba(245,158,11,0.35)',
+                           opacity: dlState[`kar-${ks.id}`] === 'busy' ? 0.75 : 1,
                            fontFamily: ts.font,
                          }}>
-                        ⬇️ Descargar Pista Instrumental (sin voz){label}
-                      </a>
+                        {dlLabel(`kar-${ks.id}`, `⬇️ Descargar Pista Instrumental (sin voz)${label}`)}
+                      </button>
                     </div>
                   );
                 }
@@ -2854,16 +2882,20 @@ export default function SuccessPage() {
                         width: '100%', maxHeight: '360px', borderRadius: '12px',
                         background: '#000', marginBottom: '12px', display: 'block',
                       }} />
-                      <a href={url} download={`${p.fileLabel}-para-${name}.mp4`} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        width: '100%', padding: '14px',
-                        background: 'linear-gradient(135deg, #16a34a, #22c55e)',
-                        color: 'white', fontWeight: 800, fontSize: '15px',
-                        border: 'none', borderRadius: '14px', textDecoration: 'none',
-                        boxShadow: '0 6px 20px rgba(34,197,94,0.35)', fontFamily: ts.font,
-                      }}>
-                        ⬇️ Descargar {p.title.replace('Tu ', '')} (MP4)
-                      </a>
+                      <button
+                        onClick={() => downloadWithFeedback(`mv-${p.key}`, url, `${p.fileLabel}-para-${name}.mp4`)}
+                        disabled={dlState[`mv-${p.key}`] === 'busy'}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                          width: '100%', padding: '14px',
+                          background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+                          color: 'white', fontWeight: 800, fontSize: '15px',
+                          border: 'none', borderRadius: '14px', cursor: 'pointer',
+                          opacity: dlState[`mv-${p.key}`] === 'busy' ? 0.75 : 1,
+                          boxShadow: '0 6px 20px rgba(34,197,94,0.35)', fontFamily: ts.font,
+                        }}>
+                        {dlLabel(`mv-${p.key}`, `⬇️ Descargar ${p.title.replace('Tu ', '')} (MP4)`)}
+                      </button>
                     </div>
                   );
                 }
@@ -3894,7 +3926,10 @@ export default function SuccessPage() {
               </>
             )}
 
-            {/* STATE: Completed — Show video player + download */}
+            {/* STATE: Completed — EVERY finished video, stacked =====
+                Owner call 2026-08-14: each song's video gets its own player and
+                its own download, visible together — no switching songs 2,000px
+                up just to reach video #2. The selected song's video leads. */}
             {videoOrder && videoOrder.status === 'completed' && videoOrder.video_url && (
               <>
                 {/* Film strip decoration */}
@@ -3916,7 +3951,10 @@ export default function SuccessPage() {
                   }}>🎉</div>
                   <div>
                     <h3 style={{ fontSize: '19px', fontWeight: '900', marginBottom: '5px', color: ts.textPrimary, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-                      ¡Tu video está listo!
+                      {(() => {
+                        const doneCount = songs.filter((s) => videoOrdersMap[s.id]?.status === 'completed' && videoOrdersMap[s.id]?.video_url).length;
+                        return doneCount > 1 ? '¡Tus videos están listos!' : '¡Tu video está listo!';
+                      })()}
                     </h3>
                     <p style={{ fontSize: '13px', color: ts.textSecondary, lineHeight: '1.5', margin: 0 }}>
                       Tu recuerdo cinematográfico quedó increíble
@@ -3924,19 +3962,53 @@ export default function SuccessPage() {
                   </div>
                 </div>
 
-                {/* Video player */}
-                <div style={{
-                  borderRadius: '16px', overflow: 'hidden', marginBottom: '16px',
-                  border: '2px solid rgba(139,92,246,0.25)',
-                  boxShadow: '0 12px 40px rgba(109,40,217,0.3)',
-                }}>
-                  <video
-                    src={videoOrder.video_url}
-                    controls
-                    style={{ width: '100%', display: 'block' }}
-                    poster=""
-                  />
-                </div>
+                {/* One player + one download PER finished video. Selected song's
+                    video first, then the rest in song order. */}
+                {(() => {
+                  const done = songs
+                    .map((s, i) => ({ s, i, o: videoOrdersMap[s.id] }))
+                    .filter(({ o }) => o?.status === 'completed' && o?.video_url);
+                  done.sort((a, b) => (a.s.id === currentSong?.id ? -1 : b.s.id === currentSong?.id ? 1 : a.i - b.i));
+                  const multi = done.length > 1;
+                  return done.map(({ s, i, o }) => {
+                    const key = `pv-${o.id}`;
+                    const filename = `video-${multi ? `cancion-${i + 1}-` : ''}para-${s.recipient_name || 'ti'}.mp4`;
+                    const proxyUrl = `${SUPABASE_URL}/functions/v1/download-video?url=${encodeURIComponent(o.video_url)}&filename=${encodeURIComponent(filename)}`;
+                    return (
+                      <div key={key} style={{ marginBottom: '18px' }}>
+                        {multi && (
+                          <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: 800, color: '#a78bfa' }}>
+                            🎬 Video de la Canción {i + 1}
+                          </p>
+                        )}
+                        <div style={{
+                          borderRadius: '16px', overflow: 'hidden', marginBottom: '12px',
+                          border: '2px solid rgba(139,92,246,0.25)',
+                          boxShadow: '0 12px 40px rgba(109,40,217,0.3)',
+                        }}>
+                          <video src={o.video_url} controls preload="metadata" style={{ width: '100%', display: 'block' }} />
+                        </div>
+                        <button
+                          onClick={() => downloadWithFeedback(key, proxyUrl, filename)}
+                          disabled={dlState[key] === 'busy'}
+                          style={{
+                            width: '100%', padding: '18px 24px',
+                            background: dlState[key] === 'done'
+                              ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                              : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
+                            color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
+                            border: 'none', borderRadius: '16px', cursor: dlState[key] === 'busy' ? 'wait' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                            boxShadow: '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
+                            transition: 'all 0.3s', fontFamily: ts.font,
+                            opacity: dlState[key] === 'busy' ? 0.8 : 1,
+                          }}>
+                          {dlLabel(key, `⬇️ Descargar Video${multi ? ` ${i + 1}` : ''} (MP4)`)}
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
 
                 {/* Feature chips */}
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -3949,28 +4021,6 @@ export default function SuccessPage() {
                     }}>{chip}</span>
                   ))}
                 </div>
-
-                {/* Download CTA */}
-                <button onClick={handleVideoDownload}
-                  disabled={videoDownloading}
-                  style={{
-                    width: '100%', padding: '18px 24px',
-                    background: videoDownloading
-                      ? 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)'
-                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #4f46e5 100%)',
-                    color: 'white', fontWeight: '800', fontSize: '17px', letterSpacing: '-0.01em',
-                    border: 'none', borderRadius: '16px', cursor: videoDownloading ? 'wait' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                    boxShadow: videoDownloading
-                      ? '0 4px 16px rgba(0,0,0,0.3)'
-                      : '0 8px 32px rgba(109,40,217,0.5), inset 0 1px 0 rgba(255,255,255,0.15)',
-                    transition: 'all 0.3s', fontFamily: ts.font,
-                    opacity: videoDownloading ? 0.8 : 1,
-                  }}>
-                  <span style={{ fontSize: '20px' }}>{videoDownloading ? '⏳' : '⬇️'}</span>
-                  <span>{videoDownloading ? 'Descargando...' : 'Descargar Video MP4'}</span>
-                  {!videoDownloading && <span style={{ marginLeft: 'auto', fontSize: '18px', opacity: 0.7 }}>→</span>}
-                </button>
 
                 {/* (The MP3 and WhatsApp-share buttons that lived here were removed
                     2026-08-14 — the MP3's one home is Paso 1 above, and the page's
