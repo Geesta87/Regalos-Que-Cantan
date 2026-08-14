@@ -53,6 +53,11 @@ const IMAGE_EDIT_MODEL = 'google/nano-banana-edit';
 // (not image_urls) and it requires resolution.
 const IMAGE_CANDID_MODEL = 'flux-2/pro-image-to-image';
 const VIDEO_MODEL = 'bytedance/seedance-2';
+// Grok Imagine 1.5 (owner-approved 2026-08-14): the studio's DEFAULT video
+// engine. Native audio + Spanish lip-sync, and it animates ONE image — so the
+// face always comes from her pixels (no reference-drift path exists). Loops
+// (first=last frame) are a Seedance-only trick; duration floor is 6s.
+const GROK_VIDEO_MODEL = 'grok-imagine/image-to-video';
 
 // The phone-frame doctrine prepended to every Candid render. Camera flaws
 // (grain/crush) are added in post — this carries scene + texture realism only.
@@ -368,27 +373,46 @@ serve(async (req) => {
       }
 
       // video
-      const model = String(body.model || VIDEO_MODEL);
-      const duration = Math.min(Math.max(Number(body.duration) || 5, 3), 12);
+      const engine = body.videoEngine === 'seedance' ? 'seedance' : 'grok';
       const aspect_ratio = String(body.aspectRatio || '9:16');
       const fromImageUrl = body.fromImageUrl ? String(body.fromImageUrl) : null;
-      const loop = Boolean(body.loop) && !!fromImageUrl;
-      const prompt = fromImageUrl ? userPrompt : `${identity} ${userPrompt}`;
-      const input: Record<string, unknown> = {
-        prompt, resolution: String(body.resolution || '720p'), aspect_ratio, duration, generate_audio: false,
-      };
-      if (fromImageUrl) {
-        // Animate a chosen still; first=last frame → a perfect loop (Ace/CENZO trick).
-        input.first_frame_url = fromImageUrl;
-        if (loop) input.last_frame_url = fromImageUrl;
+      const loop = engine === 'seedance' && Boolean(body.loop) && !!fromImageUrl;
+      let model: string;
+      let duration: number;
+      let prompt: string;
+      let input: Record<string, unknown>;
+      if (engine === 'grok') {
+        // Grok animates ONE image — fall back to the portrait so an image
+        // source ALWAYS exists (this is what kills the six-different-women
+        // drift: there is no references-only video path on Grok).
+        const source = fromImageUrl || ch.portrait_url;
+        model = String(body.model || GROK_VIDEO_MODEL);
+        duration = Math.min(Math.max(Number(body.duration) || 8, 6), 15);
+        prompt = userPrompt;
+        input = {
+          prompt, image_urls: [source], mode: 'normal', duration,
+          resolution: String(body.resolution || '720p'), aspect_ratio,
+        };
       } else {
-        input.image_urls = refs;
+        model = String(body.model || VIDEO_MODEL);
+        duration = Math.min(Math.max(Number(body.duration) || 5, 3), 12);
+        prompt = fromImageUrl ? userPrompt : `${identity} ${userPrompt}`;
+        input = {
+          prompt, resolution: String(body.resolution || '720p'), aspect_ratio, duration, generate_audio: false,
+        };
+        if (fromImageUrl) {
+          // Animate a chosen still; first=last frame → a perfect loop (Ace/CENZO trick).
+          input.first_frame_url = fromImageUrl;
+          if (loop) input.last_frame_url = fromImageUrl;
+        } else {
+          input.image_urls = refs;
+        }
       }
       const gens = [];
       for (let i = 0; i < count; i++) {
         const { data: gen, error } = await admin.from('studio_generations').insert({
           character_id: ch.id, kind: 'video', prompt, model, aspect_ratio, duration,
-          meta: { fromImageUrl, loop, resolution: input.resolution },
+          meta: { engine, fromImageUrl, loop, resolution: input.resolution },
         }).select().single();
         if (error) throw error;
         try {

@@ -48,6 +48,7 @@ const PRESETS = {
     { name: 'Cumpleaños', p: 'birthday celebration scene, confetti and a small cake with candles on the table, laughing, warm festive light' },
   ],
   video: [
+    { name: 'Talking promo', p: "She talks casually to the camera in Mexican Spanish with natural lip sync, saying: 'Oye... le pedí una canción personalizada para mi mamá, con su nombre y toda su historia. ¿Cuando la escuchó? Se soltó a llorar.' She pauses naturally, gives a small genuine laugh, hand on her heart at the end. Casual home video feel, natural everyday energy, not polished." },
     { name: 'Waves & Smiles', p: 'she smiles warmly and waves at the camera, slight breeze in her hair, natural relaxed movement' },
     { name: 'Talks to Camera', p: 'she speaks enthusiastically to the camera like a host presenting something exciting, natural hand gestures' },
     { name: 'Cinematic Push-in', p: 'slow cinematic push-in while she looks at the camera with a warm confident smile, shallow depth of field' },
@@ -377,8 +378,9 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('9:16');
   const [look, setLook] = useState('candid'); // candid = FLUX phone-realism (bake-off winner); polished = nano-banana
+  const [engine, setEngine] = useState('grok'); // grok = native voice, always image-first; seedance = silent, loops
   const [takes, setTakes] = useState(3); // images default 3 takes; video 1 (cost)
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState(8);
   const [fromImageUrl, setFromImageUrl] = useState('');
   const [loop, setLoop] = useState(false);
   const [note, setNote] = useState('');
@@ -392,10 +394,16 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
 
   const generatorRef = React.useRef(null);
 
+  // Grok is always image-first — preselect the portrait so the picker shows
+  // the truth about what will animate.
+  useEffect(() => {
+    if (kind === 'video' && engine === 'grok' && !fromImageUrl && c.portrait_url) setFromImageUrl(c.portrait_url);
+  }, [kind, engine, fromImageUrl, c.portrait_url]);
+
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
     if (kind === 'image') payload.look = look;
-    if (kind === 'video') Object.assign(payload, { duration, fromImageUrl: fromImageUrl || undefined, loop });
+    if (kind === 'video') Object.assign(payload, { videoEngine: engine, duration, fromImageUrl: fromImageUrl || undefined, loop: engine === 'seedance' ? loop : false });
     onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
   };
@@ -579,15 +587,27 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                   ))}
                 </div>
                 {kind === 'video' && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
-                    {[5, 10].map((d) => (
-                      <button key={d} onClick={() => setDuration(d)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                          duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
-                        }`}>{d}s</button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="flex items-center gap-1.5" title="Grok: her voice + lip-sync, always animates a chosen image. Seedance: silent motion, perfect loops.">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Engine</span>
+                      {[{ id: 'grok', label: 'Grok · voice' }, { id: 'seedance', label: 'Seedance · loops' }].map((e) => (
+                        <button key={e.id}
+                          onClick={() => { setEngine(e.id); setDuration(e.id === 'grok' ? 8 : 5); if (e.id === 'seedance') setLoop(false); }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            engine === e.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{e.label}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
+                      {(engine === 'grok' ? [6, 8, 10] : [5, 10]).map((d) => (
+                        <button key={d} onClick={() => setDuration(d)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{d}s</button>
+                      ))}
+                    </div>
+                  </>
                 )}
                 <button className={`${btnPrimary} ml-auto`} disabled={busy || !prompt.trim()} onClick={generate}>
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Generate
@@ -606,12 +626,14 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                       : <span className="ml-2 normal-case tracking-normal font-medium text-amber-300/90">references only — looser on faces, best for wide shots</span>}
                   </p>
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                    <button onClick={() => { setFromImageUrl(''); setLoop(false); }}
-                      className={`shrink-0 h-16 px-3 rounded-xl text-xs font-medium border transition-all ${
-                        !fromImageUrl ? 'border-indigo-400/70 bg-indigo-500/15 text-indigo-200 ring-2 ring-indigo-500/25' : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
-                      }`}>
-                      Identity<br />references
-                    </button>
+                    {engine === 'seedance' && (
+                      <button onClick={() => { setFromImageUrl(''); setLoop(false); }}
+                        className={`shrink-0 h-16 px-3 rounded-xl text-xs font-medium border transition-all ${
+                          !fromImageUrl ? 'border-indigo-400/70 bg-indigo-500/15 text-indigo-200 ring-2 ring-indigo-500/25' : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
+                        }`}>
+                        Identity<br />references
+                      </button>
+                    )}
                     {c.portrait_url && (
                       <button onClick={() => setFromImageUrl(c.portrait_url)} title="Portrait"
                         className={`relative shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
@@ -635,7 +657,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                       </button>
                     ))}
                   </div>
-                  {fromImageUrl && (
+                  {engine === 'seedance' && fromImageUrl && (
                     <label className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer w-fit">
                       <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-indigo-500 focus:ring-indigo-500/40 focus:ring-offset-0" />
