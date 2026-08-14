@@ -47,7 +47,17 @@ const BUCKET = 'character-studio';
 // code change — it goes straight into createTask's model field.
 const IMAGE_MODEL = 'google/nano-banana';
 const IMAGE_EDIT_MODEL = 'google/nano-banana-edit';
+// Candid engine (bake-off winner 2026-08-14): FLUX-2 with identity refs gives
+// the "shot on a phone" realism nano-banana's polish can't reach, and its
+// filter accepts imperfection language Google's refuses. Field is input_urls
+// (not image_urls) and it requires resolution.
+const IMAGE_CANDID_MODEL = 'flux-2/pro-image-to-image';
 const VIDEO_MODEL = 'bytedance/seedance-2';
+
+// The phone-frame doctrine prepended to every Candid render. Camera flaws
+// (grain/crush) are added in post — this carries scene + texture realism only.
+const CANDID_DOCTRINE =
+  'A frame from a casual selfie-style video shot on a phone, imperfect off-center framing, warm ordinary indoor lighting, slightly uneven exposure, real skin texture with natural shine, amateur phone photo realism, ordinary and unpolished.';
 
 const PORTRAIT_CANDIDATES = 3;
 const MAX_REFS = 9; // + portrait = Kie's 10-image cap on image_urls
@@ -327,13 +337,32 @@ serve(async (req) => {
       const count = Math.min(Math.max(Number(body.count) || 1, 1), MAX_BATCH);
 
       if (kind === 'image') {
-        const prompt = `${identity} ${userPrompt}`;
+        const look = body.look === 'candid' ? 'candid' : 'polished';
+        const prompt = look === 'candid'
+          ? `${identity} ${CANDID_DOCTRINE} ${userPrompt}`
+          : `${identity} ${userPrompt}`;
         const gens = [];
         for (let i = 0; i < count; i++) {
-          gens.push(await fireRefImage(admin, ch, prompt, {
-            model: body.model ? String(body.model) : undefined,
-            aspect: String(body.aspectRatio || '3:4'), refs,
-          }));
+          if (look === 'candid' && !body.model) {
+            // FLUX path — different field names than the nano-banana family.
+            const aspect_ratio = String(body.aspectRatio || '9:16');
+            const { data: gen, error } = await admin.from('studio_generations').insert({
+              character_id: ch.id, kind: 'image', prompt, model: IMAGE_CANDID_MODEL, aspect_ratio, meta: { look },
+            }).select().single();
+            if (error) throw error;
+            try {
+              const taskId = await kieCreate(IMAGE_CANDID_MODEL, { prompt, input_urls: refs, aspect_ratio, resolution: '1K' });
+              await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
+            } catch (e: any) {
+              await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+            }
+            gens.push(gen);
+          } else {
+            gens.push(await fireRefImage(admin, ch, prompt, {
+              model: body.model ? String(body.model) : undefined,
+              aspect: String(body.aspectRatio || '3:4'), refs, meta: { look },
+            }));
+          }
         }
         return json({ success: true, generations: gens });
       }

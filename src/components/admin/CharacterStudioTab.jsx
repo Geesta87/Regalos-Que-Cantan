@@ -375,7 +375,8 @@ function CreateModal({ busy, onClose, onCreate }) {
 function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const [kind, setKind] = useState('image');
   const [prompt, setPrompt] = useState('');
-  const [aspect, setAspect] = useState('3:4');
+  const [aspect, setAspect] = useState('9:16');
+  const [look, setLook] = useState('candid'); // candid = FLUX phone-realism (bake-off winner); polished = nano-banana
   const [takes, setTakes] = useState(3); // images default 3 takes; video 1 (cost)
   const [duration, setDuration] = useState(5);
   const [fromImageUrl, setFromImageUrl] = useState('');
@@ -393,6 +394,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
 
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
+    if (kind === 'image') payload.look = look;
     if (kind === 'video') Object.assign(payload, { duration, fromImageUrl: fromImageUrl || undefined, loop });
     onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
@@ -509,7 +511,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 <p className="text-sm font-semibold text-white">Generate</p>
                 <div className="relative flex rounded-xl bg-black/40 border border-white/10 p-1">
                   {[
-                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '3:4', defTakes: 3 },
+                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '9:16', defTakes: 3 },
                     { id: 'video', label: 'Video', icon: Film, defAspect: '9:16', defTakes: 1 },
                   ].map((t) => {
                     const Icon = t.icon;
@@ -547,6 +549,17 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 className={`${field} resize-none leading-relaxed`} />
 
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                {kind === 'image' && (
+                  <div className="flex items-center gap-1.5" title="Candid = phone-video realism (FLUX). Polished = clean studio look (nano-banana).">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Look</span>
+                    {[{ id: 'candid', label: 'Candid' }, { id: 'polished', label: 'Polished' }].map((l) => (
+                      <button key={l.id} onClick={() => setLook(l.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                          look === l.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                        }`}>{l.label}</button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Aspect</span>
                   {(kind === 'image' ? IMG_ASPECTS : VID_ASPECTS).map((a) => (
