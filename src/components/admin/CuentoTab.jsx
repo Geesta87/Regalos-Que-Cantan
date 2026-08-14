@@ -17,12 +17,32 @@ const STATUS_STYLE = {
   planning: 'bg-gray-100 text-gray-600',
 };
 
+// Downscale + re-encode to JPEG in-browser so uploads stay small and HEIC
+// never reaches the backend (canvas only decodes what the browser can).
+const fileToDataUrl = (file, max = 1536) => new Promise((resolve, reject) => {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    resolve(c.toDataURL('image/jpeg', 0.88));
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image — use JPG or PNG (HEIC is not supported here)')); };
+  img.src = url;
+});
+
 export default function CuentoTab({ accessToken, showToast }) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [songs, setSongs] = useState([]);
   const [generatingSongId, setGeneratingSongId] = useState(null);
   const [cuentos, setCuentos] = useState([]);
+  const [likenessFiles, setLikenessFiles] = useState([]); // up to 2 → Pixar likeness
+  const [realFile, setRealFile] = useState(null); // real photo for the final page
   const pollRef = useRef(null);
 
   const call = useCallback(async (action, payload = {}) => {
@@ -46,10 +66,13 @@ export default function CuentoTab({ accessToken, showToast }) {
 
   useEffect(() => { refreshList(); }, [refreshList]);
 
-  // While anything is generating, tick 'status' on it every 10s (the status
-  // action is what advances the pipeline: anchor → pages → ready).
+  // While anything is generating — or a ready book still has seedance loops
+  // rendering — tick 'status' every 10s (the status action is what advances
+  // the pipeline: anchor → pages → ready → videos).
   useEffect(() => {
-    const active = cuentos.filter((c) => c.status === 'generating' || c.status === 'planning');
+    const active = cuentos.filter((c) =>
+      c.status === 'generating' || c.status === 'planning' ||
+      (c.status === 'ready' && (c.videos_done || 0) < (c.videos_total || 0)));
     if (!active.length) return undefined;
     pollRef.current = setInterval(async () => {
       for (const c of active) {
@@ -74,8 +97,22 @@ export default function CuentoTab({ accessToken, showToast }) {
   const generate = async (songId) => {
     setGeneratingSongId(songId);
     try {
-      await call('generate', { songId });
-      showToast?.('Cuento started — planning pages and rendering the cover');
+      const photoUrls = [];
+      for (const f of likenessFiles.slice(0, 2)) {
+        const b64 = await fileToDataUrl(f);
+        const j = await call('upload-ref', { b64 });
+        photoUrls.push(j.url);
+      }
+      let realPhotoUrl = null;
+      if (realFile) {
+        const b64 = await fileToDataUrl(realFile);
+        const j = await call('upload-ref', { b64 });
+        realPhotoUrl = j.url;
+      }
+      await call('generate', { songId, photoUrls, realPhotoUrl });
+      showToast?.(photoUrls.length
+        ? 'Cuento started — building their Pixar likeness first, then the pages'
+        : 'Cuento started — planning pages and rendering the cover');
       await refreshList();
     } catch (e) { showToast?.(e.message, 'error'); }
     finally { setGeneratingSongId(null); }
@@ -109,6 +146,26 @@ export default function CuentoTab({ accessToken, showToast }) {
           <button className={btnPrimary} onClick={search} disabled={searching || query.trim().length < 2}>
             {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} Search
           </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs text-gray-600">
+            <span className="font-medium text-gray-800">Their photos (optional, up to 2)</span> — characters get their real faces, Pixar-style
+            <input
+              type="file" accept="image/jpeg,image/png,image/webp" multiple
+              onChange={(e) => setLikenessFiles([...e.target.files].slice(0, 2))}
+              className="mt-1 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-indigo-700"
+            />
+            {likenessFiles.length > 0 && <span className="text-indigo-600">{likenessFiles.length} photo(s) selected</span>}
+          </label>
+          <label className="block text-xs text-gray-600">
+            <span className="font-medium text-gray-800">Real photo for the last page (optional)</span> — the illustrated story ends on the real one
+            <input
+              type="file" accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setRealFile(e.target.files[0] || null)}
+              className="mt-1 block w-full text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-indigo-700"
+            />
+            {realFile && <span className="text-indigo-600">1 photo selected</span>}
+          </label>
         </div>
         {songs.length > 0 && (
           <div className="mt-3 divide-y divide-gray-100 border border-gray-100 rounded-lg">
@@ -150,8 +207,12 @@ export default function CuentoTab({ accessToken, showToast }) {
                 </div>
                 <div className="text-xs text-gray-500 flex items-center gap-2">
                   <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_STYLE[c.status] || 'bg-gray-100 text-gray-600'}`}>{c.status}</span>
+                  {c.tier === 'likeness' && <span className="px-1.5 py-0.5 rounded font-medium bg-indigo-100 text-indigo-700">likeness</span>}
                   <span>{c.pages_done}/{c.pages_total} pages</span>
-                  {(c.status === 'generating' || c.status === 'planning') && <Loader2 size={12} className="animate-spin" />}
+                  {c.status === 'ready' && (c.videos_total || 0) > 0 && (
+                    <span>{(c.videos_done || 0) < c.videos_total ? `animating ${c.videos_done || 0}/${c.videos_total}` : `${c.videos_total} animated`}</span>
+                  )}
+                  {(c.status === 'generating' || c.status === 'planning' || (c.status === 'ready' && (c.videos_done || 0) < (c.videos_total || 0))) && <Loader2 size={12} className="animate-spin" />}
                 </div>
                 {c.status === 'failed' && c.error && (
                   <div className="text-xs text-red-600 flex items-center gap-1 mt-0.5">

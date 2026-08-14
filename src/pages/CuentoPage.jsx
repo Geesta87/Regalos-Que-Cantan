@@ -33,10 +33,20 @@ const CSS = `
   .cu-page.on{display:block}
   @keyframes cuIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.cu-page{animation:none}}
-  .cu-page img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:var(--linea)}
+  .cu-page .cu-media{width:100%;aspect-ratio:3/4;overflow:hidden;background:var(--linea);position:relative}
+  .cu-page img,.cu-page video{width:100%;height:100%;object-fit:cover;display:block}
+  /* Ken Burns: the active page's art drifts slowly — stills feel alive. */
+  .cu-page.on .cu-media img{animation:cuKB 18s ease-in-out infinite alternate}
+  @keyframes cuKB{from{transform:scale(1) translate(0,0)}to{transform:scale(1.09) translate(-1.5%,-2%)}}
+  @media (prefers-reduced-motion:reduce){.cu-page.on .cu-media img{animation:none}}
   .cu-text{padding:18px 22px 22px}
   .cu-folio{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--flor);font-weight:600;margin-bottom:8px}
   .cu-text p{font-size:16.5px;line-height:1.62;white-space:pre-line}
+  /* Karaoke: the line being sung glows terracotta. */
+  .cu-line{display:block;transition:color .3s ease,opacity .3s ease;opacity:.85}
+  .cu-line.sung{color:var(--terra);opacity:1;font-weight:600}
+  .cu-photo .cu-media img{animation:none}
+  .cu-photo .cu-text{text-align:center}
   .cu-cover .cu-text{text-align:center;padding-top:24px}
   .cu-cover h2{font-size:30px;line-height:1.15;margin-bottom:6px}
   .cu-cover .cu-sub{color:var(--tinta2);font-size:14px}
@@ -71,6 +81,24 @@ const CSS = `
   }
 `;
 
+// Page art: seedance loop video when we have one (only plays while its page is
+// active, so phones don't decode 3 videos at once), Ken Burns still otherwise.
+function Media({ img, video, alt, active, eager = true }) {
+  const vidRef = useRef(null);
+  useEffect(() => {
+    const v = vidRef.current;
+    if (!v) return;
+    if (active) { v.play().catch(() => {}); } else { v.pause(); }
+  }, [active]);
+  return (
+    <div className="cu-media">
+      {video
+        ? <video ref={vidRef} src={video} poster={img} muted loop playsInline preload={eager ? 'auto' : 'none'} aria-label={alt} />
+        : <img src={img} alt={alt} loading={eager ? 'eager' : 'lazy'} />}
+    </div>
+  );
+}
+
 export default function CuentoPage() {
   const token = useMemo(() => {
     const m = window.location.pathname.match(/^\/cuento\/([A-Za-z0-9]+)/);
@@ -81,6 +109,7 @@ export default function CuentoPage() {
   const [page, setPage] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [auto, setAuto] = useState(true); // pages follow the song until the reader takes over
+  const [sungLine, setSungLine] = useState({ p: -1, l: -1 }); // karaoke: which line is being sung
   const audioRef = useRef(null);
   const touchX = useRef(null);
   const autoRef = useRef(true);
@@ -107,8 +136,14 @@ export default function CuentoPage() {
 
   const pages = useMemo(() => {
     if (!cuento) return [];
-    const list = [{ kind: 'cover' }];
-    (cuento.stanzas || []).forEach((s, i) => list.push({ kind: 'stanza', text: s.text, img: (cuento.page_urls || [])[i], n: i + 1 }));
+    const vids = cuento.page_videos || {};
+    const list = [{ kind: 'cover', video: vids.cover }];
+    (cuento.stanzas || []).forEach((s, i) => list.push({
+      kind: s.text && s.text.trim() ? 'stanza' : 'quiet',
+      text: s.text, lines: s.lines || [],
+      img: (cuento.page_urls || [])[i], video: vids[String(i)], n: i + 1,
+    }));
+    if (cuento.real_photo_url) list.push({ kind: 'photo', img: cuento.real_photo_url });
     list.push({ kind: 'final' });
     return list;
   }, [cuento]);
@@ -160,20 +195,34 @@ export default function CuentoPage() {
       }
       timesRef.current = times;
     };
+    const lastIndex = stanzas.length + (cuento.real_photo_url ? 2 : 1);
     const onTime = () => {
+      const t = a.currentTime;
+      // Karaoke: highlight the line being sung on the VISIBLE stanza page,
+      // whether or not auto-turn is driving.
+      const visIdx = pageRef.current - 1; // stanza index of the visible page
+      const vis = stanzas[visIdx];
+      if (vis?.lines?.length) {
+        let li = -1;
+        for (let k = 0; k < vis.lines.length; k++) {
+          const s = Number(vis.lines[k].startS);
+          if (Number.isFinite(s) && t >= s) li = k;
+        }
+        setSungLine((prev) => (prev.p === pageRef.current && prev.l === li ? prev : { p: pageRef.current, l: li }));
+      }
       if (!autoRef.current) return;
       const times = timesRef.current;
       if (!times.length) return;
-      const t = a.currentTime;
       let target = 0; // cover until the first stanza is sung
       for (let i = 0; i < times.length; i++) { if (t >= times[i]) target = i + 1; }
-      if (target !== pageRef.current && pageRef.current !== times.length + 1) {
+      // never yank the reader back off the photo/dedication pages
+      if (target !== pageRef.current && pageRef.current <= times.length) {
         setPage(target);
       }
     };
     const onEnded = () => {
       setPlaying(false);
-      if (autoRef.current) setPage(stanzas.length + 1); // dedication + share
+      if (autoRef.current) setPage(lastIndex); // dedication + share
     };
     a.addEventListener('loadedmetadata', buildTimes);
     a.addEventListener('timeupdate', onTime);
@@ -239,13 +288,13 @@ export default function CuentoPage() {
         touchX.current = null;
       }}>
       {pages.map((pg, i) => (
-        <section key={i} className={`cu-page ${pg.kind === 'cover' ? 'cu-cover' : ''} ${i === page ? 'on' : ''}`}>
+        <section key={i} className={`cu-page ${pg.kind === 'cover' ? 'cu-cover' : ''} ${pg.kind === 'photo' ? 'cu-photo' : ''} ${i === page ? 'on' : ''}`}>
           {pg.kind === 'cover' && (<>
-            <img src={cuento.cover_url} alt="Portada del cuento" />
+            <Media img={cuento.cover_url} video={pg.video} alt="Portada del cuento" active={i === page} />
             <div className="cu-text">
               <h2 className="cu-serif">{cuento.title || 'Nuestra Canción'}</h2>
               {(cuento.recipient_name || cuento.sender_name) && (
-                <div className="cu-sub">
+                <div className="cu-sub cu-serif" style={{ fontSize: 17, fontStyle: 'italic' }}>
                   {cuento.sender_name ? `De ${cuento.sender_name} ` : ''}{cuento.recipient_name ? `para ${cuento.recipient_name}` : ''}
                 </div>
               )}
@@ -253,10 +302,26 @@ export default function CuentoPage() {
             </div>
           </>)}
           {pg.kind === 'stanza' && (<>
-            <img src={pg.img} alt={`Ilustración de la página ${pg.n}`} loading={i <= page + 1 ? 'eager' : 'lazy'} />
+            <Media img={pg.img} video={pg.video} alt={`Ilustración de la página ${pg.n}`} active={i === page} eager={i <= page + 1} />
             <div className="cu-text">
               <div className="cu-folio">Página {pg.n} de {cuento.stanzas.length}</div>
-              <p className="cu-serif">{pg.text}</p>
+              <p className="cu-serif">
+                {pg.lines?.length
+                  ? pg.lines.map((ln, li) => (
+                      <span key={li} className={`cu-line ${sungLine.p === i && sungLine.l === li ? 'sung' : ''}`}>{ln.text}</span>
+                    ))
+                  : pg.text}
+              </p>
+            </div>
+          </>)}
+          {pg.kind === 'quiet' && (
+            <Media img={pg.img} video={pg.video} alt="Ilustración" active={i === page} eager={i <= page + 1} />
+          )}
+          {pg.kind === 'photo' && (<>
+            <Media img={pg.img} alt="Su fotografía" active={i === page} eager={i <= page + 1} />
+            <div className="cu-text">
+              <div className="cu-folio">La historia real</div>
+              <p className="cu-serif" style={{ textAlign: 'center' }}>Y esta es la historia que inspiró la canción.</p>
             </div>
           </>)}
           {pg.kind === 'final' && (<>
