@@ -2979,7 +2979,9 @@ export default function AdminDashboard() {
     const amt = song && song.amount_paid != null ? parseFloat(song.amount_paid) : NaN;
     if (!Number.isNaN(amt)) {
       if (Math.abs(amt - 9.99) < 1) return base + 'upsell-video.mp3';
-      if (Math.abs(amt - 49.99) < 1) return base + 'pack-three.mp3';
+      // pack-three.mp3 speaks the retired $49.99 price — packs repriced
+      // 2026-08-13 ($59.98/$89.97/$149.95), so pack sales rotate the
+      // price-free generics until new clips are recorded.
       if (Math.abs(amt - 39.99) < 1) return base + 'pack-two.mp3';
       if (Math.abs(amt - 29.99) < 1) return base + 'pack-single.mp3';
     }
