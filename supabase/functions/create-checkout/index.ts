@@ -41,15 +41,20 @@ serve(async (req) => {
   try {
     const body = await req.json();
 
-    // ─── Song packs ("Paquete de 3/5/10 canciones") ──────────────────────────
+    // ─── Song packs ("Paquete de 2/3/5/10 canciones") ────────────────────────
     // A standalone purchase with NO song yet: the buyer pays once and receives a
     // personal NOMBRE-### code worth N free single-song redemptions, minted +
     // emailed by stripe-webhook on payment. Returns early — none of the
     // song-checkout logic below applies (there is no songId).
+    // Pricing = GRATIS ladder anchored on the $29.99 single (owner, 2026-08-13):
+    // pack3 = 2×29.99 ("paga 2, la 3ª gratis"), pack5 = 3×29.99, pack10 = 5×29.99.
+    // Every redemption is a brand-new generation (its own task id) — these packs
+    // are unrelated to the $39.99 both-versions-of-one-generation checkout offer.
     const SONG_PACKS: Record<string, { songs: number; cents: number; priceLabel: string }> = {
-      pack3: { songs: 3, cents: 4999, priceLabel: '$49.99' },
-      pack5: { songs: 5, cents: 7499, priceLabel: '$74.99' },
-      pack10: { songs: 10, cents: 13999, priceLabel: '$139.99' },
+      pack2: { songs: 2, cents: 4499, priceLabel: '$44.99' },
+      pack3: { songs: 3, cents: 5998, priceLabel: '$59.98' },
+      pack5: { songs: 5, cents: 8997, priceLabel: '$89.97' },
+      pack10: { songs: 10, cents: 14995, priceLabel: '$149.95' },
     };
     if (body.pack) {
       const pack = SONG_PACKS[String(body.pack)];

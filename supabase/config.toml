@@ -1012,6 +1012,14 @@ verify_jwt = true
 [functions.action-inbox]
 verify_jwt = true
 
+[functions.character-studio]
+# Character Studio — in-house AI influencer / brand-character builder (the
+# Eromify replacement). Called only from the admin dashboard with a logged-in
+# Supabase Auth user's JWT → verify_jwt = true; handler requires
+# admin_users.role='admin' (spends Kie credits). Kie jobs are POLLED via the
+# 'list'/'sync' finalize pass (no callBackUrl), so no webhook path exists.
+verify_jwt = true
+
 # Business Analyst — ask-the-business chat agent (read-only SQL via the
 # analyst_run_sql RPC). Called only by the admin frontend with the owner's
 # JWT (admin_users gate inside); default gate stays ON.

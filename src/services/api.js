@@ -286,7 +286,7 @@ export async function createCheckout(songIds, email, couponCode = null, purchase
 // Song packs ("Paquete de 3/5/10 canciones"). A standalone purchase with no
 // song — create-checkout (pack mode) returns a Stripe URL; on payment the
 // webhook mints + emails a personal NOMBRE-### code worth N free single songs.
-// pack: 'pack3' ($49.99) | 'pack5' ($74.99) | 'pack10' ($139.99).
+// pack: 'pack2' ($44.99) | 'pack3' ($59.98) | 'pack5' ($89.97) | 'pack10' ($149.95).
 export async function createPackCheckout(buyerName, email, pack = 'pack3') {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
     method: 'POST',

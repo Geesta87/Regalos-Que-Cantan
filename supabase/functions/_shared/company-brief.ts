@@ -13,7 +13,8 @@ FUNNEL: the song is generated BEFORE payment; paying unlocks access/download. (N
 
 PRODUCT / OFFER CATALOG (real prices):
 - Core personalized song — $29.99
-- Two-song bundle (2-pack) — $39.99  ·  Three-pack — $49.99
+- Two-song bundle (2-pack, both versions / same cart) — $39.99
+- Store code packs (/tienda, each redemption a brand-new song, 12-mo codes): 2-pack $44.99 · 3-pack $59.98 ("paga 2, la 3ª gratis") · 5-pack $89.97 (2 free) · 10-pack $149.95 (5 free, 1×1)
 - Photo video add-on — $9.99 (their photos + the song)  ·  Lyric video — $9.99
 - Karaoke / instrumental version — add-on
 - Animado — animated Pixar-style story video of the recipient — ~$49 upsell

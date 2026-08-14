@@ -976,19 +976,30 @@ export default function SuccessPage() {
   }, [selectedVideoSongIdx, videoOrdersMap, songs]);
 
   // Used on photo upload — guarantees we have a video_order to attach to.
+  // Runs on EVERY upload (no videoOrder shortcut): a pre-existing idle order in
+  // state is exactly how an over-entitlement upload slips past the check below.
   const ensureVideoOrderForSelectedSong = async () => {
-    if (videoOrder) return videoOrder;
     const song = songs[selectedVideoSongIdx];
     if (!song) return null;
     if (!songs.some(s => s?.has_video_addon)) return null;
 
-    // Reuse an existing paid, unused video order for this bundle before creating
-    // a new one. Each add-on entitles the customer to exactly one video, so a
-    // single-video bundle must never end up with two paid orders. A timing gap
-    // (videoOrder state still empty at upload time) used to make this function
-    // INSERT a second paid order, which then let the customer generate a free
-    // extra video. Look it up in the DB and reuse/repoint instead of inserting.
+    // ENTITLEMENT RULE — paid for N videos, can make N videos. Nothing subtler.
+    //
+    // The old reuse check searched only for paid orders that were still PENDING
+    // with zero photos. That answers "is there an empty order lying around?",
+    // not "has this customer used what they paid for?" — so the moment their
+    // video COMPLETED, nothing matched, and switching songs fell through to the
+    // insert below, minting another paid order and a free video. 5 customers
+    // got free videos in the 30 days to 2026-08-13 (Gladys 8286262a: paid for
+    // 1, made 2, had a 3rd order open), plus 19 phantom "paid, no photos" rows
+    // polluting the fulfillment queue.
+    //
+    // Now: count orders that CONSUMED the entitlement (photos uploaded, or past
+    // pending — completed/processing). Failed renders and empty pending rows
+    // don't count, so retries and the not-yet-used slot still work. At the cap,
+    // return the sentinel — never insert.
     const isDualVideo = (songs[0]?.video_addon_count ?? 1) >= 2 && songs.length >= 2;
+    const entitled = songs.find(s => s?.has_video_addon)?.video_addon_count ?? 1;
     try {
       const bundleSongIds = songs.map(s => s?.id).filter(Boolean);
       const { data: existing } = await supabase
@@ -996,11 +1007,20 @@ export default function SuccessPage() {
         .select('*')
         .in('song_id', bundleSongIds)
         .eq('paid', true)
-        .eq('status', 'pending')
         .order('created_at', { ascending: true });
-      const unused = (existing || []).filter(o => (o.photo_count || 0) === 0);
-      // Prefer an unused order already tied to the selected song.
-      let reusable = unused.find(o => o.song_id === song.id);
+      // Consumed = past 'pending' and not 'failed' (photos_uploaded / processing /
+      // completed). A pending order — even with photos already attached — is a
+      // video still being SET UP, so retrying it must not read as a second video.
+      const consumed = (existing || []).filter(o =>
+        o.status !== 'pending' && o.status !== 'failed');
+      if (consumed.length >= entitled) {
+        return { entitlementExhausted: true, entitled };
+      }
+      const pendings = (existing || []).filter(o => o.status === 'pending');
+      const unused = pendings.filter(o => (o.photo_count || 0) === 0);
+      // Prefer the selected song's own pending order (any photo count — a customer
+      // finishing a stalled upload continues the SAME order, never mints a new one).
+      let reusable = pendings.find(o => o.song_id === song.id);
       // Single-video bundle: the one order follows the customer's song choice, so
       // repoint an unused order from another song. Dual-video: each song keeps its
       // own order — do NOT steal the other song's order; fall through to insert.
@@ -1019,10 +1039,15 @@ export default function SuccessPage() {
         return reusable;
       }
     } catch (e) {
-      console.error('Failed to reuse existing video order:', e);
+      // The entitlement check itself failed — we can't know whether the video
+      // was already used, so do NOT fall through to the insert (that re-opens
+      // the free-video hole on any network blip). The customer sees the generic
+      // error and retries.
+      console.error('Failed to check video entitlement:', e);
+      return null;
     }
 
-    // No reusable order — create one.
+    // Below entitlement and no reusable order — create one.
     try {
       const { data: newOrder, error: insertErr } = await supabase
         .from('video_orders')
@@ -1341,9 +1366,19 @@ export default function SuccessPage() {
       );
       if (!proceed) return;
     }
-    // Lazily create the video_order now that we know which song the customer
-    // selected for the video. This is the only path that creates a video_order.
-    const order = videoOrder?.id ? videoOrder : await ensureVideoOrderForSelectedSong();
+    // Always resolve through ensureVideoOrderForSelectedSong — it enforces the
+    // entitlement rule (paid for N videos → N videos) and returns the right
+    // order to attach to. Short-circuiting on videoOrder here is how uploads
+    // into leftover idle orders used to bypass the check.
+    const order = await ensureVideoOrderForSelectedSong();
+    if (order?.entitlementExhausted) {
+      // Paid for N videos, already made N. Say so plainly instead of minting a
+      // free order (the pre-2026-08-13 behavior) or a confusing generic error.
+      setVideoError(order.entitled >= 2
+        ? 'Tus 2 videos ya fueron creados — los encuentras en esta misma página. Si quieres otro video, escríbenos por WhatsApp.'
+        : 'El video de tu paquete ya fue creado — lo encuentras en esta misma página. Si quieres otro video, escríbenos por WhatsApp.');
+      return;
+    }
     if (!order?.id) {
       setVideoError('No se encontró la orden de video.');
       return;
