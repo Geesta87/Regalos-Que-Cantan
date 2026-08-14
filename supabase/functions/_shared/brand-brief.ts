@@ -23,7 +23,9 @@ export const OFFERS = {
   site: 'regalosquecantan.com',
   single: '$29.99',
   twoPack: '$39.99',
-  threePack: '$49.99',
+  threePack: '$59.98', // "paga 2, la 3ª GRATIS" (2 × $29.99)
+  fivePack: '$89.97',  // "paga 3, 2 GRATIS"
+  tenPack: '$149.95',  // "5 GRATIS · al 1×1"
   videoAddon: '$9.99',
   lyricVideo: '$9.99',
   // Added for the Email Studio brainstorm agent + the Animado preset. Purely

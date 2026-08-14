@@ -180,6 +180,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const pull = () => {
       if (sess.plan) setPlan(sess.plan);
       if (sess.pendingMode) setPendingMode(sess.pendingMode);
+      // The chat that produced the plan travels too. Restoring the plan without
+      // it left follow-up actions with an empty conversation — the full re-roll
+      // sends `conversation: messages` and the server refused it with
+      // "una instrucción es obligatoria" (2026-08-13, song 80394831).
+      if (Array.isArray(sess.messages) && sess.messages.length) setMessages(sess.messages);
       if (sess.status === 'working') {
         setSurgicalMsg(sess.msg || '');
         setPhase(sess.kind === 'both' ? 'bothWorking' : 'working');
@@ -301,7 +306,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     if (!applied.length) { showToast('No hay correcciones aplicables a esta versión.'); return; }
     setError(''); setResult(null); setInput('');
     setPhase('working');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     try {
       const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -768,7 +773,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setError(''); setResult(null); setInput('');
     setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, msg: 'Regenerating the corrected part…' });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages, msg: 'Regenerating the corrected part…' });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
       const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
@@ -1260,7 +1265,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   async function runMultiFix(combinedLyrics, changes) {
     setError(''); setResult(null); setInput('');
     setPhase('working');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     try {
       const one = await fixOneSong(song.id, { changes, combinedLyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -1302,7 +1307,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       { id: song.id, version: song.version, recipient_name: song.recipient_name, paid: song.paid, audio_url: song.original_audio_url || song.audio_url },
       ...siblings,
     ];
-    const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     const results = [];
     let lastErr = null;
     for (const t of targets) {
@@ -1422,14 +1427,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setInput('');
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, msg: 'Re-recording the full song… (1–3 min)' });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, messages, msg: 'Re-recording the full song… (1–3 min)' });
     const post = async (body) => fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
-      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id,
+        // Never submit an empty instruction: a session-restored card can have
+        // lost the chat, and the server needs SOME complaint text for its logs
+        // and change summary. The plan itself is the best fallback.
+        conversation: messages.length ? messages : [{ role: 'user', text: (stageRequest?.customer_request || plan?.changeSummary || 'Aplicar exactamente la letra aprobada.') }],
+        image: imagePayload(), approvedLyrics, verifyPhrases,
         // An added line needs a few extra seconds of pinned length.
         ...(plan?.addLine ? { durationPadS: 8 } : {}) });
       if (!sub.ok) { const em = sub.reason || sub.error || 'Could not start the full re-roll.'; setError(em); setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: em, msg: '' }); return; }
@@ -2979,7 +2989,9 @@ export default function AdminDashboard() {
     const amt = song && song.amount_paid != null ? parseFloat(song.amount_paid) : NaN;
     if (!Number.isNaN(amt)) {
       if (Math.abs(amt - 9.99) < 1) return base + 'upsell-video.mp3';
-      if (Math.abs(amt - 49.99) < 1) return base + 'pack-three.mp3';
+      // pack-three.mp3 speaks the retired $49.99 price — packs repriced
+      // 2026-08-13 ($59.98/$89.97/$149.95), so pack sales rotate the
+      // price-free generics until new clips are recorded.
       if (Math.abs(amt - 39.99) < 1) return base + 'pack-two.mp3';
       if (Math.abs(amt - 29.99) < 1) return base + 'pack-single.mp3';
     }

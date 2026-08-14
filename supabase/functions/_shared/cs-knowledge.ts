@@ -25,8 +25,11 @@ CÓMO FUNCIONA EL PEDIDO (importante):
 
 PRECIOS (reales):
 - Canción personalizada — $29.99
-- Paquete de 2 canciones — $39.99
-- Paquete de 3 canciones — $49.99
+- Paquete de 2 canciones — $39.99 (las 2 versiones de tu pedido, o 2 canciones en el mismo carrito)
+- Paquete de 2 canciones nuevas (código de /tienda, 2 personas) — $44.99
+- Paquete de 3 canciones (código de /tienda) — $59.98 · pagas 2, la 3ª GRATIS
+- Paquete de 5 canciones (código de /tienda) — $89.97 · pagas 3, 2 GRATIS
+- Paquete de 10 canciones (código de /tienda) — $149.95 · 5 GRATIS, al 1×1
 - Video con fotos — $9.99  ·  Video con letra (lyric video) — $9.99
 - Versión karaoke / instrumental — complemento
 - Animado (video estilo caricatura de la persona) — complemento (~$49)

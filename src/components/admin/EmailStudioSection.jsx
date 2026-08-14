@@ -64,8 +64,8 @@ const PRESETS = [
     brief: `Promo email for the 2-Pack ($39.99): two personalized songs — perfect for "una para mamá y otra para papá" or for a couple. Angle: why choose one person when you can make two people cry of happiness. Show the savings vs two singles ($59.98). Risk reversal: listen free before paying.`,
   },
   {
-    id: 'three_pack', label: '3-Pack', desc: '$49.99 — family bundle', styleId: 'royal_deep', ctaUrl: SITE,
-    brief: `Promo email for the 3-Pack family bundle ($49.99): three personalized songs for the whole family. Angle: one gift that covers mamá, papá y los abuelos — the best value in the store. Listen free before paying, each song made for one specific person.`,
+    id: 'three_pack', label: '3-Pack', desc: '$59.98 — paga 2, la 3ª gratis', styleId: 'royal_deep', ctaUrl: SITE,
+    brief: `Promo email for the 3-Pack ($59.98 — pay for 2 songs at $29.99, the 3rd is FREE): three personalized songs for the whole family. Angle: one gift that covers mamá, papá y los abuelos — la tercera va gratis. Listen free before paying, each song made for one specific person.`,
   },
   {
     id: 'animado', label: 'Canción + Animado', desc: '$59.99 — película animada', styleId: 'midnight_serenade', ctaUrl: SITE,

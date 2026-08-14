@@ -11,10 +11,17 @@ export function isInAppBrowser() {
 // Supabase storage public URLs accept ?download=<filename>: the server then
 // responds with Content-Disposition: attachment, which triggers a real
 // download in every browser — no fetch, no blob, no download attribute.
+// Our same-origin proxy paths (/karaoke/, /videos/) rewrite to those storage
+// objects and pass the query through, so they honor ?download too — verified
+// they end with Content-Disposition: attachment. Routing them here means the
+// download happens IN THE SAME TAB instead of falling back to a new tab
+// (window.open) in in-app browsers (Facebook/Instagram).
 export function attachmentUrl(fileUrl, filename) {
   try {
     const u = new URL(fileUrl);
-    if (u.pathname.includes('/storage/v1/object/')) {
+    if (u.pathname.includes('/storage/v1/object/')
+        || u.pathname.startsWith('/karaoke/')
+        || u.pathname.startsWith('/videos/')) {
       u.searchParams.set('download', filename);
       return u.toString();
     }
