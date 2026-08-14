@@ -389,11 +389,20 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const refs = c.reference_urls || [];
   const isDraft = c.status === 'draft';
 
+  const generatorRef = React.useRef(null);
+
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
     if (kind === 'video') Object.assign(payload, { duration, fromImageUrl: fromImageUrl || undefined, loop });
     onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
+  };
+
+  // "Animate this image" from a gallery tile: flips to video mode with that
+  // image pre-selected as the first frame and brings the generator into view.
+  const animateFrom = (url) => {
+    setKind('video'); setAspect('9:16'); setTakes(1); setFromImageUrl(url); setLoop(false);
+    generatorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
@@ -494,7 +503,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
               </div>
             </div>
           ) : (
-            <div className={`${panel} p-5 space-y-4`}>
+            <div ref={generatorRef} className={`${panel} p-5 space-y-4 scroll-mt-24`}>
               {/* Segmented Image / Video switch */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-sm font-semibold text-white">Generate</p>
@@ -557,36 +566,71 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                   ))}
                 </div>
                 {kind === 'video' && (
-                  <>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
-                      {[5, 10].map((d) => (
-                        <button key={d} onClick={() => setDuration(d)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                            duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
-                          }`}>{d}s</button>
-                      ))}
-                    </div>
-                    <select value={fromImageUrl}
-                      onChange={(e) => { setFromImageUrl(e.target.value); if (!e.target.value) setLoop(false); }}
-                      className="bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 max-w-[230px] focus:outline-none focus:border-indigo-400/60 [&>option]:bg-[#131a24] [&>option]:text-gray-200">
-                      <option value="">Animate from: identity references</option>
-                      {c.portrait_url && <option value={c.portrait_url}>Animate from: portrait</option>}
-                      {readyImages.map((g, i) => <option key={g.id} value={g.media_url}>Animate from: image #{readyImages.length - i}</option>)}
-                    </select>
-                    {fromImageUrl && (
-                      <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer">
-                        <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-indigo-500 focus:ring-indigo-500/40 focus:ring-offset-0" />
-                        <Repeat size={12} /> Perfect loop
-                      </label>
-                    )}
-                  </>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
+                    {[5, 10].map((d) => (
+                      <button key={d} onClick={() => setDuration(d)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                          duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                        }`}>{d}s</button>
+                    ))}
+                  </div>
                 )}
                 <button className={`${btnPrimary} ml-auto`} disabled={busy || !prompt.trim()} onClick={generate}>
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Generate
                 </button>
               </div>
+
+              {/* Animate-from picker — visual thumbnails, no numbers. Picking a
+                  still is the accurate path (face comes from her pixels); the
+                  references option is the loose path, kept for wide shots. */}
+              {kind === 'video' && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+                    Animate from
+                    {fromImageUrl
+                      ? <span className="ml-2 normal-case tracking-normal font-medium text-emerald-300">this image — face locked to its pixels</span>
+                      : <span className="ml-2 normal-case tracking-normal font-medium text-amber-300/90">references only — looser on faces, best for wide shots</span>}
+                  </p>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    <button onClick={() => { setFromImageUrl(''); setLoop(false); }}
+                      className={`shrink-0 h-16 px-3 rounded-xl text-xs font-medium border transition-all ${
+                        !fromImageUrl ? 'border-indigo-400/70 bg-indigo-500/15 text-indigo-200 ring-2 ring-indigo-500/25' : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
+                      }`}>
+                      Identity<br />references
+                    </button>
+                    {c.portrait_url && (
+                      <button onClick={() => setFromImageUrl(c.portrait_url)} title="Portrait"
+                        className={`relative shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
+                          fromImageUrl === c.portrait_url ? 'border-indigo-400 ring-2 ring-indigo-500/30' : 'border-transparent hover:border-white/30'
+                        }`}>
+                        <img src={c.portrait_url} alt="Portrait" className="h-16 w-14 object-cover" />
+                        {fromImageUrl === c.portrait_url && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-indigo-950/40"><Check size={16} className="text-white drop-shadow" /></span>
+                        )}
+                      </button>
+                    )}
+                    {readyImages.map((g) => (
+                      <button key={g.id} onClick={() => setFromImageUrl(g.media_url)} title={g.prompt.slice(0, 120)}
+                        className={`relative shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
+                          fromImageUrl === g.media_url ? 'border-indigo-400 ring-2 ring-indigo-500/30' : 'border-transparent hover:border-white/30'
+                        }`}>
+                        <img src={g.media_url} alt="option" className="h-16 w-14 object-cover" />
+                        {fromImageUrl === g.media_url && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-indigo-950/40"><Check size={16} className="text-white drop-shadow" /></span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {fromImageUrl && (
+                    <label className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer w-fit">
+                      <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-indigo-500 focus:ring-indigo-500/40 focus:ring-offset-0" />
+                      <Repeat size={12} /> Perfect loop (starts and ends on this exact frame)
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -604,6 +648,10 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                         {g.meta?.sentToCreative ? <Check size={14} /> : <Send size={14} />}
                       </button>
                       <a href={g.media_url} target="_blank" rel="noreferrer" title="Open full size" className={btnIcon}><Download size={14} /></a>
+                      {g.kind !== 'video' && (
+                        <button title="Animate this image (face stays locked to these exact pixels)" className={`${btnIcon} hover:!text-violet-300`}
+                          onClick={() => animateFrom(g.media_url)}><Film size={14} /></button>
+                      )}
                       {g.kind !== 'video' && (
                         <button title="Pin as identity reference" className={btnIcon} disabled={busy}
                           onClick={() => onAct('add-reference', { characterId: c.id, generationId: g.id }, 'Added to references')}><Pin size={14} /></button>
