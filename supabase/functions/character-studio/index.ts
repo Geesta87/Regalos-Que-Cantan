@@ -467,6 +467,34 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // -- upload-image: bring an EXTERNAL photo of the character into the -------
+    // gallery (e.g. a Higgsfield Soul render). Stored in our bucket and
+    // inserted as a ready generation, so every existing tool works on it:
+    // animate (Grok/Seedance), pin as reference, send to Creative Studio.
+    if (action === 'upload-image') {
+      const ch = await getCharacter(admin, body.characterId);
+      const dataUrl = String(body.dataUrl || '');
+      const m = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/);
+      if (!m) throw new Error('Send a PNG, JPEG or WebP image');
+      const contentType = m[1] === 'image/jpg' ? 'image/jpeg' : m[1];
+      const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+      if (bytes.length > 12 * 1024 * 1024) throw new Error('Image too large (max 12MB)');
+      const filename = String(body.filename || 'upload').slice(0, 120);
+      const { data: gen, error } = await admin.from('studio_generations').insert({
+        character_id: ch.id, kind: 'image', prompt: `Uploaded — ${filename}`, model: 'upload',
+        status: 'ready', meta: { uploaded: true, filename },
+      }).select().single();
+      if (error) throw error;
+      // Path keeps the .png suffix regardless of source type (delete-generation
+      // derives paths from it); the stored contentType is what browsers obey.
+      const path = `${ch.id}/${gen.id}.png`;
+      const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
+      if (up.error) { await admin.from('studio_generations').delete().eq('id', gen.id); throw up.error; }
+      const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+      await admin.from('studio_generations').update({ media_url: pub.publicUrl }).eq('id', gen.id);
+      return json({ success: true });
+    }
+
     // -- add-reference / remove-reference: extra identity stills ---------------
     if (action === 'add-reference') {
       const ch = await getCharacter(admin, body.characterId);

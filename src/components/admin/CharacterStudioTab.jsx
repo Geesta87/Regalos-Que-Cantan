@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Contact, Plus, RefreshCw, Loader2, ArrowLeft, Trash2, Check, Sparkles,
   Image as ImageIcon, Film, AlertTriangle, Pin, X, Download, Repeat,
-  Camera, Palette, Wand2, Brush, PenTool, ChevronDown, Pencil, Send, Layers,
+  Camera, Palette, Wand2, Brush, PenTool, ChevronDown, Pencil, Send, Layers, UploadCloud,
 } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/character-studio`;
@@ -400,6 +400,27 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
     if (kind === 'video' && engine === 'grok' && !fromImageUrl && c.portrait_url) setFromImageUrl(c.portrait_url);
   }, [kind, engine, fromImageUrl, c.portrait_url]);
 
+  // Upload external photos (e.g. Higgsfield Soul renders) into her gallery —
+  // they become regular ready images: animatable, pinnable, sendable.
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const onFiles = async (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => /^image\/(png|jpe?g|webp)$/.test(f.type) && f.size <= 12 * 1024 * 1024);
+    e.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      for (const f of files) {
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result); r.onerror = rej;
+          r.readAsDataURL(f);
+        });
+        await onAct('upload-image', { characterId: c.id, filename: f.name, dataUrl });
+      }
+    } finally { setUploading(false); }
+  };
+
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
     if (kind === 'image') payload.look = look;
@@ -419,10 +440,17 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
     <>
       <div className="flex items-center justify-between">
         <button className={btnGhost} onClick={onBack}><ArrowLeft size={15} /> All characters</button>
-        <button className={`${btnGhost} !text-gray-500 hover:!text-red-300`}
-          onClick={() => { if (confirm(`Archive ${c.name}?`)) onAct('archive-character', { characterId: c.id }, 'Archived'); }}>
-          <Trash2 size={15} /> Archive
-        </button>
+        <div className="flex gap-2">
+          <button className={btnGhost} disabled={uploading} onClick={() => fileRef.current?.click()}
+            title="Bring in photos made elsewhere (e.g. Higgsfield) — they become animatable gallery images">
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} Upload photos
+          </button>
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={onFiles} />
+          <button className={`${btnGhost} !text-gray-500 hover:!text-red-300`}
+            onClick={() => { if (confirm(`Archive ${c.name}?`)) onAct('archive-character', { characterId: c.id }, 'Archived'); }}>
+            <Trash2 size={15} /> Archive
+          </button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-[300px_1fr] gap-6 mt-5">
