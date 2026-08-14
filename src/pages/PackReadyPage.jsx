@@ -10,7 +10,7 @@ export default function PackReadyPage() {
   const { navigateTo } = useContext(AppContext);
   const songs = (() => {
     const n = parseInt(new URLSearchParams(window.location.search).get('songs'), 10);
-    return [3, 5, 10].includes(n) ? n : 3;
+    return [2, 3, 5, 10].includes(n) ? n : 3;
   })();
 
   useEffect(() => { trackStep(`pack${songs}_success`); }, [songs]);

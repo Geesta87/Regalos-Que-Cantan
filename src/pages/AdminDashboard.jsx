@@ -12,6 +12,7 @@ import VideosTab from '../components/admin/VideosTab';
 import CreativeStudioTab from '../components/admin/CreativeStudioTab';
 import ClipStudioTab from '../components/admin/ClipStudioTab';
 import CharacterStudioTab from '../components/admin/CharacterStudioTab';
+import CuentoTab from '../components/admin/CuentoTab';
 import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
@@ -20,7 +21,7 @@ import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -180,6 +181,11 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     const pull = () => {
       if (sess.plan) setPlan(sess.plan);
       if (sess.pendingMode) setPendingMode(sess.pendingMode);
+      // The chat that produced the plan travels too. Restoring the plan without
+      // it left follow-up actions with an empty conversation — the full re-roll
+      // sends `conversation: messages` and the server refused it with
+      // "una instrucción es obligatoria" (2026-08-13, song 80394831).
+      if (Array.isArray(sess.messages) && sess.messages.length) setMessages(sess.messages);
       if (sess.status === 'working') {
         setSurgicalMsg(sess.msg || '');
         setPhase(sess.kind === 'both' ? 'bothWorking' : 'working');
@@ -301,7 +307,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     if (!applied.length) { showToast('No hay correcciones aplicables a esta versión.'); return; }
     setError(''); setResult(null); setInput('');
     setPhase('working');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     try {
       const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -768,7 +774,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setError(''); setResult(null); setInput('');
     setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, msg: 'Regenerating the corrected part…' });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages, msg: 'Regenerating the corrected part…' });
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
       const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
@@ -1260,7 +1266,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   async function runMultiFix(combinedLyrics, changes) {
     setError(''); setResult(null); setInput('');
     setPhase('working');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     try {
       const one = await fixOneSong(song.id, { changes, combinedLyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -1302,7 +1308,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       { id: song.id, version: song.version, recipient_name: song.recipient_name, paid: song.paid, audio_url: song.original_audio_url || song.audio_url },
       ...siblings,
     ];
-    const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null });
+    const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
     const results = [];
     let lastErr = null;
     for (const t of targets) {
@@ -1422,14 +1428,19 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setInput('');
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
-    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, msg: 'Re-recording the full song… (1–3 min)' });
+    const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, messages, msg: 'Re-recording the full song… (1–3 min)' });
     const post = async (body) => fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
       body: JSON.stringify(body),
     }).then((r) => r.json());
     try {
-      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id, conversation: messages, image: imagePayload(), approvedLyrics, verifyPhrases,
+      const sub = await post({ action: 'full-submit', mode: 'full', songId: song.id,
+        // Never submit an empty instruction: a session-restored card can have
+        // lost the chat, and the server needs SOME complaint text for its logs
+        // and change summary. The plan itself is the best fallback.
+        conversation: messages.length ? messages : [{ role: 'user', text: (stageRequest?.customer_request || plan?.changeSummary || 'Aplicar exactamente la letra aprobada.') }],
+        image: imagePayload(), approvedLyrics, verifyPhrases,
         // An added line needs a few extra seconds of pinned length.
         ...(plan?.addLine ? { durationPadS: 8 } : {}) });
       if (!sub.ok) { const em = sub.reason || sub.error || 'Could not start the full re-roll.'; setError(em); setPhase('plan'); fixSessionPatch(sess, { status: 'error', error: em, msg: '' }); return; }
@@ -2780,7 +2791,7 @@ export default function AdminDashboard() {
     const tab = new URLSearchParams(window.location.search).get('tab');
     // Keep in sync with the nav (sidebar + mobile pills). Every tab that has a
     // content branch must be listed here so push/bookmark deep-links can reach it.
-    const valid = ['inbox', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio'];
+    const valid = ['inbox', 'orders', 'pendingsend', 'hotleads', 'sms', 'training', 'fixsong', 'affiliates', 'recruit', 'lookup', 'clonamivoz', 'animado', 'videos', 'chiefofstaff', 'dailybriefing', 'creativestudio', 'clipstudio', 'characterstudio', 'cuento'];
     // The Action Inbox is the admin home: one ranked queue of everything
     // waiting on the owner. Assistants get bounced to Orders (effect below).
     return valid.includes(tab) ? tab : 'inbox';
@@ -2979,7 +2990,9 @@ export default function AdminDashboard() {
     const amt = song && song.amount_paid != null ? parseFloat(song.amount_paid) : NaN;
     if (!Number.isNaN(amt)) {
       if (Math.abs(amt - 9.99) < 1) return base + 'upsell-video.mp3';
-      if (Math.abs(amt - 49.99) < 1) return base + 'pack-three.mp3';
+      // pack-three.mp3 speaks the retired $49.99 price — packs repriced
+      // 2026-08-13 ($59.98/$89.97/$149.95), so pack sales rotate the
+      // price-free generics until new clips are recorded.
       if (Math.abs(amt - 39.99) < 1) return base + 'pack-two.mp3';
       if (Math.abs(amt - 29.99) < 1) return base + 'pack-single.mp3';
     }
@@ -5114,6 +5127,11 @@ export default function AdminDashboard() {
           <Contact size={18} className={`flex-shrink-0 ${activeTab === 'characterstudio' ? 'text-amber-400' : ''}`} /> Character Studio
         </button>
         )}
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('cuento')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'cuento' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <BookOpen size={18} className={`flex-shrink-0 ${activeTab === 'cuento' ? 'text-amber-400' : ''}`} /> Cuento Ilustrado
+        </button>
+        )}
       </aside>
       {/* Toast notifications — non-blocking replacement for window.alert(). */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none">
@@ -5200,7 +5218,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div>
               <h1 className="font-bold text-lg flex items-center gap-2">
-                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio', characterstudio: 'Character Studio' }[activeTab]) || 'Dashboard'}
+                {({ orders: 'Orders', pendingsend: 'Pending to Send', hotleads: 'Hot Leads', sms: 'SMS Messages', training: 'Bot Training', fixsong: 'Fix Song', affiliates: 'Affiliates', recruit: 'Recruit Partners', lookup: 'Lookup', clonamivoz: 'Clone Mi Voz', animado: 'Animado™', videos: 'Videos (Slideshow)', chiefofstaff: 'Chief of Staff', dailybriefing: 'Daily Briefing', creativestudio: 'Creative Studio', clipstudio: 'Clip Studio', characterstudio: 'Character Studio', cuento: 'Cuento Ilustrado' }[activeTab]) || 'Dashboard'}
                 {userRole && (
                   <span
                     className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${
@@ -5967,6 +5985,18 @@ export default function AdminDashboard() {
                 }`}
               >
                 🎭 Character Studio
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('cuento')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'cuento'
+                    ? 'bg-amber-400 text-black'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📖 Cuento
               </button>
               )}
             </div>
@@ -7848,6 +7878,12 @@ export default function AdminDashboard() {
              (nano-banana / nano-banana-edit / seedance-2). Spends Kie credits →
              admin-only; character-studio edge function enforces server-side. */
           <CharacterStudioTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'cuento' && userRole === 'admin') ? (
+          /* Cuento Ilustrado — storybook upsell TEST BENCH. Generates an
+             illustrated book from a song's own lyrics (generate-cuento edge
+             function; Kie nano-banana + nano-banana-edit). Spends Kie credits →
+             admin-only; links are unlisted, nothing reaches customers. */
+          <CuentoTab accessToken={accessToken} showToast={showToast} />
         ) : null}
       </main>
 

@@ -1560,7 +1560,14 @@ Deno.serve(async (req) => {
       ? note.trim()
       : conversation.length
         ? conversation.map((m) => `${m.role === 'assistant' ? 'AI' : 'Dueño'}: ${m.text}`).join('\n')
-        : (fixImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
+        // APPROVED LYRICS ARE AN INSTRUCTION (2026-08-13). A card restored from
+        // a fix session carries the owner-confirmed plan but not the chat that
+        // produced it, so its re-roll arrived with an empty conversation and
+        // this guard rejected a perfectly specified request — the lyrics to
+        // sing were right there in approvedLyrics.
+        : approvedLyrics
+          ? '(Cantar exactamente la letra aprobada adjunta — cambios ya confirmados por el dueño en el paso de plan.)'
+          : (fixImage ? '(Ver la captura de pantalla adjunta del mensaje del cliente.)' : '');
     if (!songId || (!complaint && !fixImage)) {
       return json({ ok: false, error: 'songId y una instrucción (texto, conversación o captura) son obligatorios.' });
     }
