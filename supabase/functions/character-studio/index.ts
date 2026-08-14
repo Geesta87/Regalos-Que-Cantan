@@ -37,6 +37,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+const CAPTION_MODEL = Deno.env.get('CREATIVE_CHAT_MODEL') || 'claude-opus-4-8';
 const KIE = 'https://api.kie.ai/api/v1/jobs';
 const BUCKET = 'character-studio';
 
@@ -49,6 +51,19 @@ const VIDEO_MODEL = 'bytedance/seedance-2';
 
 const PORTRAIT_CANDIDATES = 3;
 const MAX_REFS = 9; // + portrait = Kie's 10-image cap on image_urls
+const MAX_BATCH = 3; // takes per generate call (images cost cents; videos capped the same)
+
+// Identity kit — the 6 canonical shots that teach the edit model her from
+// every angle/expression. Owner pins the winners as references afterwards
+// (deliberately NOT auto-pinned: eyes stay the quality gate).
+const KIT_SHOTS = [
+  'Three-quarter angle portrait, looking slightly off camera, soft directional light.',
+  'Side profile portrait, clean simple background.',
+  'Full body shot, standing, natural relaxed pose, simple background.',
+  'Close-up with a big warm genuine laugh.',
+  'Medium shot from the waist up, arms crossed, confident friendly smile.',
+  'Walking outdoors at golden hour, medium-wide shot, warm sunset backlight.',
+];
 
 // Style-defining prompt prefixes for from-scratch portraits. The negative
 // phrasing ("NOT photorealistic") is load-bearing — it's what forced full
@@ -89,7 +104,7 @@ async function kieCreate(model: string, input: Record<string, unknown>): Promise
 // can take a while on Kie — only time out after 30 minutes.
 async function finalize(admin: any, characterId?: string, ids?: string[]) {
   let q = admin.from('studio_generations')
-    .select('id, character_id, kind, kie_task_id, created_at')
+    .select('id, character_id, kind, kie_task_id, created_at, meta')
     .eq('status', 'generating').not('kie_task_id', 'is', null);
   if (ids?.length) q = q.in('id', ids);
   else if (characterId) q = q.eq('character_id', characterId);
@@ -117,7 +132,7 @@ async function finalize(admin: any, characterId?: string, ids?: string[]) {
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
         await admin.from('studio_generations').update({
           status: 'ready', media_url: pub.publicUrl,
-          meta: { creditsConsumed: info?.data?.creditsConsumed ?? null },
+          meta: { ...(row.meta || {}), creditsConsumed: info?.data?.creditsConsumed ?? null },
           updated_at: new Date().toISOString(),
         }).eq('id', row.id);
       } else if (st === 'fail' || info?.data?.failCode) {
@@ -161,6 +176,63 @@ async function firePortrait(admin: any, ch: any, note?: string): Promise<string>
     }).eq('id', gen.id);
   }
   return gen.id;
+}
+
+// Fire one identity-referenced image render (used by generate + identity-kit).
+async function fireRefImage(admin: any, ch: any, prompt: string, opts: {
+  model?: string; aspect?: string; refs: string[]; meta?: Record<string, unknown>;
+}) {
+  const model = opts.model || IMAGE_EDIT_MODEL;
+  const aspect_ratio = opts.aspect || '3:4';
+  const { data: gen, error } = await admin.from('studio_generations').insert({
+    character_id: ch.id, kind: 'image', prompt, model, aspect_ratio, meta: opts.meta || {},
+  }).select().single();
+  if (error) throw error;
+  try {
+    const taskId = await kieCreate(model, { prompt, image_urls: opts.refs, aspect_ratio, output_format: 'png' });
+    await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
+  } catch (e: any) {
+    await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+  }
+  return gen;
+}
+
+// Claude writes the Spanish social copy for a render headed to Creative
+// Studio. Best-effort: any failure falls back to a serviceable template — the
+// owner edits copy in the approval queue anyway.
+async function writeCaption(ch: any, gen: any): Promise<{ headline: string; caption: string; hashtags: string[] }> {
+  const fallback = {
+    headline: 'Una canción hecha solo para alguien especial',
+    caption: 'En Regalos Que Cantan creamos canciones personalizadas para quien más quieres. Cuéntanos su historia y nosotros la convertimos en música. 🎶',
+    hashtags: ['RegalosQueCantan', 'CancionPersonalizada', 'RegaloOriginal', 'Musica'],
+  };
+  if (!ANTHROPIC_API_KEY) return fallback;
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: CAPTION_MODEL,
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: `You write social copy for Regalos Que Cantan (regalosquecantan.com) — personalized custom songs for Spanish-speaking Latino families in the US. "${ch.name}" is our brand host character. The ${gen.kind} being posted shows: ${gen.prompt.slice(0, 400)}\n\nWrite warm, human Spanish copy (never salesy, never mention AI). Reply with STRICT JSON only:\n{"headline": "short hook, max 60 chars", "caption": "1-3 sentence Instagram/Facebook caption with a soft invitation to create a song", "hashtags": ["4-6 Spanish hashtags, no # symbol"]}`,
+        }],
+      }),
+    });
+    const j = await r.json();
+    const text = j?.content?.[0]?.text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return fallback;
+    const parsed = JSON.parse(m[0]);
+    return {
+      headline: String(parsed.headline || fallback.headline).slice(0, 120),
+      caption: String(parsed.caption || fallback.caption).slice(0, 1000),
+      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.map((h: unknown) => String(h).replace(/^#/, '')).slice(0, 6) : fallback.hashtags,
+    };
+  } catch (_) {
+    return fallback;
+  }
 }
 
 async function getCharacter(admin: any, id: string) {
@@ -250,21 +322,20 @@ serve(async (req) => {
       // The CENZO-proven identity clause — same opening for images and videos.
       const identity = `Keep the EXACT same ${ch.style === 'photoreal' ? 'person' : 'character'} as in the reference image${refs.length > 1 ? 's' : ''}: ${ch.description}. Same face, same identity, no drift.`;
 
+      // Batch: fire N independent takes of the same prompt (models are
+      // stochastic — 3 takes ≈ 3 different variations, pick the winner).
+      const count = Math.min(Math.max(Number(body.count) || 1, 1), MAX_BATCH);
+
       if (kind === 'image') {
-        const model = String(body.model || IMAGE_EDIT_MODEL);
         const prompt = `${identity} ${userPrompt}`;
-        const aspect_ratio = String(body.aspectRatio || '3:4');
-        const { data: gen, error } = await admin.from('studio_generations').insert({
-          character_id: ch.id, kind: 'image', prompt, model, aspect_ratio,
-        }).select().single();
-        if (error) throw error;
-        try {
-          const taskId = await kieCreate(model, { prompt, image_urls: refs, aspect_ratio, output_format: 'png' });
-          await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
-        } catch (e: any) {
-          await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+        const gens = [];
+        for (let i = 0; i < count; i++) {
+          gens.push(await fireRefImage(admin, ch, prompt, {
+            model: body.model ? String(body.model) : undefined,
+            aspect: String(body.aspectRatio || '3:4'), refs,
+          }));
         }
-        return json({ success: true, generation: gen });
+        return json({ success: true, generations: gens });
       }
 
       // video
@@ -284,18 +355,63 @@ serve(async (req) => {
       } else {
         input.image_urls = refs;
       }
-      const { data: gen, error } = await admin.from('studio_generations').insert({
-        character_id: ch.id, kind: 'video', prompt, model, aspect_ratio, duration,
-        meta: { fromImageUrl, loop, resolution: input.resolution },
-      }).select().single();
-      if (error) throw error;
-      try {
-        const taskId = await kieCreate(model, input);
-        await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
-      } catch (e: any) {
-        await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+      const gens = [];
+      for (let i = 0; i < count; i++) {
+        const { data: gen, error } = await admin.from('studio_generations').insert({
+          character_id: ch.id, kind: 'video', prompt, model, aspect_ratio, duration,
+          meta: { fromImageUrl, loop, resolution: input.resolution },
+        }).select().single();
+        if (error) throw error;
+        try {
+          const taskId = await kieCreate(model, input);
+          await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
+        } catch (e: any) {
+          await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+        }
+        gens.push(gen);
       }
-      return json({ success: true, generation: gen });
+      return json({ success: true, generations: gens });
+    }
+
+    // -- identity-kit: the 6 canonical reference shots in one click ------------
+    if (action === 'identity-kit') {
+      const ch = await getCharacter(admin, body.characterId);
+      if (!ch.portrait_url) throw new Error('Pick a portrait first');
+      const refs = [ch.portrait_url, ...((ch.reference_urls || []) as string[])].slice(0, 10);
+      const identity = `Keep the EXACT same ${ch.style === 'photoreal' ? 'person' : 'character'} as in the reference image${refs.length > 1 ? 's' : ''}: ${ch.description}. Same face, same identity, no drift.`;
+      for (const shot of KIT_SHOTS) {
+        await fireRefImage(admin, ch, `${identity} ${shot}`, { refs, meta: { kit: true } });
+      }
+      return json({ success: true, fired: KIT_SHOTS.length });
+    }
+
+    // -- send-to-creative: push a finished render into the Creative Studio -----
+    // approval queue (creative_queue status='ready'), with Claude-drafted
+    // Spanish copy the owner can edit there before approving. Never posts
+    // anything by itself — the existing approve→GHL pipeline is the only exit.
+    if (action === 'send-to-creative') {
+      const { data: gen } = await admin.from('studio_generations').select('*')
+        .eq('id', String(body.generationId)).eq('status', 'ready').single();
+      if (!gen?.media_url) throw new Error('That render is not ready');
+      const ch = await getCharacter(admin, gen.character_id);
+      // Dedupe: the same render queued twice would post twice once approved.
+      const { data: dupe } = await admin.from('creative_queue').select('id').eq('media_url', gen.media_url).limit(1);
+      if (dupe?.length) return json({ success: true, already: true });
+      const copy = await writeCaption(ch, gen);
+      const { error } = await admin.from('creative_queue').insert({
+        batch_date: new Date().toISOString().slice(0, 10),
+        kind: gen.kind === 'video' ? 'video' : 'image',
+        intended_use: 'social',
+        concept: `Character Studio — ${ch.name}: ${gen.prompt.slice(0, 140)}`,
+        gen_prompt: gen.prompt,
+        headline: copy.headline, caption: copy.caption, hashtags: copy.hashtags,
+        score: 75, status: 'ready', media_url: gen.media_url,
+      });
+      if (error) throw error;
+      await admin.from('studio_generations').update({
+        meta: { ...(gen.meta || {}), sentToCreative: true }, updated_at: new Date().toISOString(),
+      }).eq('id', gen.id);
+      return json({ success: true });
     }
 
     // -- add-reference / remove-reference: extra identity stills ---------------

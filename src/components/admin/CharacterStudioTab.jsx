@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Contact, Plus, RefreshCw, Loader2, ArrowLeft, Trash2, Check, Sparkles,
   Image as ImageIcon, Film, AlertTriangle, Pin, X, Download, Repeat,
-  Camera, Palette, Wand2, Brush, PenTool, ChevronDown,
+  Camera, Palette, Wand2, Brush, PenTool, ChevronDown, Pencil, Send, Layers,
 } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/character-studio`;
@@ -32,6 +32,27 @@ const RQC_AUDIENCE_LINE = 'Authentic Mexican/Latino features and styling, warm a
 
 const IMG_ASPECTS = ['3:4', '1:1', '4:5', '9:16', '16:9'];
 const VID_ASPECTS = ['9:16', '1:1', '16:9'];
+
+// Shot menu — proven scene prompts, one tap fills the prompt box (still
+// editable before generating). Identity comes from the references; these only
+// describe the scene, per the "prompt the scene, never her looks" rule.
+const PRESETS = {
+  image: [
+    { name: 'Studio Session', p: 'recording vocals in a cozy home music studio, warm lamp light, headphones on, singing into a condenser microphone' },
+    { name: 'Reacting to a Song', p: 'listening to a song on her phone, hand on heart, moved and smiling with happy tears in her eyes, soft living room light' },
+    { name: 'Behind the Scenes', p: 'candid behind-the-scenes moment, laughing between takes, ring light and phone tripod visible in the background' },
+    { name: 'Golden Hour', p: 'outdoor portrait at golden hour, warm sunset backlight, gentle breeze, joyful relaxed expression' },
+    { name: 'Phone in Hand', p: 'holding her phone toward the camera showing a music player on the screen, excited expression, bright daylight interior' },
+    { name: 'Día de las Madres', p: 'celebrating Día de las Madres, pastel flowers and soft decorations around her, holding a small wrapped gift, tender smile' },
+    { name: 'Navidad', p: 'cozy Christmas scene, warm fairy lights and a decorated tree behind her, festive but elegant outfit, joyful expression' },
+    { name: 'Cumpleaños', p: 'birthday celebration scene, confetti and a small cake with candles on the table, laughing, warm festive light' },
+  ],
+  video: [
+    { name: 'Waves & Smiles', p: 'she smiles warmly and waves at the camera, slight breeze in her hair, natural relaxed movement' },
+    { name: 'Talks to Camera', p: 'she speaks enthusiastically to the camera like a host presenting something exciting, natural hand gestures' },
+    { name: 'Cinematic Push-in', p: 'slow cinematic push-in while she looks at the camera with a warm confident smile, shallow depth of field' },
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // Shared dark-theme atoms (explicit colors everywhere — the shell is text-white)
@@ -355,10 +376,12 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const [kind, setKind] = useState('image');
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('3:4');
+  const [takes, setTakes] = useState(3); // images default 3 takes; video 1 (cost)
   const [duration, setDuration] = useState(5);
   const [fromImageUrl, setFromImageUrl] = useState('');
   const [loop, setLoop] = useState(false);
   const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false);
 
   const portraits = generations.filter((g) => g.kind === 'portrait');
   const content = generations.filter((g) => g.kind !== 'portrait');
@@ -367,9 +390,9 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const isDraft = c.status === 'draft';
 
   const generate = () => {
-    const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect };
+    const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
     if (kind === 'video') Object.assign(payload, { duration, fromImageUrl: fromImageUrl || undefined, loop });
-    onAct('generate', payload, `Rendering ${kind}…`);
+    onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
   };
 
@@ -403,9 +426,25 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                   {isDraft ? <Chip tone="amber">Draft</Chip> : <Chip tone="green"><Check size={10} /> Identity locked</Chip>}
                 </div>
               </div>
+              <button title="Edit identity" onClick={() => setEditing(true)}
+                className="absolute top-2.5 right-2.5 inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-200 bg-black/50 backdrop-blur-sm hover:bg-black/70 hover:text-white transition-all">
+                <Pencil size={14} />
+              </button>
             </div>
             <p className="text-xs text-gray-400 leading-relaxed p-4 border-t border-white/10">{c.description}</p>
           </div>
+
+          {!isDraft && (
+            <button className={`${btnGhost} w-full !justify-start`} disabled={busy}
+              title="Renders 6 canonical shots (angles, expressions, full body). Pin the winners as references — more references = stronger identity lock."
+              onClick={() => onAct('identity-kit', { characterId: c.id }, 'Rendering the 6-shot identity kit — pin the winners')}>
+              <Layers size={15} className="text-indigo-300" />
+              <span className="text-left">
+                Build identity kit
+                <span className="block text-[11px] text-gray-500 font-normal">6 canonical shots → pin the best</span>
+              </span>
+            </button>
+          )}
 
           {!!refs.length && (
             <div className={`${panel} p-3.5`}>
@@ -461,13 +500,13 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 <p className="text-sm font-semibold text-white">Generate</p>
                 <div className="relative flex rounded-xl bg-black/40 border border-white/10 p-1">
                   {[
-                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '3:4' },
-                    { id: 'video', label: 'Video', icon: Film, defAspect: '9:16' },
+                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '3:4', defTakes: 3 },
+                    { id: 'video', label: 'Video', icon: Film, defAspect: '9:16', defTakes: 1 },
                   ].map((t) => {
                     const Icon = t.icon;
                     const active = kind === t.id;
                     return (
-                      <button key={t.id} onClick={() => { setKind(t.id); setAspect(t.defAspect); }}
+                      <button key={t.id} onClick={() => { setKind(t.id); setAspect(t.defAspect); setTakes(t.defTakes); }}
                         className={`relative flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
                           active ? 'bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-950/50' : 'text-gray-400 hover:text-gray-200'
                         }`}>
@@ -478,10 +517,24 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 </div>
               </div>
 
+              {/* Shot menu — tap a proven scene, tweak if you want, generate */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                {PRESETS[kind].map((ps) => (
+                  <button key={ps.name} title={ps.p} onClick={() => setPrompt(ps.p)}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      prompt === ps.p
+                        ? 'border-indigo-400/60 bg-indigo-500/15 text-indigo-200'
+                        : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
+                    }`}>
+                    {ps.name}
+                  </button>
+                ))}
+              </div>
+
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2}
                 placeholder={kind === 'image'
-                  ? 'What are they doing? e.g. recording a song in a cozy home studio, golden hour light'
-                  : 'What happens in the clip? e.g. she smiles and waves at the camera, slight breeze in her hair'}
+                  ? 'Tap a preset above, or describe the scene — e.g. recording a song in a cozy home studio, golden hour light'
+                  : 'Tap a preset above, or describe the clip — e.g. she smiles and waves at the camera, slight breeze in her hair'}
                 className={`${field} resize-none leading-relaxed`} />
 
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -492,6 +545,15 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                       className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                         aspect === a ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
                       }`}>{a}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5" title="Independent takes of the same prompt — pick the winner">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Takes</span>
+                  {[1, 3].map((n) => (
+                    <button key={n} onClick={() => setTakes(n)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                        takes === n ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                      }`}>×{n}</button>
                   ))}
                 </div>
                 {kind === 'video' && (
@@ -536,6 +598,11 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 {content.map((g) => (
                   <GenTile key={g.id} g={g} hoverActions action={g.status === 'ready' ? (
                     <div className="flex gap-1.5">
+                      <button title={g.meta?.sentToCreative ? 'Already in the Creative Studio queue' : 'Send to Creative Studio (Claude drafts the Spanish caption; you approve there before it posts)'}
+                        className={`${btnIcon} ${g.meta?.sentToCreative ? '!text-emerald-300' : 'hover:!text-indigo-300'}`} disabled={busy}
+                        onClick={() => onAct('send-to-creative', { generationId: g.id }, 'Sent to Creative Studio — approve it there')}>
+                        {g.meta?.sentToCreative ? <Check size={14} /> : <Send size={14} />}
+                      </button>
                       <a href={g.media_url} target="_blank" rel="noreferrer" title="Open full size" className={btnIcon}><Download size={14} /></a>
                       {g.kind !== 'video' && (
                         <button title="Pin as identity reference" className={btnIcon} disabled={busy}
@@ -568,7 +635,72 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
           )}
         </div>
       </div>
+
+      {editing && (
+        <EditIdentityModal
+          character={c} busy={busy} onClose={() => setEditing(false)}
+          onSave={(patch) => { onAct('update-character', { characterId: c.id, ...patch }, 'Identity updated'); setEditing(false); }}
+        />
+      )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Edit identity — refine name / description / model. The description is
+// re-injected into EVERY render prompt, so wardrobe anchors edited here apply
+// to all future content. Face lock is untouched (portrait + references).
+function EditIdentityModal({ character: c, busy, onClose, onSave }) {
+  const [name, setName] = useState(c.name);
+  const [description, setDescription] = useState(c.description);
+  const [model, setModel] = useState(c.image_model || '');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#131a24] shadow-2xl shadow-black/60">
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-white/10">
+          <div>
+            <h3 className="text-lg font-bold text-white tracking-tight">Edit identity</h3>
+            <p className="text-sm text-gray-400 mt-0.5">The description rides on every render — signature anchors (hair, jewelry, wardrobe) go here.</p>
+          </div>
+          <button className={btnIcon} onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="p-6 space-y-5">
+          <div>
+            <Label>Name</Label>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
+          </div>
+          <div>
+            <Label>Identity description</Label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
+              className={`${field} resize-none leading-relaxed`} />
+            <p className="text-[11px] text-gray-500 mt-1.5">Tip: 2–3 never-changing anchors keep the brand read consistent — same hairstyle, one signature jewelry piece, a wardrobe element in brand colors.</p>
+          </div>
+          <div>
+            <button type="button" onClick={() => setShowAdvanced(!showAdvanced)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors">
+              <ChevronDown size={13} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} /> Advanced
+            </button>
+            {showAdvanced && (
+              <div className="mt-2.5">
+                <Label>Custom Kie model slug (optional)</Label>
+                <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="google/nano-banana"
+                  className={`${field} md:w-2/3 font-mono text-xs`} />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-white/10 bg-white/[0.02]">
+          <button className={btnGhost} onClick={onClose}>Cancel</button>
+          <button className={btnPrimary} disabled={busy || !name.trim() || !description.trim()}
+            onClick={() => onSave({ name: name.trim(), description: description.trim(), model: model.trim() || null })}>
+            <Check size={16} /> Save identity
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -594,6 +726,11 @@ function GenTile({ g, action, hoverActions = false }) {
         {g.kind === 'video' && (
           <span className="absolute top-2 left-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-white bg-black/60 backdrop-blur-sm rounded-md px-1.5 py-0.5 pointer-events-none">
             <Film size={10} /> Video
+          </span>
+        )}
+        {g.status === 'ready' && g.meta?.sentToCreative && (
+          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200 bg-emerald-900/70 backdrop-blur-sm border border-emerald-400/20 rounded-md px-1.5 py-0.5 pointer-events-none">
+            <Check size={10} /> In queue
           </span>
         )}
         {hoverActions && action && (
