@@ -317,7 +317,26 @@ function auditStructure(audible: W[], lyricsText: string): string | null {
     if (e) e.n++; else need.set(key, { line: l, n: 1, groups });
   }
   for (const { line, n, groups } of need.values()) {
-    const have = countByGroups(audible, groups);
+    let have = countByGroups(audible, groups);
+    // MERGED-WORD TOLERANCE (2026-08-14, Eric 3a5650f3): Whisper hears elided
+    // Spanish as one word — "grande ero" came back "grandero" — and a per-word
+    // matcher counts a correctly-sung line 0 times. Before failing a line, retry
+    // with each adjacent token pair glued (plain + shared-vowel collapse). The
+    // browser guard carries the same rule; without it, a structurally perfect
+    // take is vetoed for a transcription artifact.
+    if (have < n) {
+      const toks = line.toLowerCase().split(/\s+/).filter(Boolean);
+      for (let i = 0; i + 1 < toks.length && have < n; i++) {
+        const a = toks[i], b = toks[i + 1];
+        const variants = [a + b];
+        if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
+        for (const glued of variants) {
+          const merged = [...toks.slice(0, i), glued, ...toks.slice(i + 2)].join(' ');
+          have = Math.max(have, countByGroups(audible, buildAuditGroups(merged)));
+          if (have >= n) break;
+        }
+      }
+    }
     if (have < n) return `falta una sección: "${line.slice(0, 48)}…" (${have}/${n})`;
     if (have > n) return `sección duplicada: "${line.slice(0, 48)}…" (${have}/${n})`;
   }

@@ -214,6 +214,31 @@ serve(async (req) => {
       return json(200, { results: out });
     }
 
+    // --- End-trim / rehost via the in-house renderer (RESCUE tool) -----------
+    // The ONLY audio surgery the owner permits: a single end-cut + fade at the
+    // song's true final line (whole-takes rule; no splicing, no stretching).
+    // Same Cloud Run call fix-song-section's 'splice' action makes; secrets are
+    // project-wide so this function sees them too. Used to salvage a finished
+    // take when the browser flow that would normally trim it has died.
+    if (body.mode === 'trim' || body.mode === 'rehost') {
+      const RENDERER = Deno.env.get('INHOUSE_RENDERER_URL');
+      const RTOKEN = Deno.env.get('RENDER_TOKEN') || '';
+      if (!RENDERER) throw new Error('INHOUSE_RENDERER_URL not configured');
+      if (!body.pristineUrl) throw new Error('Missing pristineUrl');
+      if (body.mode === 'trim' && !(Number(body.trimAtS) > 0)) throw new Error('Missing trimAtS');
+      const r = await fetch(`${RENDERER}/splice-audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-render-token': RTOKEN },
+        body: JSON.stringify({
+          mode: body.mode,
+          pristine_url: body.pristineUrl,
+          ...(body.mode === 'trim' ? { trimAtS: Number(body.trimAtS), fadeS: Number(body.fadeS) > 0 ? Number(body.fadeS) : 1.8 } : {}),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      return json(200, { ok: r.ok && !!d?.success, url: d?.url || null, error: d?.error || null });
+    }
+
     // --- Mint a voice persona from an existing take (RESCUE tool) ------------
     // Kie clones the singer from a 10-30s vocal window of a finished take; the
     // returned personaId then re-sings a whole song in THAT voice (mode 'music'
