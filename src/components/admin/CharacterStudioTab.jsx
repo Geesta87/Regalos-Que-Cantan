@@ -379,6 +379,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const [aspect, setAspect] = useState('9:16');
   const [look, setLook] = useState('candid'); // candid = FLUX phone-realism (bake-off winner); polished = nano-banana
   const [engine, setEngine] = useState('grok'); // grok = native voice, always image-first; seedance = silent, loops
+  const [finish, setFinish] = useState('standard'); // de-slop pass: off | subtle | standard | heavy
   const [takes, setTakes] = useState(3); // images default 3 takes; video 1 (cost)
   const [duration, setDuration] = useState(8);
   const [fromImageUrl, setFromImageUrl] = useState('');
@@ -424,7 +425,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
     if (kind === 'image') payload.look = look;
-    if (kind === 'video') Object.assign(payload, { videoEngine: engine, duration, fromImageUrl: fromImageUrl || undefined, loop: engine === 'seedance' ? loop : false });
+    if (kind === 'video') Object.assign(payload, { videoEngine: engine, duration, fromImageUrl: fromImageUrl || undefined, loop: engine === 'seedance' ? loop : false, finish });
     onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
   };
@@ -624,6 +625,15 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                           className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                             engine === e.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
                           }`}>{e.label}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5" title="Finish pass: adds grain, crop and phone-upload compression so it reads like real footage instead of pristine AI output.">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Finish</span>
+                      {[{ id: 'off', l: 'Off' }, { id: 'subtle', l: 'Subtle' }, { id: 'standard', l: 'Standard' }, { id: 'heavy', l: 'Heavy' }].map((f) => (
+                        <button key={f.id} onClick={() => setFinish(f.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            finish === f.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{f.l}</button>
                       ))}
                     </div>
                     <div className="flex items-center gap-1.5">

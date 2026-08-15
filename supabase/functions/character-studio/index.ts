@@ -41,6 +41,8 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CAPTION_MODEL = Deno.env.get('CREATIVE_CHAT_MODEL') || 'claude-opus-4-8';
 const KIE = 'https://api.kie.ai/api/v1/jobs';
 const BUCKET = 'character-studio';
+const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
+const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN');
 
 // Verified-in-production Kie slugs (AgentHero + CENZO recipes). A custom slug
 // can be passed per call (model / videoModel) to try Kling/Veo/etc without a
@@ -145,9 +147,17 @@ async function finalize(admin: any, characterId?: string, ids?: string[]) {
         });
         if (up.error) throw up.error;
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+        // Auto-finish videos unless the caller opted out (meta.finish === 'off').
+        let finalUrl = pub.publicUrl;
+        const finishMeta: Record<string, unknown> = {};
+        if (row.kind === 'video' && (row.meta?.finish ?? 'standard') !== 'off') {
+          const finished = await finishVideo(pub.publicUrl, String(row.meta?.finish || 'standard'), row.id, row.character_id);
+          if (finished) { finishMeta.rawUrl = pub.publicUrl; finishMeta.finished = true; finalUrl = finished; }
+          else finishMeta.finished = false;
+        }
         await admin.from('studio_generations').update({
-          status: 'ready', media_url: pub.publicUrl,
-          meta: { ...(row.meta || {}), creditsConsumed: info?.data?.creditsConsumed ?? null },
+          status: 'ready', media_url: finalUrl,
+          meta: { ...(row.meta || {}), ...finishMeta, creditsConsumed: info?.data?.creditsConsumed ?? null },
           updated_at: new Date().toISOString(),
         }).eq('id', row.id);
       } else if (st === 'fail' || info?.data?.failCode) {
@@ -191,6 +201,29 @@ async function firePortrait(admin: any, ch: any, note?: string): Promise<string>
     }).eq('id', gen.id);
   }
   return gen.id;
+}
+
+// Finish pass ("de-slop") on the Cloud Run renderer: pre-ages a generated clip
+// so it reads like real phone footage (grain, crop, crushed bitrate) instead of
+// pristine AI output. Owner-validated 2026-08-14 as the single highest-impact
+// believability step. Best-effort — a finish failure must never lose the render,
+// so the caller keeps the original URL when this returns null.
+async function finishVideo(rawUrl: string, strength: string, genId: string, charId: string): Promise<string | null> {
+  if (!RENDERER_URL || !RENDER_TOKEN) return null;
+  try {
+    const r = await fetch(`${RENDERER_URL.replace(/\/$/, '')}/finish-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+      body: JSON.stringify({
+        video_url: rawUrl, strength, bucket: BUCKET,
+        object_path: `${charId}/${genId}-finished.mp4`,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return j?.success && j?.url ? String(j.url) : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Fire one identity-referenced image render (used by generate + identity-kit).
@@ -412,7 +445,7 @@ serve(async (req) => {
       for (let i = 0; i < count; i++) {
         const { data: gen, error } = await admin.from('studio_generations').insert({
           character_id: ch.id, kind: 'video', prompt, model, aspect_ratio, duration,
-          meta: { engine, fromImageUrl, loop, resolution: input.resolution },
+          meta: { engine, fromImageUrl, loop, resolution: input.resolution, finish: String(body.finish || 'standard') },
         }).select().single();
         if (error) throw error;
         try {
