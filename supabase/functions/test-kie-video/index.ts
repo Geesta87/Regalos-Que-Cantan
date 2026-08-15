@@ -25,6 +25,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const KIE_API_KEY = Deno.env.get('KIE_API_KEY');
 const BASE = 'https://api.kie.ai/api/v1/jobs';
+// Atlas Cloud — SECOND Seedance provider, ~2.3x cheaper than Kie for the same
+// model ($0.134/sec flat incl. reference-to-video vs Kie's ~63 credits/sec ≈
+// $0.315/sec, verified 2026-08-14). Separate account + key; Kie stays the
+// fallback and keeps every other model (music, images, Grok, Kling).
+const ATLAS_API_KEY = Deno.env.get('ATLAS_API_KEY');
+const ATLAS = 'https://api.atlascloud.ai/api/v1/model';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -101,6 +107,87 @@ serve(async (req) => {
       });
       const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
       return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+
+    // --- Atlas Cloud (Seedance) — cheaper second provider --------------------
+    // { mode:'atlas', variant?: 't2v'|'i2v'|'ref', prompt, duration?, resolution?,
+    //   aspect_ratio?, generate_audio?, image_url?, input?: {...passthrough} }
+    // -> { predictionId, raw }   then { mode:'atlas-status', predictionId }
+    // `input` is merged LAST so any field this code doesn't know about (e.g.
+    // whatever reference-to-video calls its image array) works without a
+    // redeploy — same escape hatch as the Kie full-control mode above.
+    if (body.mode === 'atlas') {
+      if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
+      if (!body.prompt) throw new Error('Missing prompt');
+      const variant = body.variant === 'i2v' ? 'image-to-video'
+        : body.variant === 'ref' ? 'reference-to-video'
+        : 'text-to-video';
+      const payload: Record<string, unknown> = {
+        model: body.model || `bytedance/seedance-2.5/${variant}`,
+        prompt: body.prompt,
+        duration: body.duration ?? 10,
+        resolution: body.resolution || '720p',
+        ratio: body.aspect_ratio || '9:16',
+        output_format: 'mp4',
+        generate_audio: body.generate_audio ?? true,
+      };
+      if (body.image_url) payload.image_url = body.image_url;
+      if (body.input && typeof body.input === 'object') Object.assign(payload, body.input);
+      const r = await fetch(`${ATLAS}/generateVideo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ATLAS_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, predictionId: raw?.data?.id || raw?.id || null, raw });
+    }
+    if (body.mode === 'atlas-status') {
+      if (!ATLAS_API_KEY) throw new Error('ATLAS_API_KEY not set');
+      const id = body.predictionId || body.taskId;
+      if (!id) throw new Error('Missing predictionId');
+      const r = await fetch(`${ATLAS}/prediction/${encodeURIComponent(String(id))}`, {
+        headers: { Authorization: `Bearer ${ATLAS_API_KEY}` },
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      const d = raw?.data || raw;
+      return json(200, {
+        state: d?.status || null,                 // completed | failed | pending
+        url: Array.isArray(d?.outputs) ? d.outputs[0] : null,
+        error: d?.error || null,
+        raw,
+      });
+    }
+
+    // --- Veo (Google) — SEPARATE endpoint from the jobs market ---------------
+    // Kie serves Veo at /api/v1/veo/generate (verified docs.kie.ai 2026-08-13),
+    // not jobs/createTask. imageUrls (1-2) = image-to-video. Status via
+    // /api/v1/veo/record-info?taskId= (successFlag 0 gen / 1 ok / 2,3 failed).
+    // Added for the Character Studio video-model bake-off.
+    if (body.mode === 'veo') {
+      if (!body.prompt) throw new Error('Missing prompt');
+      const payload: Record<string, unknown> = {
+        prompt: body.prompt,
+        model: body.model || 'veo3_fast',
+        aspect_ratio: body.aspect_ratio || 'Auto',
+      };
+      if (Array.isArray(body.imageUrls) && body.imageUrls.length) payload.imageUrls = body.imageUrls;
+      if (body.resolution) payload.resolution = body.resolution;
+      if (body.duration) payload.duration = body.duration;
+      if (body.generationType) payload.generationType = body.generationType;
+      const r = await fetch('https://api.kie.ai/api/v1/veo/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.json().catch(() => ({ error: 'non-json response', status: r.status }));
+      return json(200, { http: r.status, taskId: raw?.data?.taskId || null, raw });
+    }
+    if (body.mode === 'veo-status') {
+      if (!body.taskId) throw new Error('Missing taskId');
+      const r = await fetch(`https://api.kie.ai/api/v1/veo/record-info?taskId=${encodeURIComponent(body.taskId)}`, {
+        headers: { Authorization: `Bearer ${KIE_API_KEY}` },
+      });
+      return json(200, await r.json().catch(() => ({ error: 'non-json response', status: r.status })));
     }
 
     // --- Account credit balance ---------------------------------------------
