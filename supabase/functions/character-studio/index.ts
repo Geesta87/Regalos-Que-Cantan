@@ -41,13 +41,30 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const CAPTION_MODEL = Deno.env.get('CREATIVE_CHAT_MODEL') || 'claude-opus-4-8';
 const KIE = 'https://api.kie.ai/api/v1/jobs';
 const BUCKET = 'character-studio';
+const RENDERER_URL = Deno.env.get('INHOUSE_RENDERER_URL');
+const RENDER_TOKEN = Deno.env.get('RENDER_TOKEN');
 
 // Verified-in-production Kie slugs (AgentHero + CENZO recipes). A custom slug
 // can be passed per call (model / videoModel) to try Kling/Veo/etc without a
 // code change — it goes straight into createTask's model field.
 const IMAGE_MODEL = 'google/nano-banana';
 const IMAGE_EDIT_MODEL = 'google/nano-banana-edit';
+// Candid engine (bake-off winner 2026-08-14): FLUX-2 with identity refs gives
+// the "shot on a phone" realism nano-banana's polish can't reach, and its
+// filter accepts imperfection language Google's refuses. Field is input_urls
+// (not image_urls) and it requires resolution.
+const IMAGE_CANDID_MODEL = 'flux-2/pro-image-to-image';
 const VIDEO_MODEL = 'bytedance/seedance-2';
+// Grok Imagine 1.5 (owner-approved 2026-08-14): the studio's DEFAULT video
+// engine. Native audio + Spanish lip-sync, and it animates ONE image — so the
+// face always comes from her pixels (no reference-drift path exists). Loops
+// (first=last frame) are a Seedance-only trick; duration floor is 6s.
+const GROK_VIDEO_MODEL = 'grok-imagine/image-to-video';
+
+// The phone-frame doctrine prepended to every Candid render. Camera flaws
+// (grain/crush) are added in post — this carries scene + texture realism only.
+const CANDID_DOCTRINE =
+  'A frame from a casual selfie-style video shot on a phone, imperfect off-center framing, warm ordinary indoor lighting, slightly uneven exposure, real skin texture with natural shine, amateur phone photo realism, ordinary and unpolished.';
 
 const PORTRAIT_CANDIDATES = 3;
 const MAX_REFS = 9; // + portrait = Kie's 10-image cap on image_urls
@@ -130,9 +147,17 @@ async function finalize(admin: any, characterId?: string, ids?: string[]) {
         });
         if (up.error) throw up.error;
         const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+        // Auto-finish videos unless the caller opted out (meta.finish === 'off').
+        let finalUrl = pub.publicUrl;
+        const finishMeta: Record<string, unknown> = {};
+        if (row.kind === 'video' && (row.meta?.finish ?? 'standard') !== 'off') {
+          const finished = await finishVideo(pub.publicUrl, String(row.meta?.finish || 'standard'), row.id, row.character_id);
+          if (finished) { finishMeta.rawUrl = pub.publicUrl; finishMeta.finished = true; finalUrl = finished; }
+          else finishMeta.finished = false;
+        }
         await admin.from('studio_generations').update({
-          status: 'ready', media_url: pub.publicUrl,
-          meta: { ...(row.meta || {}), creditsConsumed: info?.data?.creditsConsumed ?? null },
+          status: 'ready', media_url: finalUrl,
+          meta: { ...(row.meta || {}), ...finishMeta, creditsConsumed: info?.data?.creditsConsumed ?? null },
           updated_at: new Date().toISOString(),
         }).eq('id', row.id);
       } else if (st === 'fail' || info?.data?.failCode) {
@@ -176,6 +201,29 @@ async function firePortrait(admin: any, ch: any, note?: string): Promise<string>
     }).eq('id', gen.id);
   }
   return gen.id;
+}
+
+// Finish pass ("de-slop") on the Cloud Run renderer: pre-ages a generated clip
+// so it reads like real phone footage (grain, crop, crushed bitrate) instead of
+// pristine AI output. Owner-validated 2026-08-14 as the single highest-impact
+// believability step. Best-effort — a finish failure must never lose the render,
+// so the caller keeps the original URL when this returns null.
+async function finishVideo(rawUrl: string, strength: string, genId: string, charId: string): Promise<string | null> {
+  if (!RENDERER_URL || !RENDER_TOKEN) return null;
+  try {
+    const r = await fetch(`${RENDERER_URL.replace(/\/$/, '')}/finish-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-render-token': RENDER_TOKEN },
+      body: JSON.stringify({
+        video_url: rawUrl, strength, bucket: BUCKET,
+        object_path: `${charId}/${genId}-finished.mp4`,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return j?.success && j?.url ? String(j.url) : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // Fire one identity-referenced image render (used by generate + identity-kit).
@@ -327,39 +375,77 @@ serve(async (req) => {
       const count = Math.min(Math.max(Number(body.count) || 1, 1), MAX_BATCH);
 
       if (kind === 'image') {
-        const prompt = `${identity} ${userPrompt}`;
+        const look = body.look === 'candid' ? 'candid' : 'polished';
+        const prompt = look === 'candid'
+          ? `${identity} ${CANDID_DOCTRINE} ${userPrompt}`
+          : `${identity} ${userPrompt}`;
         const gens = [];
         for (let i = 0; i < count; i++) {
-          gens.push(await fireRefImage(admin, ch, prompt, {
-            model: body.model ? String(body.model) : undefined,
-            aspect: String(body.aspectRatio || '3:4'), refs,
-          }));
+          if (look === 'candid' && !body.model) {
+            // FLUX path — different field names than the nano-banana family.
+            const aspect_ratio = String(body.aspectRatio || '9:16');
+            const { data: gen, error } = await admin.from('studio_generations').insert({
+              character_id: ch.id, kind: 'image', prompt, model: IMAGE_CANDID_MODEL, aspect_ratio, meta: { look },
+            }).select().single();
+            if (error) throw error;
+            try {
+              const taskId = await kieCreate(IMAGE_CANDID_MODEL, { prompt, input_urls: refs, aspect_ratio, resolution: '1K' });
+              await admin.from('studio_generations').update({ kie_task_id: taskId }).eq('id', gen.id);
+            } catch (e: any) {
+              await admin.from('studio_generations').update({ status: 'failed', error: String(e?.message || e).slice(0, 400) }).eq('id', gen.id);
+            }
+            gens.push(gen);
+          } else {
+            gens.push(await fireRefImage(admin, ch, prompt, {
+              model: body.model ? String(body.model) : undefined,
+              aspect: String(body.aspectRatio || '3:4'), refs, meta: { look },
+            }));
+          }
         }
         return json({ success: true, generations: gens });
       }
 
       // video
-      const model = String(body.model || VIDEO_MODEL);
-      const duration = Math.min(Math.max(Number(body.duration) || 5, 3), 12);
+      const engine = body.videoEngine === 'seedance' ? 'seedance' : 'grok';
       const aspect_ratio = String(body.aspectRatio || '9:16');
       const fromImageUrl = body.fromImageUrl ? String(body.fromImageUrl) : null;
-      const loop = Boolean(body.loop) && !!fromImageUrl;
-      const prompt = fromImageUrl ? userPrompt : `${identity} ${userPrompt}`;
-      const input: Record<string, unknown> = {
-        prompt, resolution: String(body.resolution || '720p'), aspect_ratio, duration, generate_audio: false,
-      };
-      if (fromImageUrl) {
-        // Animate a chosen still; first=last frame → a perfect loop (Ace/CENZO trick).
-        input.first_frame_url = fromImageUrl;
-        if (loop) input.last_frame_url = fromImageUrl;
+      const loop = engine === 'seedance' && Boolean(body.loop) && !!fromImageUrl;
+      let model: string;
+      let duration: number;
+      let prompt: string;
+      let input: Record<string, unknown>;
+      if (engine === 'grok') {
+        // Grok animates ONE image — fall back to the portrait so an image
+        // source ALWAYS exists (this is what kills the six-different-women
+        // drift: there is no references-only video path on Grok).
+        const source = fromImageUrl || ch.portrait_url;
+        model = String(body.model || GROK_VIDEO_MODEL);
+        duration = Math.min(Math.max(Number(body.duration) || 8, 6), 15);
+        prompt = userPrompt;
+        input = {
+          prompt, image_urls: [source], mode: 'normal', duration,
+          resolution: String(body.resolution || '720p'), aspect_ratio,
+        };
       } else {
-        input.image_urls = refs;
+        model = String(body.model || VIDEO_MODEL);
+        duration = Math.min(Math.max(Number(body.duration) || 5, 3), 12);
+        prompt = fromImageUrl ? userPrompt : `${identity} ${userPrompt}`;
+        input = {
+          prompt, resolution: String(body.resolution || '720p'), aspect_ratio, duration, generate_audio: false,
+        };
+        if (fromImageUrl) {
+          // Animate a chosen still; first=last frame → a perfect loop (Ace/CENZO trick).
+          input.first_frame_url = fromImageUrl;
+          if (loop) input.last_frame_url = fromImageUrl;
+        } else {
+          input.image_urls = refs;
+        }
       }
       const gens = [];
       for (let i = 0; i < count; i++) {
         const { data: gen, error } = await admin.from('studio_generations').insert({
           character_id: ch.id, kind: 'video', prompt, model, aspect_ratio, duration,
-          meta: { fromImageUrl, loop, resolution: input.resolution },
+          meta: { engine, fromImageUrl, loop, resolution: input.resolution, finish: String(body.finish || 'standard') },
         }).select().single();
         if (error) throw error;
         try {
@@ -411,6 +497,34 @@ serve(async (req) => {
       await admin.from('studio_generations').update({
         meta: { ...(gen.meta || {}), sentToCreative: true }, updated_at: new Date().toISOString(),
       }).eq('id', gen.id);
+      return json({ success: true });
+    }
+
+    // -- upload-image: bring an EXTERNAL photo of the character into the -------
+    // gallery (e.g. a Higgsfield Soul render). Stored in our bucket and
+    // inserted as a ready generation, so every existing tool works on it:
+    // animate (Grok/Seedance), pin as reference, send to Creative Studio.
+    if (action === 'upload-image') {
+      const ch = await getCharacter(admin, body.characterId);
+      const dataUrl = String(body.dataUrl || '');
+      const m = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/);
+      if (!m) throw new Error('Send a PNG, JPEG or WebP image');
+      const contentType = m[1] === 'image/jpg' ? 'image/jpeg' : m[1];
+      const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+      if (bytes.length > 12 * 1024 * 1024) throw new Error('Image too large (max 12MB)');
+      const filename = String(body.filename || 'upload').slice(0, 120);
+      const { data: gen, error } = await admin.from('studio_generations').insert({
+        character_id: ch.id, kind: 'image', prompt: `Uploaded — ${filename}`, model: 'upload',
+        status: 'ready', meta: { uploaded: true, filename },
+      }).select().single();
+      if (error) throw error;
+      // Path keeps the .png suffix regardless of source type (delete-generation
+      // derives paths from it); the stored contentType is what browsers obey.
+      const path = `${ch.id}/${gen.id}.png`;
+      const up = await admin.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
+      if (up.error) { await admin.from('studio_generations').delete().eq('id', gen.id); throw up.error; }
+      const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+      await admin.from('studio_generations').update({ media_url: pub.publicUrl }).eq('id', gen.id);
       return json({ success: true });
     }
 

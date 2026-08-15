@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Contact, Plus, RefreshCw, Loader2, ArrowLeft, Trash2, Check, Sparkles,
   Image as ImageIcon, Film, AlertTriangle, Pin, X, Download, Repeat,
-  Camera, Palette, Wand2, Brush, PenTool, ChevronDown, Pencil, Send, Layers,
+  Camera, Palette, Wand2, Brush, PenTool, ChevronDown, Pencil, Send, Layers, UploadCloud,
 } from 'lucide-react';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/character-studio`;
@@ -48,6 +48,7 @@ const PRESETS = {
     { name: 'Cumpleaños', p: 'birthday celebration scene, confetti and a small cake with candles on the table, laughing, warm festive light' },
   ],
   video: [
+    { name: 'Talking promo', p: "She talks casually to the camera in Mexican Spanish with natural lip sync, saying: 'Oye... le pedí una canción personalizada para mi mamá, con su nombre y toda su historia. ¿Cuando la escuchó? Se soltó a llorar.' She pauses naturally, gives a small genuine laugh, hand on her heart at the end. Casual home video feel, natural everyday energy, not polished." },
     { name: 'Waves & Smiles', p: 'she smiles warmly and waves at the camera, slight breeze in her hair, natural relaxed movement' },
     { name: 'Talks to Camera', p: 'she speaks enthusiastically to the camera like a host presenting something exciting, natural hand gestures' },
     { name: 'Cinematic Push-in', p: 'slow cinematic push-in while she looks at the camera with a warm confident smile, shallow depth of field' },
@@ -375,9 +376,12 @@ function CreateModal({ busy, onClose, onCreate }) {
 function DetailView({ character: c, generations, busy, onBack, onAct }) {
   const [kind, setKind] = useState('image');
   const [prompt, setPrompt] = useState('');
-  const [aspect, setAspect] = useState('3:4');
+  const [aspect, setAspect] = useState('9:16');
+  const [look, setLook] = useState('candid'); // candid = FLUX phone-realism (bake-off winner); polished = nano-banana
+  const [engine, setEngine] = useState('grok'); // grok = native voice, always image-first; seedance = silent, loops
+  const [finish, setFinish] = useState('standard'); // de-slop pass: off | subtle | standard | heavy
   const [takes, setTakes] = useState(3); // images default 3 takes; video 1 (cost)
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState(8);
   const [fromImageUrl, setFromImageUrl] = useState('');
   const [loop, setLoop] = useState(false);
   const [note, setNote] = useState('');
@@ -391,9 +395,37 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
 
   const generatorRef = React.useRef(null);
 
+  // Grok is always image-first — preselect the portrait so the picker shows
+  // the truth about what will animate.
+  useEffect(() => {
+    if (kind === 'video' && engine === 'grok' && !fromImageUrl && c.portrait_url) setFromImageUrl(c.portrait_url);
+  }, [kind, engine, fromImageUrl, c.portrait_url]);
+
+  // Upload external photos (e.g. Higgsfield Soul renders) into her gallery —
+  // they become regular ready images: animatable, pinnable, sendable.
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const onFiles = async (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => /^image\/(png|jpe?g|webp)$/.test(f.type) && f.size <= 12 * 1024 * 1024);
+    e.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      for (const f of files) {
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result); r.onerror = rej;
+          r.readAsDataURL(f);
+        });
+        await onAct('upload-image', { characterId: c.id, filename: f.name, dataUrl });
+      }
+    } finally { setUploading(false); }
+  };
+
   const generate = () => {
     const payload = { characterId: c.id, kind, prompt, aspectRatio: aspect, count: takes };
-    if (kind === 'video') Object.assign(payload, { duration, fromImageUrl: fromImageUrl || undefined, loop });
+    if (kind === 'image') payload.look = look;
+    if (kind === 'video') Object.assign(payload, { videoEngine: engine, duration, fromImageUrl: fromImageUrl || undefined, loop: engine === 'seedance' ? loop : false, finish });
     onAct('generate', payload, `Rendering ${takes > 1 ? `${takes} takes` : kind}…`);
     setPrompt('');
   };
@@ -409,10 +441,17 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
     <>
       <div className="flex items-center justify-between">
         <button className={btnGhost} onClick={onBack}><ArrowLeft size={15} /> All characters</button>
-        <button className={`${btnGhost} !text-gray-500 hover:!text-red-300`}
-          onClick={() => { if (confirm(`Archive ${c.name}?`)) onAct('archive-character', { characterId: c.id }, 'Archived'); }}>
-          <Trash2 size={15} /> Archive
-        </button>
+        <div className="flex gap-2">
+          <button className={btnGhost} disabled={uploading} onClick={() => fileRef.current?.click()}
+            title="Bring in photos made elsewhere (e.g. Higgsfield) — they become animatable gallery images">
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} Upload photos
+          </button>
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={onFiles} />
+          <button className={`${btnGhost} !text-gray-500 hover:!text-red-300`}
+            onClick={() => { if (confirm(`Archive ${c.name}?`)) onAct('archive-character', { characterId: c.id }, 'Archived'); }}>
+            <Trash2 size={15} /> Archive
+          </button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-[300px_1fr] gap-6 mt-5">
@@ -509,7 +548,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 <p className="text-sm font-semibold text-white">Generate</p>
                 <div className="relative flex rounded-xl bg-black/40 border border-white/10 p-1">
                   {[
-                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '3:4', defTakes: 3 },
+                    { id: 'image', label: 'Image', icon: ImageIcon, defAspect: '9:16', defTakes: 3 },
                     { id: 'video', label: 'Video', icon: Film, defAspect: '9:16', defTakes: 1 },
                   ].map((t) => {
                     const Icon = t.icon;
@@ -547,6 +586,17 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                 className={`${field} resize-none leading-relaxed`} />
 
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                {kind === 'image' && (
+                  <div className="flex items-center gap-1.5" title="Candid = phone-video realism (FLUX). Polished = clean studio look (nano-banana).">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Look</span>
+                    {[{ id: 'candid', label: 'Candid' }, { id: 'polished', label: 'Polished' }].map((l) => (
+                      <button key={l.id} onClick={() => setLook(l.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                          look === l.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                        }`}>{l.label}</button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Aspect</span>
                   {(kind === 'image' ? IMG_ASPECTS : VID_ASPECTS).map((a) => (
@@ -566,15 +616,36 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                   ))}
                 </div>
                 {kind === 'video' && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
-                    {[5, 10].map((d) => (
-                      <button key={d} onClick={() => setDuration(d)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
-                          duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
-                        }`}>{d}s</button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="flex items-center gap-1.5" title="Grok: her voice + lip-sync, always animates a chosen image. Seedance: silent motion, perfect loops.">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Engine</span>
+                      {[{ id: 'grok', label: 'Grok · voice' }, { id: 'seedance', label: 'Seedance · loops' }].map((e) => (
+                        <button key={e.id}
+                          onClick={() => { setEngine(e.id); setDuration(e.id === 'grok' ? 8 : 5); if (e.id === 'seedance') setLoop(false); }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            engine === e.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{e.label}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5" title="Finish pass: adds grain, crop and phone-upload compression so it reads like real footage instead of pristine AI output.">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Finish</span>
+                      {[{ id: 'off', l: 'Off' }, { id: 'subtle', l: 'Subtle' }, { id: 'standard', l: 'Standard' }, { id: 'heavy', l: 'Heavy' }].map((f) => (
+                        <button key={f.id} onClick={() => setFinish(f.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            finish === f.id ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{f.l}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Length</span>
+                      {(engine === 'grok' ? [6, 8, 10] : [5, 10]).map((d) => (
+                        <button key={d} onClick={() => setDuration(d)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                            duration === d ? 'bg-white text-gray-900 border-white' : 'border-white/15 text-gray-400 hover:text-white hover:border-white/30'
+                          }`}>{d}s</button>
+                      ))}
+                    </div>
+                  </>
                 )}
                 <button className={`${btnPrimary} ml-auto`} disabled={busy || !prompt.trim()} onClick={generate}>
                   {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Generate
@@ -593,12 +664,14 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                       : <span className="ml-2 normal-case tracking-normal font-medium text-amber-300/90">references only — looser on faces, best for wide shots</span>}
                   </p>
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                    <button onClick={() => { setFromImageUrl(''); setLoop(false); }}
-                      className={`shrink-0 h-16 px-3 rounded-xl text-xs font-medium border transition-all ${
-                        !fromImageUrl ? 'border-indigo-400/70 bg-indigo-500/15 text-indigo-200 ring-2 ring-indigo-500/25' : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
-                      }`}>
-                      Identity<br />references
-                    </button>
+                    {engine === 'seedance' && (
+                      <button onClick={() => { setFromImageUrl(''); setLoop(false); }}
+                        className={`shrink-0 h-16 px-3 rounded-xl text-xs font-medium border transition-all ${
+                          !fromImageUrl ? 'border-indigo-400/70 bg-indigo-500/15 text-indigo-200 ring-2 ring-indigo-500/25' : 'border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:border-white/25'
+                        }`}>
+                        Identity<br />references
+                      </button>
+                    )}
                     {c.portrait_url && (
                       <button onClick={() => setFromImageUrl(c.portrait_url)} title="Portrait"
                         className={`relative shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
@@ -622,7 +695,7 @@ function DetailView({ character: c, generations, busy, onBack, onAct }) {
                       </button>
                     ))}
                   </div>
-                  {fromImageUrl && (
+                  {engine === 'seedance' && fromImageUrl && (
                     <label className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer w-fit">
                       <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-indigo-500 focus:ring-indigo-500/40 focus:ring-offset-0" />

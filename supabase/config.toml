@@ -1025,3 +1025,13 @@ verify_jwt = true
 # JWT (admin_users gate inside); default gate stays ON.
 [functions.business-analyst]
 verify_jwt = true
+
+# Cuento Ilustrado — illustrated-storybook generator (test phase). Called only
+# from our own frontend: admin JWT for find/list/generate/status (admin_users
+# gate inside; spends Kie credits) and the anon key for the public /cuento/:token
+# read (share_token is the credential). Kie jobs are POLLED via 'status' (no
+# callBackUrl), so no webhook path exists → default gate stays ON. If Phase 2
+# ever adds stripe-webhook/pg_cron invocation, flip this to false in the same
+# commit that adds the caller.
+[functions.generate-cuento]
+verify_jwt = true

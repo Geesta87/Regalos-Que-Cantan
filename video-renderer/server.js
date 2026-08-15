@@ -89,6 +89,47 @@ async function download(url, dest) {
   fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
 }
 
+// FINISH PASS ("de-slop") — pre-age a generated clip so it reads like real
+// phone footage instead of pristine AI output. Owner-validated 2026-08-14:
+// this cosmetic pass moved believability more than any model upgrade tested.
+// Platforms (IG/TikTok) crush every upload anyway, so pristine 1080p reads
+// MORE artificial than slightly grainy, slightly compressed footage.
+// Cosmetic only — it cannot fix drifted faces, floating props or dead motion.
+const FINISH_STRENGTHS = {
+  subtle:   { crop: 0.98, noise: 3,  sat: 0.97, contrast: 1.02, sharp: 0.25, bitrate: '1800k' },
+  standard: { crop: 0.96, noise: 6,  sat: 0.93, contrast: 1.04, sharp: 0.40, bitrate: '1300k' },
+  heavy:    { crop: 0.94, noise: 10, sat: 0.88, contrast: 1.07, sharp: 0.55, bitrate: '900k'  },
+};
+async function runFinishVideo(spec) {
+  const id = `finish-${Date.now()}-${Math.floor(process.hrtime()[1] % 1e6)}`;
+  const dir = path.join(os.tmpdir(), id);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    const s = FINISH_STRENGTHS[spec.strength] || FINISH_STRENGTHS.standard;
+    const src = path.join(dir, 'src.mp4');
+    await download(spec.video_url, src);
+    const out = path.join(dir, 'out.mp4');
+    const vf = [
+      `crop=iw*${s.crop}:ih*${s.crop}`,
+      'scale=720:-2',
+      `noise=alls=${s.noise}:allf=t`,
+      `eq=contrast=${s.contrast}:brightness=-0.015:saturation=${s.sat}`,
+      `unsharp=5:5:${s.sharp}`,
+    ].join(',');
+    // Keep audio as-is (re-encoded to aac for container safety); a generated
+    // clip's speech/ambience must survive the pass untouched.
+    execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', src,
+      '-vf', vf, '-c:v', 'libx264', '-b:v', s.bitrate, '-maxrate', s.bitrate,
+      '-bufsize', '2M', '-preset', 'medium', '-c:a', 'aac', '-b:a', '96k', out],
+      { stdio: ['ignore', 'ignore', 'inherit'] });
+    const objectPath = spec.object_path || `finished/${id}.mp4`;
+    const url = await uploadToSupabase(out, objectPath, { bucket: spec.bucket || 'character-studio' });
+    return { url };
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
 // Run one surgical splice (line or section) end-to-end: download the two inputs,
 // stitch with the seamless recipe, encode MP3, upload, return the public URL.
 async function runSplice(spec) {
@@ -388,6 +429,26 @@ const server = http.createServer(async (req, res) => {
       return send(200, { success: true, url: out.url });
     } catch (err) {
       console.error('[splice] error:', err.message);
+      return send(500, { success: false, error: err.message });
+    }
+  }
+
+  // Character Studio finish pass — SYNCHRONOUS (seconds, like /splice-audio).
+  // { video_url, strength?: subtle|standard|heavy, bucket?, object_path? }
+  if (req.method === 'POST' && req.url === '/finish-video') {
+    if (RENDER_TOKEN && req.headers['x-render-token'] !== RENDER_TOKEN) return send(401, { error: 'unauthorized' });
+    let spec;
+    try {
+      spec = JSON.parse(await readBody(req));
+      if (!spec.video_url) throw new Error('missing video_url');
+    } catch (err) {
+      return send(400, { success: false, error: err.message });
+    }
+    try {
+      const out = await runFinishVideo(spec);
+      return send(200, { success: true, url: out.url });
+    } catch (err) {
+      console.error('[finish] error:', err.message);
       return send(500, { success: false, error: err.message });
     }
   }
