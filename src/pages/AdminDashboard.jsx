@@ -599,11 +599,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           // length and end-cut + fade there — no seam/stretch. Only a take whose
           // real ending can't be found (or lands far from the original) is rejected.
           let trimAtS = null;
+          let lenFailWhy = '';   // WHICH over-long failure — the two used to share one message and it misdirected a whole debugging session (2026-08-14, Eric 3a5650f3)
           let lenOk = takeEnd >= origFullDur * 0.80 && takeEnd <= origFullDur * 1.08;
           if (!lenOk && takeEnd > origFullDur * 1.08) {
             const lyricLines = String(fullLyrics || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l)).join('\n');
             const trueEnd = findLastLineEnd(words, lyricLines, origFullDur);
             if (trueEnd != null && trueEnd >= origFullDur * 0.80 && trueEnd <= origFullDur * 1.15) { trimAtS = Math.min(takeEnd, +(trueEnd + 2.5).toFixed(2)); lenOk = true; }
+            else lenFailWhy = `salió larga (${mmss(takeEnd)}) y no se ubicó el final real para recortarla`;
             // Structure guard: the trim must keep the WHOLE song (no section
             // missing or duplicated). Correction lines excluded — a take being
             // judged here may still be mid-way through the corrections.
@@ -611,7 +613,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
               words.filter((w) => w.end <= trimAtS),
               fullLyrics,
               [...(requireAll || []), ...(priorAfters || [])],
-            )) { trimAtS = null; lenOk = false; }
+            )) { trimAtS = null; lenOk = false; lenFailWhy = `salió larga (${mmss(takeEnd)}) y el recorte en el final real dejaría secciones repetidas o faltantes`; }
           }
           // Every check below runs on the AUDIBLE part only — the over-extension
           // tail often re-sings everything correctly and used to satisfy checks
@@ -650,7 +652,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           if (sang && keptPrior && consistent && lenOk) {
             wholeCands.push({ url, takeId, drift: Math.abs((trimAtS || takeEnd) - origFullDur), trimAtS });
           } else if (wholeOnly && !lenOk && takeEnd > origFullDur * 1.08) {
-            lastReason = 'la toma salió demasiado larga (y no se ubicó el final real para recortar)';
+            lastReason = `la toma ${lenFailWhy || 'salió demasiado larga'}`;
             lastTakesSeen.push({ url, text: words.map((w) => w.word).join(' '), reason: lastReason });
           } else if (wholeOnly && !(sang && lenOk && (!keptPrior || !consistent))) {
             lastReason = !sang ? 'no cantó todas las correcciones' : 'la toma salió demasiado corta';
@@ -900,19 +902,57 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // chorus cycle mid-song, which satisfied the closing-line count on a cut
     // that deleted the Bridge (the name reveal). Every distinctive lyric line
     // must be sung EXACTLY as many times as the lyrics carry it.
+    //
+    // CASE-BLIND LEDGER (2026-08-14, Eric 3a5650f3). Tokenizing the RAW line let
+    // sentence case split one sung line into two ledger entries: buildTokenGroups
+    // skips line-initial capitalized words as "names", so "Eras mi todo, mi
+    // guerrero" (chorus opener) shrank below the 3-group floor and vanished from
+    // the ledger, while "eras mi todo, mi guerrero" (chorus closer) demanded 3 —
+    // and the audio, where all six sound identical, matched 6. 6 ≠ 3 vetoed
+    // EVERY rescue of a take whose structure was perfect (12/12 rejected; Kie's
+    // infill on a pinned source over-extends 2x on every take, so every take
+    // needed the rescue). Lowercasing the line first makes the ledger count
+    // sung lines the way the audio actually sounds. Ace's audit has been
+    // case-blind since Miguel Ángel; the browser guard never got the memo.
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-    const skip = new Set((exclude || []).filter(Boolean).map((t) => JSON.stringify(buildTokenGroups(t))));
+    const ledgerGroups = (l) => buildTokenGroups(String(l).toLowerCase());
+    const skip = new Set((exclude || []).filter(Boolean).map((t) => JSON.stringify(ledgerGroups(t))));
     const need = new Map();
     for (const l of lines) {
-      const groups = buildTokenGroups(l);
+      const groups = ledgerGroups(l);
       if (groups.length < 3) continue; // short lines are too ambiguous to count
       const key = JSON.stringify(groups);
       if (skip.has(key)) continue; // a correction line — the checklist owns it
       const e = need.get(key);
-      if (e) e.n++; else need.set(key, { line: l, n: 1 });
+      if (e) e.n++; else need.set(key, { line: String(l).toLowerCase(), n: 1 });
     }
+    // MERGED-WORD TOLERANCE (same take): Whisper heard the stylized rhyme
+    // "grande ero" as ONE word, "grandero", and the matcher can't split a heard
+    // word across two expected ones — "Mi orgullo más grande ero" counted 0 of 2
+    // on audio that sang it correctly, a second veto on the same perfect take.
+    // For GUARD COUNTING ONLY, also accept a line when gluing each adjacent
+    // token pair closes the gap. Checklists keep the strict matcher.
+    const countForGuard = (line) => {
+      const direct = countCleanOccurrences(audibleWords, line);
+      if (direct > 0) return direct;
+      const toks = line.split(/\s+/).filter(Boolean);
+      let best = 0;
+      for (let i = 0; i + 1 < toks.length && !best; i++) {
+        const a = toks[i], b = toks[i + 1];
+        // Plain glue AND Spanish elision ("grande ero" is sung/heard "grandero",
+        // the shared vowel collapses).
+        const variants = [a + b];
+        if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
+        for (const glued of variants) {
+          const merged = [...toks.slice(0, i), glued, ...toks.slice(i + 2)].join(' ');
+          best = Math.max(best, countCleanOccurrences(audibleWords, merged));
+          if (best) break;
+        }
+      }
+      return best;
+    };
     for (const { line, n } of need.values()) {
-      const have = countCleanOccurrences(audibleWords, line);
+      const have = countForGuard(line);
       if (have !== n) return false; // missing section (<) or duplicated section (>)
     }
     return true;
