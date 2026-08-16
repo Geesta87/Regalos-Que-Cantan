@@ -13,10 +13,12 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendSms } from '../_shared/send-sms.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+const ALERT_SMS_TO = Deno.env.get('ALERT_SMS_TO');
 const BUCKET = 'story-video-assets';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
@@ -42,10 +44,7 @@ async function gptCartoonOnce(blob: Blob, prompt: string): Promise<Uint8Array | 
   if (!b64) { console.log(`  gptCartoon reject: ${j?.error?.message?.slice(0, 100) || r.status}`); return null; }
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
-async function gptCartoon(photoUrl: string, prompt: string): Promise<Uint8Array> {
-  const ref = await fetch(photoUrl);
-  if (!ref.ok) throw new Error(`ref fetch ${ref.status}`);
-  const blob = await ref.blob();
+async function gptCartoon(blob: Blob, prompt: string): Promise<Uint8Array> {
   const softer = `${prompt} This is a wholesome, family-friendly stylized illustration.`;
   for (const p of [prompt, softer, softer]) {
     const out = await gptCartoonOnce(blob, p);
@@ -55,10 +54,50 @@ async function gptCartoon(photoUrl: string, prompt: string): Promise<Uint8Array>
   throw new Error('OpenAI rejected the cartoonify after retries');
 }
 
+// OpenAI's images/edits endpoint refuses oversized source photos with "Invalid
+// image file or mode for image 1" — NOT a safety block, so the softening retries
+// can never recover it. 2026-08-16: Jose Angel's 5712x4284 / 5.6MB phone photo
+// failed all 6 attempts and stranded the order, while every photo that has ever
+// succeeded was <=12MP / <=3.6MB. Modern phones routinely shoot 24MP+, so shrink
+// through Supabase Storage's transform endpoint before sending.
+// resize=contain is REQUIRED: width alone does NOT preserve the aspect ratio
+// (verified — a 4284x5712 photo came back 1400x5712, badly stretched).
+const MAX_EDGE = 1600;
+function sizedPhotoUrl(url: string): string | null {
+  const marker = '/storage/v1/object/public/';
+  const i = url.indexOf(marker);
+  if (i === -1) return null; // not one of our storage urls — send it untouched
+  return `${url.slice(0, i)}/storage/v1/render/image/public/${url.slice(i + marker.length)}` +
+    `?width=${MAX_EDGE}&height=${MAX_EDGE}&resize=contain&quality=85`;
+}
+// Always returns something usable: falls back to the original photo whenever the
+// transform is unavailable, so this can only ever help.
+async function loadPhoto(photoUrl: string): Promise<Blob> {
+  const sized = sizedPhotoUrl(photoUrl);
+  if (sized) {
+    try {
+      const r = await fetch(sized);
+      if (r.ok) {
+        const b = await r.blob();
+        if (b.size > 1000 && b.type.startsWith('image/')) {
+          console.log(`  photo downscaled to <=${MAX_EDGE}px (${Math.round(b.size / 1024)}KB)`);
+          return b;
+        }
+      }
+      console.log(`  downscale unavailable (http ${r.status}) — using the original photo`);
+    } catch (e) { console.log(`  downscale failed (${(e as Error).message}) — using the original photo`); }
+  }
+  const ref = await fetch(photoUrl);
+  if (!ref.ok) throw new Error(`ref fetch ${ref.status}`);
+  return await ref.blob();
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const json = (code: number, o: unknown) => new Response(JSON.stringify(o), { headers: { ...cors, 'Content-Type': 'application/json' }, status: code });
 
+  // hoisted so the catch can flag the order it belongs to
+  let failOrderId: string | undefined;
   try {
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
     const { songId, recipient_photo_url, story_video_order_id } = await req.json();
@@ -75,8 +114,9 @@ serve(async (req) => {
       if (error) throw new Error(`insert order: ${error.message}`);
       orderId = data.id;
     } else {
-      await supabase.from('story_video_orders').update({ state: 'generating_likeness', recipient_photo_url }).eq('id', orderId);
+      await supabase.from('story_video_orders').update({ state: 'generating_likeness', recipient_photo_url, error: null }).eq('id', orderId);
     }
+    failOrderId = orderId;
 
     // 2 likeness variations for the admin to choose from.
     // STRONG cartoon prompts that demand "3D CARTOON, NOT photorealistic" to force
@@ -85,7 +125,9 @@ serve(async (req) => {
       'A warm Disney/Pixar-style 3D ANIMATED CARTOON character portrait of the person in the reference photo. Fully stylized 3D animation, NOT photorealistic. Big expressive eyes, smooth rounded stylized features, soft cel-like shading, the bright polished Pixar/Disney movie look (like Encanto/Coco). Faithful, recognizable likeness — same face shape, hair, beard, age and clothing. Soft warm lighting, simple cozy background.',
       'A charming Disney/Pixar-style 3D ANIMATED CARTOON character portrait of the person in the reference photo: fully 3D-animated (not a photograph, not realistic), big expressive eyes, smooth rounded stylized features, warm gentle expression, the polished animated-movie look. Faithful, recognizable likeness — same hair, age and clothing. Soft golden light, simple warm background.',
     ];
-    const optionBytes = await Promise.all(prompts.map((p) => gptCartoon(recipient_photo_url, p)));
+    // fetch (and shrink) the source photo ONCE, then style it twice
+    const photo = await loadPhoto(recipient_photo_url);
+    const optionBytes = await Promise.all(prompts.map((p) => gptCartoon(photo, p)));
 
     // persist both into our own storage
     const options: { url: string }[] = [];
@@ -98,11 +140,29 @@ serve(async (req) => {
       options.push({ url: pub.publicUrl });
     }
 
-    await supabase.from('story_video_orders').update({ character_options: options, state: 'likeness_review' }).eq('id', orderId);
+    await supabase.from('story_video_orders').update({ character_options: options, state: 'likeness_review', error: null }).eq('id', orderId);
 
     return json(200, { success: true, story_video_order_id: orderId, state: 'likeness_review', options });
   } catch (e: any) {
     console.error('generate-likeness error:', e.message);
+    // NEVER leave a paid order silently stuck. Until 2026-08-16 a failure here
+    // just returned 500: the row stayed in 'generating_likeness' with error=null,
+    // the admin showed a spinner forever, and nothing recovers it (the
+    // recover-stuck-story-builds cron only watches state='building'). Jose Angel's
+    // order sat invisible for 40+ min. We now record the reason ON the order — the
+    // Likeness tab renders it with a Redo button — and ping the owner.
+    if (failOrderId) {
+      const msg = `Likeness generation failed: ${e.message}`;
+      try {
+        const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+        await admin.from('story_video_orders').update({ error: msg }).eq('id', failOrderId);
+      } catch (u: any) { console.error('  could not flag the order:', u?.message); }
+      if (ALERT_SMS_TO) {
+        try {
+          await sendSms(ALERT_SMS_TO, `⚠️ Animado likeness failed (order ${failOrderId.slice(0, 8)}): ${e.message}. Open /admin → Animado → Likeness and press "Redo likeness".`);
+        } catch (u: any) { console.error('  alert sms failed:', u?.message); }
+      }
+    }
     return json(500, { success: false, error: e.message });
   }
 });
