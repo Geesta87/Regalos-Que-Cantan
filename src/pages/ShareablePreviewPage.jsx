@@ -1672,7 +1672,7 @@ export default function ShareablePreviewPage() {
                     '/images/reactions/a61b55d5e427407b83039124c60ce64b_1767304563903.jpg',
                     '/images/reactions/39b7035b4c88495392e645d0123e1bcd_1767302646323.jpg',
                   ].map((src, i) => (
-                    <img key={i} src={src} alt="" style={{
+                    <img key={i} src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
                       objectPosition: 'center 30%',
                       animation: `kbSlide${i + 1} 35s ease-in-out infinite`,

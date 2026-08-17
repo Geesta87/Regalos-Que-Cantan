@@ -347,10 +347,13 @@ export default function LandingPagePremium() {
                   position: 'relative', width: '100%', height: '100%', cursor: 'pointer',
                   borderRadius: '16px', overflow: 'hidden'
                 }}>
+                  {/* preload="none" + a real poster. The old "auto" plus the "#t=0.5"
+                      fragment showed a first frame by downloading the whole clip. */}
                   <video
                     ref={el => { videoRefs.current[v.id] = el; }}
                     playsInline
-                    preload="auto"
+                    preload="none"
+                    poster={v.src.replace('/videos/', '/images/posters/').replace(/\.mp4$/, '.jpg')}
                     src={v.src + '#t=0.5'}
                     onEnded={() => setPlayingVideo(null)}
                     style={{

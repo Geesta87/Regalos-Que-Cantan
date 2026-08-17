@@ -45,11 +45,15 @@ function TestimonialVideo({ src }) {
       className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-slate-900 cursor-pointer group shadow-xl"
       onClick={togglePlay}
     >
+      {/* preload="none": these are testimonials nobody has asked to watch yet. "auto"
+          pulled all three clips in full on every landing view — the single biggest slice
+          of Vercel Fast Data Transfer. The poster keeps the card looking right. */}
       <video
         ref={videoRef}
         src={src}
         playsInline
-        preload="auto"
+        preload="none"
+        poster={src.replace('/videos/', '/images/posters/').replace(/\.mp4$/, '.jpg')}
         className="w-full h-full object-cover"
         onEnded={() => setPlaying(false)}
       />

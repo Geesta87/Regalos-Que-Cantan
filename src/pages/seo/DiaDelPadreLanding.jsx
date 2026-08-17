@@ -38,11 +38,14 @@ function TestimonialVideo({ src }) {
       className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-black cursor-pointer group shadow-2xl"
       onClick={togglePlay}
     >
+      {/* preload="none" + poster: "auto" downloaded all three testimonials in full on
+          every visit, watched or not. See LandingPage.jsx. */}
       <video
         ref={videoRef}
         src={src}
         playsInline
-        preload="auto"
+        preload="none"
+        poster={src.replace('/videos/', '/images/posters/').replace(/\.mp4$/, '.jpg')}
         className="w-full h-full object-cover"
         onEnded={() => setPlaying(false)}
       />
