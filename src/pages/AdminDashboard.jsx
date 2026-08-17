@@ -80,6 +80,10 @@ const FIX_SESSIONS = new Map();
 const FIX_SESSION_WATCHERS = new Set(); // tab-level UI (resume banner)
 function fixSessionsChanged() { for (const fn of [...FIX_SESSION_WATCHERS]) { try { fn(); } catch { /* watcher unmounted */ } } }
 function fixSessionStart(songId, fields) {
+  // Never overwrite a RUNNING session (2026-08-17): starting a fix for the
+  // same song from another context orphaned the first run — its Kie spend
+  // continued, its preview became unreachable, and no banner knew about it.
+  { const prior = FIX_SESSIONS.get(songId); if (prior && prior.status === 'working') return null; }
   const s = {
     status: 'working', // working | preview | bothPreview | error
     kind: 'single',    // single | both
@@ -308,6 +312,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setError(''); setResult(null); setInput('');
     setPhase('working');
     const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan: null, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
+    if (!sess) { setError('Ya hay otro arreglo corriendo para esta canción — espera a que termine (mira el aviso en la pestaña Fix Song).'); setSurgicalMsg(''); setPhase(plan ? 'plan' : 'idle'); return; }
     try {
       const one = await fixOneSong(song.id, { changes: applied, combinedLyrics: lyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -417,7 +422,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // this, a stale preview would resurrect over the fresh plan on remount. A
     // RUNNING session is left alone: planning while a fix cooks is fine, and
     // its own runner will replace the session when (if) it's re-run.
-    { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working') fixSessionEnd(song.id); }
+    { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working' && (st.stageRequestId || null) === (stageRequest?.id || null)) fixSessionEnd(song.id); }
     setError('');
     setResult(null);
     setPlan(null);
@@ -486,6 +491,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // which is what made fixes "come back with an error" so often.)
     const ROUNDS = wholeOnly ? 3 : 5;
     let lastReason = '';
+    // Kie SERVER failures get their own budget here too (2026-08-17) — this is
+    // the single-spot path, the most-used one, and it never received the
+    // 2026-08-12 lesson the ladder got: three errorCode-500 nights burned all 3
+    // rounds without a take ever being heard, and the owner was told the TAKE
+    // failed and pushed toward a full re-roll.
+    const MAX_INFRA_RETRIES = 10;
+    let infraRetries = 0;
     // Log the TRUE final outcome server-side (song_fix_attempts) — the async flow
     // validates takes in the browser, so without this the DB only ever saw the
     // initial 'submitted' row and we were blind to the real success rate.
@@ -540,15 +552,38 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // Poll until the re-sing is ready. Keep each take's Kie track id — a
       // whole-take apply stores it so the NEXT fix re-sings from this take.
       let takeList = [];
-      for (let i = 1; i <= 40; i++) {
+      let infraFail = false;
+      // 100 x 9s = 15 min, matching the ladder: a degraded Kie SLOWS the jobs
+      // that survive (234-337s observed), and the old 6-min budget threw away
+      // finished takes as "timed out".
+      for (let i = 1; i <= 100; i++) {
         const d = await postFn({ action: 'diag', taskId: fixTaskId });
         onMsg?.(`Generating the corrected vocal… (${round}.${i})`);
         if (d.status === 'SUCCESS') { takeList = (d.trackList || []).filter((t) => t.audioUrl); break; }
         if (['SENSITIVE_WORD_ERROR', 'GENERATE_AUDIO_FAILED', 'CREATE_TASK_FAILED'].includes(d.status)) {
-          lastReason = d.status === 'SENSITIVE_WORD_ERROR' ? 'Suno blocked the lyrics (copyright)' : `generation failed (${d.status})`;
+          const code = Number(d.errorCode);
+          infraFail = d.status !== 'SENSITIVE_WORD_ERROR' && (!code || code >= 500);
+          lastReason = d.status === 'SENSITIVE_WORD_ERROR'
+            ? 'Suno blocked the lyrics (copyright)'
+            : (infraFail ? `Kie falló del lado del servidor (${d.errorMessage || d.status})` : `generation failed (${d.status})`);
           break;
         }
         await sleep(9000);
+      }
+      // A server failure is not a verdict on this round — refund it (free: Kie
+      // bills only delivered takes) and resubmit, bounded by its own budget.
+      if (!takeList.length && infraFail) {
+        infraRetries++;
+        if (infraRetries > MAX_INFRA_RETRIES) {
+          reportOutcome('failed', `Kie server errors x${infraRetries} — abandoning`, false);
+          const err = new Error(`Kie está fallando del lado del servidor (${lastReason}). Reintenté ${infraRetries} veces sin audio. No es la canción — vuelve a intentar en un rato.`);
+          err.kieDown = true;
+          throw err;
+        }
+        onMsg?.(`Kie falló del lado del servidor — reintentando (${infraRetries}/${MAX_INFRA_RETRIES})…`);
+        round--;   // refund: this consumed a Kie call, not a chance at the line
+        await sleep(6000);
+        continue;
       }
       if (!takeList.length) { lastReason = lastReason || 'timed out'; continue; }
 
@@ -777,6 +812,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setPhase('working'); setSurgicalMsg('Regenerating the corrected part…');
     setSectionParams({ approvedLyrics, verifyPhrases });
     const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages, msg: 'Regenerating the corrected part…' });
+    if (!sess) { setError('Ya hay otro arreglo corriendo para esta canción — espera a que termine (mira el aviso en la pestaña Fix Song).'); setSurgicalMsg(''); setPhase(plan ? 'plan' : 'idle'); return; }
     try {
       const correctedText = (plan?.changes || []).map((c) => c.after).filter(Boolean).join('\n') || undefined;
       const one = Array.isArray(plan?.changes) && plan.changes.length === 1 ? plan.changes[0] : null;
@@ -916,7 +952,13 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     // sung lines the way the audio actually sounds. Ace's audit has been
     // case-blind since Miguel Ángel; the browser guard never got the memo.
     const lines = String(lyricsText || '').split('\n').map((s) => s.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-    const ledgerGroups = (l) => buildTokenGroups(String(l).toLowerCase());
+    // Lowercase ONLY the line-initial word — full lowercasing (the first cut of
+    // this fix) disabled the mid-line name-skip entirely, turning every
+    // Whisper-mangled NAME into a required, exactly-counted ledger token: the
+    // same false-veto shape through the other door. This mirrors Ace's audit
+    // (case-blind sentence case, real names still skipped) exactly.
+    const auditCase = (l) => String(l).replace(/^\s*\S+/, (w) => w.toLowerCase());
+    const ledgerGroups = (l) => buildTokenGroups(auditCase(l));
     const skip = new Set((exclude || []).filter(Boolean).map((t) => JSON.stringify(ledgerGroups(t))));
     const need = new Map();
     for (const l of lines) {
@@ -925,7 +967,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       const key = JSON.stringify(groups);
       if (skip.has(key)) continue; // a correction line — the checklist owns it
       const e = need.get(key);
-      if (e) e.n++; else need.set(key, { line: String(l).toLowerCase(), n: 1 });
+      if (e) e.n++; else need.set(key, { line: auditCase(l), n: 1 });
     }
     // MERGED-WORD TOLERANCE (same take): Whisper heard the stylized rhyme
     // "grande ero" as ONE word, "grandero", and the matcher can't split a heard
@@ -1307,6 +1349,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setError(''); setResult(null); setInput('');
     setPhase('working');
     const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
+    if (!sess) { setError('Ya hay otro arreglo corriendo para esta canción — espera a que termine (mira el aviso en la pestaña Fix Song).'); setSurgicalMsg(''); setPhase(plan ? 'plan' : 'idle'); return; }
     try {
       const one = await fixOneSong(song.id, { changes, combinedLyrics }, (m) => { setSurgicalMsg(m); fixSessionPatch(sess, { msg: m }); });
       const res = {
@@ -1349,6 +1392,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       ...siblings,
     ];
     const sess = fixSessionStart(song.id, { kind: 'both', songName: song.recipient_name || '', plan, pendingMode: 'section', stageRequestId: stageRequest?.id || null, messages });
+    if (!sess) { setError('Ya hay otro arreglo corriendo para esta canción — espera a que termine (mira el aviso en la pestaña Fix Song).'); setSurgicalMsg(''); setPhase(plan ? 'plan' : 'idle'); return; }
     const results = [];
     let lastErr = null;
     for (const t of targets) {
@@ -1409,7 +1453,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           fixSessionPatch(s2, { appliedBothIds: applied });
           // Every version that could be applied has been — the flow is DONE;
           // clear the session so the banner stops advertising it.
-          if ((s2.bothResults || []).every((x) => x.failed || applied.includes(x.id))) fixSessionEnd(song.id);
+          if ((s2.bothResults || []).every((x) => applied.includes(x.id) || x.failed) && !(s2.bothResults || []).some((x) => x.failed)) fixSessionEnd(song.id);
         }
       }
       setCanUndo(true);
@@ -1469,6 +1513,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     setPhase('working');
     setSurgicalMsg('Re-recording the full song… (1–3 min)');
     const sess = fixSessionStart(song.id, { songName: song.recipient_name || '', plan, pendingMode: 'full', stageRequestId: stageRequest?.id || null, messages, msg: 'Re-recording the full song… (1–3 min)' });
+    if (!sess) { setError('Ya hay otro arreglo corriendo para esta canción — espera a que termine (mira el aviso en la pestaña Fix Song).'); setSurgicalMsg(''); setPhase(plan ? 'plan' : 'idle'); return; }
     const post = async (body) => fetch(FN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
@@ -1494,7 +1539,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
         ? `🎤 SAME singer (cloned voice)${sub.pinnedDurationS ? ` · pinned to ~${Math.floor(sub.pinnedDurationS / 60)}:${String(Math.round(sub.pinnedDurationS % 60)).padStart(2, '0')}` : ''}`
         : '⚠️ New voice (original recording no longer on Kie — persona unavailable)';
       let tracks = [];
-      for (let i = 1; i <= 45; i++) {
+      for (let i = 1; i <= 100; i++) {
         const d = await post({ action: 'diag', taskId: fixTaskId });
         const pm = `Re-recording the full song… ${voiceNote} (${i})`;
         setSurgicalMsg(pm); fixSessionPatch(sess, { msg: pm });
@@ -2042,7 +2087,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
                   </button>
                 )}
                 <button
-                  onClick={() => { { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working') fixSessionEnd(song.id); } setPlan(null); setPhase('idle'); setOfferFullReroll(false); }}
+                  onClick={() => { { const st = FIX_SESSIONS.get(song.id); if (st && st.status !== 'working' && (st.stageRequestId || null) === (stageRequest?.id || null)) fixSessionEnd(song.id); } setPlan(null); setPhase('idle'); setOfferFullReroll(false); }}
                   className="py-2 px-4 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20 transition"
                 >
                   ✏️ Keep editing
@@ -2250,7 +2295,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           )}
 
           {/* Undo the last applied fix (restores the pre-fix version) */}
-          {phase === 'idle' && canUndo && (
+          {phase === 'idle' && canUndo && !staging && (
             <button
               onClick={undoFix}
               className="w-full mt-2 py-2 px-4 bg-white/5 text-gray-300 border border-white/10 rounded-lg text-xs font-medium hover:bg-white/10 transition"
@@ -2340,7 +2385,7 @@ function FixSongTab({ accessToken, showToast }) {
     try {
       const r = await fetch(`${BASE}/functions/v1/admin-songs`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await freshAdminToken(accessToken)}`, apikey: ANON },
         body: JSON.stringify({ action: 'detail', songId }),
       });
       const res = await r.json();
@@ -2424,11 +2469,11 @@ function FixSongTab({ accessToken, showToast }) {
     if (!dq.trim() || !accessToken) { setResults([]); return; }
     let cancelled = false;
     setLoading(true);
-    fetch(`${BASE}/functions/v1/admin-songs`, {
+    freshAdminToken(accessToken).then((tok) => fetch(`${BASE}/functions/v1/admin-songs`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: ANON },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}`, apikey: ANON },
       body: JSON.stringify({ action: 'list', search: dq.trim(), limit: 50 }),
-    })
+    }))
       .then((r) => r.json())
       .then((res) => { if (!cancelled && res.success) setResults(res.songs || []); })
       .catch(() => {})
@@ -2594,7 +2639,10 @@ function FixSongTab({ accessToken, showToast }) {
             // whatever unrelated request happens to be active.
             if (s.stageRequestId) {
               const row = queue.find((x) => x.id === s.stageRequestId);
-              if (!row) { showToast('Ese arreglo pertenece a una solicitud ya resuelta — su vista previa quedó descartada.'); fixSessionEnd(id); return; }
+              if (!row) {
+                if (s.status === 'working' || queueLoading) { showToast(queueLoading ? '⏳ Cargando la cola — intenta de nuevo en unos segundos.' : '⏳ Ese arreglo sigue corriendo — su solicitud no está visible todavía.'); return; }
+                showToast('Ese arreglo pertenece a una solicitud ya resuelta — su vista previa quedó descartada.'); fixSessionEnd(id); return;
+              }
               setActiveRequest(row);
               pick(id, row);
               return;

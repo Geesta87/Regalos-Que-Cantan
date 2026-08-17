@@ -330,7 +330,7 @@ serve(async (req) => {
     if (action === 'send-to-ace') {
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);
-      const { data: reqRow } = await admin.from('song_fix_requests').select('id, customer_request, status').eq('id', id).single();
+      const { data: reqRow } = await admin.from('song_fix_requests').select('id, customer_request, status, auto_plan').eq('id', id).single();
       if (!reqRow) return json({ success: false, error: 'Request not found' }, 404);
       // Any open OR rejected request may be handed to Ace; only released ones can't.
       if (reqRow.status === 'done') return json({ success: false, error: 'Already released — nothing for Ace to redo.' }, 409);
@@ -342,7 +342,14 @@ serve(async (req) => {
         auto_round: 0,
         auto_error: null,
         auto_takes: [],
-        auto_plan: null,
+        // PRESERVE THE OWNER'S RESTRICTIONS across the reset (2026-08-17):
+        // noAutoFull means the owner approved a SECTION fix and refused a full
+        // re-roll. Nulling auto_plan let one 'Have Ace redo it' tap launder that
+        // away — Ace re-planned from scratch and could stage the very re-roll
+        // the owner said no to. stepPlan merges these flags into its new plan.
+        auto_plan: (reqRow.auto_plan?.noAutoFull || reqRow.auto_plan?.handoff)
+          ? { ...(reqRow.auto_plan?.noAutoFull ? { noAutoFull: true } : {}), ...(reqRow.auto_plan?.handoff ? { handoff: true } : {}) }
+          : null,
         auto_task_id: null,
         fix_spec: null,
         candidate_audio_url: null,
@@ -357,8 +364,11 @@ serve(async (req) => {
         created_at: new Date().toISOString(),
       };
       if (note) patch.customer_request = `${reqRow.customer_request || ''}\n\nNOTA DEL DUEÑO (reintento): ${note}`.trim();
-      const { error } = await admin.from('song_fix_requests').update(patch).eq('id', id);
+      // .neq guards the race with a concurrent Release: resurrecting a row the
+      // instant after it went 'done' would put Ace to work on a shipped fix.
+      const { data: reset, error } = await admin.from('song_fix_requests').update(patch).eq('id', id).neq('status', 'done').select('id');
       if (error) return json({ success: false, error: error.message }, 500);
+      if (!reset?.length) return json({ success: false, error: 'Already released — nothing for Ace to redo.' }, 409);
       return json({ success: true });
     }
 
@@ -493,7 +503,10 @@ serve(async (req) => {
         const { data: open } = await admin.from('song_fix_requests')
           .select('id, status')
           .eq('song_id', songId)
-          .in('status', ['pending', 'in_progress', 'awaiting_approval'])
+          // 'in_progress' excluded (2026-08-17): that row belongs to a human
+          // mid-work — silently flipping it to the worker discarded their claim
+          // and whatever they were about to stage.
+          .in('status', ['pending', 'awaiting_approval'])
           .order('created_at', { ascending: false })
           .limit(1);
         if (open?.length) id = open[0].id;
@@ -507,8 +520,10 @@ serve(async (req) => {
         }
         // Future-only gate: re-stamp so the worker treats this as fresh work.
         patch.created_at = new Date().toISOString();
-        const { error } = await admin.from('song_fix_requests').update(patch).eq('id', id);
+        // .neq guards racing a concurrent Release — never resurrect a shipped fix.
+        const { data: took, error } = await admin.from('song_fix_requests').update(patch).eq('id', id).neq('status', 'done').select('id');
         if (error) return json({ success: false, error: error.message }, 500);
+        if (!took?.length) return json({ success: false, error: 'Already released — start a fresh handoff instead.' }, 409);
       } else {
         patch.customer_request = note || (changeText
           ? `Corrección aprobada por el dueño: ${changeText}`
@@ -611,8 +626,21 @@ serve(async (req) => {
       if (reqRow.status !== 'awaiting_approval') {
         return json({ success: false, error: 'This request is not staged for approval.' }, 409);
       }
+      // ATOMIC CLAIM (2026-08-17). The read-check above races: the owner and
+      // Ivan both get the "fix ready" ping, and two Release taps seconds apart
+      // both passed it. The second releaseCandidate re-snapshotted fix_backup
+      // from the ALREADY-FIXED song — destroying the pre-fix original that undo
+      // exists to restore — and double-counted/notified. Claim the row with a
+      // conditional write first; exactly one caller wins.
+      {
+        const { data: claimed } = await admin.from('song_fix_requests')
+          .update({ status: 'in_progress', worked_by: actor })
+          .eq('id', id).eq('status', 'awaiting_approval')
+          .select('id');
+        if (!claimed?.length) return json({ success: false, error: 'Someone else is releasing this right now.' }, 409);
+      }
       try {
-        const out = await releaseCandidate(admin, reqRow, actor);
+        const out = await releaseCandidate(admin, { ...reqRow, status: 'awaiting_approval' }, actor);
         // ── Notify the customer (owner decision 2026-07-27): email + a WhatsApp
         // message INTO their existing chat thread. Best-effort — a notify failure
         // never rolls back the release; it's reported in the response instead.
@@ -678,6 +706,9 @@ serve(async (req) => {
         }
         return json({ success: true, audio_url: out.audioUrl, song_id: reqRow.song_id, notified, stale_artifacts: out.staleArtifacts });
       } catch (e) {
+        // The claim succeeded but the release failed — put the row back so the
+        // staged candidate isn't stranded in 'in_progress' forever.
+        try { await admin.from('song_fix_requests').update({ status: 'awaiting_approval' }).eq('id', id).eq('status', 'in_progress'); } catch { /* best effort */ }
         return json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
       }
     }

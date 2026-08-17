@@ -169,7 +169,7 @@ function englishifyLyricsMarkers(lyrics: string): string {
 // name (genre DNA leaked in at generation), so strip those before re-singing —
 // otherwise both section-fix and full re-roll fail. Same gotcha as
 // regenerate-paid-song-kie (which resends style_used verbatim).
-const ARTIST_RE = /\b(el komander|komander|los buchones de culiac[aá]n|los buchones|buchones|gerardo ortiz|natanael cano|peso pluma|junior h|fuerza regida|tito double p|luis r\.? conriquez|conriquez|chalino(?: sanchez)?|los tucanes(?: de tijuana)?|los tigres del norte|banda ms|christian nodal|nodal|car[ií]n le[oó]n|eslab[oó]n armado|t3r elemento|ariel camacho|calibre 50|grupo firme|espinoza paz|larry hern[aá]ndez|remmy valenzuela|el fantasma|la adictiva|adriel favela|el makabelico|los dos carnales|la maquinaria norte[ñn]a)\b(?:\s+(?:style|sound|vibe|aesthetic))?/gi;
+const ARTIST_RE = /\b(banda el recodo|el recodo|julio preciado|juli[oó]n [aá]lvarez|intocable|jenni rivera|banda lim[oó]n|la arrolladora|los recoditos|k-paz de la sierra|k-paz|pepe aguilar|vicente fern[aá]ndez|alejandro fern[aá]ndez|luis miguel|marc anthony|sin bandera|el komander|komander|los buchones de culiac[aá]n|los buchones|buchones|gerardo ortiz|natanael cano|peso pluma|junior h|fuerza regida|tito double p|luis r\.? conriquez|conriquez|chalino(?: sanchez)?|los tucanes(?: de tijuana)?|los tigres del norte|banda ms|christian nodal|nodal|car[ií]n le[oó]n|eslab[oó]n armado|t3r elemento|ariel camacho|calibre 50|grupo firme|espinoza paz|larry hern[aá]ndez|remmy valenzuela|el fantasma|la adictiva|adriel favela|el makabelico|los dos carnales|la maquinaria norte[ñn]a)\b(?:\s+(?:style|sound|vibe|aesthetic))?/gi;
 function stripArtistNames(style: string): string {
   if (!style) return style;
   let out = style.replace(ARTIST_RE, '');
@@ -695,7 +695,7 @@ async function verifyPhrasesInAudio(audioUrl: string, phrases: string[], expecte
 // Is a thrown error Kie's content/copyright filter?
 function isContentError(e: any): boolean {
   const m = String(e?.message || e || '').toLowerCase();
-  return m.includes('sensitive') || m.includes('content') || m.includes('filtro') || m.includes('derechos') || m.includes('copyright') || m.includes('bloque');
+  return m.includes('sensitive') || m.includes('content') || m.includes('filtro') || m.includes('derechos') || m.includes('copyright') || m.includes('bloque') || m.includes('artist name') || m.includes('artist reference');
 }
 
 // On a content-filter rejection, strip likely triggers (artist/band/brand
@@ -784,7 +784,8 @@ function clampWindow(startIn: number, endIn: number, duration: number): { start:
   len = end - start;
   if (len > maxLen) end = start + maxLen;
 
-  return { start: Math.round(start * 100) / 100, end: Math.round(end * 100) / 100 };
+  const rs = Math.round(start * 100) / 100; // round START only, then rebuild END from the length — rounding both ends independently could shave a 10.00s window to 9.99s and take Kie's 422 at the floor
+  return { start: rs, end: Math.round((rs + (end - start)) * 100) / 100 };
 }
 
 // Suno re-sings the ENTIRE infill window from the prompt lyrics, so a window
@@ -1103,14 +1104,14 @@ async function resolveKieSource(song: any, supabase: any): Promise<{ taskId: str
   const candidates: Array<{ taskId?: string; audioId?: string; trimAtS?: number | null }> = [];
   if (song?.kie_task_id) { const kp = parseJsonMaybe(song.kie_payload); candidates.push({ taskId: song.kie_task_id, audioId: kp?.id, trimAtS: Number(kp?.trimAtS) > 0 ? Number(kp.trimAtS) : null }); }
   const ks = parseJsonMaybe(song?.kie_source); if (ks?.taskId) candidates.push({ taskId: ks.taskId, audioId: ks.audioId, trimAtS: null });
-  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id, trimAtS: null }); }
+  const fb = parseJsonMaybe(song?.fix_backup); if (fb?.kie_task_id) { const kp = parseJsonMaybe(fb.kie_payload); candidates.push({ taskId: fb.kie_task_id, audioId: kp?.id, trimAtS: Number(kp?.trimAtS) > 0 ? Number(kp.trimAtS) : null }); }
   for (const c of candidates) {
     if (!c.taskId) continue;
     const track = await fetchKieTrack(c.taskId, c.audioId);
     if (track?.audioUrl) {
       const existing = parseJsonMaybe(song?.kie_source);
       if (!existing || existing.taskId !== c.taskId) {
-        try { await supabase.from('songs').update({ kie_source: { taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ }
+        try { await supabase.from('songs').update({ kie_source: { ...(existing || {}), taskId: c.taskId, audioId: c.audioId || track.id } }).eq('id', song.id); } catch { /* best effort */ } // SPREAD (2026-08-17): replacing the object wholesale deleted the persisted personaId on every re-fix — the next full re-roll re-minted a voice, violating ONE-mint-per-audio
       }
       return { taskId: c.taskId, audioId: c.audioId || track.id, pristineUrl: track.audioUrl, trimAtS: c.trimAtS ?? null, createTimeMs: track.createTimeMs, durationS: track.durationS };
     }

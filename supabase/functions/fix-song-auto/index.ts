@@ -332,7 +332,11 @@ function auditStructure(audible: W[], lyricsText: string): string | null {
         if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
         for (const glued of variants) {
           const merged = [...toks.slice(0, i), glued, ...toks.slice(i + 2)].join(' ');
-          have = Math.max(have, countByGroups(audible, buildAuditGroups(merged)));
+          // Clamp at n: the glued pattern has one fewer group and can over-match
+          // (0 found -> glue finds 2 when n=1), and letting it exceed n flipped
+          // the verdict from "missing" to a phantom "sección duplicada". The
+          // tolerance exists only to cure undercounts.
+          have = Math.max(have, Math.min(n, countByGroups(audible, buildAuditGroups(merged))));
           if (have >= n) break;
         }
       }
@@ -587,12 +591,21 @@ async function stepPlan(admin: any, r: any): Promise<void> {
   // in the SAME cloned voice, which fixes every occurrence at once.
   const planChanges = plan.changes || spec.changes || [];
   const spread = planChanges.some((c: any) => c?.after && timesInLyrics(plan.approvedLyrics, c.after) > 1);
+  // The owner's restrictions survive a send-to-ace reset as a stub auto_plan —
+  // merge them into the fresh plan or one "redo it" tap launders them away.
+  const kept = {
+    ...(r.auto_plan?.noAutoFull ? { noAutoFull: true } : {}),
+    ...(r.auto_plan?.handoff ? { handoff: true } : {}),
+  };
+  // noAutoFull means the owner refused a full re-roll: never auto-pick 'full'.
+  const wantsFull = (hasAdd || spread) && !r.auto_plan?.noAutoFull;
   await setAuto(admin, r.id, {
     auto_plan: {
       approvedLyrics: plan.approvedLyrics, changes: planChanges, verifyPhrases: verify,
-      mode: (hasAdd || spread) ? 'full' : 'section', addLine: hasAdd,
+      mode: wantsFull ? 'full' : 'section', addLine: hasAdd,
       ...(spread && !hasAdd ? { spreadTarget: true } : {}),
       summary: plan.changeSummary || spec.summary,
+      ...kept,
     },
     auto_status: 'generating',
   });
@@ -708,7 +721,31 @@ async function stepPoll(admin: any, r: any): Promise<void> {
   // used to make the age NaN so the guard never fired).
   const basis = r.auto_plan?.submittedAt || r.auto_updated_at || r.updated_at;
   const age = basis ? Date.now() - new Date(basis).getTime() : 0;
-  if (age > 25 * 60000) await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'poll timeout — retrying round' });
+  if (age > 25 * 60000) {
+    // A HANG IS INFRASTRUCTURE, SAME AS A 5xx (2026-08-17). A job that delivered
+    // nothing billed nothing (Kie charges only for delivered takes), yet the
+    // timeout used to spend one of the 3 rounds and one daily-cap unit — three
+    // hangs in a bad night reached needs_human without a single take heard,
+    // the exact failure the infra-retry budget exists to prevent, arriving
+    // through the hang door instead of the error door. Refund both, bounded by
+    // the same MAX_INFRA_RETRIES.
+    const infraTries = Number(r.auto_plan?.infraRetries || 0) + 1;
+    try {
+      await admin.from('song_fix_attempts')
+        .update({ action: 'auto-submit-nocharge', outcome: 'kie-timeout' })
+        .eq('kie_task_id', r.auto_task_id).eq('action', 'auto-submit');
+    } catch { /* accounting only */ }
+    if (infraTries <= MAX_INFRA_RETRIES) {
+      await setAuto(admin, r.id, {
+        auto_status: 'generating',
+        auto_round: Math.max(0, (r.auto_round || 1) - 1),
+        auto_plan: { ...(r.auto_plan || {}), infraRetries: infraTries },
+        auto_error: `poll timeout — round refunded, retry ${infraTries}/${MAX_INFRA_RETRIES}`,
+      });
+    } else {
+      await setAuto(admin, r.id, { auto_status: 'generating', auto_error: 'poll timeout — retrying round' });
+    }
+  }
 }
 
 async function stepValidate(admin: any, r: any, state: any): Promise<void> {
@@ -777,6 +814,13 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
       diags.push({ url, verdict: 'reject', reason: `toma irrecuperable (${Math.round(dur)}s ≈ ${(dur / origDur).toFixed(1)}× lo normal)` });
       continue;
     }
+    // RENEW THE WORK LEASE before each multi-minute Whisper call (2026-08-17).
+    // The overlap claim refuses rows touched <110s ago, but cron fires every
+    // 120s and nothing re-stamped auto_updated_at DURING a long validate — so
+    // any step past ~2 minutes was double-claimed by the next tick: duplicate
+    // Whisper spend, and two ticks racing to stage (one could overwrite the
+    // other's candidate while the owner was already listening to it).
+    try { await admin.from('song_fix_requests').update({ auto_updated_at: new Date().toISOString() }).eq('id', r.id); } catch { /* lease renewal is best-effort */ }
     const tr = await callFn('fix-song-section', { action: 'transcribe', audioUrl: url });
     const words = parseTimed(tr?.timed || '');
     if (!words.length) {
@@ -919,7 +963,13 @@ async function stepValidate(admin: any, r: any, state: any): Promise<void> {
     if (!hosted) { await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'needs_human', auto_error: 'Winner needs an end-trim but the trim service failed — finish manually.' }); return; }
   } else {
     const t = await callFn('fix-song-section', { action: 'splice', mode: 'rehost', pristineUrl: win.url });
-    hosted = t?.ok ? t.url : win.url;
+    hosted = t?.ok ? t.url : null;
+    // NEVER stage the raw Kie URL as a fallback (2026-08-17). Kie purges take
+    // audio ~14 days after generation; releaseCandidate copies the candidate
+    // URL verbatim into the customer's live song. A renderer hiccup here used
+    // to mean: staged Friday, released Monday, gift link dead two weeks later
+    // — on a PAID song. Same posture as the trim branch: park it for a human.
+    if (!hosted) { await setAuto(admin, r.id, { auto_takes: diags.slice(-12), auto_status: 'needs_human', auto_error: 'Winner is clean but re-hosting failed — the Kie URL expires in ~14 days, so it must not be staged. Retry or finish manually.' }); return; }
   }
 
   // STAGE — human release gate unchanged.

@@ -139,6 +139,17 @@ serve(async (req) => {
       if (!RENDERER) throw new Error('INHOUSE_RENDERER_URL not configured');
       if (!body.pristineUrl) throw new Error('Missing pristineUrl');
       if (body.mode === 'trim' && !(Number(body.trimAtS) > 0)) throw new Error('Missing trimAtS');
+      // HOST ALLOWLIST (2026-08-17). This function is auth-free and this branch
+      // forwards RENDER_TOKEN to Cloud Run, which fetches whatever URL it is
+      // handed — an open passthrough is an SSRF primitive plus a free transcode-
+      // and-host-on-our-domain service. The only legitimate sources are Kie's
+      // take hosting and our own storage; everything else is refused.
+      {
+        let host = '';
+        try { host = new URL(String(body.pristineUrl)).hostname; } catch { throw new Error('Invalid pristineUrl'); }
+        const ok = host === 'tempfile.aiquickdraw.com' || host.endsWith('.aiquickdraw.com') || host === 'yzbvajungshqcpusfiia.supabase.co';
+        if (!ok) throw new Error(`pristineUrl host not allowed: ${host}`);
+      }
       const r = await fetch(`${RENDERER}/splice-audio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-render-token': RTOKEN },
