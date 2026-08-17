@@ -55,6 +55,10 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   const [tweakText, setTweakText] = useState('');
   const [promo, setPromo] = useState('');
   const [promoSaved, setPromoSaved] = useState('');
+  // When the push was last written. A push nobody has touched in weeks keeps
+  // steering every generator silently — that is how a June "4th of July" brief
+  // was still writing ads in mid-August. Surface its age so it can't hide.
+  const [promoAt, setPromoAt] = useState(null);
   const [savingPromo, setSavingPromo] = useState(false);
   const [studioDraft, setStudioDraft] = useState(null); // email_queue draft handed to Email Studio for editing
 
@@ -84,7 +88,7 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
   useEffect(() => {
     if (!accessToken) return;
     call({ action: 'get_config' }).then((r) => {
-      if (r?.success) { setPromo(r.promo_notes || ''); setPromoSaved(r.promo_notes || ''); }
+      if (r?.success) { setPromo(r.promo_notes || ''); setPromoSaved(r.promo_notes || ''); setPromoAt(r.promo_updated_at || null); }
     }).catch(() => {});
   }, [accessToken, call]);
 
@@ -93,11 +97,16 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
     setSavingPromo(true);
     try {
       const r = await call({ action: 'save_promo', promo_notes: promo });
-      if (r.success) { setPromoSaved(r.promo_notes || ''); showToast?.('Push saved — the next batch will use it'); }
+      if (r.success) { setPromoSaved(r.promo_notes || ''); setPromoAt(r.promo_updated_at || new Date().toISOString()); showToast?.('Push saved — the next batch will use it'); }
       else showToast?.(`Error: ${r.error || 'could not save'}`);
     } catch (e) { showToast?.(`Error: ${e.message}`); }
     finally { setSavingPromo(false); }
   };
+
+  // Age of the saved push, in whole days. 21+ days = old enough that the occasion
+  // it names has probably passed, so we warn rather than let it run on silently.
+  const promoAge = promoAt ? Math.max(0, Math.floor((Date.now() - new Date(promoAt).getTime()) / 86400000)) : null;
+  const promoStale = !!promoSaved && promoAge != null && promoAge >= 21;
 
   const act = async (id, action, extra = {}) => {
     if (role !== 'admin') { showToast?.('Admins only'); return; }
@@ -182,7 +191,21 @@ export default function CreativeStudioTab({ accessToken, showToast }) {
           <Megaphone size={16} className="text-gray-500" />
           <h3 className="text-sm font-medium text-gray-900">This week's push</h3>
           <span className="text-[11px] text-gray-400">— what every new ad &amp; post should promote</span>
+          {promoSaved && promoAge != null && (
+            <span className={`text-[11px] ml-auto ${promoStale ? 'text-amber-700 font-medium' : 'text-gray-400'}`}>
+              {promoAge === 0 ? 'Saved today' : `Saved ${promoAge} day${promoAge === 1 ? '' : 's'} ago`}
+            </span>
+          )}
         </div>
+        {promoStale && (
+          <div className="flex items-start gap-2 mb-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+            <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-[12px] text-amber-800">
+              This push is {promoAge} days old and is still steering every ad, post, email and SEO task.
+              If the occasion has passed, clear it or replace it — an out-of-season push quietly wastes ad spend.
+            </p>
+          </div>
+        )}
         <textarea value={promo} onChange={(e) => setPromo(e.target.value)} rows={2}
           placeholder='e.g. "Promote Día del Padre this week + push the $9.99 video add-on" — leave blank for the normal rotation'
           className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-indigo-400 resize-none" />

@@ -478,10 +478,10 @@ function styleNoteBlock(note?: unknown): string {
 Re-map the color story to honor this override — you MAY depart from the style's accent/background/surface hexes to achieve it. But KEEP the style's typographic craft, layout sophistication, premium restraint, and every email-safe rule. Interpret the theme tastefully: still a premium boutique-DTC email, never a clip-art flyer, flag emoji, confetti, or party-blast. If the override names an occasion (e.g. a holiday), use its colors as a SOPHISTICATED accent story against a refined base, not loud full-width saturated bands.`;
 }
 
-function generateSystem(promoNotes?: string): string {
+function generateSystem(promoNotes?: string, promoAt?: string | null): string {
   return `You are an elite email designer with impeccable taste — your work looks like a premium DTC / editorial brand, never a generic promo template. You design marketing emails for "Regalos Que Cantan" (personalized Spanish songs as gifts, ${OFFERS.site}). The wordmark is the text "Regalos Que Cantan". Customer-facing copy is in natural US-Hispanic Spanish (English ONLY when the brief targets the English platform giftsthatsing.com).
 
-${brandContext(promoNotes)}
+${brandContext(promoNotes, promoAt)}
 
 ${EMAIL_CATALOG}
 
@@ -747,9 +747,9 @@ Lay them out as a single row of ${n} vertical posters inside a table (one <td> e
     : 'NO images supplied — design a clean, premium type-led layout. Compensate for the missing imagery with stronger typographic structure: alternating surfaces, an announcement bar, the now-playing card, and the how-it-works rows.';
   // The owner's live "This week's push" (same box that steers ads & social)
   // biases studio emails too — one push, all channels.
-  const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+  const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
   const data = await callAnthropic({
-    model: MODEL, max_tokens: 9000, system: generateSystem(cfg?.promo_notes),
+    model: MODEL, max_tokens: 9000, system: generateSystem(cfg?.promo_notes, cfg?.promo_updated_at || null),
     tools: [EMIT_EMAIL_TOOL], tool_choice: { type: 'tool', name: 'emit_email' },
     messages: [{ role: 'user', content: `${styleBrief(o.style)}${styleNoteBlock(o.styleNote)}\n\n${imageBlock}\n\nCTA LINK (every button href — use EXACTLY this): ${o.ctaUrl}\n\nTHE OWNER'S BRIEF:\n${o.brief}\n\nDesign and emit the complete email now (subject + preview_text + full HTML).` }],
   });
@@ -833,7 +833,7 @@ Deno.serve(async (req: Request) => {
         if (lines.length) perfText = lines.join('\n');
       }
 
-      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
       const system = buildBrainstormSystem({
         todayISO: new Date().toISOString().slice(0, 10),
         styleList: STYLES.map((s) => `- ${s.id}: ${s.name} — ${s.blurb}`).join('\n'),
@@ -841,6 +841,7 @@ Deno.serve(async (req: Request) => {
         recentEmails: recentText,
         performance: perfText,
         promoNotes: cfg?.promo_notes,
+        promoUpdatedAt: cfg?.promo_updated_at || null,
       });
 
       const msgs: any[] = turns.map((t) => ({ role: t.role, content: t.content }));
@@ -937,13 +938,13 @@ Deno.serve(async (req: Request) => {
         `- ${p.path} | ${p.label} | ${p.description} | gente: ${p.subjects || '?'} | mood: ${p.mood || '?'}`
         + ` | ${p.is_bw ? 'B&W' : 'color'} | ${p.brightness} | focus:${p.focus} | espacio:${p.headroom || '?'}`).join('\n');
       const styleList = STYLES.map((s) => `- ${s.id}: ${s.name} — ${s.blurb}`).join('\n');
-      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
 
       const planRes = await callAnthropic({
         model: MODEL, max_tokens: 2000,
         system: `You are the creative director for "Regalos Que Cantan" (personalized Spanish songs as gifts, ${OFFERS.site}). Plan ONE premium marketing email from the owner's brief. Customer-facing copy is natural US-Hispanic Spanish (English only if the brief targets giftsthatsing.com).
 
-${brandContext(cfg?.promo_notes)}
+${brandContext(cfg?.promo_notes, cfg?.promo_updated_at || null)}
 
 Choosing well matters more than being clever:
 - STYLE: match the emotional register of the angle, not the occasion cliché. A memorial or a win-back is not "Cálido Fiesta".
