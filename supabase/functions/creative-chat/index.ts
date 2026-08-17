@@ -286,7 +286,9 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
 
   if (name === 'save_promo_focus') {
     const focus = String(input.focus || '').trim();
-    await admin.from('creative_studio_config').update({ promo_notes: focus, updated_at: new Date().toISOString() }).eq('id', 1);
+    // Stamp promo_updated_at so the push carries its own age (see brand-brief.ts).
+    const stamped = new Date().toISOString();
+    await admin.from('creative_studio_config').update({ promo_notes: focus, promo_updated_at: stamped, updated_at: stamped }).eq('id', 1);
     return focus
       ? `Got it — the batch will now push: "${focus}".`
       : `Cleared the current push — back to the default offer rotation.`;
@@ -295,7 +297,7 @@ async function runTool(admin: any, name: string, input: any, generated: string[]
 }
 
 // ---------------------------------------------------------------------------
-function systemPrompt(styleNotes: string, promoNotes: string) {
+function systemPrompt(styleNotes: string, promoNotes: string, promoAt?: string | null) {
   return `You are the Art Director / Creative Director for "Regalos Que Cantan". You are chatting with the OWNER inside their dashboard. Be warm, concise, and practical — a real creative partner who knows the business cold.
 
 ${agentBrief('Art Director — you GENERATE the actual ad/social visuals (gpt-image-2). When the Chief of Staff sends you a WORK ORDER, fulfil it by generating, not just talking. You own the look. You know the whole business + the rest of the team from the handbook above.')}
@@ -312,7 +314,7 @@ What you can DO (use tools naturally when the owner wants it, don't ask permissi
 Creative DNA: lead with the FEELING (emotional reveal / nostalgia / romance / family pride) but always land a real selling point and ONE offer from the Business Brain below — that's what closes. Occasions cumpleaños, aniversario, día de las madres/padres, bodas, XV años; genres corrido, banda, bachata, mariachi. Copy in warm Mexican/US-Hispanic Spanish, no recipient names.
 VISUAL LOOKS — only two: PHOTOREAL warm gift-moment, or ANIMATED Disney/Pixar 3D. Wholesome, mature adults, wide framing, NEVER depict minors (AI auto-rejects them — for youth occasions show the proud parents/adults instead).
 
-${brandContext(promoNotes)}
+${brandContext(promoNotes, promoAt)}
 
 After you generate something, tell the owner what you queued in one short line. Keep replies tight.
 
@@ -366,7 +368,7 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   const refData = referenceImageUrl ? await fetchImageBytes(referenceImageUrl) : null;
   let style: 'poster' | 'elegant' = 'elegant'; let detectedPrice = '';
   if (refData) { const c = await classifyAdStyle(refData); style = c.style; detectedPrice = c.price; }
-  const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
+  const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes, promo_updated_at').eq('id', 1).single();
   const SPEC_TOOL = {
     name: 'emit_ads',
     description: 'Emit the exact ad creatives to generate.',
@@ -413,7 +415,7 @@ async function generateBatch(admin: any, brief: string, count: number, intended:
   const offset = Math.floor(Math.random() * TREATMENTS.length);
   const diversityNote = `\n\nDIVERSITY — the ${n} ads MUST be genuinely different from each other, NOT variations of one idea. Across the set vary ALL of: (1) recipient/relationship — rotate among mamá, papá, abuela, abuelo, esposa, esposo, novia/novio, mejor amiga, hijo/hija, quinceañera, aniversario, cumpleaños; (2) composition — extreme close-up of a teary smile / wide family scene / hands holding a phone that's playing the song / two people embracing / a candid open-mouth laugh / one person alone listening with eyes closed; (3) light & palette — warm golden hour / bright airy daytime / moody cinematic night with string lights / soft window light. NO two ads may share the same recipient + composition. Each gen_prompt must describe a clearly DIFFERENT scene.`;
   const copyNote = `\n\nCOPY MUST MAKE SENSE — the words on each ad must form ONE clear, truthful thought about THIS exact product: a custom-made personalized SONG written about the recipient's real story, that you can LISTEN TO before you pay, ready in minutes, from $29. kicker → headline → CTA should read as a single coherent message a real buyer instantly understands — NOT three disconnected pretty phrases, NOT vague poetry. The headline must match the photo's recipient & occasion (a papá photo → a dad message). If the brief names specific points to push (price, "ready in 3 minutes", "listen before you pay"), those must appear and be literally correct. When unsure, simpler and clearer beats clever.`;
-  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '')}${styleNote}${diversityNote}${copyNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
+  const sys = `${systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '', cfg?.promo_updated_at || null)}${styleNote}${diversityNote}${copyNote}\n\nProduce EXACTLY ${n} ${intended} creatives now. ${brief}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -602,8 +604,8 @@ serve(async (req) => {
       // history (text only) -> Claude messages
       const { data: hist } = await admin.from('creative_chat_messages')
         .select('role, content').order('created_at', { ascending: true }).limit(40);
-      const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
-      const system = systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '');
+      const { data: cfg } = await admin.from('creative_studio_config').select('style_notes, promo_notes, promo_updated_at').eq('id', 1).single();
+      const system = systemPrompt(cfg?.style_notes || '', cfg?.promo_notes || '', cfg?.promo_updated_at || null);
 
       const messages: any[] = (hist || []).map((m: any) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
       messages.push({ role: 'user', content: userMsg });

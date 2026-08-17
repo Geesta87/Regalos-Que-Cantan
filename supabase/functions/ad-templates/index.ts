@@ -83,11 +83,11 @@ const VARS_TOOL = {
   },
 };
 
-async function variations(tpl: any, count: number, promoNotes: string): Promise<any[]> {
+async function variations(tpl: any, count: number, promoNotes: string, promoAt?: string | null): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) return [];
   const system = `You are the Creative Director for "Regalos Que Cantan" (personalized Spanish songs as gifts, US-Hispanic). Produce ${count} DISTINCT ad variations in this fixed template style. Vary the occasion, person, and angle across them. Warm Mexican/US-Hispanic Spanish copy, no recipient names. Wholesome, mature adults, NEVER depict minors (for youth occasions show proud parents/adults).
 
-${brandContext(promoNotes)}
+${brandContext(promoNotes, promoAt)}
 Across the ${count} variations, ROTATE which offer each one features (don't put the same price on all of them) and pair each with one proof point.
 
 CRITICAL — TWO-LAYER ADS: The image is a PHOTOGRAPH ONLY. Never put text, words, or logos in photo_prompt — our design layer renders the typography separately. So:
@@ -146,8 +146,8 @@ serve(async (req) => {
       if (!tpl) return json({ success: false, error: 'Template not found' }, 404);
       const count = Math.min(Math.max(Number(body.count) || 5, 1), 6);
       const intended = body.intended_use === 'social' ? 'social' : 'ad'; // destination chosen by the owner
-      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
-      const items = await variations(tpl, count, cfg?.promo_notes || '');
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
+      const items = await variations(tpl, count, cfg?.promo_notes || '', cfg?.promo_updated_at || null);
       if (!items.length) return json({ success: false, error: 'No variations produced' }, 502);
 
       const batch = new Date().toISOString().slice(0, 10);

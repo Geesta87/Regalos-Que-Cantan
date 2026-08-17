@@ -125,6 +125,7 @@ async function generateBatch(
   styleNotes: string, promoNotes: string,
   nImages: number, nVideos: number,
   teamBlock: string, feedbackBlock: string,
+  promoAt?: string | null,
 ): Promise<any[]> {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
   // Layer the system prompt: base art-direction DNA → the Business Brain (real
@@ -134,7 +135,7 @@ async function generateBatch(
   const stylePart = styleNotes?.trim()
     ? `\n\nOWNER'S SAVED STYLE PREFERENCES (always honor these):\n${styleNotes.trim()}`
     : '';
-  const system = `${SYSTEM}\n\n${brandContext(promoNotes)}${stylePart}${feedbackBlock}`;
+  const system = `${SYSTEM}\n\n${brandContext(promoNotes, promoAt)}${stylePart}${feedbackBlock}`;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -280,9 +281,9 @@ Deno.serve(async (req: Request) => {
         ? `\n\nTEAM INTEL (angles teammates flagged as working — use as inspiration for ORIGINAL creatives, never copy):\n${intel.map((i: any) => `- [${i.author}] ${i.title}${i.body ? ` — ${i.body}` : ''}`).join('\n')}`
         : '');
 
-    const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes, promo_notes').eq('id', 1).single();
+    const { data: cfg } = await supabase.from('creative_studio_config').select('style_notes, promo_notes, promo_updated_at').eq('id', 1).single();
     const fb = await feedbackBlock(supabase);
-    const items = await generateBatch(cfg?.style_notes || '', cfg?.promo_notes || '', nImages, nVideos, teamBlock, fb);
+    const items = await generateBatch(cfg?.style_notes || '', cfg?.promo_notes || '', nImages, nVideos, teamBlock, fb, cfg?.promo_updated_at || null);
     if (!items.length) throw new Error('Model returned an empty batch');
 
     // Insert each row (so copy survives even if generation fails), then fire the

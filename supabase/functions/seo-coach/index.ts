@@ -388,16 +388,17 @@ serve(async (req: Request) => {
     }, null, 2)}`;
 
     // Seasonal push context (same source the creative generators use).
-    let promoNotes = '';
+    let promoNotes = '', promoAt: string | null = null;
     try {
-      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes').eq('id', 1).single();
+      const { data: cfg } = await admin.from('creative_studio_config').select('promo_notes, promo_updated_at').eq('id', 1).single();
       promoNotes = cfg?.promo_notes || '';
+      promoAt = cfg?.promo_updated_at || null;
     } catch (_e) { /* optional */ }
 
     const system = `${COACH_SYSTEM}
 
 WHAT THIS BUSINESS SELLS (so your advice fits the real product, not generic e-commerce):
-${brandContext(promoNotes)}
+${brandContext(promoNotes, promoAt)}
 
 ${contextBlock}
 

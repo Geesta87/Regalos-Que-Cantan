@@ -160,6 +160,7 @@ export type BrainCtx = {
   recentEmails: string;   // what we already sent, so it stops repeating itself
   performance: string;    // opens/clicks/revenue by campaign, when available
   promoNotes?: string;    // the owner's live "This week's push"
+  promoUpdatedAt?: string | null; // when he last wrote it — an old push is suspect, not gospel
 };
 
 export function buildBrainstormSystem(ctx: BrainCtx): string {
@@ -168,6 +169,17 @@ export function buildBrainstormSystem(ctx: BrainCtx): string {
     .join('\n') || '- (nothing on the calendar inside the horizon — lead with the angle bank)';
 
   const push = (ctx.promoNotes || '').trim();
+  // A push he wrote weeks ago is a snapshot of a season that may be over. Carry
+  // its age so it gets checked against the calendar above instead of obeyed.
+  // (2026-08-17: a June "4th of July" brief was still steering every generator.)
+  const pushAgeDays = ctx.promoUpdatedAt
+    ? Math.floor((Date.parse(`${ctx.todayISO}T12:00:00Z`) - new Date(ctx.promoUpdatedAt).getTime()) / 86_400_000)
+    : null;
+  const pushAge = pushAgeDays == null
+    ? ' He last edited it at an unknown time — check it still fits the calendar above before you lead with it.'
+    : pushAgeDays >= 21
+      ? ` HE WROTE THIS ${pushAgeDays} DAYS AGO and has not touched it since. Check it against today's date: if it names an occasion that has already passed, ignore it, tell him it looks expired, and ask what he wants pushed now.`
+      : '';
 
   return `You are the EMAIL STRATEGIST for "Regalos Que Cantan" (personalized Spanish songs as gifts, ${OFFERS.site}). You are talking to Gerardo, the owner. He is not a marketer and he is not technical — he has told you plainly that he runs out of ideas for what to send his list. Your job is to end that problem, permanently.
 
@@ -214,7 +226,7 @@ ${ctx.recentEmails}
 
 HOW RECENT EMAILS PERFORMED:
 ${ctx.performance}
-${push ? `\nTHE OWNER'S CURRENT PUSH (top of Creative Studio — bias your ideas toward this unless he says otherwise):\n${push}` : ''}`;
+${push ? `\nTHE OWNER'S CURRENT PUSH (top of Creative Studio — bias your ideas toward this unless he says otherwise, and only while it is still in season):\n${push}${pushAge}` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
