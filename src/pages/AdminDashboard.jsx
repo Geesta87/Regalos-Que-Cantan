@@ -670,7 +670,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
           const consistent = !(consistency && consistency.length) || consistency.every((c) => {
             if (!c?.after) return true;
             const need = Math.max(1, timesInLyrics(fullLyrics, c.after));
-            if (countCleanOccurrences(audible, c.after) < need) return false;
+            if (countSungOccurrences(audible, c.after, need) < need) return false;
             // Stylization-only change: before/after collapse to the same sung
             // tokens — absence of the "old" wording is unverifiable, skip it.
             if (c.before && JSON.stringify(buildTokenGroups(c.before)) === JSON.stringify(buildTokenGroups(c.after))) return true;
@@ -899,6 +899,28 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
   function countCleanOccurrences(words, phrase) {
     return findPhraseHits(words, phrase).length;
   }
+  // PRESENCE counting with elision tolerance (2026-08-17): Whisper hears elided
+  // Spanish as ONE word ("grande ero" -> "grandero"), and the strict matcher
+  // counted a correctly-sung line 0 times. The structure GUARD got this fix on
+  // 08-14; the checklists did not — so a CORRECTION whose line elides could
+  // burn every attempt with "no cantó lo corregido" on takes that sang it.
+  // Used ONLY where we verify something WAS sung; absence checks (the old
+  // wording must be GONE) stay strict on purpose.
+  function countSungOccurrences(words, phrase, need = 1) {
+    let c = countCleanOccurrences(words, phrase);
+    if (c >= need) return c;
+    const toks = String(phrase).split(/\s+/).filter(Boolean);
+    for (let i = 0; i + 1 < toks.length && c < need; i++) {
+      const a = toks[i], b = toks[i + 1];
+      const variants = [a + b];
+      if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
+      for (const g of variants) {
+        c = Math.max(c, countCleanOccurrences(words, [...toks.slice(0, i), g, ...toks.slice(i + 2)].join(' ')));
+        if (c >= need) break;
+      }
+    }
+    return c;
+  }
   function timesInLyrics(lyrics, line) {
     const norm = (s) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
     const hay = norm(lyrics); const needle = norm(line);
@@ -1007,7 +1029,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
     for (const c of changes) {
       if (!c?.after) continue;
       const need = Math.max(1, timesInLyrics(combinedLyrics, c.after));
-      const have = countCleanOccurrences(words, c.after);
+      const have = countSungOccurrences(words, c.after, need);
       // STYLIZATION-ONLY change ("¿y tú?" → "¿y tuuu?"): after norm-collapse the
       // two wordings are the SAME sung tokens, so demanding the old wording be
       // absent would contradict demanding the new one present — skip the absence
@@ -1022,7 +1044,7 @@ function FixSongCard({ song, showToast, onApplied, accessToken, stageRequest, on
       // Skip priors that duplicate one of the requested changes (already covered).
       if (items.some((it) => it.after === p.after)) continue;
       const need = Math.max(1, timesInLyrics(combinedLyrics, p.after));
-      const have = countCleanOccurrences(words, p.after);
+      const have = countSungOccurrences(words, p.after, need);
       items.push({ kind: 'prior', after: p.after, need, have, beforeLeft: 0, ok: have >= need });
     }
     return { items, ok: items.every((it) => it.ok) };

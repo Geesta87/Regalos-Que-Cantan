@@ -253,7 +253,7 @@ serve(async (req) => {
         fixTrimAtS: Number(form.get('fixTrimAtS')) > 0 ? Number(form.get('fixTrimAtS')) : null,
       };
 
-      const { error: upErr } = await admin.from('song_fix_requests').update({
+      const { data: upRows, error: upErr } = await admin.from('song_fix_requests').update({
         candidate_audio_url: publicUrl,
         candidate_lyrics: form.get('fullLyrics') ? String(form.get('fullLyrics')) : null,
         candidate_summary: form.get('summary') ? String(form.get('summary')) : null,
@@ -262,8 +262,9 @@ serve(async (req) => {
         status: 'awaiting_approval',
         worked_by: actor,
         staged_at: new Date().toISOString(),
-      }).eq('id', requestId);
+      }).eq('id', requestId).in('status', OPEN_STATUSES).select('id'); // never stage onto a released ('done') request — that resurrects it for a second release
       if (upErr) return json({ success: false, error: upErr.message }, 500);
+      if (!upRows?.length) return json({ success: false, error: 'This request was already resolved — nothing to stage onto.' }, 409);
       return json({ success: true, candidate_audio_url: publicUrl });
     }
 
@@ -593,7 +594,7 @@ serve(async (req) => {
       const publicUrl = await hostAudio(admin, id, bytes);
 
       const corrections = Array.isArray(body.corrections) ? body.corrections : null;
-      const { error } = await admin.from('song_fix_requests').update({
+      const { data: srRows, error } = await admin.from('song_fix_requests').update({
         candidate_audio_url: publicUrl,
         candidate_lyrics: body.fullLyrics || null,
         candidate_summary: body.summary || null,
@@ -610,8 +611,9 @@ serve(async (req) => {
         status: 'awaiting_approval',
         worked_by: actor,
         staged_at: new Date().toISOString(),
-      }).eq('id', id);
+      }).eq('id', id).in('status', OPEN_STATUSES).select('id'); // never stage onto a released request
       if (error) return json({ success: false, error: error.message }, 500);
+      if (!srRows?.length) return json({ success: false, error: 'This request was already resolved — nothing to stage onto.' }, 409);
       return json({ success: true, candidate_audio_url: publicUrl });
     }
 
@@ -716,13 +718,14 @@ serve(async (req) => {
     if (action === 'reject') {
       const id = body.request_id;
       if (!id) return json({ success: false, error: 'request_id required' }, 400);
-      const { error } = await admin.from('song_fix_requests').update({
+      const { data: rjRows, error } = await admin.from('song_fix_requests').update({
         status: 'rejected',
         approved_by: actor,
         reject_reason: body.reason ? String(body.reason).slice(0, 500) : null,
         resolved_at: new Date().toISOString(),
-      }).eq('id', id);
+      }).eq('id', id).neq('status', 'done').select('id'); // a released fix is history — rejecting it now would rewrite it
       if (error) return json({ success: false, error: error.message }, 500);
+      if (!rjRows?.length) return json({ success: false, error: 'Already released — cannot reject.' }, 409);
       return json({ success: true });
     }
 

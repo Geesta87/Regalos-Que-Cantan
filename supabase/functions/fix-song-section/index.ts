@@ -151,7 +151,12 @@ function normalizeCustomLyrics(lyrics: string): string {
 
 function englishifyLyricsMarkers(lyrics: string): string {
   if (!lyrics) return lyrics;
-  return normalizeCustomLyrics(stripSpokenProsodyCue(lyrics))
+  // ORDER MATTERS (2026-08-17): translate the section markers BEFORE the
+  // prosody strip. stripSpokenProsodyCue deletes any [lowercase...] tag, which
+  // included customer-typed [coro]/[verso 1] — the /gi translators below never
+  // saw them, the sheet went to Suno untagged, and untagged sheets loop to ~8
+  // minutes (the Mariela 62fd68ed class, reachable through this side door).
+  return stripSpokenProsodyCue(normalizeCustomLyrics(lyrics)
     .replace(/\[Verso Final\]/gi, '[Final Verse]')
     .replace(/\[Verso (\d+)\]/gi, '[Verse $1]')
     .replace(/\[Verso\]/gi, '[Verse]')
@@ -159,7 +164,7 @@ function englishifyLyricsMarkers(lyrics: string): string {
     .replace(/\[Coro\]/gi, '[Chorus]')
     .replace(/\[Puente\]/gi, '[Bridge]')
     .replace(/\[Pre-Coro\]/gi, '[Pre-Chorus]')
-    .replace(/\[Hablado\]/gi, '[Spoken Word]');
+    .replace(/\[Hablado\]/gi, '[Spoken Word]'));
 }
 
 // Gender + Spanish-language locks, same construction regenerate-paid-song-kie
@@ -1468,7 +1473,11 @@ Deno.serve(async (req) => {
     // browser splice on the frontend if this errors.
     if (action === 'splice') {
       if (!INHOUSE_RENDERER_URL) return json({ ok: false, error: 'INHOUSE_RENDERER_URL not configured' });
-      const mode = body?.mode === 'section' ? 'section' : body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : 'line';
+      // WHOLE TAKES ONLY (owner rule): the retired 'line'/'section' splices are
+      // no longer reachable — and an unknown mode is an error, never a default
+      // into the most invasive surgery.
+      const mode = body?.mode === 'rehost' ? 'rehost' : body?.mode === 'trim' ? 'trim' : null;
+      if (!mode) return json({ ok: false, error: "splice mode must be 'trim' or 'rehost' — mid-song splicing is retired (whole-takes rule)" });
       const spec: Record<string, unknown> = {
         mode,
         pristine_url: body?.pristineUrl,
