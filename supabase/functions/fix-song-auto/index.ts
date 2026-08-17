@@ -367,6 +367,25 @@ function countCleanOccurrences(words: W[], phrase: string): number {
   }
   return count;
 }
+// Presence counting with elision tolerance — mirror of the browser helper and
+// of auditStructure's glue loop: Whisper merges elided pairs into one word and
+// the strict counter reads a sung line as absent. Presence only; absence
+// checks stay strict.
+function countSungOccurrences(words: W[], phrase: string, need = 1): number {
+  let c = countCleanOccurrences(words, phrase);
+  if (c >= need) return c;
+  const toks = String(phrase).split(/s+/).filter(Boolean);
+  for (let i = 0; i + 1 < toks.length && c < need; i++) {
+    const a = toks[i], b = toks[i + 1];
+    const variants = [a + b];
+    if (a[a.length - 1] === b[0]) variants.push(a + b.slice(1));
+    for (const g of variants) {
+      c = Math.max(c, countCleanOccurrences(words, [...toks.slice(0, i), g, ...toks.slice(i + 2)].join(" ")));
+      if (c >= need) break;
+    }
+  }
+  return c;
+}
 function timesInLyrics(lyrics: string, line: string): number {
   const normText = (s: string) => String(s || '').replace(/\r\n/g, '\n').toLowerCase().replace(/\s+/g, ' ').trim();
   const hay = normText(lyrics); const needle = normText(line);
@@ -391,7 +410,7 @@ function evalChecklist(words: W[], changes: any[], combinedLyrics: string, prior
   for (const c of changes || []) {
     if (!c?.after) continue;
     const need = Math.max(1, timesInLyrics(combinedLyrics, c.after));
-    const have = countCleanOccurrences(words, c.after);
+    const have = countSungOccurrences(words, c.after, need);
     if (have < need) return { ok: false, fail: `cantó "${c.after}" ${have}/${need} veces` };
     // Stylization-only change: before/after collapse to the same sung tokens, so
     // demanding the old wording absent would contradict demanding the new one.
@@ -411,7 +430,7 @@ function evalChecklist(words: W[], changes: any[], combinedLyrics: string, prior
     if (!p?.after) continue;
     if ((changes || []).some((c: any) => c?.after === p.after)) continue;
     const need = Math.max(1, timesInLyrics(combinedLyrics, p.after));
-    if (countCleanOccurrences(words, p.after) < need) {
+    if (countSungOccurrences(words, p.after, need) < need) {
       return { ok: false, fail: `revirtió una corrección anterior: "${p.after}"` };
     }
   }
