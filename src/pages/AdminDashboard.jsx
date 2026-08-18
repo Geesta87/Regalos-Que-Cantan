@@ -18,11 +18,12 @@ import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
 import SeoCoachTab from '../components/admin/SeoCoachTab';
 import BannerQrTab from '../components/admin/BannerQrTab';
+import GiftSmsTab from '../components/admin/GiftSmsTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode, Gift } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -5176,6 +5177,11 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab('sms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'sms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <MessageSquare size={18} className={`flex-shrink-0 ${activeTab === 'sms' ? 'text-amber-400' : ''}`} /> SMS Messages
         </button>
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('giftsms')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'giftsms' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <Gift size={18} className={`flex-shrink-0 ${activeTab === 'giftsms' ? 'text-amber-400' : ''}`} /> Gift SMS
+        </button>
+        )}
         <button onClick={() => setActiveTab('training')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'training' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <span className={`flex-shrink-0 text-[17px] leading-none w-[18px] text-center ${activeTab === 'training' ? '' : 'grayscale'}`}>🎓</span> Bot Training
         </button>
@@ -5919,6 +5925,18 @@ export default function AdminDashboard() {
               >
                 💬 SMS Messages
               </button>
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('giftsms')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'giftsms'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                🎁 Gift SMS
+              </button>
+              )}
               <button
                 onClick={() => setActiveTab('training')}
                 className={`px-5 py-2.5 rounded-xl font-medium transition ${
@@ -7992,6 +8010,11 @@ export default function AdminDashboard() {
              banner (utm_campaign b-*), via the banner_qr_performance RPC.
              Numbers are a floor: cross-device buyers lose the tag. Admin-only. */
           <BannerQrTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'giftsms' && userRole === 'admin') ? (
+          /* Gift SMS — every $5 scheduled-surprise-text purchase: pending,
+             delivered-to-phone, failed. Reads gift_sms_admin_list (RLS keeps
+             the table itself locked from the anon key). Admin-only. */
+          <GiftSmsTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'recruit' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Recruit Partners — Affiliate Recruiter agent (discover + score +
              draft outreach + convert). Open to admin + assistant (Ivan runs
