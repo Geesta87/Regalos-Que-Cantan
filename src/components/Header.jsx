@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../App';
+import { CenzoMark } from './Cenzo';
 
 export default function Header({ variant = 'default' }) {
   const { navigateTo, clearSession, formData } = useContext(AppContext);
@@ -20,11 +21,7 @@ export default function Header({ variant = 'default' }) {
           onClick={handleLogoClick}
           className="flex items-center gap-3 group cursor-pointer hover:opacity-90 transition-opacity"
         >
-          <img 
-            src="/images/logo-small.png" 
-            alt="RegalosQueCantan" 
-            className="h-12 w-12 md:h-14 md:w-14 object-contain drop-shadow-lg"
-          />
+          <CenzoMark size={68} alt="RegalosQueCantan" className="drop-shadow-lg" />
           <h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight drop-shadow-lg">
             RegalosQueCantan
           </h2>
@@ -38,7 +35,7 @@ export default function Header({ variant = 'default' }) {
             title="English version — Gifts That Sing"
           >
             <span aria-hidden="true">🇺🇸</span>
-            <span>English</span>
+            <span className="hidden sm:inline">English</span>
           </a>
           <button className="glass-morphism text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-white/20 transition-all">
             Ingresar
@@ -56,11 +53,7 @@ export default function Header({ variant = 'default' }) {
           onClick={handleLogoClick}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity"
         >
-          <img 
-            src="/images/logo-small.png" 
-            alt="RegalosQueCantan" 
-            className="h-10 w-10 md:h-12 md:w-12 object-contain"
-          />
+          <CenzoMark size={56} alt="RegalosQueCantan" />
           <span className="font-display text-lg md:text-xl font-medium tracking-tight text-white">
             RegalosQueCantan
           </span>

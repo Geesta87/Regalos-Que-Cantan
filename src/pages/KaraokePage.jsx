@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Helmet } from 'react-helmet-async';
+import { CenzoMark } from '../components/Cenzo';
 
 // Public landing page for a song's KARAOKE (instrumental, no-voice) version.
 // Reached at /karaoke/<songId> — this is the link the owner shares with the
@@ -16,7 +17,7 @@ const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
   : null;
 
-const PINK = '#f20d80';
+const PINK = '#E4795A';
 
 export default function KaraokePage() {
   const songId = (window.location.pathname.match(/\/karaoke\/([^/?#]+)/) || [])[1] || '';
@@ -62,7 +63,7 @@ export default function KaraokePage() {
       className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-10"
       style={{
         background:
-          'radial-gradient(1200px 600px at 50% -10%, rgba(242,13,128,0.18), transparent 60%), linear-gradient(180deg, #1c1216 0%, #181114 55%, #120c0f 100%)',
+          'radial-gradient(1200px 600px at 50% -10%, rgba(228,121,90,0.18), transparent 60%), linear-gradient(180deg, #1c1216 0%, #1B1C48 55%, #120c0f 100%)',
         fontFamily: '"Be Vietnam Pro", sans-serif',
       }}
     >
@@ -72,7 +73,7 @@ export default function KaraokePage() {
       </Helmet>
 
       <a href="https://www.regalosquecantan.com" style={{ marginBottom: 22 }}>
-        <img src="/images/logo.png" alt="Regalos Que Cantan" style={{ height: 44, width: 'auto', opacity: 0.95 }} />
+        <CenzoMark size={52} alt="Regalos Que Cantan" />
       </a>
 
       <div
@@ -80,7 +81,7 @@ export default function KaraokePage() {
         style={{
           maxWidth: 540,
           background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(242,13,128,0.28)',
+          border: '1px solid rgba(228,121,90,0.28)',
           borderRadius: 24,
           padding: '32px 26px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.02) inset',
@@ -92,8 +93,8 @@ export default function KaraokePage() {
         <div
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: 'rgba(242,13,128,0.14)',
-            border: '1px solid rgba(242,13,128,0.45)',
+            background: 'rgba(228,121,90,0.14)',
+            border: '1px solid rgba(228,121,90,0.45)',
             color: '#ffd9ec', fontWeight: 700, fontSize: 12, letterSpacing: 0.5,
             padding: '6px 14px', borderRadius: 999, marginBottom: 18, textTransform: 'uppercase',
           }}
@@ -136,7 +137,7 @@ export default function KaraokePage() {
                 background: `linear-gradient(135deg, ${PINK}, #ff5aa9)`,
                 color: '#fff', fontWeight: 800, fontSize: 16,
                 borderRadius: 16, textDecoration: 'none',
-                boxShadow: '0 10px 28px rgba(242,13,128,0.4)',
+                boxShadow: '0 10px 28px rgba(228,121,90,0.4)',
               }}
             >
               ⬇️ Descargar Pista Instrumental (MP3)

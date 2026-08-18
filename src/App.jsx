@@ -425,7 +425,7 @@ export default function App() {
   return (
     <HelmetProvider>
       <AppContext.Provider value={contextValue}>
-        <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors duration-300">
+        <div className="night-sky min-h-screen transition-colors duration-300">
           {/* Landing pages */}
           {currentPage === 'landing' && <LandingPage />}
           {currentPage === 'landing_v2' && <LandingPageV2 />}

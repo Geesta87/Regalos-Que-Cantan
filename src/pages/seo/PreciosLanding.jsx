@@ -9,6 +9,7 @@
 import React from 'react';
 import SEOHead, { generateOrganizationData, generateBreadcrumbData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
+import { CenzoSignature } from '../../components/Cenzo';
 
 const COMPARISON = [
   { name: 'Regalos Que Cantan (español, EE. UU.)', price: 'Desde $29.99 USD', note: 'Corrido, cumbia norteña, bachata, banda, balada y 20+ géneros. Letra hecha con tu historia, lista en minutos, con audio para compartir por WhatsApp.', highlight: true },
@@ -60,13 +61,13 @@ export default function PreciosLanding() {
       <div className="min-h-screen bg-landing-bg text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         {/* Hero */}
         <section className="relative py-20 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #0891B240 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #1F8C8640 0%, transparent 70%)' }} />
           <div className="relative max-w-4xl mx-auto text-center">
             <nav className="mb-10" aria-label="Breadcrumb">
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -115,7 +116,7 @@ export default function PreciosLanding() {
                 </div>
               ))}
             </div>
-            <p className="text-white/40 text-xs mt-4 text-center">Precios de otros servicios observados públicamente en agosto de 2026; pueden cambiar.</p>
+            <p className="text-white/55 text-xs mt-4 text-center">Precios de otros servicios observados públicamente en agosto de 2026; pueden cambiar.</p>
           </div>
         </section>
 
@@ -173,14 +174,15 @@ export default function PreciosLanding() {
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-2xl md:text-3xl font-bold mb-4 font-display">Pide la tuya</h2>
             <p className="text-white/60 mb-8">Cuéntanos la historia y nosotros la convertimos en canción, desde $29.99 USD.</p>
-            <a href="/create/occasion" className="inline-block px-10 py-4 rounded-full font-bold text-white" style={{ background: 'linear-gradient(90deg, #e11d74, #c026d3)', boxShadow: '0 4px 24px rgba(225,29,116,0.35)' }}>
+            <a href="/create/occasion" className="inline-block px-10 py-4 rounded-full font-bold text-white" style={{ background: 'linear-gradient(90deg, #C9603F, #B62463)', boxShadow: '0 4px 24px rgba(201,96,63,0.35)' }}>
               Crear mi canción — desde $29.99
             </a>
-            <p className="mt-6 text-sm text-white/40">
+            <p className="mt-6 text-sm text-white/55">
               ¿Buscas ideas de regalo? Mira <a href="/canciones-para-regalar" className="underline text-white/60">canciones para regalar</a>.
             </p>
           </div>
         </section>
+        <CenzoSignature className="justify-center my-8" />
       </div>
     </>
   );

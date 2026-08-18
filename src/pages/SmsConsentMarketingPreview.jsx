@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { CenzoMark } from '../components/Cenzo';
 
 export default function SmsConsentMarketingPreview() {
   const [phone, setPhone] = useState('');
@@ -15,7 +16,7 @@ export default function SmsConsentMarketingPreview() {
 
   return (
     <div style={{
-      background: '#0f0b0e',
+      background: '#1B1C48',
       color: 'white',
       minHeight: '100vh',
       fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -27,7 +28,7 @@ export default function SmsConsentMarketingPreview() {
 
       {/* Compliance review banner */}
       <div style={{
-        background: 'linear-gradient(90deg, #1e3a8a, #312e81)',
+        background: 'linear-gradient(90deg, #1e3a8a, #2B2D6B)',
         color: 'rgba(255,255,255,0.95)',
         padding: '12px 16px',
         fontSize: '13px',
@@ -54,12 +55,12 @@ export default function SmsConsentMarketingPreview() {
             style={{ height: '36px', width: '36px', objectFit: 'contain' }}
             onError={(e) => { e.target.style.display = 'none'; }}
           />
-          <span style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-0.01em' }}>
+          <CenzoMark size={44} /><span style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-0.01em' }}>
             RegalosQueCantan
           </span>
         </div>
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
-          🔒 Pago seguro <span style={{ color: 'rgba(255,255,255,0.35)' }}>(Secure payment)</span>
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
+          🔒 Pago seguro <span style={{ color: 'rgba(255,255,255,0.6)' }}>(Secure payment)</span>
         </div>
       </header>
 
@@ -70,14 +71,14 @@ export default function SmsConsentMarketingPreview() {
           margin: '0 0 6px',
           letterSpacing: '-0.01em'
         }}>
-          Confirmar tu pedido <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: 500 }}>(Confirm your order)</span>
+          Confirmar tu pedido <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: '16px', fontWeight: 500 }}>(Confirm your order)</span>
         </h1>
         <p style={{
           color: 'rgba(255,255,255,0.55)',
           fontSize: '14px',
           margin: '0 0 24px'
         }}>
-          Falta solo un paso para recibir tu canción personalizada. <em style={{ color: 'rgba(255,255,255,0.4)' }}>(One last step to receive your personalized song.)</em>
+          Falta solo un paso para recibir tu canción personalizada. <em style={{ color: 'rgba(255,255,255,0.65)' }}>(One last step to receive your personalized song.)</em>
         </p>
 
         {/* Order summary */}
@@ -97,7 +98,7 @@ export default function SmsConsentMarketingPreview() {
             borderRadius: '10px',
             overflow: 'hidden',
             flexShrink: 0,
-            background: 'linear-gradient(135deg, rgba(225,29,116,0.25), rgba(168,85,247,0.2))'
+            background: 'linear-gradient(135deg, rgba(201,96,63,0.25), rgba(142,144,232,0.2))'
           }}>
             <img
               src="/images/album-art/cumbia.jpg"
@@ -108,17 +109,17 @@ export default function SmsConsentMarketingPreview() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
-              Tu Canción Personalizada <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>(Your Personalized Song)</span>
+              Tu Canción Personalizada <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 400 }}>(Your Personalized Song)</span>
             </p>
             <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'rgba(255,255,255,0.55)' }}>
-              Cumbia Romántica · Versión 1 <span style={{ color: 'rgba(255,255,255,0.35)' }}>(Romantic Cumbia · Version 1)</span>
+              Cumbia Romántica · Versión 1 <span style={{ color: 'rgba(255,255,255,0.6)' }}>(Romantic Cumbia · Version 1)</span>
             </p>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <p style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#f74da6' }}>
+            <p style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#E7699F' }}>
               $29.99
             </p>
-            <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>
+            <p style={{ margin: '2px 0 0', fontSize: '11px', color: 'rgba(255,255,255,0.65)' }}>
               USD
             </p>
           </div>
@@ -133,7 +134,7 @@ export default function SmsConsentMarketingPreview() {
             fontSize: '14px',
             fontWeight: 600
           }}>
-            Correo electrónico <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>(Email)</span>
+            Correo electrónico <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 400 }}>(Email)</span>
           </label>
           <input
             type="email"
@@ -146,7 +147,7 @@ export default function SmsConsentMarketingPreview() {
               background: 'rgba(255,255,255,0.05)',
               border: '1.5px solid rgba(255,255,255,0.12)',
               borderRadius: '10px',
-              color: 'rgba(255,255,255,0.5)',
+              color: 'rgba(255,255,255,0.7)',
               fontSize: '15px',
               outline: 'none'
             }}
@@ -214,7 +215,7 @@ export default function SmsConsentMarketingPreview() {
                 width: '18px',
                 height: '18px',
                 flexShrink: 0,
-                accentColor: '#f74da6',
+                accentColor: '#E7699F',
                 cursor: 'pointer'
               }}
             />
@@ -227,13 +228,13 @@ export default function SmsConsentMarketingPreview() {
                 cursor: 'pointer'
               }}
             >
-              I agree to receive automated promotional and transactional text messages (SMS) from Regalos Que Cantan — order confirmations, song-ready delivery links, delivery status, customer-care responses, and occasional offers and discounts. Message frequency varies (up to a few per month). Message and data rates may apply. Reply STOP to cancel or HELP for help. Consent to receive promotional messages is not required to make a purchase. See our Privacy Policy (<a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/politica-de-privacidad</a>) and Terms of Service (<a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{ color: '#f74da6', textDecoration: 'underline' }}>regalosquecantan.com/terminos-de-servicio</a>).
+              I agree to receive automated promotional and transactional text messages (SMS) from Regalos Que Cantan — order confirmations, song-ready delivery links, delivery status, customer-care responses, and occasional offers and discounts. Message frequency varies (up to a few per month). Message and data rates may apply. Reply STOP to cancel or HELP for help. Consent to receive promotional messages is not required to make a purchase. See our Privacy Policy (<a href="/politica-de-privacidad" target="_blank" rel="noopener noreferrer" style={{ color: '#E7699F', textDecoration: 'underline' }}>regalosquecantan.com/politica-de-privacidad</a>) and Terms of Service (<a href="/terminos-de-servicio" target="_blank" rel="noopener noreferrer" style={{ color: '#E7699F', textDecoration: 'underline' }}>regalosquecantan.com/terminos-de-servicio</a>).
             </label>
           </div>
 
           <p style={{
             margin: '10px 0 0',
-            color: 'rgba(255,255,255,0.5)',
+            color: 'rgba(255,255,255,0.7)',
             fontSize: '12px',
             lineHeight: 1.5,
             fontStyle: 'italic'
@@ -249,14 +250,14 @@ export default function SmsConsentMarketingPreview() {
           style={{
             width: '100%',
             padding: '18px',
-            background: 'linear-gradient(90deg, #e11d74, #c026d3)',
+            background: 'linear-gradient(90deg, #C9603F, #B62463)',
             color: 'white',
             border: 'none',
             borderRadius: '12px',
             fontSize: '18px',
             fontWeight: 'bold',
             cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(225,29,116,0.4)'
+            boxShadow: '0 4px 20px rgba(201,96,63,0.4)'
           }}
         >
           Pagar $29.99 — Pay $29.99
@@ -266,10 +267,10 @@ export default function SmsConsentMarketingPreview() {
           <div style={{
             marginTop: '18px',
             padding: '14px 16px',
-            background: 'rgba(34,197,94,0.12)',
-            border: '1px solid rgba(34,197,94,0.35)',
+            background: 'rgba(67,194,186,0.12)',
+            border: '1px solid rgba(67,194,186,0.35)',
             borderRadius: '10px',
-            color: '#86efac',
+            color: '#A8E5E0',
             fontSize: '13px',
             lineHeight: 1.5
           }}>
@@ -283,12 +284,12 @@ export default function SmsConsentMarketingPreview() {
           marginTop: '24px',
           textAlign: 'center',
           fontSize: '12px',
-          color: 'rgba(255,255,255,0.4)',
+          color: 'rgba(255,255,255,0.65)',
           lineHeight: 1.6
         }}>
           Pago seguro procesado por Stripe · Garantía de satisfacción<br />
-          <span style={{ color: 'rgba(255,255,255,0.3)' }}>(Secure payment processed by Stripe · Satisfaction guarantee)</span><br />
-          ¿Preguntas? <span style={{ color: 'rgba(255,255,255,0.3)' }}>(Questions?)</span> <a href="mailto:hola@regalosquecantan.com" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>hola@regalosquecantan.com</a>
+          <span style={{ color: 'rgba(255,255,255,0.58)' }}>(Secure payment processed by Stripe · Satisfaction guarantee)</span><br />
+          ¿Preguntas? <span style={{ color: 'rgba(255,255,255,0.58)' }}>(Questions?)</span> <a href="mailto:hola@regalosquecantan.com" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>hola@regalosquecantan.com</a>
         </p>
       </main>
     </div>

@@ -2,6 +2,7 @@ import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import Header from '../components/Header';
 import ProgressBar from '../components/ProgressBar';
+import { CenzoGuide } from '../components/Cenzo';
 
 const voiceOptions = [
   {
@@ -9,16 +10,16 @@ const voiceOptions = [
     name: 'Voz Femenina',
     emoji: '👩‍🎤',
     description: 'Voz suave y emotiva',
-    gradient: 'from-pink-500 to-rose-500',
-    bgGradient: 'from-pink-500/20 to-rose-500/20'
+    gradient: 'from-magenta to-terra-deep',
+    bgGradient: 'from-magenta/20 to-terra-deep/20'
   },
   {
     id: 'male',
     name: 'Voz Masculina',
     emoji: '👨‍🎤',
     description: 'Voz fuerte y profunda',
-    gradient: 'from-blue-500 to-indigo-500',
-    bgGradient: 'from-blue-500/20 to-indigo-500/20'
+    gradient: 'from-anil to-anil',
+    bgGradient: 'from-anil/20 to-anil/20'
   },
 ];
 
@@ -38,7 +39,7 @@ export default function VoiceStep() {
   };
 
   return (
-    <div className="min-h-screen bg-background-light dark:bg-background-dark transition-colors">
+    <div className="night-sky min-h-screen transition-colors">
       <Header />
       
       <main className="max-w-2xl mx-auto px-6 py-12">
@@ -49,10 +50,11 @@ export default function VoiceStep() {
 
         {/* Title */}
         <div className="text-center mb-10">
-          <h1 className="text-3xl md:text-4xl font-black text-[#171612] dark:text-white mb-3">
+          <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
+          <h1 className="text-3xl md:text-4xl font-black text-white mb-3">
             ¿Qué tipo de voz prefieres?
           </h1>
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-ink-2">
             Elige la voz que mejor represente tu canción
           </p>
         </div>
@@ -66,7 +68,7 @@ export default function VoiceStep() {
               className={`w-full p-6 rounded-2xl border-2 transition-all duration-300 flex items-center gap-5 ${
                 selected === voice.id
                   ? `border-primary bg-gradient-to-r ${voice.bgGradient} shadow-lg scale-[1.02]`
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c3136] hover:border-primary/50 hover:shadow-md'
+                  : 'border-white/15 bg-forest hover:border-primary/50 hover:shadow-md'
               }`}
             >
               {/* Icon */}
@@ -77,11 +79,11 @@ export default function VoiceStep() {
               {/* Text */}
               <div className="flex-1 text-left">
                 <h3 className={`text-xl font-bold ${
-                  selected === voice.id ? 'text-primary' : 'text-[#171612] dark:text-white'
+                  selected === voice.id ? 'text-primary' : 'text-white'
                 }`}>
                   {voice.name}
                 </h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">
+                <p className="text-ink-2 text-sm">
                   {voice.description}
                 </p>
               </div>
@@ -90,7 +92,7 @@ export default function VoiceStep() {
               <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
                 selected === voice.id
                   ? 'border-primary bg-primary text-white'
-                  : 'border-gray-300 dark:border-gray-600'
+                  : 'border-white/15'
               }`}>
                 {selected === voice.id && (
                   <span className="material-symbols-outlined text-lg">check</span>
@@ -102,7 +104,7 @@ export default function VoiceStep() {
 
         {/* Tip */}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-8">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-ink-2">
             <span className="text-primary font-semibold">💡 Tip:</span> Para canciones románticas, la voz del género opuesto al destinatario suele funcionar mejor. Por ejemplo, voz masculina para una mujer.
           </p>
         </div>
@@ -111,7 +113,7 @@ export default function VoiceStep() {
         <div className="flex gap-4">
           <button
             onClick={() => navigateTo('names')}
-            className="flex-1 py-4 rounded-xl font-semibold border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="flex-1 py-4 rounded-xl font-semibold border-2 border-white/15 text-ink-2 hover:bg-white/5 transition-colors"
           >
             ← Atrás
           </button>
@@ -121,7 +123,7 @@ export default function VoiceStep() {
             className={`flex-[2] py-4 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
               selected
                 ? 'bg-primary hover:bg-primary-dark shadow-lg shadow-primary/30 hover:shadow-xl hover:scale-[1.02]'
-                : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                : 'bg-white/20 cursor-not-allowed'
             }`}
           >
             Continuar

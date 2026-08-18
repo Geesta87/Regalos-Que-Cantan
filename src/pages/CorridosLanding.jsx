@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../App';
 import SocialProofToast from '../components/SocialProofToast';
+import { CenzoMark, CenzoSignature } from '../components/Cenzo';
 
 // ============================================
 // CORRIDO SAMPLE SONGS
@@ -86,7 +87,7 @@ function StarRating({ rating }) {
   return (
     <div className="flex gap-0.5">
       {[...Array(5)].map((_, i) => (
-        <span key={i} className={`text-lg ${i < rating ? 'text-emerald-400' : 'text-white/20'}`}>★</span>
+        <span key={i} className={`text-lg ${i < rating ? 'text-turquesa' : 'text-white/55'}`}>★</span>
       ))}
     </div>
   );
@@ -98,7 +99,7 @@ function FAQItem({ question, answer, isOpen, onClick }) {
     <div className="border border-white/10 rounded-xl overflow-hidden">
       <button onClick={onClick} className="w-full p-5 flex items-center justify-between text-left bg-white/[0.02] hover:bg-white/[0.05] transition-colors">
         <span className="font-semibold text-white pr-4">{question}</span>
-        <span className={`material-symbols-outlined text-emerald-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}>expand_more</span>
+        <span className={`material-symbols-outlined text-turquesa transition-transform ${isOpen ? 'rotate-180' : ''}`}>expand_more</span>
       </button>
       {isOpen && <div className="px-5 pb-5 text-white/70">{answer}</div>}
     </div>
@@ -167,7 +168,7 @@ export default function CorridosLanding() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+    <div className="night-sky min-h-screen flex flex-col">
       <style>{`
         @keyframes btnGlow {
           0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.4), 0 0 40px rgba(16,185,129,0.2); }
@@ -180,16 +181,16 @@ export default function CorridosLanding() {
       {/* Urgency bar removed for cleaner look */}
 
       {/* ==================== HEADER ==================== */}
-      <header className="bg-[#0a0a0a]/80 backdrop-blur-md py-4 px-6 md:px-12 border-b border-white/5">
+      <header className="bg-[#191A45]/80 backdrop-blur-md py-4 px-6 md:px-12 border-b border-white/5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="cursor-pointer" onClick={() => navigateTo('landing')}>
-            <h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">
+            <CenzoMark size={44} /><h2 className="font-display text-white text-xl md:text-2xl font-medium tracking-tight">
               RegalosQueCantan
             </h2>
           </div>
           <button
             onClick={handleCreateCorrido}
-            className="bg-emerald-500 hover:bg-emerald-400 text-black px-5 py-2 rounded-full text-sm font-bold transition-all"
+            className="bg-turquesa hover:bg-turquesa text-black px-5 py-2 rounded-full text-sm font-bold transition-all"
           >
             🎺 Crear Mi Corrido
           </button>
@@ -209,7 +210,7 @@ export default function CorridosLanding() {
         <div className="relative z-20 container mx-auto px-6 text-center max-w-4xl" style={{ padding: '100px 24px 80px' }}>
           <h1 className="text-white text-4xl md:text-6xl lg:text-7xl font-black leading-tight tracking-tighter font-display mb-6" style={{ textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
             Regala Un Corrido <br />
-            <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-emerald-200 to-emerald-400">
+            <span className="italic text-transparent bg-clip-text bg-gradient-to-r from-turquesa via-emerald-200 to-turquesa">
               Personalizado
             </span>
           </h1>
@@ -221,7 +222,7 @@ export default function CorridosLanding() {
 
           <button
             onClick={handleCreateCorrido}
-            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-emerald-600 text-white text-lg font-bold shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 animate-[btnGlow_2s_ease-in-out_infinite]"
+            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-10 bg-primary text-lg font-bold shadow-2xl shadow-primary/30 transition-all hover:scale-105 active:scale-95 animate-[btnGlow_2s_ease-in-out_infinite]"
             style={{ animation: 'btnGlow 2s ease-in-out infinite' }}
           >
             <span className="relative z-10">🎺 Crear Mi Corrido — $29.99</span>
@@ -229,30 +230,30 @@ export default function CorridosLanding() {
           </button>
 
           <div className="mt-5 flex flex-wrap justify-center items-center gap-4">
-            <span className="inline-flex items-center gap-2 bg-green-500 text-white rounded-full px-5 py-2 text-xs font-bold">
+            <span className="inline-flex items-center gap-2 bg-turquesa text-white rounded-full px-5 py-2 text-xs font-bold">
               ⚡ Listo en ~3 minutos · Entrega instantánea
             </span>
             <span className="text-sm text-white/60">
-              ✨ <span className="line-through text-white/30">$79.99</span> <span className="text-white font-extrabold text-base">$29.99</span> · Oferta por tiempo limitado · Preview gratis ✨
+              ✨ <span className="line-through text-white/50">$79.99</span> <span className="text-white font-extrabold text-base">$29.99</span> · Oferta por tiempo limitado · Preview gratis ✨
             </span>
           </div>
 
-          <p className="mt-3 text-white/40 text-sm">
+          <p className="mt-3 text-white/55 text-sm">
             ✓ 2 versiones únicas • ✓ Letra personalizada • ✓ Descarga MP3
           </p>
         </div>
       </section>
 
       {/* ==================== 2. CORRIDO STYLES PICKER ==================== */}
-      <section ref={styleRef} className="py-16 px-6 bg-[#0f0f0f]">
+      <section ref={styleRef} className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           {/* Step indicator */}
           <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 text-black font-black text-lg">1</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-turquesa text-black font-black text-lg">1</div>
             <div className="h-[2px] w-12 bg-white/10"></div>
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">2</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/50 font-bold text-lg">2</div>
             <div className="h-[2px] w-12 bg-white/10"></div>
-            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/30 font-bold text-lg">3</div>
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/50 font-bold text-lg">3</div>
           </div>
 
           <div className={`text-center mb-8 transition-all duration-300 ${styleError && !selectedStyle ? 'animate-pulse' : ''}`}>
@@ -288,22 +289,22 @@ export default function CorridosLanding() {
                 }}
                 className={`relative rounded-2xl p-5 text-center transition-all duration-300 border-2 ${
                   selectedStyle?.id === style.id
-                    ? 'border-emerald-400 bg-emerald-500/15 scale-[1.03] shadow-xl shadow-emerald-500/25 ring-2 ring-emerald-400/30'
+                    ? 'border-turquesa bg-turquesa/15 scale-[1.03] shadow-xl shadow-turquesa/25 ring-2 ring-turquesa/30'
                     : styleError && !selectedStyle
-                    ? 'border-red-500/40 bg-white/[0.03] hover:border-emerald-500/40 hover:bg-white/[0.06]'
-                    : 'border-white/10 bg-white/[0.03] hover:border-emerald-500/40 hover:bg-white/[0.06]'
+                    ? 'border-red-500/40 bg-white/[0.03] hover:border-turquesa/40 hover:bg-white/[0.06]'
+                    : 'border-white/10 bg-white/[0.03] hover:border-turquesa/40 hover:bg-white/[0.06]'
                 }`}
               >
                 {style.popular && (
-                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-turquesa text-black text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg">
                     POPULAR
                   </div>
                 )}
                 <div className="text-4xl mb-2">{style.emoji}</div>
                 <div className="text-white font-bold text-base">{style.name}</div>
-                <div className="text-white/40 text-xs mt-1 leading-tight">{style.desc}</div>
+                <div className="text-white/55 text-xs mt-1 leading-tight">{style.desc}</div>
                 {selectedStyle?.id === style.id ? (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-emerald-400 rounded-full flex items-center justify-center shadow-lg">
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-turquesa rounded-full flex items-center justify-center shadow-lg">
                     <span className="text-black text-sm font-bold">✓</span>
                   </div>
                 ) : (
@@ -318,8 +319,8 @@ export default function CorridosLanding() {
               onClick={handleCreateCorrido}
               className={`inline-flex items-center gap-2 font-bold px-10 py-4 rounded-full text-lg transition-all shadow-lg ${
                 selectedStyle
-                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black hover:scale-105 active:scale-95 shadow-emerald-500/30'
-                  : 'bg-white/10 text-white/40 cursor-default'
+                  ? 'bg-turquesa hover:bg-turquesa text-black hover:scale-105 active:scale-95 shadow-turquesa/30'
+                  : 'bg-white/10 text-white/55 cursor-default'
               }`}
             >
               {selectedStyle
@@ -332,10 +333,10 @@ export default function CorridosLanding() {
       </section>
 
       {/* ==================== 3. AUDIO SAMPLES ==================== */}
-      <section className="py-16 px-6 bg-[#0a0a0a]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">🎧 Escucha Ejemplos</span>
+            <span className="text-turquesa uppercase tracking-[0.3em] text-xs font-bold">🎧 Escucha Ejemplos</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">
               Así Suenan Nuestros Corridos
             </h2>
@@ -350,7 +351,7 @@ export default function CorridosLanding() {
                 <div
                   key={sample.id}
                   className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
-                    isPlaying ? 'border-emerald-400/60 bg-emerald-500/10' : 'border-white/10 bg-white/[0.03] hover:border-emerald-500/30'
+                    isPlaying ? 'border-turquesa/60 bg-turquesa/10' : 'border-white/10 bg-white/[0.03] hover:border-turquesa/30'
                   }`}
                 >
                   <div className="p-5">
@@ -359,7 +360,7 @@ export default function CorridosLanding() {
                       <button
                         onClick={() => isPlaying ? handlePause() : handlePlay(sample)}
                         className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                          isPlaying ? 'bg-emerald-500 scale-110' : 'bg-white/10 hover:bg-emerald-500/30'
+                          isPlaying ? 'bg-turquesa scale-110' : 'bg-white/10 hover:bg-turquesa/30'
                         }`}
                       >
                         <span className="material-symbols-outlined text-white text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -371,36 +372,36 @@ export default function CorridosLanding() {
                           <span className="text-xl">{sample.emoji}</span>
                           <h4 className="font-bold text-white text-sm truncate">{sample.title}</h4>
                         </div>
-                        <p className="text-emerald-400 text-xs font-semibold mt-0.5">{sample.tag}</p>
+                        <p className="text-turquesa text-xs font-semibold mt-0.5">{sample.tag}</p>
                       </div>
                     </div>
                     {/* Progress bar */}
                     <div className="mt-4 flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-400 rounded-full transition-all duration-200" style={{ width: `${progress}%` }} />
+                        <div className="h-full bg-turquesa rounded-full transition-all duration-200" style={{ width: `${progress}%` }} />
                       </div>
-                      <span className="text-white/40 text-[10px] font-mono">{isPlaying ? `${Math.floor(currentTime)}s` : '0:35'}</span>
+                      <span className="text-white/55 text-[10px] font-mono">{isPlaying ? `${Math.floor(currentTime)}s` : '0:35'}</span>
                     </div>
                   </div>
                   {isPlaying && (
-                    <div className="bg-emerald-500/10 px-5 py-2 flex items-center gap-2 border-t border-emerald-500/20">
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                      <span className="text-emerald-400 text-xs font-bold">Reproduciendo</span>
+                    <div className="bg-turquesa/10 px-5 py-2 flex items-center gap-2 border-t border-turquesa/20">
+                      <span className="w-2 h-2 bg-turquesa rounded-full animate-pulse" />
+                      <span className="text-turquesa text-xs font-bold">Reproduciendo</span>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-          <p className="text-center text-white/30 text-xs mt-4">* Nombres cambiados por privacidad</p>
+          <p className="text-center text-white/50 text-xs mt-4">* Nombres cambiados por privacidad</p>
         </div>
       </section>
 
       {/* ==================== 4. HOW IT WORKS ==================== */}
-      <section className="py-16 px-6 bg-[#0f0f0f]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">📝 Cómo Funciona</span>
+            <span className="text-turquesa uppercase tracking-[0.3em] text-xs font-bold">📝 Cómo Funciona</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">3 Pasos Simples</h2>
           </div>
 
@@ -411,10 +412,10 @@ export default function CorridosLanding() {
               { icon: '🎵', step: '3', title: 'Recibe Tu Corrido', desc: 'En ~3 min recibes 2 versiones únicas en MP3 de alta calidad.' }
             ].map((item) => (
               <div key={item.step} className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-4xl">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-turquesa/15 border border-turquesa/20 flex items-center justify-center text-4xl">
                   {item.icon}
                 </div>
-                <div className="text-emerald-400 font-bold text-sm mb-2">PASO {item.step}</div>
+                <div className="text-turquesa font-bold text-sm mb-2">PASO {item.step}</div>
                 <h3 className="text-white text-xl font-bold mb-2">{item.title}</h3>
                 <p className="text-white/60">{item.desc}</p>
               </div>
@@ -424,7 +425,7 @@ export default function CorridosLanding() {
           <div className="text-center mt-10">
             <button
               onClick={handleCreateCorrido}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-bold px-10 py-4 rounded-full text-lg transition-all hover:scale-105 active:scale-95 shadow-xl shadow-emerald-500/20"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-turquesa-deep to-turquesa text-white font-bold px-10 py-4 rounded-full text-lg transition-all hover:scale-105 active:scale-95 shadow-xl shadow-turquesa/20"
             >
               🎺 Crear Mi Corrido
             </button>
@@ -433,21 +434,21 @@ export default function CorridosLanding() {
       </section>
 
       {/* ==================== 5. TESTIMONIALS ==================== */}
-      <section className="py-16 px-6 bg-[#0a0a0a]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">⭐ Testimonios</span>
+            <span className="text-turquesa uppercase tracking-[0.3em] text-xs font-bold">⭐ Testimonios</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">Lo Que Dicen Nuestros Clientes</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
-              <div key={i} className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 hover:border-emerald-500/30 transition-all">
+              <div key={i} className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 hover:border-turquesa/30 transition-all">
                 <StarRating rating={t.rating} />
                 <p className="text-white/90 mt-4 mb-6 italic leading-relaxed">"{t.text}"</p>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <span className="text-emerald-400 font-bold">{t.name[0]}</span>
+                  <div className="w-10 h-10 rounded-full bg-turquesa/20 flex items-center justify-center">
+                    <span className="text-turquesa font-bold">{t.name[0]}</span>
                   </div>
                   <div>
                     <p className="text-white font-semibold">{t.name}</p>
@@ -461,23 +462,23 @@ export default function CorridosLanding() {
       </section>
 
       {/* ==================== 6. PRICING ==================== */}
-      <section className="py-16 px-6 bg-[#0f0f0f]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-md mx-auto">
           <div className="text-center mb-8">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">💰 Precio</span>
+            <span className="text-turquesa uppercase tracking-[0.3em] text-xs font-bold">💰 Precio</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">El Regalo Más Chingón</h2>
           </div>
 
-          <div className="bg-white/[0.03] border-2 border-emerald-500/50 rounded-3xl p-8 text-center relative overflow-hidden">
-            <div className="absolute top-4 -right-8 bg-emerald-500 text-black text-xs font-black px-10 py-1 rotate-45">
+          <div className="bg-white/[0.03] border-2 border-turquesa/50 rounded-3xl p-8 text-center relative overflow-hidden">
+            <div className="absolute top-4 -right-8 bg-turquesa text-black text-xs font-black px-10 py-1 rotate-45">
               🔥 62% OFF
             </div>
 
             <div className="text-5xl mb-3">🎺</div>
             <div className="mb-6">
-              <span className="text-white/40 line-through text-2xl">$79.99</span>
+              <span className="text-white/55 line-through text-2xl">$79.99</span>
               <div className="text-white text-5xl font-black">$29.99</div>
-              <span className="text-emerald-400 text-sm font-semibold">Precio por tiempo limitado • Ahorra $50</span>
+              <span className="text-turquesa text-sm font-semibold">Precio por tiempo limitado • Ahorra $50</span>
             </div>
 
             <div className="space-y-3 text-left mb-8">
@@ -490,7 +491,7 @@ export default function CorridosLanding() {
                 'Estilo que tú elijas'
               ].map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-white/80">
-                  <span className="material-symbols-outlined text-green-400">check_circle</span>
+                  <span className="material-symbols-outlined text-turquesa">check_circle</span>
                   <span>{item}</span>
                 </div>
               ))}
@@ -498,7 +499,7 @@ export default function CorridosLanding() {
 
             <button
               onClick={handleCreateCorrido}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-full h-14 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-full h-14 bg-gradient-to-r from-turquesa-deep to-turquesa text-white text-lg font-bold shadow-xl transition-all hover:scale-105 active:scale-95"
             >
               🎺 Crear Mi Corrido
             </button>
@@ -510,17 +511,17 @@ export default function CorridosLanding() {
           </div>
 
           {/* Bundle upsell hint */}
-          <div className="mt-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
-            <p className="text-emerald-400 text-sm font-bold">🎁 ¿Quieres 2 corridos? Llévate ambos por $39.99 y ahorra $20</p>
+          <div className="mt-4 bg-turquesa/10 border border-turquesa/20 rounded-2xl p-4 text-center">
+            <p className="text-turquesa text-sm font-bold">🎁 ¿Quieres 2 corridos? Llévate ambos por $39.99 y ahorra $20</p>
           </div>
         </div>
       </section>
 
       {/* ==================== 7. FAQ ==================== */}
-      <section className="py-16 px-6 bg-[#0a0a0a]">
+      <section className="py-16 px-6 bg-[#191A45]">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-12">
-            <span className="text-emerald-400 uppercase tracking-[0.3em] text-xs font-bold">❓ Preguntas Frecuentes</span>
+            <span className="text-turquesa uppercase tracking-[0.3em] text-xs font-bold">❓ Preguntas Frecuentes</span>
             <h2 className="text-white text-3xl md:text-4xl font-black mt-3">¿Tienes Dudas?</h2>
           </div>
           <div className="space-y-3">
@@ -532,7 +533,7 @@ export default function CorridosLanding() {
       </section>
 
       {/* ==================== 8. FINAL CTA ==================== */}
-      <section className="py-20 px-6 bg-gradient-to-b from-[#0f0f0f] to-[#0a0a0a] relative overflow-hidden">
+      <section className="py-20 px-6 bg-gradient-to-b from-[#191A45] to-[#191A45] relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none opacity-15">
           <div className="absolute top-10 left-[20%] text-6xl">🎺</div>
           <div className="absolute bottom-10 right-[20%] text-6xl">🔥</div>
@@ -550,28 +551,29 @@ export default function CorridosLanding() {
 
           <button
             onClick={handleCreateCorrido}
-            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-xl font-bold shadow-2xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95"
+            className="group relative inline-flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-16 px-12 bg-gradient-to-r from-turquesa-deep to-turquesa text-white text-xl font-bold shadow-2xl shadow-turquesa/30 transition-all hover:scale-105 active:scale-95"
           >
             <span className="relative z-10">🎺 Crear Mi Corrido — $29.99</span>
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity" />
           </button>
 
-          <p className="mt-6 text-emerald-400 font-semibold flex items-center justify-center gap-2">
+          <p className="mt-6 text-turquesa font-semibold flex items-center justify-center gap-2">
             ⚡ Listo en ~3 minutos · +500 corridos creados
           </p>
         </div>
       </section>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="py-8 px-6 bg-[#0a0a0a] border-t border-white/5">
+      <footer className="py-8 px-6 bg-[#191A45] border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/50 text-lg">RegalosQueCantan</div>
           <div className="flex gap-6">
-            <a className="text-white/30 hover:text-emerald-400 transition-colors text-sm" href="/politica-de-privacidad">Privacidad</a>
-            <a className="text-white/30 hover:text-emerald-400 transition-colors text-sm" href="/terminos-de-servicio">Términos</a>
-            <a className="text-white/30 hover:text-emerald-400 transition-colors text-sm" href="#">Contacto</a>
+            <a className="text-white/50 hover:text-turquesa transition-colors text-sm" href="/politica-de-privacidad">Privacidad</a>
+            <a className="text-white/50 hover:text-turquesa transition-colors text-sm" href="/terminos-de-servicio">Términos</a>
+            <a className="text-white/50 hover:text-turquesa transition-colors text-sm" href="#">Contacto</a>
           </div>
-          <p className="text-white/20 text-sm">© 2026 RegalosQueCantan</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/55 text-sm">© 2026 RegalosQueCantan</p>
         </div>
       </footer>
     </div>

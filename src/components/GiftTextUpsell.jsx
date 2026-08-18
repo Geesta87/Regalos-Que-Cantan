@@ -16,8 +16,8 @@ import { guessTimezoneFromPhone, zonedTimeToUtc, tzLabel, format12, tzOptionsWit
 //   supabaseUrl — VITE_SUPABASE_URL
 //   anonKey     — VITE_SUPABASE_ANON_KEY
 
-const PINK = '#f20d80';
-const PINK_DARK = '#c70a64';
+const PINK = '#E4795A';
+const PINK_DARK = '#B44F35';
 
 function todayLocalISODate() {
   const d = new Date();
@@ -52,10 +52,10 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   // ---- Already scheduled (returned from Stripe) → confirmation card ----
   if (justScheduled) {
     return (
-      <div style={{ background: '#150a12', borderRadius: '16px', padding: '22px 18px', marginBottom: '24px', border: `1px solid rgba(242,13,128,0.3)`, textAlign: 'center' }}>
+      <div style={{ background: '#241B3A', borderRadius: '16px', padding: '22px 18px', marginBottom: '24px', border: `1px solid rgba(228,121,90,0.3)`, textAlign: 'center' }}>
         <div style={{ fontSize: '40px', marginBottom: '8px' }}>🎁</div>
-        <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#ffd6e8', margin: '0 0 6px' }}>¡Envío programado!</h3>
-        <p style={{ fontSize: '14px', color: '#e7b9cf', margin: 0, lineHeight: 1.5 }}>
+        <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#F7E3D6', margin: '0 0 6px' }}>¡Envío programado!</h3>
+        <p style={{ fontSize: '14px', color: '#E3C3B2', margin: 0, lineHeight: 1.5 }}>
           Le enviaremos la canción por mensaje el día y la hora que elegiste. 💕
         </p>
       </div>
@@ -113,7 +113,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   const inputStyle = {
     width: '100%', padding: '10px 12px', borderRadius: '10px',
     background: '#0f0a12', color: '#fff',
-    border: '1px solid rgba(242,13,128,0.3)', fontSize: '15px',
+    border: '1px solid rgba(228,121,90,0.3)', fontSize: '15px',
     fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '12px',
   };
   const labelStyle = { fontSize: '12px', color: '#c98fab', display: 'block', marginBottom: '4px' };
@@ -121,30 +121,30 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
   return (
     <>
       {/* ===== PINK HERO CARD ===== */}
-      <div style={{ background: '#150a12', borderRadius: '16px', padding: '18px', marginBottom: '24px', border: '1px solid rgba(242,13,128,0.25)' }}>
-        <div style={{ height: '2px', borderRadius: '2px', marginBottom: '16px', background: `linear-gradient(90deg, transparent, ${PINK}, #f97bb6, ${PINK}, transparent)` }} />
+      <div style={{ background: '#241B3A', borderRadius: '16px', padding: '18px', marginBottom: '24px', border: '1px solid rgba(228,121,90,0.25)' }}>
+        <div style={{ height: '2px', borderRadius: '2px', marginBottom: '16px', background: `linear-gradient(90deg, transparent, ${PINK}, #F2A0C2, ${PINK}, transparent)` }} />
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '18px' }}>
           <div style={{ width: '54px', height: '54px', minWidth: '54px', borderRadius: '16px', background: `linear-gradient(135deg, ${PINK}, ${PINK_DARK})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px' }}>🎁</div>
           <div>
-            <h3 style={{ fontSize: '22px', fontWeight: 900, margin: '0 0 6px', color: '#ffd6e8', lineHeight: 1.15 }}>
+            <h3 style={{ fontSize: '22px', fontWeight: 900, margin: '0 0 6px', color: '#F7E3D6', lineHeight: 1.15 }}>
               No se la mandes tú... que le llegue solita el día perfecto
             </h3>
-            <p style={{ fontSize: '14px', color: '#e7b9cf', lineHeight: 1.45, margin: '0 0 6px' }}>
+            <p style={{ fontSize: '14px', color: '#E3C3B2', lineHeight: 1.45, margin: '0 0 6px' }}>
               Se la enviamos por mensaje el día y la hora que elijas — con tu nombre 💕
             </p>
-            <p style={{ fontSize: '12px', color: '#f97bb6', fontWeight: 600, margin: 0 }}>💝 El detalle que nadie se espera</p>
+            <p style={{ fontSize: '12px', color: '#F2A0C2', fontWeight: 600, margin: 0 }}>💝 El detalle que nadie se espera</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, rgba(242,13,128,0.15), rgba(199,10,100,0.08))', border: '1px solid rgba(242,13,128,0.25)', borderRadius: '14px', padding: '12px 16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, rgba(228,121,90,0.15), rgba(142,58,38,0.08))', border: '1px solid rgba(228,121,90,0.25)', borderRadius: '14px', padding: '12px 16px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-            <span style={{ fontSize: '32px', fontWeight: 900, color: '#ffd6e8' }}>$5</span>
-            <span style={{ fontSize: '11px', color: '#e7b9cf' }}>USD</span>
+            <span style={{ fontSize: '32px', fontWeight: 900, color: '#F7E3D6' }}>$5</span>
+            <span style={{ fontSize: '11px', color: '#E3C3B2' }}>USD</span>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '11px', color: '#f97bb6', margin: '0 0 2px', fontWeight: 600 }}>✓ Tú eliges el día</p>
-            <p style={{ fontSize: '11px', color: '#f97bb6', margin: 0, fontWeight: 600 }}>✓ Llega con tu nombre</p>
+            <p style={{ fontSize: '11px', color: '#F2A0C2', margin: '0 0 2px', fontWeight: 600 }}>✓ Tú eliges el día</p>
+            <p style={{ fontSize: '11px', color: '#F2A0C2', margin: 0, fontWeight: 600 }}>✓ Llega con tu nombre</p>
           </div>
         </div>
 
@@ -158,10 +158,10 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
       {/* ===== MODAL ===== */}
       {open && (
         <div onClick={() => !submitting && setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', background: '#1c1018', borderRadius: '16px', border: '1px solid rgba(242,13,128,0.25)', padding: '20px', maxHeight: '92vh', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', background: '#262756', borderRadius: '16px', border: '1px solid rgba(228,121,90,0.25)', padding: '20px', maxHeight: '92vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
               <span style={{ fontSize: '22px' }}>🎁</span>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: '17px', color: '#ffd6e8' }}>Envíaselo de sorpresa</p>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: '17px', color: '#F7E3D6' }}>Envíaselo de sorpresa</p>
               <button onClick={() => setOpen(false)} disabled={submitting} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#a98', fontSize: '22px', cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
             <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#d8b3c6', lineHeight: 1.5 }}>
@@ -174,7 +174,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
             <label style={labelStyle}>Su número de celular</label>
             <input style={{ ...inputStyle, marginBottom: '12px' }} value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="(305) 555-0148" inputMode="tel" />
 
-            <label style={labelStyle}>Tu nombre <span style={{ color: '#f97bb6' }}>(verá quién se lo manda)</span></label>
+            <label style={labelStyle}>Tu nombre <span style={{ color: '#F2A0C2' }}>(verá quién se lo manda)</span></label>
             <input style={inputStyle} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Tu nombre" />
 
             <label style={labelStyle}>Mensaje personal</label>
@@ -197,7 +197,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
                 <select value={effectiveTz} onChange={(e) => setTzOverride(e.target.value)} style={{ ...inputStyle, marginBottom: '6px' }}>
                   {tzOptionsWith(effectiveTz).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                <p style={{ margin: 0, fontSize: '12px', color: '#f97bb6', lineHeight: 1.4 }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#F2A0C2', lineHeight: 1.4 }}>
                   🕒 Le llegará a las {format12(time)} {tzLabel(effectiveTz)}{recipientName ? ` — la hora de ${recipientName}` : ''}
                 </p>
               </div>
@@ -207,7 +207,7 @@ export default function GiftTextUpsell({ song, supabaseUrl, anonKey }) {
               <p style={{ color: '#ff9ec4', fontSize: '13px', margin: '0 0 12px', textAlign: 'center' }}>{error}</p>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting} style={{ width: '100%', padding: '14px', background: submitting ? 'rgba(242,13,128,0.5)' : `linear-gradient(135deg, ${PINK}, ${PINK_DARK})`, color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 800, cursor: submitting ? 'wait' : 'pointer' }}>
+            <button onClick={handleSubmit} disabled={submitting} style={{ width: '100%', padding: '14px', background: submitting ? 'rgba(228,121,90,0.5)' : `linear-gradient(135deg, ${PINK}, ${PINK_DARK})`, color: '#fff', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 800, cursor: submitting ? 'wait' : 'pointer' }}>
               {submitting ? 'Redirigiendo al pago…' : 'Programar envío · $5'}
             </button>
 

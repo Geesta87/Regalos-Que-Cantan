@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
+import { CenzoMark } from '../components/Cenzo';
 
 const relationships = [
   { value: 'pareja', label: 'Pareja' },
@@ -39,7 +40,7 @@ export default function NamesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-forest text-white">
+    <div className="night-sky min-h-screen text-white">
       {/* Background */}
       <div className="fixed inset-0 z-0">
         <div className="absolute inset-0 bg-cover bg-center mix-blend-overlay opacity-20" 
@@ -50,7 +51,7 @@ export default function NamesPage() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-24 py-8">
-        <h2 className="font-display text-white text-2xl font-medium tracking-tight">
+        <CenzoMark size={44} /><h2 className="hidden sm:block font-display text-white text-2xl font-medium tracking-tight">
           RegalosQueCantan
         </h2>
         <div className="hidden md:flex items-center gap-4">
@@ -100,7 +101,7 @@ export default function NamesPage() {
                   onChange={(e) => setRecipientName(e.target.value)}
                   placeholder="Ej: María Elena"
                   className="w-full bg-background-dark/40 border-0 border-b-2 border-gold/40 focus:border-gold 
-                    text-white text-lg py-4 px-1 transition-all placeholder:text-white/20
+                    text-white text-lg py-4 px-1 transition-all placeholder:text-white/50
                     focus:ring-0 focus:outline-none"
                 />
               </div>
@@ -120,7 +121,7 @@ export default function NamesPage() {
                   onChange={(e) => setSenderName(e.target.value)}
                   placeholder="Ej: Roberto"
                   className="w-full bg-background-dark/40 border-0 border-b-2 border-gold/40 focus:border-gold 
-                    text-white text-lg py-4 px-1 transition-all placeholder:text-white/20
+                    text-white text-lg py-4 px-1 transition-all placeholder:text-white/50
                     focus:ring-0 focus:outline-none"
                 />
               </div>
@@ -167,7 +168,7 @@ export default function NamesPage() {
                   overflow-hidden rounded-full h-16 text-lg font-bold shadow-2xl transition-all
                   ${canContinue 
                     ? 'bg-bougainvillea text-white hover:scale-[1.02] active:scale-95 pink-glow' 
-                    : 'bg-white/10 text-white/30 cursor-not-allowed'}
+                    : 'bg-white/10 text-white/55 cursor-not-allowed'}
                 `}
               >
                 <span className="relative z-10">Continuar al Paso 4</span>
@@ -177,7 +178,7 @@ export default function NamesPage() {
               <button 
                 type="button"
                 onClick={handleBack}
-                className="text-white/40 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium"
+                className="text-white/55 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium"
               >
                 <span className="material-symbols-outlined text-sm">arrow_back</span>
                 Atrás
@@ -194,8 +195,8 @@ export default function NamesPage() {
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 bg-background-dark py-8 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-display text-white/30 text-lg">RegalosQueCantan</div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest font-bold">© 2026 Inspiración y Tradición.</p>
+          <CenzoMark size={38} /><div className="font-display text-white/55 text-lg">RegalosQueCantan</div>
+          <p className="text-white/50 text-[10px] uppercase tracking-widest font-bold">© 2026 Inspiración y Tradición.</p>
         </div>
       </footer>
     </div>

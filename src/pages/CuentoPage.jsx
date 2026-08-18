@@ -4,6 +4,7 @@
 // stanzas of the customer's own song; the last page is the dedication + share.
 // Customer-facing → 100% Spanish.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CenzoMark } from '../components/Cenzo';
 
 const FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-cuento`;
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -266,7 +267,7 @@ export default function CuentoPage() {
   // sealed + reading share ONE tree so the <audio> element persists across the
   // reveal (a fresh element would drop playback the moment the state flips).
   return (<div className="cu-root"><style>{CSS}</style>
-    <div className="cu-brand">Regalos Que Cantan</div>
+    <div className="cu-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><CenzoMark size={34} />Regalos Que Cantan</div>
     {state === 'sealed' && (
       <div className="cu-env">
         <div className="cu-env-card" onClick={open} role="button" tabIndex={0}

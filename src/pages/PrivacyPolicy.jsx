@@ -1,12 +1,13 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../App';
+import { CenzoSignature } from '../components/Cenzo';
 
 const css = `
 .policy-bg {
   min-height: 100vh;
   background: #0a0a0f;
   font-family: 'Inter', 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #cbd5e1;
+  color: #D6D7EA;
   padding: 0 20px 80px;
 }
 .policy-header {
@@ -39,7 +40,7 @@ const css = `
 }
 .policy-content .subtitle {
   font-size: 14px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.65);
   margin: 0 0 40px;
 }
 .policy-content h2 {
@@ -64,7 +65,7 @@ const css = `
   font-size: 15px;
   line-height: 1.8;
   margin: 0 0 16px;
-  color: #94a3b8;
+  color: #BFC0DE;
 }
 .policy-content ul {
   margin: 0 0 16px;
@@ -74,7 +75,7 @@ const css = `
 .policy-content li {
   font-size: 15px;
   line-height: 1.8;
-  color: #94a3b8;
+  color: #BFC0DE;
   padding: 4px 0 4px 24px;
   position: relative;
 }
@@ -272,6 +273,7 @@ export default function PrivacyPolicy() {
             <strong>Empresa:</strong> Regalos Media LLC
           </p>
         </div>
+        <CenzoSignature className="justify-center my-8" />
       </div>
     </>
   );

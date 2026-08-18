@@ -4,6 +4,7 @@ import { AppContext } from '../App';
 import genres from '../config/genres';
 import { trackStep } from '../services/tracking';
 import { checkEmail } from '../services/emailValidation';
+import { CenzoMark, CenzoSignature, CenzoGuide } from '../components/Cenzo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -147,14 +148,14 @@ export default function EmailStep() {
   const isValidEmail = validateEmail(email);
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen">
+    <div className="night-sky text-white antialiased min-h-screen">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-md">
         <div 
           className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
@@ -181,6 +182,7 @@ export default function EmailStep() {
           {/* Title */}
           <div className="text-center mb-8">
             <span className="text-gold uppercase tracking-[0.3em] text-xs font-bold mb-4 block">Casi Listos</span>
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-white text-4xl md:text-5xl font-bold mb-3">Confirma tu Creación</h1>
             <p className="text-white/60 text-base font-light">Revisa los detalles antes de generar tu canción.</p>
           </div>
@@ -198,36 +200,36 @@ export default function EmailStep() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div className="group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Género Musical</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Género Musical</p>
                   <button 
                     onClick={() => handleEditSection('genre')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
                 </div>
                 <p className="text-white text-lg font-medium">
                   {genreName}
-                  {subGenreName && <span className="text-gold/70 text-sm ml-2">• {subGenreName}</span>}
+                  {subGenreName && <span className="text-gold/90 text-sm ml-2">• {subGenreName}</span>}
                 </p>
                 {formData.artistInspiration && (
-                  <p className="text-gold/60 text-xs mt-1">Estilo: {formData.artistInspiration}</p>
+                  <p className="text-gold/85 text-xs mt-1">Estilo: {formData.artistInspiration}</p>
                 )}
               </div>
               
               <div className="group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Ocasión</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Ocasión</p>
                   <button 
                     onClick={() => handleEditSection('occasion')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
                 </div>
                 <p className="text-white text-lg font-medium">{occasionName}</p>
                 {formData.emotionalTone && formData.occasion === 'otro' && (
-                  <p className="text-gold/60 text-xs mt-1">Tono: {formData.emotionalTone}</p>
+                  <p className="text-gold/85 text-xs mt-1">Tono: {formData.emotionalTone}</p>
                 )}
               </div>
             </div>
@@ -236,21 +238,21 @@ export default function EmailStep() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div className="group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Para</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Para</p>
                   <button 
                     onClick={() => handleEditSection('names')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
                 </div>
                 <p className="text-white text-lg font-medium">{formData.recipientName || 'No especificado'}</p>
                 {relationshipName && (
-                  <p className="text-gold/60 text-xs mt-1">{relationshipName}</p>
+                  <p className="text-gold/85 text-xs mt-1">{relationshipName}</p>
                 )}
               </div>
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-wider mb-1">De parte de</p>
+                <p className="text-white/55 text-xs uppercase tracking-wider mb-1">De parte de</p>
                 <p className="text-white text-lg font-medium">{formData.senderName || 'No especificado'}</p>
               </div>
             </div>
@@ -259,10 +261,10 @@ export default function EmailStep() {
             {!formData.useCustomLyrics && formData.details && (
               <div className="pt-6 border-t border-gold/10 group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Tu Historia</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Tu Historia</p>
                   <button
                     onClick={() => handleEditSection('details')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -270,7 +272,7 @@ export default function EmailStep() {
                 <p className="text-white/80 italic text-sm leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
                   "{formData.details}"
                 </p>
-                <p className="text-gold/40 text-xs mt-2">{formData.details.length} caracteres</p>
+                <p className="text-gold/75 text-xs mt-2">{formData.details.length} caracteres</p>
               </div>
             )}
 
@@ -280,10 +282,10 @@ export default function EmailStep() {
             {!formData.useCustomLyrics && formData.songwriterNotes && (
               <div className="pt-6 border-t border-gold/10 group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Notas para el compositor</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Notas para el compositor</p>
                   <button
                     onClick={() => handleEditSection('details')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -291,7 +293,7 @@ export default function EmailStep() {
                 <p className="text-white/80 italic text-sm leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
                   "{formData.songwriterNotes}"
                 </p>
-                <p className="text-gold/40 text-xs mt-2">{formData.songwriterNotes.length} caracteres</p>
+                <p className="text-gold/75 text-xs mt-2">{formData.songwriterNotes.length} caracteres</p>
               </div>
             )}
 
@@ -300,10 +302,10 @@ export default function EmailStep() {
             {formData.useCustomLyrics && formData.customLyrics && (
               <div className="pt-6 border-t border-gold/10 group">
                 <div className="flex items-center justify-between">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Tu Letra (se cantará tal cual)</p>
+                  <p className="text-white/55 text-xs uppercase tracking-wider mb-1">Tu Letra (se cantará tal cual)</p>
                   <button
                     onClick={() => handleEditSection('details')}
-                    className="text-gold/50 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    className="text-gold/80 hover:text-gold text-xs sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                   >
                     Editar
                   </button>
@@ -311,7 +313,7 @@ export default function EmailStep() {
                 <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
                   {formData.customLyrics}
                 </p>
-                <p className="text-gold/40 text-xs mt-2">{formData.customLyrics.length} caracteres</p>
+                <p className="text-gold/75 text-xs mt-2">{formData.customLyrics.length} caracteres</p>
               </div>
             )}
           </div>
@@ -347,7 +349,7 @@ export default function EmailStep() {
                     ${emailError ? 'border-red-400' : 'border-white/25 focus:border-gold'}
                   `}
                 />
-                <p className="text-white/40 text-xs text-center mt-2">Por ejemplo: maria@gmail.com</p>
+                <p className="text-white/55 text-xs text-center mt-2">Por ejemplo: maria@gmail.com</p>
                 {emailError && (
                   <p className="text-red-400 text-sm text-center mt-2">{emailError}</p>
                 )}
@@ -364,8 +366,8 @@ export default function EmailStep() {
                 group relative flex w-full cursor-pointer items-center justify-center overflow-hidden
                 rounded-full h-20 px-10 text-xl font-bold transition-all hover:scale-[1.02] active:scale-95
                 ${isValidEmail && !isSubmitting
-                  ? 'bg-bougainvillea text-white shadow-[0_0_20px_rgba(225,29,116,0.4)]'
-                  : 'bg-white/10 text-white/40 hover:scale-100'}
+                  ? 'bg-bougainvillea text-white shadow-[0_0_20px_rgba(201,96,63,0.4)]'
+                  : 'bg-white/10 text-white/55 hover:scale-100'}
               `}
             >
               <span className="relative z-10">
@@ -383,13 +385,13 @@ export default function EmailStep() {
               )}
             </button>
 
-            <p className="text-white/40 text-[10px] uppercase tracking-tighter text-center">
+            <p className="text-white/55 text-[10px] uppercase tracking-tighter text-center">
               Al hacer clic, aceptas nuestros <a href="/terminos-de-servicio" className="underline hover:text-white/60">términos de servicio</a> y <a href="/politica-de-privacidad" className="underline hover:text-white/60">política de privacidad</a>.
             </p>
 
             <button
               onClick={handleBack}
-              className="text-white/40 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium mt-2"
+              className="text-white/55 hover:text-white transition-colors flex items-center gap-2 text-sm uppercase tracking-widest font-medium mt-2"
             >
               <span className="material-symbols-outlined text-sm">arrow_back</span>
               Volver atrás
@@ -421,13 +423,14 @@ export default function EmailStep() {
       {/* Footer */}
       <footer className="bg-background-dark py-10 px-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="font-display text-white/30 text-lg tracking-wider uppercase">RegalosQueCantan</div>
+          <CenzoMark size={38} /><div className="font-display text-white/55 text-lg tracking-wider uppercase">RegalosQueCantan</div>
           <div className="flex gap-8">
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Ayuda</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/politica-de-privacidad">Privacidad</a>
-            <a className="text-white/30 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/terminos-de-servicio">Términos</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="#">Ayuda</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/politica-de-privacidad">Privacidad</a>
+            <a className="text-white/55 hover:text-gold transition-colors text-[10px] uppercase tracking-[0.2em]" href="/terminos-de-servicio">Términos</a>
           </div>
-          <p className="text-white/20 text-[10px] uppercase tracking-widest">© 2026 RegalosQueCantan</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-[10px] uppercase tracking-widest">© 2026 RegalosQueCantan</p>
         </div>
       </footer>
     </div>

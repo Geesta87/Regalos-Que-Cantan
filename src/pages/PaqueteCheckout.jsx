@@ -2,11 +2,12 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import { createCheckout, checkSongStatus } from '../services/api';
 import { trackStep } from '../services/tracking';
+import { CenzoGuide } from '../components/Cenzo';
 
 // Dedicated checkout for /paquete buyers (song + Animado bundle, or song-only).
 // Replaces /comparison for this funnel ONLY: no $9.99 video addon, no karaoke,
 // no coupons, no gift-SMS — one product, one price. Regular customers never land here.
-// Look & feel matches PaqueteLanding (dark #0a0806 + gold), not the neon checkout.
+// Look & feel matches PaqueteLanding (dark #191A45 + gold), not the neon checkout.
 
 const PREVIEW_START = 10;
 const PREVIEW_DURATION = 40;
@@ -212,7 +213,7 @@ export default function PaqueteCheckout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0806] flex items-center justify-center text-white">
+      <div className="night-sky min-h-screen flex items-center justify-center text-white">
         <div className="text-center px-6">
           <div className="text-4xl mb-4 animate-pulse">🎁</div>
           <p className="text-white/70">Preparando tu regalo…</p>
@@ -222,12 +223,13 @@ export default function PaqueteCheckout() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0806] text-white pb-28">
+    <div className="night-sky min-h-screen text-white pb-28">
       {/* Header */}
       <header className="px-6 pt-8 pb-2 text-center">
-        <p className="text-amber-400/90 text-xs font-bold tracking-[0.2em] uppercase mb-2">🎁 Tu regalo está listo</p>
+        <CenzoGuide size={148} className="mx-auto mb-1" />
+        <p className="text-marigold/90 text-xs font-bold tracking-[0.2em] uppercase mb-2">Tu regalo está listo</p>
         <h1 className="text-2xl md:text-3xl font-extrabold leading-tight">
-          {recipient ? <>La canción de <span className="text-amber-300">{recipient}</span></> : 'Tu canción'} ya suena así
+          {recipient ? <>La canción de <span className="text-marigold-soft">{recipient}</span></> : 'Tu canción'} ya suena así
         </h1>
         <p className="text-white/50 text-sm mt-2">Escucha las 2 versiones y elige tu favorita — muestras de 40 segundos.</p>
       </header>
@@ -246,13 +248,13 @@ export default function PaqueteCheckout() {
             <button
               key={song.id}
               onClick={() => { setSelectedSongId(song.id); setBothVersions(false); }}
-              className={`text-left rounded-2xl border-2 p-4 transition-all ${isSel && !bothVersions ? 'border-amber-400 bg-amber-400/5' : 'border-white/10 bg-white/[0.03]'}`}
+              className={`text-left rounded-2xl border-2 p-4 transition-all ${isSel && !bothVersions ? 'border-marigold bg-marigold/5' : 'border-white/10 bg-white/[0.03]'}`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className={`text-xs font-bold px-3 py-1 rounded-full ${isSel ? 'bg-amber-400 text-black' : 'bg-white/10 text-white/70'}`}>
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${isSel ? 'bg-marigold text-black' : 'bg-white/10 text-white/70'}`}>
                   Versión {song.version}
                 </span>
-                {isSel && <span className="text-amber-300 text-lg">✓</span>}
+                {isSel && <span className="text-marigold-soft text-lg">✓</span>}
               </div>
               {(() => {
                 const imgSrc = getGenreImagePath(song.genre || formData?.genre) || song.imageUrl;
@@ -280,18 +282,18 @@ export default function PaqueteCheckout() {
                 tabIndex={0}
                 onClick={(e) => { e.stopPropagation(); handlePlay(song.id); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handlePlay(song.id); } }}
-                className={`block w-full text-center rounded-xl py-3 font-bold transition-colors ${isPlaying ? 'bg-amber-400 text-black' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                className={`block w-full text-center rounded-xl py-3 font-bold transition-colors ${isPlaying ? 'bg-marigold text-black' : 'bg-white/10 hover:bg-white/20 text-white'}`}
               >
                 {isPlaying ? '❚❚ Pausar' : '▶ Escuchar'}
               </span>
-              <div className="flex justify-between text-[11px] text-white/40 mt-2">
+              <div className="flex justify-between text-[11px] text-white/55 mt-2">
                 <span>{mmss(t)} / 0:40</span>
               </div>
             </button>
           );
         })}
         {song2Loading && (
-          <div className="rounded-2xl border-2 border-dashed border-white/10 p-6 flex flex-col items-center justify-center text-white/40 text-sm min-h-[200px]">
+          <div className="rounded-2xl border-2 border-dashed border-white/10 p-6 flex flex-col items-center justify-center text-white/55 text-sm min-h-[200px]">
             <div className="animate-spin text-2xl mb-3">🎵</div>
             Versión 2 en camino…
           </div>
@@ -303,21 +305,21 @@ export default function PaqueteCheckout() {
         <section className="px-5 mt-4 md:max-w-3xl md:mx-auto">
           <button
             onClick={() => setBothVersions((v) => !v)}
-            className={`w-full rounded-2xl border-2 px-4 py-4 flex items-center justify-between transition-all ${bothVersions ? 'border-amber-400 bg-amber-400/5' : 'border-white/10 bg-white/[0.03]'}`}
+            className={`w-full rounded-2xl border-2 px-4 py-4 flex items-center justify-between transition-all ${bothVersions ? 'border-marigold bg-marigold/5' : 'border-white/10 bg-white/[0.03]'}`}
           >
             <span className="text-left">
               <span className="block font-bold text-sm">🎁 Llévate ambas versiones</span>
               <span className="block text-white/50 text-xs mt-0.5">Las 2 canciones completas, tuyas para siempre</span>
             </span>
-            <span className="text-amber-300 font-extrabold whitespace-nowrap ml-3">+ ${BOTH_VERSIONS_UPGRADE}</span>
+            <span className="text-marigold-soft font-extrabold whitespace-nowrap ml-3">+ ${BOTH_VERSIONS_UPGRADE}</span>
           </button>
         </section>
       )}
 
       {/* Order summary */}
       <section className="px-5 mt-6 md:max-w-3xl md:mx-auto">
-        <div className="rounded-2xl border border-amber-400/50 bg-amber-400/[0.06] p-5">
-          <p className="inline-block bg-amber-400 text-black text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
+        <div className="rounded-2xl border border-marigold/50 bg-marigold/[0.06] p-5">
+          <p className="inline-block bg-marigold text-black text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
             {withVideo ? '🎁 El regalo completo' : '🎵 Tu canción'}
           </p>
           <div className="space-y-3">
@@ -334,10 +336,10 @@ export default function PaqueteCheckout() {
           </div>
           <div className="border-t border-white/10 mt-4 pt-4 flex items-center justify-between">
             <span className="font-extrabold">Total</span>
-            <span className="text-amber-300 text-2xl font-extrabold">{fmt(total)}</span>
+            <span className="text-marigold-soft text-2xl font-extrabold">{fmt(total)}</span>
           </div>
           {withVideo && (
-            <p className="text-white/40 text-[11px] mt-3">🎵 La canción es tuya al instante — descárgala apenas pagues. 🎬 Para el video, subes sus fotos después del pago y te lo entregamos en 1–2 días.</p>
+            <p className="text-white/55 text-[11px] mt-3">🎵 La canción es tuya al instante — descárgala apenas pagues. 🎬 Para el video, subes sus fotos después del pago y te lo entregamos en 1–2 días.</p>
           )}
         </div>
 
@@ -347,22 +349,22 @@ export default function PaqueteCheckout() {
             value={checkoutEmail}
             onChange={(e) => setCheckoutEmail(e.target.value)}
             placeholder="📧 tu@email.com"
-            className="w-full mt-4 rounded-xl bg-white/5 border border-white/15 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
+            className="w-full mt-4 rounded-xl bg-white/5 border border-white/15 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-marigold"
           />
         )}
       </section>
 
       {/* Sticky pay button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-[#0a0806] via-[#0a0806]/95 to-transparent px-5 pt-6 pb-5">
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-[#191A45] via-[#191A45]/95 to-transparent px-5 pt-6 pb-5">
         <div className="md:max-w-3xl md:mx-auto">
           <button
             onClick={handleCheckout}
             disabled={checkoutLoading || !email || (!selectedSongId && !bothVersions)}
-            className="w-full rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-black font-extrabold text-lg py-4 shadow-[0_0_30px_rgba(245,158,11,0.35)] disabled:opacity-50 transition-opacity"
+            className="w-full rounded-2xl bg-gradient-to-r from-marigold to-marigold text-black font-extrabold text-lg py-4 shadow-[0_0_30px_rgba(201,138,27,0.35)] disabled:opacity-50 transition-opacity"
           >
             {checkoutLoading ? 'Un momento…' : `💳 Pagar ${fmt(total)}`}
           </button>
-          <p className="text-center text-white/35 text-[11px] mt-2">
+          <p className="text-center text-white/50 text-[11px] mt-2">
             {withVideo ? '🔒 Pago seguro con Stripe · Canción al instante · Video en 1–2 días' : '🔒 Pago seguro con Stripe · Entrega digital inmediata'}
           </p>
         </div>

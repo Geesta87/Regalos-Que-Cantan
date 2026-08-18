@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import GiftTextUpsell from '../components/GiftTextUpsell';
 import { Helmet } from 'react-helmet-async';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
+import { CenzoMark } from '../components/Cenzo';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -102,12 +103,12 @@ function SongSelector({ songs, activeIndex, onSelect, template, lang }) {
     <div style={{ width: '100%', maxWidth: 420 }}>
       <style>{`
         @keyframes rqcGreenPulse {
-          0%, 100% { box-shadow: 0 0 10px rgba(34,197,94,0.3), 0 0 0 0 rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.7); }
-          50% { box-shadow: 0 0 24px rgba(34,197,94,0.7), 0 0 0 5px rgba(34,197,94,0.07); border-color: #22c55e; }
+          0%, 100% { box-shadow: 0 0 10px rgba(67,194,186,0.3), 0 0 0 0 rgba(67,194,186,0.2); border-color: rgba(67,194,186,0.7); }
+          50% { box-shadow: 0 0 24px rgba(67,194,186,0.7), 0 0 0 5px rgba(67,194,186,0.07); border-color: #43C2BA; }
         }
         @keyframes rqcPurplePulse {
-          0%, 100% { box-shadow: 0 0 10px rgba(168,85,247,0.3), 0 0 0 0 rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.7); }
-          50% { box-shadow: 0 0 24px rgba(168,85,247,0.7), 0 0 0 5px rgba(168,85,247,0.07); border-color: #a855f7; }
+          0%, 100% { box-shadow: 0 0 10px rgba(142,144,232,0.3), 0 0 0 0 rgba(142,144,232,0.2); border-color: rgba(142,144,232,0.7); }
+          50% { box-shadow: 0 0 24px rgba(142,144,232,0.7), 0 0 0 5px rgba(142,144,232,0.07); border-color: #8E90E8; }
         }
       `}</style>
       <div style={{
@@ -116,7 +117,7 @@ function SongSelector({ songs, activeIndex, onSelect, template, lang }) {
         border: '2px solid rgba(255,255,255,0.08)',
         boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
       }}>
-        <p style={{ margin: '0 0 2px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.45)', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: font }}>
+        <p style={{ margin: '0 0 2px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.68)', letterSpacing: '2px', textTransform: 'uppercase', fontFamily: font }}>
           🎁 {isEn ? 'Your order includes' : 'Tu pedido incluye'}
         </p>
         <p style={{ margin: '0 0 14px 0', textAlign: 'center', fontSize: 20, fontWeight: 900, color: '#fff', fontFamily: font }}>
@@ -126,7 +127,7 @@ function SongSelector({ songs, activeIndex, onSelect, template, lang }) {
           {songs.map((s, i) => {
             const isActive = i === activeIndex;
             const isGreen = i === 0;
-            const color = isGreen ? '#22c55e' : '#a855f7';
+            const color = isGreen ? '#43C2BA' : '#8E90E8';
             const rgb = isGreen ? '34,197,94' : '168,85,247';
             const anim = isGreen ? 'rqcGreenPulse' : 'rqcPurplePulse';
             const emoji = isGreen ? '💚' : '💜';
@@ -628,7 +629,7 @@ export default function SongPage({ songId: propSongId }) {
             left: Math.random() * 100,
             delay: Math.random() * 0.6,
             duration: 2.5 + Math.random() * 2,
-            color: ['#f4c025', '#f20d59', '#9947eb', '#25D366', '#ff6b8a', '#fde68a', '#ffffff'][Math.floor(Math.random() * 7)],
+            color: ['#f4c025', '#f20d59', '#9947eb', '#25D366', '#ff6b8a', '#F4D08A', '#ffffff'][Math.floor(Math.random() * 7)],
             size: 6 + Math.random() * 8,
             rotation: Math.random() * 360,
           }));
@@ -642,7 +643,7 @@ export default function SongPage({ songId: propSongId }) {
             size: 3 + Math.random() * 6,
             delay: Math.random() * 0.15,
             duration: 0.6 + Math.random() * 0.6,
-            color: ['#f4c025', '#fde68a', '#ffffff', '#f4c025', '#e8a810'][i % 5],
+            color: ['#f4c025', '#F4D08A', '#ffffff', '#f4c025', '#e8a810'][i % 5],
           }));
           setFlashParticles(particles);
 
@@ -703,7 +704,7 @@ export default function SongPage({ songId: propSongId }) {
       <div style={{ minHeight: '100vh', background: '#1a1408', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <style>{SHARED_CSS}</style>
         <div style={{ fontSize: 40, animation: 'spPulse 2s ease-in-out infinite' }}>🎵</div>
-        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>{t.preparando}</p>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', fontStyle: 'italic' }}>{t.preparando}</p>
       </div>
     );
   }
@@ -715,7 +716,7 @@ export default function SongPage({ songId: propSongId }) {
         <style>{SHARED_CSS}</style>
         <div style={{ fontSize: 56 }}>🎵</div>
         <h2 style={{ fontSize: 22, fontWeight: 700 }}>{error || t.noEncontrada}</h2>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>{t.linkExpirado}</p>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>{t.linkExpirado}</p>
       </div>
     );
   }
@@ -884,7 +885,7 @@ export default function SongPage({ songId: propSongId }) {
             {t.abrirRegalo} <span style={{ fontSize: 22 }}>✨</span>
           </button>
           {/* Subtle brand */}
-          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
+          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>RegalosQueCantan.com</p>
         </div>
       </>
     );
@@ -1064,7 +1065,7 @@ export default function SongPage({ songId: propSongId }) {
           </div>
 
           {/* Brand */}
-          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.15)', fontWeight: 500 }}>RegalosQueCantan.com</p>
+          <p style={{ position: 'absolute', bottom: 24, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>RegalosQueCantan.com</p>
         </div>
       </>
     );
@@ -1089,7 +1090,7 @@ export default function SongPage({ songId: propSongId }) {
             {subtitles[countdownNum]}
           </p>
           {/* "Para [name]" reminder */}
-          <p style={{ position: 'absolute', bottom: 60, fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>
+          <p style={{ position: 'absolute', bottom: 60, fontSize: 14, color: 'rgba(255,255,255,0.58)', fontWeight: 500 }}>
             {t.para} <span style={{ color: 'rgba(244,192,37,0.5)' }}>{recipient}</span>
           </p>
         </div>
@@ -1141,7 +1142,7 @@ export default function SongPage({ songId: propSongId }) {
 
           {/* Name reveal */}
           <div style={{ textAlign: 'center', zIndex: 50, animation: 'nameReveal 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both' }}>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {t.unaCanciones(isCombo)}</p>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.3em', textTransform: 'uppercase', fontWeight: 300, marginBottom: 12 }}>🎵 {t.unaCanciones(isCombo)}</p>
             <h1 style={{ fontSize: 'clamp(40px, 10vw, 72px)', fontWeight: 900, lineHeight: 1, textShadow: '0 0 40px rgba(244,192,37,0.3)' }}>
               {t.para} <span style={{ color: '#f4c025' }}>{recipient}</span>
             </h1>
@@ -1225,7 +1226,7 @@ export default function SongPage({ songId: propSongId }) {
                 <div style={{ width: 36, height: 36, background: '#f4c025', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(244,192,37,0.2)' }}>
                   <span style={{ fontSize: 16 }}>🎵</span>
                 </div>
-                <span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>RegalosQueCantan</span>
+                <CenzoMark size={44} /><span style={{ fontWeight: 700, fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>RegalosQueCantan</span>
               </div>
               <button onClick={() => nativeShare(recipient)} className="t1-glass" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, cursor: 'pointer', color: 'white', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(16px)' }}>
                 <span style={{ color: '#f4c025', fontSize: 14 }}>📤</span>
@@ -1238,7 +1239,7 @@ export default function SongPage({ songId: propSongId }) {
               <div className="t1-anim1" style={{ marginBottom: 24 }}>
                 <div className="t1-glass" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 999 }}>
                   <span style={{ fontSize: 12 }}>🎵</span>
-                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.7)' }}>
                     {t.alguienDedicoCard(isCombo)}
                   </span>
                 </div>
@@ -1248,7 +1249,7 @@ export default function SongPage({ songId: propSongId }) {
               </h1>
               <p className="t1-anim2" style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginBottom: isCombo ? 20 : 32, fontWeight: 300 }}>
                 {sender && <><em>{t.conAmor}</em> <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{sender}</strong></>}
-                {sender && genre && <span style={{ color: 'rgba(255,255,255,0.25)', margin: '0 8px' }}>·</span>}
+                {sender && genre && <span style={{ color: 'rgba(255,255,255,0.55)', margin: '0 8px' }}>·</span>}
                 {genre && <span style={{ color: 'rgba(244,192,37,0.7)', fontSize: 13, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{genre}</span>}
               </p>
               {isCombo && <div className="t1-anim2" style={{ marginBottom: 24, width: '100%', display: 'flex', justifyContent: 'center' }}><SongSelector songs={allSongs} activeIndex={activeIndex} onSelect={switchSong} template="golden_hour" lang={lang} /></div>}
@@ -1268,21 +1269,21 @@ export default function SongPage({ songId: propSongId }) {
               ) : (
               <div className="t1-anim3" style={{ width: '100%', maxWidth: 420, padding: 28, borderRadius: 20, boxShadow: '0 25px 50px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', marginBottom: 24 }}>
                 <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: 32, marginBottom: 24 }}>
-                  {Array.from({ length: 20 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: isPlaying ? 14 : 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #fde68a)', opacity: isPlaying ? 0.85 : 0.3, transition: 'height 0.1s, opacity 0.3s' }} />))}
+                  {Array.from({ length: 20 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 3, height: isPlaying ? 14 : 4, borderRadius: 99, background: 'linear-gradient(to top, #f4c025, #F4D08A)', opacity: isPlaying ? 0.85 : 0.3, transition: 'height 0.1s, opacity 0.3s' }} />))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginBottom: 24 }}>
-                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.6)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
                   <button onClick={toggle} style={{ width: 72, height: 72, borderRadius: '50%', background: '#f4c025', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px rgba(244,192,37,0.3)', fontSize: 32, color: '#1a1408', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
-                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.6)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
                 </div>
                 <div>
                   <div onClick={seek} style={{ position: 'relative', width: '100%', height: 4, background: 'rgba(255,255,255,0.12)', borderRadius: 99, cursor: 'pointer' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg, #f4c025, #fde68a)', borderRadius: 99, transition: 'width 0.15s' }} />
+                    <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg, #f4c025, #F4D08A)', borderRadius: 99, transition: 'width 0.15s' }} />
                     <div style={{ position: 'absolute', top: '50%', transform: 'translate(-50%,-50%)', width: 12, height: 12, borderRadius: '50%', background: '#f4c025', boxShadow: '0 0 8px rgba(244,192,37,0.4)', left: `${progress}%`, transition: 'left 0.15s' }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)' }}>{fmt(time)}</span>
-                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)' }}>{fmt(dur)}</span>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>{fmt(time)}</span>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' }}>{fmt(dur)}</span>
                   </div>
                 </div>
               </div>
@@ -1350,16 +1351,16 @@ export default function SongPage({ songId: propSongId }) {
                       a.click();
                       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
                       if (progressBar) progressBar.style.width = '100%';
-                      if (progressBar) progressBar.style.background = 'rgba(34,197,94,0.3)';
+                      if (progressBar) progressBar.style.background = 'rgba(67,194,186,0.3)';
                       if (progressText) progressText.textContent = '✅ ¡Descargado!';
                       // Toast notification
                       const toast = document.createElement('div');
                       toast.innerHTML = '✅ <strong>Video guardado</strong><br><span style="font-size:12px;opacity:0.8">Revisa tu carpeta de Descargas</span>';
-                      toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#166534,#15803d);color:white;padding:16px 24px;border-radius:16px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);text-align:center;max-width:90vw;border:1px solid rgba(34,197,94,0.4);';
+                      toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#12655F,#167A75);color:white;padding:16px 24px;border-radius:16px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);text-align:center;max-width:90vw;border:1px solid rgba(67,194,186,0.4);';
                       document.body.appendChild(toast);
                       setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => document.body.removeChild(toast), 500); }, 6000);
                       setTimeout(() => {
-                        if (progressBar) { progressBar.style.width = '0%'; progressBar.style.background = 'rgba(139,92,246,0.3)'; }
+                        if (progressBar) { progressBar.style.width = '0%'; progressBar.style.background = 'rgba(102,104,210,0.3)'; }
                         if (progressText) progressText.textContent = '🎬 Descargar Video';
                         btn.style.pointerEvents = 'auto';
                       }, 3000);
@@ -1370,8 +1371,8 @@ export default function SongPage({ songId: propSongId }) {
                       if (progressBar) progressBar.style.width = '0%';
                       btn.style.pointerEvents = 'auto';
                     }
-                  }} className="t1-glass" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(139,92,246,0.15)', overflow: 'hidden' }}>
-                    <div className="dl-progress" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '0%', background: 'rgba(139,92,246,0.3)', borderRadius: 999, transition: 'width 0.2s' }} />
+                  }} className="t1-glass" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 999, cursor: 'pointer', border: '1px solid rgba(102,104,210,0.3)', color: 'white', fontSize: 14, fontWeight: 600, background: 'rgba(102,104,210,0.15)', overflow: 'hidden' }}>
+                    <div className="dl-progress" style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '0%', background: 'rgba(102,104,210,0.3)', borderRadius: 999, transition: 'width 0.2s' }} />
                     <span className="dl-text" style={{ position: 'relative', zIndex: 1 }}>🎬 Descargar Video</span>
                   </button>
                 )}
@@ -1449,7 +1450,7 @@ export default function SongPage({ songId: propSongId }) {
                   <h2 style={{ fontSize: 20, color: '#0f172a', fontWeight: 600 }}>{t.para} {recipient}</h2>
                   <p style={{ color: 'rgba(153,71,235,0.7)', fontWeight: 500, fontSize: 14 }}>{genre}{song.occasion ? ` · ${song.occasion.replace(/_/g, ' ')}` : ''}</p>
                 </div>
-                {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 2 }}>{t.duracion}</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
+                {dur > 0 && <div style={{ textAlign: 'right' }}><span style={{ color: '#BFC0DE', fontSize: 12, display: 'block', marginBottom: 2 }}>{t.duracion}</span><span style={{ color: '#334155', fontFamily: 'monospace' }}>{fmt(dur)}</span></div>}
               </div>
               <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(153,71,235,0.06)', paddingTop: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -1467,13 +1468,13 @@ export default function SongPage({ songId: propSongId }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#94a3b8' }}>{fmt(time)}</span>
-                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#94a3b8' }}>{fmt(dur)}</span>
+                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#BFC0DE' }}>{fmt(time)}</span>
+                  <span style={{ fontSize: 10, letterSpacing: '0.15em', fontWeight: 700, color: '#BFC0DE' }}>{fmt(dur)}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 32, marginTop: 16 }}>
-                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: '#BFC0DE', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
                   <button onClick={toggle} style={{ width: 64, height: 64, borderRadius: '50%', background: '#9947eb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(153,71,235,0.35)', fontSize: 28, color: 'white', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
-                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+                  <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: '#BFC0DE', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
                 </div>
               </div>
             </div>
@@ -1501,7 +1502,7 @@ export default function SongPage({ songId: propSongId }) {
   // ═══════════════════════════════════════
   return (
     <>{head}{audioEl}{confettiOverlay}
-      <div style={{ minHeight: '100vh', background: '#0a0507', fontFamily: "'Space Grotesk', sans-serif", color: 'white', overflow: 'hidden' }}>
+      <div style={{ minHeight: '100vh', background: '#150E2E', fontFamily: "'Space Grotesk', sans-serif", color: 'white', overflow: 'hidden' }}>
         <style>{SHARED_CSS}{T3_CSS}</style>
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', opacity: 0.15, zIndex: 60, mixBlendMode: 'overlay', background: 'radial-gradient(circle at center, transparent 0%, #000 100%)' }} />
         <main style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -1509,7 +1510,7 @@ export default function SongPage({ songId: propSongId }) {
           <header className="t3-anim1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 32, height: 32, background: '#f20d59', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: 14 }}>🎵</span></div>
-              <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 16, letterSpacing: '-0.03em' }}>RegalosQueCantan</span>
+              <CenzoMark size={44} /><span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 16, letterSpacing: '-0.03em' }}>RegalosQueCantan</span>
             </div>
             <button onClick={() => nativeShare(recipient)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', padding: '8px 16px', borderRadius: 999, cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12 }}>📤</span>
@@ -1518,12 +1519,12 @@ export default function SongPage({ songId: propSongId }) {
           </header>
           {/* Photo hero */}
           <section style={{ position: 'relative', height: photoUrl ? '45vh' : '25vh', width: '100%', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #0a0507 0%, transparent 40%)', zIndex: 10 }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, #150E2E 0%, transparent 40%)', zIndex: 10 }} />
             {photoUrl ? (
               <><div style={{ position: 'absolute', inset: 0, background: 'rgba(242,13,89,0.08)', mixBlendMode: 'overlay', zIndex: 10 }} />
               <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1) brightness(0.7)' }} /></>
             ) : (
-              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(180deg, #1a0a10 0%, #0a0507 100%)' }} />
+              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(180deg, #1a0a10 0%, #150E2E 100%)' }} />
             )}
             <div className="t3-anim2" style={{ position: 'absolute', bottom: 32, left: 24, zIndex: 20, maxWidth: '85%' }}>
               <p style={{ fontSize: 'clamp(20px, 4.5vw, 36px)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '-0.05em', lineHeight: 1.05 }}>
@@ -1532,7 +1533,7 @@ export default function SongPage({ songId: propSongId }) {
             </div>
           </section>
           {/* Player section */}
-          <section style={{ flex: 1, width: '100%', background: '#0a0507', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 24px 80px', borderTop: '1px solid rgba(242,13,89,0.15)' }}>
+          <section style={{ flex: 1, width: '100%', background: '#150E2E', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 24px 80px', borderTop: '1px solid rgba(242,13,89,0.15)' }}>
             <div ref={vizRef} style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 4, height: 64, marginBottom: 24, opacity: 0.7 }}>
               {Array.from({ length: 15 }).map((_, i) => (<div key={i} className="sp-vbar" style={{ width: 4, height: isPlaying ? 14 : 6, borderRadius: 99, background: 'linear-gradient(to top, #f20d59, #ff5c93)', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'height 0.1s, opacity 0.3s', opacity: isPlaying ? 0.85 : 0.3 }} />))}
             </div>
@@ -1547,15 +1548,15 @@ export default function SongPage({ songId: propSongId }) {
                 <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${progress}%`, background: '#f20d59', filter: 'drop-shadow(0 0 6px rgba(242,13,89,0.5))', transition: 'width 0.15s' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>{fmt(time)}</span>
-                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>{fmt(dur)}</span>
+                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.58)' }}>{fmt(time)}</span>
+                <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.58)' }}>{fmt(dur)}</span>
               </div>
             </div>
             {/* Controls */}
             <div className="t3-anim4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, marginTop: 24 }}>
-              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
+              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }} style={{ color: 'rgba(255,255,255,0.7)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏪</button>
               <button onClick={toggle} style={{ width: 72, height: 72, borderRadius: '50%', background: '#f20d59', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(242,13,89,0.3)', fontSize: 32, color: 'white', paddingLeft: isPlaying ? 0 : 3 }}>{isPlaying ? '⏸' : '▶'}</button>
-              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
+              <button onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + 10); }} style={{ color: 'rgba(255,255,255,0.7)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 24 }}>⏩</button>
             </div>
             {/* Action buttons */}
             <div className="t3-anim4" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 24 }}>
@@ -1570,7 +1571,7 @@ export default function SongPage({ songId: propSongId }) {
             </div>
             {/* Brand */}
             <div style={{ position: 'absolute', bottom: 20, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.3em', color: 'rgba(255,255,255,0.2)', fontWeight: 700 }}>RegalosQueCantan.com</p>
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.3em', color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>RegalosQueCantan.com</p>
             </div>
           </section>
         </main>

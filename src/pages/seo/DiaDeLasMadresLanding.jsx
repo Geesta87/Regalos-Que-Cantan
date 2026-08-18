@@ -2,6 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import { getGenreBySlug } from '../../data/seoData';
+import { CenzoSignature } from '../../components/Cenzo';
 
 /**
  * DiaDeLasMadresLanding - Modern, urgency-driven Mother's Day landing page
@@ -51,11 +52,12 @@ function TestimonialVideo({ src }) {
       />
       {!playing && (
         <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-          <div className="w-16 h-16 bg-pink-500/90 rounded-full flex items-center justify-center shadow-xl shadow-pink-500/30">
+          <div className="w-16 h-16 bg-magenta/90 rounded-full flex items-center justify-center shadow-xl shadow-magenta/30">
             <span className="text-white text-3xl ml-1">&#9654;</span>
           </div>
         </div>
       )}
+      <CenzoSignature className="justify-center my-6" />
     </div>
   );
 }
@@ -99,9 +101,9 @@ function CountdownTimer() {
             <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl px-3 py-2 min-w-[52px] text-center">
               <span className="text-2xl md:text-3xl font-black text-white tabular-nums">{String(u.val ?? 0).padStart(2, '0')}</span>
             </div>
-            <span className="text-[10px] text-white/40 font-bold mt-1 tracking-wider">{u.label}</span>
+            <span className="text-[10px] text-white/55 font-bold mt-1 tracking-wider">{u.label}</span>
           </div>
-          {i < 3 && <span className="text-white/20 font-bold text-xl mt-[-16px]">:</span>}
+          {i < 3 && <span className="text-white/55 font-bold text-xl mt-[-16px]">:</span>}
         </React.Fragment>
       ))}
     </div>
@@ -169,10 +171,10 @@ export default function DiaDeLasMadresLanding() {
         structuredData={structuredData}
       />
 
-      <div className="min-h-screen bg-[#0a0a0a] text-white overflow-x-hidden">
+      <div className="min-h-screen bg-[#191A45] text-white overflow-x-hidden">
 
         {/* ─── URGENCY BAR ─── */}
-        <div className="bg-gradient-to-r from-pink-600 via-rose-500 to-pink-600 text-white text-center py-2.5 px-4 font-bold text-sm sticky top-0 z-50">
+        <div className="bg-gradient-to-r from-magenta-deep via-terra-deep to-magenta-deep text-white text-center py-2.5 px-4 font-bold text-sm sticky top-0 z-50">
           <span className="animate-pulse inline-block mr-1">&#10071;</span>
           El 10 de Mayo se acerca — No te quedes sin el regalo perfecto para mama
           <span className="animate-pulse inline-block ml-1">&#10071;</span>
@@ -182,7 +184,7 @@ export default function DiaDeLasMadresLanding() {
         <section className="relative px-6 pt-16 pb-20 md:pt-24 md:pb-28 overflow-hidden">
           {/* Background glow */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-[120px]"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-magenta/10 rounded-full blur-[120px]"></div>
           </div>
 
           {/* Scattered reaction photos behind hero */}
@@ -201,14 +203,14 @@ export default function DiaDeLasMadresLanding() {
 
           <div className="relative z-10 max-w-3xl mx-auto text-center">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 bg-pink-500/10 border border-pink-500/20 rounded-full px-5 py-2 mb-8">
-              <span className="text-pink-400 text-sm font-bold">&#127801; Dia de las Madres 2026</span>
+            <div className="inline-flex items-center gap-2 bg-magenta/10 border border-magenta/20 rounded-full px-5 py-2 mb-8">
+              <span className="text-magenta text-sm font-bold">&#127801; Dia de las Madres 2026</span>
             </div>
 
             {/* Headline */}
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-black leading-[0.95] tracking-tight mb-6">
               No le regales{' '}
-              <span className="bg-gradient-to-r from-pink-400 via-rose-400 to-pink-300 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-magenta via-terra to-magenta-soft bg-clip-text text-transparent">
                 lo mismo de siempre
               </span>
             </h1>
@@ -222,7 +224,7 @@ export default function DiaDeLasMadresLanding() {
 
             {/* Countdown */}
             <div className="mb-10">
-              <p className="text-white/30 text-xs font-bold tracking-widest uppercase mb-3">Faltan</p>
+              <p className="text-white/50 text-xs font-bold tracking-widest uppercase mb-3">Faltan</p>
               <CountdownTimer />
             </div>
 
@@ -235,7 +237,7 @@ export default function DiaDeLasMadresLanding() {
             `}</style>
             <button
               onClick={handleCreateSong}
-              className="inline-flex items-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg md:text-xl px-10 py-5 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
+              className="inline-flex items-center gap-3 bg-gradient-to-r from-magenta to-terra-deep hover:from-magenta hover:to-terra text-white font-extrabold text-lg md:text-xl px-10 py-5 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
               style={{ animation: 'ctaGlow 2s ease-in-out infinite' }}
             >
               <span className="text-2xl">&#127908;</span>
@@ -243,15 +245,15 @@ export default function DiaDeLasMadresLanding() {
             </button>
 
             {/* Trust badges */}
-            <div className="flex items-center justify-center gap-6 mt-6 text-white/30 text-sm">
+            <div className="flex items-center justify-center gap-6 mt-6 text-white/50 text-sm">
               <span>&#9989; Lista en 3 min</span>
               <span>&#9989; Desde $29.99</span>
               <span>&#9989; Preview gratis</span>
             </div>
 
             {/* Social proof counter */}
-            <p className="mt-8 text-white/20 text-sm">
-              <span className="text-pink-400 font-bold">2,847+</span> canciones creadas para mama este mes
+            <p className="mt-8 text-white/55 text-sm">
+              <span className="text-magenta font-bold">2,847+</span> canciones creadas para mama este mes
             </p>
           </div>
         </section>
@@ -263,7 +265,7 @@ export default function DiaDeLasMadresLanding() {
               <h2 className="text-2xl md:text-3xl font-black text-white">
                 Mira como reaccionan al escuchar su cancion
               </h2>
-              <p className="text-white/40 text-sm mt-2">Reacciones reales de nuestros clientes</p>
+              <p className="text-white/55 text-sm mt-2">Reacciones reales de nuestros clientes</p>
             </div>
 
             <div className="grid grid-cols-3 gap-3 md:gap-6 max-w-2xl mx-auto">
@@ -278,23 +280,23 @@ export default function DiaDeLasMadresLanding() {
         <section className="px-6 pb-20">
           <div className="max-w-xl mx-auto text-center">
             <div className="bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 rounded-3xl p-10">
-              <p className="text-white/40 text-sm font-bold tracking-widest uppercase mb-3">Pago unico · Sin suscripcion</p>
+              <p className="text-white/55 text-sm font-bold tracking-widest uppercase mb-3">Pago unico · Sin suscripcion</p>
               <div className="flex items-center justify-center gap-3 mb-2">
-                <span className="text-white/30 line-through text-xl">$59.99</span>
+                <span className="text-white/50 line-through text-xl">$59.99</span>
                 <span className="text-5xl font-black text-white">$29.99</span>
               </div>
-              <p className="text-white/30 text-sm mb-8">2 versiones unicas · Descarga MP3 · Tuya para siempre</p>
+              <p className="text-white/50 text-sm mb-8">2 versiones unicas · Descarga MP3 · Tuya para siempre</p>
 
               <button
                 onClick={handleCreateSong}
-                className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-white font-extrabold text-lg px-8 py-5 rounded-full transition-all duration-300 hover:scale-[1.02] active:scale-95"
+                className="w-full inline-flex items-center justify-center gap-3 bg-gradient-to-r from-magenta to-terra-deep hover:from-magenta hover:to-terra text-white font-extrabold text-lg px-8 py-5 rounded-full transition-all duration-300 hover:scale-[1.02] active:scale-95"
                 style={{ animation: 'ctaGlow 2s ease-in-out infinite' }}
               >
                 <span className="text-xl">&#127801;</span>
                 Sorprender a Mama Ahora
               </button>
 
-              <p className="text-white/20 text-xs mt-4">
+              <p className="text-white/55 text-xs mt-4">
                 &#128274; Pago seguro · No necesitas cuenta · Listo en minutos
               </p>
             </div>
@@ -310,9 +312,9 @@ export default function DiaDeLasMadresLanding() {
                 <details key={i} className="group border border-white/10 rounded-xl overflow-hidden">
                   <summary className="flex items-center justify-between px-5 py-4 cursor-pointer text-white font-semibold text-sm hover:bg-white/[0.03]">
                     {faq.question}
-                    <span className="text-white/30 group-open:rotate-45 transition-transform text-xl">+</span>
+                    <span className="text-white/50 group-open:rotate-45 transition-transform text-xl">+</span>
                   </summary>
-                  <div className="px-5 pb-4 text-white/40 text-sm leading-relaxed">
+                  <div className="px-5 pb-4 text-white/55 text-sm leading-relaxed">
                     {faq.answer}
                   </div>
                 </details>
@@ -324,10 +326,10 @@ export default function DiaDeLasMadresLanding() {
         {/* ─── FOOTER CTA ─── */}
         <section className="px-6 pb-16">
           <div className="max-w-2xl mx-auto text-center">
-            <p className="text-white/20 text-sm mb-4">No esperes al ultimo momento</p>
+            <p className="text-white/55 text-sm mb-4">No esperes al ultimo momento</p>
             <button
               onClick={handleCreateSong}
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-pink-500/20 border border-white/10 hover:border-pink-500/30 text-white font-bold px-8 py-4 rounded-full transition-all text-sm"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-magenta/20 border border-white/10 hover:border-magenta/30 text-white font-bold px-8 py-4 rounded-full transition-all text-sm"
             >
               &#127908; Crear Cancion para Mama — $29.99
             </button>

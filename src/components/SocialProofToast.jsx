@@ -90,7 +90,7 @@ export default function SocialProofToast() {
     >
       <div
         style={{
-          background: 'rgba(15, 15, 20, 0.95)',
+          background: 'rgba(38, 39, 86, 0.95)',
           backdropFilter: 'blur(16px)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: 16,
@@ -98,7 +98,7 @@ export default function SocialProofToast() {
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,24,74,0.15)',
+          boxShadow: '0 12px 40px rgba(10,10,32,0.55), 0 0 0 1px rgba(232,180,74,0.18)',
           maxWidth: 340,
           minWidth: 280,
         }}
@@ -109,7 +109,7 @@ export default function SocialProofToast() {
             width: 44,
             height: 44,
             borderRadius: 12,
-            background: 'linear-gradient(135deg, #c9184a, #e11d48)',
+            background: 'linear-gradient(135deg, #E4795A, #E8B44A)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -135,7 +135,7 @@ export default function SocialProofToast() {
           </p>
           <p
             style={{
-              color: 'rgba(255,255,255,0.55)',
+              color: 'rgba(255,255,255,0.68)',
               fontSize: 12,
               margin: '2px 0 0',
               lineHeight: 1.3,
@@ -145,7 +145,7 @@ export default function SocialProofToast() {
           </p>
           <p
             style={{
-              color: 'rgba(255,255,255,0.3)',
+              color: 'rgba(255,255,255,0.7)',
               fontSize: 11,
               margin: '3px 0 0',
             }}

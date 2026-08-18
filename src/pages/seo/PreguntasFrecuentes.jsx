@@ -2,6 +2,7 @@ import React, { useContext } from 'react';
 import { AppContext } from '../../App';
 import SEOHead, { generateFAQStructuredData, generateBreadcrumbData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
+import { CenzoSignature } from '../../components/Cenzo';
 
 const FAQ_CATEGORIES = [
   {
@@ -136,13 +137,13 @@ export default function PreguntasFrecuentes() {
       <div className="min-h-screen bg-landing-bg text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         {/* Hero */}
         <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #7C3AED40 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at center top, #3B3D8F40 0%, transparent 70%)' }} />
           <div className="relative max-w-4xl mx-auto text-center">
             <nav className="mb-10" aria-label="Breadcrumb">
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -168,7 +169,7 @@ export default function PreguntasFrecuentes() {
             {FAQ_CATEGORIES.map((category) => (
               <div key={category.title}>
                 <h2 className="text-2xl md:text-3xl font-bold mb-8 font-display flex items-center gap-3">
-                  <span className="w-1 h-8 rounded-full" style={{ background: 'linear-gradient(135deg, #c9184a, #7C3AED)' }} />
+                  <span className="w-1 h-8 rounded-full" style={{ background: 'linear-gradient(135deg, #B44F35, #4A4CA8)' }} />
                   {category.title}
                 </h2>
                 <div className="space-y-4">
@@ -176,7 +177,7 @@ export default function PreguntasFrecuentes() {
                     <details key={index} className="glass-morphism rounded-2xl p-6 group">
                       <summary className="font-bold text-white cursor-pointer flex justify-between items-center">
                         {faq.question}
-                        <span className="text-white/40 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
+                        <span className="text-white/55 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
                       </summary>
                       <p className="text-white/60 mt-4 leading-relaxed">{faq.answer}</p>
                     </details>
@@ -189,7 +190,7 @@ export default function PreguntasFrecuentes() {
 
         {/* Still have questions + CTA */}
         <section className="relative py-24 px-6 overflow-hidden">
-          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center, #c9184a30 0%, transparent 70%)' }} />
+          <div className="absolute inset-0 opacity-20" style={{ background: 'radial-gradient(ellipse at center, #B44F3530 0%, transparent 70%)' }} />
           <div className="relative max-w-2xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-5 font-display">
               ¿Tienes otra pregunta?
@@ -200,11 +201,11 @@ export default function PreguntasFrecuentes() {
             <button
               onClick={() => navigateTo('genre')}
               className="px-12 py-5 rounded-full text-xl font-bold transition-all transform hover:scale-105 animate-pulse-glow"
-              style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white', boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)' }}
+              style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white', boxShadow: '0 4px 30px rgba(180,79,53, 0.4)' }}
             >
               🎤 Crear Mi Canción Ahora
             </button>
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/55">
               <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
               <span>✓ Satisfacción garantizada</span>
@@ -214,8 +215,9 @@ export default function PreguntasFrecuentes() {
 
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
-          <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <p className="mt-2 text-white/55 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

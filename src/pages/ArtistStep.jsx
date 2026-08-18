@@ -1,6 +1,7 @@
 import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { trackStep } from '../services/tracking';
+import { CenzoMark, CenzoGuide } from '../components/Cenzo';
 
 // Artists organized by genre AND subgenre
 // Keys MUST match genres.js exactly for filtering to work
@@ -583,20 +584,20 @@ export default function ArtistStep() {
   };
 
   return (
-    <div className="bg-forest text-white antialiased min-h-screen flex flex-col">
+    <div className="night-sky text-white antialiased min-h-screen flex flex-col">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 md:px-24 py-6 bg-forest/80 backdrop-blur-md border-b border-white/5">
         <div 
           className="flex items-center gap-2 group cursor-pointer"
           onClick={() => navigateTo('landing')}
         >
-          <h2 className="font-display text-white text-xl font-medium tracking-tight">
+          <CenzoMark size={44} /><h2 className="font-display text-white text-xl font-medium tracking-tight">
             RegalosQueCantan
           </h2>
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:flex flex-col items-end mr-4">
-            <span className="text-[10px] uppercase tracking-widest text-white/40">Paso 1.5 de 5</span>
+            <span className="text-[10px] uppercase tracking-widest text-white/55">Paso 1.5 de 5</span>
             <span className="text-xs font-bold text-gold">Inspiración (Opcional)</span>
           </div>
           <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
@@ -622,6 +623,7 @@ export default function ArtistStep() {
           {/* Title */}
           <div className="text-center mb-10">
             <span className="text-gold uppercase tracking-[0.3em] text-[10px] font-bold mb-4 block">Opcional</span>
+            <CenzoGuide size={132} className="mx-auto mb-2 md:mb-3" />
             <h1 className="font-display text-white text-4xl md:text-5xl font-black leading-tight tracking-tight mb-4">
               ¿Hay algún artista que te <span className="italic text-gold">inspire?</span>
             </h1>
@@ -677,10 +679,10 @@ export default function ArtistStep() {
                   value={customArtist}
                   onChange={(e) => handleCustomArtistChange(e.target.value)}
                   placeholder="Ej: Bad Bunny, Peso Pluma, Selena..."
-                  className="w-full bg-transparent border-0 border-b border-gold/30 py-3 text-white text-lg focus:ring-0 focus:border-gold placeholder:text-white/30"
+                  className="w-full bg-transparent border-0 border-b border-gold/30 py-3 text-white text-lg focus:ring-0 focus:border-gold placeholder:text-white/55"
                   autoFocus
                 />
-                <p className="text-white/40 text-xs mt-2">
+                <p className="text-white/55 text-xs mt-2">
                   Nota: Los nombres de artistas no aparecerán en la canción, solo usamos esto para capturar el estilo.
                 </p>
               </div>
@@ -729,7 +731,7 @@ export default function ArtistStep() {
           >
             <span className="material-symbols-outlined text-2xl mb-2 block">shuffle</span>
             <span className="font-medium">Sin preferencia específica</span>
-            <p className="text-xs text-white/40 mt-1">Usaremos el estilo clásico del género</p>
+            <p className="text-xs text-white/55 mt-1">Usaremos el estilo clásico del género</p>
           </button>
         </div>
 

@@ -3,6 +3,7 @@ import { AppContext } from '../../App';
 import SEOHead, { generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
 import { getGenreBySlug, getOccasionBySlug, getAllGenres, getAllOccasions, DEFAULT_GENRE_FAQS, DEFAULT_OCCASION_FAQS } from '../../data/seoData';
+import { CenzoSignature } from '../../components/Cenzo';
 
 /**
  * ComboLanding - SEO Landing Page for genre+occasion combinations
@@ -142,7 +143,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -180,9 +181,9 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
               onClick={handleCreateSong}
               className="px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               Crear Mi {genre.name} para {occasion.name}
@@ -296,7 +297,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
                 <div key={step.num} className="text-center">
                   <div
                     className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4"
-                    style={{ background: 'linear-gradient(135deg, #c9184a, #a01540)', color: 'white' }}
+                    style={{ background: 'linear-gradient(135deg, #B44F35, #8E3A26)', color: 'white' }}
                   >
                     {step.num}
                   </div>
@@ -329,7 +330,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
                 <p className="text-white/80 italic mb-4">
                   "Le regalamos una cancion de {genre.name.toLowerCase()} para {occasion.name.toLowerCase()} y fue el mejor regalo que pudimos dar. Lloro de la emocion al escuchar su nombre en la cancion."
                 </p>
-                <p className="text-white/40 text-sm">
+                <p className="text-white/55 text-sm">
                   — Cliente verificado, {genre.name} para {occasion.name}
                 </p>
               </div>
@@ -349,7 +350,7 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
                 <details key={index} className="glass-morphism rounded-2xl p-6 group">
                   <summary className="font-bold text-white cursor-pointer flex justify-between items-center">
                     {faq.question}
-                    <span className="text-white/40 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">&#x25BC;</span>
+                    <span className="text-white/55 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">&#x25BC;</span>
                   </summary>
                   <p className="text-white/60 mt-4 leading-relaxed">
                     {faq.answer}
@@ -450,15 +451,15 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
               onClick={handleCreateSong}
               className="px-12 py-5 rounded-full text-xl font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               Crear Mi Cancion Ahora
             </button>
 
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/55">
               <span>Sin suscripcion</span>
               <span>Pago unico</span>
               <span>Descarga inmediata</span>
@@ -468,8 +469,9 @@ export default function ComboLanding({ genreSlug, occasionSlug }) {
 
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
-          <p className="text-white/30 text-sm">&copy; {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en generos latinos para cada ocasion especial.</p>
+        <CenzoSignature className="justify-center mb-4" />
+          <p className="text-white/50 text-sm">&copy; {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <p className="mt-2 text-white/55 text-sm">Canciones personalizadas en generos latinos para cada ocasion especial.</p>
         </footer>
       </div>
     </>

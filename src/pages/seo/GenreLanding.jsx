@@ -3,6 +3,7 @@ import { AppContext } from '../../App';
 import SEOHead, { generateGenreStructuredData, generateBreadcrumbData, generateFAQStructuredData } from '../../components/SEOHead';
 import SEOLink from '../../components/SEOLink';
 import { getGenreBySlug, getAllGenres, getAllOccasions, DEFAULT_GENRE_FAQS, COMBO_ROUTES } from '../../data/seoData';
+import { CenzoSignature } from '../../components/Cenzo';
 
 /**
  * GenreLanding - SEO Landing Page for individual genres
@@ -82,7 +83,7 @@ export default function GenreLanding({ genreSlug }) {
               <ol className="flex items-center justify-center gap-2 text-sm text-white/50">
                 {breadcrumbs.map((item, index) => (
                   <li key={item.path} className="flex items-center gap-2">
-                    {index > 0 && <span className="text-white/30">/</span>}
+                    {index > 0 && <span className="text-white/50">/</span>}
                     {index === breadcrumbs.length - 1 ? (
                       <span className="text-white/80 font-medium">{item.name}</span>
                     ) : (
@@ -120,9 +121,9 @@ export default function GenreLanding({ genreSlug }) {
               onClick={handleCreateSong}
               className="px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               🎵 Crear Mi {genre.name} Ahora
@@ -310,9 +311,9 @@ export default function GenreLanding({ genreSlug }) {
                       <h3 className="font-bold text-white group-hover:text-landing-primary transition-colors">
                         {genre.name} para {c.occasion.name}
                       </h3>
-                      <p className="text-sm text-white/40">Canción personalizada desde $29.99</p>
+                      <p className="text-sm text-white/55">Canción personalizada desde $29.99</p>
                     </div>
-                    <span className="text-white/30 group-hover:text-white/60 transition-all">→</span>
+                    <span className="text-white/50 group-hover:text-white/60 transition-all">→</span>
                   </SEOLink>
                 ))}
               </div>
@@ -351,7 +352,7 @@ export default function GenreLanding({ genreSlug }) {
                 <details key={index} className="glass-morphism rounded-2xl p-6 group">
                   <summary className="font-bold text-white cursor-pointer flex justify-between items-center">
                     {faq.question}
-                    <span className="text-white/40 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
+                    <span className="text-white/55 group-open:rotate-180 transition-transform ml-4 flex-shrink-0">▼</span>
                   </summary>
                   <p className="text-white/60 mt-4 leading-relaxed">
                     {faq.answer}
@@ -380,15 +381,15 @@ export default function GenreLanding({ genreSlug }) {
               onClick={handleCreateSong}
               className="px-12 py-5 rounded-full text-xl font-bold transition-all transform hover:scale-105 animate-pulse-glow"
               style={{
-                background: 'linear-gradient(135deg, #c9184a, #a01540)',
+                background: 'linear-gradient(135deg, #B44F35, #8E3A26)',
                 color: 'white',
-                boxShadow: '0 4px 30px rgba(201, 24, 74, 0.4)'
+                boxShadow: '0 4px 30px rgba(180,79,53, 0.4)'
               }}
             >
               🎤 Crear Mi Canción Ahora
             </button>
 
-            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
+            <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/55">
               <span>✓ Sin suscripción</span>
               <span>✓ Pago único</span>
               <span>✓ Descarga inmediata</span>
@@ -429,8 +430,9 @@ export default function GenreLanding({ genreSlug }) {
 
         {/* Footer */}
         <footer className="py-10 px-6 border-t border-white/5 text-center">
-          <p className="text-white/30 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
-          <p className="mt-2 text-white/20 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
+          <CenzoSignature className="justify-center mb-3" />
+          <p className="text-white/50 text-sm">© {new Date().getFullYear()} RegalosQueCantan. Todos los derechos reservados.</p>
+          <p className="mt-2 text-white/55 text-sm">Canciones personalizadas en géneros latinos para cada ocasión especial.</p>
         </footer>
       </div>
     </>

@@ -27,17 +27,17 @@ export default function ProgressBar({ step, totalSteps = 5, label = '' }) {
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-primary mb-1 block">
             Creación de Canción
           </span>
-          <h3 className="text-sm font-semibold text-[#171612] dark:text-white">
+          <h3 className="text-sm font-semibold text-white">
             Paso {step} de {totalSteps}
           </h3>
         </div>
-        <p className="text-sm font-medium text-[#857d66] dark:text-gray-400">
+        <p className="text-sm font-medium text-ink-2">
           {percentage}% completado
         </p>
       </div>
       
       {/* Progress bar */}
-      <div className="h-1.5 w-full bg-[#e4e3dc] dark:bg-white/10 rounded-full overflow-hidden mb-4">
+      <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mb-4">
         <div 
           className="h-full bg-primary rounded-full transition-all duration-700 ease-out" 
           style={{ width: `${percentage}%` }}
@@ -63,7 +63,7 @@ export default function ProgressBar({ step, totalSteps = 5, label = '' }) {
                 ? 'bg-primary text-white'
                 : s.id === step
                   ? 'bg-primary text-white ring-4 ring-primary/20'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+                  : 'bg-white/15 text-ink-2'
             }`}>
               {s.id < step ? (
                 <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
@@ -72,7 +72,7 @@ export default function ProgressBar({ step, totalSteps = 5, label = '' }) {
               )}
             </div>
             <span className={`text-[10px] font-medium hidden sm:block ${
-              s.id <= step ? 'text-primary' : 'text-gray-400'
+              s.id <= step ? 'text-primary' : 'text-ink-2'
             }`}>
               {s.name}
             </span>
@@ -81,7 +81,7 @@ export default function ProgressBar({ step, totalSteps = 5, label = '' }) {
       </div>
 
       {label && (
-        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 italic text-center">{label}</p>
+        <p className="mt-4 text-sm text-ink-3 dark:text-ink-2 italic text-center">{label}</p>
       )}
     </div>
   );
