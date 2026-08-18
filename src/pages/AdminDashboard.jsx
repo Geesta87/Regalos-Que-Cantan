@@ -17,11 +17,12 @@ import DailyBriefingTab from '../components/admin/DailyBriefingTab';
 import ChiefOfStaffTab from '../components/admin/ChiefOfStaffTab';
 import AdsCoachTab from '../components/admin/AdsCoachTab';
 import SeoCoachTab from '../components/admin/SeoCoachTab';
+import BannerQrTab from '../components/admin/BannerQrTab';
 import AffiliateRecruiterTab from '../components/admin/AffiliateRecruiterTab';
 import ActionInboxTab, {
   loadHidden as loadInboxHidden, isHiddenNow as isInboxHiddenNow, INBOX_COUNT_EVENT,
 } from '../components/admin/ActionInboxTab';
-import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen } from 'lucide-react';
+import { Package, Send, Flame, MessageSquare, Users, Search, Mic, Music, X, Wrench, Film, Video, Sparkles, Newspaper, Compass, UserPlus, Scissors, Target, Inbox, Contact, BookOpen, QrCode } from 'lucide-react';
 import { spliceIntoOriginal, spliceLineReplace, trimTake, parseTimed, findLastLineEnd, findCleanLine, validateTake, buildTokenGroups, lastSungWordEnd, findAnchorEnd } from '../utils/audioSplice';
 
 // Debounce hook for search inputs
@@ -5226,6 +5227,11 @@ export default function AdminDashboard() {
           <Search size={18} className={`flex-shrink-0 ${activeTab === 'seocoach' ? 'text-amber-400' : ''}`} /> SEO Coach
         </button>
         )}
+        {userRole === 'admin' && (
+        <button onClick={() => setActiveTab('bannerqr')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'bannerqr' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+          <QrCode size={18} className={`flex-shrink-0 ${activeTab === 'bannerqr' ? 'text-amber-400' : ''}`} /> Banner QR
+        </button>
+        )}
         <button onClick={() => setActiveTab('creativestudio')} className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition mb-0.5 ${activeTab === 'creativestudio' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
           <Sparkles size={18} className={`flex-shrink-0 ${activeTab === 'creativestudio' ? 'text-amber-400' : ''}`} /> Creative Studio
         </button>
@@ -6063,6 +6069,18 @@ export default function AdminDashboard() {
                 }`}
               >
                 🔎 SEO Coach
+              </button>
+              )}
+              {userRole === 'admin' && (
+              <button
+                onClick={() => setActiveTab('bannerqr')}
+                className={`px-5 py-2.5 rounded-xl font-medium transition ${
+                  activeTab === 'bannerqr'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                📍 Banner QR
               </button>
               )}
               <button
@@ -7969,6 +7987,11 @@ export default function AdminDashboard() {
              with the verified SEO Brain, remembers past chats, never touches the
              site. seo-coach edge function enforces admin server-side. Admin-only. */
           <SeoCoachTab accessToken={accessToken} showToast={showToast} />
+        ) : (activeTab === 'bannerqr' && userRole === 'admin') ? (
+          /* Banner QR — daily scans / orders / revenue per printed outdoor
+             banner (utm_campaign b-*), via the banner_qr_performance RPC.
+             Numbers are a floor: cross-device buyers lose the tag. Admin-only. */
+          <BannerQrTab accessToken={accessToken} showToast={showToast} />
         ) : (activeTab === 'recruit' && (userRole === 'admin' || userRole === 'assistant')) ? (
           /* Recruit Partners — Affiliate Recruiter agent (discover + score +
              draft outreach + convert). Open to admin + assistant (Ivan runs
