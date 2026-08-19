@@ -650,11 +650,19 @@ serve(async (req) => {
         try {
           const songLink = `https://regalosquecantan.com/song/${reqRow.song_id}`;
           const { data: song } = await admin.from('songs')
-            .select('email, recipient_name').eq('id', reqRow.song_id).single();
+            .select('email, recipient_name, payment_status').eq('id', reqRow.song_id).single();
           const recipient = song?.recipient_name || 'tu ser querido';
 
+          // PAID GATE (owner decision 2026-08-18): the /song link is the full
+          // paid deliverable. If the song hasn't been paid for, do NOT tell the
+          // customer it's fixed — a fix on an unpaid song stays silent and the
+          // release response says why. (Two unpaid full versions were sent out
+          // this way; the customer had only ever seen the /listen previews.)
+          const isPaid = song?.payment_status === 'paid';
+          if (!isPaid) notified.skipped = 'song not paid — customer not notified';
+
           // Email (SendGrid, same pattern as notify-upsell-ready).
-          if (song?.email && SENDGRID_API_KEY) {
+          if (isPaid && song?.email && SENDGRID_API_KEY) {
             const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px">
               <h2 style="color:#4f46e5">🎵 ¡Tu canción ya está corregida!</h2>
               <p>Hicimos el cambio que nos pediste en la canción para <strong>${recipient}</strong>. Ya puedes escucharla aquí:</p>
@@ -684,7 +692,7 @@ serve(async (req) => {
             phone = conv?.phone || null;
           }
           if (!phone && reqRow.context?.phone) phone = String(reqRow.context.phone);
-          if (phone) {
+          if (isPaid && phone) {
             const waBody = `✅ ¡Listo! Ya corregimos tu canción para ${recipient}. Escúchala aquí: ${songLink} 🎶`;
             const wa = await sendWhatsApp(phone, waBody);
             notified.whatsapp = wa.ok;
