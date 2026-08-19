@@ -144,12 +144,40 @@ export default function BotTrainingTab({ accessToken }) {
     }
   };
 
+  // The owner can reword the green ("after") text and skip individual changes,
+  // so applying rebuilds the document here from the kept changes instead of
+  // using the server's pre-built document.
   const handleAiApply = () => {
-    if (!aiPreview?.document) return;
-    setKnowledge(aiPreview.document);
+    if (!aiPreview) return;
+    const kept = (aiPreview.changes || []).filter((c) => !c.skipped);
+    if (kept.length === 0) { flash('⚠ All changes are skipped — nothing to apply'); return; }
+    let doc = knowledge;
+    for (const c of kept) {
+      const occurrences = doc.split(c.before).length - 1;
+      if (occurrences !== 1) {
+        flash('⚠ The document changed since this preview — press Preview change again');
+        return;
+      }
+      doc = doc.replace(c.before, c.after);
+    }
+    setKnowledge(doc);
     setAiPreview(null);
     setAiInstruction('');
     flash('✏️ Change applied to the editor — review it and press Save to make it live');
+  };
+
+  const setChangeAfter = (idx, value) => {
+    setAiPreview((p) => ({
+      ...p,
+      changes: p.changes.map((c, i) => (i === idx ? { ...c, after: value } : c)),
+    }));
+  };
+
+  const toggleChangeSkipped = (idx) => {
+    setAiPreview((p) => ({
+      ...p,
+      changes: p.changes.map((c, i) => (i === idx ? { ...c, skipped: !c.skipped } : c)),
+    }));
   };
 
   const handleDeleteExample = async (id) => {
@@ -344,19 +372,36 @@ export default function BotTrainingTab({ accessToken }) {
                 <div className="mt-3">
                   <div className="text-[12px] text-gray-200 mb-2">{aiPreview.summary}</div>
                   {aiPreview.changes.length > 0 && (
-                    <div className="space-y-2 max-h-72 overflow-y-auto mb-2.5">
-                      {aiPreview.changes.map((c, i) => (
-                        <div key={i} className="bg-black/25 border border-white/10 rounded-lg p-2.5">
-                          {c.section && <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">{c.section}</div>}
-                          {c.before && (
-                            <div className="text-[12px] text-red-300/90 bg-red-500/5 border border-red-500/15 rounded px-2 py-1.5 mb-1 whitespace-pre-wrap break-words">− {c.before}</div>
-                          )}
-                          {c.after && (
-                            <div className="text-[12px] text-green-300/90 bg-green-500/5 border border-green-500/15 rounded px-2 py-1.5 whitespace-pre-wrap break-words">+ {c.after}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    <>
+                      <div className="text-[11px] text-gray-500 mb-1.5">Red = current text · Green = proposed replacement. <span className="text-gray-400">You can rewrite the green text before applying, or Skip a change you don't want.</span></div>
+                      <div className="space-y-2 max-h-72 overflow-y-auto mb-2.5">
+                        {aiPreview.changes.map((c, i) => (
+                          <div key={i} className={`bg-black/25 border border-white/10 rounded-lg p-2.5 ${c.skipped ? 'opacity-40' : ''}`}>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 flex-1 truncate">{c.section || `Change ${i + 1}`}</div>
+                              <button
+                                onClick={() => toggleChangeSkipped(i)}
+                                className={`text-[11px] px-2 py-0.5 rounded transition ${c.skipped ? 'bg-white/10 text-gray-300' : 'bg-white/5 text-gray-500 hover:text-red-300'}`}
+                              >
+                                {c.skipped ? '↩ Include' : 'Skip'}
+                              </button>
+                            </div>
+                            {c.before && (
+                              <div className="text-[12px] text-red-300/90 bg-red-500/5 border border-red-500/15 rounded px-2 py-1.5 mb-1 whitespace-pre-wrap break-words">− {c.before}</div>
+                            )}
+                            {!c.skipped && (
+                              <textarea
+                                value={c.after}
+                                onChange={(e) => setChangeAfter(i, e.target.value)}
+                                spellCheck={false}
+                                rows={Math.min(8, Math.max(2, c.after.split('\n').length))}
+                                className="w-full resize-y text-[12px] text-green-300/90 bg-green-500/5 border border-green-500/15 rounded px-2 py-1.5 leading-relaxed focus:outline-none focus:border-green-400/40"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                   <div className="flex items-center gap-2">
                     <button onClick={handleAiApply} className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-green-500 text-white hover:bg-green-400 transition">
