@@ -163,6 +163,21 @@ export default function TermsOfService() {
             email/WhatsApp delivery.
           </p>
 
+          <h2>4.1 Refunds and Correction Guarantee</h2>
+          <p>
+            Because every song is custom-made and a real preview of the finished song
+            (its actual voice, lyrics, and music) is available to listen to before any
+            payment is taken, all sales are final and no refunds are offered once a
+            purchase is completed.
+          </p>
+          <p>
+            What we do guarantee: if the delivered song contains an error caused by a
+            mistake on our part, or omits details you provided with your order, we
+            will correct the song or produce a new one at no additional charge.
+            Contact us through the WhatsApp support line or email included with your
+            delivery and we will make it right.
+          </p>
+
           <h2>5. Intellectual Property</h2>
           <p>
             Upon purchase, you receive a personal-use license for your custom song.
@@ -231,6 +246,20 @@ export default function TermsOfService() {
             muestran en USD y son finales al momento del pago. Recibirás un producto digital
             (canción personalizada) y la entrega se considera completada al momento de la
             entrega por correo electrónico/WhatsApp.
+          </p>
+
+          <h2>4.1 Reembolsos y Garantía de Corrección</h2>
+          <p>
+            Como cada canción se crea a la medida y puedes escuchar una vista previa real
+            de tu canción terminada (su voz, su letra y su música) antes de pagar, todas
+            las ventas son finales y no se ofrecen reembolsos una vez completada la compra.
+          </p>
+          <p>
+            Lo que sí garantizamos: si la canción entregada contiene un error por una
+            equivocación nuestra, o no incluye detalles que tú proporcionaste con tu
+            pedido, corregimos la canción o creamos una nueva sin costo adicional.
+            Escríbenos por la línea de WhatsApp o el correo incluidos con tu entrega y
+            lo resolvemos.
           </p>
 
           <h2>5. Propiedad Intelectual</h2>

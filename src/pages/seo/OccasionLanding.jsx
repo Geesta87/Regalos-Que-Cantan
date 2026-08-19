@@ -407,7 +407,7 @@ export default function OccasionLanding({ occasionSlug }) {
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
               <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
-              <span>✓ Satisfacción garantizada</span>
+              <span>✓ Garantía de corrección gratis</span>
             </div>
           </div>
         </section>

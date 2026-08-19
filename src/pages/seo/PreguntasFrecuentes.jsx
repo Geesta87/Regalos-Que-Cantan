@@ -42,7 +42,7 @@ const FAQ_CATEGORIES = [
       },
       {
         question: '¿Ofrecen reembolsos?',
-        answer: 'Generamos dos versiones diferentes para que tengas opciones. Si ninguna te convence, contáctanos y buscaremos una solución. Tu satisfacción es nuestra prioridad.'
+        answer: 'Escuchas una vista previa real de tu canción — la voz, la letra y la música de tu canción terminada — antes de pagar, por eso todas las ventas son finales. Lo que sí garantizamos: si hay un error en la canción por una equivocación nuestra, o no incluimos algún detalle que tú nos diste al hacer tu pedido, lo corregimos o te hacemos una canción nueva sin costo adicional.'
       }
     ]
   },
@@ -207,7 +207,7 @@ export default function PreguntasFrecuentes() {
             <div className="mt-8 flex items-center justify-center gap-6 text-sm text-white/40">
               <span>✓ Desde $29.99</span>
               <span>✓ Listo en minutos</span>
-              <span>✓ Satisfacción garantizada</span>
+              <span>✓ Garantía de corrección gratis</span>
             </div>
           </div>
         </section>

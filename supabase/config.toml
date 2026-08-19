@@ -1017,3 +1017,15 @@ verify_jwt = true
 # JWT (admin_users gate inside); default gate stays ON.
 [functions.business-analyst]
 verify_jwt = true
+
+[functions.track-song-access]
+# Proof-of-consumption beacon (chargeback defense, 2026-08-19). Fired from
+# public customer pages via navigator.sendBeacon / fetch(keepalive), which
+# cannot attach a Supabase JWT. Validates song ids server-side and writes
+# only to song_access_log + songs.download_count with the service role.
+verify_jwt = false
+
+[functions.dispute-evidence-pack]
+# Admin-only dispute evidence assembler. Called from the admin dashboard with
+# a Supabase Auth JWT and re-checked against admin_users inside the function.
+verify_jwt = true

@@ -21,6 +21,53 @@ const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
 const SENDER_EMAIL = 'hola@regalosquecantan.com';
 const SENDER_NAME = 'RegalosQueCantan';
 
+// Owner alerting for dispute events (same channels as health-check).
+const ALERT_EMAIL = Deno.env.get('ALERT_EMAIL') || 'hola@regalosquecantan.com';
+const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+const TWILIO_WHATSAPP_FROM = Deno.env.get('TWILIO_WHATSAPP_FROM');
+const ALERT_WHATSAPP_TO = Deno.env.get('ALERT_WHATSAPP_TO');
+
+// Fire-and-forget owner alert on WhatsApp + email. Never throws — a failed
+// alert must not 4xx the webhook (Stripe would retry the whole event).
+async function sendOwnerDisputeAlert(subject: string, text: string) {
+  try {
+    if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_WHATSAPP_FROM && ALERT_WHATSAPP_TO) {
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+      const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ From: TWILIO_WHATSAPP_FROM, To: ALERT_WHATSAPP_TO, Body: `${subject}\n\n${text}` }).toString(),
+      });
+    }
+  } catch (e) {
+    console.error('[dispute-alert] WhatsApp failed:', e instanceof Error ? e.message : e);
+  }
+  try {
+    if (SENDGRID_API_KEY) {
+      await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SENDGRID_API_KEY}` },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: ALERT_EMAIL }] }],
+          from: { email: SENDER_EMAIL, name: 'RQC Disputes' },
+          subject,
+          content: [{ type: 'text/plain', value: text }],
+          categories: ['dispute_alert', 'rqc_internal'],
+          tracking_settings: {
+            click_tracking: { enable: false },
+            open_tracking: { enable: false },
+            subscription_tracking: { enable: false },
+          },
+        }),
+      });
+    }
+  } catch (e) {
+    console.error('[dispute-alert] email failed:', e instanceof Error ? e.message : e);
+  }
+}
+
 // Meta Conversions API — server-side fallback for the browser pixel.
 // Both pixel + token must be set for CAPI to fire. If either is missing
 // the helper logs and skips, so this whole block is a no-op in
@@ -936,6 +983,33 @@ serve(async (req) => {
       if (savedPaymentMethodId) baseUpdateData.stripe_payment_method_id = savedPaymentMethodId;
       if (savedCardLast4) baseUpdateData.stripe_card_last4 = savedCardLast4;
 
+      // Phone fallback (chargeback defense, 2026-08-19): when our funnel
+      // captured no WhatsApp number, create-checkout asks Stripe Checkout to
+      // collect one. Copy it onto the song rows so delivery + CS identity
+      // lookup work — but NEVER overwrite a number the customer typed in our
+      // own funnel. Digits-only to match the existing whatsapp_phone format.
+      const stripePhoneDigits = (session.customer_details?.phone || '').replace(/\D/g, '');
+      if (stripePhoneDigits.length >= 10) {
+        try {
+          const { data: phoneRows } = await supabase
+            .from('songs')
+            .select('id, whatsapp_phone')
+            .in('id', songIds);
+          const needsPhone = (phoneRows || [])
+            .filter((r: { whatsapp_phone: string | null }) => !r.whatsapp_phone || !String(r.whatsapp_phone).trim())
+            .map((r: { id: string }) => r.id);
+          if (needsPhone.length > 0) {
+            const normalized = stripePhoneDigits.length === 11 && stripePhoneDigits.startsWith('1')
+              ? stripePhoneDigits.slice(1)
+              : stripePhoneDigits;
+            await supabase.from('songs').update({ whatsapp_phone: normalized }).in('id', needsPhone);
+            console.log(`[phone-fallback] copied Stripe checkout phone onto ${needsPhone.length} song(s)`);
+          }
+        } catch (phErr) {
+          console.warn('[phone-fallback] failed:', phErr instanceof Error ? phErr.message : phErr);
+        }
+      }
+
       // Video addon: flag songs appropriately based on count
       const videoAddonPurchased = session.metadata?.videoAddon === 'true';
       const videoAddonCountMeta = parseInt(session.metadata?.videoAddonCount || '1');
@@ -1465,6 +1539,85 @@ serve(async (req) => {
               .eq('id', song.id);
           }
         }
+      }
+    }
+
+    // ========== DISPUTES (chargeback defense, 2026-08-19) ==========
+    // Mirror every dispute into public.disputes the moment Stripe tells us,
+    // alert the owner on WhatsApp + email, and auto-block the buyer's email
+    // from generating new songs. The block is deliberately reversible: it is
+    // a single row in blocked_emails, tagged with the dispute id, and the
+    // alert says so — a Rosa-type mistaken dispute gets unblocked by deleting
+    // that row. Subscribe to charge.dispute.created / charge.dispute.closed
+    // in the Stripe webhook endpoint config for these to fire.
+    if (event.type === 'charge.dispute.created' || event.type === 'charge.dispute.closed') {
+      const dispute = event.data.object as Stripe.Dispute;
+      const isCreated = event.type === 'charge.dispute.created';
+
+      // The dispute object doesn't carry the customer email — pull it off the charge.
+      let disputeEmail: string | null = (dispute.evidence?.customer_email_address || '').toLowerCase() || null;
+      let disputeName: string | null = dispute.evidence?.customer_name || null;
+      const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id || null;
+      if ((!disputeEmail || !disputeName) && chargeId) {
+        try {
+          const charge = await stripe.charges.retrieve(chargeId);
+          disputeEmail = disputeEmail || (charge.billing_details?.email || '').toLowerCase() || null;
+          disputeName = disputeName || charge.billing_details?.name || null;
+        } catch (e) {
+          console.warn('[dispute] charge lookup failed:', e instanceof Error ? e.message : e);
+        }
+      }
+
+      const row = {
+        stripe_dispute_id: dispute.id,
+        charge_id: chargeId,
+        payment_intent_id: typeof dispute.payment_intent === 'string' ? dispute.payment_intent : dispute.payment_intent?.id || null,
+        amount_cents: dispute.amount,
+        currency: dispute.currency,
+        reason: dispute.reason,
+        network_reason_code: (dispute.payment_method_details as { card?: { network_reason_code?: string } } | undefined)?.card?.network_reason_code || null,
+        status: dispute.status,
+        customer_email: disputeEmail,
+        customer_name: disputeName,
+        evidence_due_by: dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toISOString() : null,
+        outcome: isCreated ? null : dispute.status,
+        opened_at: new Date(dispute.created * 1000).toISOString(),
+        closed_at: isCreated ? null : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        raw: dispute as unknown as Record<string, unknown>,
+      };
+      const { error: upsertErr } = await supabase
+        .from('disputes')
+        .upsert(row, { onConflict: 'stripe_dispute_id' });
+      if (upsertErr) console.error('[dispute] upsert failed:', upsertErr.message);
+
+      if (isCreated) {
+        // Auto-block the email from creating new songs (reversible, tagged).
+        let autoBlocked = false;
+        if (disputeEmail) {
+          const { error: blockErr } = await supabase
+            .from('blocked_emails')
+            .upsert(
+              { email: disputeEmail, reason: `AUTO: dispute ${dispute.id} (${dispute.reason}) on ${chargeId} — delete this row to unblock` },
+              { onConflict: 'email', ignoreDuplicates: true },
+            );
+          autoBlocked = !blockErr;
+          if (blockErr) console.error('[dispute] auto-block failed:', blockErr.message);
+          else await supabase.from('disputes').update({ auto_blocked: true }).eq('stripe_dispute_id', dispute.id);
+        }
+        const amount = (dispute.amount / 100).toFixed(2);
+        const dueBy = dispute.evidence_details?.due_by
+          ? new Date(dispute.evidence_details.due_by * 1000).toISOString().slice(0, 10)
+          : 'unknown';
+        await sendOwnerDisputeAlert(
+          `🚨 New dispute: $${amount} — ${disputeEmail || 'unknown email'}`,
+          `Reason: ${dispute.reason}\nCustomer: ${disputeName || '?'} <${disputeEmail || '?'}>\nCharge: ${chargeId}\nEvidence due: ${dueBy}\nDispute: ${dispute.id}\n\n${autoBlocked ? 'Email AUTO-BLOCKED from creating new songs (delete its blocked_emails row to undo).' : 'Email NOT auto-blocked (missing or error).'}\n\nRespond in Stripe: https://dashboard.stripe.com/disputes/${dispute.id}`,
+        );
+      } else {
+        await sendOwnerDisputeAlert(
+          `Dispute closed (${dispute.status}): $${(dispute.amount / 100).toFixed(2)} — ${disputeEmail || 'unknown email'}`,
+          `Outcome: ${dispute.status}\nDispute: ${dispute.id}\nCharge: ${chargeId}`,
+        );
       }
     }
 

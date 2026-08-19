@@ -5,6 +5,7 @@ import GiftTextUpsell from '../components/GiftTextUpsell';
 import { OneTapUpsell } from '../components/OneTapUpsell';
 import { chargeUpsell } from '../services/api';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
+import { trackSongAccess } from '../utils/trackSongAccess';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://yzbvajungshqcpusfiia.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6YnZhanVuZ3NocWNwdXNmaWlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDM3MjAsImV4cCI6MjA4NDUxOTcyMH0.9cu9re38_Np3Q6xEcjGdEwctSiPAaaqo8W2c3HEx6k4';
@@ -406,6 +407,8 @@ export default function SuccessPage() {
       const ordered = songIds.map((id) => data.find((s) => s.id === id)).filter(Boolean);
       const list = ordered.length === data.length ? ordered : data;
       setSongs(list);
+      // Proof-of-consumption log (chargeback defense) — once per page load.
+      if (!background) trackSongAccess(list.map((s) => s.id), 'success_page_view', { once: true });
       // Preserve the customer's currently-selected song across background
       // re-fetches. The status poll re-runs loadSongs() every 5s; unconditionally
       // resetting currentSong to the first song was snapping the player back to
@@ -730,6 +733,7 @@ export default function SuccessPage() {
   const handleDownload = async (song) => {
     const target = song || currentSong;
     if (!target?.audio_url) return;
+    trackSongAccess(target.id, 'download'); // proof-of-consumption log
     setDownloading(true);
     try {
       await forceDownload(target.audio_url, `cancion-para-${target.recipient_name || 'ti'}.mp3`);
@@ -1936,6 +1940,7 @@ export default function SuccessPage() {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={() => setIsPlaying(false)}
+        onPlay={() => trackSongAccess(currentSong.id, 'play', { once: true })}
       />
 
       {/* --- CSS --- */}

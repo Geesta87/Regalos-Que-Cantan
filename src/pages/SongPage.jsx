@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import GiftTextUpsell from '../components/GiftTextUpsell';
 import { Helmet } from 'react-helmet-async';
 import { forceDownload, isInAppBrowser } from '../utils/forceDownload';
+import { trackSongAccess } from '../utils/trackSongAccess';
 
 const supabase = import.meta.env.VITE_SUPABASE_URL
   ? createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -294,6 +295,10 @@ export default function SongPage({ songId: propSongId }) {
         if (ordered.length === 0) throw new Error(t.noEncontrada);
         if (!ordered[0].audio_url) throw new Error(t.noLista);
         setAllSongs(ordered);
+        // Proof-of-consumption log (chargeback defense) — the /song/:ids link
+        // is the one delivered by WhatsApp/SMS, so an open here proves the
+        // delivery message was received and followed.
+        trackSongAccess(ordered.map((s) => s.id), 'song_page_view', { once: true });
 
         // Check if there's a completed video for ANY song in the bundle.
         // Customers buy ONE video upsell, but we don't know in advance which
@@ -426,6 +431,7 @@ export default function SongPage({ songId: propSongId }) {
   const [dlState, setDlState] = useState(null); // null | 'downloading' | 'done'
   const download = async () => {
     if (!song?.audio_url) return;
+    trackSongAccess(song.id, 'download'); // proof-of-consumption log
     const filename = t.downloadFile(song.recipient_name, isCombo, activeIndex);
     setDlState('downloading');
     try {
@@ -761,7 +767,13 @@ export default function SongPage({ songId: propSongId }) {
       el.addEventListener('ended', () => { setIsPlaying(false); });
     }
   };
-  const audioEl = <audio ref={audioRefCallback} preload="auto" />;
+  const audioEl = (
+    <audio
+      ref={audioRefCallback}
+      preload="auto"
+      onPlay={() => { const cur = allSongs[activeIndex]; if (cur) trackSongAccess(cur.id, 'play', { once: true }); }}
+    />
+  );
 
   // ═══════════════════════════════════════
   // REVEAL SCREENS (before template)

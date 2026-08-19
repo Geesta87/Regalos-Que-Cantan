@@ -164,6 +164,49 @@ serve(async (req) => {
       console.log('[create-checkout] Recovered email from song record', { songId });
     }
 
+    // ── Blocklist (chargeback defense, 2026-08-19) ────────────────────────
+    // generate-song already refuses blocked abusers, but gift codes, store
+    // packs and shared preview links can reach checkout without a fresh
+    // generation. Defense in depth: refuse to mint a Stripe session for a
+    // blocked email or IP. Same generic message as the generate-song block
+    // so the abuser can't tell they were singled out.
+    {
+      const checkEmail = (email || '').toLowerCase().trim();
+      const [{ data: blockedEmailRow }, { data: blockedIpRow }] = await Promise.all([
+        checkEmail
+          ? supabase.from('blocked_emails').select('email').eq('email', checkEmail).maybeSingle()
+          : Promise.resolve({ data: null }),
+        clientIp
+          ? supabase.from('blocked_ips').select('ip').eq('ip', clientIp).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (blockedEmailRow || blockedIpRow) {
+        console.log(`CHECKOUT_BLOCKED: email=${checkEmail} ip=${clientIp} (${blockedEmailRow ? 'email' : 'ip'})`);
+        return jsonResp(403, {
+          success: false,
+          error: 'No pudimos procesar el pago en este momento. Por favor intenta de nuevo más tarde.',
+        });
+      }
+    }
+
+    // Phone fallback (chargeback defense): if the buyer skipped the optional
+    // WhatsApp field in our funnel (63% of Aug orders), have Stripe collect a
+    // phone at checkout instead — it lands on the PaymentIntent as the
+    // cardholder's own number, which is dispute evidence and a delivery
+    // channel we otherwise never get. If our funnel already captured one,
+    // don't ask twice.
+    let needPhoneAtCheckout = false;
+    try {
+      const { data: phoneRows } = await supabase
+        .from('songs')
+        .select('whatsapp_phone')
+        .in('id', songIds);
+      needPhoneAtCheckout = !!phoneRows && phoneRows.length > 0 &&
+        phoneRows.every((r: { whatsapp_phone: string | null }) => !r.whatsapp_phone || !String(r.whatsapp_phone).trim());
+    } catch (_e) {
+      needPhoneAtCheckout = false; // never let the lookup break checkout
+    }
+
     // Pricing — framed as a growable bundle, base = 2 songs:
     //   1 song   → $29.99 (single, no bundle)
     //   2 songs  → $39.99 (default bundle — unchanged vs. legacy)
@@ -609,6 +652,13 @@ serve(async (req) => {
       // checkout's price, line items, or customer-facing flow.
       customer_creation: 'always',
       payment_intent_data: { setup_future_usage: 'off_session' },
+      // Chargeback defense (2026-08-19): full billing address gives us a real
+      // AVS street check on keyed cards instead of postal-code-only, and the
+      // address itself becomes dispute evidence. Wallets (Link/Google Pay)
+      // pass their stored address through without extra typing.
+      billing_address_collection: 'required',
+      // Only when our own funnel captured no WhatsApp number (see lookup above).
+      ...(needPhoneAtCheckout ? { phone_number_collection: { enabled: true } } : {}),
       // 'es-419' = Latin American Spanish. Uses periods for decimals
       // ($29.99 instead of $29,99) which is what the Latino US/Mexico
       // market expects. 'es' defaults to Spain Spanish (comma decimals).
@@ -621,7 +671,7 @@ serve(async (req) => {
         // Stripe supports basic markdown (bold). Soft line breaks keep it
         // scannable on mobile where Stripe Checkout renders.
         submit: {
-          message: '**Imagina su cara cuando la escuche por primera vez.** Esa pausa antes de las lágrimas. Esa sonrisa que no se va a borrar. Esa canción ya está hecha — con su nombre, su historia, su música. Y en 60 segundos, también es tuya.\n\n❤️ **Hecha solo para ellos** — no se vende en ningún otro lado\n✓ **Llega a tu correo al instante** — el enlace nunca expira\n✓ **Garantía total** — si algo no te encanta, lo arreglamos sin costo\n\nMás de 2,341 familias ya lloraron de emoción al escucharla. Hoy te toca a ti darles ese regalo.',
+          message: '**Imagina su cara cuando la escuche por primera vez.** Esa pausa antes de las lágrimas. Esa sonrisa que no se va a borrar. Esa canción ya está hecha — con su nombre, su historia, su música. Y en 60 segundos, también es tuya.\n\n❤️ **Hecha solo para ellos** — no se vende en ningún otro lado\n✓ **Llega a tu correo al instante** — el enlace nunca expira\n✓ **Garantía de corrección gratis** — si hay un error nuestro o falta un detalle que nos diste, lo corregimos o hacemos una canción nueva sin costo\n\nMás de 2,341 familias ya lloraron de emoción al escucharla. Hoy te toca a ti darles ese regalo. Todas las ventas son finales.',
         },
         // Shown briefly after they hit Pay, before the redirect to /success.
         // Final emotional close — they already committed, this seals it.
